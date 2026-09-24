@@ -10,10 +10,14 @@ flowchart LR
     Router[chi router: recoverer + securityHeaders] --> Health[/healthz, /readyz/]
     Router --> Docs[/api/docs/*, static Swagger UI/]
     Router --> V1[/api/v1: withClientIP + requireJSON + authn.Middleware/]
-    Router --> RootNF[root NotFound/MethodNotAllowed]
+    Router --> RootNF[root NotFound]
+    Router --> RootMNA[root MethodNotAllowed]
+    V1 --> OpenAPI[/api/v1/openapi.json, public/]
     V1 --> Strict[oapi-codegen strict server]
-    RootNF -->|path has /api/ prefix| ProblemJSON[problem+json 404/405]
+    RootNF -->|/api/* path| ProblemJSON404[problem+json 404]
     RootNF -->|any other path| WebUI[embedded SPA, index.html fallback]
+    RootMNA -->|/api/* path| ProblemJSON405[problem+json 405]
+    RootMNA -->|any other path| PlainText405[plain-text 405]
     Strict --> Authz[authz.Can]
     Strict --> Settings[settings.Store]
     Strict --> Setup[setup.Service]
@@ -51,7 +55,7 @@ flowchart LR
 
 At the router root, `recoverer` (a local replacement for chi's `middleware.Recoverer`, so a panic becomes a `problem+json` 500 with a logged stack instead of a bare 500) and `securityHeaders` wrap everything, including `/healthz`, `/readyz`, and `/api/docs/*`. Under `/api/v1`: `withClientIP` → `requireJSON` (415 for non-JSON bodies on POST/PUT/PATCH) → `authn.Middleware` (session cookie → `Principal`, CSRF check on mutating methods, 401 unless the route is in `isPublic`) → the oapi-codegen strict handler → `authorize()` (`authz.Can`) → store or service → `audit.Record`.
 
-Root-level `NotFound` and `MethodNotAllowed` handlers branch on path prefix: anything under `/api/` gets a `problem+json` 404/405; everything else falls through to the embedded SPA handler (`webui.Handler()`), which serves `index.html` for any unmatched non-API path so client-side routes resolve. Within `/api/v1`, unmatched paths and methods also return `problem+json`. Handler errors of type `*api.HTTPError` become `problem+json`; any other error is logged and returned as a bare 500.
+Root-level `NotFound` and `MethodNotAllowed` handlers both branch on path prefix, but only `NotFound` falls through to the web UI: for a path under `/api/`, `NotFound` returns `problem+json` 404 and `MethodNotAllowed` returns `problem+json` 405; for any other path, `NotFound` falls through to the embedded SPA handler (`webui.Handler()`), which serves `index.html` so client-side routes resolve, while `MethodNotAllowed` returns a plain-text 405 (`http.Error`), not the SPA. Within `/api/v1`, unmatched paths and methods also return `problem+json`. Handler errors of type `*api.HTTPError` become `problem+json`; any other error is logged and then also written as a `problem+json` 500 (`Write(w, 500, "Internal server error", "")`), not a bare 500.
 
 `authn.LoadPrincipal` builds `Principal.Roles`/`Bindings`/`OrgIDs` from `role_bindings`; a binding with a non-NULL `site_id` is skipped entirely until site scope is modelled in Phase 2, so it currently grants nothing. Login (`POST /api/v1/auth/login`) and setup completion (`POST /api/v1/setup/complete`) both build the full principal (via `finishSession`) before `startSession` sets the `cf_session` cookie; if anything after session creation fails, the session row is deleted best-effort so a failed login never leaves a live cookie or session behind.
 

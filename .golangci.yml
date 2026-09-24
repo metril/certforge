@@ -39,6 +39,7 @@ linters-settings:
       - name: indent-error-flow
 issues:
   include:
+    - EXC0013
     - EXC0015
   exclude-dirs:
     - internal/db/sqlcgen

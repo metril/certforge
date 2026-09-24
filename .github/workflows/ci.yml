@@ -42,8 +42,14 @@ jobs:
       # git diff --exit-code only catches modified tracked files; a query or
       # spec change that adds a new generated file would pass silently, so
       # this checks the working tree is clean of both modifications and
-      # untracked files.
-      - run: make generate && test -z "$(git status --porcelain)"
+      # untracked files. git status/diff run first, unconditionally, so any
+      # drift is visible in the log even though the actual gate is the
+      # test -z check on the next line.
+      - run: |
+          make generate
+          git status --porcelain
+          git diff
+          test -z "$(git status --porcelain)"
   embedweb:
     runs-on: ubuntu-latest
     steps:
