@@ -109,3 +109,22 @@ metaReg.Add(meta.KindDNSProvider, meta.Entry{Code: "cloudflare", Name: "Cloudfla
 ```
 
 It appears in `GET /api/v1/meta/schemas`, and the UI renders its form from the schema.
+
+## Frontend
+
+The web UI lives in `web/` (Vite, React 18, TypeScript strict, Tailwind 4, shadcn/ui on Radix).
+
+| Command (in `web/`) | What it does |
+|---|---|
+| `npm install` | Install exact-pinned dependencies (Node 24) |
+| `npm run dev` | Dev server on :5173; `/api`, `/readyz`, `/healthz` proxy to `CF_DEV_BACKEND` (default `http://localhost:${CF_HTTP_PORT:-8080}`) |
+| `npm run gen` | Regenerate `src/api/schema.d.ts` from `api/openapi.yaml` and `src/routeTree.gen.ts` from `src/routes` |
+| `npm run lint` / `typecheck` / `test` | ESLint, `tsc -b`, Vitest |
+| `npm run build` | Production build to `web/dist`, embedded by the server with `-tags embedweb` |
+| `npm run e2e` | Playwright smoke test against a running compose.test stack |
+
+Rules enforced in code:
+- Native checkboxes and radio buttons fail lint. Use `SwitchField`, `ChipSet`, or `SegmentedControl`.
+- Colours come only from `src/styles/tokens.css`; `tokens.test.ts` checks both themes for WCAG AA.
+- Tooltip copy lives in `src/lib/help.ts`; `help.test.ts` rejects entries over two sentences and "Learn more" links to missing doc headings.
+- Theme is applied before first paint by `public/theme-init.js`, loaded synchronously in `<head>`.

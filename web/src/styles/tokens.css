@@ -1,0 +1,61 @@
+/* Design tokens. Light and dark are designed together; see spec "Visual direction". */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --cf-ink: #1D2533;
+  --cf-ink-muted: #566173;
+  --cf-surface: #F6F7F9;
+  --cf-panel: #FFFFFF;
+  --cf-subtle: #EDF0F4;
+  --cf-border: #D9DEE7;
+  --cf-primary: #2848B8;
+  --cf-on-primary: #FFFFFF;
+  --cf-on-status: #FFFFFF;
+  --cf-valid: #2E7D57;
+  --cf-expiring: #B7791F;
+  --cf-expired: #7F1D2D;
+  --cf-failed: #D0342C;
+  --cf-drift: #6B4BC8;
+  --cf-pending: #4A6A8C;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --cf-ink: #E6E9EF;
+  --cf-ink-muted: #9AA3B2;
+  --cf-surface: #161B24;
+  --cf-panel: #1E2532;
+  --cf-subtle: #252D3B;
+  --cf-border: #2C3543;
+  --cf-primary: #7C97F0;
+  --cf-on-primary: #161B24;
+  --cf-on-status: #161B24;
+  --cf-valid: #5BC08A;
+  --cf-expiring: #E0A83F;
+  --cf-expired: #D9647A;
+  --cf-failed: #F0665E;
+  --cf-drift: #A48CF2;
+  --cf-pending: #8FAACB;
+}
+
+/* No-JS fallback: follow the OS when theme-init.js did not run. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --cf-ink: #E6E9EF;
+    --cf-ink-muted: #9AA3B2;
+    --cf-surface: #161B24;
+    --cf-panel: #1E2532;
+    --cf-subtle: #252D3B;
+    --cf-border: #2C3543;
+    --cf-primary: #7C97F0;
+    --cf-on-primary: #161B24;
+    --cf-on-status: #161B24;
+    --cf-valid: #5BC08A;
+    --cf-expiring: #E0A83F;
+    --cf-expired: #D9647A;
+    --cf-failed: #F0665E;
+    --cf-drift: #A48CF2;
+    --cf-pending: #8FAACB;
+  }
+}

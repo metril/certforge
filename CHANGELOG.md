@@ -36,6 +36,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - API: DNS provider credentials with write-only secrets, stored-secret names, and a live TXT test.
 - API: certificates with multi-SAN and wildcard names, per-name verification rules, renew now, versions, attempts with step timeline, PEM/zip downloads with audited key export, and manual-dns records and confirmation.
 - End-to-end issuance test that drives the running compose server through its own HTTP API against Pebble and challtestsrv (issuance, chain, SANs, key type, forced renewal, failure backoff); the e2e server image carries the challtestsrv DNS provider.
+- Web UI scaffold: design tokens for light and dark themes, Atkinson Hyperlegible fonts, pre-paint theme selection, and a lint rule that blocks native checkboxes and radio buttons.
 
 ### Fixed
 - Deleting a CA or ACME account locks the row for the whole count-then-delete in one transaction, so a concurrent `acme_accounts` insert (an actual foreign key) cannot slip a new reference in between the check and the delete.

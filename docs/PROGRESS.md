@@ -59,14 +59,37 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 12 | API: CAs, accounts, defaults | done | 018cfca |
 | 13 | API: DNS credentials | done | 5ab8e5d |
 | 14 | API: certificates, versions, attempts, downloads, manual-dns | done | 4fa1db3 |
-| 15 | Pebble end-to-end test | done | f42b3ef |
+| 15 | Pebble end-to-end test | done | 15085f8 |
 
-Phase 1B complete; 1C (web UI) builds on it. Task 15's row records f42b3ef,
-the last commit before the whole-branch final-review fix wave that closed
-out Phase 1B (lost-name races in the issuance worker, a per-name
-propagation budget in the challenge router, the provider-default
-propagation timeout, and the DNS credential secret-reuse guard, among
-smaller fixes — see the Decisions entry below).
+Phase 1B complete; 1C (web UI) builds on it. Task 15's row records 15085f8,
+the 1B final-review fix commit that closed out Phase 1B (lost-name races in
+the issuance worker, a per-name propagation budget in the challenge router,
+the provider-default propagation timeout, and the DNS credential
+secret-reuse guard, among smaller fixes — see the Decisions entry below);
+13ca4cd and f42b3ef were Task 15's own commits.
+
+### Phase 1C: web UI — in progress (started 2026-09-24) ([plan](superpowers/plans/2026-09-24-phase-1c-web-ui.md))
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Scaffold, tokens, fonts, theme, lint | done | pending |
+| 2 | API client and query plumbing | planned | |
+| 3 | Router, login, setup wizard | planned | |
+| 4 | App shell and navigation | planned | |
+| 5 | Form controls | planned | |
+| 6 | Status chip and validity bar | planned | |
+| 7 | Issuers: CAs and ACME accounts | planned | |
+| 8 | SchemaForm and provider picker | planned | |
+| 9 | DNS credentials | planned | |
+| 10 | InheritableField and Settings | planned | |
+| 11 | Certificates list | planned | |
+| 12 | Wizard names step | planned | |
+| 13 | Verification rules and coverage | planned | |
+| 14 | Wizard assembly | planned | |
+| 15 | Attempts and manual DNS | planned | |
+| 16 | Certificate detail | planned | |
+| 17 | Overview and command palette | planned | |
+| 18 | Docker build, Playwright smoke, docs | planned | |
 
 ## Decisions made during implementation
 
@@ -108,6 +131,18 @@ smaller fixes — see the Decisions entry below).
 - 1B final-review fix wave: the built-in `propagationSeconds` default (`issuance.BuiltinDefaults`) is now unset (0, the router's existing "provider default" sentinel) instead of a fixed 120s — a fixed built-in value always won over a rule's own `rule.Provider.Timeout()`, so a DNS credential's own `*_PROPAGATION_TIMEOUT` config could never take effect unless every level of defaults was left unset *and* the built-in happened to already be 0.
 - 1B final-review fix wave: `challenge.MergeUpdate` (DNS credential update) now also reports which public config keys the update changed and whether any secret field was sent as `__unchanged__`; `issuance.Store.UpdateDNSCredential` rejects (422) an update that does both at once — otherwise an operator could repoint a stored secret at a changed connection setting (for example a provider's endpoint URL) without ever re-entering it. The `dns_credential.update` audit event now lists the changed public keys (`changedConfig`).
 - 1B final-review fix wave, smaller items: the panic-recovery path in `IssueWorker.Issue` now applies `MarkFailed` with the normal backoff (it previously only recorded the attempt as failed, leaving the certificate's `failure_count`/`next_renew_at` untouched); `succeed`'s own timeline saves route through its open transaction (not the store's connection pool, which could deadlock a small pool against the row lock `succeed` already holds) and every attempt-progress save now has a 5s bound; `UpdateCA` rejects (409) a `directoryUrl` change while an ACME account is still registered against the CA (its key is enrolled with the old server); `deploy/compose.test.yaml`'s e2e build now tags its image `certforge:e2e`, distinct from `compose.yaml`'s `ghcr.io/metril/certforge:dev`, so a dev `up` can never end up running the e2e-only provider; the schema generator marks `INFOBLOX_CA_CERTIFICATE` (a path field whose name doesn't follow the `_FILE`/`_PATH` convention) `serverPath` and `hyperone` (file-only passport) `unsupported`, like `transip`.
+- 1C: theme pre-paint runs from a synchronous `/theme-init.js` in `<head>` instead of an inline script, so a `script-src 'self'` CSP holds; behaviour is identical.
+- 1C: routes use a pathless `_app` layout (auth guard + shell) and nested `o/$org/` folders; URLs match the spec. Task 1 adds a placeholder `src/routes/__root.tsx` only so the TanStack Router Vite plugin (which scans `src/routes` at config-resolve time) has something to generate against before Task 3 builds the real router.
+- 1C: status chip words use `ink`; the tone is carried by icon, border, or fill, because `expiring` on white is 3.6:1 (below AA for text).
+- 1C: `@tanstack/react-table` pinned to 8.21.3 (9.x is a fresh major).
+- 1C: tooltip "Learn more" links resolve against `VITE_DOCS_BASE` (default `https://github.com/metril/certforge/blob/main/docs/`).
+- 1C: the CA edit sheet is addressed by `?edit=<id>` on `/issuers/cas` rather than a `/:id` segment.
+- 1C: certificate create sends `sans` including the common name.
+- 1C Task 1: the Vite dev proxy's default backend is `http://localhost:${CF_HTTP_PORT:-8080}` (not a bare `:8080`), since `CF_HTTP_PORT` is already how `make e2e`/compose pick a non-default host port and this host runs the dev API on 18080.
+- 1C Task 1: `shadcn@4.21.0 add` generates components importing `cn` from a package literally named `cn` rather than `@/lib/utils`, and adds that package to `package.json`; both are reverted (`sed` the imports back to `@/lib/utils`, drop the `cn` dependency) to keep the exact-pinned dependency set and a single `cn` implementation.
+- 1C Task 1: `src/test/setup.ts`'s jsdom shims (`Element.prototype.*`, `window.matchMedia`, `localStorage.clear()`) are guarded with `typeof ... !== 'undefined'` checks, because `setupFiles` also runs for `lint.test.ts` and `tokens.test.ts`, which opt into `@vitest-environment node` and have no DOM globals.
+- 1C Task 1: `tsconfig.app.json`'s `types` also lists `"node"` (the brief omitted it), since the tests import `node:fs`/`node:path` and read `import.meta.dirname`, an `@types/node` global augmentation that needs `types` to include it explicitly.
+- 1C Task 1: `public/theme-init.js`'s `var dark` has no initializer (ESLint's `no-useless-assignment` flags `= false` as dead, since every path — the try block or the catch — always assigns it before use).
 
 ## Known gaps
 
@@ -138,3 +173,5 @@ smaller fixes — see the Decisions entry below).
 - Providers with ambient cloud credentials (`route53`, `gcloud`, `azuredns`, …) fall back to the server's own identity (instance role, ADC, …) when no keys are set on the stored credential; nothing here gates that off from a CertForge deployment's own cloud identity. Gate this in Phase 2.
 - A database error inside `IssueWorker.succeed` (after the CA has already issued) makes river retry the whole issuance from scratch, including a fresh CA order — against Let's Encrypt this risks the duplicate-certificate rate limit on a flaky database.
 - `MaxWorkers=4` is shared by every river job kind, including the periodic scan job and hour-long manual-dns waits; a burst of manual-dns issuances can starve renewals.
+- 1C: Overview "recent activity" needs the audit log (Phase 2).
+- 1C: Revoke action needs a revoke endpoint; Deployments tab is Phase 3.

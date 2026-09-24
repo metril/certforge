@@ -1,0 +1,92 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./tokens.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --font-sans: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.75rem;
+  --text-xl--line-height: 2.125rem;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --color-background: var(--cf-surface);
+  --color-foreground: var(--cf-ink);
+  --color-card: var(--cf-panel);
+  --color-card-foreground: var(--cf-ink);
+  --color-popover: var(--cf-panel);
+  --color-popover-foreground: var(--cf-ink);
+  --color-primary: var(--cf-primary);
+  --color-primary-foreground: var(--cf-on-primary);
+  --color-secondary: var(--cf-subtle);
+  --color-secondary-foreground: var(--cf-ink);
+  --color-muted: var(--cf-subtle);
+  --color-muted-foreground: var(--cf-ink-muted);
+  --color-accent: var(--cf-subtle);
+  --color-accent-foreground: var(--cf-ink);
+  --color-destructive: var(--cf-failed);
+  --color-border: var(--cf-border);
+  --color-input: var(--cf-border);
+  --color-ring: var(--cf-primary);
+  --color-ink: var(--cf-ink);
+  --color-ink-muted: var(--cf-ink-muted);
+  --color-surface: var(--cf-surface);
+  --color-panel: var(--cf-panel);
+  --color-subtle: var(--cf-subtle);
+  --color-on-primary: var(--cf-on-primary);
+  --color-on-status: var(--cf-on-status);
+  --color-valid: var(--cf-valid);
+  --color-expiring: var(--cf-expiring);
+  --color-expired: var(--cf-expired);
+  --color-failed: var(--cf-failed);
+  --color-drift: var(--cf-drift);
+  --color-pending: var(--cf-pending);
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { font-family: var(--font-sans); }
+  body { @apply bg-background text-foreground text-sm antialiased; }
+  :focus-visible { outline: 2px solid var(--cf-primary); outline-offset: 2px; }
+}
+
+@layer components {
+  /* Pending: marching dashed border. */
+  .cf-dash {
+    border-color: transparent;
+    background-image:
+      linear-gradient(90deg, var(--cf-pending) 50%, transparent 50%),
+      linear-gradient(90deg, var(--cf-pending) 50%, transparent 50%),
+      linear-gradient(0deg, var(--cf-pending) 50%, transparent 50%),
+      linear-gradient(0deg, var(--cf-pending) 50%, transparent 50%);
+    background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+    background-size: 6px 1px, 6px 1px, 1px 6px, 1px 6px;
+    background-position: 0 0, 0 100%, 0 0, 100% 0;
+    animation: cf-dash 0.9s linear infinite;
+  }
+  /* Renewal window on the validity bar. */
+  .cf-hatch {
+    background-image: repeating-linear-gradient(135deg, var(--cf-expiring) 0 2px, transparent 2px 5px);
+  }
+}
+
+@keyframes cf-dash {
+  to { background-position: 6px 0, -6px 100%, 0 -6px, 100% 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
