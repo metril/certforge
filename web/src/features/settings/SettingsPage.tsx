@@ -6,13 +6,8 @@ import { IssuanceDefaultsSection } from './IssuanceDefaultsSection';
 import { KekStatus } from './KekStatus';
 import { OrgsList } from './OrgsList';
 import { SchemaSection } from './SchemaSection';
+import { SECTIONS, type SectionSlug } from './sections';
 
-export const SECTIONS = [
-  { slug: 'general', label: 'General' },
-  { slug: 'issuance-defaults', label: 'Issuance defaults' },
-  { slug: 'backup', label: 'Backup and keys' },
-] as const;
-export type SectionSlug = (typeof SECTIONS)[number]['slug'];
 const LATER_SECTIONS = ['Access', 'Authentication', 'Agents', 'Integrations'];
 
 const item = 'flex h-9 items-center px-3 text-sm text-ink-muted hover:bg-subtle hover:text-ink';

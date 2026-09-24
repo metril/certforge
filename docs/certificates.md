@@ -47,6 +47,10 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 
 `GET /api/v1/orgs/{orgId}/issuance-defaults/effective` and each certificate's `effective` field show the resolved value and its `source`: `default` (built-in), `global`, `org` or `cert`. A changed default applies at the next renewal of every certificate that inherits it. Saving the global section (`PUT /settings/issuance_defaults`) and org defaults (`PUT /orgs/{orgId}/issuance-defaults`) both validate that a referenced CA, account or DNS credential exists (and, for org defaults, belongs to the org) before storing; an unknown id is a 422.
 
+## Issuing from the web UI
+
+**Certificates → New certificate** opens a four-step wizard: **Names**, **Verification**, **Options**, **Review**. The summary on the right shows names, zones, verification coverage, CA, key type, and renewal as you go. Options and Review are optional: the fast path is paste names → check the pre-filled credential → **Issue certificate**. After issuing you land on the certificate's **Attempts** tab with the live attempt open. **Duplicate** on a certificate opens the same wizard pre-filled; **Edit** (`/certificates/{id}/edit`) opens it pre-filled from the existing certificate and saves with `PUT` instead — changing names shows a one-line notice that a new certificate will be issued.
+
 ## Names
 
 A certificate has a common name plus any number of SANs: wildcards (`*.example.com`, leftmost label only), names from different zones, and IP addresses where the CA supports them (not with DNS-01). Names are lower-cased and de-duplicated; the first is the common name. Changing names issues a new certificate immediately; other changes apply at the next renewal.
@@ -96,6 +100,14 @@ The **Coverage** panel lists every certificate name with the rule that proves it
 ### CNAME delegation
 
 To keep DNS API credentials away from a production zone, point `_acme-challenge.<name>` at a record in a separate zone with a CNAME, for example `_acme-challenge.www.example.com CNAME www.example.com.acme.example.net`. lego follows the CNAME automatically. Set **CNAME alias zone** to `acme.example.net` and give the rule a credential for that zone.
+
+### Options
+
+Every issuance default (CA, account, key type, renewal, preferred chain, reuse key, Must-Staple, propagation wait, resolvers) is shown with its effective value and source badge. Turn on **Override** to set it for this certificate only; **Reset to inherited** removes the override. See [issuance defaults](configuration.md#issuance-defaults).
+
+### Review
+
+Name the certificate (defaults to the common name), check the coverage list and the effective options with their source (**Cert**, **Org**, **Global**, **Default**), then **Issue certificate**.
 
 ### DNS credentials
 

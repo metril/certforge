@@ -1,7 +1,45 @@
 import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
-import { POLL } from '@/lib/polling';
+import { livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
-import type { Certificate, CertStatus } from '../types';
+import type { Certificate, CertificateInput, CertStatus } from '../types';
+
+export const certificateQuery = (orgId: string, id: string) =>
+  queryOptions({
+    queryKey: ['certs', orgId, 'one', id],
+    queryFn: () => call(api.GET('/orgs/{orgId}/certificates/{id}', { params: { path: { orgId, id } } })),
+    refetchInterval: (q) => livePoll(q.state.data?.status === 'pending'),
+    staleTime: 0,
+  });
+
+export function useCreateCertificate(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CertificateInput) => call(api.POST('/orgs/{orgId}/certificates', { params: { path: { orgId } }, body })),
+    // The wizard maps a 422 back to the step that owns the named field and
+    // shows the detail there, and any other failure as its own Review-step
+    // banner (controller ruling) — a toast on top would be redundant, same
+    // pattern as useSaveOrgDefaults/useSaveCa/useSaveCredential.
+    meta: { silent: true },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['certs', orgId] }),
+  });
+}
+
+// Adaptation (controller ruling, docs/design.md "Certificate create
+// wizard"): PUT replaces a certificate's definition; the server queues a
+// new issuance only when names changed (internal/api/certificates.go
+// UpdateCertificate). Not in the Task 14 brief's code sample, which covers
+// create only.
+export function useUpdateCertificate(orgId: string, id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CertificateInput) => call(api.PUT('/orgs/{orgId}/certificates/{id}', { params: { path: { orgId, id } }, body })),
+    meta: { silent: true },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      qc.invalidateQueries({ queryKey: ['certs', orgId, 'one', id] });
+    },
+  });
+}
 
 const PAGE = 200;
 const MAX_PAGES = 50;
