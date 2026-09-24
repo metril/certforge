@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/dbtest"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
 )
 
@@ -87,6 +89,70 @@ func TestDeleteCABlockedWhileReferenced(t *testing.T) {
 	var iu *InUseError
 	if err := f.store.DeleteCA(context.Background(), f.org, f.ca.ID); !errors.As(err, &iu) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// TestDeleteCaLockBlocksConcurrentOrgDefaultsWrite (review fix round 1):
+// proves the FOR UPDATE / FOR KEY SHARE pairing actually serializes a
+// delete against a concurrent org-defaults write referencing the same CA,
+// not just that the two checks happen to run in the right order when
+// nothing else is racing. It opens a transaction that holds DeleteCA's own
+// FOR UPDATE lock (without committing), starts a concurrent PutOrgDefaults
+// referencing that CA in a goroutine, asserts the write is still blocked
+// after a short timeout, then commits a delete of the CA through the same
+// held transaction and asserts the blocked write wakes up with a 422 (no
+// dangling reference), instead of succeeding against a CA that no longer
+// exists.
+func TestDeleteCaLockBlocksConcurrentOrgDefaultsWrite(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ca, err := f.store.CreateCA(ctx, f.org, CAInput{Name: "Lockable", Preset: "custom", DirectoryURL: "https://lockable.test/dir"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A rollback after a successful commit below is a no-op; this only
+	// matters if the test fails before reaching the commit, so the held
+	// connection isn't leaked into the pool.Close t.Cleanup runs afterward.
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := f.store.q.WithTx(tx)
+	if _, err := q.LockCA(ctx, sqlcgen.LockCAParams{ID: ca.ID, OrgID: f.org}); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		id := ca.ID
+		done <- f.store.PutOrgDefaults(context.Background(), f.org, Defaults{CAID: &id})
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("org-defaults write did not block on the held CA lock: %v", err)
+	case <-time.After(300 * time.Millisecond):
+		// Still blocked, as expected: validateDefaultsTx's LockCAKeyShare
+		// conflicts with the FOR UPDATE this test is holding.
+	}
+
+	if _, err := q.DeleteCA(ctx, sqlcgen.DeleteCAParams{ID: ca.ID, OrgID: f.org}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var ve *ValidationError
+	select {
+	case err := <-done:
+		if !errors.As(err, &ve) || ve.Field != "caId" {
+			t.Fatalf("want a 422 no-such-CA once the lock releases into a committed delete, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("org-defaults write never unblocked after the delete committed")
 	}
 }
 

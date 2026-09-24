@@ -43,6 +43,23 @@ func (s *Store) Get(ctx context.Context, key string, out any) error {
 	return nil
 }
 
+// GetTx is Get scoped to an existing transaction, for callers (issuance's
+// delete-protection checks) that need this read to be part of a larger
+// transaction instead of a separate pool-bound query.
+func (s *Store) GetTx(ctx context.Context, tx pgx.Tx, key string, out any) error {
+	row, err := s.q.WithTx(tx).GetSetting(ctx, key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("settings: get %s: %w", key, err)
+	}
+	if err := json.Unmarshal(row.Value, out); err != nil {
+		return fmt.Errorf("settings: decode %s: %w", key, err)
+	}
+	return nil
+}
+
 // Set stores v as JSON at key.
 func (s *Store) Set(ctx context.Context, key string, v any) error {
 	b, err := json.Marshal(v)
@@ -100,4 +117,19 @@ func (s *Store) PutSection(ctx context.Context, sec *Section, raw json.RawMessag
 		return err
 	}
 	return s.Set(ctx, sec.Key(), raw)
+}
+
+// PutSectionTx is PutSection scoped to an existing transaction, for callers
+// that must validate and store a section alongside other locked reads in
+// the same transaction (for example issuance_defaults's referenced-CA/
+// account key-share locks).
+func (s *Store) PutSectionTx(ctx context.Context, tx pgx.Tx, sec *Section, raw json.RawMessage) error {
+	if err := sec.Validate(raw); err != nil {
+		return err
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return fmt.Errorf("settings: encode %s: %w", sec.Key(), err)
+	}
+	return s.q.WithTx(tx).UpsertSettingValue(ctx, sqlcgen.UpsertSettingValueParams{Key: sec.Key(), Value: b})
 }

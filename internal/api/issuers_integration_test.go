@@ -110,8 +110,16 @@ func TestAcmeAccountLifecycleAudited(t *testing.T) {
 
 func TestGlobalIssuanceDefaultsValidated(t *testing.T) {
 	f := newAPIFixture(t)
-	bogus := uuid.New().String()
+	// Syntactically malformed: the schema's format: uuid is an annotation
+	// only, not asserted, so this must be caught after schema validation
+	// (json.Unmarshal into issuance.Defaults) and still reported as 422,
+	// not 400 (review fix round 1, item 2).
 	_, err := f.srv.PutSettingsSection(f.as("admin"), gen.PutSettingsSectionRequestObject{Section: "issuance_defaults",
+		Body: &gen.SettingsValue{"caId": "not-a-uuid"}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	bogus := uuid.New().String()
+	_, err = f.srv.PutSettingsSection(f.as("admin"), gen.PutSettingsSectionRequestObject{Section: "issuance_defaults",
 		Body: &gen.SettingsValue{"caId": bogus}})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
 

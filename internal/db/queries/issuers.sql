@@ -26,6 +26,15 @@ RETURNING *;
 -- to cas.id) blocks until the delete's transaction commits or rolls back.
 SELECT * FROM cas WHERE id = $1 AND org_id = $2 FOR UPDATE;
 
+-- name: LockCAKeyShare :one
+-- Takes a FOR KEY SHARE lock on the CA row: a weaker lock than LockCA's FOR
+-- UPDATE that still conflicts with it, so writers that store a caId
+-- reference in jsonb (org and global issuance defaults) can hold this while
+-- they validate and write, and a concurrent DeleteCA blocks until they
+-- finish instead of racing past them. Not org-scoped: callers that need org
+-- ownership check it separately while still holding this lock.
+SELECT id FROM cas WHERE id = $1 FOR KEY SHARE;
+
 -- name: DeleteCA :execrows
 DELETE FROM cas WHERE id = $1 AND org_id = $2;
 
@@ -56,6 +65,10 @@ SELECT * FROM acme_accounts WHERE org_id = $1 ORDER BY email;
 -- name: LockAccount :one
 -- Locks the row for the duration of a delete's count-then-delete.
 SELECT * FROM acme_accounts WHERE id = $1 AND org_id = $2 FOR UPDATE;
+
+-- name: LockAccountKeyShare :one
+-- FOR KEY SHARE counterpart to LockAccount; see LockCAKeyShare.
+SELECT id FROM acme_accounts WHERE id = $1 FOR KEY SHARE;
 
 -- name: DeleteAccount :execrows
 DELETE FROM acme_accounts WHERE id = $1 AND org_id = $2;

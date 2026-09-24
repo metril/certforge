@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/metril/certforge/internal/api/gen"
@@ -45,20 +44,24 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	if err != nil {
 		return nil, badRequest("%v", err)
 	}
-	if sec.Name == issuance.SettingsKey {
-		var d issuance.Defaults
-		if err := json.Unmarshal(raw, &d); err != nil {
-			return nil, badRequest("%v", err)
-		}
-		if err := s.d.Issuance.Store.ValidateGlobalDefaults(ctx, d); err != nil {
-			return nil, mapErr(err)
-		}
+	// Schema validation always runs first, so malformed input (including a
+	// malformed caId) is a 422 regardless of which section this is.
+	if err := sec.Validate(raw); err != nil {
+		return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
 	}
-	if err := s.d.Settings.PutSection(ctx, sec, raw); err != nil {
-		if errors.Is(err, settings.ErrInvalid) {
-			return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
+	if sec.Name == issuance.SettingsKey {
+		if err := s.putGlobalIssuanceDefaults(ctx, sec, raw); err != nil {
+			return nil, err
 		}
-		return nil, err
+	} else {
+		// Settings.Set takes v any and re-marshals it; the explicit
+		// json.RawMessage conversion matters here — passing raw's plain
+		// []byte would base64-encode it as a JSON string instead of storing
+		// the object, since []byte (unlike json.RawMessage) doesn't
+		// implement json.Marshaler.
+		if err := s.d.Settings.Set(ctx, sec.Key(), json.RawMessage(raw)); err != nil {
+			return nil, err
+		}
 	}
 	s.audit(ctx, audit.Event{Action: "settings.update", ResourceType: "settings", ResourceID: sec.Name,
 		Details: map[string]any{"section": sec.Name}})
@@ -67,6 +70,38 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 		return nil, err
 	}
 	return gen.PutSettingsSection200JSONResponse(out), nil
+}
+
+// putGlobalIssuanceDefaults validates and stores the issuance_defaults
+// settings section inside one transaction: ValidateGlobalDefaultsTx takes a
+// FOR KEY SHARE lock on any referenced CA or account before checking it
+// exists, so a concurrent DeleteCA/DeleteAccount (which takes FOR UPDATE on
+// the same row) blocks until this transaction commits or rolls back — the
+// two writers can no longer interleave into a dangling reference. The
+// section is written through the same transaction via PutSectionTx.
+func (s *Server) putGlobalIssuanceDefaults(ctx context.Context, sec *settings.Section, raw json.RawMessage) error {
+	var d issuance.Defaults
+	if err := json.Unmarshal(raw, &d); err != nil {
+		// raw already passed JSON-Schema validation above; the schema's
+		// format: uuid is an annotation only (not asserted), so a
+		// syntactically malformed caId/accountId still reaches here. It is
+		// still invalid input, so 422 like every other validation failure
+		// on this section, not 400 (which would suggest the request body
+		// itself was unparseable JSON).
+		return unprocessable("issuance_defaults", err.Error())
+	}
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := s.d.Issuance.Store.ValidateGlobalDefaultsTx(ctx, tx, d); err != nil {
+		return mapErr(err)
+	}
+	if err := s.d.Settings.PutSectionTx(ctx, tx, sec, raw); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Server) sectionResponse(ctx context.Context, sec *settings.Section) (gen.SettingsSection, error) {

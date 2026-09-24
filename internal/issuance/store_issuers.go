@@ -178,10 +178,15 @@ func (s *Store) ListCAs(ctx context.Context, orgID uuid.UUID) ([]CA, error) {
 	return out, nil
 }
 
-// DeleteCA deletes an unreferenced CA. The row is locked for the whole
-// count-then-delete (in one transaction) so a concurrent account create,
-// which takes a lock on the same row to satisfy its foreign key, cannot
-// slip a new reference in between the count and the delete.
+// DeleteCA deletes an unreferenced CA. The row is FOR UPDATE-locked for the
+// whole count-then-delete (in one transaction): this blocks a concurrent
+// account create, which takes a lock on the same row for its foreign key,
+// and it blocks a concurrent org or global issuance-defaults write, which
+// takes a FOR KEY SHARE lock on the same row before validating and writing
+// (validateDefaultsTx, ValidateGlobalDefaultsTx). Either way the two writers
+// serialize instead of racing past each other into a dangling reference; the
+// reference checks (CountCAUsers, globalDefaultsReferenceTx) run after the
+// lock is held, in the same transaction.
 func (s *Store) DeleteCA(ctx context.Context, orgID, id uuid.UUID) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -196,7 +201,7 @@ func (s *Store) DeleteCA(ctx context.Context, orgID, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	ref, err := s.globalDefaultsReference(ctx, id)
+	ref, err := s.globalDefaultsReferenceTx(ctx, tx, id)
 	if err != nil {
 		return err
 	}
@@ -265,8 +270,12 @@ func (s *Store) ListAccounts(ctx context.Context, orgID uuid.UUID) ([]Account, e
 }
 
 // DeleteAccount deletes an unreferenced account (the CA-side account is not
-// deactivated). The row is locked for the whole count-then-delete (in one
-// transaction) so a concurrent create cannot slip a new reference in.
+// deactivated). The row is FOR UPDATE-locked for the whole count-then-delete
+// (in one transaction), which blocks a concurrent org or global
+// issuance-defaults write that takes a FOR KEY SHARE lock on the same row
+// before validating and writing (validateDefaultsTx, ValidateGlobalDefaultsTx);
+// the reference checks (CountAccountUsers, globalDefaultsReferenceTx) run
+// after the lock is held, in the same transaction.
 func (s *Store) DeleteAccount(ctx context.Context, orgID, id uuid.UUID) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -281,7 +290,7 @@ func (s *Store) DeleteAccount(ctx context.Context, orgID, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	ref, err := s.globalDefaultsReference(ctx, id)
+	ref, err := s.globalDefaultsReferenceTx(ctx, tx, id)
 	if err != nil {
 		return err
 	}

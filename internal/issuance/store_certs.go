@@ -89,16 +89,30 @@ func (s *Store) OrgDefaults(ctx context.Context, orgID uuid.UUID) (Defaults, err
 	return d, err
 }
 
-// PutOrgDefaults validates and replaces the org level.
+// PutOrgDefaults validates and replaces the org level. Runs inside one
+// transaction: validateDefaultsTx takes a FOR KEY SHARE lock on any
+// referenced CA or account before checking it exists, so a concurrent
+// DeleteCA/DeleteAccount (which takes FOR UPDATE on the same row) blocks
+// until this transaction ends, instead of the two racing past each other
+// into a dangling reference.
 func (s *Store) PutOrgDefaults(ctx context.Context, orgID uuid.UUID, d Defaults) error {
-	if err := s.validateDefaults(ctx, orgID, d); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	if err := s.validateDefaultsTx(ctx, q, orgID, d); err != nil {
 		return err
 	}
 	b, err := json.Marshal(d)
 	if err != nil {
 		return err
 	}
-	return s.q.UpsertOrgIssuanceDefaults(ctx, sqlcgen.UpsertOrgIssuanceDefaultsParams{OrgID: orgID, Config: b})
+	if err := q.UpsertOrgIssuanceDefaults(ctx, sqlcgen.UpsertOrgIssuanceDefaultsParams{OrgID: orgID, Config: b}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // EffectiveOrg resolves global and org levels.
@@ -133,20 +147,61 @@ func (s *Store) globalDefaultsReference(ctx context.Context, id uuid.UUID) (bool
 	if err != nil {
 		return false, err
 	}
+	return defaultsReference(g, id), nil
+}
+
+// txGlobalSettings is implemented by *settings.Store (its GetTx);
+// globalDefaultsReferenceTx uses it when s.global supports it, so the read
+// runs inside the caller's own transaction instead of the settings store's
+// own pool-bound queries. Test doubles that only implement GlobalSettings's
+// plain Get fall back to that.
+type txGlobalSettings interface {
+	GetTx(ctx context.Context, tx pgx.Tx, key string, out any) error
+}
+
+// globalDefaultsReferenceTx is globalDefaultsReference read through tx (when
+// s.global supports it) instead of the settings store's own pool-bound
+// queries, so DeleteCA/DeleteAccount's decision is made entirely from reads
+// taken after their FOR UPDATE lock is held, in the same transaction as the
+// count and the delete.
+func (s *Store) globalDefaultsReferenceTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (bool, error) {
+	if s.global == nil {
+		return false, nil
+	}
+	key := settings.SectionKey(SettingsKey)
+	var g Defaults
+	var err error
+	if tg, ok := s.global.(txGlobalSettings); ok {
+		err = tg.GetTx(ctx, tx, key, &g)
+	} else {
+		err = s.global.Get(ctx, key, &g)
+	}
+	if errors.Is(err, settings.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return defaultsReference(g, id), nil
+}
+
+// defaultsReference reports whether g references id as caId, accountId, or
+// a rule's dnsCredentialId.
+func defaultsReference(g Defaults, id uuid.UUID) bool {
 	if g.CAID != nil && *g.CAID == id {
-		return true, nil
+		return true
 	}
 	if g.AccountID != nil && *g.AccountID == id {
-		return true, nil
+		return true
 	}
 	if g.VerificationRules != nil {
 		for _, r := range *g.VerificationRules {
 			if r.DNSCredentialID != nil && *r.DNSCredentialID == id {
-				return true, nil
+				return true
 			}
 		}
 	}
-	return false, nil
+	return false
 }
 
 // validateDefaultsShape checks the fields of a Defaults value that do not
@@ -217,6 +272,54 @@ func (s *Store) validateDefaults(ctx context.Context, orgID uuid.UUID, d Default
 	return nil
 }
 
+// validateDefaultsTx is validateDefaults run with tx-scoped queries, taking
+// a FOR KEY SHARE lock on any referenced CA or account first so
+// DeleteCA/DeleteAccount's FOR UPDATE lock on the same row blocks until this
+// transaction ends. Used by writers (PutOrgDefaults) that must be safe
+// against a concurrent delete racing the write, not just against a delete
+// that has already committed.
+func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults) error {
+	if err := validateDefaultsShape(d); err != nil {
+		return err
+	}
+	if d.CAID != nil {
+		if _, err := q.LockCAKeyShare(ctx, *d.CAID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"caId", "no such CA in this org"}
+			}
+			return err
+		}
+		if _, err := q.GetCA(ctx, sqlcgen.GetCAParams{ID: *d.CAID, OrgID: orgID}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"caId", "no such CA in this org"}
+			}
+			return err
+		}
+	}
+	if d.AccountID != nil {
+		if _, err := q.LockAccountKeyShare(ctx, *d.AccountID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"accountId", "no such ACME account in this org"}
+			}
+			return err
+		}
+		a, err := q.GetAccount(ctx, sqlcgen.GetAccountParams{ID: *d.AccountID, OrgID: orgID})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"accountId", "no such ACME account in this org"}
+			}
+			return err
+		}
+		if d.CAID != nil && a.CaID != *d.CAID {
+			return &ValidationError{"accountId", "account belongs to a different CA"}
+		}
+	}
+	if d.VerificationRules != nil {
+		return s.validateRulesOrg(ctx, orgID, *d.VerificationRules)
+	}
+	return nil
+}
+
 // ValidateGlobalDefaults validates the global issuance_defaults settings
 // section: the shape, plus that any referenced caId, accountId or rule
 // dnsCredentialId names a row that exists (P34). The global section is not
@@ -254,6 +357,58 @@ func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
 				continue
 			}
 			ok, err := s.q.DNSCredentialExists(ctx, *r.DNSCredentialID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential"}
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateGlobalDefaultsTx is ValidateGlobalDefaults run with tx-scoped
+// queries, taking a FOR KEY SHARE lock on any referenced CA or account
+// first so DeleteCA/DeleteAccount's FOR UPDATE lock on the same row blocks
+// until this transaction ends. The settings write path (PUT
+// /settings/issuance_defaults) uses this, not ValidateGlobalDefaults, and
+// writes the section through the same transaction, so the two can't
+// interleave into a dangling reference.
+func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defaults) error {
+	if err := validateDefaultsShape(d); err != nil {
+		return err
+	}
+	q := s.q.WithTx(tx)
+	if d.CAID != nil {
+		if _, err := q.LockCAKeyShare(ctx, *d.CAID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"caId", "no such CA"}
+			}
+			return err
+		}
+	}
+	if d.AccountID != nil {
+		if _, err := q.LockAccountKeyShare(ctx, *d.AccountID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"accountId", "no such ACME account"}
+			}
+			return err
+		}
+		a, err := q.GetAccountByID(ctx, *d.AccountID)
+		if err != nil {
+			return err
+		}
+		if d.CAID != nil && a.CaID != *d.CAID {
+			return &ValidationError{"accountId", "account belongs to a different CA"}
+		}
+	}
+	if d.VerificationRules != nil {
+		for _, r := range *d.VerificationRules {
+			if r.DNSCredentialID == nil {
+				continue
+			}
+			ok, err := q.DNSCredentialExists(ctx, *r.DNSCredentialID)
 			if err != nil {
 				return err
 			}

@@ -359,6 +359,17 @@ func (q *Queries) LockAccount(ctx context.Context, arg LockAccountParams) (AcmeA
 	return i, err
 }
 
+const lockAccountKeyShare = `-- name: LockAccountKeyShare :one
+SELECT id FROM acme_accounts WHERE id = $1 FOR KEY SHARE
+`
+
+// FOR KEY SHARE counterpart to LockAccount; see LockCAKeyShare.
+func (q *Queries) LockAccountKeyShare(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAccountKeyShare, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const lockCA = `-- name: LockCA :one
 SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at FROM cas WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
@@ -390,6 +401,22 @@ func (q *Queries) LockCA(ctx context.Context, arg LockCAParams) (Ca, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const lockCAKeyShare = `-- name: LockCAKeyShare :one
+SELECT id FROM cas WHERE id = $1 FOR KEY SHARE
+`
+
+// Takes a FOR KEY SHARE lock on the CA row: a weaker lock than LockCA's FOR
+// UPDATE that still conflicts with it, so writers that store a caId
+// reference in jsonb (org and global issuance defaults) can hold this while
+// they validate and write, and a concurrent DeleteCA blocks until they
+// finish instead of racing past them. Not org-scoped: callers that need org
+// ownership check it separately while still holding this lock.
+func (q *Queries) LockCAKeyShare(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockCAKeyShare, id)
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateCA = `-- name: UpdateCA :one
