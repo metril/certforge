@@ -76,6 +76,16 @@ func acquireArgonSlot() (release func(), ok bool) {
 	}
 }
 
+// encodeArgon2id hashes pw with salt under the package's fixed argon2id
+// cost parameters and returns the PHC string. It does not touch the argon2
+// concurrency semaphore; callers that need the limit enforced (HashPassword)
+// acquire it themselves before calling this.
+func encodeArgon2id(pw string, salt []byte) string {
+	key := argon2.IDKey([]byte(pw), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, argonMemory, argonTime, argonThreads, b64.EncodeToString(salt), b64.EncodeToString(key))
+}
+
 // HashPassword returns an argon2id PHC string.
 func HashPassword(pw string) (string, error) {
 	if len(pw) > MaxPasswordLength {
@@ -90,9 +100,7 @@ func HashPassword(pw string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	key := argon2.IDKey([]byte(pw), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
-	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		argon2.Version, argonMemory, argonTime, argonThreads, b64.EncodeToString(salt), b64.EncodeToString(key)), nil
+	return encodeArgon2id(pw, salt), nil
 }
 
 // VerifyPassword checks pw against an argon2id PHC string in constant time.
@@ -135,12 +143,15 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
 
-// dummyHash is computed once, directly with argon2.IDKey, and deliberately
-// does not go through HashPassword's argon2 concurrency semaphore: caching
-// it with sync.OnceValue means a single failed attempt (for example ErrBusy
-// under a saturated first call) would permanently disable EqualizeTiming
-// for the life of the process, since OnceValue never retries.
-var dummyHash = sync.OnceValue(func() string {
+// buildDummyHash computes the timing-equalizer hash via encodeArgon2id and
+// deliberately does not go through HashPassword's argon2 concurrency
+// semaphore: dummyHash caches this with sync.OnceValue, and if the first
+// build hashed through the semaphore and got ErrBusy, EqualizeTiming would
+// be silently and permanently disabled for the rest of the process. It is
+// a plain func (not the sync.OnceValue itself) so tests can call it
+// directly and observe each build, instead of only ever seeing whichever
+// result got cached first.
+func buildDummyHash() string {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		// crypto/rand failure here is unrecoverable elsewhere in the
@@ -148,10 +159,10 @@ var dummyHash = sync.OnceValue(func() string {
 		// spends real argon2 time instead of caching an empty hash.
 		salt = bytes.Repeat([]byte{0}, 16)
 	}
-	key := argon2.IDKey([]byte("certforge-timing-equalizer"), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
-	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		argon2.Version, argonMemory, argonTime, argonThreads, b64.EncodeToString(salt), b64.EncodeToString(key))
-})
+	return encodeArgon2id("certforge-timing-equalizer", salt)
+}
+
+var dummyHash = sync.OnceValue(buildDummyHash)
 
 // EqualizeTiming spends the same time as a real verification. Call it when
 // no user exists so response time does not reveal that fact.

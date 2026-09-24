@@ -7,29 +7,31 @@ import (
 	"time"
 )
 
-// TestDummyHashBuildsUnderSaturatedSemaphore must run before any other test
-// in this package observes dummyHash/EqualizeTiming: dummyHash is cached
-// with sync.OnceValue, so if its first-ever build hashed through the
-// argon2 semaphore and got ErrBusy, EqualizeTiming would be silently and
-// permanently disabled for the rest of the process. dummyHash must build
-// without acquiring a slot so a saturated first call cannot do that.
-func TestDummyHashBuildsUnderSaturatedSemaphore(t *testing.T) {
+// TestBuildDummyHashUnderSaturatedSemaphore covers buildDummyHash directly
+// (not the sync.OnceValue-cached dummyHash, which only ever runs its
+// wrapped func once per process — a test calling the cached form would only
+// prove anything if it happened to be the first-ever caller). If
+// buildDummyHash hashed through the argon2 semaphore and got ErrBusy,
+// dummyHash's cache would trap that failure and EqualizeTiming would be
+// silently and permanently disabled for the rest of the process; this test
+// exercises that path on every run, independent of test order.
+func TestBuildDummyHashUnderSaturatedSemaphore(t *testing.T) {
 	restore := SetArgonConcurrency(1)
 	defer restore()
 	release, ok := TryAcquireArgonSlot()
 	if !ok {
 		t.Fatal("could not acquire the only slot")
 	}
-	h := dummyHash()
+	h := buildDummyHash()
 	release()
 	if !strings.HasPrefix(h, "$argon2id$v=19$m=65536,t=3,p=2$") {
-		t.Fatalf("dummyHash built under a saturated semaphore = %q", h)
+		t.Fatalf("buildDummyHash built under a saturated semaphore = %q", h)
 	}
 	// Verified with the slot free: VerifyPassword itself still goes
 	// through the semaphore (that part is correct and unchanged), only
 	// building the dummy hash must not.
 	if ok, err := VerifyPassword(h, "certforge-timing-equalizer"); err != nil || !ok {
-		t.Fatalf("dummyHash does not verify: ok=%v err=%v", ok, err)
+		t.Fatalf("buildDummyHash does not verify: ok=%v err=%v", ok, err)
 	}
 }
 
