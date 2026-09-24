@@ -14,3 +14,7 @@
 - Every session has its own CSRF token, returned by `GET /api/v1/auth/me`. POST, PUT, PATCH, and DELETE with a session must send it in `X-CSRF-Token`, or they get 403. Request bodies must be `application/json` (415 otherwise), so a cross-site form cannot reach even public endpoints such as login and setup.
 - Disabled users and deleted users lose access on their next request.
 - Site scope is not modelled in Phase 1: role bindings with a non-NULL `site_id` are ignored when a principal is loaded, until site scope lands in Phase 2.
+
+## Authorization
+
+Roles: `admin` (everything, including CAs, KEK, global settings, key export), `org-admin` (everything within its org except global-only actions), `operator` (certificates, credentials, accounts, clients, issue and renew), `viewer` (read-only, no secrets), `auditor` (viewer plus audit log). Global-only actions: `settings:write`, `orgs:write`, `cas:write`, `keys:export`. Agents never pass `Can()`; they use their own mTLS listener. Phase 1 seeds only the global `admin` binding for the local admin.

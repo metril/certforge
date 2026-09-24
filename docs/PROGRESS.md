@@ -27,8 +27,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 3 | Database, migrations, sqlc | done | f9421d2 |
 | 4 | Envelope encryption | done | 5fdb42a |
 | 5 | Settings store, sections, canary | done | a53929d |
-| 6 | Local admin auth, sessions, CSRF | done | pending |
-| 7 | Authorization | todo | – |
+| 6 | Local admin auth, sessions, CSRF | done | 277126d |
+| 7 | Authorization | done | pending |
 | 8 | Audit log | todo | – |
 | 9 | OpenAPI skeleton, router, problem+json | todo | – |
 | 10 | Auth and settings endpoints | todo | – |

@@ -12,3 +12,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Envelope encryption (AES-256-GCM DEK per secret, static KEK wrapper) with a compact blob format.
 - Settings store with encrypted secrets, JSON-Schema-validated sections (general, backup), and KEK canary.
 - Local admin argon2id passwords, Postgres-backed sessions, CSRF enforcement, and request principal middleware.
+- Role-based authorization with org-scoped bindings (authz.Can).
