@@ -71,6 +71,18 @@ describe('fullPayload (review fix round 1, #1/#3)', () => {
       resolvers: null,
     });
   });
+
+  // Review fix round 2: verificationRules (and anything else this page
+  // doesn't render) has no ISSUANCE_FIELDS entry, so the old
+  // Object.fromEntries-only build dropped it — a "replace the whole
+  // object" PUT would then delete stored catch-all rules on any unrelated
+  // save.
+  it('passes an unrendered key (verificationRules) through untouched', () => {
+    const rules = [{ match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' }];
+    expect(fullPayload({ keyType: 'rsa2048', verificationRules: rules })).toEqual(
+      expect.objectContaining({ keyType: 'rsa2048', verificationRules: rules }),
+    );
+  });
 });
 
 describe('lookup fields disable Override when there is nothing to choose (review fix round 1, #4)', () => {

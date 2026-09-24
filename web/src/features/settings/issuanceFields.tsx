@@ -253,8 +253,14 @@ export function chainFor(global: IssuanceDefaults, org: IssuanceDefaults | undef
 // what makes "Reset to inherited" round-trip cleanly ({x: null, <sibling
 // kept>}) and stops an untouched field from silently riding along as a
 // concrete value just because the draft object happened to carry it.
+//
+// Review fix round 2: `value` is spread first, so a key this page doesn't
+// render (today only `verificationRules`, which Task 13 adds a UI for; the
+// same holds for anything added later) passes through untouched instead of
+// being dropped — a "replace the whole object" PUT would otherwise delete
+// it on any unrelated save, Global or Org.
 export function fullPayload(value: IssuanceDefaults): IssuanceDefaults {
-  return Object.fromEntries(ISSUANCE_FIELDS.map((f) => [f.key, value[f.key] ?? null])) as IssuanceDefaults;
+  return { ...value, ...Object.fromEntries(ISSUANCE_FIELDS.map((f) => [f.key, value[f.key] ?? null])) } as IssuanceDefaults;
 }
 
 // A 422's title is "Invalid <field>" or "Invalid <field>.<sub>" (mapErr /

@@ -248,6 +248,38 @@ it('Global tab save: an untouched field is sent as explicit null, not the built-
   await waitFor(() => expect(puts.issuance_defaults).toEqual({ ...allNull, mustStaple: false }));
 });
 
+it('Global tab save: preserves verificationRules, a field this page does not render (review fix round 2)', async () => {
+  const verificationRules = [{ match: '*.example.com', method: 'dns-01', dnsCredentialId: 'd-1' }];
+  server.use(
+    http.get(url('/settings/issuance_defaults'), () =>
+      HttpResponse.json({
+        schema: {},
+        value: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules },
+        // stored already carries verificationRules (some earlier task set
+        // it); this save only touches Must-Staple.
+        stored: { verificationRules },
+      }),
+    ),
+  );
+  const { user } = renderRoute('/settings/issuance-defaults');
+  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
+  await user.click(screen.getByRole('button', { name: 'Save global defaults' }));
+  // A "replace the whole object" PUT built only from ISSUANCE_FIELDS would
+  // drop verificationRules (no entry for it) — fullPayload now spreads the
+  // existing value first, so it survives an unrelated save.
+  await waitFor(() => expect((puts.issuance_defaults as Record<string, unknown>).verificationRules).toEqual(verificationRules));
+});
+
+it('Org tab save: preserves verificationRules, a field this page does not render (review fix round 2)', async () => {
+  const verificationRules = [{ match: '*.example.com', method: 'dns-01', dnsCredentialId: 'd-1' }];
+  server.use(http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json({ verificationRules })));
+  const { user } = renderRoute('/settings/issuance-defaults');
+  await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
+  await user.click(screen.getByRole('button', { name: 'Save org defaults' }));
+  await waitFor(() => expect((puts.org as Record<string, unknown>).verificationRules).toEqual(verificationRules));
+});
+
 it('keeps the tab header wrapping at phone width', async () => {
   renderRoute('/settings/issuance-defaults');
   const tablist = await screen.findByRole('tablist');
