@@ -1,4 +1,18 @@
 services:
+  postgres:
+    ports:
+      # Published for plan 1B's issuance e2e test, which opens its own
+      # database directly on this Postgres instance (the test runs as a
+      # host-side `go test` process, outside the compose network) so the
+      # running server's own scheduler never sees its certificates.
+      - "${CF_E2E_PG_PORT:-55432}:5432"
+  certforge:
+    build:
+      args:
+        # Compiles in the e2e-only "e2e-challtestsrv" DNS provider
+        # (internal/challenge/challtestsrv_e2e.go), never built into a
+        # production image.
+        GO_TAGS: e2e
   pebble:
     image: ghcr.io/letsencrypt/pebble:2.10.1
     command: -config test/config/pebble-config.json -strict -dnsserver challtestsrv:8053
@@ -20,3 +34,6 @@ services:
     command: -defaultIPv6 "" -defaultIPv4 127.0.0.1
     ports:
       - "${CF_CHALLTESTSRV_PORT:-8055}:8055"
+      # UDP only: challenge.CheckTXT (the host-side e2e test's propagation
+      # check) queries over UDP; nothing on the host side needs TCP.
+      - "${CF_CHALLTESTSRV_DNS_PORT:-8053}:8053/udp"

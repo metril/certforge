@@ -40,7 +40,13 @@ deploy/secrets/kek:
 
 e2e: deploy/secrets/kek
 	$(COMPOSE_TEST) up -d --build --wait
-	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} $(GO) test -tags e2e -count=1 ./test/e2e/...; status=$$?; $(COMPOSE_TEST) down -v; exit $$status
+	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} \
+	CF_E2E_DATABASE_URL=postgres://certforge:certforge@localhost:$${CF_E2E_PG_PORT:-55432}/certforge?sslmode=disable \
+	CF_E2E_PEBBLE_DIR=https://localhost:$${CF_PEBBLE_PORT:-14000}/dir \
+	CF_E2E_PEBBLE_MGMT=https://localhost:$${CF_PEBBLE_MGMT_PORT:-15000} \
+	CF_E2E_CHALLTESTSRV=http://localhost:$${CF_CHALLTESTSRV_PORT:-8055} \
+	CF_E2E_DNS=127.0.0.1:$${CF_CHALLTESTSRV_DNS_PORT:-8053} \
+	$(GO) test -tags e2e -count=1 ./test/e2e/...; status=$$?; $(COMPOSE_TEST) down -v; exit $$status
 
 vendor-swagger:
 	curl -fsSL -o internal/api/docs/swagger-ui-bundle.js https://cdn.jsdelivr.net/npm/swagger-ui-dist@$(SWAGGER_UI_VERSION)/swagger-ui-bundle.js

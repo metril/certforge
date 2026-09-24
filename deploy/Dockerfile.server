@@ -18,14 +18,15 @@ FROM web-${WITH_WEB} AS web
 
 FROM golang:1.23-alpine AS build
 ARG WITH_WEB=0
+ARG GO_TAGS=""
 ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /dist /tmp/webdist
-RUN set -eux; tags=""; \
-    if [ "$WITH_WEB" = "1" ]; then rm -rf internal/webui/dist && cp -r /tmp/webdist internal/webui/dist && tags="embedweb"; fi; \
+RUN set -eux; tags="$GO_TAGS"; \
+    if [ "$WITH_WEB" = "1" ]; then rm -rf internal/webui/dist && cp -r /tmp/webdist internal/webui/dist && tags="$tags embedweb"; fi; \
     CGO_ENABLED=0 go build -trimpath -tags "$tags" -ldflags "-s -w -X main.version=${VERSION}" -o /out/certforge ./cmd/certforge
 
 FROM gcr.io/distroless/static-debian12:nonroot
