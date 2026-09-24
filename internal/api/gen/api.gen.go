@@ -17,6 +17,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+	"github.com/oapi-codegen/runtime"
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -24,6 +25,27 @@ import (
 const (
 	SessionCookieScopes = "sessionCookie.Scopes"
 )
+
+// LoginRequest Local admin credentials.
+type LoginRequest struct {
+	// Password Local admin password.
+	Password string `json:"password"`
+}
+
+// Me The signed-in principal.
+type Me struct {
+	// CsrfToken Send in the X-CSRF-Token header on every POST, PUT, PATCH, and DELETE.
+	CsrfToken string `json:"csrfToken"`
+
+	// Orgs Orgs the user can see.
+	Orgs []Org `json:"orgs"`
+
+	// Roles Distinct role names bound to the user.
+	Roles []string `json:"roles"`
+
+	// User The signed-in user.
+	User User `json:"user"`
+}
 
 // MetaSchemas Pluggable type schemas grouped by kind.
 type MetaSchemas struct {
@@ -85,19 +107,85 @@ type SchemaEntry struct {
 	Schema map[string]interface{} `json:"schema"`
 }
 
+// SettingsSection A settings section with its schema.
+type SettingsSection struct {
+	// Schema JSON Schema (draft 2020-12) of the value; the UI renders the form from it.
+	Schema map[string]interface{} `json:"schema"`
+
+	// Section Section name.
+	Section string `json:"section"`
+
+	// Value The section's current value.
+	Value SettingsValue `json:"value"`
+}
+
+// SettingsValue A settings section value; its shape is defined by the section schema.
+type SettingsValue map[string]interface{}
+
+// User A CertForge user.
+type User struct {
+	// DisplayName Name shown in the UI.
+	DisplayName string `json:"displayName"`
+
+	// Id User id.
+	Id openapi_types.UUID `json:"id"`
+
+	// LocalAdmin True for the break-glass local admin.
+	LocalAdmin bool `json:"localAdmin"`
+}
+
+// LoginJSONRequestBody defines body for Login for application/json ContentType.
+type LoginJSONRequestBody = LoginRequest
+
+// PutSettingsSectionJSONRequestBody defines body for PutSettingsSection for application/json ContentType.
+type PutSettingsSectionJSONRequestBody = SettingsValue
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Log in as the local admin
+	// (POST /auth/login)
+	Login(w http.ResponseWriter, r *http.Request)
+	// Log out
+	// (POST /auth/logout)
+	Logout(w http.ResponseWriter, r *http.Request)
+	// Current principal
+	// (GET /auth/me)
+	GetMe(w http.ResponseWriter, r *http.Request)
 	// List pluggable type schemas
 	// (GET /meta/schemas)
 	GetMetaSchemas(w http.ResponseWriter, r *http.Request)
 	// List organizations
 	// (GET /orgs)
 	ListOrgs(w http.ResponseWriter, r *http.Request)
+	// Read a settings section
+	// (GET /settings/{section})
+	GetSettingsSection(w http.ResponseWriter, r *http.Request, section string)
+	// Replace a settings section
+	// (PUT /settings/{section})
+	PutSettingsSection(w http.ResponseWriter, r *http.Request, section string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Log in as the local admin
+// (POST /auth/login)
+func (_ Unimplemented) Login(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Log out
+// (POST /auth/logout)
+func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Current principal
+// (GET /auth/me)
+func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // List pluggable type schemas
 // (GET /meta/schemas)
@@ -111,6 +199,18 @@ func (_ Unimplemented) ListOrgs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Read a settings section
+// (GET /settings/{section})
+func (_ Unimplemented) GetSettingsSection(w http.ResponseWriter, r *http.Request, section string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Replace a settings section
+// (PUT /settings/{section})
+func (_ Unimplemented) PutSettingsSection(w http.ResponseWriter, r *http.Request, section string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ServerInterfaceWrapper converts contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler            ServerInterface
@@ -119,6 +219,60 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// Login operation middleware
+func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Login(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Logout operation middleware
+func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetMetaSchemas operation middleware
 func (siw *ServerInterfaceWrapper) GetMetaSchemas(w http.ResponseWriter, r *http.Request) {
@@ -151,6 +305,68 @@ func (siw *ServerInterfaceWrapper) ListOrgs(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListOrgs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSettingsSection operation middleware
+func (siw *ServerInterfaceWrapper) GetSettingsSection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "section" -------------
+	var section string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "section", chi.URLParam(r, "section"), &section, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "section", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSettingsSection(w, r, section)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutSettingsSection operation middleware
+func (siw *ServerInterfaceWrapper) PutSettingsSection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "section" -------------
+	var section string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "section", chi.URLParam(r, "section"), &section, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "section", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutSettingsSection(w, r, section)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -274,13 +490,76 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/login", wrapper.Login)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/logout", wrapper.Logout)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/auth/me", wrapper.GetMe)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/meta/schemas", wrapper.GetMetaSchemas)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/orgs", wrapper.ListOrgs)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/settings/{section}", wrapper.GetSettingsSection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/settings/{section}", wrapper.PutSettingsSection)
+	})
 
 	return r
+}
+
+type LoginRequestObject struct {
+	Body *LoginJSONRequestBody
+}
+
+type LoginResponseObject interface {
+	VisitLoginResponse(w http.ResponseWriter) error
+}
+
+type Login200JSONResponse Me
+
+func (response Login200JSONResponse) VisitLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LogoutRequestObject struct {
+}
+
+type LogoutResponseObject interface {
+	VisitLogoutResponse(w http.ResponseWriter) error
+}
+
+type Logout204Response struct {
+}
+
+func (response Logout204Response) VisitLogoutResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetMeRequestObject struct {
+}
+
+type GetMeResponseObject interface {
+	VisitGetMeResponse(w http.ResponseWriter) error
+}
+
+type GetMe200JSONResponse Me
+
+func (response GetMe200JSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type GetMetaSchemasRequestObject struct {
@@ -315,14 +594,64 @@ func (response ListOrgs200JSONResponse) VisitListOrgsResponse(w http.ResponseWri
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetSettingsSectionRequestObject struct {
+	Section string `json:"section"`
+}
+
+type GetSettingsSectionResponseObject interface {
+	VisitGetSettingsSectionResponse(w http.ResponseWriter) error
+}
+
+type GetSettingsSection200JSONResponse SettingsSection
+
+func (response GetSettingsSection200JSONResponse) VisitGetSettingsSectionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PutSettingsSectionRequestObject struct {
+	Section string `json:"section"`
+	Body    *PutSettingsSectionJSONRequestBody
+}
+
+type PutSettingsSectionResponseObject interface {
+	VisitPutSettingsSectionResponse(w http.ResponseWriter) error
+}
+
+type PutSettingsSection200JSONResponse SettingsSection
+
+func (response PutSettingsSection200JSONResponse) VisitPutSettingsSectionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Log in as the local admin
+	// (POST /auth/login)
+	Login(ctx context.Context, request LoginRequestObject) (LoginResponseObject, error)
+	// Log out
+	// (POST /auth/logout)
+	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
+	// Current principal
+	// (GET /auth/me)
+	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
 	// List pluggable type schemas
 	// (GET /meta/schemas)
 	GetMetaSchemas(ctx context.Context, request GetMetaSchemasRequestObject) (GetMetaSchemasResponseObject, error)
 	// List organizations
 	// (GET /orgs)
 	ListOrgs(ctx context.Context, request ListOrgsRequestObject) (ListOrgsResponseObject, error)
+	// Read a settings section
+	// (GET /settings/{section})
+	GetSettingsSection(ctx context.Context, request GetSettingsSectionRequestObject) (GetSettingsSectionResponseObject, error)
+	// Replace a settings section
+	// (PUT /settings/{section})
+	PutSettingsSection(ctx context.Context, request PutSettingsSectionRequestObject) (PutSettingsSectionResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -352,6 +681,85 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// Login operation middleware
+func (sh *strictHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var request LoginRequestObject
+
+	var body LoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Login(ctx, request.(LoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Login")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginResponseObject); ok {
+		if err := validResponse.VisitLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Logout operation middleware
+func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	var request LogoutRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Logout(ctx, request.(LogoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Logout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogoutResponseObject); ok {
+		if err := validResponse.VisitLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMe operation middleware
+func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	var request GetMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMe(ctx, request.(GetMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMeResponseObject); ok {
+		if err := validResponse.VisitGetMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetMetaSchemas operation middleware
@@ -402,32 +810,106 @@ func (sh *strictHandler) ListOrgs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetSettingsSection operation middleware
+func (sh *strictHandler) GetSettingsSection(w http.ResponseWriter, r *http.Request, section string) {
+	var request GetSettingsSectionRequestObject
+
+	request.Section = section
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSettingsSection(ctx, request.(GetSettingsSectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSettingsSection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSettingsSectionResponseObject); ok {
+		if err := validResponse.VisitGetSettingsSectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutSettingsSection operation middleware
+func (sh *strictHandler) PutSettingsSection(w http.ResponseWriter, r *http.Request, section string) {
+	var request PutSettingsSectionRequestObject
+
+	request.Section = section
+
+	var body PutSettingsSectionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutSettingsSection(ctx, request.(PutSettingsSectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutSettingsSection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutSettingsSectionResponseObject); ok {
+		if err := validResponse.VisitPutSettingsSectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"qmxxfLx5/F8AAAD///Rf9noVHgAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -15,3 +15,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Role-based authorization with org-scoped bindings (authz.Can).
 - Append-only, hash-chained audit log with chain verification.
 - OpenAPI spec with generated strict server, problem+json errors, Swagger UI at /api/docs, meta schema registry, org listing.
+- Local admin login, logout, /auth/me with CSRF token, and schema-driven settings GET/PUT endpoints.

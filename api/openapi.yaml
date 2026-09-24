@@ -21,6 +21,10 @@ tags:
     description: Registries of pluggable types.
   - name: orgs
     description: Organizations.
+  - name: auth
+    description: Login, logout, and the current principal.
+  - name: settings
+    description: Schema-driven settings sections.
 paths:
   /meta/schemas:
     get:
@@ -48,6 +52,86 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrgList"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in as the local admin
+      description: Break-glass local admin login. Sets the cf_session cookie. OIDC login arrives in Phase 2.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in; session cookie set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Log out
+      description: Ends the current session and clears the cookie. Requires X-CSRF-Token.
+      responses:
+        "204":
+          description: Logged out.
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Current principal
+      description: The signed-in user, roles, visible orgs, and the CSRF token for mutating requests.
+      responses:
+        "200":
+          description: Current principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+  /settings/{section}:
+    parameters:
+      - name: section
+        in: path
+        required: true
+        description: Section name, for example general, backup, or issuance_defaults.
+        schema:
+          type: string
+    get:
+      operationId: getSettingsSection
+      tags: [settings]
+      summary: Read a settings section
+      description: Returns the section's JSON Schema and its current value (the default when unset).
+      responses:
+        "200":
+          description: Section schema and value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsSection"
+    put:
+      operationId: putSettingsSection
+      tags: [settings]
+      summary: Replace a settings section
+      description: Validates the value against the section schema (422 on failure) and stores it. Admin only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsValue"
+      responses:
+        "200":
+          description: Stored section.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsSection"
 components:
   securitySchemes:
     sessionCookie:
@@ -138,3 +222,69 @@ components:
           description: Private CA signers.
           items:
             $ref: "#/components/schemas/SchemaEntry"
+    LoginRequest:
+      type: object
+      description: Local admin credentials.
+      required: [password]
+      properties:
+        password:
+          type: string
+          format: password
+          description: Local admin password.
+    User:
+      type: object
+      description: A CertForge user.
+      required: [id, displayName, localAdmin]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User id.
+        displayName:
+          type: string
+          description: Name shown in the UI.
+        localAdmin:
+          type: boolean
+          description: True for the break-glass local admin.
+    Me:
+      type: object
+      description: The signed-in principal.
+      required: [user, roles, orgs, csrfToken]
+      properties:
+        user:
+          description: The signed-in user.
+          allOf:
+            - $ref: "#/components/schemas/User"
+        roles:
+          type: array
+          description: Distinct role names bound to the user.
+          items:
+            type: string
+        orgs:
+          type: array
+          description: Orgs the user can see.
+          items:
+            $ref: "#/components/schemas/Org"
+        csrfToken:
+          type: string
+          description: Send in the X-CSRF-Token header on every POST, PUT, PATCH, and DELETE.
+    SettingsValue:
+      type: object
+      additionalProperties: true
+      description: A settings section value; its shape is defined by the section schema.
+    SettingsSection:
+      type: object
+      description: A settings section with its schema.
+      required: [section, schema, value]
+      properties:
+        section:
+          type: string
+          description: Section name.
+        schema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema (draft 2020-12) of the value; the UI renders the form from it.
+        value:
+          description: The section's current value.
+          allOf:
+            - $ref: "#/components/schemas/SettingsValue"

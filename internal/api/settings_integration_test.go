@@ -1,0 +1,69 @@
+//go:build integration
+
+package api_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/metril/certforge/internal/db/sqlcgen"
+)
+
+func TestSettingsGetPut(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+
+	resp, body := e.do(http.MethodGet, "/api/v1/settings/general", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get %d %s", resp.StatusCode, body)
+	}
+	var sec struct {
+		Section string         `json:"section"`
+		Schema  map[string]any `json:"schema"`
+		Value   map[string]any `json:"value"`
+	}
+	if err := json.Unmarshal(body, &sec); err != nil || sec.Section != "general" || sec.Schema["type"] != "object" || len(sec.Value) != 0 {
+		t.Fatalf("section %s", body)
+	}
+
+	resp, body = e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{"baseUrl": "https://certs.example.com"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "https://certs.example.com") {
+		t.Fatalf("put %d %s", resp.StatusCode, body)
+	}
+	resp, body = e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{"baseUrl": "ftp://nope"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusUnprocessableEntity || resp.Header.Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("invalid put %d %s", resp.StatusCode, body)
+	}
+	if resp, _ = e.do(http.MethodGet, "/api/v1/settings/nope", nil, ""); resp.StatusCode != http.StatusNotFound { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("unknown section %d", resp.StatusCode)
+	}
+	resp, _ = e.doRaw(http.MethodPut, "/api/v1/settings/general", "text/plain", `{"baseUrl":"https://x.example"}`, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("text/plain %d", resp.StatusCode)
+	}
+
+	evs, err := e.deps.Queries.ListAuditEventsAsc(context.Background(), sqlcgen.ListAuditEventsAscParams{ID: 0, Limit: 10})
+	if err != nil || len(evs) != 1 || evs[0].Action != "settings.update" {
+		t.Fatalf("audit %+v err %v", evs, err)
+	}
+}
+
+func TestSettingsCSRF(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	resp, _ := e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{"baseUrl": "https://evil.example"}, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("no csrf %d", resp.StatusCode)
+	}
+	resp, _ = e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{"baseUrl": "https://evil.example"}, csrf+"x") //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("bad csrf %d", resp.StatusCode)
+	}
+	_, body := e.do(http.MethodGet, "/api/v1/settings/general", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	if strings.Contains(string(body), "evil.example") {
+		t.Fatal("value changed without CSRF token")
+	}
+}

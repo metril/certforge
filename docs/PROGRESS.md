@@ -30,8 +30,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 6 | Local admin auth, sessions, CSRF | done | 277126d |
 | 7 | Authorization | done | 6bff6f1 |
 | 8 | Audit log | done | ef291d3 |
-| 9 | OpenAPI skeleton, router, problem+json | done | pending |
-| 10 | Auth and settings endpoints | todo | – |
+| 9 | OpenAPI skeleton, router, problem+json | done | 2cd22ee |
+| 10 | Auth and settings endpoints | done | pending |
 | 11 | Setup wizard and bootstrap-admin | todo | – |
 | 12 | Health, web UI placeholder, serve | todo | – |
 | 13 | Container image and compose | todo | – |
@@ -44,3 +44,5 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 ## Known gaps
 
 - Audit log tamper-evidence hardening not yet done: keyed HMAC instead of a plain hash, anchoring the head hash outside the table, and running the app under a role that does not own `audit_events`.
+- Login attempts are not rate limited yet (argon2id cost only); add per-IP throttling with the Phase 2 auth work.
+- Settings sections cannot hold secret fields yet; add write-only secret: true support when the first secret-bearing section lands (Phase 2 OIDC).

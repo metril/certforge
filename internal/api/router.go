@@ -49,7 +49,7 @@ func NewRouter(d Deps) http.Handler {
 			Write(w, http.StatusMethodNotAllowed, "Method not allowed", "")
 		})
 		v1.Get("/openapi.json", serveSpec)
-		strict := gen.NewStrictHandlerWithOptions(s, nil, gen.StrictHTTPServerOptions{
+		strict := gen.NewStrictHandlerWithOptions(s, []gen.StrictMiddlewareFunc{withHTTP}, gen.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc:  requestError,
 			ResponseErrorHandlerFunc: s.responseError,
 		})
