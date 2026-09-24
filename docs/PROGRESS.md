@@ -22,8 +22,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | Scaffold, Makefile, CI, lint | done | pending |
-| 2 | Bootstrap config | todo | – |
+| 1 | Scaffold, Makefile, CI, lint | done | bf1241e |
+| 2 | Bootstrap config | done | pending |
 | 3 | Database, migrations, sqlc | todo | – |
 | 4 | Envelope encryption | todo | – |
 | 5 | Settings store, sections, canary | todo | – |
