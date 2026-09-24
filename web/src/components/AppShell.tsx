@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate } from '@tanstack/react-router';
 import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -12,9 +12,22 @@ import { Wordmark } from './Wordmark';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const wide = useMediaQuery('(min-width: 1280px)');
+  const isMdUp = useMediaQuery('(min-width: 768px)');
   const [drawer, setDrawer] = useState(false);
   const navigate = useNavigate();
   const org = useActiveOrgSlug();
+  const pathname = useLocation({ select: (l) => l.pathname });
+
+  // Fix round 1 (review): the drawer previously only closed through
+  // `Sidebar`'s `onNavigate` callback, wired to `TargetLink`'s own
+  // onClick — so an OrgSwitcher link, a `g o`/`g c` shortcut, or
+  // browser back/forward left it open. Closing it on every pathname
+  // change (regardless of what triggered the navigation) and whenever
+  // the viewport widens past the drawer breakpoint covers all of those.
+  useEffect(() => setDrawer(false), [pathname]);
+  useEffect(() => {
+    if (isMdUp) setDrawer(false);
+  }, [isMdUp]);
 
   // Reserves the `g o` / `g c` shortcut registry (spec: Cross-cutting
   // patterns) and the Ctrl/Cmd-K binding for Task 17's command palette;

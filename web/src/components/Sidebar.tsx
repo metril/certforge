@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { LATER, NAV, navPrefix, type NavItem, type NavTarget } from '@/lib/nav';
+import { isNavPathActive, LATER, NAV, navPrefix, NO_ORG, targetNeedsOrg, type NavItem, type NavTarget } from '@/lib/nav';
 import { useActiveOrgSlug } from '@/lib/org';
 import { cn } from '@/lib/utils';
 import { OrgSwitcher } from './OrgSwitcher';
@@ -29,6 +29,12 @@ function TargetLink({
   onNavigate?: () => void;
   children: ReactNode;
 }) {
+  // The single source of truth for "is this item active" is `active`
+  // (nav.ts's isNavPathActive, a segment-boundary-aware prefix match run
+  // against the current pathname), not TanStack Router's own built-in
+  // Link active-state: that compares against this Link's own literal
+  // resolved href, which can't know that e.g. every /settings/:section
+  // should light up the same "Settings" item.
   const common = { className, 'aria-label': label, 'aria-current': active ? ('page' as const) : undefined, onClick: onNavigate };
   switch (target) {
     case 'overview':
@@ -58,6 +64,31 @@ function TargetLink({
   }
 }
 
+function DisabledRow({ item, compact, reason }: { item: NavItem; compact: boolean; reason: string }) {
+  const Icon = item.icon;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="link"
+          aria-disabled="true"
+          tabIndex={0}
+          aria-label={compact ? item.label : undefined}
+          className={cn(
+            rowClass,
+            compact && 'justify-center px-0',
+            'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-ink-muted',
+          )}
+        >
+          <Icon className="size-4 shrink-0" aria-hidden />
+          {!compact && <span className="truncate">{item.label}</span>}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="right">{reason}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function NavRow({
   item,
   org,
@@ -71,6 +102,9 @@ function NavRow({
   compact: boolean;
   onNavigate?: () => void;
 }) {
+  if (!item.target) return <DisabledRow item={item} compact={compact} reason={LATER} />;
+  if (targetNeedsOrg(item.target) && !org) return <DisabledRow item={item} compact={compact} reason={NO_ORG} />;
+
   const Icon = item.icon;
   const body = (
     <>
@@ -79,25 +113,7 @@ function NavRow({
     </>
   );
   const cls = cn(rowClass, compact && 'justify-center px-0');
-  if (!item.target) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="link"
-            aria-disabled="true"
-            tabIndex={0}
-            aria-label={compact ? item.label : undefined}
-            className={cn(cls, 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-ink-muted')}
-          >
-            {body}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="right">{LATER}</TooltipContent>
-      </Tooltip>
-    );
-  }
-  const active = pathname.startsWith(navPrefix(item.target, org));
+  const active = isNavPathActive(pathname, navPrefix(item.target, org));
   const link = (
     <TargetLink
       target={item.target}

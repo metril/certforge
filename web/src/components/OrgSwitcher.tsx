@@ -19,7 +19,10 @@ export function OrgSwitcher({ activeOrg, compact }: { activeOrg?: string; compac
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="Switch organization"
+          // Fix round 1 (review, WCAG label-in-name): the visible label
+          // (below, when not compact) is the org name, so the accessible
+          // name must contain it verbatim, not just "Switch organization".
+          aria-label={`Organization: ${current?.name ?? ''}`}
           className={cn(
             'mx-2 flex h-8 items-center gap-2 rounded-md px-2 text-sm text-ink hover:bg-subtle',
             compact && 'justify-center px-0',

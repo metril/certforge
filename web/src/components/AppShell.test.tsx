@@ -1,17 +1,45 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { afterEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers } from '@/test/fixtures';
+import { authHandlers, me, org, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
-function viewport(wide: boolean) {
-  vi.stubGlobal('matchMedia', (q: string) => ({
-    matches: wide && q.includes('min-width: 1280px'),
-    media: q,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+// A controllable `matchMedia` mock: each query string gets its own
+// listener set, so `set(query, matches)` can simulate a live viewport
+// change (a real `change` event), not just the value read at mount.
+function stubMatchMedia(initial: Record<string, boolean>) {
+  const state = { ...initial };
+  const listeners = new Map<string, Set<() => void>>();
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() {
+      return state[query] ?? false;
+    },
+    media: query,
+    addEventListener: (_type: string, cb: () => void) => {
+      let set = listeners.get(query);
+      if (!set) listeners.set(query, (set = new Set()));
+      set.add(cb);
+    },
+    removeEventListener: (_type: string, cb: () => void) => {
+      listeners.get(query)?.delete(cb);
+    },
   }));
+  return {
+    set(query: string, matches: boolean) {
+      state[query] = matches;
+      listeners.get(query)?.forEach((cb) => cb());
+    },
+  };
 }
+
+// `min768` defaults to true (tablet: icon rail, aside visible) so the
+// existing "not wide" tests keep meaning "narrower than 1280 px" without
+// also implying phone/drawer mode; pass `false` explicitly for that.
+function viewport(min1280: boolean, min768 = true) {
+  return stubMatchMedia({ '(min-width: 1280px)': min1280, '(min-width: 768px)': min1280 || min768 });
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 it('shows eight items; Phase 1 items link, the rest are disabled with a tooltip', async () => {
@@ -52,4 +80,61 @@ it('signs out from the user menu', async () => {
   expect(screen.getByRole('radio', { name: 'Dark' })).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Sign out' }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+});
+
+it('highlights Settings on any section, not just the one the link resolves to', async () => {
+  viewport(true);
+  server.use(...authHandlers({ authed: true }));
+  renderRoute('/settings/tls');
+  const nav = await screen.findByRole('navigation', { name: 'Main' });
+  expect(within(nav).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
+});
+
+it('closes the drawer when the route changes, even without the nav link callback', async () => {
+  viewport(false, false);
+  server.use(...authHandlers({ authed: true }));
+  const { router, user } = renderRoute('/o/acme/overview');
+  await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
+  await screen.findByRole('dialog');
+  await router.navigate({ to: '/o/$org/certificates', params: { org: 'acme' } });
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
+it('closes the drawer when the viewport widens past the drawer breakpoint', async () => {
+  const mq = viewport(false, false);
+  server.use(...authHandlers({ authed: true }));
+  const { user } = renderRoute('/o/acme/overview');
+  await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
+  await screen.findByRole('dialog');
+  act(() => mq.set('(min-width: 768px)', true));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
+it('disables org-scoped nav and lands on a no-organization empty state when the account has no orgs', async () => {
+  viewport(true);
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json({ ...me, orgs: [] })),
+  );
+  renderRoute('/no-organization');
+  const nav = await screen.findByRole('navigation', { name: 'Main' });
+  for (const name of ['Overview', 'Certificates', 'Issuers']) {
+    expect(within(nav).getByText(name).closest('[aria-disabled="true"]')).not.toBeNull();
+  }
+  expect(within(nav).getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+  expect(await screen.findByText(/no organization/i)).toBeInTheDocument();
+});
+
+it('lists every org in the switcher, with the active org named in the trigger, once there is more than one', async () => {
+  viewport(true);
+  const orgs = [org, { id: 'org-2', slug: 'other', name: 'Other Co' }];
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json({ ...me, orgs })),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  const trigger = await screen.findByRole('button', { name: 'Organization: Acme' });
+  await user.click(trigger);
+  expect(screen.getByRole('menuitem', { name: 'Acme' })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: 'Other Co' })).toBeInTheDocument();
 });
