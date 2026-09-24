@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Issuance defaults",
+  "description": "Global issuance defaults. Null fields fall back to built-in values; orgs and certificates can override each field.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "caId": {"type": ["string", "null"], "format": "uuid", "title": "CA", "description": "Default ACME CA."},
+    "accountId": {"type": ["string", "null"], "format": "uuid", "title": "ACME account", "description": "Default account; must belong to the CA."},
+    "keyType": {"type": ["string", "null"], "enum": ["rsa2048", "rsa3072", "rsa4096", "ec256", "ec384", null], "title": "Key type", "description": "Certificate key algorithm."},
+    "renewPolicy": {
+      "type": ["object", "null"],
+      "title": "Renewal",
+      "description": "Days before expiry, or percent of lifetime remaining.",
+      "additionalProperties": false,
+      "required": ["mode", "value", "useAri"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["days", "percent"], "title": "Mode"},
+        "value": {"type": "integer", "minimum": 1, "maximum": 365, "title": "Value"},
+        "useAri": {"type": "boolean", "title": "Use ARI", "description": "Stored now; ARI scheduling arrives in Phase 4."}
+      }
+    },
+    "preferredChain": {"type": ["string", "null"], "title": "Preferred chain", "description": "Issuer common name of the alternate chain to prefer."},
+    "reuseKey": {"type": ["boolean", "null"], "title": "Reuse key", "description": "Keep the private key across renewals."},
+    "mustStaple": {"type": ["boolean", "null"], "title": "Must-staple", "description": "Request the OCSP must-staple extension."},
+    "verificationRules": {
+      "type": ["array", "null"],
+      "title": "Catch-all verification rules",
+      "description": "Appended after each certificate's own rules.",
+      "items": {
+        "type": "object",
+        "required": ["match", "method"],
+        "additionalProperties": false,
+        "properties": {
+          "match": {"type": "string", "title": "Match"},
+          "method": {"type": "string", "enum": ["dns-01", "manual-dns"], "title": "Method"},
+          "dnsCredentialId": {"type": "string", "format": "uuid", "title": "DNS credential"},
+          "propagationSeconds": {"type": "integer", "minimum": 0, "maximum": 3600, "title": "Propagation timeout (s)"},
+          "resolvers": {"type": "array", "items": {"type": "string"}, "title": "Resolvers"},
+          "cnameAliasZone": {"type": "string", "title": "CNAME alias zone"}
+        }
+      }
+    },
+    "propagationSeconds": {"type": ["integer", "null"], "minimum": 0, "maximum": 3600, "title": "Propagation timeout (s)", "description": "How long to wait for TXT records to appear."},
+    "resolvers": {"type": ["array", "null"], "items": {"type": "string"}, "title": "Resolvers", "description": "host or host:port used for propagation checks."}
+  }
+}

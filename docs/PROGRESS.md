@@ -51,8 +51,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 4 | Credential config and env-isolated provider build | done | 245a832 |
 | 5 | manual-dns provider | done | 449429b |
 | 6 | Signer interface and ACME signer | done | a57f758 |
-| 7 | PEM renderer | done | pending |
-| 8 | Defaults resolver, renewal policy, backoff, timeline | todo | – |
+| 7 | PEM renderer | done | bdf741e |
+| 8 | Defaults resolver, renewal policy, backoff, timeline | done | pending |
 | 9 | Issuance data layer | todo | – |
 | 10 | Certificate store and IssueWorker | todo | – |
 | 11 | Scheduler, river wiring, issuance service | todo | – |
@@ -79,6 +79,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1B: DNS propagation checks against configured resolvers use CertForge's own TXT query (`challenge.CheckTXT`) because lego v4's `AddRecursiveNameservers` is process-global.
 - 1B: lego pinned at v4.24.0, the last v4 release whose go.mod allows Go 1.23. lego `exec` and `manual` providers are not offered.
 - 1B: the ACME signer's lego `http.Client` transport is `ctxTransport` (checks the issuance ctx before every request, attaches it to each one) wrapping `retryAfterTransport` (records the largest Retry-After on 429/503, since lego's `ProblemDetails` drops response headers); cancelling the issuance context now fails every in-flight CA call promptly, not just manual-dns waits.
+- 1B: `renewPolicy.useAri` is stored but ARI scheduling is Phase 4; CAA and rate-ledger steps are recorded as `skipped` until Phase 4.
+- 1B: defaults cover CA, account, key type, renewal, chain, reuse key, must-staple, rules, propagation and resolvers; hooks, notification channels and deploy targets join the same `Defaults` type in Phases 3 and 6.
 
 ## Known gaps
 

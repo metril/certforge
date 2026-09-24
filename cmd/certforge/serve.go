@@ -15,6 +15,7 @@ import (
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
@@ -37,6 +38,9 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 			"kek_id", env.KEKID(), "kek_source", cfg.KEK.Source, "err", err)
 	}
 	sections := settings.DefaultRegistry()
+	if err := issuance.RegisterSettings(sections); err != nil {
+		return err
+	}
 	metaReg := meta.NewRegistry()
 	challenge.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
