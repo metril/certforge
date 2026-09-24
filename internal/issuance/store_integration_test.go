@@ -12,6 +12,39 @@ import (
 	"github.com/metril/certforge/internal/signer"
 )
 
+// Review Focus (fix round 1): reference validation must map only
+// ErrNotFound/pgx.ErrNoRows to a ValidationError; any other lookup error
+// (DB outage, cancelled context) must come back unchanged, not be reported
+// as "no such CA".
+func TestReferenceValidationPropagatesNonNotFoundErrors(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	ca, acct := f.ca.ID, f.acct.ID
+	rules := []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodDNS01, DNSCredentialID: &cred}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var ve *ValidationError
+	cases := map[string]error{
+		"org caId":               f.store.PutOrgDefaults(ctx, f.org, Defaults{CAID: &ca}),
+		"org accountId":          f.store.PutOrgDefaults(ctx, f.org, Defaults{AccountID: &acct}),
+		"org rule credentialId":  f.store.PutOrgDefaults(ctx, f.org, Defaults{VerificationRules: &rules}),
+		"global caId":            f.store.ValidateGlobalDefaults(ctx, Defaults{CAID: &ca}),
+		"global accountId":       f.store.ValidateGlobalDefaults(ctx, Defaults{AccountID: &acct}),
+		"global rule credential": f.store.ValidateGlobalDefaults(ctx, Defaults{VerificationRules: &rules}),
+	}
+	for name, err := range cases {
+		if err == nil {
+			t.Errorf("%s: want an error from a cancelled context", name)
+			continue
+		}
+		if errors.As(err, &ve) {
+			t.Errorf("%s: cancelled context reported as %v", name, err)
+		}
+	}
+}
+
 func TestCARequiresEABForPreset(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -33,6 +66,19 @@ func TestCARequiresEABForPreset(t *testing.T) {
 	eab, err := f.store.CAEAB(ctx, f.org, ca.ID)
 	if err != nil || eab.HMAC != hmac {
 		t.Fatalf("eab = %+v %v", eab, err)
+	}
+}
+
+// Review Focus (fix round 1): challenge.Unchanged is only meaningful on
+// update (it means "keep the stored secret"); sending it on create must be
+// rejected, not sealed and stored as the literal HMAC.
+func TestCARejectsUnchangedEABOnCreate(t *testing.T) {
+	f := newFixture(t)
+	unchanged := challenge.Unchanged
+	_, err := f.store.CreateCA(context.Background(), f.org, CAInput{Name: "Zero", Preset: "zerossl", EABKid: "kid", EABHmac: &unchanged})
+	var ve *ValidationError
+	if !errors.As(err, &ve) || ve.Field != "eabHmac" {
+		t.Fatalf("err = %v", err)
 	}
 }
 

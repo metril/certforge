@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -192,13 +193,19 @@ func (s *Store) validateDefaults(ctx context.Context, orgID uuid.UUID, d Default
 	}
 	if d.CAID != nil {
 		if _, err := s.GetCA(ctx, orgID, *d.CAID); err != nil {
-			return &ValidationError{"caId", "no such CA in this org"}
+			if errors.Is(err, ErrNotFound) {
+				return &ValidationError{"caId", "no such CA in this org"}
+			}
+			return err
 		}
 	}
 	if d.AccountID != nil {
 		a, err := s.GetAccount(ctx, orgID, *d.AccountID)
 		if err != nil {
-			return &ValidationError{"accountId", "no such ACME account in this org"}
+			if errors.Is(err, ErrNotFound) {
+				return &ValidationError{"accountId", "no such ACME account in this org"}
+			}
+			return err
 		}
 		if d.CAID != nil && a.CAID != *d.CAID {
 			return &ValidationError{"accountId", "account belongs to a different CA"}
@@ -223,13 +230,19 @@ func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
 	}
 	if d.CAID != nil {
 		if _, err := s.q.GetCAByID(ctx, *d.CAID); err != nil {
-			return &ValidationError{"caId", "no such CA"}
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"caId", "no such CA"}
+			}
+			return err
 		}
 	}
 	if d.AccountID != nil {
 		a, err := s.q.GetAccountByID(ctx, *d.AccountID)
 		if err != nil {
-			return &ValidationError{"accountId", "no such ACME account"}
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"accountId", "no such ACME account"}
+			}
+			return err
 		}
 		if d.CAID != nil && a.CaID != *d.CAID {
 			return &ValidationError{"accountId", "account belongs to a different CA"}
@@ -257,7 +270,10 @@ func (s *Store) validateRulesOrg(ctx context.Context, orgID uuid.UUID, rules []c
 	for _, r := range rules {
 		if r.DNSCredentialID != nil {
 			if _, err := s.q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: *r.DNSCredentialID, OrgID: orgID}); err != nil {
-				return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
+				if errors.Is(err, pgx.ErrNoRows) {
+					return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
+				}
+				return err
 			}
 		}
 	}

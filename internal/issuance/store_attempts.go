@@ -19,6 +19,8 @@ const (
 	OutcomeFailed  = "failed"
 )
 
+var _ challenge.ManualStore = (*Store)(nil)
+
 // Attempt is one issuance run.
 type Attempt struct {
 	ID, CertID    uuid.UUID

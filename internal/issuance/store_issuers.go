@@ -111,6 +111,9 @@ func (s *Store) CreateCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, 
 	if in.EABHmac != nil {
 		hmac = *in.EABHmac
 	}
+	if hmac == challenge.Unchanged {
+		return CA{}, &ValidationError{Field: "eabHmac", Msg: "value is only valid when updating a stored secret"}
+	}
 	if p.RequiresEAB && (in.EABKid == "" || hmac == "") {
 		return CA{}, &ValidationError{"eabKid", p.Name + " requires an EAB key id and HMAC"}
 	}
