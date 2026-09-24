@@ -12,6 +12,7 @@ import (
 
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db"
+	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
 )
 
@@ -47,7 +48,7 @@ func runBootstrapAdmin(ctx context.Context, args []string, stdout io.Writer) err
 	if err := db.Migrate(ctx, pool); err != nil {
 		return err
 	}
-	id, err := setup.New(pool, audit.New(pool)).SetAdminPassword(ctx, password)
+	id, err := setup.New(pool, audit.New(pool), settings.DefaultRegistry()).SetAdminPassword(ctx, password)
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/db/dbtest"
+	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
 )
 
@@ -19,7 +20,7 @@ var good = setup.Input{AdminPassword: "correct horse battery", OrgName: "Home", 
 func TestComplete(t *testing.T) {
 	ctx := context.Background()
 	pool, q := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool))
+	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
 	if needs, err := svc.NeedsSetup(ctx); err != nil || !needs {
 		t.Fatalf("needs %v err %v", needs, err)
 	}
@@ -57,7 +58,7 @@ func TestComplete(t *testing.T) {
 func TestCompleteConcurrent(t *testing.T) {
 	ctx := context.Background()
 	pool, _ := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool))
+	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
 	var wg sync.WaitGroup
 	errs := make(chan error, 3)
 	for i := 0; i < 3; i++ {
@@ -89,12 +90,16 @@ func TestCompleteConcurrent(t *testing.T) {
 func TestCompleteInvalid(t *testing.T) {
 	ctx := context.Background()
 	pool, _ := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool))
+	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
 	bad := []setup.Input{
 		{AdminPassword: "short", OrgName: "Home", OrgSlug: "home", BaseURL: "https://x.example"},
 		{AdminPassword: good.AdminPassword, OrgName: " ", OrgSlug: "home", BaseURL: "https://x.example"},
 		{AdminPassword: good.AdminPassword, OrgName: "Home", OrgSlug: "Bad Slug", BaseURL: "https://x.example"},
 		{AdminPassword: good.AdminPassword, OrgName: "Home", OrgSlug: "home", BaseURL: "ftp://x"},
+		// Passes config.ValidateBaseURL (absolute http(s) URL with a host)
+		// but fails the general section schema's "^https?://" pattern,
+		// which requires a lowercase scheme.
+		{AdminPassword: good.AdminPassword, OrgName: "Home", OrgSlug: "home", BaseURL: "HTTPS://certs.example.com"},
 	}
 	for i, in := range bad {
 		if _, err := svc.Complete(ctx, in); !errors.Is(err, setup.ErrInvalid) {
@@ -109,7 +114,7 @@ func TestCompleteInvalid(t *testing.T) {
 func TestSetAdminPassword(t *testing.T) {
 	ctx := context.Background()
 	pool, q := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool))
+	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
 	id, err := svc.SetAdminPassword(ctx, "first password 1")
 	if err != nil {
 		t.Fatal(err)

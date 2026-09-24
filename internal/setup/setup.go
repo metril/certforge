@@ -53,12 +53,16 @@ type Result struct {
 
 // Service runs setup and admin password resets.
 type Service struct {
-	pool *pgxpool.Pool
-	aud  *audit.Auditor
+	pool     *pgxpool.Pool
+	aud      *audit.Auditor
+	registry *settings.Registry
 }
 
-// New returns a Service.
-func New(pool *pgxpool.Pool, aud *audit.Auditor) *Service { return &Service{pool: pool, aud: aud} }
+// New returns a Service. registry is used to validate the general section
+// value (baseUrl) with the same JSON Schema the settings API enforces.
+func New(pool *pgxpool.Pool, aud *audit.Auditor, registry *settings.Registry) *Service {
+	return &Service{pool: pool, aud: aud, registry: registry}
+}
 
 // NeedsSetup reports whether first-run setup has not completed yet.
 func (s *Service) NeedsSetup(ctx context.Context) (bool, error) {
@@ -76,7 +80,15 @@ func (s *Service) NeedsSetup(ctx context.Context) (bool, error) {
 func (s *Service) Complete(ctx context.Context, in Input) (Result, error) {
 	in.OrgName = strings.TrimSpace(in.OrgName)
 	in.BaseURL = strings.TrimRight(strings.TrimSpace(in.BaseURL), "/")
-	if err := in.validate(); err != nil {
+	// Short-circuit a completed install before spending an argon2 hash or
+	// taking the advisory lock; inLockedTx still re-checks under the lock
+	// so a concurrent completer cannot race past this.
+	if needs, err := s.NeedsSetup(ctx); err != nil {
+		return Result{}, err
+	} else if !needs {
+		return Result{}, ErrAlreadyComplete
+	}
+	if err := s.validate(in); err != nil {
 		return Result{}, err
 	}
 	hash, err := authn.HashPassword(in.AdminPassword)
@@ -159,7 +171,10 @@ func (s *Service) SetAdminPassword(ctx context.Context, password string) (uuid.U
 }
 
 func (s *Service) inLockedTx(ctx context.Context, fn func(q *sqlcgen.Queries) error) error {
-	tx, err := s.pool.Begin(ctx)
+	// Explicit read committed (the Postgres default, stated here so the
+	// post-lock re-check is guaranteed to see the previous winner's commit
+	// rather than depending on an unstated default).
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return err
 	}
@@ -194,7 +209,7 @@ func upsertLocalAdmin(ctx context.Context, q *sqlcgen.Queries, hash string) (uui
 	return u.ID, nil
 }
 
-func (in Input) validate() error {
+func (s *Service) validate(in Input) error {
 	var problems []string
 	if len(in.AdminPassword) < authn.MinPasswordLength {
 		problems = append(problems, fmt.Sprintf("adminPassword must be at least %d characters", authn.MinPasswordLength))
@@ -207,9 +222,27 @@ func (in Input) validate() error {
 	}
 	if err := config.ValidateBaseURL(in.BaseURL); err != nil {
 		problems = append(problems, "baseUrl "+err.Error())
+	} else if err := s.validateGeneral(in.BaseURL); err != nil {
+		problems = append(problems, "baseUrl "+err.Error())
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+// validateGeneral checks baseURL against the general section's JSON Schema,
+// the same schema PUT /settings/general enforces. Complete must not accept a
+// baseUrl that a later, unchanged PUT of the section would then reject with
+// 422 (for example a scheme the schema's pattern requires lowercase).
+func (s *Service) validateGeneral(baseURL string) error {
+	sec, ok := s.registry.Section("general")
+	if !ok {
+		return errors.New("general settings section not registered")
+	}
+	raw, err := json.Marshal(map[string]string{"baseUrl": baseURL})
+	if err != nil {
+		return err
+	}
+	return sec.Validate(raw)
 }

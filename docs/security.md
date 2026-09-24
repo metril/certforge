@@ -28,3 +28,5 @@ Roles: `admin` (everything, including CAs, KEK, global settings, key export), `o
 ## First run
 
 Until setup completes, anyone who can reach the server can claim it through `POST /api/v1/setup/complete`. Complete setup right after the first start, or keep the port private until then. Completion is atomic (transaction plus advisory lock) and happens only once.
+
+`bootstrap-admin` only resets the local admin password and revokes that user's sessions; it does not complete setup, so `POST /api/v1/setup/complete` stays available, and reachable by anyone, until setup is actually run.

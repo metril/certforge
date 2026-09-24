@@ -43,17 +43,18 @@ func newTestEnv(t *testing.T) *testEnv {
 	key := bytes.Repeat([]byte{7}, 32)
 	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(key), key))
 	aud := audit.New(pool)
+	sections := settings.DefaultRegistry()
 	d := api.Deps{
 		Config:   config.Config{BaseURL: "http://example.test"},
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Pool:     pool,
 		Queries:  q,
 		Settings: settings.NewStore(q, env),
-		Sections: settings.DefaultRegistry(),
+		Sections: sections,
 		Meta:     meta.NewRegistry(),
 		Sessions: authn.NewSessions(q, 12*time.Hour),
 		Auditor:  aud,
-		Setup:    setup.New(pool, aud),
+		Setup:    setup.New(pool, aud, sections),
 	}
 	srv := httptest.NewServer(api.NewRouter(d))
 	t.Cleanup(srv.Close)
