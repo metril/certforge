@@ -33,11 +33,15 @@ export type SettingsSection = S['SettingsSection'];
 
 export type CertStatus = Certificate['status'];
 export type KeyType = S['KeyType'];
+export type VerificationMethod = VerificationRule['method'];
 // Adaptation (preflight A4): the API already returns EffectiveIssuanceDefaults
-// with a {value, source} shape per field (Source includes 'cert'), so no
-// hand-rolled EffectiveValue/EffectiveMap or `as` casts are needed.
+// with a {value, source} shape per field (Source includes 'cert'), so
+// EffectiveMap/EffectiveValue below are plain aliases of it — no hand-rolled
+// shape or `as` casts. Kept (fix round 1) because Task 10 imports them.
 export type Source = S['Source'];
 export type EffectiveIssuanceDefaults = S['EffectiveIssuanceDefaults'];
+export type EffectiveMap = EffectiveIssuanceDefaults;
+export type EffectiveValue = NonNullable<EffectiveIssuanceDefaults[keyof EffectiveIssuanceDefaults]>;
 
 /** Sent in place of a secret to keep the stored value. */
 export const UNCHANGED = '__unchanged__';

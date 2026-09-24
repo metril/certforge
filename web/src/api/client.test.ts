@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { me, problem, url } from '@/test/fixtures';
-import { api, call, resetUnauthorized, setCsrfToken, setUnauthorizedHandler } from './client';
+import { csrfProblem, me, problem, url } from '@/test/fixtures';
+import { api, call, defaultUnauthorized, resetUnauthorized, setCsrfToken, setUnauthorizedHandler } from './client';
 import { ApiError, errorMessage } from './errors';
 
 beforeEach(() => {
@@ -56,7 +56,8 @@ it('calls the 401 handler once for concurrent failures and never for /auth/me', 
 
 // Adaptation (controller ruling, preflight A28): authn.Middleware 403s a
 // mutating request whenever its cached CSRF token is stale; the client
-// refreshes /auth/me once and retries with the fresh token.
+// refreshes /auth/me once and retries with the fresh token. csrfProblem()
+// uses the real title and detail internal/authn/middleware.go sends.
 it('retries once after a CSRF-flavoured 403, refreshing the token first', async () => {
   setCsrfToken('stale');
   let logoutCalls = 0;
@@ -64,8 +65,25 @@ it('retries once after a CSRF-flavoured 403, refreshing the token first', async 
     http.get(url('/auth/me'), () => HttpResponse.json(me)),
     http.post(url('/auth/logout'), ({ request }) => {
       logoutCalls += 1;
+      if (request.headers.get('X-CSRF-Token') !== me.csrfToken) return csrfProblem();
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await call(api.POST('/auth/logout'));
+  expect(logoutCalls).toBe(2);
+});
+
+// The client matches on title OR detail: a reworded detail that drops the
+// word "csrf" (title alone still says so) must still trigger the retry.
+it('retries on a CSRF 403 whose detail does not mention CSRF, matching the title instead', async () => {
+  setCsrfToken('stale');
+  let logoutCalls = 0;
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(me)),
+    http.post(url('/auth/logout'), ({ request }) => {
+      logoutCalls += 1;
       if (request.headers.get('X-CSRF-Token') !== me.csrfToken) {
-        return problem(403, 'Bad CSRF token');
+        return problem(403, 'Header missing or stale.', {}, 'CSRF token missing or invalid');
       }
       return new HttpResponse(null, { status: 204 });
     }),
@@ -81,7 +99,7 @@ it('does not loop when the retried request is also rejected', async () => {
     http.get(url('/auth/me'), () => HttpResponse.json(me)),
     http.post(url('/auth/logout'), () => {
       logoutCalls += 1;
-      return problem(403, 'Bad CSRF token');
+      return csrfProblem();
     }),
   );
   const err = await call(api.POST('/auth/logout')).catch((e: unknown) => e);
@@ -95,6 +113,29 @@ it('surfaces the problem detail on a 413', async () => {
   expect(err).toBeInstanceOf(ApiError);
   expect((err as ApiError).status).toBe(413);
   expect((err as ApiError).message).toBe('Request body exceeds 1 MiB.');
+});
+
+it('defaultUnauthorized redirects to /login with the current path, search, and hash, but not from /login itself', () => {
+  // jsdom's window.location.assign isn't a configurable property vi.spyOn can
+  // wrap directly, so the whole location object is swapped out for the test.
+  const original = window.location;
+  const assign = vi.fn();
+  Object.defineProperty(window, 'location', {
+    value: { pathname: '/o/acme/certificates', search: '?tab=versions', hash: '#v-2', assign },
+    configurable: true,
+  });
+  defaultUnauthorized();
+  expect(assign).toHaveBeenCalledWith('/login?next=%2Fo%2Facme%2Fcertificates%3Ftab%3Dversions%23v-2');
+
+  assign.mockClear();
+  Object.defineProperty(window, 'location', {
+    value: { pathname: '/login', search: '', hash: '', assign },
+    configurable: true,
+  });
+  defaultUnauthorized();
+  expect(assign).not.toHaveBeenCalled();
+
+  Object.defineProperty(window, 'location', { value: original, configurable: true });
 });
 
 it('surfaces the Retry-After header on a 503', async () => {

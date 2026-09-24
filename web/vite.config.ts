@@ -22,5 +22,11 @@ export default defineConfig({
     setupFiles: ['src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
+    // Runs *.test-d.ts files (expectTypeOf assertions) as part of `vitest run`,
+    // so a type-only export a test-d.ts file checks for still fails `npm test`
+    // if it's ever removed, not just `tsc --noEmit`. tsconfig.json itself is a
+    // references-only solution file with no `include`, so the default would
+    // silently type-check zero files; point at tsconfig.app.json instead.
+    typecheck: { enabled: true, tsconfig: 'tsconfig.app.json' },
   },
 });

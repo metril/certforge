@@ -35,9 +35,13 @@ export function makeCert(p: Partial<Certificate> = {}): Certificate {
 }
 
 const problemHeaders = { 'Content-Type': 'application/problem+json' };
-export const problem = (status: number, detail: string, headers: Record<string, string> = {}) =>
-  HttpResponse.json({ type: 'about:blank', title: 'Error', status, detail }, { status, headers: { ...problemHeaders, ...headers } });
+export const problem = (status: number, detail: string, headers: Record<string, string> = {}, title = 'Error') =>
+  HttpResponse.json({ type: 'about:blank', title, status, detail }, { status, headers: { ...problemHeaders, ...headers } });
 export const unauthorized = (detail = 'Sign in required.') => problem(401, detail);
+// The exact title and detail internal/authn/middleware.go sends for a stale
+// or missing CSRF token, so client.test.ts exercises the real wording.
+export const csrfProblem = () =>
+  problem(403, 'Send the csrfToken from GET /api/v1/auth/me in the X-CSRF-Token header.', {}, 'CSRF token missing or invalid');
 
 export function authHandlers(state: { authed: boolean; needsSetup?: boolean }) {
   return [

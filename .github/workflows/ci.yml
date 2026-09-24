@@ -39,6 +39,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
+      # generate also runs `npm --prefix web run gen` (openapi-typescript +
+      # tsr), so web/'s toolchain and node_modules need to exist first.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
       # git diff --exit-code only catches modified tracked files; a query or
       # spec change that adds a new generated file would pass silently, so
       # this checks the working tree is clean of both modifications and
@@ -50,6 +58,20 @@ jobs:
           git status --porcelain
           git diff
           test -z "$(git status --porcelain)"
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run lint --prefix web
+      - run: npm run typecheck --prefix web
+      - run: npm test --prefix web
+      - run: npm run build --prefix web
   embedweb:
     runs-on: ubuntu-latest
     steps:

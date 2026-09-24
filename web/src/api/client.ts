@@ -15,10 +15,13 @@ let redirecting = false;
 // the actual sign-in redirect (a full navigation, not an SPA route push, so it
 // also clears every in-memory cache — React Query's `me` included — along
 // with the expired session state). Router-aware tasks may still override it
-// with setUnauthorizedHandler.
-function defaultUnauthorized(): void {
+// with setUnauthorizedHandler. Already on /login: do nothing, so a session
+// that expires while the login page itself is open (e.g. its own /auth/me
+// probe) can't cause a reload loop.
+export function defaultUnauthorized(): void {
   if (typeof window === 'undefined') return;
-  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  if (window.location.pathname === '/login') return;
+  const next = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
   window.location.assign(`/login?next=${next}`);
 }
 
@@ -32,22 +35,25 @@ export function resetUnauthorized(): void {
   redirecting = false;
 }
 
-// Clones stashed before fetch() consumes the request body, so a CSRF-flavoured
-// 403 (preflight A28: a valid session with a stale cached token) can be
-// retried once with a refreshed token. csrfRetried guards against looping if
-// the retry also comes back 403.
+// Clone stashed before fetch() consumes the request body, so a CSRF-flavoured
+// 403 (preflight A28: a valid session with a stale cached token; see
+// internal/authn/middleware.go's "CSRF token missing or invalid") can be
+// retried once with a refreshed token. No loop guard is needed: this branch
+// makes one extra, direct fetch() call and returns its result — it never
+// re-enters onResponse for the same request, so onResponse for a given
+// request only ever runs once regardless of the retried response's status.
 const retryClones = new WeakMap<Request, Request>();
-const csrfRetried = new WeakSet<Request>();
 
-async function readDetail(response: Response): Promise<string | undefined> {
+async function isCsrfProblem(response: Response): Promise<boolean> {
   const contentType = response.headers.get('content-type') ?? '';
-  if (!contentType.includes('json')) return undefined;
+  if (!contentType.includes('json')) return false;
   try {
-    const body: unknown = await response.clone().json();
-    const detail = (body as { detail?: unknown } | null)?.detail;
-    return typeof detail === 'string' ? detail : undefined;
+    const body = (await response.clone().json()) as { title?: unknown; detail?: unknown } | null;
+    const title = typeof body?.title === 'string' ? body.title : '';
+    const detail = typeof body?.detail === 'string' ? body.detail : '';
+    return /csrf/i.test(title) || /csrf/i.test(detail);
   } catch {
-    return undefined;
+    return false;
   }
 }
 
@@ -83,16 +89,12 @@ export const authMiddleware: Middleware = {
   },
   async onResponse({ request, response }) {
     let res = response;
-    if (res.status === 403 && !csrfRetried.has(request)) {
-      csrfRetried.add(request);
-      const detail = await readDetail(res);
-      if (detail && /csrf/i.test(detail)) {
-        const refreshed = await refreshCsrfToken();
-        const clone = retryClones.get(request);
-        if (refreshed && clone) {
-          clone.headers.set('X-CSRF-Token', refreshed);
-          res = await globalThis.fetch(clone);
-        }
+    if (res.status === 403 && (await isCsrfProblem(res))) {
+      const refreshed = await refreshCsrfToken();
+      const clone = retryClones.get(request);
+      if (refreshed && clone) {
+        clone.headers.set('X-CSRF-Token', refreshed);
+        res = await globalThis.fetch(clone);
       }
     }
     if (res.status === 401) {
