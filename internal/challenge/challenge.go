@@ -73,11 +73,11 @@ func WrapLego(code string, p legochallenge.Provider, cfg map[string]string) Chal
 func (l legoProvider) Type() Type { return DNS01 }
 
 func (l legoProvider) Present(_ context.Context, domain, token, keyAuth string) error {
-	return Scrub(l.p.Present(domain, token, keyAuth), l.cfg)
+	return Scrub(l.p.Present(domain, token, keyAuth), l.code, l.cfg)
 }
 
 func (l legoProvider) CleanUp(_ context.Context, domain, token, keyAuth string) error {
-	return Scrub(l.p.CleanUp(domain, token, keyAuth), l.cfg)
+	return Scrub(l.p.CleanUp(domain, token, keyAuth), l.code, l.cfg)
 }
 
 func (l legoProvider) Timeout() (time.Duration, time.Duration) {

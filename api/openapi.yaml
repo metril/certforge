@@ -329,7 +329,7 @@ paths:
       operationId: createDNSCredential
       tags: [issuers]
       summary: Add a DNS credential
-      description: Needs dnscreds:write. config keys must be properties of the provider schema from GET /meta/schemas; fields with secret true are stored encrypted. Unknown keys return 422.
+      description: Needs dnscreds:write. config keys must be properties of the provider schema from GET /meta/schemas; fields with secret true are stored encrypted. Unknown keys, a key with a serverPath schema property, or a provider marked unsupported all return 422.
       requestBody:
         required: true
         content:
@@ -358,7 +358,7 @@ paths:
       operationId: updateDNSCredential
       tags: [issuers]
       summary: Replace a DNS credential
-      description: Needs dnscreds:write. config is replaced as a whole; a secret field set to __unchanged__ keeps its stored value and a secret field left out is removed. The provider cannot change.
+      description: Needs dnscreds:write. config is replaced as a whole; a secret field set to __unchanged__ keeps its stored value and a secret field left out is removed. The provider cannot change; 422 if it is (or has since become) marked unsupported.
       requestBody:
         required: true
         content:

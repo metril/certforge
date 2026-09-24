@@ -6,7 +6,11 @@ Fields marked secret are write-only: the API never returns them, and a PUT with 
 
 The lego `exec` provider (runs an arbitrary program on the server) and `manual` provider (reads stdin) are not offered here; use verification rule method `manual-dns` instead.
 
-Fields whose name ends in `_FILE` or `_PATH` (schema `serverPath: true`) name a path on lego's own host filesystem; the API rejects a value for these with a 422 and expects the provider's inline field with the same material instead.
+Fields whose name ends in `_FILE` or `_PATH` (schema `serverPath: true`) name a path on lego's own host filesystem; the API rejects a value for these with a 422. Most providers with such a field also have an inline field carrying the same material (used instead); a provider whose *only* input is that file has no inline alternative and is marked `unsupported: true` below — not offered until file-backed credentials arrive in Phase 5.
+
+### Not yet supported
+
+- **TransIP** (`transip`): requires a private key file; supported when file-backed credentials arrive in Phase 5
 
 ## Joohoi's ACME-DNS
 
@@ -1444,6 +1448,7 @@ Code: `oraclecloud`. Website: <https://cloud.oracle.com/home>
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `OCI_COMPARTMENT_OCID` | credentials | no | Compartment OCID |
+| `OCI_PRIVKEY` | credentials | yes | Private key (PEM), inline; alternative to OCI_PRIVKEY_FILE |
 | `OCI_PRIVKEY_FILE` | credentials | no | Private key file |
 | `OCI_PRIVKEY_PASS` | credentials | yes | Private key password |
 | `OCI_PUBKEY_FINGERPRINT` | credentials | no | Public key fingerprint |
@@ -1849,6 +1854,8 @@ Code: `timewebcloud`. Website: <https://timeweb.cloud/>
 ## TransIP
 
 Code: `transip`. Website: <https://www.transip.nl/>
+
+**Not supported yet:** requires a private key file; supported when file-backed credentials arrive in Phase 5
 
 | Field | Group | Secret | Description |
 |---|---|---|---|

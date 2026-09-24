@@ -112,13 +112,13 @@ func (s *Service) TestDNSCredential(ctx context.Context, orgID, id uuid.UUID, zo
 	}
 	p, err := s.BuildDNS(cred.ProviderCode, cfg)
 	if err != nil {
-		return "", challenge.Scrub(err, cfg)
+		return "", challenge.Scrub(err, cred.ProviderCode, cfg)
 	}
 	domain := "_certforge-test." + zone
 	keyAuth := "certforge-test-" + time.Now().UTC().Format("20060102T150405")
 	fqdn := dns01.UnFqdn(dns01.GetChallengeInfo(domain, keyAuth).EffectiveFQDN)
-	presentErr := challenge.Scrub(p.Present(domain, "certforge-test", keyAuth), cfg)
-	cleanErr := challenge.Scrub(p.CleanUp(domain, "certforge-test", keyAuth), cfg)
+	presentErr := challenge.Scrub(p.Present(domain, "certforge-test", keyAuth), cred.ProviderCode, cfg)
+	cleanErr := challenge.Scrub(p.CleanUp(domain, "certforge-test", keyAuth), cred.ProviderCode, cfg)
 	if presentErr != nil {
 		return fqdn, fmt.Errorf("present %s: %w", fqdn, presentErr)
 	}

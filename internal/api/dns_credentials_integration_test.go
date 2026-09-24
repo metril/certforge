@@ -107,6 +107,33 @@ func TestCreateDNSCredentialRejectsServerPathField(t *testing.T) {
 	wantStatus(t, err, http.StatusUnprocessableEntity)
 }
 
+// Fix round 2, item 2: transip has no usable credential field through this
+// API (its only input is a server-side file), so it must be rejected
+// outright rather than accepted and always failing at issuance time.
+func TestCreateDNSCredentialRejectsUnsupportedProvider(t *testing.T) {
+	f := newAPIFixture(t)
+	_, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "ti", ProviderCode: "transip", Config: map[string]string{}}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+}
+
+// Fix round 2, item 2: oraclecloud's OCI_PRIVKEY (added to the schema
+// because lego's env.Get accepts it inline even though the TOML only
+// documents OCI_PRIVKEY_FILE) makes the provider usable through the API.
+func TestCreateDNSCredentialAcceptsOracleCloudInlineKey(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "oci", ProviderCode: "oraclecloud", Config: map[string]string{
+			"OCI_PRIVKEY": "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----", "OCI_REGION": "us-phoenix-1"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := res.(gen.CreateDNSCredential201JSONResponse)
+	if c.StoredSecrets == nil || len(*c.StoredSecrets) != 1 || (*c.StoredSecrets)[0] != "OCI_PRIVKEY" {
+		t.Fatalf("credential = %+v", c)
+	}
+}
+
 func TestListAndUpdateDNSCredential(t *testing.T) {
 	f := newAPIFixture(t)
 	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
@@ -198,8 +225,8 @@ func TestTestDNSCredentialReportsProviderError(t *testing.T) {
 	if !stub.presentCalled || !stub.cleanedUp {
 		t.Fatalf("CleanUp did not run after Present failed: present=%v cleanup=%v", stub.presentCalled, stub.cleanedUp)
 	}
-	if n := f.auditCount(t, "dnscred.test"); n != 1 {
-		t.Fatalf("dnscred.test audit count = %d", n)
+	if n := f.auditCount(t, "dns_credential.test"); n != 1 {
+		t.Fatalf("dns_credential.test audit count = %d", n)
 	}
 
 	_, err = f.srv.TestDNSCredential(f.as("viewer"), gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: id,
@@ -266,6 +293,55 @@ func TestTestDNSCredentialTimesOutAndStillCleansUp(t *testing.T) {
 
 	// The background call is still running Present; unblock it and confirm
 	// CleanUp still runs even though the response already went out.
+	close(p.unblock)
+	select {
+	case <-p.cleanedUp:
+	case <-time.After(5 * time.Second):
+		t.Fatal("CleanUp was never called after Present unblocked")
+	}
+}
+
+// Fix round 2, item 3: the semaphore slot is released inside the
+// goroutine once the background call actually finishes, not when the
+// handler returns on timeout — otherwise a burst of timed-out callers
+// could still pile up an unbounded number of truly in-flight provider
+// calls, defeating the point of the bound.
+func TestTestDNSCredentialSemaphoreHeldUntilBackgroundCallFinishes(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "cf", ProviderCode: "cloudflare", Config: map[string]string{"CF_DNS_API_TOKEN": "t"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.(gen.CreateDNSCredential201JSONResponse).Id
+	p := &blockingDNS{unblock: make(chan struct{}), cleanedUp: make(chan struct{})}
+	f.srv.d.Issuance.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return p, nil }
+	f.srv.d.DNSTestTimeout = 30 * time.Millisecond
+
+	// Take the other slot, so after this call times out both slots should
+	// read as taken: this one's, and the still-running background call's.
+	releaseOther, ok := acquireDNSTestSlot()
+	if !ok {
+		t.Fatal("expected to acquire a slot")
+	}
+	defer releaseOther()
+
+	out, err := f.srv.TestDNSCredential(f.as("operator"), gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialTestRequest{Zone: "example.test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := out.(gen.TestDNSCredential200JSONResponse); r.Ok || r.Error == nil || *r.Error != "timed out" {
+		t.Fatalf("result = %+v", r)
+	}
+
+	// A third call must be refused: the handler already returned, but the
+	// background Present call is still running and still holds its slot.
+	_, err = f.srv.TestDNSCredential(f.as("operator"), gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialTestRequest{Zone: "example.test"}})
+	wantStatus(t, err, http.StatusServiceUnavailable)
+
+	// Unblock it; once CleanUp runs its slot is released.
 	close(p.unblock)
 	select {
 	case <-p.cleanedUp:

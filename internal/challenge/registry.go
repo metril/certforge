@@ -24,6 +24,17 @@ type ProviderMeta struct {
 	Schema  json.RawMessage `json:"schema"`
 	Aliases []string        `json:"aliases,omitempty"`
 	URL     string          `json:"url,omitempty"`
+
+	// Unsupported and UnsupportedReason are parsed out of Schema's own
+	// top-level "unsupported"/"unsupportedReason" (Register does this, not
+	// the init loop above, so Lookup/Providers expose them as plain Go
+	// fields, not just embedded JSON the caller would have to parse
+	// itself): the provider's only lego credential input is a server-side
+	// file (tools/gen-lego-schemas' unsupportedProviders), so it cannot be
+	// configured through this API at all yet. Still listed, not removed,
+	// so the UI can show and grey it out instead of silently omitting it.
+	Unsupported       bool   `json:"unsupported,omitempty"`
+	UnsupportedReason string `json:"unsupportedReason,omitempty"`
 }
 
 // Factory builds a provider without lego's env-var path (used by the e2e
@@ -66,7 +77,9 @@ func init() {
 // Register adds or replaces a provider. f may be nil for lego providers.
 func Register(m ProviderMeta, f Factory) error {
 	var s struct {
-		Properties map[string]struct {
+		Unsupported       bool   `json:"unsupported"`
+		UnsupportedReason string `json:"unsupportedReason"`
+		Properties        map[string]struct {
 			Secret     bool `json:"secret"`
 			ServerPath bool `json:"serverPath"`
 		} `json:"properties"`
@@ -74,6 +87,7 @@ func Register(m ProviderMeta, f Factory) error {
 	if err := json.Unmarshal(m.Schema, &s); err != nil {
 		return fmt.Errorf("provider %s schema: %w", m.Code, err)
 	}
+	m.Unsupported, m.UnsupportedReason = s.Unsupported, s.UnsupportedReason
 	e := &entry{meta: m, secret: map[string]bool{}, serverPath: map[string]bool{}, factory: f}
 	for k, p := range s.Properties {
 		e.secret[k] = p.Secret

@@ -114,3 +114,4 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1B: lego's log output is process-global and is not copied into attempt logs; attempts log CertForge's own steps and errors.
 - 1B: no `cert.issued` event is emitted yet; notifiers, deploy targets, Vault sync and agent nudges (Phases 3, 5, 6) add it. "Notify on 3rd failure" arrives with notifiers (Phase 6).
 - OpenAPI component schemas use DNSCredential, DNSCredentialInput, DNSCredentialTestResult (DNS casing); plan 1C's api/types.ts must use these names.
+- A DNS provider whose only lego credential input is a server-side file (no inline field exists) is marked `unsupported: true` in its schema (`GET /meta/schemas` still lists it) and rejected with 422 on create/update; `transip` is the only one so far. Not offered until file-backed credentials arrive in Phase 5.

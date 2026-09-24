@@ -71,6 +71,9 @@ func (s *Store) CreateDNSCredential(ctx context.Context, orgID uuid.UUID, name, 
 	if !ok {
 		return DNSCredential{}, &ValidationError{"providerCode", "unknown DNS provider " + code}
 	}
+	if meta.Unsupported {
+		return DNSCredential{}, &ValidationError{"providerCode", meta.Name + " is not supported yet: " + meta.UnsupportedReason}
+	}
 	pub, sec, err := challenge.SplitConfig(meta.Code, cfg)
 	if err != nil {
 		return DNSCredential{}, splitErr(err)
@@ -98,6 +101,9 @@ func (s *Store) UpdateDNSCredential(ctx context.Context, orgID, id uuid.UUID, na
 	row, err := s.q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: id, OrgID: orgID})
 	if err != nil {
 		return DNSCredential{}, notFound(err)
+	}
+	if meta, ok := challenge.Lookup(row.ProviderCode); ok && meta.Unsupported {
+		return DNSCredential{}, &ValidationError{"providerCode", meta.Name + " is not supported yet: " + meta.UnsupportedReason}
 	}
 	var old map[string]string
 	if err := s.openJSON(ctx, row.SecretCfg, &old); err != nil {

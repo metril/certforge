@@ -7,6 +7,8 @@
     "title": "TransIP",
     "type": "object",
     "additionalProperties": false,
+    "unsupported": true,
+    "unsupportedReason": "requires a private key file; supported when file-backed credentials arrive in Phase 5",
     "properties": {
       "TRANSIP_ACCOUNT_NAME": {
         "type": "string",

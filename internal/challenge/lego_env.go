@@ -29,6 +29,13 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 		if _, known := e.secret[k]; !known {
 			return nil, fmt.Errorf("%w %q for provider %s", ErrUnknownField, k, e.meta.Code)
 		}
+		// Belt and suspenders: SplitConfig already refuses to store a
+		// serverPath value, but a credential created before that check
+		// existed could still have one persisted, so Build refuses to use
+		// it too.
+		if e.serverPath[k] && v != "" {
+			return nil, fmt.Errorf("%s: %w", k, ErrServerPath)
+		}
 		if v == Unchanged {
 			return nil, fmt.Errorf("%s: %q is a write-only sentinel and cannot be built into a live provider", k, Unchanged)
 		}
@@ -36,7 +43,7 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 	if e.factory != nil {
 		p, err := e.factory(cfg)
 		if err != nil {
-			return p, Scrub(err, cfg)
+			return p, Scrub(err, code, cfg)
 		}
 		return p, nil
 	}
@@ -46,7 +53,7 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 	defer restore()
 	p, err := newByName(e.meta.Code)
 	if err != nil {
-		return nil, Scrub(fmt.Errorf("%s: %w", e.meta.Code, err), cfg)
+		return nil, Scrub(fmt.Errorf("%s: %w", e.meta.Code, err), code, cfg)
 	}
 	return p, nil
 }

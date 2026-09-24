@@ -139,7 +139,13 @@ type dnsTestOutcome struct {
 // goroutine is not abandoned — it keeps running (Present, then CleanUp,
 // which still needs to remove whatever Present created) against
 // context.WithoutCancel(ctx), so a slow provider still gets cleaned up
-// after the request that triggered it has already gotten its answer.
+// after the request that triggered it has already gotten its answer. The
+// slot dnsTestSlots hands out is released inside the goroutine, once that
+// call actually finishes, not when the handler returns: the bound is on
+// how many provider calls are truly in flight at once, not on how many
+// handler invocations are waiting for one (a timed-out call must keep
+// counting against the limit, or the limit stops meaning anything once
+// callers start timing out).
 func (s *Server) TestDNSCredential(ctx context.Context, r gen.TestDNSCredentialRequestObject) (gen.TestDNSCredentialResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionDNSCredsWrite, &r.OrgId); err != nil {
 		return nil, err
@@ -149,7 +155,6 @@ func (s *Server) TestDNSCredential(ctx context.Context, r gen.TestDNSCredentialR
 		writeRetryAfter(ctx, "5")
 		return nil, errDNSTestBusy
 	}
-	defer release()
 
 	timeout := s.d.DNSTestTimeout
 	if timeout <= 0 {
@@ -159,6 +164,7 @@ func (s *Server) TestDNSCredential(ctx context.Context, r gen.TestDNSCredentialR
 	bg := context.WithoutCancel(ctx)
 	ch := make(chan dnsTestOutcome, 1)
 	go func() {
+		defer release()
 		fqdn, err := s.d.Issuance.TestDNSCredential(bg, r.OrgId, r.Id, r.Body.Zone)
 		ch <- dnsTestOutcome{fqdn: fqdn, err: err}
 	}()
@@ -183,7 +189,7 @@ func (s *Server) TestDNSCredential(ctx context.Context, r gen.TestDNSCredentialR
 		res.DurationMs = int(time.Since(start).Milliseconds())
 		res.Error = ptr("timed out")
 	}
-	s.audit(ctx, audit.Event{Action: "dnscred.test", ResourceType: "dns_credential", ResourceID: r.Id.String(), OrgID: &r.OrgId,
+	s.audit(ctx, audit.Event{Action: "dns_credential.test", ResourceType: "dns_credential", ResourceID: r.Id.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"zone": r.Body.Zone, "ok": res.Ok}})
 	return gen.TestDNSCredential200JSONResponse(res), nil
 }

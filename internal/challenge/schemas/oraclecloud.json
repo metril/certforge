@@ -29,6 +29,13 @@
         "secret": false,
         "x-group": "additional"
       },
+      "OCI_PRIVKEY": {
+        "type": "string",
+        "title": "OCI_PRIVKEY",
+        "description": "Private key (PEM), inline; alternative to OCI_PRIVKEY_FILE",
+        "secret": true,
+        "x-group": "credentials"
+      },
       "OCI_PRIVKEY_FILE": {
         "type": "string",
         "title": "OCI_PRIVKEY_FILE",

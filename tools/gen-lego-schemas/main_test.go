@@ -123,6 +123,62 @@ func TestRealProviderServerPathClassification(t *testing.T) {
 	}
 }
 
+// readRealSchema reads a committed schema file generated from lego's real
+// provider metadata.
+func readRealSchema(t *testing.T, provider string) providerFile {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "internal", "challenge", "schemas", provider+".json"))
+	if err != nil {
+		t.Fatalf("%s: %v", provider, err)
+	}
+	var f providerFile
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatalf("%s: %v", provider, err)
+	}
+	return f
+}
+
+// TestOracleCloudHasInlinePrivateKeyField (fix round 2, item 2): lego's
+// oraclecloud.go reads its private key via env.Get(envPrivKey, ...) where
+// envPrivKey = "OCI_PRIVKEY" (env.Get itself falls back to the _FILE
+// suffix), but the upstream TOML metadata only documents OCI_PRIVKEY_FILE.
+// Without extraCredentialFields, oraclecloud's only credential field would
+// be a serverPath one the API rejects, making it unusable end to end.
+func TestOracleCloudHasInlinePrivateKeyField(t *testing.T) {
+	f := readRealSchema(t, "oraclecloud")
+	p, ok := f.Schema.Properties["OCI_PRIVKEY"]
+	if !ok {
+		t.Fatal("missing OCI_PRIVKEY: oraclecloud has no usable credential field")
+	}
+	if !p.Secret {
+		t.Errorf("OCI_PRIVKEY secret = false, want true")
+	}
+	if p.ServerPath {
+		t.Errorf("OCI_PRIVKEY serverPath = true, want false (it is the inline alternative to OCI_PRIVKEY_FILE)")
+	}
+	if f.Schema.Unsupported {
+		t.Error("oraclecloud must not be marked unsupported now that it has an inline credential field")
+	}
+}
+
+// TestTransipMarkedUnsupported (fix round 2, item 2): transip's only
+// credential input is TRANSIP_PRIVATE_KEY_PATH, a serverPath field with no
+// inline alternative, so the provider is entirely unusable through the API
+// and must be flagged rather than silently offered and always failing.
+func TestTransipMarkedUnsupported(t *testing.T) {
+	f := readRealSchema(t, "transip")
+	if !f.Schema.Unsupported {
+		t.Fatal("transip must be marked unsupported: its only credential field is a serverPath one")
+	}
+	if f.Schema.UnsupportedReason == "" {
+		t.Error("transip's unsupportedReason must not be empty")
+	}
+	p, ok := f.Schema.Properties["TRANSIP_PRIVATE_KEY_PATH"]
+	if !ok || !p.ServerPath {
+		t.Errorf("TRANSIP_PRIVATE_KEY_PATH = %+v, ok=%v; want a serverPath field", p, ok)
+	}
+}
+
 func TestGenerateIsDeterministic(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
 	if err := generate("testdata", a, filepath.Join(a, "d.md")); err != nil {
