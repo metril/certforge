@@ -41,7 +41,7 @@ func NewRouter(ctx context.Context, names []string, rules []Rule, sink StepSink)
 	for i, n := range names {
 		ns[i] = normalize(n)
 	}
-	return &Router{ctx: ctx, names: ns, rules: rules, sink: sink}
+	return &Router{ctx: ctx, names: ns, rules: slices.Clone(rules), sink: sink}
 }
 
 // Validate fails when a name is an IP address or no rule matches it, so an
@@ -86,8 +86,20 @@ func (r *Router) nameFor(domain string) string {
 	return d
 }
 
+// routingKey derives the certificate name used to select a rule from a lego
+// callback's domain argument. Present and CleanUp always receive the bare
+// authorization domain (acme.Authorization.Identifier.Value); PreCheck
+// receives that same bare domain for an apex authorization, but the domain
+// prefixed with "*." for a wildcard authorization (lego's
+// challenge.GetTargetedDomain). Stripping a leading "*." before nameFor
+// means all three land on the same rule for one authorization, matching the
+// ADR: the apex rule serves both when both names are present.
+func (r *Router) routingKey(domain string) string {
+	return r.nameFor(strings.TrimPrefix(normalize(domain), "*."))
+}
+
 func (r *Router) route(domain string) (string, *Rule, error) {
-	name := r.nameFor(domain)
+	name := r.routingKey(domain)
 	rule, ok := r.ruleFor(name)
 	if !ok {
 		return name, nil, fmt.Errorf("no verification rule matches %s", name)
@@ -129,7 +141,7 @@ func (r *Router) CleanUp(domain, token, keyAuth string) error {
 func (r *Router) Timeout() (time.Duration, time.Duration) {
 	var longest time.Duration
 	for _, n := range r.names {
-		rule, ok := r.ruleFor(n)
+		rule, ok := r.ruleFor(r.routingKey(n))
 		if !ok {
 			continue
 		}
@@ -150,16 +162,13 @@ func (r *Router) Timeout() (time.Duration, time.Duration) {
 	return longest, dns01.DefaultPollingInterval
 }
 
-// PreCheck is installed with dns01.WrapPreCheck. domain is the targeted
-// certificate name ("*.x" for wildcards).
+// PreCheck is installed with dns01.WrapPreCheck. domain is lego's targeted
+// domain for the authorization ("*.x" for a wildcard authorization, "x"
+// otherwise); see routingKey.
 func (r *Router) PreCheck(domain, fqdn, value string, check func(fqdn, value string) (bool, error)) (bool, error) {
-	name := normalize(domain)
-	if !slices.Contains(r.names, name) {
-		name = r.nameFor(strings.TrimPrefix(name, "*."))
-	}
-	rule, ok := r.ruleFor(name)
-	if !ok {
-		return false, fmt.Errorf("no verification rule matches %s", name)
+	name, rule, err := r.route(domain)
+	if err != nil {
+		return false, err
 	}
 	if w, ok := rule.Provider.(Waiter); ok {
 		if err := w.WaitReady(r.ctx); err != nil {

@@ -3,6 +3,8 @@ package challenge
 import (
 	"fmt"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 type matchKind int
@@ -87,6 +89,27 @@ func (m Matcher) Matches(name string) bool {
 	}
 }
 
+// normalize lowercases, strips a trailing dot, and converts a Unicode
+// (U-label) name or zone to its ASCII (A-label/"xn--...") form via IDNA, so
+// a U-label certificate name compares equal to the ASCII form a match
+// pattern is written in. Input IDNA rejects ("*", a malformed label, ...)
+// falls through unconverted; validZone reports the real error for patterns,
+// and an unconverted name simply fails to match, as before.
 func normalize(s string) string {
-	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "."))
+	s = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "."))
+	if s == "" || s == "*" {
+		return s
+	}
+	zone, wildcard := s, false
+	if strings.HasPrefix(s, "*.") {
+		zone, wildcard = s[2:], true
+	}
+	ascii, err := idna.Lookup.ToASCII(zone)
+	if err != nil {
+		return s
+	}
+	if wildcard {
+		return "*." + ascii
+	}
+	return ascii
 }

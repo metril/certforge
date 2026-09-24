@@ -20,6 +20,7 @@ func TestMatcher(t *testing.T) {
 		{"example.com", "badexample.com", false},
 		{"Example.COM.", "a.example.com", true},
 		{"other.net", "a.example.com", false},
+		{"xn--mnchen-3ya.de", "münchen.de", true},
 	}
 	for _, c := range cases {
 		m, err := ParseMatch(c.pattern)

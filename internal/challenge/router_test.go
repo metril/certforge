@@ -102,6 +102,40 @@ func TestRouterWildcardAuthzUsesWildcardRule(t *testing.T) {
 	}
 }
 
+// Review Focus: lego calls Present/CleanUp with the bare authorization
+// domain for both the apex and wildcard authorizations of one certificate,
+// but calls PreCheck with "*.example.com" for the wildcard one
+// (challenge.GetTargetedDomain). When both names are configured, all three
+// callbacks must resolve to the same rule for the wildcard authorization:
+// whichever rule matches the bare domain "example.com" (the ADR's "the apex
+// rule serves both"), not a rule that only matches "*.example.com" itself.
+func TestRouterApexAndWildcardShareRule(t *testing.T) {
+	apexProv := &recProvider{timeout: 30 * time.Second}
+	wildProv := &recProvider{timeout: time.Hour}
+	wild := rule(t, "*.example.com", wildProv)
+	wild.AliasZone = "alias.example.net" // would break PreCheck if wrongly routed here
+	apex := rule(t, "example.com", apexProv)
+	apex.Timeout = 5 * time.Minute
+
+	r := NewRouter(context.Background(), []string{"example.com", "*.example.com"}, []Rule{wild, apex}, nil)
+
+	if err := r.Present("example.com", "t", "k"); err != nil {
+		t.Fatal(err)
+	}
+	if len(apexProv.present) != 1 || len(wildProv.present) != 0 {
+		t.Fatalf("Present must use the apex rule: apex=%v wild=%v", apexProv.present, wildProv.present)
+	}
+
+	ok, err := r.PreCheck("*.example.com", "_acme-challenge.example.com.", "v", func(string, string) (bool, error) { return true, nil })
+	if !ok || err != nil {
+		t.Fatalf("PreCheck for the wildcard authz must use the apex rule (no alias zone): %v %v", ok, err)
+	}
+
+	if got, _ := r.Timeout(); got != 5*time.Minute {
+		t.Fatalf("Timeout = %v, want the apex rule's 5m, not the wildcard rule's 1h", got)
+	}
+}
+
 func TestRouterTimeoutUsesLargestRuleInUse(t *testing.T) {
 	a := &recProvider{timeout: 30 * time.Second}
 	unused := &recProvider{timeout: time.Hour}
