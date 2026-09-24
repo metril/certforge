@@ -18,3 +18,7 @@
 ## Authorization
 
 Roles: `admin` (everything, including CAs, KEK, global settings, key export), `org-admin` (everything within its org except global-only actions), `operator` (certificates, credentials, accounts, clients, issue and renew), `viewer` (read-only, no secrets), `auditor` (viewer plus audit log). Global-only actions: `settings:write`, `orgs:write`, `cas:write`, `keys:export`. Agents never pass `Can()`; they use their own mTLS listener. Phase 1 seeds only the global `admin` binding for the local admin.
+
+## Audit log
+
+`audit_events` is append-only. Triggers reject UPDATE, DELETE, and TRUNCATE. Each row stores `prev_hash` (unique) and `hash = SHA-256(prev_hash, timestamp, actor, action, resource, org, ip, canonical details)`, so any edit made with the triggers disabled breaks the chain, and `Auditor.Verify` reports the first bad id. Appends are serialized with a Postgres advisory lock. Logins, failed logins, logouts, setup, and settings changes are recorded.
