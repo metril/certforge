@@ -13,14 +13,27 @@ export type ValidityProps = Span & {
   className?: string;
 };
 
-const clamp = (v: number, lo = 0, hi = 100) => Math.min(hi, Math.max(lo, v));
+// Fix round 1 (#6): an invalid/unparseable timestamp makes every ratio below
+// NaN; treat that as 0% instead of letting `width: NaN%` reach the DOM.
+const clamp = (v: number, lo = 0, hi = 100) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : 0);
+
+// Fix round 1 (#4): a ghost successor is only real when it's a proper span
+// (notAfter after notBefore) and it isn't just the current version's own
+// span handed back unchanged.
+function ghostValid(current: Span, ghost: Span): boolean {
+  const gs = Date.parse(ghost.notBefore);
+  const ge = Date.parse(ghost.notAfter);
+  if (!(ge > gs)) return false;
+  return !(gs === Date.parse(current.notBefore) && ge === Date.parse(current.notAfter));
+}
 
 /** Percent positions of now/end/window/ghost along the notBefore..notAfter
  * lifetime (extended to cover a ghost successor's own notAfter, if later). */
 export function validityGeometry({ notBefore, notAfter, renewAt, ghost, now }: Span & { renewAt?: string | null; ghost?: Span | null; now: number }) {
   const start = Date.parse(notBefore);
   const end = Date.parse(notAfter);
-  const domainEnd = ghost ? Math.max(end, Date.parse(ghost.notAfter)) : end;
+  const current = { notBefore, notAfter };
+  const domainEnd = ghost && ghostValid(current, ghost) ? Math.max(end, Date.parse(ghost.notAfter)) : end;
   const span = Math.max(domainEnd - start, 1);
   const pct = (t: number) => clamp(((t - start) / span) * 100);
   return {
@@ -28,7 +41,7 @@ export function validityGeometry({ notBefore, notAfter, renewAt, ghost, now }: S
     now: pct(now),
     elapsed: Math.min(pct(now), pct(end)),
     window: renewAt ? { from: pct(Date.parse(renewAt)), to: pct(end) } : null,
-    ghost: ghost ? { from: pct(Date.parse(ghost.notBefore)), to: pct(Date.parse(ghost.notAfter)) } : null,
+    ghost: ghost && ghostValid(current, ghost) ? { from: pct(Date.parse(ghost.notBefore)), to: pct(Date.parse(ghost.notAfter)) } : null,
     lifetimeDays: Math.round((end - start) / DAY),
   };
 }
@@ -44,6 +57,11 @@ export function validityLabel(p: ValidityProps, now: number): string {
   const parts = [`Valid ${fmtDate(p.notBefore)} to ${fmtDate(p.notAfter)}`, expired ? `expired ${relDays(p.notAfter, now)}` : `expires ${relDays(p.notAfter, now)}`];
   const renew = renewPhrase(p.renewAt, now);
   if (renew && !expired) parts.push(renew);
+  // Fix round 1 (#4): name the ghost successor in the accessible text, not
+  // just as a visual dashed segment.
+  if (p.ghost && ghostValid({ notBefore: p.notBefore, notAfter: p.notAfter }, p.ghost)) {
+    parts.push(`next version until ${fmtDate(p.ghost.notAfter)}`);
+  }
   return parts.join(', ');
 }
 
@@ -87,9 +105,18 @@ export function ValidityBar(p: ValidityProps) {
     <div className={cn('grid', p.className)}>
       {renew && g.window && (
         <div className="relative h-4 text-xs text-ink-muted" aria-hidden>
-          <span className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clamp(g.window.from, 8, 92)}%` }}>
-            {renew}
-          </span>
+          {/* Fix round 1 (#3): centering the label on `from` with -translate-x-1/2
+              lets its right half overflow the track once `from` is close to
+              100% (e.g. a narrow renewal window right before expiry). Past
+              ~80% anchor to the track's own right edge instead, so a 343px
+              track on a 375px screen never scrolls horizontally. */}
+          {g.window.from > 80 ? (
+            <span className="absolute right-0 whitespace-nowrap">{renew}</span>
+          ) : (
+            <span className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clamp(g.window.from, 8, 92)}%` }}>
+              {renew}
+            </span>
+          )}
         </div>
       )}
       {bar}

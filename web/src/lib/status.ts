@@ -15,6 +15,10 @@ export const STATUS_META: Record<CertStatus, { label: string; tone: Tone; icon: 
 };
 
 export function validityTone(c: Pick<Certificate, 'status' | 'currentVersion' | 'nextRenewAt'>, now = Date.now()): Tone {
+  // Fix round 1: a revoked certificate can still have a currentVersion whose
+  // notAfter is in the future; without this it fell through to the time
+  // checks below and drew a green/valid bar.
+  if (c.status === 'revoked') return 'neutral';
   const v = c.currentVersion;
   if (!v) return c.status === 'failed' ? 'failed' : 'pending';
   const end = Date.parse(v.notAfter);

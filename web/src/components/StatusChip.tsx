@@ -13,7 +13,10 @@ export const CHIP_TINT: Record<'valid' | 'expiring' | 'drift', number> = {
   drift: 0.12,
 };
 
-const CHIP: Record<Tone, string> = {
+// Fix round 1 (#5): exported so StatusChip.test.tsx can assert the tint
+// classes actually use CHIP_TINT's alpha, instead of the contrast test
+// silently passing after the two drift apart.
+export const CHIP: Record<Tone, string> = {
   valid: 'border-valid/40 bg-valid/12',
   expiring: 'border-expiring/60 bg-expiring/15',
   expired: 'border-expired bg-expired',
