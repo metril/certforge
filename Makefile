@@ -39,7 +39,10 @@ deploy/secrets/kek:
 	chmod 0644 $@
 
 e2e: deploy/secrets/kek
-	$(COMPOSE_TEST) up -d --build --wait
+	$(COMPOSE_TEST) up -d --build --wait; up_status=$$?; \
+	if [ $$up_status -ne 0 ]; then \
+		$(COMPOSE_TEST) down -v; exit $$up_status; \
+	fi; \
 	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} \
 	CF_E2E_PEBBLE_MGMT=https://localhost:$${CF_PEBBLE_MGMT_PORT:-15000} \
 	$(GO) test -tags e2e -count=1 ./test/e2e/...; status=$$?; $(COMPOSE_TEST) down -v; exit $$status

@@ -16,6 +16,7 @@ import (
 	"net/http/cookiejar"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -161,6 +162,33 @@ func waitFor[T any](ctx context.Context, t *testing.T, what string, poll func() 
 	}
 }
 
+// waitForPebbleReady polls Pebble's management API (bounded 60s) before the
+// test drives any issuance through it: compose `--wait` only checks each
+// service's own healthcheck, which can report healthy slightly before
+// Pebble's management listener actually answers, and a cold Pebble would
+// otherwise fail the very first ACME call the server makes on our behalf.
+func waitForPebbleReady(ctx context.Context, t *testing.T, hc *http.Client) {
+	t.Helper()
+	readyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	for {
+		req, err := http.NewRequestWithContext(readyCtx, http.MethodGet, pebbleMgt+"/roots/0", nil)
+		if err == nil {
+			if resp, doErr := hc.Do(req); doErr == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return
+				}
+			}
+		}
+		select {
+		case <-readyCtx.Done():
+			t.Fatalf("Pebble management API not ready at %s/roots/0 within 60s", pebbleMgt)
+		case <-time.After(time.Second):
+		}
+	}
+}
+
 func fetchCert(ctx context.Context, t *testing.T, hc *http.Client, u string) *x509.Certificate {
 	t.Helper()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -216,6 +244,13 @@ type certOut struct {
 	NextRenewAt  *string `json:"nextRenewAt"`
 }
 
+// versionOut is one entry of GET .../certificates/{id}/versions, newest
+// first.
+type versionOut struct {
+	ID                string `json:"id"`
+	SHA256Fingerprint string `json:"sha256Fingerprint"`
+}
+
 // TestIssuanceAgainstPebble drives the running certforge server (deploy/
 // compose.test.yaml, built with GO_TAGS=e2e) through its HTTP API: log in
 // (or complete first-run setup), create a CA, DNS credential and ACME
@@ -227,13 +262,17 @@ func TestIssuanceAgainstPebble(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 
-	c := newAPIClient(t)
-	orgID := c.authenticate(ctx, t)
-
 	trust, err := os.ReadFile("testdata/pebble.minica.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
+	roots := x509.NewCertPool()
+	roots.AppendCertsFromPEM(trust)
+	hc := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}}
+	waitForPebbleReady(ctx, t, hc)
+
+	c := newAPIClient(t)
+	orgID := c.authenticate(ctx, t)
 
 	var ca struct {
 		ID string `json:"id"`
@@ -293,9 +332,6 @@ func TestIssuanceAgainstPebble(t *testing.T) {
 	}
 	leaf := chain[0]
 
-	roots := x509.NewCertPool()
-	roots.AppendCertsFromPEM(trust)
-	hc := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}}
 	inter := fetchCert(ctx, t, hc, pebbleMgt+"/intermediates/0")
 	if !slices.Equal(chain[1].Raw, inter.Raw) {
 		t.Fatal("downloaded chain does not start with Pebble intermediate 0")
@@ -317,27 +353,71 @@ func TestIssuanceAgainstPebble(t *testing.T) {
 		t.Fatalf("SANs = %v", sans)
 	}
 
-	// 4. Key type EC P-256.
+	// 4. Key type EC P-256, and the downloaded private key (parts=key needs
+	// keys:export; the e2e admin has every permission) matches the leaf.
 	pub, ok := leaf.PublicKey.(*ecdsa.PublicKey)
 	if !ok || pub.Curve != elliptic.P256() {
 		t.Fatalf("key = %T", leaf.PublicKey)
 	}
+	keyPEM := c.download(ctx, t, certPath+"/versions/"+cert.CurrentVersion.ID+"/download?format=pem&parts=key")
+	keyBlk, _ := pem.Decode(keyPEM)
+	if keyBlk == nil {
+		t.Fatal("key download: no PEM")
+	}
+	priv, err := x509.ParsePKCS8PrivateKey(keyBlk.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privEC, ok := priv.(*ecdsa.PrivateKey)
+	if !ok || !privEC.PublicKey.Equal(pub) {
+		t.Fatalf("downloaded private key (%T) does not match the leaf's public key", priv)
+	}
 
-	// 5. Forced renewal creates a second version.
+	// 5. Forced renewal creates a second version with a different
+	// fingerprint, which becomes the certificate's current version.
+	var versionsBefore []versionOut
+	c.call(ctx, t, http.MethodGet, certPath+"/versions", nil, &versionsBefore)
+	if len(versionsBefore) != 1 {
+		t.Fatalf("expected exactly 1 version before renewal, got %d", len(versionsBefore))
+	}
+	firstFingerprint := versionsBefore[0].SHA256Fingerprint
+
 	c.call(ctx, t, http.MethodPost, certPath+"/renew", nil, new(struct {
 		Enqueued bool `json:"enqueued"`
 	}))
-	waitFor(ctx, t, "second version", func() (int, bool) {
-		var versions []map[string]any
+	versionsAfter := waitFor(ctx, t, "second version", func() ([]versionOut, bool) {
+		var versions []versionOut
 		c.call(ctx, t, http.MethodGet, certPath+"/versions", nil, &versions)
-		return len(versions), len(versions) == 2
+		if len(versions) > 2 {
+			t.Fatalf("more than 2 versions appeared: %d", len(versions))
+		}
+		return versions, len(versions) == 2
 	})
+	newest := versionsAfter[0] // newest first, per GET .../versions
+	if newest.SHA256Fingerprint == firstFingerprint {
+		t.Fatalf("second version has the same fingerprint as the first: %s", newest.SHA256Fingerprint)
+	}
 
-	// 6. Broken credential: failure recorded, backoff scheduled.
+	var afterRenewal certOut
+	c.call(ctx, t, http.MethodGet, certPath, nil, &afterRenewal)
+	if afterRenewal.CurrentVersion == nil || afterRenewal.CurrentVersion.ID != newest.ID {
+		t.Fatalf("currentVersion %v does not match the newest version %s", afterRenewal.CurrentVersion, newest.ID)
+	}
+	if afterRenewal.NextRenewAt == nil {
+		t.Fatal("nextRenewAt missing after a successful renewal")
+	}
+	prevNextRenew, err := time.Parse(time.RFC3339, *afterRenewal.NextRenewAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 6. Broken credential: failure recorded, with a bounded backoff
+	// strictly earlier than the healthy renewal's own schedule.
+	const brokenURL = "http://127.0.0.1:1"
 	c.call(ctx, t, http.MethodPut, "/api/v1/orgs/"+orgID+"/dns-credentials/"+cred.ID, map[string]any{
-		"name": "challtestsrv", "config": map[string]string{"CHALLTESTSRV_URL": "http://127.0.0.1:1"},
+		"name": "challtestsrv", "config": map[string]string{"CHALLTESTSRV_URL": brokenURL},
 	}, nil)
-	before := time.Now()
+	beforeBreak := time.Now()
 	waitFor(ctx, t, "renewal to be enqueued", func() (bool, bool) {
 		var res struct {
 			Enqueued bool `json:"enqueued"`
@@ -350,15 +430,28 @@ func TestIssuanceAgainstPebble(t *testing.T) {
 		c.call(ctx, t, http.MethodGet, certPath, nil, &cur)
 		return cur, cur.FailureCount == 1
 	})
-	if cert.LastError == "" || cert.NextRenewAt == nil {
-		t.Fatalf("backoff not scheduled: %+v", cert)
+	if cert.FailureCount != 1 {
+		t.Fatalf("failureCount = %d, want 1", cert.FailureCount)
+	}
+	if cert.LastError == "" {
+		t.Fatal("lastError is empty after a failed renewal")
+	}
+	if strings.Contains(cert.LastError, brokenURL) {
+		t.Fatalf("lastError leaks the broken credential value: %s", cert.LastError)
+	}
+	if cert.NextRenewAt == nil {
+		t.Fatal("nextRenewAt missing after a failed renewal")
 	}
 	nextRenew, err := time.Parse(time.RFC3339, *cert.NextRenewAt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !nextRenew.After(before) {
-		t.Fatalf("nextRenewAt %s is not in the future (before %s)", nextRenew, before)
+	if !nextRenew.Before(prevNextRenew) {
+		t.Fatalf("nextRenewAt %s is not earlier than the healthy renewal's schedule %s", nextRenew, prevNextRenew)
+	}
+	lo, hi := beforeBreak.Add(4*time.Minute), beforeBreak.Add(6*time.Minute)
+	if nextRenew.Before(lo) || nextRenew.After(hi) {
+		t.Fatalf("nextRenewAt %s outside the first-backoff window [%s, %s] (5m +/-20%%)", nextRenew, lo, hi)
 	}
 	if cert.Status != "active" {
 		t.Fatalf("a failed renewal must keep a valid cert active, got %s", cert.Status)
