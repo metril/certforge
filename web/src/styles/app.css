@@ -17,12 +17,17 @@
   --text-lg--line-height: 1.75rem;
   --text-xl: 1.75rem;
   --text-xl--line-height: 2.125rem;
+  --radius-xs: 2px;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 6px;
   --radius-xl: 6px;
   --shadow-xs: none;
   --shadow-sm: none;
+  /* Controller ruling: overlays (dialog, sheet, popover, dropdown-menu) may
+     carry ONE elevation shadow, from the token, not ad hoc values. */
+  --shadow-md: var(--shadow-overlay);
+  --shadow-lg: var(--shadow-overlay);
   --color-background: var(--cf-surface);
   --color-foreground: var(--cf-ink);
   --color-card: var(--cf-panel);

@@ -10,7 +10,15 @@ async function restricted(code: string) {
 }
 
 describe('native choice inputs are blocked', () => {
-  it.each(['<input type="checkbox" />', '<input type="radio" />', '<input type={"checkbox"} />'])('%s', async (jsx) => {
+  it.each([
+    '<input type="checkbox" />',
+    '<input type="radio" />',
+    '<input type={"checkbox"} />',
+    '<input type={`checkbox`} />',
+    '<input type={`radio`} />',
+    '<input {...{ type: "checkbox" }} />',
+    '<input {...{ type: "radio" }} />',
+  ])('%s', async (jsx) => {
     expect(await restricted(`export const X = () => ${jsx};`)).toHaveLength(1);
   });
   it('allows text inputs', async () => {

@@ -12,6 +12,13 @@ function block(selector: RegExp): Record<string, string> {
 const light = block(/:root,\s*\[data-theme="light"\]\s*\{([^}]*)\}/);
 const dark = block(/\n\[data-theme="dark"\]\s*\{([^}]*)\}/);
 
+function rawBlock(selector: RegExp): string {
+  const body = css.match(selector)?.[1] ?? '';
+  return body.replace(/\s+/g, ' ').trim();
+}
+const darkRaw = rawBlock(/\n\[data-theme="dark"\]\s*\{([^}]*)\}/);
+const fallbackRaw = rawBlock(/:root:not\(\[data-theme\]\)\s*\{([^}]*)\}/);
+
 function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
@@ -41,4 +48,13 @@ describe.each([['light', light], ['dark', dark]] as const)('%s tokens', (_, t) =
     expect(contrast(t[tone]!, t.panel!)).toBeGreaterThanOrEqual(3);
     expect(contrast(t[tone]!, t.surface!)).toBeGreaterThanOrEqual(3);
   });
+  it('destructive variant (text-on-status on bg-destructive) meets 4.5:1', () => {
+    // bg-destructive is --cf-failed; a dark:bg-destructive/60 (or any opacity
+    // modifier) would drop below this — the review round 1 fix removed it.
+    expect(contrast(t['on-status']!, t['failed']!)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+it('the no-JS dark fallback block matches [data-theme="dark"] exactly', () => {
+  expect(fallbackRaw).toBe(darkRaw);
 });

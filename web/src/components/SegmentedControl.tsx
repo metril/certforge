@@ -33,7 +33,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, i
             value={o.value}
             disabled={o.disabled}
             className={cn(
-              'inline-flex h-full items-center gap-1.5 rounded-[4px] px-3 text-sm text-ink-muted transition-colors',
+              'inline-flex h-full items-center gap-1.5 rounded-sm px-3 text-sm text-ink-muted transition-colors',
               'hover:text-ink disabled:cursor-not-allowed disabled:opacity-50',
               'data-[state=on]:bg-panel data-[state=on]:font-semibold data-[state=on]:text-ink data-[state=on]:ring-1 data-[state=on]:ring-border',
             )}

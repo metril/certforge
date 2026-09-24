@@ -17,6 +17,7 @@
   --cf-failed: #D0342C;
   --cf-drift: #6B4BC8;
   --cf-pending: #4A6A8C;
+  --shadow-overlay: 0 12px 32px -8px rgba(29, 37, 51, 0.28);
 }
 
 [data-theme="dark"] {
@@ -36,6 +37,7 @@
   --cf-failed: #F0665E;
   --cf-drift: #A48CF2;
   --cf-pending: #8FAACB;
+  --shadow-overlay: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
 }
 
 /* No-JS fallback: follow the OS when theme-init.js did not run. */
@@ -57,5 +59,6 @@
     --cf-failed: #F0665E;
     --cf-drift: #A48CF2;
     --cf-pending: #8FAACB;
+    --shadow-overlay: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
   }
 }
