@@ -22,7 +22,8 @@ func TestGenerate(t *testing.T) {
 	if err := json.Unmarshal(b, &f); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"FAKE_API_TOKEN": true, "FAKE_PASSWORD": true, "FAKE_USERNAME": false, "FAKE_TTL": false, "FAKE_KEY_FILE_PATH_HINT": true}
+	want := map[string]bool{"FAKE_API_TOKEN": true, "FAKE_PASSWORD": true, "FAKE_USERNAME": false, "FAKE_TTL": false,
+		"FAKE_KEY_FILE_PATH_HINT": true, "FAKE_CREDENTIALS_FILE": false}
 	for k, secret := range want {
 		p, ok := f.Schema.Properties[k]
 		if !ok {
@@ -30,6 +31,16 @@ func TestGenerate(t *testing.T) {
 		}
 		if p.Secret != secret {
 			t.Errorf("%s secret = %v, want %v", k, p.Secret, secret)
+		}
+	}
+	wantServerPath := map[string]bool{"FAKE_CREDENTIALS_FILE": true, "FAKE_KEY_FILE_PATH_HINT": false, "FAKE_API_TOKEN": false}
+	for k, sp := range wantServerPath {
+		p, ok := f.Schema.Properties[k]
+		if !ok {
+			t.Fatalf("missing %s", k)
+		}
+		if p.ServerPath != sp {
+			t.Errorf("%s serverPath = %v, want %v", k, p.ServerPath, sp)
 		}
 	}
 	if f.Aliases[0] != "fake" || f.Schema.AdditionalProperties {
@@ -76,6 +87,38 @@ func TestRealProviderSecretClassification(t *testing.T) {
 		}
 		if p.Secret != c.secret {
 			t.Errorf("%s.%s secret = %v, want %v", c.provider, c.field, p.Secret, c.secret)
+		}
+	}
+}
+
+// TestRealProviderServerPathClassification checks the committed schema
+// files mark a couple of real _FILE/_PATH fields serverPath, and that a
+// same-provider field with neither suffix (including gcloud's own
+// GCE_SERVICE_ACCOUNT, whose *_FILE sibling is the serverPath one) is not.
+func TestRealProviderServerPathClassification(t *testing.T) {
+	cases := []struct {
+		provider, field string
+		serverPath      bool
+	}{
+		{"gcloud", "GCE_SERVICE_ACCOUNT_FILE", true},
+		{"gcloud", "GCE_SERVICE_ACCOUNT", false},
+		{"azuredns", "AZURE_CLIENT_CERTIFICATE_PATH", true},
+	}
+	for _, c := range cases {
+		b, err := os.ReadFile(filepath.Join("..", "..", "internal", "challenge", "schemas", c.provider+".json"))
+		if err != nil {
+			t.Fatalf("%s: %v", c.provider, err)
+		}
+		var f providerFile
+		if err := json.Unmarshal(b, &f); err != nil {
+			t.Fatalf("%s: %v", c.provider, err)
+		}
+		p, ok := f.Schema.Properties[c.field]
+		if !ok {
+			t.Fatalf("%s: missing field %s", c.provider, c.field)
+		}
+		if p.ServerPath != c.serverPath {
+			t.Errorf("%s.%s serverPath = %v, want %v", c.provider, c.field, p.ServerPath, c.serverPath)
 		}
 	}
 }

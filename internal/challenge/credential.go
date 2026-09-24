@@ -21,6 +21,13 @@ var ErrUnknownProvider = errors.New("unknown DNS provider")
 // where there is no stored secret for it to refer to.
 var ErrUnchangedOnCreate = errors.New("value is only valid when updating a stored secret")
 
+// ErrServerPath is returned for a config key that reads a local file path
+// on the server (a schema field marked serverPath: true, named with a
+// _FILE or _PATH suffix): the API has no access to the caller's server
+// filesystem, so these are rejected in favor of the provider's inline
+// field for the same credential.
+var ErrServerPath = errors.New("reads a file path on the server and is not accepted from the API; use the inline field instead")
+
 // SplitConfig validates cfg against the provider schema and splits it into
 // public (stored as jsonb) and secret (stored encrypted) parts. Empty values
 // are dropped.
@@ -37,6 +44,9 @@ func SplitConfig(code string, cfg map[string]string) (public, secret map[string]
 		}
 		if v == "" {
 			continue
+		}
+		if e.serverPath[k] {
+			return nil, nil, fmt.Errorf("%s: %w", k, ErrServerPath)
 		}
 		if v == Unchanged {
 			return nil, nil, fmt.Errorf("%s: %q: %w", k, Unchanged, ErrUnchangedOnCreate)

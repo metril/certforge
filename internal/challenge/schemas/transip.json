@@ -27,6 +27,7 @@
         "title": "TRANSIP_PRIVATE_KEY_PATH",
         "description": "Private key path",
         "secret": false,
+        "serverPath": true,
         "x-group": "credentials"
       },
       "TRANSIP_PROPAGATION_TIMEOUT": {

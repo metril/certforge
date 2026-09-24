@@ -97,6 +97,7 @@
         "title": "AWS_SHARED_CREDENTIALS_FILE",
         "description": "Managed by the AWS client. Shared credentials file.",
         "secret": false,
+        "serverPath": true,
         "x-group": "additional"
       },
       "AWS_TTL": {

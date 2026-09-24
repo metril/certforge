@@ -58,21 +58,26 @@ func (NopSink) Step(string, string, string) {}
 type legoProvider struct {
 	code string
 	p    legochallenge.Provider
+	cfg  map[string]string
 }
 
-// WrapLego adapts a lego DNS provider to ChallengeProvider.
-func WrapLego(code string, p legochallenge.Provider) ChallengeProvider {
-	return legoProvider{code: code, p: p}
+// WrapLego adapts a lego DNS provider to ChallengeProvider. cfg is the
+// credential's decrypted config (secrets included): a live Present/CleanUp
+// failure is scrubbed against it (Scrub) before it reaches the worker's
+// attempt log or last_error, since lego providers commonly echo the failed
+// request (including credential values) in their error text.
+func WrapLego(code string, p legochallenge.Provider, cfg map[string]string) ChallengeProvider {
+	return legoProvider{code: code, p: p, cfg: cfg}
 }
 
 func (l legoProvider) Type() Type { return DNS01 }
 
 func (l legoProvider) Present(_ context.Context, domain, token, keyAuth string) error {
-	return l.p.Present(domain, token, keyAuth)
+	return Scrub(l.p.Present(domain, token, keyAuth), l.cfg)
 }
 
 func (l legoProvider) CleanUp(_ context.Context, domain, token, keyAuth string) error {
-	return l.p.CleanUp(domain, token, keyAuth)
+	return Scrub(l.p.CleanUp(domain, token, keyAuth), l.cfg)
 }
 
 func (l legoProvider) Timeout() (time.Duration, time.Duration) {

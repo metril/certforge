@@ -37,6 +37,7 @@
         "title": "ACME_DNS_STORAGE_PATH",
         "description": "The ACME-DNS JSON account data file. A per-domain account will be registered/persisted to this file and used for TXT updates.",
         "secret": false,
+        "serverPath": true,
         "x-group": "credentials"
       }
     }

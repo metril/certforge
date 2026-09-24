@@ -4,8 +4,12 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	legochallenge "github.com/go-acme/lego/v4/challenge"
 	"github.com/google/uuid"
@@ -14,10 +18,53 @@ import (
 	"github.com/metril/certforge/internal/challenge"
 )
 
-type failingDNS struct{}
+// failingDNS records call order so tests can assert CleanUp always runs,
+// even after Present failed.
+type failingDNS struct {
+	presentCalled bool
+	cleanedUp     bool
+}
 
-func (failingDNS) Present(string, string, string) error { return errors.New("403 from provider API") }
-func (failingDNS) CleanUp(string, string, string) error { return nil }
+func (p *failingDNS) Present(string, string, string) error {
+	p.presentCalled = true
+	return errors.New("403 from provider API")
+}
+
+func (p *failingDNS) CleanUp(string, string, string) error {
+	if !p.presentCalled {
+		panic("CleanUp called before Present")
+	}
+	p.cleanedUp = true
+	return nil
+}
+
+// blockingDNS blocks Present until unblock is closed, then records CleanUp
+// on cleanedUp; used to test the test-endpoint timeout.
+type blockingDNS struct {
+	unblock   chan struct{}
+	cleanedUp chan struct{}
+}
+
+func (p *blockingDNS) Present(string, string, string) error {
+	<-p.unblock
+	return nil
+}
+
+func (p *blockingDNS) CleanUp(string, string, string) error {
+	close(p.cleanedUp)
+	return nil
+}
+
+// leakyDNS echoes the credential value into its Present error, raw and
+// query-escaped, the way a real REST provider's client commonly does when
+// reporting a failed request URL.
+type leakyDNS struct{ secret string }
+
+func (p leakyDNS) Present(string, string, string) error {
+	return fmt.Errorf("PUT https://api.example.test/update?token=%s failed: bad token %q", url.QueryEscape(p.secret), p.secret)
+}
+
+func (leakyDNS) CleanUp(string, string, string) error { return nil }
 
 func TestDNSCredentialResponseHasNoSecrets(t *testing.T) {
 	f := newAPIFixture(t)
@@ -51,6 +98,15 @@ func TestCreateDNSCredentialValidation(t *testing.T) {
 	wantStatus(t, err, http.StatusUnprocessableEntity)
 }
 
+// Fix round 1, item 4: a _FILE/_PATH config value names a path on the
+// server's own filesystem, not something the API accepts from a caller.
+func TestCreateDNSCredentialRejectsServerPathField(t *testing.T) {
+	f := newAPIFixture(t)
+	_, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "gc", ProviderCode: "gcloud", Config: map[string]string{"GCE_SERVICE_ACCOUNT_FILE": "/etc/secrets/gcloud.json"}}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+}
+
 func TestListAndUpdateDNSCredential(t *testing.T) {
 	f := newAPIFixture(t)
 	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
@@ -63,6 +119,9 @@ func TestListAndUpdateDNSCredential(t *testing.T) {
 	if err != nil || len(list.(gen.ListDNSCredentials200JSONResponse)) != 1 {
 		t.Fatalf("list = %+v %v", list, err)
 	}
+	if _, leaked := list.(gen.ListDNSCredentials200JSONResponse)[0].Config["CF_DNS_API_TOKEN"]; leaked {
+		t.Fatal("list leaked a secret value")
+	}
 	// __unchanged__ keeps the stored secret; the new email replaces the old.
 	up, err := f.srv.UpdateDNSCredential(f.as("operator"), gen.UpdateDNSCredentialRequestObject{OrgId: f.org, Id: c.Id,
 		Body: &gen.DNSCredentialUpdate{Name: "cf2", Config: map[string]string{"CF_API_EMAIL": "b@example.test", "CF_DNS_API_TOKEN": challenge.Unchanged}}})
@@ -73,12 +132,18 @@ func TestListAndUpdateDNSCredential(t *testing.T) {
 	if u.Name != "cf2" || u.Config["CF_API_EMAIL"] != "b@example.test" || u.StoredSecrets == nil || len(*u.StoredSecrets) != 1 {
 		t.Fatalf("updated = %+v", u)
 	}
+	if _, leaked := u.Config["CF_DNS_API_TOKEN"]; leaked {
+		t.Fatal("update leaked a secret value")
+	}
 	if n := f.auditCount(t, "dns_credential.update"); n != 1 {
 		t.Fatalf("dns_credential.update audit count = %d", n)
 	}
 	got, err := f.srv.GetDNSCredential(f.as("viewer"), gen.GetDNSCredentialRequestObject{OrgId: f.org, Id: c.Id})
 	if err != nil || got.(gen.GetDNSCredential200JSONResponse).Name != "cf2" {
 		t.Fatalf("get = %+v %v", got, err)
+	}
+	if _, leaked := got.(gen.GetDNSCredential200JSONResponse).Config["CF_DNS_API_TOKEN"]; leaked {
+		t.Fatal("get leaked a secret value")
 	}
 }
 
@@ -119,7 +184,8 @@ func TestTestDNSCredentialReportsProviderError(t *testing.T) {
 	res, _ := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
 		Body: &gen.DNSCredentialInput{Name: "cf", ProviderCode: "cloudflare", Config: map[string]string{"CF_DNS_API_TOKEN": "t"}}})
 	id := res.(gen.CreateDNSCredential201JSONResponse).Id
-	f.srv.d.Issuance.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return failingDNS{}, nil }
+	stub := &failingDNS{}
+	f.srv.d.Issuance.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return stub, nil }
 	out, err := f.srv.TestDNSCredential(f.as("operator"), gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: id,
 		Body: &gen.DNSCredentialTestRequest{Zone: "example.test"}})
 	if err != nil {
@@ -129,9 +195,107 @@ func TestTestDNSCredentialReportsProviderError(t *testing.T) {
 	if r.Ok || r.Error == nil || r.Fqdn != "_acme-challenge._certforge-test.example.test" {
 		t.Fatalf("result = %+v", r)
 	}
+	if !stub.presentCalled || !stub.cleanedUp {
+		t.Fatalf("CleanUp did not run after Present failed: present=%v cleanup=%v", stub.presentCalled, stub.cleanedUp)
+	}
+	if n := f.auditCount(t, "dnscred.test"); n != 1 {
+		t.Fatalf("dnscred.test audit count = %d", n)
+	}
+
 	_, err = f.srv.TestDNSCredential(f.as("viewer"), gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: id,
 		Body: &gen.DNSCredentialTestRequest{Zone: "example.test"}})
 	wantStatus(t, err, http.StatusForbidden)
+}
+
+// Fix round 1, item 1 (Critical): a live provider error must never leak the
+// credential value, raw or query-escaped, back through the test result.
+func TestTestDNSCredentialScrubsSecretFromError(t *testing.T) {
+	f := newAPIFixture(t)
+	secret := "s3cr3t/token value"
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "cf", ProviderCode: "cloudflare", Config: map[string]string{"CF_DNS_API_TOKEN": secret}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.(gen.CreateDNSCredential201JSONResponse).Id
+	f.srv.d.Issuance.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return leakyDNS{secret: secret}, nil }
+
+	out, err := f.srv.TestDNSCredential(f.as("operator"), gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialTestRequest{Zone: "example.test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := out.(gen.TestDNSCredential200JSONResponse)
+	if r.Ok || r.Error == nil {
+		t.Fatalf("result = %+v", r)
+	}
+	if strings.Contains(*r.Error, secret) || strings.Contains(*r.Error, url.QueryEscape(secret)) {
+		t.Fatalf("secret leaked through test error: %s", *r.Error)
+	}
+}
+
+// Fix round 1, item 2 (Important): lego's Present/CleanUp take no context,
+// so the endpoint races the call against a timer instead of relying on
+// cancellation; on timeout it must answer promptly, and the background call
+// must still run CleanUp afterward.
+func TestTestDNSCredentialTimesOutAndStillCleansUp(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "cf", ProviderCode: "cloudflare", Config: map[string]string{"CF_DNS_API_TOKEN": "t"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.(gen.CreateDNSCredential201JSONResponse).Id
+	p := &blockingDNS{unblock: make(chan struct{}), cleanedUp: make(chan struct{})}
+	f.srv.d.Issuance.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return p, nil }
+	f.srv.d.DNSTestTimeout = 30 * time.Millisecond
+
+	start := time.Now()
+	out, err := f.srv.TestDNSCredential(f.as("operator"), gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialTestRequest{Zone: "example.test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("handler did not answer promptly on timeout: %s", elapsed)
+	}
+	r := out.(gen.TestDNSCredential200JSONResponse)
+	if r.Ok || r.Error == nil || *r.Error != "timed out" {
+		t.Fatalf("result = %+v", r)
+	}
+
+	// The background call is still running Present; unblock it and confirm
+	// CleanUp still runs even though the response already went out.
+	close(p.unblock)
+	select {
+	case <-p.cleanedUp:
+	case <-time.After(5 * time.Second):
+		t.Fatal("CleanUp was never called after Present unblocked")
+	}
+}
+
+// Fix round 1, item 2 (Important): the endpoint is gated by a package-level
+// semaphore of 2; a third concurrent call gets 503.
+func TestTestDNSCredentialSemaphoreFull(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "cf", ProviderCode: "cloudflare", Config: map[string]string{"CF_DNS_API_TOKEN": "t"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.(gen.CreateDNSCredential201JSONResponse).Id
+
+	release1, ok1 := acquireDNSTestSlot()
+	release2, ok2 := acquireDNSTestSlot()
+	if !ok1 || !ok2 {
+		t.Fatal("expected to acquire both test slots")
+	}
+	defer release1()
+	defer release2()
+
+	_, err = f.srv.TestDNSCredential(f.as("operator"), gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialTestRequest{Zone: "example.test"}})
+	wantStatus(t, err, http.StatusServiceUnavailable)
 }
 
 func TestGlobalDefaultsRuleValidatesDNSCredential(t *testing.T) {

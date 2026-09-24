@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,6 +39,11 @@ type Deps struct {
 	Setup    *setup.Service
 	Issuance *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
 	Certs    *certstore.Store  // certificate versions (Task 14)
+
+	// DNSTestTimeout bounds POST .../dns-credentials/{id}/test; zero means
+	// the 2-minute default (a test override, since lego's Present/CleanUp
+	// take no context and can't be preempted, only raced against a timer).
+	DNSTestTimeout time.Duration
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.

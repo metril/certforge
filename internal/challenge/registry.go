@@ -31,9 +31,10 @@ type ProviderMeta struct {
 type Factory func(cfg map[string]string) (legochallenge.Provider, error)
 
 type entry struct {
-	meta    ProviderMeta
-	secret  map[string]bool // every schema property; true = secret
-	factory Factory
+	meta       ProviderMeta
+	secret     map[string]bool // every schema property; true = secret
+	serverPath map[string]bool // every schema property; true = reads a local path/file on the server, rejected by SplitConfig
+	factory    Factory
 }
 
 var (
@@ -66,15 +67,17 @@ func init() {
 func Register(m ProviderMeta, f Factory) error {
 	var s struct {
 		Properties map[string]struct {
-			Secret bool `json:"secret"`
+			Secret     bool `json:"secret"`
+			ServerPath bool `json:"serverPath"`
 		} `json:"properties"`
 	}
 	if err := json.Unmarshal(m.Schema, &s); err != nil {
 		return fmt.Errorf("provider %s schema: %w", m.Code, err)
 	}
-	e := &entry{meta: m, secret: map[string]bool{}, factory: f}
+	e := &entry{meta: m, secret: map[string]bool{}, serverPath: map[string]bool{}, factory: f}
 	for k, p := range s.Properties {
 		e.secret[k] = p.Secret
+		e.serverPath[k] = p.ServerPath
 	}
 	regMu.Lock()
 	defer regMu.Unlock()

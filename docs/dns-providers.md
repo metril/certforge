@@ -6,6 +6,8 @@ Fields marked secret are write-only: the API never returns them, and a PUT with 
 
 The lego `exec` provider (runs an arbitrary program on the server) and `manual` provider (reads stdin) are not offered here; use verification rule method `manual-dns` instead.
 
+Fields whose name ends in `_FILE` or `_PATH` (schema `serverPath: true`) name a path on lego's own host filesystem; the API rejects a value for these with a 422 and expects the provider's inline field with the same material instead.
+
 ## Joohoi's ACME-DNS
 
 Code: `acme-dns` (aliases: `acmedns`). Website: <https://github.com/joohoi/acme-dns>

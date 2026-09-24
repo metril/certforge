@@ -55,6 +55,7 @@
         "title": "GCE_SERVICE_ACCOUNT_FILE",
         "description": "Account file path",
         "secret": false,
+        "serverPath": true,
         "x-group": "credentials"
       },
       "GCE_TTL": {

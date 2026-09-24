@@ -34,7 +34,11 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 		}
 	}
 	if e.factory != nil {
-		return e.factory(cfg)
+		p, err := e.factory(cfg)
+		if err != nil {
+			return p, Scrub(err, cfg)
+		}
+		return p, nil
 	}
 	envMu.Lock()
 	defer envMu.Unlock()
@@ -42,7 +46,7 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 	defer restore()
 	p, err := newByName(e.meta.Code)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", e.meta.Code, err)
+		return nil, Scrub(fmt.Errorf("%s: %w", e.meta.Code, err), cfg)
 	}
 	return p, nil
 }

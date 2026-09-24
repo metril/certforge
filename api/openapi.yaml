@@ -384,7 +384,7 @@ paths:
       operationId: testDNSCredential
       tags: [issuers]
       summary: Test a DNS credential
-      description: Needs dnscreds:write. Creates and removes a TXT record at _acme-challenge._certforge-test.<zone> (lego always adds the _acme-challenge label). Provider failures return 200 with ok false.
+      description: Needs dnscreds:write. Creates and removes a TXT record at _acme-challenge._certforge-test.<zone> (lego always adds the _acme-challenge label). Provider failures return 200 with ok false; error text has every config value redacted. Past a bounded timeout the response is ok false with error "timed out", but cleanup keeps running in the background. At most 2 tests run at once server-wide; beyond that this returns 503 with Retry-After.
       requestBody:
         required: true
         content:
@@ -753,8 +753,8 @@ components:
       required: [ok, fqdn, durationMs]
       properties:
         ok: {type: boolean, description: The record was created and removed.}
-        fqdn: {type: string, description: TXT record name used.}
-        error: {type: string, description: Provider error when ok is false.}
+        fqdn: {type: string, description: TXT record name used; empty if the test timed out before it was known.}
+        error: {type: string, description: "Provider error when ok is false, with every config value redacted; \"timed out\" past the bounded timeout (cleanup keeps running in the background)."}
         durationMs: {type: integer, description: Test duration in milliseconds.}
     KeyType:
       type: string

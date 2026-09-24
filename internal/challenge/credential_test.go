@@ -23,6 +23,18 @@ func TestSplitConfig(t *testing.T) {
 	}
 }
 
+// Review Focus (fix round 1, item 4): a _FILE/_PATH config value names a
+// path on the server's own filesystem, not something a caller can supply.
+func TestSplitConfigRejectsServerPath(t *testing.T) {
+	if _, _, err := SplitConfig("gcloud", map[string]string{"GCE_SERVICE_ACCOUNT_FILE": "/etc/secrets/gcloud.json"}); !errors.Is(err, ErrServerPath) {
+		t.Fatalf("server path field: %v", err)
+	}
+	// Empty is dropped like any other empty value, not rejected.
+	if _, _, err := SplitConfig("gcloud", map[string]string{"GCE_SERVICE_ACCOUNT_FILE": ""}); err != nil {
+		t.Fatalf("empty server path field: %v", err)
+	}
+}
+
 // Review Focus: a NUL byte in a config value would corrupt the encrypted
 // blob and any C-string boundary lego or the OS environment relies on.
 func TestSplitConfigRejectsNULByte(t *testing.T) {

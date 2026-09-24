@@ -26,7 +26,9 @@ Errors are `application/problem+json` (RFC 9457) with `title` and `detail`. 401 
 
 ## Write-only secrets
 
-Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never returned. On update, `__unchanged__` keeps the stored value.
+Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never returned. On update, `__unchanged__` keeps the stored value. A field whose schema property is `serverPath: true` (name ends `_FILE` or `_PATH`) is rejected outright with 422: it names a path on lego's own host filesystem, which the API has no way to accept from a caller — use the provider's inline field for the same material.
+
+`POST .../dns-credentials/{id}/test` never echoes a config value: a provider error is redacted (raw and URL-query-escaped) before it reaches the response, the audit log, or (when the credential is later used for real issuance) an attempt's `lastError`. The call is bounded and gated: past a fixed timeout it answers `{ok:false, error:"timed out"}` while cleanup keeps running in the background, and at most 2 tests run at once server-wide — beyond that it returns 503 with `Retry-After`.
 
 ## Endpoints
 

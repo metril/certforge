@@ -53,7 +53,8 @@ func (s *Store) credFromRow(ctx context.Context, r sqlcgen.DnsProviderCredential
 // not by matching substrings of Error().
 func splitErr(err error) error {
 	switch {
-	case errors.Is(err, challenge.ErrUnknownField), errors.Is(err, challenge.ErrUnknownProvider), errors.Is(err, challenge.ErrUnchangedOnCreate):
+	case errors.Is(err, challenge.ErrUnknownField), errors.Is(err, challenge.ErrUnknownProvider),
+		errors.Is(err, challenge.ErrUnchangedOnCreate), errors.Is(err, challenge.ErrServerPath):
 		return &ValidationError{Field: "config", Msg: err.Error()}
 	default:
 		return err
@@ -154,11 +155,15 @@ func (s *Store) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]DNSC
 
 // DeleteDNSCredential deletes an unreferenced credential. The row is FOR
 // UPDATE-locked for the whole count-then-delete (in one transaction), which
-// blocks a concurrent org or global issuance-defaults write (or certificate
-// write) that takes a FOR KEY SHARE lock on the same row before validating
-// and writing (validateDefaultsTx/validateRulesOrgTx, ValidateGlobalDefaultsTx);
-// the reference checks (CountDNSCredentialUsers, globalDefaultsReferenceTx)
-// run after the lock is held, in the same transaction.
+// blocks a concurrent org or global issuance-defaults write that takes a FOR
+// KEY SHARE lock on the same row before validating and writing
+// (validateDefaultsTx/validateRulesOrgTx, ValidateGlobalDefaultsTx); the
+// reference checks (CountDNSCredentialUsers, globalDefaultsReferenceTx) run
+// after the lock is held, in the same transaction. Certificate writes don't
+// take this lock yet (Task 14 wires certificates through it), so a
+// concurrent certificate create/update referencing this credential is not
+// yet protected by it — CountDNSCredentialUsers still counts certificates
+// as users, it just isn't racing a lock against their writer yet.
 func (s *Store) DeleteDNSCredential(ctx context.Context, orgID, id uuid.UUID) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

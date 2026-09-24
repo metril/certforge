@@ -97,7 +97,10 @@ func (s *Service) EnqueueIssue(ctx context.Context, certID uuid.UUID) (bool, err
 // returns the record name used. CleanUp always runs, even when Present
 // failed partway through (some providers create the record before
 // returning an error), so a failed test never leaves the record behind;
-// Present's error takes priority when both fail.
+// Present's error takes priority when both fail. Every error that can
+// carry provider-echoed request detail (BuildDNS, Present, CleanUp) is
+// scrubbed against cfg (challenge.Scrub) before it reaches the caller, so a
+// live provider failure never leaks a write-only secret back out.
 func (s *Service) TestDNSCredential(ctx context.Context, orgID, id uuid.UUID, zone string) (string, error) {
 	zone = dns01.UnFqdn(zone)
 	if zone == "" {
@@ -109,13 +112,13 @@ func (s *Service) TestDNSCredential(ctx context.Context, orgID, id uuid.UUID, zo
 	}
 	p, err := s.BuildDNS(cred.ProviderCode, cfg)
 	if err != nil {
-		return "", err
+		return "", challenge.Scrub(err, cfg)
 	}
 	domain := "_certforge-test." + zone
 	keyAuth := "certforge-test-" + time.Now().UTC().Format("20060102T150405")
 	fqdn := dns01.UnFqdn(dns01.GetChallengeInfo(domain, keyAuth).EffectiveFQDN)
-	presentErr := p.Present(domain, "certforge-test", keyAuth)
-	cleanErr := p.CleanUp(domain, "certforge-test", keyAuth)
+	presentErr := challenge.Scrub(p.Present(domain, "certforge-test", keyAuth), cfg)
+	cleanErr := challenge.Scrub(p.CleanUp(domain, "certforge-test", keyAuth), cfg)
 	if presentErr != nil {
 		return fqdn, fmt.Errorf("present %s: %w", fqdn, presentErr)
 	}

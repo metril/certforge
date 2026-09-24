@@ -34,6 +34,7 @@
         "title": "OCI_PRIVKEY_FILE",
         "description": "Private key file",
         "secret": false,
+        "serverPath": true,
         "x-group": "credentials"
       },
       "OCI_PRIVKEY_PASS": {

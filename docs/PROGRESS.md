@@ -113,3 +113,4 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1B: lego v4 is not context-aware on its own; the ACME signer wraps its HTTP transport to check the issuance context before every request and attach it to each one, so cancellation now aborts an in-flight CA call (not just manual-dns waits). lego's internal nonce-retry backoff sleeps (bounded at 20s, only on nonce invalidation) are not ctx-aware.
 - 1B: lego's log output is process-global and is not copied into attempt logs; attempts log CertForge's own steps and errors.
 - 1B: no `cert.issued` event is emitted yet; notifiers, deploy targets, Vault sync and agent nudges (Phases 3, 5, 6) add it. "Notify on 3rd failure" arrives with notifiers (Phase 6).
+- OpenAPI component schemas use DNSCredential, DNSCredentialInput, DNSCredentialTestResult (DNS casing); plan 1C's api/types.ts must use these names.

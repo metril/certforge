@@ -246,7 +246,7 @@ func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Eff
 				if err != nil {
 					return nil, nil, fmt.Errorf("rule %q: credential %s: %w", sp.Match, cred.Name, err)
 				}
-				b = built{p: challenge.WrapLego(cred.ProviderCode, lp), name: cred.Name}
+				b = built{p: challenge.WrapLego(cred.ProviderCode, lp, cfg), name: cred.Name}
 				cache[id] = b
 			}
 			p, label = b.p, sp.Match+" → "+b.name

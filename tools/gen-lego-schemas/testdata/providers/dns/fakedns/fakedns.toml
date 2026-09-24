@@ -11,3 +11,4 @@ Aliases = ["fake"]
   [Configuration.Additional]
     FAKE_TTL = "TTL (Default: 120)"
     FAKE_KEY_FILE_PATH_HINT = "Secret: matches the key regex and isn't on the non-secret suffix or override lists"
+    FAKE_CREDENTIALS_FILE = "Path to a local credentials file"

@@ -27,6 +27,7 @@
         "title": "AZURE_CLIENT_CERTIFICATE_PATH",
         "description": "Client certificate path",
         "secret": false,
+        "serverPath": true,
         "x-group": "credentials"
       },
       "AZURE_CLIENT_ID": {
