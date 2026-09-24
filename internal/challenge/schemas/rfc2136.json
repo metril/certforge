@@ -61,7 +61,7 @@
         "type": "string",
         "title": "RFC2136_TSIG_KEY",
         "description": "Name of the secret key as defined in DNS server configuration. To disable TSIG authentication, leave the `RFC2136_TSIG_KEY` variable unset.",
-        "secret": true,
+        "secret": false,
         "x-group": "credentials"
       },
       "RFC2136_TSIG_SECRET": {

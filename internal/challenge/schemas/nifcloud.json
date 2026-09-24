@@ -12,7 +12,7 @@
         "type": "string",
         "title": "NIFCLOUD_ACCESS_KEY_ID",
         "description": "Access key",
-        "secret": true,
+        "secret": false,
         "x-group": "credentials"
       },
       "NIFCLOUD_HTTP_TIMEOUT": {

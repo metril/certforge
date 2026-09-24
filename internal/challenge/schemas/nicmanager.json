@@ -33,7 +33,7 @@
         "type": "string",
         "title": "NICMANAGER_API_OTP",
         "description": "TOTP Secret (optional)",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       },
       "NICMANAGER_API_PASSWORD": {

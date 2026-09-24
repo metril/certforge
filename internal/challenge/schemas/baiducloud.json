@@ -12,7 +12,7 @@
         "type": "string",
         "title": "BAIDUCLOUD_ACCESS_KEY_ID",
         "description": "Access key",
-        "secret": true,
+        "secret": false,
         "x-group": "credentials"
       },
       "BAIDUCLOUD_POLLING_INTERVAL": {

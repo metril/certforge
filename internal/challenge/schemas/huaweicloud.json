@@ -12,7 +12,7 @@
         "type": "string",
         "title": "HUAWEICLOUD_ACCESS_KEY_ID",
         "description": "Access key ID",
-        "secret": true,
+        "secret": false,
         "x-group": "credentials"
       },
       "HUAWEICLOUD_HTTP_TIMEOUT": {

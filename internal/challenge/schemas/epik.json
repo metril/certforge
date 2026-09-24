@@ -33,7 +33,7 @@
         "type": "string",
         "title": "EPIK_SIGNATURE",
         "description": "Epik API signature (https://registrar.epik.com/account/api-settings/)",
-        "secret": false,
+        "secret": true,
         "x-group": "credentials"
       },
       "EPIK_TTL": {

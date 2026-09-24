@@ -54,7 +54,7 @@
         "type": "string",
         "title": "TENCENTCLOUD_SESSION_TOKEN",
         "description": "Access Key token",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       },
       "TENCENTCLOUD_TTL": {

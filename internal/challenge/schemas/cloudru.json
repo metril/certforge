@@ -19,7 +19,7 @@
         "type": "string",
         "title": "CLOUDRU_KEY_ID",
         "description": "Key ID (login)",
-        "secret": true,
+        "secret": false,
         "x-group": "credentials"
       },
       "CLOUDRU_POLLING_INTERVAL": {

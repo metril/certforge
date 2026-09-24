@@ -135,7 +135,6 @@ Code: `azure`. Website: <https://azure.microsoft.com/services/dns/>
 | `AZURE_RESOURCE_GROUP` | credentials | no | Resource group |
 | `AZURE_SUBSCRIPTION_ID` | credentials | no | Subscription ID |
 | `AZURE_TENANT_ID` | credentials | no | Tenant ID |
-| `instance metadata service` | credentials | no | If the credentials are **not** set via the environment, then it will attempt to get a bearer token via the [instance metadata service](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/instance-metadata-service). |
 | `AZURE_METADATA_ENDPOINT` | additional | no | Metadata Service endpoint URL |
 | `AZURE_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `AZURE_PRIVATE_ZONE` | additional | no | Set to true to use Azure Private DNS Zones and not public |
@@ -171,7 +170,7 @@ Code: `baiducloud`. Website: <https://cloud.baidu.com>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `BAIDUCLOUD_ACCESS_KEY_ID` | credentials | yes | Access key |
+| `BAIDUCLOUD_ACCESS_KEY_ID` | credentials | no | Access key |
 | `BAIDUCLOUD_SECRET_ACCESS_KEY` | credentials | yes | Secret access key |
 | `BAIDUCLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `BAIDUCLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
@@ -320,7 +319,7 @@ Code: `cloudru`. Website: <https://cloud.ru>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `CLOUDRU_KEY_ID` | credentials | yes | Key ID (login) |
+| `CLOUDRU_KEY_ID` | credentials | no | Key ID (login) |
 | `CLOUDRU_SECRET` | credentials | yes | Key Secret |
 | `CLOUDRU_SERVICE_INSTANCE_ID` | credentials | no | Service Instance ID (parentId) |
 | `CLOUDRU_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
@@ -495,7 +494,7 @@ Code: `dnshomede`. Website: <https://www.dnshome.de>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `DNSHOMEDE_CREDENTIALS` | credentials | no | Comma-separated list of domain:password credential pairs |
+| `DNSHOMEDE_CREDENTIALS` | credentials | yes | Comma-separated list of domain:password credential pairs |
 | `DNSHOMEDE_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `DNSHOMEDE_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 1200) |
 | `DNSHOMEDE_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 2) |
@@ -680,7 +679,7 @@ Code: `epik`. Website: <https://www.epik.com/>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `EPIK_SIGNATURE` | credentials | no | Epik API signature (https://registrar.epik.com/account/api-settings/) |
+| `EPIK_SIGNATURE` | credentials | yes | Epik API signature (https://registrar.epik.com/account/api-settings/) |
 | `EPIK_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `EPIK_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `EPIK_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
@@ -758,9 +757,8 @@ Code: `gcloud`. Website: <https://cloud.google.com>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `Application Default Credentials` | credentials | no | [Documentation](https://cloud.google.com/docs/authentication/production#providing_credentials_to_your_application) |
 | `GCE_PROJECT` | credentials | no | Project name (by default, the project name is auto-detected by using the metadata service) |
-| `GCE_SERVICE_ACCOUNT` | credentials | no | Account |
+| `GCE_SERVICE_ACCOUNT` | credentials | yes | Account |
 | `GCE_SERVICE_ACCOUNT_FILE` | credentials | no | Account file path |
 | `GCE_ALLOW_PRIVATE_ZONE` | additional | no | Allows requested domain to be in private DNS zone, works only with a private ACME server (by default: false) |
 | `GCE_IMPERSONATE_SERVICE_ACCOUNT` | additional | no | Service account email to impersonate |
@@ -878,7 +876,7 @@ Code: `httpreq`. Website: </lego/dns/httpreq/>
 | `HTTPREQ_ENDPOINT` | credentials | no | The URL of the server |
 | `HTTPREQ_MODE` | credentials | no | `RAW`, none |
 | `HTTPREQ_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
-| `HTTPREQ_PASSWORD` | additional | no | Basic authentication password |
+| `HTTPREQ_PASSWORD` | additional | yes | Basic authentication password |
 | `HTTPREQ_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `HTTPREQ_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `HTTPREQ_USERNAME` | additional | no | Basic authentication username |
@@ -889,7 +887,7 @@ Code: `huaweicloud`. Website: <https://huaweicloud.com>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `HUAWEICLOUD_ACCESS_KEY_ID` | credentials | yes | Access key ID |
+| `HUAWEICLOUD_ACCESS_KEY_ID` | credentials | no | Access key ID |
 | `HUAWEICLOUD_REGION` | credentials | no | Region |
 | `HUAWEICLOUD_SECRET_ACCESS_KEY` | credentials | yes | Access Key secret |
 | `HUAWEICLOUD_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
@@ -1018,7 +1016,7 @@ Code: `inwx`. Website: <https://www.inwx.de/en>
 | `INWX_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `INWX_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 360) |
 | `INWX_SANDBOX` | additional | no | Activate the sandbox (boolean) |
-| `INWX_SHARED_SECRET` | additional | no | shared secret related to 2FA |
+| `INWX_SHARED_SECRET` | additional | yes | shared secret related to 2FA |
 | `INWX_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
 
 ## Ionos
@@ -1091,7 +1089,7 @@ Code: `lightsail`. Website: <https://aws.amazon.com/lightsail/>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `AWS_ACCESS_KEY_ID` | credentials | yes | Managed by the AWS client. Access key ID (`AWS_ACCESS_KEY_ID_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead) |
+| `AWS_ACCESS_KEY_ID` | credentials | no | Managed by the AWS client. Access key ID (`AWS_ACCESS_KEY_ID_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead) |
 | `AWS_SECRET_ACCESS_KEY` | credentials | yes | Managed by the AWS client. Secret access key (`AWS_SECRET_ACCESS_KEY_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead) |
 | `DNS_ZONE` | credentials | no | Domain name of the DNS zone |
 | `AWS_SHARED_CREDENTIALS_FILE` | additional | no | Managed by the AWS client. Shared credentials file. |
@@ -1367,7 +1365,7 @@ Code: `nicmanager`. Website: <https://www.nicmanager.com/>
 | `NICMANAGER_API_PASSWORD` | credentials | yes | Password, always required |
 | `NICMANAGER_API_USERNAME` | credentials | no | Username, used for Username-based login |
 | `NICMANAGER_API_MODE` | additional | no | mode: 'anycast' or 'zones' (for FreeDNS) (default: 'anycast') |
-| `NICMANAGER_API_OTP` | additional | no | TOTP Secret (optional) |
+| `NICMANAGER_API_OTP` | additional | yes | TOTP Secret (optional) |
 | `NICMANAGER_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 10) |
 | `NICMANAGER_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `NICMANAGER_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 300) |
@@ -1394,7 +1392,7 @@ Code: `nifcloud`. Website: <https://www.nifcloud.com/>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `NIFCLOUD_ACCESS_KEY_ID` | credentials | yes | Access key |
+| `NIFCLOUD_ACCESS_KEY_ID` | credentials | no | Access key |
 | `NIFCLOUD_SECRET_ACCESS_KEY` | credentials | yes | Secret access key |
 | `NIFCLOUD_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `NIFCLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
@@ -1444,9 +1442,9 @@ Code: `oraclecloud`. Website: <https://cloud.oracle.com/home>
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `OCI_COMPARTMENT_OCID` | credentials | no | Compartment OCID |
-| `OCI_PRIVKEY_FILE` | credentials | yes | Private key file |
+| `OCI_PRIVKEY_FILE` | credentials | no | Private key file |
 | `OCI_PRIVKEY_PASS` | credentials | yes | Private key password |
-| `OCI_PUBKEY_FINGERPRINT` | credentials | yes | Public key fingerprint |
+| `OCI_PUBKEY_FINGERPRINT` | credentials | no | Public key fingerprint |
 | `OCI_REGION` | credentials | no | Region |
 | `OCI_TENANCY_OCID` | credentials | no | Tenancy OCID |
 | `OCI_USER_OCID` | credentials | no | User OCID |
@@ -1593,7 +1591,7 @@ Code: `regru`. Website: <https://www.reg.ru/>
 | `REGRU_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `REGRU_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `REGRU_TLS_CERT` | additional | no | authentication certificate |
-| `REGRU_TLS_KEY` | additional | no | authentication private key |
+| `REGRU_TLS_KEY` | additional | yes | authentication private key |
 | `REGRU_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
 
 ## RFC2136
@@ -1604,7 +1602,7 @@ Code: `rfc2136`. Website: <https://www.rfc-editor.org/rfc/rfc2136.html>
 |---|---|---|---|
 | `RFC2136_NAMESERVER` | credentials | no | Network address in the form "host" or "host:port" |
 | `RFC2136_TSIG_ALGORITHM` | credentials | no | TSIG algorithm. See [miekg/dns#tsig.go](https://github.com/miekg/dns/blob/master/tsig.go) for supported values. To disable TSIG authentication, leave the `RFC2136_TSIG_KEY` or `RFC2136_TSIG_SECRET` variables unset. |
-| `RFC2136_TSIG_KEY` | credentials | yes | Name of the secret key as defined in DNS server configuration. To disable TSIG authentication, leave the `RFC2136_TSIG_KEY` variable unset. |
+| `RFC2136_TSIG_KEY` | credentials | no | Name of the secret key as defined in DNS server configuration. To disable TSIG authentication, leave the `RFC2136_TSIG_KEY` variable unset. |
 | `RFC2136_TSIG_SECRET` | credentials | yes | Secret key payload. To disable TSIG authentication, leave the `RFC2136_TSIG_SECRET` variable unset. |
 | `RFC2136_DNS_TIMEOUT` | additional | no | API request timeout in seconds (Default: 10) |
 | `RFC2136_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
@@ -1631,7 +1629,7 @@ Code: `route53`. Website: <https://aws.amazon.com/route53/>
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `AWS_ACCESS_KEY_ID` | credentials | yes | Managed by the AWS client. Access key ID (`AWS_ACCESS_KEY_ID_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead) |
+| `AWS_ACCESS_KEY_ID` | credentials | no | Managed by the AWS client. Access key ID (`AWS_ACCESS_KEY_ID_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead) |
 | `AWS_ASSUME_ROLE_ARN` | credentials | no | Managed by the AWS Role ARN (`AWS_ASSUME_ROLE_ARN_FILE` is not supported) |
 | `AWS_EXTERNAL_ID` | credentials | no | Managed by STS AssumeRole API operation (`AWS_EXTERNAL_ID_FILE` is not supported) |
 | `AWS_HOSTED_ZONE_ID` | credentials | no | Override the hosted zone ID. |
@@ -1832,7 +1830,7 @@ Code: `tencentcloud`. Website: <https://cloud.tencent.com/product/cns>
 | `TENCENTCLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `TENCENTCLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `TENCENTCLOUD_REGION` | additional | no | Region |
-| `TENCENTCLOUD_SESSION_TOKEN` | additional | no | Access Key token |
+| `TENCENTCLOUD_SESSION_TOKEN` | additional | yes | Access Key token |
 | `TENCENTCLOUD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 600) |
 
 ## Timeweb Cloud
@@ -1853,7 +1851,7 @@ Code: `transip`. Website: <https://www.transip.nl/>
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `TRANSIP_ACCOUNT_NAME` | credentials | no | Account name |
-| `TRANSIP_PRIVATE_KEY_PATH` | credentials | yes | Private key path |
+| `TRANSIP_PRIVATE_KEY_PATH` | credentials | no | Private key path |
 | `TRANSIP_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
 | `TRANSIP_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 600) |
 | `TRANSIP_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 10) |

@@ -54,28 +54,111 @@ type providerFile struct {
 	Schema  schema   `json:"schema"`
 }
 
-// secretName marks credential fields as write-only.
+// secretName marks fields as write-only based on their name. It runs over
+// both the Credentials and Additional groups: lego's "Additional" section is
+// a mix of tuning knobs and secondary credentials (session tokens, shared
+// secrets, TOTP seeds), so grouping alone is not a safe secret signal.
 var secretName = regexp.MustCompile(`(?i)(secret|token|key|password|pass)`)
+
+// nonSecretSuffix marks fields that name-match secretName but hold an
+// identifier, file path, or other non-sensitive value, not the secret
+// itself (an access key *id*, a path to a key file, ...).
+var nonSecretSuffix = regexp.MustCompile(`(?:_KEY_ID|_PATH|_FILE)$`)
+
+// forceSecret overrides the name-based rules for fields that are secrets in
+// practice but whose names don't match secretName.
+var forceSecret = map[string]bool{
+	"GCE_SERVICE_ACCOUNT":   true, // gcloud: JSON service-account key material
+	"EPIK_SIGNATURE":        true, // epik: API signature
+	"DNSHOMEDE_CREDENTIALS": true, // dnshomede: domain:password pairs
+	"NICMANAGER_API_OTP":    true, // nicmanager: TOTP secret
+}
+
+// forceNonSecret overrides secretName/nonSecretSuffix for fields that
+// name-match "secret" but hold public or non-sensitive material.
+var forceNonSecret = map[string]bool{
+	"OCI_PUBKEY_FINGERPRINT":     true, // oraclecloud: fingerprint of a public key
+	"RFC2136_TSIG_KEY":           true, // rfc2136: TSIG key *name*, not the secret payload (RFC2136_TSIG_SECRET)
+	"AKAMAI_ACCOUNT_SWITCH_KEY":  true, // edgedns: target account id
+	"SCW_ACCESS_KEY":             true, // scaleway: access key id, paired with the secret SCW_SECRET_KEY
+	"HYPERONE_PASSPORT_LOCATION": true, // hyperone: local file path
+}
+
+// isSecret decides whether field k is write-only, in order: explicit
+// force-secret, explicit force-non-secret or non-secret suffix, then the
+// name regex.
+func isSecret(k string) bool {
+	if forceSecret[k] {
+		return true
+	}
+	if forceNonSecret[k] || nonSecretSuffix.MatchString(k) {
+		return false
+	}
+	return secretName.MatchString(k)
+}
+
+// validKey rejects lego TOML entries whose "key" is prose, not an
+// environment variable name (for example gcloud's 'Application Default
+// Credentials' or azure's 'instance metadata service' documentation rows).
+var validKey = regexp.MustCompile(`^[A-Z0-9_]+$`)
 
 // skipped providers: "manual" reads stdin, "exec" runs an arbitrary program
 // on the server; neither is safe to expose as a stored credential.
 var skipped = map[string]bool{"manual": true, "exec": true}
 
+// legoVersion is the pinned lego version this generator's overrides
+// (forceSecret, forceNonSecret) were reviewed against. Bumping lego's
+// go.mod pin requires bumping this constant and reviewing the regenerated
+// schema diff for new or renamed fields the overrides above should cover.
+const legoVersion = "v4.24.0"
+
 func main() {
-	legoDir := flag.String("lego-dir", "", "lego module dir (default: go list -m)")
+	legoDir := flag.String("lego-dir", "", "lego module dir (default: resolved via go mod download)")
 	out := flag.String("out", "schemas", "output directory for <code>.json")
 	docs := flag.String("docs", "", "markdown output path (optional)")
 	flag.Parse()
 	if *legoDir == "" {
-		b, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/go-acme/lego/v4").Output()
+		dir, err := resolveLegoDir()
 		if err != nil {
-			log.Fatalf("locate lego module: %v", err)
+			log.Fatal(err)
 		}
-		*legoDir = strings.TrimSpace(string(b))
+		*legoDir = dir
 	}
 	if err := generate(*legoDir, *out, *docs); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// modDownload is the subset of `go mod download -json`'s output this tool
+// needs.
+type modDownload struct {
+	Version string
+	Dir     string
+}
+
+// resolveLegoDir locates (and, on a cold module cache, downloads) the lego
+// module directory. `go list -m -f '{{.Dir}}'` prints an empty Dir when the
+// module isn't already extracted in the cache; `go mod download -json`
+// downloads it first, so Dir is always populated on success.
+func resolveLegoDir() (string, error) {
+	b, err := exec.Command("go", "mod", "download", "-json", "github.com/go-acme/lego/v4").Output()
+	if err != nil {
+		return "", fmt.Errorf("go mod download github.com/go-acme/lego/v4: %w", err)
+	}
+	var m modDownload
+	if err := json.Unmarshal(b, &m); err != nil {
+		return "", fmt.Errorf("parse go mod download output: %w", err)
+	}
+	if m.Dir == "" {
+		return "", fmt.Errorf("go mod download github.com/go-acme/lego/v4: resolved an empty module directory")
+	}
+	if _, err := os.Stat(filepath.Join(m.Dir, "providers", "dns")); err != nil {
+		return "", fmt.Errorf("%s has no providers/dns directory: %w", m.Dir, err)
+	}
+	if m.Version != legoVersion {
+		return "", fmt.Errorf("resolved lego %s, want %s: bump legoVersion in tools/gen-lego-schemas/main.go and review the regenerated schema diff", m.Version, legoVersion)
+	}
+	return m.Dir, nil
 }
 
 func generate(legoDir, outDir, docsPath string) error {
@@ -130,11 +213,19 @@ func generate(legoDir, outDir, docsPath string) error {
 func convert(t providerTOML) providerFile {
 	props := map[string]property{}
 	for k, d := range t.Configuration.Credentials {
-		props[k] = property{Type: "string", Title: k, Description: d, Secret: secretName.MatchString(k), Group: "credentials"}
+		if !validKey.MatchString(k) {
+			continue
+		}
+		props[k] = property{Type: "string", Title: k, Description: d, Secret: isSecret(k), Group: "credentials"}
 	}
-	// Additional (tuning) fields are never secret: lego marks them optional.
+	// Additional fields are mostly tuning knobs, but a few (session tokens,
+	// shared secrets, TOTP seeds) are secondary credentials, so they run
+	// through the same classifier as Credentials.
 	for k, d := range t.Configuration.Additional {
-		props[k] = property{Type: "string", Title: k, Description: d, Group: "additional"}
+		if !validKey.MatchString(k) {
+			continue
+		}
+		props[k] = property{Type: "string", Title: k, Description: d, Secret: isSecret(k), Group: "additional"}
 	}
 	return providerFile{
 		Code: t.Code, Name: t.Name, URL: t.URL, Aliases: t.Aliases,

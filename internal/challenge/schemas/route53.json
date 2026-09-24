@@ -12,7 +12,7 @@
         "type": "string",
         "title": "AWS_ACCESS_KEY_ID",
         "description": "Managed by the AWS client. Access key ID (`AWS_ACCESS_KEY_ID_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead)",
-        "secret": true,
+        "secret": false,
         "x-group": "credentials"
       },
       "AWS_ASSUME_ROLE_ARN": {

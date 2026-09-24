@@ -47,7 +47,7 @@
         "type": "string",
         "title": "REGRU_TLS_KEY",
         "description": "authentication private key",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       },
       "REGRU_TTL": {

@@ -8,13 +8,6 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "Application Default Credentials": {
-        "type": "string",
-        "title": "Application Default Credentials",
-        "description": "[Documentation](https://cloud.google.com/docs/authentication/production#providing_credentials_to_your_application)",
-        "secret": false,
-        "x-group": "credentials"
-      },
       "GCE_ALLOW_PRIVATE_ZONE": {
         "type": "string",
         "title": "GCE_ALLOW_PRIVATE_ZONE",
@@ -54,7 +47,7 @@
         "type": "string",
         "title": "GCE_SERVICE_ACCOUNT",
         "description": "Account",
-        "secret": false,
+        "secret": true,
         "x-group": "credentials"
       },
       "GCE_SERVICE_ACCOUNT_FILE": {

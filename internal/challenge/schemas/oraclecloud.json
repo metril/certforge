@@ -33,7 +33,7 @@
         "type": "string",
         "title": "OCI_PRIVKEY_FILE",
         "description": "Private key file",
-        "secret": true,
+        "secret": false,
         "x-group": "credentials"
       },
       "OCI_PRIVKEY_PASS": {
@@ -54,7 +54,7 @@
         "type": "string",
         "title": "OCI_PUBKEY_FINGERPRINT",
         "description": "Public key fingerprint",
-        "secret": true,
+        "secret": false,
         "x-group": "credentials"
       },
       "OCI_REGION": {

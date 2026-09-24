@@ -10,4 +10,4 @@ Aliases = ["fake"]
     FAKE_PASSWORD = "Account password"
   [Configuration.Additional]
     FAKE_TTL = "TTL (Default: 120)"
-    FAKE_KEY_FILE_PATH_HINT = "Not a secret even though it says key"
+    FAKE_KEY_FILE_PATH_HINT = "Secret: matches the key regex and isn't on the non-secret suffix or override lists"

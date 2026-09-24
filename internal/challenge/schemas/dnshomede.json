@@ -12,7 +12,7 @@
         "type": "string",
         "title": "DNSHOMEDE_CREDENTIALS",
         "description": "Comma-separated list of domain:password credential pairs",
-        "secret": false,
+        "secret": true,
         "x-group": "credentials"
       },
       "DNSHOMEDE_HTTP_TIMEOUT": {

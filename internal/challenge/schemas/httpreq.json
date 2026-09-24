@@ -33,7 +33,7 @@
         "type": "string",
         "title": "HTTPREQ_PASSWORD",
         "description": "Basic authentication password",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       },
       "HTTPREQ_POLLING_INTERVAL": {

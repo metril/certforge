@@ -40,7 +40,7 @@
         "type": "string",
         "title": "INWX_SHARED_SECRET",
         "description": "shared secret related to 2FA",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       },
       "INWX_TTL": {
