@@ -18,7 +18,9 @@ export function useSaveCa(orgId: string) {
       id
         ? call(api.PUT('/orgs/{orgId}/cas/{id}', { params: { path: { orgId, id } }, body }))
         : call(api.POST('/orgs/{orgId}/cas', { params: { path: { orgId } }, body })),
-    meta: { success: 'CA saved' },
+    // Fix round 1 (#6): 422/409 already show inline in CaSheet; a toast too
+    // would be redundant (and, for a 422 mapped to a field, out of context).
+    meta: { silent: true, success: 'CA saved' },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cas', orgId] }),
   });
 }

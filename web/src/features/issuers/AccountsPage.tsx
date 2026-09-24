@@ -9,6 +9,7 @@ import { Combobox } from '@/components/Combobox';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { CopyField } from '@/components/CopyField';
 import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { ToneChip } from '@/components/StatusChip';
@@ -17,6 +18,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useOrg } from '@/lib/org';
+import { cn } from '@/lib/utils';
+
+// Fix round 1 (#3/#4): sticky first column; see CasPage.tsx.
+const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 function RegisterDialog({ orgId, open, onOpenChange }: { orgId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { data: cas = [] } = useQuery(casQuery(orgId));
@@ -78,7 +83,7 @@ function RegisterDialog({ orgId, open, onOpenChange }: { orgId: string; open: bo
 
 export function AccountsPage() {
   const org = useOrg();
-  const { data: accounts = [], isPending } = useQuery(accountsQuery(org.id));
+  const { data: accounts = [], isPending, isError, error, refetch } = useQuery(accountsQuery(org.id));
   const { data: cas = [] } = useQuery(casQuery(org.id));
   const del = useDeleteAccount(org.id);
   const [registering, setRegistering] = useState(false);
@@ -87,7 +92,11 @@ export function AccountsPage() {
 
   return (
     <section className="grid gap-4" aria-label="ACME accounts">
-      {isPending ? null : accounts.length === 0 ? (
+      {isPending ? (
+        <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
+      ) : isError ? (
+        <ErrorState message={`Couldn't load ACME accounts. ${errorMessage(error)}`} onRetry={() => void refetch()} />
+      ) : accounts.length === 0 ? (
         <EmptyState message="No ACME accounts yet.">
           <Button onClick={() => setRegistering(true)}>Register account</Button>
         </EmptyState>
@@ -99,12 +108,12 @@ export function AccountsPage() {
               Register account
             </Button>
           </div>
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>CA</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>
+                <TableHead className={cn('w-32', stickyCol)}>CA</TableHead>
+                <TableHead className="w-48">Email</TableHead>
+                <TableHead className="w-24">
                   <span className="inline-flex items-center gap-1">
                     Status <HelpTip id="account.status" />
                   </span>
@@ -117,20 +126,20 @@ export function AccountsPage() {
             </TableHeader>
             <TableBody>
               {accounts.map((a) => (
-                <TableRow key={a.id} className="h-9">
-                  <TableCell>{caName(a.caId)}</TableCell>
-                  <TableCell className="font-mono text-xs">{a.email}</TableCell>
-                  <TableCell>
+                <TableRow key={a.id}>
+                  <TableCell className={cn('truncate py-1', stickyCol)}>{caName(a.caId)}</TableCell>
+                  <TableCell className="min-w-0 truncate py-1 font-mono text-xs">{a.email}</TableCell>
+                  <TableCell className="py-1">
                     {a.status === 'valid' ? (
                       <ToneChip tone="valid" icon={CircleCheck} label="Valid" />
                     ) : (
                       <ToneChip tone="neutral" icon={Ban} label={a.status.charAt(0).toUpperCase() + a.status.slice(1)} />
                     )}
                   </TableCell>
-                  <TableCell className="max-w-72">{a.registrationUri && <CopyField value={a.registrationUri} label="registration URI" />}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" aria-label={`Delete ${a.email}`} onClick={() => setDeleting(a)}>
-                      <Trash2 className="size-4" aria-hidden />
+                  <TableCell className="min-w-0 py-1">{a.registrationUri && <CopyField value={a.registrationUri} label="registration URI" className="min-w-0" />}</TableCell>
+                  <TableCell className="py-1 text-right">
+                    <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Delete ${a.email}`} onClick={() => setDeleting(a)}>
+                      <Trash2 className="size-3.5" aria-hidden />
                     </Button>
                   </TableCell>
                 </TableRow>

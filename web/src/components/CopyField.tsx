@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 type Status = 'idle' | 'copied' | 'failed';
@@ -14,9 +15,20 @@ export function CopyField({ value, label, display, className }: { value: string;
   }, [status]);
   return (
     <span className={cn('inline-flex min-w-0 items-center gap-1', className)}>
-      <code className="truncate font-mono text-xs" title={value}>
-        {display ?? value}
-      </code>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* Fix round 1 (#2): `truncate` alone doesn't shrink a flex item
+              below its content's intrinsic width — it also needs `min-w-0`
+              on the element itself, not just the row it sits in. The full
+              value (not just the visible/truncated text) shows on hover. */}
+          <code tabIndex={0} className="min-w-0 truncate font-mono text-xs">
+            {display ?? value}
+          </code>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-80 break-all font-mono text-xs">
+          {value}
+        </TooltipContent>
+      </Tooltip>
       <Button
         type="button"
         variant="ghost"

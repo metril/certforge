@@ -60,15 +60,17 @@ export function authHandlers(state: { authed: boolean; needsSetup?: boolean }) {
   ];
 }
 
-// Adaptation (preflight A20): the real GET /meta/ca-presets returns 7 entries
-// including `custom` (directoryUrl: ''); appended after the three presets the
-// brief specified so the existing index-based test references (presets[1],
-// presets[2]) still point at letsencrypt-staging and zerossl.
+// Adaptation (preflight A20; fix round 1 item 8): the real GET /meta/ca-presets
+// returns 7 entries including `custom` (directoryUrl: ''), with names exactly
+// as internal/signer/acme/presets.go defines them ("Let's Encrypt (staging)",
+// "Custom directory") — appended after the three presets the brief specified
+// so the existing index-based test references (presets[1], presets[2]) still
+// point at letsencrypt-staging and zerossl.
 export const presets: CAPreset[] = [
   { preset: 'letsencrypt', name: "Let's Encrypt", directoryUrl: 'https://acme-v02.api.letsencrypt.org/directory', requiresEab: false },
-  { preset: 'letsencrypt-staging', name: "Let's Encrypt staging", directoryUrl: 'https://acme-staging-v02.api.letsencrypt.org/directory', requiresEab: false },
+  { preset: 'letsencrypt-staging', name: "Let's Encrypt (staging)", directoryUrl: 'https://acme-staging-v02.api.letsencrypt.org/directory', requiresEab: false },
   { preset: 'zerossl', name: 'ZeroSSL', directoryUrl: 'https://acme.zerossl.com/v2/DV90', requiresEab: true },
-  { preset: 'custom', name: 'Custom', directoryUrl: '', requiresEab: false },
+  { preset: 'custom', name: 'Custom directory', directoryUrl: '', requiresEab: false },
 ];
 export const ca: CA = { id: 'ca-1', name: "Let's Encrypt", preset: 'letsencrypt', directoryUrl: presets[0]!.directoryUrl, resolvers: [] };
 export const account: AcmeAccount = { id: 'acc-1', caId: 'ca-1', email: 'ops@example.com', status: 'valid', registrationUri: 'https://acme-v02.api.letsencrypt.org/acme/acct/123456' };

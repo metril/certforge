@@ -29,6 +29,25 @@ it('lists accounts and registers a new one', async () => {
   await waitFor(() => expect(body).toEqual({ caId: 'ca-1', email: 'new@example.com' }));
 });
 
+// Fix round 1 (#2, Important): a long registration URI overflowed its cell
+// and covered the row's Delete button; `table-fixed` plus `min-w-0`/`truncate`
+// on the cell and its code element keep it inside the column.
+it('truncates a long registration URI within its cell', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca])),
+    http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([account])),
+  );
+  renderRoute('/o/acme/issuers/accounts');
+  const row = (await screen.findByText('ops@example.com')).closest('tr')!;
+  const cell = within(row).getByText(account.registrationUri).closest('td')!;
+  expect(cell.className).toMatch(/min-w-0/);
+  const code = within(row).getByText(account.registrationUri);
+  expect(code.tagName).toBe('CODE');
+  expect(code.className).toMatch(/truncate/);
+  expect(code.className).toMatch(/min-w-0/);
+});
+
 it('shows why an account cannot be deleted', async () => {
   server.use(
     ...authHandlers({ authed: true }),

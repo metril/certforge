@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronDown } from 'lucide-react';
 import { presetsQuery, useSaveCa } from '@/api/queries/cas';
-import { UNCHANGED, type CA, type CAInput } from '@/api/types';
+import { UNCHANGED, type CA, type CAInput, type CAPreset } from '@/api/types';
 import { ApiError, errorMessage } from '@/api/errors';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
@@ -69,6 +69,11 @@ export function CaSheet({ orgId, open, ca, onOpenChange }: Props) {
   const { data: presets = [] } = useQuery(presetsQuery);
   const save = useSaveCa(orgId);
   const [form, setForm] = useState<Form>(() => initial(ca));
+  // Fix round 1 (#1): an existing CA's name was typed by someone, and a fresh
+  // preset pick shouldn't clobber a name the operator has already edited by
+  // hand — only auto-fill from the preset while the name is still whatever a
+  // preset last set it to (or blank).
+  const [nameTouched, setNameTouched] = useState(!!ca);
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<{ field: ServerField; message: string } | null>(null);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -84,23 +89,44 @@ export function CaSheet({ orgId, open, ca, onOpenChange }: Props) {
   };
   const valid = Object.values(errors).every((e) => !e);
   const errFor = (key: Exclude<ServerField, null>, clientErr: string | null): string | null =>
-    (submitted ? clientErr : null) ?? (serverError?.field === key ? serverError.message : null);
+    (submitted ? clientErr : null) ??
+    // Fix round 1 (#6): a 422 mapped to the EAB field while its fieldset is
+    // hidden (the operator switched to a preset that doesn't show it) would
+    // otherwise render nowhere; the generic banner below handles that case.
+    (serverError?.field === key && (key !== 'eab' || showEab) ? serverError.message : null);
+
+  function pickPreset(p: CAPreset) {
+    setForm((f) => ({
+      ...f,
+      preset: p.preset,
+      name: nameTouched ? f.name : p.name,
+      directoryUrl: p.directoryUrl,
+      // Fix round 1 (#1): a previous preset's EAB kid/HMAC must not survive a
+      // switch — otherwise a preset that doesn't need EAB (or an edited CA)
+      // posts a stale secret, or __unchanged__ for one that was never re-entered.
+      eabKid: '',
+      eabHmac: undefined,
+    }));
+  }
 
   async function submit() {
     setSubmitted(true);
     setServerError(null);
     if (!valid || !form.preset) return;
     const kid = form.eabKid.trim();
+    // Fix round 1 (#1): only send EAB fields at all when the EAB fieldset is
+    // actually shown (`showEab`: the preset requires it, or it's custom).
+    // Otherwise a hidden EAB section (e.g. after switching off a preset that
+    // used it) sends nothing rather than a stale value; clearing the kid on
+    // an EAB'd CA of a still-shown preset still sends `eabHmac: ''` to remove
+    // the stored HMAC (preflight A18).
     const body: CAInput = {
       name: form.name.trim(),
       preset: form.preset,
       directoryUrl: form.directoryUrl.trim(),
       trustBundlePem: custom && form.trustBundlePem.trim() ? form.trustBundlePem.trim() : undefined,
-      eabKid: kid || undefined,
-      // Adaptation (preflight A18): omitted/null/__unchanged__ keeps the
-      // stored HMAC; clearing the kid on a CA that had one must send an
-      // empty string to actually remove it, not omit the key.
-      eabHmac: kid ? form.eabHmac : ca?.hasEab ? '' : undefined,
+      eabKid: showEab && kid ? kid : undefined,
+      eabHmac: showEab ? (kid ? form.eabHmac : ca?.hasEab ? '' : undefined) : undefined,
       resolvers: form.resolvers,
     };
     try {
@@ -155,9 +181,7 @@ export function CaSheet({ orgId, open, ca, onOpenChange }: Props) {
                 // the API returns (directoryUrl: ''), not a card this component
                 // adds itself — a second Custom card would duplicate it, and
                 // `new URL('').host` throws and crashes the sheet.
-                card(p.preset, p.name, p.preset === CUSTOM ? 'Any ACME directory' : new URL(p.directoryUrl).host, p.requiresEab, () =>
-                  setForm((f) => ({ ...f, preset: p.preset, name: f.name || p.name, directoryUrl: p.directoryUrl })),
-                ),
+                card(p.preset, p.name, p.preset === CUSTOM ? 'Any ACME directory' : new URL(p.directoryUrl).host, p.requiresEab, () => pickPreset(p)),
               )}
             </div>
             {submitted && errors.preset && <p className="text-xs">{errors.preset}</p>}
@@ -165,7 +189,15 @@ export function CaSheet({ orgId, open, ca, onOpenChange }: Props) {
           {form.preset && (
             <>
               <Field id="ca-name" label="Name" error={errFor('name', errors.name)}>
-                <Input id="ca-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Let's Encrypt" />
+                <Input
+                  id="ca-name"
+                  value={form.name}
+                  onChange={(e) => {
+                    setNameTouched(true);
+                    set('name', e.target.value);
+                  }}
+                  placeholder="Let's Encrypt"
+                />
               </Field>
               <Field id="ca-dir" label="Directory URL" help="ca.directoryUrl" error={errFor('directoryUrl', errors.directoryUrl)}>
                 <Input
@@ -214,7 +246,7 @@ export function CaSheet({ orgId, open, ca, onOpenChange }: Props) {
               </Collapsible>
             </>
           )}
-          {serverError && !serverError.field && (
+          {serverError && (!serverError.field || (serverError.field === 'eab' && !showEab)) && (
             <p role="alert" className="text-xs">
               {serverError.message}
             </p>

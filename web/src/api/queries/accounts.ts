@@ -11,7 +11,8 @@ export function useCreateAccount(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { caId: string; email: string }) => call(api.POST('/orgs/{orgId}/acme-accounts', { params: { path: { orgId } }, body })),
-    meta: { success: 'Account registered' },
+    // Fix round 1 (#6): the register dialog already shows 422/409 inline.
+    meta: { silent: true, success: 'Account registered' },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['accounts', orgId] }),
   });
 }
