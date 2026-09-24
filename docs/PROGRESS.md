@@ -24,8 +24,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 |---|---|---|---|
 | 1 | Scaffold, Makefile, CI, lint | done | bf1241e |
 | 2 | Bootstrap config | done | d487450 |
-| 3 | Database, migrations, sqlc | done | pending |
-| 4 | Envelope encryption | todo | – |
+| 3 | Database, migrations, sqlc | done | f9421d2 |
+| 4 | Envelope encryption | done | pending |
 | 5 | Settings store, sections, canary | todo | – |
 | 6 | Local admin auth, sessions, CSRF | todo | – |
 | 7 | Authorization | todo | – |
@@ -39,7 +39,7 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 
 ## Decisions made during implementation
 
-None yet.
+- CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.
 
 ## Known gaps
 
