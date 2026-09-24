@@ -39,4 +39,21 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
-      - run: make generate && git diff --exit-code
+      # git diff --exit-code only catches modified tracked files; a query or
+      # spec change that adds a new generated file would pass silently, so
+      # this checks the working tree is clean of both modifications and
+      # untracked files.
+      - run: make generate && test -z "$(git status --porcelain)"
+  embedweb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      # internal/webui's embedweb build tag embeds internal/webui/dist, which
+      # is only populated by `make build-embed` from a built web/ UI (Phase
+      # 1C). A stub index.html is enough for go:embed and go vet to compile
+      # the embedweb-tagged file in CI.
+      - run: mkdir -p internal/webui/dist && printf '<!doctype html><title>stub</title>' > internal/webui/dist/index.html
+      - run: go vet -tags embedweb ./...

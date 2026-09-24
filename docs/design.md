@@ -37,7 +37,7 @@ All configuration is done from the web UI and the API behind it. The only things
 
 Everything else is a row in a `settings` table (typed key, JSON value, secrets encrypted) or a first-class entity with its own CRUD screens, and is editable live without a restart:
 
-- **First-run setup wizard** in the UI: set local admin password, base URL check, choose KEK health, create first org.
+- **First-run setup wizard** in the UI: set local admin password, base URL check, choose KEK health, create first org. The wizard's KEK-health step reads `checks.kek` from `GET /readyz`; there is no separate setup-status field for it.
 - **Settings → Authentication**: OIDC issuer, client id/secret, scopes, group claim, group-to-role mappings, session lifetime. Local admin login stays as break-glass.
 - **Settings → Integrations**: Vault (address, auth method, AppRole or token, namespace), SMTP, Prometheus toggle.
 - **Settings → Issuance defaults**: renewal policy, key type, preferred chain, ARI on/off, rate-limit thresholds, resolvers.

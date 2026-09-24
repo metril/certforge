@@ -19,3 +19,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - First-run setup endpoints (status, complete) and the bootstrap-admin command.
 - serve and healthcheck commands, /healthz and /readyz (DB and KEK canary), embedded web UI handler with SPA fallback and placeholder page.
 - Server container image, compose stack with Postgres 16, test overlay with Pebble and challtestsrv, e2e health test.
+- Architecture overview and documentation index.

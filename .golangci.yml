@@ -38,6 +38,8 @@ linters-settings:
       - name: var-naming
       - name: indent-error-flow
 issues:
+  include:
+    - EXC0015
   exclude-dirs:
     - internal/db/sqlcgen
     - internal/api/gen

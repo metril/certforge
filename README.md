@@ -16,9 +16,15 @@ curl -s localhost:8080/readyz
 
 Open http://localhost:8080 and complete the setup wizard (or `POST /api/v1/setup/complete`). The API docs are at http://localhost:8080/api/docs/.
 
-## Planned documentation
+## Documentation
 
-- `docs/architecture.md`, `docs/configuration.md`, `docs/certificates.md`, `docs/dns-providers.md`, `docs/agent.md`, `docs/deploy-targets.md`, `docs/notifications.md`, `docs/vault.md`, `docs/private-ca.md`, `docs/api.md`, `docs/security.md`, [`docs/operations.md`](docs/operations.md), `docs/development.md`, `docs/adr/`.
+- [Architecture](docs/architecture.md)
+- [Configuration](docs/configuration.md)
+- [Security](docs/security.md)
+- [Development](docs/development.md)
+- [Architecture decision records](docs/adr/)
+
+More guides (certificates, DNS providers, agent, API) arrive with their features.
 
 ## License
 

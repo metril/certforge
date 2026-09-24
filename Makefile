@@ -12,13 +12,15 @@ generate:
 	@if [ -f sqlc.yaml ]; then $(GO) run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate; fi
 	@if [ -f api/openapi.yaml ]; then mkdir -p internal/api/gen && $(GO) run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -config api/oapi-codegen.yaml api/openapi.yaml; fi
 
+VERSION := $(shell git describe --tags --always --dirty)
+
 build:
-	CGO_ENABLED=0 $(GO) build -trimpath -o bin/certforge ./cmd/certforge
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/certforge ./cmd/certforge
 
 build-embed:
 	rm -rf internal/webui/dist
 	cp -r web/dist internal/webui/dist
-	CGO_ENABLED=0 $(GO) build -trimpath -tags embedweb -o bin/certforge ./cmd/certforge
+	CGO_ENABLED=0 $(GO) build -trimpath -tags embedweb -ldflags "-X main.version=$(VERSION)" -o bin/certforge ./cmd/certforge
 
 test:
 	$(GO) test -race ./...

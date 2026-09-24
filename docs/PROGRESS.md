@@ -34,13 +34,21 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 10 | Auth and settings endpoints | done | 1d8d3ab |
 | 11 | Setup wizard and bootstrap-admin | done | d273abb |
 | 12 | Health, web UI placeholder, serve | done | 519abbe |
-| 13 | Container image and compose | done | pending |
-| 14 | Architecture docs and phase close-out | todo | – |
+| 13 | Container image and compose | done | 17455a8 |
+| 14 | Architecture docs and phase close-out | done | pending |
+
+Phase 1A complete; 1B (issuance) and 1C (web UI) build on it.
 
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.
 - bootstrap-admin reads CF_ADMIN_PASSWORD as one-shot CLI input; it is not server configuration and serve never reads it.
+- LoadPrincipal ignores site-scoped role bindings (non-NULL site_id): they contribute nothing to a principal until site scope is modelled in Phase 2.
+- The router has a local recoverer (panics become problem+json 500s, not bare ones) and the root NotFound/MethodNotAllowed handlers return problem+json for any `/api/*` path.
+- Outside `/api/*`, the root NotFound handler serves the embedded SPA's index.html for any unmatched path, so client-side routes resolve without a route list in the Go router.
+- Login and setup-complete build the full principal before starting the session; the cf_session cookie is set only once every step has succeeded, and a partially-failed login/setup deletes the session row it created.
+- setup.Service.Complete validates baseUrl against the general settings section's JSON Schema (the same schema PUT /settings/general enforces) in addition to config.ValidateBaseURL, and short-circuits with ErrAlreadyComplete as soon as setup is already done.
+- `make e2e` runs under the isolated compose project `certforge-e2e` (not the dev stack's `certforge` project), with host ports overridable via CF_HTTP_PORT, CF_AGENT_PORT, and CF_CHALLTESTSRV_PORT.
 
 ## Known gaps
 
@@ -48,3 +56,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 - Audit log tamper-evidence hardening not yet done: keyed HMAC instead of a plain hash, anchoring the head hash outside the table, and running the app under a role that does not own `audit_events`.
 - Login attempts are not rate limited yet (argon2id cost only); add per-IP throttling with the Phase 2 auth work.
 - Settings sections cannot hold secret fields yet; add write-only secret: true support when the first secret-bearing section lands (Phase 2 OIDC).
+- Base images are unpinned or ageing: the server image's `golang:1.23-alpine` build stage is already out of upstream support; bump the Go builder image (and pin image tags to digests) before cutting a release tag.
+- HEAD requests to `/healthz` and `/readyz` return 405 (only GET is registered for them).
+- The SPA fallback (root NotFound) answers non-GET methods with `index.html` instead of 404/405, since it does not check the request method.
+- A new login does not revoke the caller's existing sessions, so an old session survives a new login; only bootstrap-admin revokes sessions today.
+- The viewer role's "read-only, no secrets" guarantee has nothing to enforce yet in Phase 1A (no secret-bearing read endpoint exists); it depends on plan 1B's read handlers redacting secret fields correctly.
