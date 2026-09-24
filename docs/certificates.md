@@ -46,3 +46,62 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 | `resolvers` | none | Resolvers for propagation checks. |
 
 `GET /api/v1/orgs/{orgId}/issuance-defaults/effective` and each certificate's `effective` field show the resolved value and its `source`: `default` (built-in), `global`, `org` or `cert`. A changed default applies at the next renewal of every certificate that inherits it. Saving the global section (`PUT /settings/issuance_defaults`) and org defaults (`PUT /orgs/{orgId}/issuance-defaults`) both validate that a referenced CA, account or DNS credential exists (and, for org defaults, belongs to the org) before storing; an unknown id is a 422.
+
+## Names
+
+A certificate has a common name plus any number of SANs: wildcards (`*.example.com`, leftmost label only), names from different zones, and IP addresses where the CA supports them (not with DNS-01). Names are lower-cased and de-duplicated; the first is the common name. Changing names issues a new certificate immediately; other changes apply at the next renewal.
+
+## Verification rules
+
+Each certificate carries an ordered list of rules. For every name the first matching rule wins; the inherited catch-all rules (certificate overrides, then org, then global) come after the certificate's own rules.
+
+| `match` | Matches | Does not match |
+|---|---|---|
+| `*` | every name | |
+| `*.example.com` | `a.example.com`, `*.example.com` | `example.com`, `b.a.example.com` |
+| `example.com` | `example.com`, `a.example.com`, `b.a.example.com`, `*.example.com` | `badexample.com` |
+
+To give one name its own credential, put a rule for exactly that name first: `a.example.com` above `example.com`.
+
+| `method` | Needs | Who acts |
+|---|---|---|
+| `dns-01` | `dnsCredentialId` | CertForge, via the lego provider of that credential |
+| `manual-dns` | nothing | an operator adds TXT records and confirms |
+
+Optional per rule: `propagationSeconds`, `resolvers`, `cnameAliasZone`.
+
+- **Ordering with overlapping zones**: put the narrow rule first. With `dev.example.com → B` above `example.com → A`, `x.dev.example.com` uses B; reversed, A shadows B.
+- **Uncovered names**: if a name matches no rule and no catch-all exists, the attempt fails before contacting the CA: `no verification rule matches <name> and no catch-all rule is configured`. Add a rule or a catch-all in the defaults.
+- **Apex and wildcard** (`example.com` + `*.example.com`) share `_acme-challenge.example.com`; the rule matching the apex serves both.
+- **CNAME delegation**: point `_acme-challenge.<name>` at a record in a zone your credential controls. lego follows the CNAME automatically. Set `cnameAliasZone` to that zone and CertForge fails early with a clear message if the CNAME is missing.
+- Phase 1 supports DNS methods only; HTTP-01 and TLS-ALPN-01 arrive in Phase 4.
+
+### DNS credentials
+
+Issuers → DNS credentials. The form comes from the provider schema ([DNS providers](dns-providers.md)). Secret fields are stored encrypted and never returned; the API lists them in `storedSecrets`. On update, send `__unchanged__` to keep a secret. **Test** creates and deletes a TXT record at `_acme-challenge._certforge-test.<zone>`. A credential used by any rule cannot be deleted.
+
+### manual-dns
+
+When an attempt reaches a manual rule, the certificate shows the TXT records to add (`GET .../manual-dns`: name, type, value, TTL, expiry). Add them, wait for them to resolve, then press **I've added them** (`POST .../manual-dns/confirm`). The attempt then checks propagation and continues.
+
+If nobody confirms within 1 hour, the attempt fails with `manual-dns: TXT records were not confirmed in time`, the pending records are dropped, and the normal backoff schedules the next attempt, which shows fresh records. Remove old TXT records by hand.
+
+## Renewal
+
+- `percent` N: renew when N% of the lifetime remains (default 33: day 60 of a 90-day certificate, day 4 of a 6-day certificate).
+- `days` N: renew N days before expiry.
+- Renewal is never scheduled earlier than half the lifetime, so a 30-day policy on a 6-day certificate cannot loop.
+- `useAri` is stored; ACME Renewal Information arrives in Phase 4.
+- The scheduler checks every 5 minutes. **Renew now** enqueues immediately; it reports `enqueued: false` if an attempt is already queued or running.
+
+### Failures and backoff
+
+A failed attempt sets `failureCount`, `lastError`, and the next try to `min(5 min · 2^(failures−1), 24 h)` ±20%. When the CA answers `rateLimited` with `Retry-After`, the next try is no earlier than that. A failed renewal leaves a still-valid certificate `active`. CAA checks and the rate-limit ledger appear as `skipped` steps until Phase 4.
+
+## Attempts
+
+Each attempt records a step timeline: `caa`, `rate_ledger`, `account`, `order`, `challenge <name>`, `finalize`, `store`, each `running`, `success`, `failed`, `skipped` or `waiting_manual`, plus a log, the ACME error type (for example `urn:ietf:params:acme:error:rateLimited`) and `retryAfter`.
+
+## Downloads
+
+`GET .../versions/{vid}/download?format=pem&parts=...`. Parts: `cert`, `chain`, `fullchain`, `key`, `combined` (fullchain + key). One part returns a PEM file; several return a zip (`privkey.pem` and `combined.pem` with mode 0600). `key` and `combined` need the `keys:export` permission (global admin only) and every such download is written to the audit log before any byte is sent. DER, PKCS#12 and JKS arrive in Phase 4.

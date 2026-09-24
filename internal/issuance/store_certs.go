@@ -239,45 +239,14 @@ func validateDefaultsShape(d Defaults) error {
 	return nil
 }
 
-// validateDefaults validates an org-level Defaults value (org defaults or a
-// certificate's overrides): the shape, plus that any referenced caId,
-// accountId or rule dnsCredentialId names a row of this org (P34).
-func (s *Store) validateDefaults(ctx context.Context, orgID uuid.UUID, d Defaults) error {
-	if err := validateDefaultsShape(d); err != nil {
-		return err
-	}
-	if d.CAID != nil {
-		if _, err := s.GetCA(ctx, orgID, *d.CAID); err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return &ValidationError{"caId", "no such CA in this org"}
-			}
-			return err
-		}
-	}
-	if d.AccountID != nil {
-		a, err := s.GetAccount(ctx, orgID, *d.AccountID)
-		if err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return &ValidationError{"accountId", "no such ACME account in this org"}
-			}
-			return err
-		}
-		if d.CAID != nil && a.CAID != *d.CAID {
-			return &ValidationError{"accountId", "account belongs to a different CA"}
-		}
-	}
-	if d.VerificationRules != nil {
-		return s.validateRulesOrg(ctx, orgID, *d.VerificationRules)
-	}
-	return nil
-}
-
-// validateDefaultsTx is validateDefaults run with tx-scoped queries, taking
-// a FOR KEY SHARE lock on any referenced CA or account first so
-// DeleteCA/DeleteAccount's FOR UPDATE lock on the same row blocks until this
-// transaction ends. Used by writers (PutOrgDefaults) that must be safe
-// against a concurrent delete racing the write, not just against a delete
-// that has already committed.
+// validateDefaultsTx validates an org-level Defaults value (org defaults, a
+// certificate's overrides, or the global settings section): the shape, plus
+// that any referenced caId or accountId names a row of this org (P34),
+// taking a FOR KEY SHARE lock on it first so DeleteCA/DeleteAccount's FOR
+// UPDATE lock on the same row blocks until this transaction ends. Used by
+// every writer (PutOrgDefaults, certificate create/update) that must be
+// safe against a concurrent delete racing the write, not just against a
+// delete that has already committed.
 func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults) error {
 	if err := validateDefaultsShape(d); err != nil {
 		return err
@@ -423,23 +392,8 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 	return nil
 }
 
-// validateRulesOrg checks that every rule's dnsCredentialId belongs to orgID.
-func (s *Store) validateRulesOrg(ctx context.Context, orgID uuid.UUID, rules []challenge.RuleSpec) error {
-	for _, r := range rules {
-		if r.DNSCredentialID != nil {
-			if _, err := s.q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: *r.DNSCredentialID, OrgID: orgID}); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
-				}
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// validateRulesOrgTx is validateRulesOrg run with tx-scoped queries, taking a
-// FOR KEY SHARE lock on any referenced credential first so
+// validateRulesOrgTx checks that every rule's dnsCredentialId belongs to
+// orgID, taking a FOR KEY SHARE lock on any referenced credential first so
 // DeleteDNSCredential's FOR UPDATE lock on the same row blocks until this
 // transaction ends; see validateDefaultsTx.
 func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, rules []challenge.RuleSpec) error {
@@ -463,7 +417,13 @@ func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgI
 	return nil
 }
 
-func (s *Store) prepareCert(ctx context.Context, orgID uuid.UUID, in *CertInput) error {
+// prepareCertTx validates and normalizes in using tx-scoped queries: the
+// shape, plus a FOR KEY SHARE lock and existence check on every CA, account
+// or DNS credential it references (validateDefaultsTx, validateRulesOrgTx),
+// so a concurrent delete of one of those rows blocks until the certificate
+// write's own transaction ends instead of racing it into a dangling
+// reference (mirrors PutOrgDefaults; see validateDefaultsTx).
+func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *CertInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return &ValidationError{"name", "required"}
@@ -481,15 +441,22 @@ func (s *Store) prepareCert(ctx context.Context, orgID uuid.UUID, in *CertInput)
 			return &ValidationError{"verificationRules", err.Error()}
 		}
 	}
-	if err := s.validateRulesOrg(ctx, orgID, in.Rules); err != nil {
+	if err := s.validateRulesOrgTx(ctx, q, orgID, in.Rules); err != nil {
 		return err
 	}
-	return s.validateDefaults(ctx, orgID, in.Overrides)
+	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides)
 }
 
-// CreateCertificate stores a definition, due for issuance now.
+// CreateCertificate stores a definition, due for issuance now. Runs inside
+// one transaction; see prepareCertTx.
 func (s *Store) CreateCertificate(ctx context.Context, orgID uuid.UUID, in CertInput) (Certificate, error) {
-	if err := s.prepareCert(ctx, orgID, &in); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Certificate{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	if err := s.prepareCertTx(ctx, q, orgID, &in); err != nil {
 		return Certificate{}, err
 	}
 	rules, err := json.Marshal(in.Rules)
@@ -500,22 +467,40 @@ func (s *Store) CreateCertificate(ctx context.Context, orgID uuid.UUID, in CertI
 	if err != nil {
 		return Certificate{}, err
 	}
-	row, err := s.q.CreateCertificate(ctx, sqlcgen.CreateCertificateParams{OrgID: orgID, Name: in.Name,
+	row, err := q.CreateCertificate(ctx, sqlcgen.CreateCertificateParams{OrgID: orgID, Name: in.Name,
 		CommonName: in.CommonName, Sans: in.SANs, VerificationRules: rules, Overrides: over})
 	if err != nil {
 		return Certificate{}, dbErr(err, "name")
 	}
-	return certFromRow(row)
+	c, err := certFromRow(row)
+	if err != nil {
+		return Certificate{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Certificate{}, err
+	}
+	return c, nil
 }
 
 // UpdateCertificate replaces a definition. reissue reports that the names
-// changed, which makes the certificate due now.
+// changed, which makes the certificate due now. Runs inside one
+// transaction; see prepareCertTx.
 func (s *Store) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in CertInput) (c Certificate, reissue bool, err error) {
-	cur, err := s.GetCertificate(ctx, orgID, id)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Certificate{}, false, err
 	}
-	if err := s.prepareCert(ctx, orgID, &in); err != nil {
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	curRow, err := q.GetCertificate(ctx, sqlcgen.GetCertificateParams{ID: id, OrgID: orgID})
+	if err != nil {
+		return Certificate{}, false, notFound(err)
+	}
+	cur, err := certFromRow(curRow)
+	if err != nil {
+		return Certificate{}, false, err
+	}
+	if err := s.prepareCertTx(ctx, q, orgID, &in); err != nil {
 		return Certificate{}, false, err
 	}
 	reissue = !slices.Equal(cur.Names(), append([]string{in.CommonName}, in.SANs...))
@@ -527,13 +512,19 @@ func (s *Store) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in C
 	if err != nil {
 		return Certificate{}, false, err
 	}
-	row, err := s.q.UpdateCertificate(ctx, sqlcgen.UpdateCertificateParams{ID: id, OrgID: orgID, Name: in.Name,
+	row, err := q.UpdateCertificate(ctx, sqlcgen.UpdateCertificateParams{ID: id, OrgID: orgID, Name: in.Name,
 		CommonName: in.CommonName, Sans: in.SANs, VerificationRules: rules, Overrides: over, Reissue: reissue})
 	if err != nil {
 		return Certificate{}, false, dbErr(err, "name")
 	}
 	c, err = certFromRow(row)
-	return c, reissue, err
+	if err != nil {
+		return Certificate{}, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Certificate{}, false, err
+	}
+	return c, reissue, nil
 }
 
 // GetCertificate returns one certificate of the org.

@@ -60,3 +60,10 @@ FROM certificate_versions WHERE cert_id = $1 ORDER BY created_at DESC;
 
 -- name: GetCertificateVersion :one
 SELECT * FROM certificate_versions WHERE id = $1 AND cert_id = $2;
+
+-- name: ListCertificateVersionsByIDs :many
+-- Batch-loads version metadata for a set of ids in one round trip, so a
+-- certificate list page can render every item's currentVersion without one
+-- query per certificate.
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, revoked_at, created_at
+FROM certificate_versions WHERE id = ANY($1::uuid[]);

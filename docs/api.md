@@ -45,3 +45,11 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET, POST /orgs/{orgId}/dns-credentials` | list, add DNS credentials |
 | `GET, PUT, DELETE /orgs/{orgId}/dns-credentials/{id}` | read, replace, delete a credential |
 | `POST /orgs/{orgId}/dns-credentials/{id}/test` | create and remove a test TXT record |
+| `GET, POST /orgs/{orgId}/certificates` | list, create (issues immediately) |
+| `GET, PUT, DELETE /orgs/{orgId}/certificates/{id}` | read, replace, delete |
+| `POST /orgs/{orgId}/certificates/{id}/renew` | issue now |
+| `GET /orgs/{orgId}/certificates/{id}/versions` | issued versions |
+| `GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download` | PEM file or zip; `key` needs `keys:export` |
+| `GET /orgs/{orgId}/certificates/{id}/attempts` | attempts with step timeline and log |
+| `GET /orgs/{orgId}/certificates/{id}/manual-dns` | TXT records waiting for an operator |
+| `POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm` | resume the waiting attempt |

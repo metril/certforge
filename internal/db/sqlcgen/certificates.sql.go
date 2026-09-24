@@ -280,6 +280,58 @@ func (q *Queries) ListCertificateVersions(ctx context.Context, certID uuid.UUID)
 	return items, nil
 }
 
+const listCertificateVersionsByIDs = `-- name: ListCertificateVersionsByIDs :many
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, revoked_at, created_at
+FROM certificate_versions WHERE id = ANY($1::uuid[])
+`
+
+type ListCertificateVersionsByIDsRow struct {
+	ID        uuid.UUID  `json:"id"`
+	CertID    uuid.UUID  `json:"cert_id"`
+	Serial    string     `json:"serial"`
+	NotBefore time.Time  `json:"not_before"`
+	NotAfter  time.Time  `json:"not_after"`
+	Sha256Fp  string     `json:"sha256_fp"`
+	KeyType   string     `json:"key_type"`
+	Source    string     `json:"source"`
+	RevokedAt *time.Time `json:"revoked_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// Batch-loads version metadata for a set of ids in one round trip, so a
+// certificate list page can render every item's currentVersion without one
+// query per certificate.
+func (q *Queries) ListCertificateVersionsByIDs(ctx context.Context, dollar_1 []uuid.UUID) ([]ListCertificateVersionsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listCertificateVersionsByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificateVersionsByIDsRow{}
+	for rows.Next() {
+		var i ListCertificateVersionsByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CertID,
+			&i.Serial,
+			&i.NotBefore,
+			&i.NotAfter,
+			&i.Sha256Fp,
+			&i.KeyType,
+			&i.Source,
+			&i.RevokedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCertificates = `-- name: ListCertificates :many
 SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at FROM certificates WHERE org_id = $1 ORDER BY name
 `

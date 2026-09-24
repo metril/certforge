@@ -438,6 +438,185 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/EffectiveIssuanceDefaults"}
+  /orgs/{orgId}/certificates:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listCertificates
+      tags: [certificates]
+      summary: List certificates
+      description: Needs certs:read. status filters by status; q matches the name and any certificate name; sort is name, notAfter, nextRenewAt or status, with a leading - for descending.
+      parameters:
+        - {$ref: "#/components/parameters/ListStatus"}
+        - {$ref: "#/components/parameters/ListQ"}
+        - {$ref: "#/components/parameters/ListSort"}
+        - {$ref: "#/components/parameters/ListLimit"}
+        - {$ref: "#/components/parameters/ListCursor"}
+      responses:
+        "200":
+          description: One page of certificates.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateList"}
+    post:
+      operationId: createCertificate
+      tags: [certificates]
+      summary: Create a certificate
+      description: Needs certs:write. Names are validated and de-duplicated; the first issuance is queued immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CertificateInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Certificate"}
+  /orgs/{orgId}/certificates/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getCertificate
+      tags: [certificates]
+      summary: Get a certificate
+      description: Needs certs:read.
+      responses:
+        "200":
+          description: The certificate.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Certificate"}
+    put:
+      operationId: updateCertificate
+      tags: [certificates]
+      summary: Replace a certificate definition
+      description: Needs certs:write. Changing names queues a new issuance; other changes apply at the next renewal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CertificateInput"}
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Certificate"}
+    delete:
+      operationId: deleteCertificate
+      tags: [certificates]
+      summary: Delete a certificate
+      description: Deletes the definition with all versions and attempts; does not revoke. Needs certs:write.
+      responses:
+        "204":
+          description: Deleted.
+  /orgs/{orgId}/certificates/{id}/renew:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: renewCertificate
+      tags: [certificates]
+      summary: Issue now
+      description: Queues an issuance. enqueued is false when one is already queued or running. Needs certs:issue.
+      responses:
+        "202":
+          description: Accepted.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RenewResult"}
+  /orgs/{orgId}/certificates/{id}/versions:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: listCertificateVersions
+      tags: [certificates]
+      summary: List versions
+      description: Issued versions, newest first. Needs certs:read.
+      responses:
+        "200":
+          description: All versions.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Versions.
+                items: {$ref: "#/components/schemas/CertificateVersion"}
+  /orgs/{orgId}/certificates/{id}/attempts:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: listIssuanceAttempts
+      tags: [certificates]
+      summary: List issuance attempts
+      description: The 50 newest attempts with step timeline and log. Needs certs:read.
+      responses:
+        "200":
+          description: Attempts, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Attempts.
+                items: {$ref: "#/components/schemas/IssuanceAttempt"}
+  /orgs/{orgId}/certificates/{id}/versions/{vid}/download:
+    parameters:
+      - {$ref: "#/components/parameters/OrgId"}
+      - {$ref: "#/components/parameters/Id"}
+      - {$ref: "#/components/parameters/VersionId"}
+    get:
+      operationId: downloadCertificateVersion
+      tags: [certificates]
+      summary: Download a version
+      description: Needs certs:read; the key and combined parts also need keys:export and are recorded in the audit log before anything is sent. One part returns a PEM file, several a zip.
+      parameters:
+        - name: format
+          in: query
+          required: false
+          description: Output format; Phase 1 supports pem.
+          schema: {type: string, enum: [pem], default: pem}
+        - name: parts
+          in: query
+          required: true
+          description: Comma-separated parts from cert, chain, fullchain, key, combined (fullchain plus key).
+          schema: {type: string, example: "fullchain,key"}
+      responses:
+        "200":
+          description: File contents.
+          headers:
+            Content-Disposition:
+              description: Attachment file name.
+              schema: {type: string}
+          content:
+            application/x-pem-file:
+              schema: {type: string, format: binary, description: PEM file.}
+            application/zip:
+              schema: {type: string, format: binary, description: Zip of PEM files.}
+  /orgs/{orgId}/certificates/{id}/manual-dns:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: listManualDNS
+      tags: [certificates]
+      summary: List pending manual TXT records
+      description: Records an operator must add; empty unless a manual-dns attempt is waiting. Needs certs:read.
+      responses:
+        "200":
+          description: Pending records.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Records.
+                items: {$ref: "#/components/schemas/ManualDNSRecord"}
+  /orgs/{orgId}/certificates/{id}/manual-dns/confirm:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: confirmManualDNS
+      tags: [certificates]
+      summary: Confirm manual TXT records
+      description: Resumes the waiting attempt. 409 when nothing is waiting or the records expired. Needs certs:issue.
+      responses:
+        "202":
+          description: Confirmed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ManualDNSConfirmResult"}
 components:
   securitySchemes:
     sessionCookie:
@@ -458,6 +637,42 @@ components:
       required: true
       description: Resource id.
       schema: {type: string, format: uuid}
+    VersionId:
+      name: vid
+      in: path
+      required: true
+      description: Certificate version id.
+      schema: {type: string, format: uuid}
+    ListStatus:
+      name: status
+      in: query
+      required: false
+      description: Only certificates with this status.
+      schema: {type: string, enum: [pending, active, failed, expired, revoked]}
+    ListQ:
+      name: q
+      in: query
+      required: false
+      description: Case-insensitive substring of the name or any certificate name.
+      schema: {type: string}
+    ListSort:
+      name: sort
+      in: query
+      required: false
+      description: name, notAfter, nextRenewAt or status; prefix - for descending. Default name.
+      schema: {type: string}
+    ListLimit:
+      name: limit
+      in: query
+      required: false
+      description: Page size, 1 to 500.
+      schema: {type: integer, minimum: 1, maximum: 500, default: 50}
+    ListCursor:
+      name: cursor
+      in: query
+      required: false
+      description: nextCursor from the previous page.
+      schema: {type: string}
   schemas:
     Problem:
       type: object
@@ -914,3 +1129,127 @@ components:
           description: Resolved resolvers and their source.
           allOf:
             - $ref: "#/components/schemas/EffectiveStrings"
+    CertificateVersion:
+      type: object
+      description: One issued certificate.
+      required: [id, serial, notBefore, notAfter, sha256Fingerprint, source]
+      properties:
+        id: {type: string, format: uuid, description: Version id.}
+        serial: {type: string, description: Serial number, lower-case hex.}
+        notBefore: {type: string, format: date-time, description: Start of validity.}
+        notAfter: {type: string, format: date-time, description: End of validity.}
+        sha256Fingerprint: {type: string, description: SHA-256 of the leaf DER, lower-case hex.}
+        keyType:
+          description: Key algorithm.
+          allOf:
+            - $ref: "#/components/schemas/KeyType"
+        source: {type: string, enum: [issued, imported, uploaded], description: How the version was obtained.}
+        revokedAt: {type: string, format: date-time, nullable: true, description: Revocation time.}
+        createdAt: {type: string, format: date-time, description: When it was stored.}
+    Certificate:
+      type: object
+      description: A managed certificate.
+      required: [id, name, commonName, sans, verificationRules, overrides, status, failureCount, effective]
+      properties:
+        id: {type: string, format: uuid, description: Certificate id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Unique name in the org.}
+        commonName: {type: string, description: First name; the certificate subject.}
+        sans: {type: array, items: {type: string}, description: Names besides the common name.}
+        verificationRules:
+          type: array
+          description: Certificate rules, checked before the inherited catch-all rules.
+          items: {$ref: "#/components/schemas/VerificationRule"}
+        overrides:
+          description: Per-certificate overrides of issuance settings.
+          allOf:
+            - $ref: "#/components/schemas/IssuanceDefaults"
+        status: {type: string, enum: [pending, active, failed, expired, revoked], description: "pending until first issued; active while a valid version exists."}
+        currentVersion:
+          description: Newest issued version.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/CertificateVersion"
+        nextRenewAt: {type: string, format: date-time, nullable: true, description: Next scheduled issuance or retry.}
+        failureCount: {type: integer, description: Consecutive failed attempts.}
+        lastError: {type: string, nullable: true, description: Error of the last failed attempt.}
+        effective:
+          description: Resolved issuance settings for this certificate.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveIssuanceDefaults"
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    CertificateInput:
+      type: object
+      description: Fields to create or replace a certificate.
+      required: [name, commonName]
+      properties:
+        name: {type: string, description: Unique name in the org.}
+        commonName: {type: string, description: Common name.}
+        sans: {type: array, items: {type: string}, description: More names; the common name may repeat here.}
+        verificationRules:
+          type: array
+          description: Ordered rules.
+          items: {$ref: "#/components/schemas/VerificationRule"}
+        overrides:
+          description: Per-certificate overrides of issuance settings.
+          allOf:
+            - $ref: "#/components/schemas/IssuanceDefaults"
+    CertificateList:
+      type: object
+      description: One page of certificates.
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: Certificates.
+          items: {$ref: "#/components/schemas/Certificate"}
+        nextCursor: {type: string, nullable: true, description: Cursor for the next page; null on the last page.}
+    AttemptStep:
+      type: object
+      description: One step of an attempt.
+      required: [name, status, startedAt]
+      properties:
+        name: {type: string, example: "challenge *.example.com", description: "caa, rate_ledger, account, order, challenge <name>, finalize or store."}
+        status: {type: string, enum: [pending, running, success, failed, skipped, waiting_manual], description: Step state.}
+        startedAt: {type: string, format: date-time, description: Start time.}
+        finishedAt: {type: string, format: date-time, nullable: true, description: End time.}
+        message: {type: string, nullable: true, description: Detail or error.}
+    IssuanceAttempt:
+      type: object
+      description: One issuance run.
+      required: [id, startedAt, outcome, steps, log]
+      properties:
+        id: {type: string, format: uuid, description: Attempt id.}
+        startedAt: {type: string, format: date-time, description: Start time.}
+        finishedAt: {type: string, format: date-time, nullable: true, description: End time.}
+        outcome: {type: string, enum: [running, success, failed], description: Result.}
+        acmeErrorType: {type: string, nullable: true, example: "urn:ietf:params:acme:error:rateLimited", description: ACME problem type of the failure.}
+        retryAfter: {type: string, format: date-time, nullable: true, description: Earliest retry the CA allows.}
+        steps:
+          type: array
+          description: Step timeline.
+          items: {$ref: "#/components/schemas/AttemptStep"}
+        log: {type: string, description: Attempt log.}
+    ManualDNSRecord:
+      type: object
+      description: A TXT record the operator must add.
+      required: [name, type, value, ttl]
+      properties:
+        name: {type: string, example: _acme-challenge.lab.example.com, description: Record name.}
+        type: {type: string, enum: [TXT], description: Record type.}
+        value: {type: string, description: Record value.}
+        ttl: {type: integer, description: Suggested TTL in seconds.}
+        expiresAt: {type: string, format: date-time, description: The attempt fails if not confirmed by then.}
+    ManualDNSConfirmResult:
+      type: object
+      description: Confirmation result.
+      required: [confirmed]
+      properties:
+        confirmed: {type: integer, description: Records confirmed.}
+    RenewResult:
+      type: object
+      description: Renew request result.
+      required: [enqueued]
+      properties:
+        enqueued: {type: boolean, description: False when an issuance was already queued or running.}

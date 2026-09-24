@@ -80,6 +80,25 @@ func (s *Store) List(ctx context.Context, certID uuid.UUID) ([]Version, error) {
 	return out, nil
 }
 
+// Versions batch-loads version metadata by id, keyed by id. Callers
+// rendering many certificates at once (for example a list page) use this
+// instead of one Get per certificate.
+func (s *Store) Versions(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]Version, error) {
+	out := map[uuid.UUID]Version{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.ListCertificateVersionsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.ID] = Version{ID: r.ID, CertID: r.CertID, Serial: r.Serial, NotBefore: r.NotBefore, NotAfter: r.NotAfter,
+			SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}
+	}
+	return out, nil
+}
+
 func (s *Store) row(ctx context.Context, certID, versionID uuid.UUID) (sqlcgen.CertificateVersion, error) {
 	r, err := s.q.GetCertificateVersion(ctx, sqlcgen.GetCertificateVersionParams{ID: versionID, CertID: certID})
 	if errors.Is(err, pgx.ErrNoRows) {

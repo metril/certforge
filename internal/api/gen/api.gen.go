@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -33,6 +34,16 @@ const (
 	Valid       AcmeAccountStatus = "valid"
 )
 
+// Defines values for AttemptStepStatus.
+const (
+	AttemptStepStatusFailed        AttemptStepStatus = "failed"
+	AttemptStepStatusPending       AttemptStepStatus = "pending"
+	AttemptStepStatusRunning       AttemptStepStatus = "running"
+	AttemptStepStatusSkipped       AttemptStepStatus = "skipped"
+	AttemptStepStatusSuccess       AttemptStepStatus = "success"
+	AttemptStepStatusWaitingManual AttemptStepStatus = "waiting_manual"
+)
+
 // Defines values for CAPresetCode.
 const (
 	Buypass            CAPresetCode = "buypass"
@@ -44,6 +55,29 @@ const (
 	Zerossl            CAPresetCode = "zerossl"
 )
 
+// Defines values for CertificateStatus.
+const (
+	CertificateStatusActive  CertificateStatus = "active"
+	CertificateStatusExpired CertificateStatus = "expired"
+	CertificateStatusFailed  CertificateStatus = "failed"
+	CertificateStatusPending CertificateStatus = "pending"
+	CertificateStatusRevoked CertificateStatus = "revoked"
+)
+
+// Defines values for CertificateVersionSource.
+const (
+	Imported CertificateVersionSource = "imported"
+	Issued   CertificateVersionSource = "issued"
+	Uploaded CertificateVersionSource = "uploaded"
+)
+
+// Defines values for IssuanceAttemptOutcome.
+const (
+	IssuanceAttemptOutcomeFailed  IssuanceAttemptOutcome = "failed"
+	IssuanceAttemptOutcomeRunning IssuanceAttemptOutcome = "running"
+	IssuanceAttemptOutcomeSuccess IssuanceAttemptOutcome = "success"
+)
+
 // Defines values for KeyType.
 const (
 	Ec256   KeyType = "ec256"
@@ -51,6 +85,11 @@ const (
 	Rsa2048 KeyType = "rsa2048"
 	Rsa3072 KeyType = "rsa3072"
 	Rsa4096 KeyType = "rsa4096"
+)
+
+// Defines values for ManualDNSRecordType.
+const (
+	TXT ManualDNSRecordType = "TXT"
 )
 
 // Defines values for RenewPolicyMode.
@@ -71,6 +110,29 @@ const (
 const (
 	Dns01     VerificationRuleMethod = "dns-01"
 	ManualDns VerificationRuleMethod = "manual-dns"
+)
+
+// Defines values for ListStatus.
+const (
+	ListStatusActive  ListStatus = "active"
+	ListStatusExpired ListStatus = "expired"
+	ListStatusFailed  ListStatus = "failed"
+	ListStatusPending ListStatus = "pending"
+	ListStatusRevoked ListStatus = "revoked"
+)
+
+// Defines values for ListCertificatesParamsStatus.
+const (
+	Active  ListCertificatesParamsStatus = "active"
+	Expired ListCertificatesParamsStatus = "expired"
+	Failed  ListCertificatesParamsStatus = "failed"
+	Pending ListCertificatesParamsStatus = "pending"
+	Revoked ListCertificatesParamsStatus = "revoked"
+)
+
+// Defines values for DownloadCertificateVersionParamsFormat.
+const (
+	Pem DownloadCertificateVersionParamsFormat = "pem"
 )
 
 // AcmeAccount A registered ACME account; its key never leaves the server.
@@ -108,6 +170,27 @@ type AcmeAccountInput struct {
 	// Email Contact email.
 	Email string `json:"email"`
 }
+
+// AttemptStep One step of an attempt.
+type AttemptStep struct {
+	// FinishedAt End time.
+	FinishedAt *time.Time `json:"finishedAt"`
+
+	// Message Detail or error.
+	Message *string `json:"message"`
+
+	// Name caa, rate_ledger, account, order, challenge <name>, finalize or store.
+	Name string `json:"name"`
+
+	// StartedAt Start time.
+	StartedAt time.Time `json:"startedAt"`
+
+	// Status Step state.
+	Status AttemptStepStatus `json:"status"`
+}
+
+// AttemptStepStatus Step state.
+type AttemptStepStatus string
 
 // CA An ACME certificate authority.
 type CA struct {
@@ -189,6 +272,117 @@ type CAPreset struct {
 
 // CAPresetCode CA preset code; custom takes any directory URL.
 type CAPresetCode string
+
+// Certificate A managed certificate.
+type Certificate struct {
+	// CommonName First name; the certificate subject.
+	CommonName string `json:"commonName"`
+
+	// CreatedAt Creation time.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// CurrentVersion Newest issued version.
+	CurrentVersion *CertificateVersion `json:"currentVersion"`
+
+	// Effective Resolved issuance settings for this certificate.
+	Effective EffectiveIssuanceDefaults `json:"effective"`
+
+	// FailureCount Consecutive failed attempts.
+	FailureCount int `json:"failureCount"`
+
+	// Id Certificate id.
+	Id openapi_types.UUID `json:"id"`
+
+	// LastError Error of the last failed attempt.
+	LastError *string `json:"lastError"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+
+	// NextRenewAt Next scheduled issuance or retry.
+	NextRenewAt *time.Time `json:"nextRenewAt"`
+
+	// OrgId Owning org.
+	OrgId *openapi_types.UUID `json:"orgId,omitempty"`
+
+	// Overrides Per-certificate overrides of issuance settings.
+	Overrides IssuanceDefaults `json:"overrides"`
+
+	// Sans Names besides the common name.
+	Sans []string `json:"sans"`
+
+	// Status pending until first issued; active while a valid version exists.
+	Status CertificateStatus `json:"status"`
+
+	// UpdatedAt Last change.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+
+	// VerificationRules Certificate rules, checked before the inherited catch-all rules.
+	VerificationRules []VerificationRule `json:"verificationRules"`
+}
+
+// CertificateStatus pending until first issued; active while a valid version exists.
+type CertificateStatus string
+
+// CertificateInput Fields to create or replace a certificate.
+type CertificateInput struct {
+	// CommonName Common name.
+	CommonName string `json:"commonName"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+
+	// Overrides Per-certificate overrides of issuance settings.
+	Overrides *IssuanceDefaults `json:"overrides,omitempty"`
+
+	// Sans More names; the common name may repeat here.
+	Sans *[]string `json:"sans,omitempty"`
+
+	// VerificationRules Ordered rules.
+	VerificationRules *[]VerificationRule `json:"verificationRules,omitempty"`
+}
+
+// CertificateList One page of certificates.
+type CertificateList struct {
+	// Items Certificates.
+	Items []Certificate `json:"items"`
+
+	// NextCursor Cursor for the next page; null on the last page.
+	NextCursor *string `json:"nextCursor"`
+}
+
+// CertificateVersion One issued certificate.
+type CertificateVersion struct {
+	// CreatedAt When it was stored.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// Id Version id.
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyType Key algorithm.
+	KeyType *KeyType `json:"keyType,omitempty"`
+
+	// NotAfter End of validity.
+	NotAfter time.Time `json:"notAfter"`
+
+	// NotBefore Start of validity.
+	NotBefore time.Time `json:"notBefore"`
+
+	// RevokedAt Revocation time.
+	RevokedAt *time.Time `json:"revokedAt"`
+
+	// Serial Serial number
+	Serial string `json:"serial"`
+
+	// Sha256Fingerprint SHA-256 of the leaf DER
+	Sha256Fingerprint string `json:"sha256Fingerprint"`
+
+	// Source How the version was obtained.
+	Source CertificateVersionSource `json:"source"`
+}
+
+// CertificateVersionSource How the version was obtained.
+type CertificateVersionSource string
 
 // DNSCredential A DNS provider credential. Secret values are never returned.
 type DNSCredential struct {
@@ -358,6 +552,36 @@ type EffectiveUuid struct {
 	Value *openapi_types.UUID `json:"value"`
 }
 
+// IssuanceAttempt One issuance run.
+type IssuanceAttempt struct {
+	// AcmeErrorType ACME problem type of the failure.
+	AcmeErrorType *string `json:"acmeErrorType"`
+
+	// FinishedAt End time.
+	FinishedAt *time.Time `json:"finishedAt"`
+
+	// Id Attempt id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Log Attempt log.
+	Log string `json:"log"`
+
+	// Outcome Result.
+	Outcome IssuanceAttemptOutcome `json:"outcome"`
+
+	// RetryAfter Earliest retry the CA allows.
+	RetryAfter *time.Time `json:"retryAfter"`
+
+	// StartedAt Start time.
+	StartedAt time.Time `json:"startedAt"`
+
+	// Steps Step timeline.
+	Steps []AttemptStep `json:"steps"`
+}
+
+// IssuanceAttemptOutcome Result.
+type IssuanceAttemptOutcome string
+
 // IssuanceDefaults One level of issuance settings (org defaults or certificate overrides). Null or omitted inherits from the level above.
 type IssuanceDefaults struct {
 	// AccountId ACME account; must belong to the CA.
@@ -399,6 +623,33 @@ type LoginRequest struct {
 	// Password Local admin password.
 	Password string `json:"password"`
 }
+
+// ManualDNSConfirmResult Confirmation result.
+type ManualDNSConfirmResult struct {
+	// Confirmed Records confirmed.
+	Confirmed int `json:"confirmed"`
+}
+
+// ManualDNSRecord A TXT record the operator must add.
+type ManualDNSRecord struct {
+	// ExpiresAt The attempt fails if not confirmed by then.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// Name Record name.
+	Name string `json:"name"`
+
+	// Ttl Suggested TTL in seconds.
+	Ttl int `json:"ttl"`
+
+	// Type Record type.
+	Type ManualDNSRecordType `json:"type"`
+
+	// Value Record value.
+	Value string `json:"value"`
+}
+
+// ManualDNSRecordType Record type.
+type ManualDNSRecordType string
 
 // Me The signed-in principal.
 type Me struct {
@@ -477,6 +728,12 @@ type RenewPolicy struct {
 
 // RenewPolicyMode days: renew value days before expiry. percent: renew when value percent of the lifetime remains.
 type RenewPolicyMode string
+
+// RenewResult Renew request result.
+type RenewResult struct {
+	// Enqueued False when an issuance was already queued or running.
+	Enqueued bool `json:"enqueued"`
+}
 
 // SchemaEntry One registered pluggable type.
 type SchemaEntry struct {
@@ -571,8 +828,59 @@ type VerificationRuleMethod string
 // Id defines model for Id.
 type Id = openapi_types.UUID
 
+// ListCursor defines model for ListCursor.
+type ListCursor = string
+
+// ListLimit defines model for ListLimit.
+type ListLimit = int
+
+// ListQ defines model for ListQ.
+type ListQ = string
+
+// ListSort defines model for ListSort.
+type ListSort = string
+
+// ListStatus defines model for ListStatus.
+type ListStatus string
+
 // OrgId defines model for OrgId.
 type OrgId = openapi_types.UUID
+
+// VersionId defines model for VersionId.
+type VersionId = openapi_types.UUID
+
+// ListCertificatesParams defines parameters for ListCertificates.
+type ListCertificatesParams struct {
+	// Status Only certificates with this status.
+	Status *ListCertificatesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Case-insensitive substring of the name or any certificate name.
+	Q *ListQ `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort name, notAfter, nextRenewAt or status; prefix - for descending. Default name.
+	Sort *ListSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Limit Page size, 1 to 500.
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor nextCursor from the previous page.
+	Cursor *ListCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListCertificatesParamsStatus defines parameters for ListCertificates.
+type ListCertificatesParamsStatus string
+
+// DownloadCertificateVersionParams defines parameters for DownloadCertificateVersion.
+type DownloadCertificateVersionParams struct {
+	// Format Output format; Phase 1 supports pem.
+	Format *DownloadCertificateVersionParamsFormat `form:"format,omitempty" json:"format,omitempty"`
+
+	// Parts Comma-separated parts from cert, chain, fullchain, key, combined (fullchain plus key).
+	Parts string `form:"parts" json:"parts"`
+}
+
+// DownloadCertificateVersionParamsFormat defines parameters for DownloadCertificateVersion.
+type DownloadCertificateVersionParamsFormat string
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -585,6 +893,12 @@ type CreateCaJSONRequestBody = CAInput
 
 // UpdateCaJSONRequestBody defines body for UpdateCa for application/json ContentType.
 type UpdateCaJSONRequestBody = CAInput
+
+// CreateCertificateJSONRequestBody defines body for CreateCertificate for application/json ContentType.
+type CreateCertificateJSONRequestBody = CertificateInput
+
+// UpdateCertificateJSONRequestBody defines body for UpdateCertificate for application/json ContentType.
+type UpdateCertificateJSONRequestBody = CertificateInput
 
 // CreateDNSCredentialJSONRequestBody defines body for CreateDNSCredential for application/json ContentType.
 type CreateDNSCredentialJSONRequestBody = DNSCredentialInput
@@ -651,6 +965,39 @@ type ServerInterface interface {
 	// Replace a CA
 	// (PUT /orgs/{orgId}/cas/{id})
 	UpdateCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// List certificates
+	// (GET /orgs/{orgId}/certificates)
+	ListCertificates(w http.ResponseWriter, r *http.Request, orgId OrgId, params ListCertificatesParams)
+	// Create a certificate
+	// (POST /orgs/{orgId}/certificates)
+	CreateCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Delete a certificate
+	// (DELETE /orgs/{orgId}/certificates/{id})
+	DeleteCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Get a certificate
+	// (GET /orgs/{orgId}/certificates/{id})
+	GetCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Replace a certificate definition
+	// (PUT /orgs/{orgId}/certificates/{id})
+	UpdateCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// List issuance attempts
+	// (GET /orgs/{orgId}/certificates/{id}/attempts)
+	ListIssuanceAttempts(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// List pending manual TXT records
+	// (GET /orgs/{orgId}/certificates/{id}/manual-dns)
+	ListManualDNS(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Confirm manual TXT records
+	// (POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm)
+	ConfirmManualDNS(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Issue now
+	// (POST /orgs/{orgId}/certificates/{id}/renew)
+	RenewCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// List versions
+	// (GET /orgs/{orgId}/certificates/{id}/versions)
+	ListCertificateVersions(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Download a version
+	// (GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download)
+	DownloadCertificateVersion(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id, vid VersionId, params DownloadCertificateVersionParams)
 	// List DNS credentials
 	// (GET /orgs/{orgId}/dns-credentials)
 	ListDNSCredentials(w http.ResponseWriter, r *http.Request, orgId OrgId)
@@ -783,6 +1130,72 @@ func (_ Unimplemented) GetCa(w http.ResponseWriter, r *http.Request, orgId OrgId
 // Replace a CA
 // (PUT /orgs/{orgId}/cas/{id})
 func (_ Unimplemented) UpdateCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List certificates
+// (GET /orgs/{orgId}/certificates)
+func (_ Unimplemented) ListCertificates(w http.ResponseWriter, r *http.Request, orgId OrgId, params ListCertificatesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a certificate
+// (POST /orgs/{orgId}/certificates)
+func (_ Unimplemented) CreateCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a certificate
+// (DELETE /orgs/{orgId}/certificates/{id})
+func (_ Unimplemented) DeleteCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a certificate
+// (GET /orgs/{orgId}/certificates/{id})
+func (_ Unimplemented) GetCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Replace a certificate definition
+// (PUT /orgs/{orgId}/certificates/{id})
+func (_ Unimplemented) UpdateCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List issuance attempts
+// (GET /orgs/{orgId}/certificates/{id}/attempts)
+func (_ Unimplemented) ListIssuanceAttempts(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List pending manual TXT records
+// (GET /orgs/{orgId}/certificates/{id}/manual-dns)
+func (_ Unimplemented) ListManualDNS(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Confirm manual TXT records
+// (POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm)
+func (_ Unimplemented) ConfirmManualDNS(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Issue now
+// (POST /orgs/{orgId}/certificates/{id}/renew)
+func (_ Unimplemented) RenewCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List versions
+// (GET /orgs/{orgId}/certificates/{id}/versions)
+func (_ Unimplemented) ListCertificateVersions(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Download a version
+// (GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download)
+func (_ Unimplemented) DownloadCertificateVersion(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id, vid VersionId, params DownloadCertificateVersionParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1302,6 +1715,506 @@ func (siw *ServerInterfaceWrapper) UpdateCa(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateCa(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCertificates operation middleware
+func (siw *ServerInterfaceWrapper) ListCertificates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCertificatesParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort", r.URL.Query(), &params.Sort)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", r.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCertificates(w, r, orgId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCertificate operation middleware
+func (siw *ServerInterfaceWrapper) CreateCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCertificate(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCertificate operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCertificate(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCertificate operation middleware
+func (siw *ServerInterfaceWrapper) GetCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCertificate(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCertificate operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCertificate(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIssuanceAttempts operation middleware
+func (siw *ServerInterfaceWrapper) ListIssuanceAttempts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIssuanceAttempts(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListManualDNS operation middleware
+func (siw *ServerInterfaceWrapper) ListManualDNS(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListManualDNS(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmManualDNS operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmManualDNS(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmManualDNS(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenewCertificate operation middleware
+func (siw *ServerInterfaceWrapper) RenewCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenewCertificate(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCertificateVersions operation middleware
+func (siw *ServerInterfaceWrapper) ListCertificateVersions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCertificateVersions(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadCertificateVersion operation middleware
+func (siw *ServerInterfaceWrapper) DownloadCertificateVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "vid" -------------
+	var vid VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "vid", chi.URLParam(r, "vid"), &vid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "vid", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DownloadCertificateVersionParams
+
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "format", r.URL.Query(), &params.Format)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "format", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "parts" -------------
+
+	if paramValue := r.URL.Query().Get("parts"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "parts"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "parts", r.URL.Query(), &params.Parts)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "parts", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadCertificateVersion(w, r, orgId, id, vid, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1875,6 +2788,39 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/orgs/{orgId}/cas/{id}", wrapper.UpdateCa)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/certificates", wrapper.ListCertificates)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/orgs/{orgId}/certificates", wrapper.CreateCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/orgs/{orgId}/certificates/{id}", wrapper.DeleteCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/certificates/{id}", wrapper.GetCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/orgs/{orgId}/certificates/{id}", wrapper.UpdateCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/certificates/{id}/attempts", wrapper.ListIssuanceAttempts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/certificates/{id}/manual-dns", wrapper.ListManualDNS)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/orgs/{orgId}/certificates/{id}/manual-dns/confirm", wrapper.ConfirmManualDNS)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/orgs/{orgId}/certificates/{id}/renew", wrapper.RenewCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/certificates/{id}/versions", wrapper.ListCertificateVersions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/certificates/{id}/versions/{vid}/download", wrapper.DownloadCertificateVersion)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/orgs/{orgId}/dns-credentials", wrapper.ListDNSCredentials)
 	})
 	r.Group(func(r chi.Router) {
@@ -2172,6 +3118,243 @@ func (response UpdateCa200JSONResponse) VisitUpdateCaResponse(w http.ResponseWri
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListCertificatesRequestObject struct {
+	OrgId  OrgId `json:"orgId"`
+	Params ListCertificatesParams
+}
+
+type ListCertificatesResponseObject interface {
+	VisitListCertificatesResponse(w http.ResponseWriter) error
+}
+
+type ListCertificates200JSONResponse CertificateList
+
+func (response ListCertificates200JSONResponse) VisitListCertificatesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateCertificateRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Body  *CreateCertificateJSONRequestBody
+}
+
+type CreateCertificateResponseObject interface {
+	VisitCreateCertificateResponse(w http.ResponseWriter) error
+}
+
+type CreateCertificate201JSONResponse Certificate
+
+func (response CreateCertificate201JSONResponse) VisitCreateCertificateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteCertificateRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type DeleteCertificateResponseObject interface {
+	VisitDeleteCertificateResponse(w http.ResponseWriter) error
+}
+
+type DeleteCertificate204Response struct {
+}
+
+func (response DeleteCertificate204Response) VisitDeleteCertificateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetCertificateRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type GetCertificateResponseObject interface {
+	VisitGetCertificateResponse(w http.ResponseWriter) error
+}
+
+type GetCertificate200JSONResponse Certificate
+
+func (response GetCertificate200JSONResponse) VisitGetCertificateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateCertificateRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+	Body  *UpdateCertificateJSONRequestBody
+}
+
+type UpdateCertificateResponseObject interface {
+	VisitUpdateCertificateResponse(w http.ResponseWriter) error
+}
+
+type UpdateCertificate200JSONResponse Certificate
+
+func (response UpdateCertificate200JSONResponse) VisitUpdateCertificateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListIssuanceAttemptsRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type ListIssuanceAttemptsResponseObject interface {
+	VisitListIssuanceAttemptsResponse(w http.ResponseWriter) error
+}
+
+type ListIssuanceAttempts200JSONResponse []IssuanceAttempt
+
+func (response ListIssuanceAttempts200JSONResponse) VisitListIssuanceAttemptsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListManualDNSRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type ListManualDNSResponseObject interface {
+	VisitListManualDNSResponse(w http.ResponseWriter) error
+}
+
+type ListManualDNS200JSONResponse []ManualDNSRecord
+
+func (response ListManualDNS200JSONResponse) VisitListManualDNSResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ConfirmManualDNSRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type ConfirmManualDNSResponseObject interface {
+	VisitConfirmManualDNSResponse(w http.ResponseWriter) error
+}
+
+type ConfirmManualDNS202JSONResponse ManualDNSConfirmResult
+
+func (response ConfirmManualDNS202JSONResponse) VisitConfirmManualDNSResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RenewCertificateRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type RenewCertificateResponseObject interface {
+	VisitRenewCertificateResponse(w http.ResponseWriter) error
+}
+
+type RenewCertificate202JSONResponse RenewResult
+
+func (response RenewCertificate202JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCertificateVersionsRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type ListCertificateVersionsResponseObject interface {
+	VisitListCertificateVersionsResponse(w http.ResponseWriter) error
+}
+
+type ListCertificateVersions200JSONResponse []CertificateVersion
+
+func (response ListCertificateVersions200JSONResponse) VisitListCertificateVersionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DownloadCertificateVersionRequestObject struct {
+	OrgId  OrgId     `json:"orgId"`
+	Id     Id        `json:"id"`
+	Vid    VersionId `json:"vid"`
+	Params DownloadCertificateVersionParams
+}
+
+type DownloadCertificateVersionResponseObject interface {
+	VisitDownloadCertificateVersionResponse(w http.ResponseWriter) error
+}
+
+type DownloadCertificateVersion200ResponseHeaders struct {
+	ContentDisposition string
+}
+
+type DownloadCertificateVersion200ApplicationxPemFileResponse struct {
+	Body          io.Reader
+	Headers       DownloadCertificateVersion200ResponseHeaders
+	ContentLength int64
+}
+
+func (response DownloadCertificateVersion200ApplicationxPemFileResponse) VisitDownloadCertificateVersionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/x-pem-file")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprint(response.Headers.ContentDisposition))
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadCertificateVersion200ApplicationzipResponse struct {
+	Body          io.Reader
+	Headers       DownloadCertificateVersion200ResponseHeaders
+	ContentLength int64
+}
+
+func (response DownloadCertificateVersion200ApplicationzipResponse) VisitDownloadCertificateVersionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/zip")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprint(response.Headers.ContentDisposition))
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
 type ListDNSCredentialsRequestObject struct {
 	OrgId OrgId `json:"orgId"`
 }
@@ -2447,6 +3630,39 @@ type StrictServerInterface interface {
 	// Replace a CA
 	// (PUT /orgs/{orgId}/cas/{id})
 	UpdateCa(ctx context.Context, request UpdateCaRequestObject) (UpdateCaResponseObject, error)
+	// List certificates
+	// (GET /orgs/{orgId}/certificates)
+	ListCertificates(ctx context.Context, request ListCertificatesRequestObject) (ListCertificatesResponseObject, error)
+	// Create a certificate
+	// (POST /orgs/{orgId}/certificates)
+	CreateCertificate(ctx context.Context, request CreateCertificateRequestObject) (CreateCertificateResponseObject, error)
+	// Delete a certificate
+	// (DELETE /orgs/{orgId}/certificates/{id})
+	DeleteCertificate(ctx context.Context, request DeleteCertificateRequestObject) (DeleteCertificateResponseObject, error)
+	// Get a certificate
+	// (GET /orgs/{orgId}/certificates/{id})
+	GetCertificate(ctx context.Context, request GetCertificateRequestObject) (GetCertificateResponseObject, error)
+	// Replace a certificate definition
+	// (PUT /orgs/{orgId}/certificates/{id})
+	UpdateCertificate(ctx context.Context, request UpdateCertificateRequestObject) (UpdateCertificateResponseObject, error)
+	// List issuance attempts
+	// (GET /orgs/{orgId}/certificates/{id}/attempts)
+	ListIssuanceAttempts(ctx context.Context, request ListIssuanceAttemptsRequestObject) (ListIssuanceAttemptsResponseObject, error)
+	// List pending manual TXT records
+	// (GET /orgs/{orgId}/certificates/{id}/manual-dns)
+	ListManualDNS(ctx context.Context, request ListManualDNSRequestObject) (ListManualDNSResponseObject, error)
+	// Confirm manual TXT records
+	// (POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm)
+	ConfirmManualDNS(ctx context.Context, request ConfirmManualDNSRequestObject) (ConfirmManualDNSResponseObject, error)
+	// Issue now
+	// (POST /orgs/{orgId}/certificates/{id}/renew)
+	RenewCertificate(ctx context.Context, request RenewCertificateRequestObject) (RenewCertificateResponseObject, error)
+	// List versions
+	// (GET /orgs/{orgId}/certificates/{id}/versions)
+	ListCertificateVersions(ctx context.Context, request ListCertificateVersionsRequestObject) (ListCertificateVersionsResponseObject, error)
+	// Download a version
+	// (GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download)
+	DownloadCertificateVersion(ctx context.Context, request DownloadCertificateVersionRequestObject) (DownloadCertificateVersionResponseObject, error)
 	// List DNS credentials
 	// (GET /orgs/{orgId}/dns-credentials)
 	ListDNSCredentials(ctx context.Context, request ListDNSCredentialsRequestObject) (ListDNSCredentialsResponseObject, error)
@@ -2928,6 +4144,318 @@ func (sh *strictHandler) UpdateCa(w http.ResponseWriter, r *http.Request, orgId 
 	}
 }
 
+// ListCertificates operation middleware
+func (sh *strictHandler) ListCertificates(w http.ResponseWriter, r *http.Request, orgId OrgId, params ListCertificatesParams) {
+	var request ListCertificatesRequestObject
+
+	request.OrgId = orgId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCertificates(ctx, request.(ListCertificatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCertificates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCertificatesResponseObject); ok {
+		if err := validResponse.VisitListCertificatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCertificate operation middleware
+func (sh *strictHandler) CreateCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request CreateCertificateRequestObject
+
+	request.OrgId = orgId
+
+	var body CreateCertificateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCertificate(ctx, request.(CreateCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCertificateResponseObject); ok {
+		if err := validResponse.VisitCreateCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCertificate operation middleware
+func (sh *strictHandler) DeleteCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request DeleteCertificateRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCertificate(ctx, request.(DeleteCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCertificateResponseObject); ok {
+		if err := validResponse.VisitDeleteCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCertificate operation middleware
+func (sh *strictHandler) GetCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request GetCertificateRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCertificate(ctx, request.(GetCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCertificateResponseObject); ok {
+		if err := validResponse.VisitGetCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateCertificate operation middleware
+func (sh *strictHandler) UpdateCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request UpdateCertificateRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	var body UpdateCertificateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateCertificate(ctx, request.(UpdateCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateCertificateResponseObject); ok {
+		if err := validResponse.VisitUpdateCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListIssuanceAttempts operation middleware
+func (sh *strictHandler) ListIssuanceAttempts(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request ListIssuanceAttemptsRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListIssuanceAttempts(ctx, request.(ListIssuanceAttemptsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListIssuanceAttempts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListIssuanceAttemptsResponseObject); ok {
+		if err := validResponse.VisitListIssuanceAttemptsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListManualDNS operation middleware
+func (sh *strictHandler) ListManualDNS(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request ListManualDNSRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListManualDNS(ctx, request.(ListManualDNSRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListManualDNS")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListManualDNSResponseObject); ok {
+		if err := validResponse.VisitListManualDNSResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmManualDNS operation middleware
+func (sh *strictHandler) ConfirmManualDNS(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request ConfirmManualDNSRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmManualDNS(ctx, request.(ConfirmManualDNSRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmManualDNS")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmManualDNSResponseObject); ok {
+		if err := validResponse.VisitConfirmManualDNSResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RenewCertificate operation middleware
+func (sh *strictHandler) RenewCertificate(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request RenewCertificateRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RenewCertificate(ctx, request.(RenewCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RenewCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RenewCertificateResponseObject); ok {
+		if err := validResponse.VisitRenewCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCertificateVersions operation middleware
+func (sh *strictHandler) ListCertificateVersions(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request ListCertificateVersionsRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCertificateVersions(ctx, request.(ListCertificateVersionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCertificateVersions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCertificateVersionsResponseObject); ok {
+		if err := validResponse.VisitListCertificateVersionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadCertificateVersion operation middleware
+func (sh *strictHandler) DownloadCertificateVersion(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id, vid VersionId, params DownloadCertificateVersionParams) {
+	var request DownloadCertificateVersionRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+	request.Vid = vid
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadCertificateVersion(ctx, request.(DownloadCertificateVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadCertificateVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadCertificateVersionResponseObject); ok {
+		if err := validResponse.VisitDownloadCertificateVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListDNSCredentials operation middleware
 func (sh *strictHandler) ListDNSCredentials(w http.ResponseWriter, r *http.Request, orgId OrgId) {
 	var request ListDNSCredentialsRequestObject
@@ -3311,116 +4839,155 @@ func (sh *strictHandler) GetSetupStatus(w http.ResponseWriter, r *http.Request) 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/9R9a3PbNtb/Vzmj/86svX9Klp2ku7FfKYrT5mkSe3xpd7bJk0DkkYSaArgAaEXJ+Ls/",
-	"gwPwJoKy7Nhp+6aNTRKXc/0B5+KvvVguMilQGN07/NrLmGILNKjop9eJ/W+COlY8M1yK3mHvDLXMVYzA",
-	"k0Ev6nH7u4yZeS/qCbbA3mGPJ72op/C/OVeY9A6NyjHq6XiOC2aHm0q1YKZ32MtzetOsMvuVNoqLWe/m",
-	"JuqdqFlo5hM1655U0jffMu9N8TJtfRQvcBTHMhemvZIRKJxxbVBhAqPx22Ng7tUj4EbDFa5A4DUqSJFd",
-	"owYzR9CorlHZ1WdKZqgMR5ooZqG9jkf0kR8WuK7PuORmbge6ZUdRL1bIDCYjE2KjHU4x+yMYvsDGgAkz",
-	"2Le/DY2KC8bTwJKlMCw2QI8HoQ95YKOjYofJVjuSHaKxFFzMQKrZVqOo2uYvFe9e1eXZG9i54skuMEMM",
-	"GY+CO9OGmVx3j+Oe209R5Ive4W+9a5bS2hJkseHXlk29DyFlqAT6N6dZJDAFF8qp25uqRpOT3zE2dp01",
-	"qX4tstx0r9jIUuLuIrPVV9tL6T3laY02DbKE9j4eBXYrnPrGdm9THjODwHIzl4qbVWDf3fo0to/urksJ",
-	"VxgbqVaXKkACWlv5ipXGoPQhm/wc0q3j0QuyRTw5AlxkZgXLOQrIRa4xCY40Z/qYTYJ0soP99HY0trZI",
-	"G2nt0A4ny+RMnUKTK4HJbm3giZQpMtGl++PRtmrvjPz695eC/zdHsA+BC9JPbwEeyW5kCjUS81mankx7",
-	"h7997f1N4bR32Pt/e5Uj3fN+ZG88OqUvxjLB3s2HaG129xBimeDAmSUt02vve5uvvnx3DuVj2JlLbUAq",
-	"sP8/zKQyuzCVCqy0spmTw3iO8RWZHG5wQUO29uN/wZRiKzJjc0baFPD51nslNMnpnGmEA5ilcsJSGI/0",
-	"EUxZqokH7uF+WAaMyrV5kYskxVNcBOT1s1EMTo/fgpLSaJqNQabIPDpFrbxoazN5lnQp5xumDcRzJmZb",
-	"q2bI8pIUllKwprx19oXNT4fFfcUxTbQ1nc68WL4qzFIWIzDvcJpmaLPROPPLJvLFuTZycQQJTlmeGprG",
-	"6onbwyaL8tOCxWGTQlbA2pWdCdP4w9NcpbsD+FVxg30p0tUhSAGOGyDyNLUb+vgxF44BycePcIWYaeAm",
-	"8mbJTQwKF9LCJW7souynbJJigeSai4x6SzvhiUhX7oWt7ODgUYzLn8UsPIQJuKOO3u6Xm0oT1ozTkoDr",
-	"OHuJadq/EnLpHfXd1aHtQwtnWOnHHcTiJddZylYkF3+MMBBpw276ghAqCMREw/Fng0qwFApI94KLhItZ",
-	"yDav8ay0cJ55LUNXrWETQ2lLIa+fVZs68iwAw65QAxOrNuApMHOKRqOI1Sqza6v91NeGzZxV+IJKam1X",
-	"OclXGdMWGc+knKV2H1qnsVxYDE1zBgB3ZFVqrDBBYTgLiRNYncuUvOYJKmuy/asDOMdYoYFrluZ2JwrX",
-	"kFEAT0ox5TOSlSThdgaWnjbeaAPGxmreSdHXbtqpdSN+8hqLK648PHgNYrqSIH85bOdYGhba05LhMkGY",
-	"KrmAH48vYG+BhhWqDInQxXu645hocbOTk4A1P69xUoOZMwNzdm1RgAfcxN272fOHRUVRzx4dXqwCfK9O",
-	"UFaLkwpxLOdSI6g8RQ0Kp6hQxAhmznVde6q5uDA4Q3ULBKsxKyr0KGSLGurcdeYFgUvS6+aCHlhZX9U0",
-	"1OIRTGCyAic84OdaBVX3ARDK9sJtQXfK2V1c+72YcYHaWKyKOsCS/0iBhFVRG2AzxoU2bZZ8kQJD7PxC",
-	"X8+xxk9YMMFmzjTiZ7bILLAs/jVwXmHzbmmyLXel8zSwqZPcxHKBIKfA6kuzmwzAmtzd5bwNWAo7CxQv",
-	"WOYveJpyjbEUiQ7pUtRDpaTawHt67i4I5JU91tOZLqJrHLB+bAWOs06CQWHCYoPJEbzvWWORgMzN+x5k",
-	"1qpY2k9kLhJMyKfI3MBObLFGnnn0r3JB9tlL7oTFVzNlP9kNSvD0v4kI0OHfF6AwlipxamCtUwHv+JQG",
-	"JgkqFwgTnEqFwA0smQZClmGnchWGV342+7F3qGTt3NEl2QJbyaue301UZ/GtgnVJhjx03KOj4gKFcTSw",
-	"y3GcegwbZs9zbpQj0A1/tWArmGDzpPcY1ixshDZYnePpFGPDr/GFlAFEVz6GacpmRD5uNLgoR5uE7vfb",
-	"4/tz934b2b/Ba0ydH3QaFdutW2hBQJ9+Fw6/pNd1LHCLvLlxomLdGwn0OhTsqOgj8sUE1V+WQl3A4k4U",
-	"0jpnIsaXHt1smJ77V0GjMVzMdATI4rkzqFa8U9oeN/VtrdPSB4Acvt2OnOVaLy3SbVO1XGA9cNVi6k1U",
-	"3vI/8LTjUWiyK1xdENXvPN+5twvdM17hClg6k4qb+SI0+SLX5twwwgR3np+syobZ7eD2gJqlHRbGXRpM",
-	"USlMxnPGxaMQoZzCQn4uwqso747OHZS4x0qsDdm4jOp+qkAGgaUoFLg8lSmPV/dYw1nt6w1roUlYChm9",
-	"GV5G7ertXizRmxdQXN3Zuc0cuWrOnmv8GVePIJQ0dN8qRpdIXqNy5zkuxZk9vN2HD/TdhmXEzMTzPktT",
-	"fz4MkOFmkzk+a4pJl+O6hdF/uAPbbpp7SfXgm9xdyfguyt7OwD8rOqD1Nu5SNq3ilzVtaF+1fAOVvfHe",
-	"QGYfIPmrIq8O6H53GuktiJRybf56lNr2Ru8bSEjAbAP9ePLXI9v6te7moOE69TZQ7XagfyIKCC+nbbAP",
-	"O1LNqktQqRo5JvIaleIJ6t0BvPMhUrngxthzg5ijskygW+bqoMAm8hpvOSEEQl9lZprFoTDBVIpZEQV2",
-	"0bQ70jDqTP+512B3Bv4/+w/aQvVzHee3Q8gtoN+Om6M2cDI+P62D9g2x6FpuQxvBN0e38kQ3rIuFFO6W",
-	"Q06LULwH5iyliJ1BB9EH25AvjNlbd3wtzM0F1K4LF+wzX+SL3uGTH4bDqLfgwv047FxB7WbxXlj9NjDT",
-	"xDABVm6Iip99U0S8Y8NlRKWOytflDzPPUpeyQgfPWEmtC1Smt5OmIPheU7c15EVbs0I0NaiA1c3N3zXI",
-	"pXgAxLOZNCGk/nOl3Z3xoub5vB7wVZodDJ/+qxfZfz0Z/vPA/evp8PkP9q344Jn7/5N/PQ3Gct/IGRed",
-	"MYY3MmYpsGTBRe02XrdNbMa0XkqVbB6ieKthBctPb3NF5YshZ/QWw5fRms8EJn07ueIi5lkwbqXV9EJe",
-	"oQgFHK2/d5et/+6Pz89e9elNmCNLUIEU/ub/9OT8IoLTS/uf0cX4p4iQwsvjN8cXx10xWR3M4HbJ0Lm2",
-	"tpBZG4RbS+SJCkY4lQzqx0uuDRexAfucDK52IYnC+dk13DGWqlFtb+Eu7dtt09bkm1vEujDQRMXOPDGj",
-	"GiPDMmLYeZW/vuYB0nw2s5oL9jsoAtYzJfPMhSGvuAgkKCSYpXJ1wdQsGLB+SY/BuOdbM9It81gYtQqR",
-	"uR5GD6Y89Yf7ZQbGg80qpLVHwSnfSVOaQgqYC0wfbF6SBRX02s6JjEfg33mYKddkrUHtaI3jdbJUSw2J",
-	"n1XOUNqwVDMm+Bei3REspDZ062Vxt8uR0bG0ImgkSBGAt3xjIcg9k0tuTeLSaR7YzuXZm75mU3tSsr7C",
-	"kiWCVC5RxUxbmG4MKh1BwmfcaGcj56tsjmKLYDqtn+b1q+6g8huugykMdOyV0wbBA76slJ8WSauvQEtl",
-	"nFkoKHR/A72+TRootLdTJSdpKOXw7NUYnj999k+r8/YNSNAwnuoINArj4imxFMb+QOaNZVnq1XXPf/P/",
-	"f9dShOybCdYeHH/OUiacwusMY6v+zm9wDTKOc0VZLHeqBfnp4uLUF4L4dL4QmDbchA4n53OpTATzfMFE",
-	"XyFLyJjrfLFgahVchgnCLk9kR6fLs9dH9liZm8NJysQVweUZClQ8BlouJQVsIbz0tFh8SYIQlzfe2P46",
-	"R+FqSAQu29xaBLNXErbSh+4Tf5dgf1ME+vFzxtVqABmqGIUpXqQ8B/e2f1Icx1I+RXtIAoULxkWjaMcO",
-	"bFflvghCzlzjKFRRdO4yuIRcHrnAW3HEeS2cEaNEDk0ZDO7k71Lpn4ZT6TsuSF7ane/s95/88GwX7NnH",
-	"721nv//8+e7aSe9Z7aC3f2uUdOGye4oLJ7/PEIvr3id4a1IrZcsawCRwu5FypkPw7sTMfcKSz5TTmGJs",
-	"nIbasY4cKScr0MhUPL8b1IuDonZuKgxl34hIY3wSEcSpzJNpyhQ+ZD5xVcAYTtlwJ7HmoP9zfvIOHBto",
-	"hZQHs8rsQdDlSfi8kwH44gOyoT6dww5InnlZZvQH0jjWq6+cdPhkDL/moHD4+7FzjN1i256svELT7h23",
-	"OrqWpHED15LfSKOdRLGpgYPhwbC/f7BbmAKS9SP65+VrazgsRqIfrco6LXW1Cq1t6q7t+X138/uOQaGC",
-	"nr/QZx3HDTen5T45LlPcn7buQ/2qSw4Wy9nEyV/KBW9N+wCPPa2Jy3OWobWFCU65cDpsqm3UpCC0pjzr",
-	"PPC/4kqbvsqtRH1hyh59szyQeUfn+dPOQ/87XEIaOPhHwAykyLSB/QN7TlAsNh62hy4EFly8QTEz897h",
-	"/kFAEiZMY7Ck4TSfpDym4lSSVK5hjMq8kmqGwIU2TMRrtmluTKYP9/ZiVEYPammPXaf3d7daq0JLppaq",
-	"Ra7Wgn0u9+RvEsufwxOdbwu1g/NlzGJu+8X//sb6X4b95x/8//sfvg6jHw5u/nYreGmyu9p9tbyKFx+6",
-	"hO68A/VVMmdBUcDDUbEGDRG447GmOBeGp3QDA3vavkdmIEVj8V8c28+3SAOrTRPcQxnYCcVpmAAsw0Rr",
-	"8ZqytgwWyIQzj5Ocp6bPRRWnKRGUe7cX9Vz5oCNyL+pZwQwCqkt/6bJuQSqJLy5y1quCSFTDcmx/C3ou",
-	"l6K4/rp8vXXJul3RtudPshMjK2Ad3C3c80Qhu+rPUqZ13bhswVlXRl7bbWPWELNbV7vts4pcWhyeKXmN",
-	"dLZSMi30z12lkdVReYqwYCaeo7ZYwiom/QhLHjp8xvbbkYV0/wlmbrusb4vmPrJ4gf14ztIUxYy8wfjd",
-	"6O2xtdlGHpW33R7lUzW9gzTBKmuha0UASbiOrroCPgJVr6FMhO4P97diN22+Pfw/YMfdo9r970bwjwFl",
-	"qO84Utp/pmyCKUXnlpS97i4P/HvcaEynu5FF9O5Dywf3GjnMfJJIOqzQV0ueJjFTid5tJrv/Y7Ax3T3q",
-	"LdDMZYA6dXkB91JDp4k+ZPxFztJ+InRQk+8bqiqCpbcEqkKBqUcKEW284XAyUFLzQwg6a4xzxc2K8KfH",
-	"sKg1l2Is5RUPHT3cY4jpuT8hkk9guZnvpXLmjAW1RnEvVc1R4ulHP3zFdpbxn3Hl+p5wMZXhEI2zsGfH",
-	"5xcwOn09gFGaQsbM3N3dKUwZ+QQjYY9lfO96f/BevBej3MytKjmROSSz8alaxKdiFxqNBXfr+7ByHvJ3",
-	"g/diUyDCnRMY+FlcwFujy0iCT/UAx6ciwmE/eS8+lVfrn2q1XbSgBQ6giAxPZMJRF4F0+FS/Z/pdS/GJ",
-	"Nn9MdyZEn/Lm6lPXldQnSGScLyykhx2NrmqluKRxQHf38L14OhzChCVkl1CbCJ4O90FIQ80qPKUxsb9+",
-	"YgV6wpMEiYx2yzBlPM0V2sdP6aupzEUS2WGf04Ew5bEdc/8ZLJUUs8ZtWgRPDw5qBrYa7dlw6Ovx3T3R",
-	"4L0o74Dq0jM6fd2jkKZ2cjUc7A+GhP4yFCzjvcPek8Fw8MTBuTlpQ00aKAInQ3j+RdhnglMGOEfj4Egl",
-	"eV7wBnDy+uXYvQdMKU5V50X3ggOrR9Zt0X6tu3CBRF/5itq8kMnKl1NYOtGZYU0WmsfSTSe4RpDypmlN",
-	"qlh3JoW/BzkYDh9s7rfoZlyPas5mlIhyBE26WYUdNAxY7/C3D1HP30O6Ty0hmSN8jSlWMthME97Ozbz3",
-	"wY5Sclm6srwwm49F4vnoT6/FoqjSJUXmD+UFb30DBN0IaQZ5aqdtUfdpKMxLBJF5sfvGft0oXbtz8HMW",
-	"Km9vhwIjilbqCK655pOUSmB8IIHydaw2G4rQWre1yA0zrnECSY9ub/JHNG+x990laOw5VQtLN+nWeiFM",
-	"QSqvjVnfFYzrTkr+2moToMs6C66aFeUeJM2RbhDNHFcF3OsumYd3VFIfM32okCUBYeLajNmpX+Y30jvU",
-	"AWD74F/ZTqENVG7C3QXI9vkTBEiVFCHpmphzbaAs3Nc1ZnHKa9J1ftW6qAWZVbt5c/DLYeParXC9xD6C",
-	"pB5ljqCISDq1cDHJAVw0L+ksUq8y6BYdilFFzB9VQ6ppAiw474rFBziQBcP4NW5Y+ntWFBkYQRY0w32F",
-	"sfGJEbE9dKmwjJ+4VIRHI1YR4AwQ6pfKJNYDnAEyNd6oUYdIUlFn7yt1DrjZo7Omz5Psppm3Cbo4B0s1",
-	"qwVKXZcybyeKsTYYi1ontge2F8WoWxuMeqvDLWyGPQKwNi2CnKhnoIatRtRoOdlx2V29sud6Q958iDrA",
-	"whoDKIZhIYGzLbrq4wdCLmGnLMYbj/6u4Xj0YtdZFSOV79tYFMhd4Qp8uxFMBjCyQyj83d9Jux4fGp4N",
-	"D6oCP9p9EbS2JpaizW15oPYbWGfD4yDNVve/rdDm/mPMHxKss9IBrMtS8QSYaIhUpx/qVu+9rzy5cWJj",
-	"j5TbC5BrTUVxCBfKLQRDinR1BL4VnjRQ6+hY6xoJ9qy1nPMUqyYYAdPwkla1Lgq34VP3VYts7tdbES0K",
-	"27ytzNmPaDYuePi9BOiiUtd1UvyIZks63MscRbe+SEarJZrxBphkMWzQ1VDocEtE+sC+ZTy6Cw7d1ps0",
-	"d9rtSMaj7+lDLGlJ+2HHtzqkg+yutf2+gdWUp6mGencs30DDlXIMoMDXdKddnjJGL7y/oKsV6y5kbsB1",
-	"ryP349vvdXmKMXskB1H0KPzOfsFKSuAM6dprrIvDKElKTR6PtvMAMdvW7pdMrxvswv5F9aR6qukp63uq",
-	"xkYuISBk1T3bvtGYd216owXvNhM/ogmta/jIzL3w1UcBK929wcc0zVEv2BqqJRVeNQsVjzZ2uKyhhZ/e",
-	"jsZHFEjt7njZ5Ixr+PLn0PXHFge31wDuq9qgbqfpidD9Wi1Ht3Ot3ul2slFpm11qlC68biK0nWST6230",
-	"7nloL9wsVtnKGzfbGm7pmOMglYIOuhlB/Z5+umSG11DfpeoKV1WopgpDV1V3vu+V778Wbul3VDQ3CibI",
-	"edWunQovhbuEtJNHwOjQWEal1DWqU2bHabZ8o7guq1a0YOoKE8iFzrPMCSSVeZWQoQsXNHn8OGYj0E/v",
-	"O6OFNUm+G3BYk9N7GZUtocS6XFZ4oo4iIlivE7bS6QHnneBFm/vfijS2oFUH6vAtLkNNULczoT+iuWU/",
-	"w+8nUBeNToJh0LIVrf4wANNhI+nPipCLTYBpYLCcyxSPyFrVmsrao46RHT28daM5KR1f1j5PcWqo9x5N",
-	"5/rk0X191UWXCSGLXqRHdCriU3+lsiMVzJkGza34TzCWC9wN2MguAPXdjaJv1PedcdWtQnwrxHooy7hn",
-	"fPLtI0v7HSCB8wi61qnRCnuteWQ742zw0VrpqVQz7FN/zvf5cPgk/iIF0r8QdlKcSWDpkq00sMTHqNcT",
-	"1yixa3cAZZ9Nnz6hC39+MBw6iCCvXMvNI9+K0+BnQ5K/ofnmAE6ZtuZnvdmmoVaVTtasFhWD+3aeNEGj",
-	"b2cEk9zAli06BzAyrpbvgPpr0quWiNK1wLBIp7/kCR7BBFeSotfM12ZUN+VP3GLO0KhVfzQ1oZjTBWrz",
-	"3TW43pn2j1TjWi/ZkFdCTWbVGsR1raZn91PpopNJP6l1PulMX7DgxTdBoWtwOg17zOwbmVR9TDyqaeX+",
-	"F1N+LKYsbzdRbbp1tiZjvU3LI/KmNVeAKSc1MBcCCpZeZa+YpFp0wZg6NPy2E1MQDKy1mgkxyjFpACNL",
-	"J6SAGbWt9C9Ze9BsLSGsnfLtLZqMc9a3xbnTvJNzD6/YYaZ9P4XeRmh8bWCX3BQu+o6yc7tm75VJ/Z06",
-	"fmxZT2Lyd120K6xDvXAfU9jxU0RenOiUs7ulWnc3W31EPnVPGmBY1TNrk65XJRP1I97DK7tldGFT9756",
-	"o3rTydIz74BNozKsXg5XdAFrVIu5pPOi1sP/ITGNZjfIw/Uyv0fk3PpUIQVrVI7R/moVcHVNY+700nRQ",
-	"NZYVj0Ls6i70a9ZiUYW11QkLqPKMrn/aLjD8Zy51jZ5df+hyvdqpyxv84nJ6fVTb67RrtR+ot4Mdeyyr",
-	"8n8biRLcDIDqTaAoF22Z/JBEPLy5XyuH/L62fhtJdKbek7b7MLadCHrNr6XId2fRltnQ4dLFWsbLhGmE",
-	"y7M3ke9wr5tldy7vLpW+lY8biIsB/CrVlaYjwBGkzNC5Pk01zNDA0+HzAbi6xcDtpV+8K097NMGoKkP/",
-	"FFnWtCJIpMC7p1kXFHNcceWFnng1McmzhoxUjSnCObRVRuz6sEW9rDY8Tf2flzLSHvq6meqcQFkY+bhq",
-	"V07TSefiL7BuomqzVjPXIWo2P2+V7fz2wZpbdwJ2XiFXae+w56tjCJr7MTv+Iq+PUTRTPV3bOOcCKMfz",
-	"JtqY0jlo/GFkHXidqg4icLn3VYZ53E7cLkeivOz2SA409BPFr1G0DFd9KaXlag/yKihwzW/zLPDheKSj",
-	"ZpqhqwhqhqNqAxVH38BQ63/CqAW2a8M0sNvNh5v/CwAA//+GJFbNSXsAAA==",
+	"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",
+	"2jS2vWEattvXd1//NwAA//8bAlTjNq8AAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

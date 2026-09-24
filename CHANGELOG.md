@@ -34,6 +34,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Issuance service facade (account registration, certificate create/update with auto-enqueue, DNS credential test) and `serve` wiring: river client started and gracefully stopped alongside the HTTP server, `db.Migrate` now also applies river's schema.
 - API: CA presets, CAs with EAB, ACME account registration, org issuance defaults and effective defaults with sources.
 - API: DNS provider credentials with write-only secrets, stored-secret names, and a live TXT test.
+- API: certificates with multi-SAN and wildcard names, per-name verification rules, renew now, versions, attempts with step timeline, PEM/zip downloads with audited key export, and manual-dns records and confirmation.
 
 ### Fixed
 - Deleting a CA or ACME account locks the row for the whole count-then-delete in one transaction, so a concurrent `acme_accounts` insert (an actual foreign key) cannot slip a new reference in between the check and the delete.
