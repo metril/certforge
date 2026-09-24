@@ -10,7 +10,7 @@ COMPOSE_TEST := docker compose -f deploy/compose.yaml -f deploy/compose.test.yam
 
 generate:
 	@if [ -f sqlc.yaml ]; then $(GO) run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate; fi
-	@if [ -f api/openapi.yaml ]; then $(GO) run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -config api/oapi-codegen.yaml api/openapi.yaml; fi
+	@if [ -f api/openapi.yaml ]; then mkdir -p internal/api/gen && $(GO) run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -config api/oapi-codegen.yaml api/openapi.yaml; fi
 
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/certforge ./cmd/certforge

@@ -1,0 +1,140 @@
+openapi: 3.0.3
+info:
+  title: CertForge API
+  version: 0.1.0
+  description: |
+    CertForge REST API. All paths are relative to /api/v1.
+
+    Authentication: the `cf_session` cookie set by POST /auth/login or POST /setup/complete.
+    POST, PUT, PATCH, and DELETE with a session must send the `X-CSRF-Token` header with
+    `csrfToken` from GET /auth/me. Request bodies must be `application/json`.
+
+    Errors are RFC 9457 `application/problem+json` documents (see the Problem schema):
+    400 bad request, 401 not authenticated, 403 forbidden or CSRF failure, 404 not found,
+    409 conflict, 415 wrong content type, 422 validation failure, 500 server error.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+tags:
+  - name: meta
+    description: Registries of pluggable types.
+  - name: orgs
+    description: Organizations.
+paths:
+  /meta/schemas:
+    get:
+      operationId: getMetaSchemas
+      tags: [meta]
+      summary: List pluggable type schemas
+      description: JSON Schemas for every registered DNS provider, deploy target, notifier, and signer. The UI renders forms from them.
+      responses:
+        "200":
+          description: Schemas grouped by kind.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaSchemas"
+  /orgs:
+    get:
+      operationId: listOrgs
+      tags: [orgs]
+      summary: List organizations
+      description: Organizations visible to the caller.
+      responses:
+        "200":
+          description: Visible organizations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgList"
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: cf_session
+      description: Session cookie from POST /auth/login.
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details, sent with content type application/problem+json.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          description: Problem type URI; about:blank for generic HTTP errors.
+        title:
+          type: string
+          description: Short, human-readable summary.
+        status:
+          type: integer
+          description: HTTP status code.
+        detail:
+          type: string
+          description: Explanation specific to this occurrence.
+    Org:
+      type: object
+      description: An organization; most resources are scoped to one.
+      required: [id, slug, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Org id.
+        slug:
+          type: string
+          description: URL-safe identifier, lowercase letters, digits, and hyphens.
+        name:
+          type: string
+          description: Display name.
+    OrgList:
+      type: object
+      description: A list of organizations.
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: Organizations sorted by name.
+          items:
+            $ref: "#/components/schemas/Org"
+    SchemaEntry:
+      type: object
+      description: One registered pluggable type.
+      required: [code, name, schema]
+      properties:
+        code:
+          type: string
+          description: Stable type code, for example cloudflare.
+        name:
+          type: string
+          description: Display name.
+        schema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema for the type's configuration. Fields with secret true are write-only.
+    MetaSchemas:
+      type: object
+      description: Pluggable type schemas grouped by kind.
+      required: [dnsProviders, deployTargets, notifiers, signers]
+      properties:
+        dnsProviders:
+          type: array
+          description: DNS-01 providers.
+          items:
+            $ref: "#/components/schemas/SchemaEntry"
+        deployTargets:
+          type: array
+          description: Deploy targets.
+          items:
+            $ref: "#/components/schemas/SchemaEntry"
+        notifiers:
+          type: array
+          description: Notification channels.
+          items:
+            $ref: "#/components/schemas/SchemaEntry"
+        signers:
+          type: array
+          description: Private CA signers.
+          items:
+            $ref: "#/components/schemas/SchemaEntry"

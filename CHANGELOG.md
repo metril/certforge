@@ -14,3 +14,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Local admin argon2id passwords, Postgres-backed sessions, CSRF enforcement, and request principal middleware.
 - Role-based authorization with org-scoped bindings (authz.Can).
 - Append-only, hash-chained audit log with chain verification.
+- OpenAPI spec with generated strict server, problem+json errors, Swagger UI at /api/docs, meta schema registry, org listing.

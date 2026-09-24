@@ -73,3 +73,18 @@ sections.MustRegister("my_section", json.RawMessage(schemaJSON), json.RawMessage
 ```
 
 The default must validate against the schema. Every property needs `title` and `description` because the UI builds the form and tooltips from them.
+
+## Adding an API operation
+
+1. Add the path, with `operationId`, `description`, and schemas that describe every field, to `api/openapi.yaml`.
+2. `make generate`.
+3. Implement the new `gen.StrictServerInterface` method on `*api.Server` in `internal/api/<resource>.go`. Return `*api.HTTPError` for 4xx responses. Check permissions with `authorize(ctx, authz.ActionX, orgID)`.
+4. If the route must work without a session, add it to `isPublic` in `internal/api/router.go`.
+
+## Registering a pluggable type schema
+
+```go
+metaReg.Add(meta.KindDNSProvider, meta.Entry{Code: "cloudflare", Name: "Cloudflare", Schema: schemaJSON})
+```
+
+It appears in `GET /api/v1/meta/schemas`, and the UI renders its form from the schema.
