@@ -64,6 +64,9 @@ export const help = {
     text: 'Unset fields inherit from the level above. Changes apply at each certificate’s next renewal.',
     learnMore: 'configuration.md#issuance-defaults',
   },
+  'cert.names': { text: 'Paste names separated by commas, spaces, or new lines. Wildcards need DNS verification.', learnMore: 'certificates.md#names' },
+  'cert.nextRenew': { text: 'When CertForge next tries to renew. ARI can move it earlier.' },
+  'status.column': { text: 'State of the certificate itself, not of its last attempt.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

@@ -1,0 +1,92 @@
+import type { KeyboardEvent, MouseEvent } from 'react';
+import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type RowData } from '@tanstack/react-table';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import type { HelpKey } from '@/lib/help';
+import { cn } from '@/lib/utils';
+import { HelpTip } from './HelpTip';
+
+declare module '@tanstack/react-table' {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData extends RowData, TValue> {
+    sortKey?: string;
+    help?: HelpKey;
+    className?: string;
+  }
+}
+
+type Props<T> = {
+  data: T[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  columns: ColumnDef<T, any>[];
+  getRowId: (row: T) => string;
+  ariaLabel: string;
+  sort?: string;
+  onSort?: (sort: string) => void;
+  selected?: ReadonlySet<string>;
+  onRowClick?: (id: string, e: MouseEvent | KeyboardEvent) => void;
+  onRowOpen?: (id: string) => void;
+};
+
+export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort, selected, onRowClick, onRowOpen }: Props<T>) {
+  const table = useReactTable({ data, columns, getRowId: (r) => getRowId(r), getCoreRowModel: getCoreRowModel(), manualSorting: true });
+  return (
+    <Table aria-label={ariaLabel} className="table-fixed">
+      <TableHeader>
+        {table.getHeaderGroups().map((hg) => (
+          <TableRow key={hg.id}>
+            {hg.headers.map((h) => {
+              const meta = h.column.columnDef.meta;
+              const key = meta?.sortKey;
+              const dir = key && sort === key ? 'ascending' : key && sort === `-${key}` ? 'descending' : undefined;
+              const label = flexRender(h.column.columnDef.header, h.getContext());
+              return (
+                <TableHead key={h.id} aria-sort={key ? (dir ?? 'none') : undefined} className={meta?.className}>
+                  <span className="inline-flex items-center gap-1">
+                    {key && onSort ? (
+                      <button type="button" className="inline-flex items-center gap-1 hover:text-ink" onClick={() => onSort(dir === 'ascending' ? `-${key}` : key)}>
+                        {label}
+                        {dir === 'ascending' ? <ArrowUp className="size-3.5" aria-hidden /> : dir === 'descending' ? <ArrowDown className="size-3.5" aria-hidden /> : <ArrowUpDown className="size-3.5 opacity-40" aria-hidden />}
+                      </button>
+                    ) : (
+                      label
+                    )}
+                    {meta?.help && <HelpTip id={meta.help} />}
+                  </span>
+                </TableHead>
+              );
+            })}
+          </TableRow>
+        ))}
+      </TableHeader>
+      <TableBody>
+        {table.getRowModel().rows.map((row) => {
+          const isSel = selected?.has(row.id) ?? false;
+          return (
+            <TableRow
+              key={row.id}
+              aria-selected={onRowClick ? isSel : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              className={cn('h-9 rounded-none', onRowClick && 'cursor-pointer', isSel && 'bg-primary/10 hover:bg-primary/15')}
+              onMouseDown={(e) => e.shiftKey && e.preventDefault()}
+              onClick={(e) => onRowClick?.(row.id, e)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === ' ') {
+                  e.preventDefault();
+                  onRowClick?.(row.id, e);
+                } else if (e.key === 'Enter') onRowOpen?.(row.id);
+              }}
+            >
+              {row.getVisibleCells().map((c) => (
+                <TableCell key={c.id} className={c.column.columnDef.meta?.className}>
+                  {flexRender(c.column.columnDef.cell, c.getContext())}
+                </TableCell>
+              ))}
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}

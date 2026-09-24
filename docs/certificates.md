@@ -51,6 +51,8 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 
 A certificate has a common name plus any number of SANs: wildcards (`*.example.com`, leftmost label only), names from different zones, and IP addresses where the CA supports them (not with DNS-01). Names are lower-cased and de-duplicated; the first is the common name. Changing names issues a new certificate immediately; other changes apply at the next renewal.
 
+In the web UI, paste names into the wizard's multi-line box separated by commas, spaces, or new lines; each becomes a chip, wildcards are flagged as DNS-01 only, and the first name becomes the common name (drag to change).
+
 ## Verification rules
 
 Each certificate carries an ordered list of rules. For every name the first matching rule wins; the inherited catch-all rules (certificate overrides, then org, then global) come after the certificate's own rules.

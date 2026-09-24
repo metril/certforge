@@ -81,8 +81,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 | 7 | Issuers: CAs and ACME accounts | done | 3caba41 |
 | 8 | SchemaForm and provider picker | done | ae8d173 |
 | 9 | DNS credentials | done | 1b3d449 |
-| 10 | InheritableField and Settings | done | pending |
-| 11 | Certificates list | planned | |
+| 10 | InheritableField and Settings | done | 1154695 |
+| 11 | Certificates list | done | pending |
 | 12 | Wizard names step | planned | |
 | 13 | Verification rules and coverage | planned | |
 | 14 | Wizard assembly | planned | |
@@ -173,6 +173,13 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 - 1C Task 10 (preflight A9): `RenewPolicy.value` in percent mode is the share of the lifetime *remaining* when renewal fires (`internal/issuance/policy.go`'s `NextRenewAt`), not elapsed; the built-in default is 33, not the brief's 66. `ISSUANCE_FIELDS`' `renewPolicy` initial/display/help/mode-switch and `docs/configuration.md` all say "remains"/33.
 - 1C Task 10: a 422 from either issuance-defaults PUT (global or org) is mapped to its field via the problem's `title`, always `"Invalid <field>"` or `"Invalid <field>.<sub>"` (`internal/api/issuance_common.go`'s `mapErr`/`unprocessable` — the same convention Task 9's review already found for DNS credentials), not prose keyword-matching in `detail`; `fieldFromTitle` in `issuanceFields.tsx` does an exact lookup against `ISSUANCE_FIELDS`' own keys. `useSaveOrgDefaults` and the Global-tab `useSaveSettings('issuance_defaults', {silent:true})` call suppress the default toast so the inline error is the only surfacing, matching `useSaveCa`/`useSaveCredential`'s existing pattern; `useSaveSettings` also invalidates the `['defaults']` query family on an `issuance_defaults` save, since a global change can move any org's effective sources.
 - 1C Task 10: docs/design.md's Settings → General row lists "base URL, orgs, sites"; there is no `/sites` endpoint in Phase 1A (see Known gaps), so `OrgsList` shows only the read-only organizations list, from a new `orgsQuery` (`GET /orgs`).
+- 1C Task 11 (preflight C8): T4's `AppShell.test.tsx` navigates to `/o/acme/certificates` without mocking `/certificates` or `/cas`; now that the route actually fetches both, `test/server.ts`'s `setupServer(...)` carries empty-list default handlers for `GET /orgs/:orgId/certificates` and `GET /orgs/:orgId/cas`, restored by `resetHandlers()` after every test and shadowed by any test's own more specific `server.use(...)`.
+- 1C Task 11 (preflight D9): the spec's "card lists" below 768 px applies to the certificates list — `CertificatesPage` renders `DataTable` at `md` and up and a card grid (name, status chip, validity bar, next renewal — no grants/CA/names columns, no row selection) below it, gated on `useMediaQuery('(min-width: 768px)')`; `list.test.tsx` mocks `matchMedia` (desktop by default so the table-oriented assertions hold, narrow for a dedicated card-rows test), matching `AppShell.test.tsx`'s existing convention.
+- 1C Task 11 (preflight D15): `useRenewCertificates`/`useDeleteCertificates` run their per-id calls through `Promise.allSettled`, not `Promise.all`, and report `{ok, failed}` as separate success/error toasts, so one failing id in a bulk action no longer swallows the rest.
+- 1C Task 11 (controller ruling, design.md screen inventory): the certificates table adds the ruling's "names (SANs, truncated with a tooltip)" and "grants (Phase 3, render '–')" columns, neither of which the brief's literal `columns.tsx` included (it rendered a bare SAN count and dropped grants); the CA column reads `effective.caId.value` directly (already `string | null | undefined` on the real `EffectiveIssuanceDefaults`) instead of casting through `EffectiveMap`.
+- 1C Task 11 (controller ruling, not in the brief's literal test list): three tests beyond the brief's Step 1 — a stale-cursor 422 resets to the first page with a one-line notice, card rows below 768 px, and a saved view survives a blocked `localStorage` for the rest of the session but not across a reload — cover requirements the brief's own `list.test.tsx` code didn't exercise.
+- 1C Task 11: `DataTable`'s selected-row indicator, `FilterChips`' and `SavedViews`' chip corners used arbitrary Tailwind values (`shadow-[inset_...]`, `rounded-[4px]`) that `no-hardcoded-values.test.ts` blocks; the shadow is dropped (the `bg-primary/10` tint alone is the "row highlight" design.md's Cross-cutting patterns calls for) and the radius is the existing `rounded-sm` token (`--radius-sm: 4px`).
+- 1C Task 11 (preflight D7): `docs/certificates.md` already has a "## Names" heading; a one-sentence addition to it (multi-line paste box, wildcard chips, drag-to-reorder) describes the web UI instead of adding a near-duplicate "### Names" heading, which would give `cert.names`'s `learnMore` anchor a `-1` GitHub slug collision.
 
 ## Known gaps
 
@@ -206,3 +213,4 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 - 1C: Overview "recent activity" needs the audit log (Phase 2).
 - 1C: Revoke action needs a revoke endpoint; Deployments tab is Phase 3.
 - 1C Task 10: Settings → General lists organizations only; there is no `/sites` endpoint yet (sites are a later-phase entity), so the sites list docs/design.md's "Settings" row describes is not shown.
+- 1C Task 11: the certificates list's Grants column always renders "–" (client × certificate assignments are Phase 3, same as Deployments above); the card layout below 768 px has no click-to-select or bulk actions (mobile is triage-only per spec, and the floating bulk bar would have nothing to select).
