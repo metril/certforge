@@ -81,14 +81,29 @@ func (s *Server) GetMe(ctx context.Context, _ gen.GetMeRequestObject) (gen.GetMe
 	return gen.GetMe200JSONResponse(me), nil
 }
 
-// startSession creates a session for userID, sets the cookie, and returns Me.
+// startSession creates a session for userID and returns Me. The cf_session
+// cookie is set only once every step has succeeded; on any later failure the
+// session is deleted (best effort) so a failed login never leaves a valid
+// cookie or session behind.
 func (s *Server) startSession(ctx context.Context, userID uuid.UUID) (gen.Me, error) {
-	w, r := httpFrom(ctx)
 	token, sess, err := s.d.Sessions.Create(ctx, userID)
 	if err != nil {
 		return gen.Me{}, err
 	}
+	me, err := s.finishSession(ctx, userID, sess)
+	if err != nil {
+		if delErr := s.d.Sessions.Delete(ctx, sess.ID); delErr != nil {
+			s.d.Log.Error("session cleanup after failed login failed", "err", delErr)
+		}
+		return gen.Me{}, err
+	}
+	w, r := httpFrom(ctx)
 	http.SetCookie(w, s.d.Sessions.Cookie(token, sess.ExpiresAt, s.secureCookie(ctx, r)))
+	return me, nil
+}
+
+// finishSession builds Me for a just-created session, without touching the cookie.
+func (s *Server) finishSession(ctx context.Context, userID uuid.UUID, sess sqlcgen.Session) (gen.Me, error) {
 	if err := s.d.Queries.TouchUserLogin(ctx, userID); err != nil {
 		return gen.Me{}, err
 	}

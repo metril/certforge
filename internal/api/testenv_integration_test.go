@@ -100,6 +100,29 @@ func (e *testEnv) do(method, path string, body any, csrf string) (*http.Response
 	return e.doRaw(method, path, "application/json", string(b), csrf)
 }
 
+// doWithCookie sends a request carrying cookieValue as the cf_session cookie
+// directly, bypassing the client's cookie jar. The jar drops a cookie the
+// server clears (MaxAge -1), so it cannot tell server-side session
+// revocation apart from the client simply no longer holding the cookie.
+func (e *testEnv) doWithCookie(method, path, cookieValue string) (*http.Response, []byte) {
+	e.t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, e.srv.URL+path, nil)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: authn.CookieName, Value: cookieValue})
+	resp, err := e.client.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return resp, out
+}
+
 func (e *testEnv) doRaw(method, path, contentType, body, csrf string) (*http.Response, []byte) {
 	e.t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), method, e.srv.URL+path, strings.NewReader(body))

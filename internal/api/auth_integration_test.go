@@ -78,8 +78,12 @@ func TestLoginMeLogout(t *testing.T) {
 	if resp, _ = e.do(http.MethodPost, "/api/v1/auth/logout", nil, me.CsrfToken); resp.StatusCode != http.StatusNoContent { //nolint:bodyclose // testEnv.doRaw closes the body
 		t.Fatalf("logout %d", resp.StatusCode)
 	}
-	if resp, _ = e.do(http.MethodGet, "/api/v1/auth/me", nil, ""); resp.StatusCode != http.StatusUnauthorized { //nolint:bodyclose // testEnv.doRaw closes the body
-		t.Fatalf("me after logout %d", resp.StatusCode)
+	// The client's cookie jar drops the cleared cookie, so it can't tell
+	// server-side revocation apart from just not holding a cookie anymore.
+	// Resend the pre-logout cookie value explicitly to prove the session
+	// itself was deleted, not just the cookie cleared.
+	if resp, _ = e.doWithCookie(http.MethodGet, "/api/v1/auth/me", c.Value); resp.StatusCode != http.StatusUnauthorized { //nolint:bodyclose // testEnv.doWithCookie closes the body
+		t.Fatalf("me with revoked session cookie %d", resp.StatusCode)
 	}
 }
 
