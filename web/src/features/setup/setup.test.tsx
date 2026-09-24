@@ -17,6 +17,8 @@ it('walks the four setup steps, completes setup, and signs in', async () => {
       state.authed = true;
       return HttpResponse.json(me);
     }),
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([])),
+    http.get(url('/meta/ca-presets'), () => HttpResponse.json([])),
   );
   const { router, user } = renderRoute('/');
   await screen.findByLabelText('Admin password');
@@ -37,7 +39,7 @@ it('walks the four setup steps, completes setup, and signs in', async () => {
   expect(screen.getByLabelText('Slug')).toHaveValue('acme');
   await user.click(screen.getByRole('button', { name: 'Finish setup' }));
 
-  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/overview'));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/issuers/cas'));
   expect(body).toEqual({ adminPassword: PASSWORD, orgName: 'Acme', orgSlug: 'acme', baseUrl: 'http://localhost:3000' });
 });
 

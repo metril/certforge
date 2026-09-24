@@ -1,11 +1,10 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
-import { PageHeader } from '@/components/PageHeader';
+import { IssuersLayout } from '@/features/issuers/IssuersLayout';
 
 export const Route = createFileRoute('/_app/o/$org/issuers')({
   component: () => (
-    <>
-      <PageHeader title="Issuers" />
+    <IssuersLayout>
       <Outlet />
-    </>
+    </IssuersLayout>
   ),
 });

@@ -74,7 +74,7 @@ export function SetupWizard() {
     try {
       await complete.mutateAsync({ adminPassword: password, orgName: orgName.trim(), orgSlug, baseUrl: cleanBase });
       toast.success('Setup complete');
-      await navigate({ to: '/o/$org/overview', params: { org: orgSlug } });
+      await navigate({ to: '/o/$org/issuers/cas', params: { org: orgSlug }, search: { edit: 'new' } });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         // Fix round 1: another session finished setup first. setup-status has

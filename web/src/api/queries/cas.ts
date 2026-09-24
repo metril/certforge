@@ -1,0 +1,33 @@
+import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, call } from '../client';
+import type { CAInput } from '../types';
+
+export const casQuery = (orgId: string) =>
+  queryOptions({ queryKey: ['cas', orgId], queryFn: () => call(api.GET('/orgs/{orgId}/cas', { params: { path: { orgId } } })) });
+
+export const presetsQuery = queryOptions({
+  queryKey: ['ca-presets'],
+  queryFn: () => call(api.GET('/meta/ca-presets')),
+  staleTime: Infinity,
+});
+
+export function useSaveCa(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id?: string; body: CAInput }) =>
+      id
+        ? call(api.PUT('/orgs/{orgId}/cas/{id}', { params: { path: { orgId, id } }, body }))
+        : call(api.POST('/orgs/{orgId}/cas', { params: { path: { orgId } }, body })),
+    meta: { success: 'CA saved' },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cas', orgId] }),
+  });
+}
+
+export function useDeleteCa(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(api.DELETE('/orgs/{orgId}/cas/{id}', { params: { path: { orgId, id } } })),
+    meta: { silent: true, success: 'CA deleted' },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cas', orgId] }),
+  });
+}

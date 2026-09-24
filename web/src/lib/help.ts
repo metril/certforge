@@ -32,6 +32,13 @@ export const help = {
   'status.expired': { text: 'The current certificate is past its expiry date.' },
   'status.revoked': { text: 'The certificate was revoked and will not renew.' },
   'cert.validity': { text: 'Bar spans issue to expiry. Hatching marks the renewal window; the notch is now.' },
+  'ca.preset': { text: 'Presets fill in the directory URL. Custom takes any ACME server.' },
+  'ca.directoryUrl': { text: 'The ACME directory endpoint of the CA.' },
+  'ca.trustBundle': { text: 'PEM roots for a private ACME server, such as step-ca or Pebble.' },
+  'ca.eab': { text: 'External account binding ties orders to your account at the CA. Some CAs require it.' },
+  'ca.resolvers': { text: 'DNS servers used to check propagation. Leave empty for the system resolvers.' },
+  'account.email': { text: 'The CA sends expiry and policy notices here.' },
+  'account.status': { text: 'Status reported by the CA. Only valid accounts can order certificates.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;
