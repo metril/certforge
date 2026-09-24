@@ -25,6 +25,9 @@ func TestNextRenewAt(t *testing.T) {
 		{"days 30 of 6d clamps to half life", RenewPolicy{Mode: RenewDays, Value: 30}, 6 * day, t0, t0.Add(3 * day)},
 		{"percent 0 falls back to 33", RenewPolicy{Mode: RenewPercent}, 100 * day, t0, t0.Add(67 * day)},
 		{"never before now+1h", RenewPolicy{Mode: RenewPercent, Value: 33}, 90 * day, t0.Add(89 * day), t0.Add(89*day + time.Hour)},
+		// Review Focus: life*time.Duration(v) overflows int64 nanoseconds for a
+		// large lifetime; dividing life by 100 before multiplying keeps it sane.
+		{"percent large life does not overflow", RenewPolicy{Mode: RenewPercent, Value: 33}, 200 * 365 * day, t0, t0.Add(200*365*day - 200*365*day/100*33)},
 	}
 	for _, c := range cases {
 		got := NextRenewAt(c.p, t0, t0.Add(c.life), c.now)

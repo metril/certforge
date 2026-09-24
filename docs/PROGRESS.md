@@ -52,8 +52,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 5 | manual-dns provider | done | 449429b |
 | 6 | Signer interface and ACME signer | done | a57f758 |
 | 7 | PEM renderer | done | bdf741e |
-| 8 | Defaults resolver, renewal policy, backoff, timeline | done | pending |
-| 9 | Issuance data layer | todo | – |
+| 8 | Defaults resolver, renewal policy, backoff, timeline | done | b66a1b3 |
+| 9 | Issuance data layer | done | pending |
 | 10 | Certificate store and IssueWorker | todo | – |
 | 11 | Scheduler, river wiring, issuance service | todo | – |
 | 12 | API: CAs, accounts, defaults | todo | – |
@@ -81,6 +81,10 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1B: the ACME signer's lego `http.Client` transport is `ctxTransport` (checks the issuance ctx before every request, attaches it to each one) wrapping `retryAfterTransport` (records the largest Retry-After on 429/503, since lego's `ProblemDetails` drops response headers); cancelling the issuance context now fails every in-flight CA call promptly, not just manual-dns waits.
 - 1B: `renewPolicy.useAri` is stored but ARI scheduling is Phase 4; CAA and rate-ledger steps are recorded as `skipped` until Phase 4.
 - 1B: defaults cover CA, account, key type, renewal, chain, reuse key, must-staple, rules, propagation and resolvers; hooks, notification channels and deploy targets join the same `Defaults` type in Phases 3 and 6.
+- 1B: deleting an ACME account removes it from CertForge only; it is not deactivated at the CA.
+- 1B (P34): org issuance defaults and certificate overrides already checked that a referenced `caId`/`accountId`/rule `dnsCredentialId` belongs to the caller's org. The global `issuance_defaults` settings section is not org-scoped (it applies across every org), so `(*Store).ValidateGlobalDefaults` checks existence only (new `GetCAByID`/`GetAccountByID`/`DNSCredentialExists` queries, ignoring `org_id`) plus that an `accountId` alongside a `caId` actually belongs to it; which org a global reference resolves in remains Phase 2. Deleting a CA, account or DNS credential now also checks the global section (`globalDefaultsReference`), not just org-scoped `Count*Users`, so a globally referenced row can't be deleted out from under it. The settings write path (Task 12's `PUT /settings/issuance_defaults` handler) should call `ValidateGlobalDefaults` before storing the section instead of relying on the JSON Schema alone.
+- 1B: `challenge.SplitConfig`'s "unknown DNS provider" and "`__unchanged__` on create" errors are now sentinel-wrapped (`ErrUnknownProvider`, `ErrUnchangedOnCreate`) so `issuance.splitErr` classifies them with `errors.Is` instead of matching substrings of `Error()`.
+- 1B: fixed from Task 8's review, same package — `NextRenewAt`'s percent branch now divides by 100 before multiplying by the policy value, so a very large certificate lifetime can't overflow int64 nanoseconds; the `issuance_defaults` schema now caps `renewPolicy.value` at 99 when `mode` is `percent` (an `if`/`then`, days keeps its plain 1..365 range) and its `verificationRules` description now says a lower level's list replaces the higher level's (null inherits), not "appended"; `Timeline.Step`/`Logf`/`Finish` now call `save` while still holding the lock, so two concurrent updates can no longer have their saves land out of order; `setLocked` now clears a step's `FinishedAt` when it returns to a non-terminal status (a retried step no longer keeps a stale finish time).
 
 ## Known gaps
 

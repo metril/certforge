@@ -14,13 +14,20 @@ const Unchanged = "__unchanged__"
 // ErrUnknownField is returned for config keys absent from the provider schema.
 var ErrUnknownField = errors.New("unknown field")
 
+// ErrUnknownProvider is returned for a provider code with no registered schema.
+var ErrUnknownProvider = errors.New("unknown DNS provider")
+
+// ErrUnchangedOnCreate is returned when Unchanged is used outside an update,
+// where there is no stored secret for it to refer to.
+var ErrUnchangedOnCreate = errors.New("value is only valid when updating a stored secret")
+
 // SplitConfig validates cfg against the provider schema and splits it into
 // public (stored as jsonb) and secret (stored encrypted) parts. Empty values
 // are dropped.
 func SplitConfig(code string, cfg map[string]string) (public, secret map[string]string, err error) {
 	e, ok := lookupEntry(code)
 	if !ok {
-		return nil, nil, fmt.Errorf("unknown DNS provider %q", code)
+		return nil, nil, fmt.Errorf("%w %q", ErrUnknownProvider, code)
 	}
 	public, secret = map[string]string{}, map[string]string{}
 	for k, v := range cfg {
@@ -32,7 +39,7 @@ func SplitConfig(code string, cfg map[string]string) (public, secret map[string]
 			continue
 		}
 		if v == Unchanged {
-			return nil, nil, fmt.Errorf("%s: %q is only valid when updating a stored secret", k, Unchanged)
+			return nil, nil, fmt.Errorf("%s: %q: %w", k, Unchanged, ErrUnchangedOnCreate)
 		}
 		if strings.ContainsRune(v, 0) {
 			return nil, nil, fmt.Errorf("%s: value contains a NUL byte", k)

@@ -16,7 +16,9 @@ func NextRenewAt(p RenewPolicy, notBefore, notAfter, now time.Time) time.Time {
 		if v <= 0 || v >= 100 {
 			v = 33
 		}
-		at = notAfter.Add(-life * time.Duration(v) / 100)
+		// life/100 first: life*time.Duration(v) can overflow int64 nanoseconds
+		// for a large lifetime before the /100 brings it back down.
+		at = notAfter.Add(-(life / 100 * time.Duration(v)))
 	}
 	if floor := notBefore.Add(life / 2); at.Before(floor) {
 		at = floor

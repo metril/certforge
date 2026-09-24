@@ -182,6 +182,29 @@ func (q *Queries) GetAccount(ctx context.Context, arg GetAccountParams) (AcmeAcc
 	return i, err
 }
 
+const getAccountByID = `-- name: GetAccountByID :one
+SELECT id, org_id, ca_id, email, account_key, registration_uri, status, created_at FROM acme_accounts WHERE id = $1
+`
+
+// Ignores org scope: used only to check that an account referenced by the
+// global issuance_defaults settings section still exists (and which CA it
+// belongs to).
+func (q *Queries) GetAccountByID(ctx context.Context, id uuid.UUID) (AcmeAccount, error) {
+	row := q.db.QueryRow(ctx, getAccountByID, id)
+	var i AcmeAccount
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.CaID,
+		&i.Email,
+		&i.AccountKey,
+		&i.RegistrationUri,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getCA = `-- name: GetCA :one
 SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at FROM cas WHERE id = $1 AND org_id = $2
 `
@@ -193,6 +216,33 @@ type GetCAParams struct {
 
 func (q *Queries) GetCA(ctx context.Context, arg GetCAParams) (Ca, error) {
 	row := q.db.QueryRow(ctx, getCA, arg.ID, arg.OrgID)
+	var i Ca
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Preset,
+		&i.DirectoryUrl,
+		&i.TrustBundlePem,
+		&i.EabKid,
+		&i.EabHmac,
+		&i.Resolvers,
+		&i.Shared,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getCAByID = `-- name: GetCAByID :one
+SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at FROM cas WHERE id = $1
+`
+
+// Ignores org scope: used only to check that a CA referenced by the global
+// issuance_defaults settings section (which is not org-scoped) still exists.
+func (q *Queries) GetCAByID(ctx context.Context, id uuid.UUID) (Ca, error) {
+	row := q.db.QueryRow(ctx, getCAByID, id)
 	var i Ca
 	err := row.Scan(
 		&i.ID,

@@ -2,6 +2,7 @@ package issuance
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,4 +36,58 @@ func TestTimeline(t *testing.T) {
 	if saves < 5 || !strings.Contains(log, "presenting") {
 		t.Errorf("saves=%d log=%q", saves, log)
 	}
+}
+
+// Review Focus: a step that goes back to a non-terminal status (retried
+// after a transient failure) must not keep its old FinishedAt.
+func TestTimelineClearsFinishedAtOnRetry(t *testing.T) {
+	tl := NewTimeline(func() time.Time { return t0 }, nil)
+	tl.Step("order", challenge.StepFailed, "boom")
+	steps, _ := tl.Snapshot()
+	if steps[0].FinishedAt == nil {
+		t.Fatal("failed step should have FinishedAt")
+	}
+	tl.Step("order", challenge.StepRunning, "retrying")
+	steps, _ = tl.Snapshot()
+	if steps[0].FinishedAt != nil {
+		t.Fatalf("retried step still has FinishedAt: %+v", steps[0])
+	}
+}
+
+// Review Focus: save must run while Step still holds the lock, so a second
+// Step call (and its save) cannot start, let alone finish, until the first
+// one's save has returned. Otherwise a slow save for an earlier state could
+// land after a faster save for a later state and overwrite it.
+func TestTimelineSaveHoldsLock(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var mu sync.Mutex
+	var saveCount int
+	tl := NewTimeline(func() time.Time { return t0 }, func(steps []Step, _ string) {
+		mu.Lock()
+		saveCount++
+		first := saveCount == 1
+		mu.Unlock()
+		if first {
+			close(started)
+			<-release
+		}
+	})
+
+	go tl.Step("a", challenge.StepRunning, "")
+	<-started
+
+	done := make(chan struct{})
+	go func() {
+		tl.Step("b", challenge.StepRunning, "")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("second Step returned while the first save was still blocked; save must run under the lock")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	<-done
 }

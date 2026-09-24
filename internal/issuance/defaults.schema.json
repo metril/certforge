@@ -18,7 +18,9 @@
         "mode": {"type": "string", "enum": ["days", "percent"], "title": "Mode"},
         "value": {"type": "integer", "minimum": 1, "maximum": 365, "title": "Value"},
         "useAri": {"type": "boolean", "title": "Use ARI", "description": "Stored now; ARI scheduling arrives in Phase 4."}
-      }
+      },
+      "if": {"properties": {"mode": {"const": "percent"}}, "required": ["mode"]},
+      "then": {"properties": {"value": {"maximum": 99}}}
     },
     "preferredChain": {"type": ["string", "null"], "title": "Preferred chain", "description": "Issuer common name of the alternate chain to prefer."},
     "reuseKey": {"type": ["boolean", "null"], "title": "Reuse key", "description": "Keep the private key across renewals."},
@@ -26,7 +28,7 @@
     "verificationRules": {
       "type": ["array", "null"],
       "title": "Catch-all verification rules",
-      "description": "Appended after each certificate's own rules.",
+      "description": "A lower level's list replaces the higher level's list entirely; null inherits from the level above.",
       "items": {
         "type": "object",
         "required": ["match", "method"],

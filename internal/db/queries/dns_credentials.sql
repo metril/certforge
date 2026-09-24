@@ -6,6 +6,11 @@ RETURNING *;
 -- name: GetDNSCredential :one
 SELECT * FROM dns_provider_credentials WHERE id = $1 AND org_id = $2;
 
+-- name: DNSCredentialExists :one
+-- Ignores org scope: used only to check that a credential referenced by a
+-- rule in the global issuance_defaults settings section still exists.
+SELECT EXISTS(SELECT 1 FROM dns_provider_credentials WHERE id = $1)::boolean AS exists;
+
 -- name: ListDNSCredentials :many
 SELECT * FROM dns_provider_credentials WHERE org_id = $1 ORDER BY name;
 

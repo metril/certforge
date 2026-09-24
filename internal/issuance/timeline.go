@@ -42,9 +42,12 @@ func terminal(status string) bool {
 
 // Step creates or updates the named step. The first "challenge ..." step
 // closes a running "order" step, because lego only calls Present once the
-// order and its authorizations exist.
+// order and its authorizations exist. save runs while the lock is still
+// held, so two concurrent calls can never have their saves land out of
+// order (a stale snapshot overwriting a newer one).
 func (t *Timeline) Step(name, status, message string) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	now := t.now().UTC()
 	if strings.HasPrefix(name, "challenge ") {
 		t.setLocked("order", challenge.StepSuccess, "", now, true)
@@ -56,7 +59,6 @@ func (t *Timeline) Step(name, status, message string) {
 		fmt.Fprintf(&t.log, "%s %s [%s]\n", now.Format(time.RFC3339), name, status)
 	}
 	steps, log := t.snapshotLocked()
-	t.mu.Unlock()
 	t.save(steps, log)
 }
 
@@ -75,6 +77,8 @@ func (t *Timeline) setLocked(name, status, message string, now time.Time, onlyIf
 		}
 		if terminal(status) {
 			s.FinishedAt = &now
+		} else {
+			s.FinishedAt = nil
 		}
 		return
 	}
@@ -91,15 +95,16 @@ func (t *Timeline) setLocked(name, status, message string, now time.Time, onlyIf
 // Logf appends a free-form log line.
 func (t *Timeline) Logf(format string, args ...any) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	fmt.Fprintf(&t.log, "%s %s\n", t.now().UTC().Format(time.RFC3339), fmt.Sprintf(format, args...))
 	steps, log := t.snapshotLocked()
-	t.mu.Unlock()
 	t.save(steps, log)
 }
 
 // Finish marks every running or waiting step as status with message.
 func (t *Timeline) Finish(status, message string) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	now := t.now().UTC()
 	for i := range t.steps {
 		s := &t.steps[i]
@@ -112,7 +117,6 @@ func (t *Timeline) Finish(status, message string) {
 		}
 	}
 	steps, log := t.snapshotLocked()
-	t.mu.Unlock()
 	t.save(steps, log)
 }
 

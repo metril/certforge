@@ -65,6 +65,19 @@ func (q *Queries) CreateDNSCredential(ctx context.Context, arg CreateDNSCredenti
 	return i, err
 }
 
+const dNSCredentialExists = `-- name: DNSCredentialExists :one
+SELECT EXISTS(SELECT 1 FROM dns_provider_credentials WHERE id = $1)::boolean AS exists
+`
+
+// Ignores org scope: used only to check that a credential referenced by a
+// rule in the global issuance_defaults settings section still exists.
+func (q *Queries) DNSCredentialExists(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, dNSCredentialExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const deleteDNSCredential = `-- name: DeleteDNSCredential :execrows
 DELETE FROM dns_provider_credentials WHERE id = $1 AND org_id = $2
 `

@@ -6,6 +6,11 @@ RETURNING *;
 -- name: GetCA :one
 SELECT * FROM cas WHERE id = $1 AND org_id = $2;
 
+-- name: GetCAByID :one
+-- Ignores org scope: used only to check that a CA referenced by the global
+-- issuance_defaults settings section (which is not org-scoped) still exists.
+SELECT * FROM cas WHERE id = $1;
+
 -- name: ListCAs :many
 SELECT * FROM cas WHERE org_id = $1 ORDER BY name;
 
@@ -32,6 +37,12 @@ RETURNING *;
 
 -- name: GetAccount :one
 SELECT * FROM acme_accounts WHERE id = $1 AND org_id = $2;
+
+-- name: GetAccountByID :one
+-- Ignores org scope: used only to check that an account referenced by the
+-- global issuance_defaults settings section still exists (and which CA it
+-- belongs to).
+SELECT * FROM acme_accounts WHERE id = $1;
 
 -- name: ListAccounts :many
 SELECT * FROM acme_accounts WHERE org_id = $1 ORDER BY email;
