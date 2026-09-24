@@ -6,7 +6,7 @@ Single status file. Updated in every commit that completes a task.
 
 | # | Phase | Status | Spec | Plan | Started | Finished |
 |---|---|---|---|---|---|---|
-| 1 | Core issuance slice | in progress | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) | 2026-09-24 | – |
+| 1 | Core issuance slice | in progress | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) | 2026-09-24 | – |
 | 2 | Identity and tenancy | planned | [design](design.md) | – | – | – |
 | 3 | Agent | planned | [design](design.md) | – | – | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
@@ -18,7 +18,7 @@ Single status file. Updated in every commit that completes a task.
 
 Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI.
 
-### Phase 1A: backend foundation ([plan](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md))
+### Phase 1A: backend foundation — done (finished 2026-09-24) ([plan](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md))
 
 | # | Task | Status | Commit |
 |---|---|---|---|
@@ -35,9 +35,31 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 11 | Setup wizard and bootstrap-admin | done | d273abb |
 | 12 | Health, web UI placeholder, serve | done | 519abbe |
 | 13 | Container image and compose | done | 17455a8 |
-| 14 | Architecture docs and phase close-out | done | 4ea34b6 |
+| 14 | Architecture docs and phase close-out | done | b5b8802 |
 
-Phase 1A complete; 1B (issuance) and 1C (web UI) build on it.
+Phase 1A complete; 1B (issuance) and 1C (web UI) build on it. Task 14's row
+records b5b8802, the phase-closing final-review fix commit that closed out
+Phase 1A; 4ea34b6 was Task 14's own last commit.
+
+### Phase 1B: issuance engine — in progress (started 2026-09-24) ([plan](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md))
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Issuance schema and sealed columns | done | pending |
+| 2 | Challenge router and matchers | todo | – |
+| 3 | Lego provider schemas | todo | – |
+| 4 | Credential config and env-isolated provider build | todo | – |
+| 5 | manual-dns provider | todo | – |
+| 6 | Signer interface and ACME signer | todo | – |
+| 7 | PEM renderer | todo | – |
+| 8 | Defaults resolver, renewal policy, backoff, timeline | todo | – |
+| 9 | Issuance data layer | todo | – |
+| 10 | Certificate store and IssueWorker | todo | – |
+| 11 | Scheduler, river wiring, issuance service | todo | – |
+| 12 | API: CAs, accounts, defaults | todo | – |
+| 13 | API: DNS credentials | todo | – |
+| 14 | API: certificates, downloads, manual-dns | todo | – |
+| 15 | Pebble end-to-end test | todo | – |
 
 ## Decisions made during implementation
 
@@ -50,6 +72,9 @@ Phase 1A complete; 1B (issuance) and 1C (web UI) build on it.
 - setup.Service.Complete validates baseUrl against the general settings section's JSON Schema (the same schema PUT /settings/general enforces) in addition to config.ValidateBaseURL, and short-circuits with ErrAlreadyComplete as soon as setup is already done.
 - `make e2e` runs under the isolated compose project `certforge-e2e` (not the dev stack's `certforge` project), with host ports overridable via CF_HTTP_PORT, CF_AGENT_PORT, and CF_CHALLTESTSRV_PORT.
 - Pebble's ACME and management ports are published to the host in `deploy/compose.test.yaml` (`CF_PEBBLE_PORT` default 14000, `CF_PEBBLE_MGMT_PORT` default 15000), not just reachable over the compose network, because plan 1B's issuance e2e runs as a host-side `go test` process and needs to reach `:15000/intermediates/0` directly.
+- 1B: certificate overrides and org defaults are one jsonb document (`issuance.Defaults`) instead of nullable columns; one Go type serves all three levels.
+- 1B: CAs are org-scoped rows in Phase 1 (`shared` reserved for Phase 2 global CAs); only a global admin (`cas:write`) edits them.
+- 1A final-review housekeeping folded into 1B Task 1: `dummyHash` (authn) now builds without the argon2 semaphore so a saturated first call cannot permanently disable `EqualizeTiming`; the semaphore release closure now captures the channel it acquired instead of re-reading the package variable; `settings.EnsureCanary`'s insert-if-absent write is now insert-or-fill, treating a `crypto.canary` row with a NULL secret as absent; docs/architecture.md and the `bootstrap-admin` help summary now say "reset (after setup)" instead of "create or reset".
 
 ## Known gaps
 

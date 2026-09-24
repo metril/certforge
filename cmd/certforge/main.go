@@ -22,7 +22,7 @@ func commands() []command {
 	return []command{
 		{name: "version", summary: "Print the version", run: runVersion},
 		{name: "migrate", summary: "Apply database migrations", run: runMigrate},
-		{name: "bootstrap-admin", summary: "Create or reset the local admin password", run: runBootstrapAdmin},
+		{name: "bootstrap-admin", summary: "Reset (after setup) the local admin password", run: runBootstrapAdmin},
 		{name: "serve", summary: "Run the HTTP server", run: runServe},
 		{name: "healthcheck", summary: "Probe /readyz on the local listener", run: runHealthcheck},
 	}

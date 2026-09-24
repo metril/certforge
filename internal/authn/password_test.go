@@ -4,7 +4,61 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
+
+// TestDummyHashBuildsUnderSaturatedSemaphore must run before any other test
+// in this package observes dummyHash/EqualizeTiming: dummyHash is cached
+// with sync.OnceValue, so if its first-ever build hashed through the
+// argon2 semaphore and got ErrBusy, EqualizeTiming would be silently and
+// permanently disabled for the rest of the process. dummyHash must build
+// without acquiring a slot so a saturated first call cannot do that.
+func TestDummyHashBuildsUnderSaturatedSemaphore(t *testing.T) {
+	restore := SetArgonConcurrency(1)
+	defer restore()
+	release, ok := TryAcquireArgonSlot()
+	if !ok {
+		t.Fatal("could not acquire the only slot")
+	}
+	h := dummyHash()
+	release()
+	if !strings.HasPrefix(h, "$argon2id$v=19$m=65536,t=3,p=2$") {
+		t.Fatalf("dummyHash built under a saturated semaphore = %q", h)
+	}
+	// Verified with the slot free: VerifyPassword itself still goes
+	// through the semaphore (that part is correct and unchanged), only
+	// building the dummy hash must not.
+	if ok, err := VerifyPassword(h, "certforge-timing-equalizer"); err != nil || !ok {
+		t.Fatalf("dummyHash does not verify: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestAcquireArgonSlotReleasesOwnChannel covers a release closure that must
+// drain the channel it actually acquired from, not read the package
+// variable at release time: SetArgonConcurrency swaps that variable, and a
+// release built as `func() { <-argonSlots }` would then block forever on
+// the new (unrelated, empty) channel instead of freeing the old one.
+func TestAcquireArgonSlotReleasesOwnChannel(t *testing.T) {
+	restore := SetArgonConcurrency(1)
+	defer restore()
+	release, ok := TryAcquireArgonSlot()
+	if !ok {
+		t.Fatal("could not acquire the only slot")
+	}
+	restoreSwap := SetArgonConcurrency(2)
+	defer restoreSwap()
+
+	done := make(chan struct{})
+	go func() {
+		release()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("release blocked: it read the swapped package channel instead of the one it acquired")
+	}
+}
 
 func TestHashAndVerify(t *testing.T) {
 	h, err := HashPassword("correct horse battery")
@@ -41,9 +95,6 @@ func TestPasswordTooLong(t *testing.T) {
 }
 
 func TestArgonBusy(t *testing.T) {
-	// Hash before capping concurrency, so this doesn't race the package's
-	// lazily-cached dummyHash (used by EqualizeTiming) into being primed
-	// while the limiter is saturated.
 	h, err := HashPassword("correct horse battery")
 	if err != nil {
 		t.Fatal(err)

@@ -10,6 +10,17 @@ import (
 	"github.com/google/uuid"
 )
 
+type AcmeAccount struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	CaID            uuid.UUID `json:"ca_id"`
+	Email           string    `json:"email"`
+	AccountKey      []byte    `json:"account_key"`
+	RegistrationUri string    `json:"registration_uri"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type AuditEvent struct {
 	ID           int64      `json:"id"`
 	Ts           time.Time  `json:"ts"`
@@ -23,6 +34,98 @@ type AuditEvent struct {
 	Details      []byte     `json:"details"`
 	PrevHash     []byte     `json:"prev_hash"`
 	Hash         []byte     `json:"hash"`
+}
+
+type Ca struct {
+	ID             uuid.UUID `json:"id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	Name           string    `json:"name"`
+	Type           string    `json:"type"`
+	Preset         string    `json:"preset"`
+	DirectoryUrl   string    `json:"directory_url"`
+	TrustBundlePem string    `json:"trust_bundle_pem"`
+	EabKid         string    `json:"eab_kid"`
+	EabHmac        []byte    `json:"eab_hmac"`
+	Resolvers      []string  `json:"resolvers"`
+	Shared         bool      `json:"shared"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type Certificate struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
+type CertificateVersion struct {
+	ID         uuid.UUID  `json:"id"`
+	CertID     uuid.UUID  `json:"cert_id"`
+	Serial     string     `json:"serial"`
+	NotBefore  time.Time  `json:"not_before"`
+	NotAfter   time.Time  `json:"not_after"`
+	Sha256Fp   string     `json:"sha256_fp"`
+	KeyType    string     `json:"key_type"`
+	LeafDer    []byte     `json:"leaf_der"`
+	ChainDer   [][]byte   `json:"chain_der"`
+	PrivateKey []byte     `json:"private_key"`
+	Source     string     `json:"source"`
+	AriWindow  []byte     `json:"ari_window"`
+	RevokedAt  *time.Time `json:"revoked_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+type DnsProviderCredential struct {
+	ID           uuid.UUID `json:"id"`
+	OrgID        uuid.UUID `json:"org_id"`
+	Name         string    `json:"name"`
+	ProviderCode string    `json:"provider_code"`
+	PublicCfg    []byte    `json:"public_cfg"`
+	SecretCfg    []byte    `json:"secret_cfg"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type IssuanceAttempt struct {
+	ID            uuid.UUID  `json:"id"`
+	CertID        uuid.UUID  `json:"cert_id"`
+	StartedAt     time.Time  `json:"started_at"`
+	FinishedAt    *time.Time `json:"finished_at"`
+	Outcome       string     `json:"outcome"`
+	AcmeErrorType string     `json:"acme_error_type"`
+	RetryAfter    *time.Time `json:"retry_after"`
+	Steps         []byte     `json:"steps"`
+	Log           string     `json:"log"`
+}
+
+type IssuanceDefault struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	Config    []byte    `json:"config"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ManualDnsPending struct {
+	ID          uuid.UUID  `json:"id"`
+	AttemptID   uuid.UUID  `json:"attempt_id"`
+	CertID      uuid.UUID  `json:"cert_id"`
+	Domain      string     `json:"domain"`
+	Fqdn        string     `json:"fqdn"`
+	Value       string     `json:"value"`
+	Ttl         int32      `json:"ttl"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	ConfirmedAt *time.Time `json:"confirmed_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type Org struct {

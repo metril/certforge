@@ -94,6 +94,34 @@ func TestCanary(t *testing.T) {
 	}
 }
 
+// TestCanaryNullSecretRowTreatedAsAbsent covers a crypto.canary row that
+// exists with a NULL secret (for example a value written at that key by
+// some other path before the canary is ever sealed): InsertSettingSecretIfAbsent
+// is a key-conflict insert, so an existing row would otherwise block the
+// write forever and EnsureCanary would never seal a canary. EnsureCanary
+// must treat that row as absent (insert-or-fill), then verify.
+func TestCanaryNullSecretRowTreatedAsAbsent(t *testing.T) {
+	ctx := context.Background()
+	_, q := dbtest.New(t)
+	if err := q.UpsertSettingValue(ctx, sqlcgen.UpsertSettingValueParams{Key: settings.CanaryKey, Value: json.RawMessage(`null`)}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := q.GetSetting(ctx, settings.CanaryKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Secret != nil {
+		t.Fatalf("fixture row has a secret already: %v", row.Secret)
+	}
+	st := settings.NewStore(q, envelope(1))
+	if err := st.EnsureCanary(ctx); err != nil {
+		t.Fatalf("EnsureCanary on a NULL-secret row: %v", err)
+	}
+	if err := st.VerifyCanary(ctx); err != nil {
+		t.Fatalf("verify after fill: %v", err)
+	}
+}
+
 // TestCanaryConcurrent covers several processes booting at once against a
 // fresh database: EnsureCanary's insert-if-absent write means only the
 // first one's canary blob lands, and every caller must still come back

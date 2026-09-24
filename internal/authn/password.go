@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -66,9 +67,10 @@ func TryAcquireArgonSlot() (release func(), ok bool) {
 }
 
 func acquireArgonSlot() (release func(), ok bool) {
+	ch := argonSlots
 	select {
-	case argonSlots <- struct{}{}:
-		return func() { <-argonSlots }, true
+	case ch <- struct{}{}:
+		return func() { <-ch }, true
 	default:
 		return func() {}, false
 	}
@@ -133,9 +135,22 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
 
+// dummyHash is computed once, directly with argon2.IDKey, and deliberately
+// does not go through HashPassword's argon2 concurrency semaphore: caching
+// it with sync.OnceValue means a single failed attempt (for example ErrBusy
+// under a saturated first call) would permanently disable EqualizeTiming
+// for the life of the process, since OnceValue never retries.
 var dummyHash = sync.OnceValue(func() string {
-	h, _ := HashPassword("certforge-timing-equalizer")
-	return h
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		// crypto/rand failure here is unrecoverable elsewhere in the
+		// package too; fall back to a fixed salt so EqualizeTiming still
+		// spends real argon2 time instead of caching an empty hash.
+		salt = bytes.Repeat([]byte{0}, 16)
+	}
+	key := argon2.IDKey([]byte("certforge-timing-equalizer"), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, argonMemory, argonTime, argonThreads, b64.EncodeToString(salt), b64.EncodeToString(key))
 })
 
 // EqualizeTiming spends the same time as a real verification. Call it when

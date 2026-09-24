@@ -27,7 +27,8 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (Setting, error) {
 
 const insertSettingSecretIfAbsent = `-- name: InsertSettingSecretIfAbsent :execrows
 INSERT INTO settings (key, secret, updated_at) VALUES ($1, $2, now())
-ON CONFLICT (key) DO NOTHING
+ON CONFLICT (key) DO UPDATE SET secret = EXCLUDED.secret, updated_at = now()
+WHERE settings.secret IS NULL
 `
 
 type InsertSettingSecretIfAbsentParams struct {
@@ -35,6 +36,9 @@ type InsertSettingSecretIfAbsentParams struct {
 	Secret []byte `json:"secret"`
 }
 
+// Insert-or-fill: creates the row if it doesn't exist, or fills in the
+// secret if the row exists but its secret is still NULL. A row whose
+// secret is already set is left untouched (0 rows affected).
 func (q *Queries) InsertSettingSecretIfAbsent(ctx context.Context, arg InsertSettingSecretIfAbsentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, insertSettingSecretIfAbsent, arg.Key, arg.Secret)
 	if err != nil {
