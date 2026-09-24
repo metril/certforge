@@ -1,13 +1,15 @@
 package api
 
 import (
+	"errors"
 	"log/slog"
 	"mime"
 	"net"
 	"net/http"
+	"runtime/debug"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
@@ -21,7 +23,22 @@ func NewRouter(d Deps) http.Handler {
 	}
 	s := &Server{d: d}
 	r := chi.NewRouter()
-	r.Use(middleware.Recoverer, securityHeaders)
+	r.Use(recoverer(d.Log), securityHeaders)
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			Write(w, http.StatusNotFound, "Not found", "")
+			return
+		}
+		// Non-API paths keep the default 404 until Task 12 adds the SPA fallback.
+		http.NotFound(w, r)
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			Write(w, http.StatusMethodNotAllowed, "Method not allowed", "")
+			return
+		}
+		http.Error(w, "405 method not allowed", http.StatusMethodNotAllowed)
+	})
 	mountDocs(r)
 	r.Route("/api/v1", func(v1 chi.Router) {
 		v1.Use(withClientIP, requireJSON, authn.Middleware(authn.MiddlewareOptions{
@@ -88,4 +105,27 @@ func requireJSON(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// recoverer replaces chi's middleware.Recoverer, which on panic writes a bare
+// 500 with no body. It logs the panic and stack, then writes a problem+json
+// 500 so every error response, including panics, matches the API contract.
+func recoverer(log *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rvr := recover(); rvr != nil {
+					if err, ok := rvr.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+						// Client disconnected; the runtime handles the connection
+						// itself and expects the panic to propagate.
+						panic(rvr)
+					}
+					log.Error("panic recovered", "method", r.Method, "path", r.URL.Path,
+						"panic", rvr, "stack", string(debug.Stack()))
+					Write(w, http.StatusInternalServerError, "Internal server error", "")
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
 }

@@ -81,6 +81,8 @@ The default must validate against the schema. Every property needs `title` and `
 3. Implement the new `gen.StrictServerInterface` method on `*api.Server` in `internal/api/<resource>.go`. Return `*api.HTTPError` for 4xx responses. Check permissions with `authorize(ctx, authz.ActionX, orgID)`.
 4. If the route must work without a session, add it to `isPublic` in `internal/api/router.go`.
 
+Unknown paths under `/api/` and panics anywhere get an `application/problem+json` response; a missing file under `/api/docs/` is served by `http.FileServer` and keeps its plain `text/plain` 404.
+
 ## Registering a pluggable type schema
 
 ```go

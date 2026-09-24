@@ -2,10 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/metril/certforge/internal/meta"
 )
@@ -76,6 +80,39 @@ func TestSecurityHeaders(t *testing.T) {
 	rec := serve(t, http.MethodGet, "/api/v1/orgs", "", "")
 	if rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("X-Frame-Options") != "DENY" {
 		t.Fatalf("headers %v", rec.Header())
+	}
+}
+
+func TestUnknownAPIPathIsProblem(t *testing.T) {
+	rec := serve(t, http.MethodGet, "/api/foo", "", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("code %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Fatalf("content type %q", ct)
+	}
+	var prob map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil || prob["status"] != float64(404) {
+		t.Fatalf("body %s", rec.Body)
+	}
+}
+
+func TestRecovererWritesProblem(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(recoverer(slog.New(slog.NewTextHandler(io.Discard, nil))))
+	r.Get("/boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
+	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("code %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Fatalf("content type %q", ct)
+	}
+	var prob map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil || prob["status"] != float64(500) {
+		t.Fatalf("body %s", rec.Body)
 	}
 }
 
