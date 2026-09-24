@@ -44,6 +44,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web UI status chips (icon plus word) and the validity bar with renewal window, now notch, and successor ghost.
 - Web UI issuers: CA preset cards and custom ACME directories with trust bundle and EAB, and ACME account registration.
 - Web UI schema-driven forms: switches, segmented controls, chips, and write-only secrets generated from provider JSON Schemas, and a searchable DNS provider picker.
+- Web UI DNS credentials for every lego provider, with forms generated from provider schemas, usage counts, and a zone test.
 
 ### Fixed
 - Deleting a CA or ACME account locks the row for the whole count-then-delete in one transaction, so a concurrent `acme_accounts` insert (an actual foreign key) cannot slip a new reference in between the check and the delete.
