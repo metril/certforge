@@ -45,8 +45,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | Issuance schema and sealed columns | done | pending |
-| 2 | Challenge router and matchers | todo | – |
+| 1 | Issuance schema and sealed columns | done | 5aa9f7e |
+| 2 | Challenge router and matchers | done | pending |
 | 3 | Lego provider schemas | todo | – |
 | 4 | Credential config and env-isolated provider build | todo | – |
 | 5 | manual-dns provider | todo | – |
@@ -75,6 +75,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1B: certificate overrides and org defaults are one jsonb document (`issuance.Defaults`) instead of nullable columns; one Go type serves all three levels.
 - 1B: CAs are org-scoped rows in Phase 1 (`shared` reserved for Phase 2 global CAs); only a global admin (`cas:write`) edits them.
 - 1A final-review housekeeping folded into 1B Task 1: `dummyHash` (authn) now builds without the argon2 semaphore so a saturated first call cannot permanently disable `EqualizeTiming`; the semaphore release closure now captures the channel it acquired instead of re-reading the package variable; `settings.EnsureCanary`'s insert-if-absent write is now insert-or-fill, treating a `crypto.canary` row with a NULL secret as absent; docs/architecture.md and the `bootstrap-admin` help summary now say "reset (after setup)" instead of "create or reset".
+- 1B: verification rule `match` follows plan 1C's matcher: `*`, `*.zone` (one label below zone, or `*.zone` itself), `zone` (zone and everything below). There is no separate exact-only syntax; list a name's own rule first.
+- 1B: DNS propagation checks against configured resolvers use CertForge's own TXT query (`challenge.CheckTXT`) because lego v4's `AddRecursiveNameservers` is process-global.
 
 ## Known gaps
 

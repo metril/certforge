@@ -88,3 +88,23 @@ Blob bytes: `0x01 | len(kek_id) | kek_id | u16 len(wrapped) | wrapped | len(nonc
 - New API operation: `api/openapi.yaml` → `make generate` → method on `*api.Server`.
 - New settings section: `sections.MustRegister(name, schema, default)` in `cmd/certforge/serve.go`.
 - New pluggable type: `metaReg.Add(meta.Kind..., meta.Entry{...})` in `serve.go`.
+
+## Routing challenge provider
+
+lego sees one DNS-01 provider per issuance: `challenge.Router`. It is built per attempt from the certificate's verification rules followed by the inherited catch-all rules (certificate overrides, then org, then global defaults). See [ADR 0005](adr/0005-routing-challenge-provider.md).
+
+```mermaid
+flowchart LR
+  L[lego DNS-01 solver] -->|Present / CleanUp / PreCheck| R[challenge.Router]
+  R -->|first matching rule| P1[lego provider<br/>credential A]
+  R --> P2[lego provider<br/>credential B]
+  R --> M[ManualProvider]
+  M --> DB[(manual_dns_pending)]
+  R -->|rule resolvers set| C[CheckTXT on those resolvers]
+  R -->|none set| D[lego default propagation check]
+```
+
+- Match patterns: `*`, `*.zone` (one label below zone, or `*.zone` itself), `zone` (zone and everything below). First match wins. The UI's coverage panel uses the same rules.
+- `Router.Validate` rejects uncovered names and IP addresses before an order exists.
+- lego providers are built by `challenge.Build` under a global mutex with an isolated environment (`internal/challenge/lego_env.go`).
+- Provider schemas are generated from lego's TOML metadata by `tools/gen-lego-schemas` into `internal/challenge/schemas/` and published to the meta registry by `challenge.AddToMeta` and served under `dnsProviders` in `GET /api/v1/meta/schemas`.
