@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fieldFromTitle, fromDefault, fromEffective, ISSUANCE_FIELDS } from './issuanceFields';
+import { fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, ISSUANCE_FIELDS } from './issuanceFields';
 
 const ctx = { cas: [], accounts: [], credentials: [] };
 const renewPolicy = ISSUANCE_FIELDS.find((f) => f.key === 'renewPolicy')!;
+const caField = ISSUANCE_FIELDS.find((f) => f.key === 'caId')!;
+const accountField = ISSUANCE_FIELDS.find((f) => f.key === 'accountId')!;
 
 describe('renewPolicy copy (preflight A9: value is percent of lifetime REMAINING)', () => {
   it('shows the percent copy as "remains", not "elapsed"', () => {
@@ -41,5 +45,48 @@ describe('fieldFromTitle (a 422 title is always "Invalid <field>")', () => {
     ['Something else', null],
   ])('%s -> %s', (title, field) => {
     expect(fieldFromTitle(title)).toBe(field);
+  });
+});
+
+describe('fromBuiltin (review fix round 1, #1)', () => {
+  it('is always source default, with the built-in value for display', () => {
+    expect(fromBuiltin({ keyType: 'ec256' })('keyType')).toEqual({ value: 'ec256', source: 'default' });
+  });
+  it('falls back to null when the built-in value itself is absent', () => {
+    expect(fromBuiltin({})('caId')).toEqual({ value: null, source: 'default' });
+  });
+});
+
+describe('fullPayload (review fix round 1, #1/#3)', () => {
+  it('sends every field explicitly: the given value, or null for one that is absent', () => {
+    expect(fullPayload({ keyType: 'rsa2048' })).toEqual({
+      caId: null,
+      accountId: null,
+      keyType: 'rsa2048',
+      renewPolicy: null,
+      preferredChain: null,
+      reuseKey: null,
+      mustStaple: null,
+      propagationSeconds: null,
+      resolvers: null,
+    });
+  });
+});
+
+describe('lookup fields disable Override when there is nothing to choose (review fix round 1, #4)', () => {
+  it('caId', () => {
+    expect(caField.disabledReason?.({ cas: [], accounts: [], credentials: [] })).toBe('No CAs yet');
+    expect(caField.disabledReason?.({ cas: [{ id: 'ca-1', name: 'x', preset: 'letsencrypt', directoryUrl: '', resolvers: [] }], accounts: [], credentials: [] })).toBeUndefined();
+  });
+  it('accountId', () => {
+    expect(accountField.disabledReason?.({ cas: [], accounts: [], credentials: [] })).toBe('No accounts yet');
+  });
+});
+
+describe('editor widths (review fix round 1, #8: no fixed width that overflows a 375px viewport)', () => {
+  it('never uses a bare w-72/w-96 class — every editor wrapper is w-full max-w-96', () => {
+    const src = readFileSync(resolve(import.meta.dirname, './issuanceFields.tsx'), 'utf8');
+    expect(src).not.toMatch(/className="w-72/);
+    expect(src).not.toMatch(/className="w-96/);
   });
 });

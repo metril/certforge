@@ -105,7 +105,7 @@ func (s *Server) putGlobalIssuanceDefaults(ctx context.Context, sec *settings.Se
 }
 
 func (s *Server) sectionResponse(ctx context.Context, sec *settings.Section) (gen.SettingsSection, error) {
-	raw, err := s.d.Settings.GetSection(ctx, sec)
+	raw, storedRaw, err := s.d.Settings.GetSection(ctx, sec)
 	if err != nil {
 		return gen.SettingsSection{}, err
 	}
@@ -117,5 +117,16 @@ func (s *Server) sectionResponse(ctx context.Context, sec *settings.Section) (ge
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return gen.SettingsSection{}, err
 	}
-	return gen.SettingsSection{Section: sec.Name, Schema: schema, Value: value}, nil
+	// Stored is additive (controller ruling, review fix round 1): nil when
+	// the section has never been saved, so a client (the issuance_defaults
+	// Global tab) can tell that apart from Value's built-in-filled display.
+	var stored *gen.SettingsValue
+	if storedRaw != nil {
+		v := gen.SettingsValue{}
+		if err := json.Unmarshal(storedRaw, &v); err != nil {
+			return gen.SettingsSection{}, err
+		}
+		stored = &v
+	}
+	return gen.SettingsSection{Section: sec.Name, Schema: schema, Value: value, Stored: stored}, nil
 }

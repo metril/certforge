@@ -156,9 +156,9 @@ func TestSections(t *testing.T) {
 	_, q := dbtest.New(t)
 	st := settings.NewStore(q, envelope(1))
 	sec, _ := settings.DefaultRegistry().Section("general")
-	raw, err := st.GetSection(ctx, sec)
-	if err != nil || string(raw) != "{}" {
-		t.Fatalf("default %s err %v", raw, err)
+	raw, stored, err := st.GetSection(ctx, sec)
+	if err != nil || string(raw) != "{}" || stored != nil {
+		t.Fatalf("default %s stored %s err %v", raw, stored, err)
 	}
 	if err := st.PutSection(ctx, sec, json.RawMessage(`{"baseUrl":"https://c.example.com"}`)); err != nil {
 		t.Fatal(err)
@@ -166,10 +166,13 @@ func TestSections(t *testing.T) {
 	if err := st.PutSection(ctx, sec, json.RawMessage(`{"baseUrl":"nope"}`)); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatalf("err = %v", err)
 	}
-	raw, _ = st.GetSection(ctx, sec)
+	raw, stored, _ = st.GetSection(ctx, sec)
 	var v map[string]string
 	if err := json.Unmarshal(raw, &v); err != nil || v["baseUrl"] != "https://c.example.com" {
 		t.Fatalf("stored %s", raw)
+	}
+	if string(stored) != string(raw) {
+		t.Fatalf("stored %s != value %s once saved", stored, raw)
 	}
 	var row sqlcgen.Setting
 	if row, err = q.GetSetting(ctx, "section.general"); err != nil || row.Key != sec.Key() {

@@ -11,6 +11,12 @@ import { ToneChip } from '@/components/StatusChip';
 export function KekStatus() {
   const q = useQuery(readinessQuery);
   const kek = q.data?.checks.find((c) => c.name === 'kek');
+  const label = kek?.ok ? 'OK' : 'Failed';
+  // Review fix round 1 (#7): fetchReadiness maps a plain "failed" check
+  // string to both the ok:false tone/label AND kek.message verbatim, so
+  // showing both said "Failed" twice; only show the message when it adds
+  // something the chip word doesn't already say.
+  const extra = kek?.message && kek.message.toLowerCase() !== label.toLowerCase() ? kek.message : null;
 
   return (
     <div className="mb-4 flex items-center gap-2">
@@ -19,13 +25,9 @@ export function KekStatus() {
       {q.isPending || !kek ? (
         <span className="text-sm text-ink-muted">{q.isPending ? 'Checking…' : 'Unknown'}</span>
       ) : (
-        <ToneChip
-          tone={kek.ok ? 'valid' : 'failed'}
-          icon={kek.ok ? CircleCheck : CircleX}
-          label={kek.ok ? 'OK' : 'Failed'}
-        />
+        <ToneChip tone={kek.ok ? 'valid' : 'failed'} icon={kek.ok ? CircleCheck : CircleX} label={label} />
       )}
-      {kek?.message && <span className="text-xs text-ink-muted">{kek.message}</span>}
+      {extra && <span className="text-xs text-ink-muted">{extra}</span>}
       {q.isError && (
         <span className="flex items-center gap-1 text-xs">
           <CircleAlert className="size-3.5 text-failed" aria-hidden />

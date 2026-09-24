@@ -15,12 +15,20 @@ export function useSaveSettings(section: SectionId, opts: { silent?: boolean } =
   return useMutation({
     mutationFn: (value: Record<string, unknown>) => call(api.PUT('/settings/{section}', { params: { path: { section } }, body: value })),
     meta: { silent: opts.silent, success: 'Settings saved' },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['settings', section] });
+    // Review fix round 1 (#6): awaited, like useSaveOrgDefaults's own
+    // onSuccess, so the mutation stays "pending" through the refetch and a
+    // caller that awaits mutateAsync doesn't see a flash of the old value
+    // before the invalidated query lands.
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['settings', section] });
       // A global issuance_defaults change can move every org's effective
-      // values between 'global' and 'default' sources (A8): invalidate the
-      // per-org caches too, not just this section's own.
-      if (section === 'issuance_defaults') void qc.invalidateQueries({ queryKey: ['defaults'] });
+      // values between 'global' and 'default' sources (A8), and any cert
+      // that inherits it — invalidate both, the same way a per-org save
+      // already invalidates ['defaults', orgId] and ['certs', orgId].
+      if (section === 'issuance_defaults') {
+        await qc.invalidateQueries({ queryKey: ['defaults'] });
+        await qc.invalidateQueries({ queryKey: ['certs'] });
+      }
     },
   });
 }

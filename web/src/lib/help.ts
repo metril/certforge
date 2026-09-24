@@ -51,7 +51,7 @@ export const help = {
   'defaults.accountId': { text: 'ACME account used to order from that CA.' },
   'defaults.keyType': { text: 'Key algorithm for new certificates. EC P-256 is small and widely supported.' },
   'defaults.renewPolicy': {
-    text: 'Days: renew this many days before expiry. Percent: renew once this share of the lifetime remains.',
+    text: 'Days: renew this many days before expiry. Percent: renew once this share remains, never before half the lifetime.',
     learnMore: 'configuration.md#issuance-defaults',
   },
   'defaults.useAri': { text: 'Let the CA suggest the renewal window (ACME Renewal Information).' },

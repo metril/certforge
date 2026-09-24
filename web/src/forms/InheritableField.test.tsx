@@ -57,3 +57,48 @@ it('shows a 422 mapped to the field next to its editor', async () => {
   renderUI(<WithError />);
   expect(await screen.findByRole('alert')).toHaveTextContent('no such CA in this org');
 });
+
+it('disables Override with a reason, but still allows resetting an already-overridden field', async () => {
+  function WithDisabled() {
+    const [v, setV] = useState<string | null>('ec256');
+    return (
+      <InheritableField<string>
+        id="kt"
+        label="Key type"
+        value={v}
+        inherited={{ value: null, source: 'default' }}
+        initial="rsa2048"
+        display={(x) => <span>{x}</span>}
+        editor={(x, set) => <input aria-label="editor" value={x} onChange={(e) => set(e.target.value)} />}
+        onChange={setV}
+        overrideDisabled="No CAs yet"
+      />
+    );
+  }
+  const { user } = renderUI(<WithDisabled />);
+  expect(screen.getByRole('switch', { name: 'Override Key type' })).not.toBeDisabled();
+  expect(screen.getByLabelText('editor')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Reset to inherited' }));
+  expect(screen.getByRole('switch', { name: 'Override Key type' })).toBeDisabled();
+  expect(screen.getByText('No CAs yet')).toBeInTheDocument();
+});
+
+it('shows a pending state instead of the stale inherited value after a reset that has not saved yet', () => {
+  renderUI(
+    <InheritableField<string>
+      id="kt"
+      label="Key type"
+      value={null}
+      inherited={{ value: 'ec256', source: 'org' }}
+      initial="rsa2048"
+      display={(x) => <span>{x}</span>}
+      editor={(x, set) => <input aria-label="editor" value={x} onChange={(e) => set(e.target.value)} />}
+      onChange={() => {}}
+      pending
+    />,
+  );
+  expect(screen.getByText('Pending')).toBeInTheDocument();
+  expect(screen.getByText('Inherited after save')).toBeInTheDocument();
+  expect(screen.queryByText('ec256')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Org' })).toBeNull();
+});

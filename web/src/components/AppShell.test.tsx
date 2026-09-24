@@ -89,7 +89,7 @@ it('highlights Settings on any section, not just the one the link resolves to', 
     // The Sidebar's own Settings link resolves to /settings/general
     // (Sidebar.tsx); /settings/backup proves isNavPathActive's prefix
     // match, not an exact-href match. Backup's own content needs these two.
-    http.get(url('/settings/backup'), () => HttpResponse.json({ schema: { type: 'object', properties: {} }, value: {} })),
+    http.get(url('/settings/backup'), () => HttpResponse.json({ schema: { type: 'object', properties: {} }, value: {}, stored: null })),
     http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })),
   );
   renderRoute('/settings/backup');

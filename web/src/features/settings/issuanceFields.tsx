@@ -23,7 +23,12 @@ export type IssuanceField = {
   help: HelpKey;
   initial: (c: FieldCtx) => unknown;
   display: (v: unknown, c: FieldCtx) => ReactNode;
-  editor: (v: unknown, set: (v: unknown) => void, c: FieldCtx, id: string) => ReactNode;
+  // set accepts null (review fix round 1, #4): a lookup editor's own clear
+  // affordance means "unset" (reset to inherited), not "set to an empty
+  // string" (which the API always 422s).
+  editor: (v: unknown, set: (v: unknown | null) => void, c: FieldCtx, id: string) => ReactNode;
+  /** When set, Override cannot be turned on for this field (e.g. an empty CA list has nothing to pick) — an already-overridden field can still be reset. */
+  disabledReason?: (c: FieldCtx) => string | undefined;
 };
 
 export function def<K extends FieldKey>(d: {
@@ -32,7 +37,8 @@ export function def<K extends FieldKey>(d: {
   help: HelpKey;
   initial: (c: FieldCtx) => V<K>;
   display: (v: V<K>, c: FieldCtx) => ReactNode;
-  editor: (v: V<K>, set: (v: V<K>) => void, c: FieldCtx, id: string) => ReactNode;
+  editor: (v: V<K>, set: (v: V<K> | null) => void, c: FieldCtx, id: string) => ReactNode;
+  disabledReason?: (c: FieldCtx) => string | undefined;
 }): IssuanceField {
   return d as unknown as IssuanceField;
 }
@@ -67,19 +73,23 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     help: 'defaults.caId',
     initial: (c) => c.cas[0]?.id ?? '',
     display: (v, c) => c.cas.find((x) => x.id === v)?.name ?? <span className="font-mono text-xs">{v}</span>,
+    // Combobox's own clear button calls onChange(undefined); mapped to
+    // null (review fix round 1, #4) so it resets to inherited instead of
+    // setting an empty string the API always 422s.
     editor: (v, set, c, id) => (
-      <div className="w-72">
+      <div className="w-full max-w-96">
         <Combobox
           id={id}
           aria-label="Certificate authority"
           value={v}
-          onChange={(x) => set(x ?? '')}
+          onChange={(x) => set(x ?? null)}
           options={c.cas.map((x) => ({ value: x.id, label: x.name }))}
           placeholder="Choose CA"
           emptyText="No CAs yet"
         />
       </div>
     ),
+    disabledReason: (c) => (c.cas.length === 0 ? 'No CAs yet' : undefined),
   }),
   def({
     key: 'accountId',
@@ -88,19 +98,20 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     initial: (c) => c.accounts[0]?.id ?? '',
     display: (v, c) => <span className="font-mono text-xs">{c.accounts.find((a) => a.id === v)?.email ?? v}</span>,
     editor: (v, set, c, id) => (
-      <div className="w-72">
+      <div className="w-full max-w-96">
         <Combobox
           id={id}
           aria-label="ACME account"
           mono
           value={v}
-          onChange={(x) => set(x ?? '')}
+          onChange={(x) => set(x ?? null)}
           options={c.accounts.map((a) => ({ value: a.id, label: a.email, hint: c.cas.find((x) => x.id === a.caId)?.name }))}
           placeholder="Choose account"
           emptyText="No accounts yet"
         />
       </div>
     ),
+    disabledReason: (c) => (c.accounts.length === 0 ? 'No accounts yet' : undefined),
   }),
   def({
     key: 'keyType',
@@ -137,7 +148,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
           value={v.value}
           onChange={(e) => set({ ...v, value: Number(e.target.value) })}
         />
-        <div className="w-96">
+        <div className="w-full max-w-96">
           <SwitchField id={`${id}-ari`} label="ARI" help="defaults.useAri" checked={v.useAri} onCheckedChange={(useAri) => set({ ...v, useAri })} onText="Use renewal info" offText="Ignore renewal info" />
         </div>
       </div>
@@ -149,7 +160,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     help: 'defaults.preferredChain',
     initial: () => '',
     display: (v) => (v ? <span className="font-mono text-xs">{v}</span> : 'CA default'),
-    editor: (v, set, _c, id) => <Input id={id} className="w-72 font-mono text-xs" value={v} onChange={(e) => set(e.target.value)} placeholder="ISRG Root X1" />,
+    editor: (v, set, _c, id) => <Input id={id} className="w-full max-w-96 font-mono text-xs" value={v} onChange={(e) => set(e.target.value)} placeholder="ISRG Root X1" />,
   }),
   def({
     key: 'reuseKey',
@@ -187,7 +198,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     initial: () => [],
     display: (v) => (v.length ? <span className="font-mono text-xs">{v.join(', ')}</span> : 'System resolvers'),
     editor: (v, set, _c, id) => (
-      <div className="w-96">
+      <div className="w-full max-w-96">
         <ListInput id={id} aria-label="Resolvers" value={v} onChange={set} placeholder="1.1.1.1:53" />
       </div>
     ),
@@ -207,8 +218,14 @@ export function useFieldCtx(orgId: string): FieldCtx {
 
 export const fromDefault = (): EffectiveValue => ({ value: null, source: 'default' });
 
-export function fromGlobal(global: IssuanceDefaults) {
-  return (k: FieldKey): EffectiveValue => ({ value: global[k] ?? null, source: global[k] == null ? 'default' : 'global' }) as EffectiveValue;
+// Review fix round 1 (#1): the Global tab's "not overridden" fields always
+// show source 'default' (Global has no level above it to ask) but with the
+// server's built-in value for display, not a bare null — `builtin` is
+// `GET /settings/issuance_defaults`'s `value` (default-filled), never
+// `stored` (the raw saved object, which is what decides whether a field
+// counts as overridden at all — see IssuanceDefaultsSection).
+export function fromBuiltin(builtin: IssuanceDefaults) {
+  return (k: FieldKey): EffectiveValue => ({ value: builtin[k] ?? null, source: 'default' }) as EffectiveValue;
 }
 
 // Adaptation (preflight A8): the source of truth for the Org tab's badge —
@@ -229,6 +246,17 @@ export function chainFor(global: IssuanceDefaults, org: IssuanceDefaults | undef
   };
 }
 
+// Review fix round 1 (#1, #3): a PUT to either issuance-defaults endpoint
+// fully replaces the section, so every field this form renders is sent
+// explicitly — a real value for an overridden field, or `null` (the API's
+// own "unset" spelling) for one that isn't, never an omitted key. This is
+// what makes "Reset to inherited" round-trip cleanly ({x: null, <sibling
+// kept>}) and stops an untouched field from silently riding along as a
+// concrete value just because the draft object happened to carry it.
+export function fullPayload(value: IssuanceDefaults): IssuanceDefaults {
+  return Object.fromEntries(ISSUANCE_FIELDS.map((f) => [f.key, value[f.key] ?? null])) as IssuanceDefaults;
+}
+
 // A 422's title is "Invalid <field>" or "Invalid <field>.<sub>" (mapErr /
 // unprocessable in internal/api), so this is an exact lookup against the
 // field keys this form actually renders — no prose keyword-matching needed.
@@ -245,9 +273,11 @@ type FormProps = {
   ctx: FieldCtx;
   exclude?: FieldKey[];
   error?: (k: FieldKey) => string | null | undefined;
+  /** True while a field was reset to inherited this session but the save hasn't landed (review fix round 1, #3). */
+  pending?: (k: FieldKey) => boolean;
 };
 
-export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, exclude = [], error }: FormProps) {
+export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, exclude = [], error, pending }: FormProps) {
   return (
     <div className="grid">
       {ISSUANCE_FIELDS.filter((f) => !exclude.includes(f.key)).map((f) => {
@@ -272,6 +302,8 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, e
             editor={(v, set) => f.editor(v, set, ctx, id)}
             onChange={(v) => onChange({ ...value, [f.key]: v })}
             error={error?.(f.key)}
+            overrideDisabled={f.disabledReason?.(ctx)}
+            pending={pending?.(f.key)}
           />
         );
       })}

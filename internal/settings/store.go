@@ -101,14 +101,24 @@ func (s *Store) SetSecret(ctx context.Context, key string, plaintext []byte) err
 	return s.q.UpsertSettingSecret(ctx, sqlcgen.UpsertSettingSecretParams{Key: key, Secret: b.Marshal()})
 }
 
-// GetSection returns the stored section value, or its default when unset.
-func (s *Store) GetSection(ctx context.Context, sec *Section) (json.RawMessage, error) {
+// GetSection returns the section's effective value (its own stored value, or
+// the section's default when it was never saved) and the raw stored value
+// (nil when it was never saved). The two differ for a caller that needs to
+// tell "never explicitly configured" apart from "explicitly set to the
+// built-in value" — the effective value alone always looks concrete once a
+// default is filled in, which is exactly what made the issuance_defaults
+// Global settings tab unable to tell the two apart (controller ruling,
+// review fix round 1).
+func (s *Store) GetSection(ctx context.Context, sec *Section) (value, stored json.RawMessage, err error) {
 	var raw json.RawMessage
-	err := s.Get(ctx, sec.Key(), &raw)
+	err = s.Get(ctx, sec.Key(), &raw)
 	if errors.Is(err, ErrNotFound) {
-		return sec.Default, nil
+		return sec.Default, nil, nil
 	}
-	return raw, err
+	if err != nil {
+		return nil, nil, err
+	}
+	return raw, raw, nil
 }
 
 // PutSection validates raw against the section schema and stores it.

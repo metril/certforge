@@ -21,17 +21,27 @@ func TestSettingsGetPut(t *testing.T) {
 		t.Fatalf("get %d %s", resp.StatusCode, body)
 	}
 	var sec struct {
-		Section string         `json:"section"`
-		Schema  map[string]any `json:"schema"`
-		Value   map[string]any `json:"value"`
+		Section string          `json:"section"`
+		Schema  map[string]any  `json:"schema"`
+		Value   map[string]any  `json:"value"`
+		Stored  *map[string]any `json:"stored"`
 	}
 	if err := json.Unmarshal(body, &sec); err != nil || sec.Section != "general" || sec.Schema["type"] != "object" || len(sec.Value) != 0 {
 		t.Fatalf("section %s", body)
+	}
+	// Additive `stored` (controller ruling, review fix round 1): nil before
+	// the section is ever saved, even though `value` already shows a
+	// concrete (here empty, but for issuance_defaults built-in) display value.
+	if sec.Stored != nil {
+		t.Fatalf("stored should be null before any save, got %v", *sec.Stored)
 	}
 
 	resp, body = e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{"baseUrl": "https://certs.example.com"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "https://certs.example.com") {
 		t.Fatalf("put %d %s", resp.StatusCode, body)
+	}
+	if err := json.Unmarshal(body, &sec); err != nil || sec.Stored == nil || (*sec.Stored)["baseUrl"] != "https://certs.example.com" {
+		t.Fatalf("stored should equal value once saved: %s", body)
 	}
 	resp, body = e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{"baseUrl": "ftp://nope"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
 	if resp.StatusCode != http.StatusUnprocessableEntity || resp.Header.Get("Content-Type") != "application/problem+json" {

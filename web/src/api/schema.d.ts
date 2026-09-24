@@ -753,8 +753,10 @@ export interface components {
             schema: {
                 [key: string]: unknown;
             };
-            /** @description The section's current value. */
+            /** @description The section's effective value — its own stored value, or the section's built-in default when it has never been saved. */
             value: components["schemas"]["SettingsValue"];
+            /** @description The raw value actually saved for this section, before built-in defaults are filled in; null when the section has never been saved. Lets a client tell "never configured" apart from "explicitly set to the built-in value" (value alone cannot, since it always looks concrete once a default is filled in). */
+            stored: components["schemas"]["SettingsValue"] | null;
         };
         /** @description First-run state. */
         SetupStatus: {
