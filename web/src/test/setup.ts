@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest';
-import { afterAll, afterEach, beforeAll } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import { server } from './server';
+import { NOW } from './fixtures';
 
 // jsdom gaps used by Radix, cmdk, and dnd-kit.
 class NoopResizeObserver {
@@ -33,7 +34,13 @@ if (typeof window !== 'undefined') {
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+// Every relative date ("in 60 d") in fixtures.ts is computed from this fixed
+// clock; only Date is faked so setTimeout-driven query polling still runs.
+beforeEach(() => {
+  vi.useFakeTimers({ now: NOW, toFake: ['Date'], shouldAdvanceTime: true });
+});
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   server.resetHandlers();
   if (typeof localStorage !== 'undefined') localStorage.clear();

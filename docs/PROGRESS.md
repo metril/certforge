@@ -72,8 +72,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | Scaffold, tokens, fonts, theme, lint | done | pending |
-| 2 | API client and query plumbing | planned | |
+| 1 | Scaffold, tokens, fonts, theme, lint | done | 07f60a1 |
+| 2 | API client and query plumbing | done | pending |
 | 3 | Router, login, setup wizard | planned | |
 | 4 | App shell and navigation | planned | |
 | 5 | Form controls | planned | |
@@ -143,6 +143,11 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 - 1C Task 1: `src/test/setup.ts`'s jsdom shims (`Element.prototype.*`, `window.matchMedia`, `localStorage.clear()`) are guarded with `typeof ... !== 'undefined'` checks, because `setupFiles` also runs for `lint.test.ts` and `tokens.test.ts`, which opt into `@vitest-environment node` and have no DOM globals.
 - 1C Task 1: `tsconfig.app.json`'s `types` also lists `"node"` (the brief omitted it), since the tests import `node:fs`/`node:path` and read `import.meta.dirname`, an `@types/node` global augmentation that needs `types` to include it explicitly.
 - 1C Task 1: `public/theme-init.js`'s `var dark` has no initializer (ESLint's `no-useless-assignment` flags `= false` as dead, since every path — the try block or the catch — always assigns it before use).
+- 1C Task 2: `types.ts` aliases the real component names, which use DNS/ManualDNS casing (`DNSCredential`, `DNSCredentialInput`, `ManualDNSRecord`, plus `DNSCredentialUpdate` and `DNSCredentialTestResult` for later tasks), not the `DnsCredential`/`ManualDnsRecord` casing the brief assumed; the exported alias names are unchanged. `EffectiveValue`/`EffectiveMap` and `Source` incl. `'cert'` are dropped in favor of aliasing the API's own `EffectiveIssuanceDefaults`/`Source`, which already carry a `{value, source}` shape per field — no hand-rolled casts needed.
+- 1C Task 2: the API declares no non-2xx responses, so every error is treated as RFC 9457 problem+json; `ApiError` also carries an optional `retryAfter` (seconds), parsed from a 503's `Retry-After` header (integer-seconds or HTTP-date form), and `errorMessage` appends "Retry in Ns." when set.
+- 1C Task 2: `authMiddleware` clones a mutating request's body before it is sent (`Request.clone()`, stashed in a `WeakMap`) so a CSRF-flavoured 403 (a valid session whose cached token went stale — `authn.Middleware` 403s any mutating request with a bad or missing token) can refresh `/auth/me` and retry exactly once, guarded by a `WeakSet` against looping if the retry is also rejected.
+- 1C Task 2: the default `setUnauthorizedHandler` performs a full-page navigation to `/login?next=<path>` on an unexpected 401 rather than an SPA route push; that also clears every in-memory cache (React Query's `me` included), so no separate query-cache clear is needed. Router-aware tasks may still call `setUnauthorizedHandler` to override it.
+- 1C Task 2: `make generate` now also runs `npm --prefix web run gen` (guarded by `[ -d web ]`) so the CI drift check covers `web/src/api/schema.d.ts`.
 
 ## Known gaps
 
