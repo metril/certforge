@@ -39,6 +39,21 @@
 | `make e2e` | Starts `deploy/compose.yaml` + `deploy/compose.test.yaml`, runs `-tags e2e` tests, then tears down |
 | `make vendor-swagger` | Downloads the pinned swagger-ui files into `internal/api/docs/` |
 
+`make e2e` runs the stack under the `certforge-e2e` compose project (separate
+from a `docker compose -f deploy/compose.yaml up` dev stack, so `down -v`
+never touches the dev stack's `certforge_pgdata` volume). Its host ports are
+overridable, useful when the defaults are already taken:
+
+| Variable | Default | Port |
+|---|---|---|
+| `CF_HTTP_PORT` | `8080` | certforge HTTP (also sets `CF_E2E_BASE_URL` and the default `CF_BASE_URL`) |
+| `CF_AGENT_PORT` | `8443` | certforge agent listener |
+| `CF_CHALLTESTSRV_PORT` | `8055` | challtestsrv management API |
+
+Pebble's ACME/management ports are not published to the host; certforge and
+the e2e tests reach it over the compose network at `pebble:14000`. Example:
+`CF_HTTP_PORT=18080 make e2e`.
+
 ## Code generation
 
 Generated code is committed. CI runs `make generate && git diff --exit-code`, so always regenerate and commit together.

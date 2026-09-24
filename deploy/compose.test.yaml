@@ -4,13 +4,13 @@ services:
     command: -config test/config/pebble-config.json -strict -dnsserver challtestsrv:8053
     environment:
       PEBBLE_VA_NOSLEEP: "1"
-    ports:
-      - "14000:14000"
-      - "15000:15000"
+      # Disable authorization reuse so plan 1B's issuance e2e always sees a
+      # fresh pending challenge instead of a cached valid authorization.
+      PEBBLE_AUTHZREUSE: "0"
     depends_on:
       - challtestsrv
   challtestsrv:
     image: ghcr.io/letsencrypt/pebble-challtestsrv:2.10.1
     command: -defaultIPv6 "" -defaultIPv4 127.0.0.1
     ports:
-      - "8055:8055"
+      - "${CF_CHALLTESTSRV_PORT:-8055}:8055"

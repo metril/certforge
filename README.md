@@ -9,7 +9,7 @@ Status: early implementation. See [docs/PROGRESS.md](docs/PROGRESS.md) for curre
 ```bash
 mkdir -p deploy/secrets
 head -c 32 /dev/urandom | base64 > deploy/secrets/kek   # back this file up: it decrypts every key
-chmod 0644 deploy/secrets/kek                            # container runs as uid 65532; see docs/configuration.md
+chown 65532 deploy/secrets/kek && chmod 0400 deploy/secrets/kek   # container runs as uid 65532; see docs/configuration.md
 docker compose -f deploy/compose.yaml up -d --build
 curl -s localhost:8080/readyz
 ```

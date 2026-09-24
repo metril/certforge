@@ -4,7 +4,7 @@ SQLC_VERSION := v1.27.0
 OAPI_CODEGEN_VERSION := v2.4.1
 GOLANGCI_LINT_VERSION := v1.61.0
 SWAGGER_UI_VERSION := 5.17.14
-COMPOSE_TEST := docker compose -f deploy/compose.yaml -f deploy/compose.test.yaml
+COMPOSE_TEST := docker compose -p certforge-e2e -f deploy/compose.yaml -f deploy/compose.test.yaml
 
 .PHONY: generate build build-embed test test-integration lint e2e vendor-swagger
 
@@ -37,7 +37,7 @@ deploy/secrets/kek:
 
 e2e: deploy/secrets/kek
 	$(COMPOSE_TEST) up -d --build --wait
-	CF_E2E_BASE_URL=http://localhost:8080 $(GO) test -tags e2e -count=1 ./test/e2e/...; status=$$?; $(COMPOSE_TEST) down -v; exit $$status
+	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} $(GO) test -tags e2e -count=1 ./test/e2e/...; status=$$?; $(COMPOSE_TEST) down -v; exit $$status
 
 vendor-swagger:
 	curl -fsSL -o internal/api/docs/swagger-ui-bundle.js https://cdn.jsdelivr.net/npm/swagger-ui-dist@$(SWAGGER_UI_VERSION)/swagger-ui-bundle.js

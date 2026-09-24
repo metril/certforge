@@ -4,3 +4,5 @@ web/node_modules
 web/dist
 internal/webui/dist
 deploy/secrets
+.superpowers
+docs/superpowers

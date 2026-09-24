@@ -25,13 +25,13 @@ services:
     environment:
       CF_DATABASE_URL: postgres://certforge:${CF_DB_PASSWORD:-certforge}@postgres:5432/certforge?sslmode=disable
       CF_KEK_FILE: /run/secrets/cf_kek
-      CF_BASE_URL: ${CF_BASE_URL:-http://localhost:8080}
+      CF_BASE_URL: ${CF_BASE_URL:-http://localhost:${CF_HTTP_PORT:-8080}}
       CF_LOG_LEVEL: ${CF_LOG_LEVEL:-info}
     secrets:
       - cf_kek
     ports:
-      - "8080:8080"
-      - "8443:8443"
+      - "${CF_HTTP_PORT:-8080}:8080"
+      - "${CF_AGENT_PORT:-8443}:8443"
     depends_on:
       postgres:
         condition: service_healthy
