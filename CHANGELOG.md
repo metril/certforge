@@ -41,6 +41,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web UI sign-in page, first-run setup wizard, and session-expiry redirect that returns to the page you were on.
 - Web UI shell: grouped sidebar with icon rail and mobile drawer, user menu with System, Light, and Dark themes.
 - Web UI controls: switches with state text, selectable chips, searchable comboboxes, write-only secret fields, copy buttons, and type-to-confirm dialogs.
+- Web UI status chips (icon plus word) and the validity bar with renewal window, now notch, and successor ghost.
 
 ### Fixed
 - Deleting a CA or ACME account locks the row for the whole count-then-delete in one transaction, so a concurrent `acme_accounts` insert (an actual foreign key) cannot slip a new reference in between the check and the delete.

@@ -76,8 +76,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 | 2 | API client and query plumbing | done | 8db1cf4 |
 | 3 | Router, login, setup wizard | done | b4274c4 |
 | 4 | App shell and navigation | done | 5d83223 |
-| 5 | Form controls | done | pending |
-| 6 | Status chip and validity bar | planned | |
+| 5 | Form controls | done | 7020b56 |
+| 6 | Status chip and validity bar | done | pending |
 | 7 | Issuers: CAs and ACME accounts | planned | |
 | 8 | SchemaForm and provider picker | planned | |
 | 9 | DNS credentials | planned | |

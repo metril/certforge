@@ -26,6 +26,12 @@ export const help = {
     learnMore: 'configuration.md#first-run-setup-wizard',
   },
   'setup.orgSlug': { text: 'Short name used in URLs. Lowercase letters, digits, and hyphens.' },
+  'status.pending': { text: 'Waiting for its first certificate, or for a manual DNS step.' },
+  'status.active': { text: 'Holds a valid certificate and renews on schedule.' },
+  'status.failed': { text: 'The last attempt failed. CertForge retries with backoff.' },
+  'status.expired': { text: 'The current certificate is past its expiry date.' },
+  'status.revoked': { text: 'The certificate was revoked and will not renew.' },
+  'cert.validity': { text: 'Bar spans issue to expiry. Hatching marks the renewal window; the notch is now.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;
