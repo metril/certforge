@@ -22,6 +22,15 @@ func TestCan(t *testing.T) {
 	agent := admin
 	agent.Kind = authn.KindAgent
 	none := authn.Principal{Kind: authn.KindUser}
+	globalViewer := principal(RoleViewer, nil)
+	globalOperator := principal(RoleOperator, nil)
+	unknownRole := principal("nobody", &org1)
+	apiKeyAdmin := principal(RoleAdmin, nil)
+	apiKeyAdmin.Kind = authn.KindAPIKey
+	multiBinding := authn.Principal{Kind: authn.KindUser, Bindings: []authn.Binding{
+		{Role: RoleViewer, OrgID: &org1},
+		{Role: RoleOperator, OrgID: &org2},
+	}}
 	cases := []struct {
 		name   string
 		p      authn.Principal
@@ -46,6 +55,15 @@ func TestCan(t *testing.T) {
 		{"auditor audit", auditor, ActionAuditRead, &org1, true},
 		{"agent denied", agent, ActionCertsRead, &org1, false},
 		{"no bindings", none, ActionOrgsRead, nil, false},
+		{"global viewer certs write global", globalViewer, ActionCertsWrite, nil, false},
+		{"global viewer certs write org", globalViewer, ActionCertsWrite, &org1, false},
+		{"global viewer keys export", globalViewer, ActionKeysExport, nil, false},
+		{"global operator settings write", globalOperator, ActionSettingsWrite, nil, false},
+		{"global viewer certs read other org", globalViewer, ActionCertsRead, &org2, true},
+		{"unknown role certs read", unknownRole, ActionCertsRead, &org1, false},
+		{"api key global admin certs read", apiKeyAdmin, ActionCertsRead, &org1, true},
+		{"multi binding certs write own org", multiBinding, ActionCertsWrite, &org1, false},
+		{"multi binding certs write other org", multiBinding, ActionCertsWrite, &org2, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
