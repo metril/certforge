@@ -29,6 +29,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - PEM rendering of cert, chain, fullchain, key and combined parts, with deterministic zip bundles.
 - Issuance defaults at global, org and certificate level with per-field source, renewal policy (days or percent), and exponential backoff honouring Retry-After.
 - Issuance data layer with org scoping, sealed EAB HMACs, account keys and DNS secrets, and delete protection for referenced CAs, accounts and credentials.
+- Issue worker: per-attempt step timeline, sealed certificate versions, next renewal from policy, failure backoff with Retry-After.
 
 ### Fixed
 - `NextRenewAt`'s percent-mode renewal calculation no longer overflows for a very large certificate lifetime; a step returning to a non-terminal status no longer keeps a stale `FinishedAt`; a `Timeline` save now runs while the lock is held so concurrent updates can't land out of order; the `issuance_defaults` settings schema now caps `renewPolicy.value` at 99 in percent mode; DNS credential config errors are classified by error type, not by matching substrings; writes to global or org issuance defaults now verify that a referenced CA, ACME account or DNS credential row actually exists, and deleting one now also checks the global defaults section.

@@ -53,8 +53,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 6 | Signer interface and ACME signer | done | a57f758 |
 | 7 | PEM renderer | done | bdf741e |
 | 8 | Defaults resolver, renewal policy, backoff, timeline | done | b66a1b3 |
-| 9 | Issuance data layer | done | pending |
-| 10 | Certificate store and IssueWorker | todo | – |
+| 9 | Issuance data layer | done | dacbf57 |
+| 10 | Certificate store and IssueWorker | done | pending |
 | 11 | Scheduler, river wiring, issuance service | todo | – |
 | 12 | API: CAs, accounts, defaults | todo | – |
 | 13 | API: DNS credentials | todo | – |
@@ -105,3 +105,4 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - No CSP or HSTS headers yet; add them with the real UI in Phase 1C.
 - 1B: lego v4 is not context-aware on its own; the ACME signer wraps its HTTP transport to check the issuance context before every request and attach it to each one, so cancellation now aborts an in-flight CA call (not just manual-dns waits). lego's internal nonce-retry backoff sleeps (bounded at 20s, only on nonce invalidation) are not ctx-aware.
 - 1B: lego's log output is process-global and is not copied into attempt logs; attempts log CertForge's own steps and errors.
+- 1B: no `cert.issued` event is emitted yet; notifiers, deploy targets, Vault sync and agent nudges (Phases 3, 5, 6) add it. "Notify on 3rd failure" arrives with notifiers (Phase 6).
