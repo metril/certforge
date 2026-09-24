@@ -49,7 +49,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := p.Up(ctx); err != nil {
 		return fmt.Errorf("db: migrate: %w", err)
 	}
-	return nil
+	return migrateRiver(ctx, pool)
 }
 
 // Version returns the current schema version.

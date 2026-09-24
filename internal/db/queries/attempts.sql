@@ -4,10 +4,10 @@ INSERT INTO issuance_attempts (cert_id) VALUES ($1) RETURNING *;
 -- name: SaveAttemptProgress :exec
 UPDATE issuance_attempts SET steps = $2, log = $3 WHERE id = $1;
 
--- name: FinishAttempt :exec
+-- name: FinishAttempt :execrows
 UPDATE issuance_attempts SET outcome = $2, acme_error_type = $3, retry_after = $4,
     steps = $5, log = $6, finished_at = now()
-WHERE id = $1;
+WHERE id = $1 AND outcome = 'running';
 
 -- name: ListAttempts :many
 SELECT * FROM issuance_attempts WHERE cert_id = $1 ORDER BY started_at DESC LIMIT $2;

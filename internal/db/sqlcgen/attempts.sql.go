@@ -69,10 +69,10 @@ func (q *Queries) FailStaleAttempts(ctx context.Context, startedAt time.Time) (i
 	return result.RowsAffected(), nil
 }
 
-const finishAttempt = `-- name: FinishAttempt :exec
+const finishAttempt = `-- name: FinishAttempt :execrows
 UPDATE issuance_attempts SET outcome = $2, acme_error_type = $3, retry_after = $4,
     steps = $5, log = $6, finished_at = now()
-WHERE id = $1
+WHERE id = $1 AND outcome = 'running'
 `
 
 type FinishAttemptParams struct {
@@ -84,8 +84,8 @@ type FinishAttemptParams struct {
 	Log           string     `json:"log"`
 }
 
-func (q *Queries) FinishAttempt(ctx context.Context, arg FinishAttemptParams) error {
-	_, err := q.db.Exec(ctx, finishAttempt,
+func (q *Queries) FinishAttempt(ctx context.Context, arg FinishAttemptParams) (int64, error) {
+	result, err := q.db.Exec(ctx, finishAttempt,
 		arg.ID,
 		arg.Outcome,
 		arg.AcmeErrorType,
@@ -93,7 +93,10 @@ func (q *Queries) FinishAttempt(ctx context.Context, arg FinishAttemptParams) er
 		arg.Steps,
 		arg.Log,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertManualPending = `-- name: InsertManualPending :exec

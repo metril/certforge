@@ -108,3 +108,33 @@ flowchart LR
 - `Router.Validate` rejects uncovered names and IP addresses before an order exists.
 - lego providers are built by `challenge.Build` under a global mutex with an isolated environment (`internal/challenge/lego_env.go`).
 - Provider schemas are generated from lego's TOML metadata by `tools/gen-lego-schemas` into `internal/challenge/schemas/` and published to the meta registry by `challenge.AddToMeta` and served under `dnsProviders` in `GET /api/v1/meta/schemas`.
+
+## Issuance flow
+
+```mermaid
+sequenceDiagram
+  participant P as river periodic (5 min)
+  participant S as ScheduleWorker
+  participant Q as river queue
+  participant W as IssueWorker
+  participant CA as ACME CA
+  P->>S: certforge_schedule
+  S->>S: mark expired, close stale attempts
+  S->>Q: certforge_issue{cert_id} per due cert (unique while queued/running)
+  Q->>W: job
+  W->>W: attempt row, steps caa/rate_ledger = skipped
+  W->>W: resolve effective config, load CA + account
+  W->>W: build Router, Validate names
+  W->>CA: lego Obtain (Present, PreCheck, validate, finalize)
+  alt success
+    W->>W: tx: insert version (key sealed), next_renew_at, attempt success
+  else failure
+    W->>W: attempt failed, backoff min(5m·2^n, 24h) ±20%, Retry-After wins
+  end
+```
+
+- `POST /certificates` and `POST /certificates/{id}/renew` enqueue the same job directly.
+- Attempt steps: `caa`, `rate_ledger` (skipped until Phase 4), `account`, `order`, `challenge <name>` (one per name; `waiting_manual` while an operator must act), `finalize`, `store`.
+- ACME and challenge failures are recorded and scheduled through `certificates.next_renew_at`; the job itself succeeds. Only database errors make river retry the job.
+- `next_renew_at` after success: `days` mode is `notAfter − N days`, `percent` mode is `notAfter − N% of lifetime`, never earlier than half the lifetime. ARI (`useAri`) is stored and ignored until Phase 4.
+- A failed renewal keeps a still-valid certificate `active`; the periodic scan marks certificates `expired` when the current version's `notAfter` passes.

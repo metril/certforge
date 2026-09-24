@@ -55,7 +55,10 @@ func (s *Store) SaveAttemptProgress(ctx context.Context, id uuid.UUID, steps []S
 	return s.q.SaveAttemptProgress(ctx, sqlcgen.SaveAttemptProgressParams{ID: id, Steps: b, Log: log})
 }
 
-// FinishAttempt closes an attempt; tx may be nil.
+// FinishAttempt closes an attempt; tx may be nil. It is a no-op (not an
+// error) when the attempt was already finished, so a second finish (for
+// example a panic recovery racing the worker's own error path) cannot
+// overwrite a previously recorded outcome.
 func (s *Store) FinishAttempt(ctx context.Context, tx pgx.Tx, id uuid.UUID, outcome, acmeType string, retryAfter *time.Time, steps []Step, log string) error {
 	b, err := json.Marshal(steps)
 	if err != nil {
@@ -65,8 +68,9 @@ func (s *Store) FinishAttempt(ctx context.Context, tx pgx.Tx, id uuid.UUID, outc
 	if tx != nil {
 		q = q.WithTx(tx)
 	}
-	return q.FinishAttempt(ctx, sqlcgen.FinishAttemptParams{ID: id, Outcome: outcome, AcmeErrorType: acmeType,
+	_, err = q.FinishAttempt(ctx, sqlcgen.FinishAttemptParams{ID: id, Outcome: outcome, AcmeErrorType: acmeType,
 		RetryAfter: retryAfter, Steps: b, Log: log})
+	return err
 }
 
 // FailStaleAttempts closes attempts left running by a crash or timeout.

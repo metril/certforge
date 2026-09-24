@@ -13,6 +13,7 @@ require (
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/pressly/goose/v3 v3.22.1
 	github.com/riverqueue/river v0.24.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.24.0
 	github.com/riverqueue/river/rivertype v0.24.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1
 	github.com/testcontainers/testcontainers-go v0.34.0

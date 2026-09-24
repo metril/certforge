@@ -3,14 +3,19 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
+
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db"
@@ -44,11 +49,29 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	metaReg := meta.NewRegistry()
 	challenge.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
+	box := crypto.EnvelopeBox{Env: env}
+	issuanceStore := issuance.NewStore(pool, box, store)
+	certStore := certstore.New(pool, box)
+	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
+	issueWorker.Log = log
+	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log)
+	if err != nil {
+		return fmt.Errorf("river client: %w", err)
+	}
+	// Started with a context independent of the shutdown signal: cancelling
+	// the context passed to Start aborts running jobs immediately (river's
+	// contract), which would race the graceful drain stopRiver performs below.
+	if err := riverClient.Start(context.Background()); err != nil {
+		return fmt.Errorf("start river: %w", err)
+	}
+	defer stopRiver(riverClient, log)
+	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	aud := audit.New(pool)
 	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
 	handler := api.NewRouter(api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
+		Issuance: issuanceSvc,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenHTTP,
@@ -75,6 +98,19 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	defer cancel()
 	log.Info("shutting down")
 	return srv.Shutdown(shutdownCtx)
+}
+
+// stopRiver lets running jobs finish for 30 s, then cancels them; a
+// cancelled issuance is recorded as failed and retried after backoff.
+func stopRiver(c *river.Client[pgx.Tx], log *slog.Logger) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := c.Stop(ctx); err != nil {
+		log.Warn("river did not stop in time; cancelling running jobs", "err", err)
+		cctx, ccancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer ccancel()
+		_ = c.StopAndCancel(cctx)
+	}
 }
 
 func purgeSessions(ctx context.Context, s *authn.Sessions, log *slog.Logger) {

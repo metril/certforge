@@ -54,8 +54,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 7 | PEM renderer | done | bdf741e |
 | 8 | Defaults resolver, renewal policy, backoff, timeline | done | b66a1b3 |
 | 9 | Issuance data layer | done | dacbf57 |
-| 10 | Certificate store and IssueWorker | done | pending |
-| 11 | Scheduler, river wiring, issuance service | todo | – |
+| 10 | Certificate store and IssueWorker | done | 3df0fe4 |
+| 11 | Scheduler, river wiring, issuance service | done | pending |
 | 12 | API: CAs, accounts, defaults | todo | – |
 | 13 | API: DNS credentials | todo | – |
 | 14 | API: certificates, downloads, manual-dns | todo | – |
@@ -85,6 +85,10 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1B (P34): org issuance defaults and certificate overrides already checked that a referenced `caId`/`accountId`/rule `dnsCredentialId` belongs to the caller's org. The global `issuance_defaults` settings section is not org-scoped (it applies across every org), so `(*Store).ValidateGlobalDefaults` checks existence only (new `GetCAByID`/`GetAccountByID`/`DNSCredentialExists` queries, ignoring `org_id`) plus that an `accountId` alongside a `caId` actually belongs to it; which org a global reference resolves in remains Phase 2. Deleting a CA, account or DNS credential now also checks the global section (`globalDefaultsReference`), not just org-scoped `Count*Users`, so a globally referenced row can't be deleted out from under it. The settings write path (Task 12's `PUT /settings/issuance_defaults` handler) should call `ValidateGlobalDefaults` before storing the section instead of relying on the JSON Schema alone.
 - 1B: `challenge.SplitConfig`'s "unknown DNS provider" and "`__unchanged__` on create" errors are now sentinel-wrapped (`ErrUnknownProvider`, `ErrUnchangedOnCreate`) so `issuance.splitErr` classifies them with `errors.Is` instead of matching substrings of `Error()`.
 - 1B: fixed from Task 8's review, same package — `NextRenewAt`'s percent branch now divides by 100 before multiplying by the policy value, so a very large certificate lifetime can't overflow int64 nanoseconds; the `issuance_defaults` schema now caps `renewPolicy.value` at 99 when `mode` is `percent` (an `if`/`then`, days keeps its plain 1..365 range) and its `verificationRules` description now says a lower level's list replaces the higher level's (null inherits), not "appended"; `Timeline.Step`/`Logf`/`Finish` now call `save` while still holding the lock, so two concurrent updates can no longer have their saves land out of order; `setLocked` now clears a step's `FinishedAt` when it returns to a non-terminal status (a retried step no longer keeps a stale finish time).
+- 1B: `db.Migrate` also applies river's schema under an advisory lock; river `RescueStuckJobsAfter` = 4 h, above the 3 h IssueWorker timeout needed for manual-dns waits.
+- 1B: the DNS credential test writes `_acme-challenge._certforge-test.<zone>` (lego always prepends `_acme-challenge.`).
+- 1B: fixed from Task 10's re-review — `FinishAttempt` only updates a row still `outcome = 'running'`, so a second finish (for example a panic recovery racing the worker's own error path) cannot overwrite a previously recorded outcome; the store now discards the `:execrows` row count since a no-op finish is not an error.
+- 1B: `api.Deps` gains `Issuance *issuance.Service`, wired in `serve.go` from the same `Store`/`certstore.Store`/river client the scheduler uses, so Tasks 12–14 build handlers directly on it. River's client is started with `context.Background()`, not the process's signal context, because cancelling the context passed to `Start` aborts running jobs immediately; graceful draining is `stopRiver`'s job (30 s `Stop`, then a 10 s `StopAndCancel`). `IssueWorker.Log` is now set to the server's configured logger instead of defaulting to `slog.Default()`.
 
 ## Known gaps
 

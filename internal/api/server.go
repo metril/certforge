@@ -17,6 +17,7 @@ import (
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/config"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
@@ -34,6 +35,7 @@ type Deps struct {
 	Sessions *authn.Sessions
 	Auditor  *audit.Auditor
 	Setup    *setup.Service
+	Issuance *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.
