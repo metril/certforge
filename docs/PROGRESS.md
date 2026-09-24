@@ -50,8 +50,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 3 | Lego provider schemas | done | ad0e753 |
 | 4 | Credential config and env-isolated provider build | done | 245a832 |
 | 5 | manual-dns provider | done | 449429b |
-| 6 | Signer interface and ACME signer | done | pending |
-| 7 | PEM renderer | todo | – |
+| 6 | Signer interface and ACME signer | done | a57f758 |
+| 7 | PEM renderer | done | pending |
 | 8 | Defaults resolver, renewal policy, backoff, timeline | todo | – |
 | 9 | Issuance data layer | todo | – |
 | 10 | Certificate store and IssueWorker | todo | – |
