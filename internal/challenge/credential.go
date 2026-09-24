@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Unchanged is the write-only sentinel: on update, a secret field with this
@@ -32,6 +33,9 @@ func SplitConfig(code string, cfg map[string]string) (public, secret map[string]
 		}
 		if v == Unchanged {
 			return nil, nil, fmt.Errorf("%s: %q is only valid when updating a stored secret", k, Unchanged)
+		}
+		if strings.ContainsRune(v, 0) {
+			return nil, nil, fmt.Errorf("%s: value contains a NUL byte", k)
 		}
 		if isSecret {
 			secret[k] = v

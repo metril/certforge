@@ -23,6 +23,15 @@ func TestSplitConfig(t *testing.T) {
 	}
 }
 
+// Review Focus: a NUL byte in a config value would corrupt the encrypted
+// blob and any C-string boundary lego or the OS environment relies on.
+func TestSplitConfigRejectsNULByte(t *testing.T) {
+	_, _, err := SplitConfig("cloudflare", map[string]string{"CF_DNS_API_TOKEN": "tok\x00en"})
+	if err == nil {
+		t.Fatal("want error for NUL byte in value")
+	}
+}
+
 func TestMergeUpdateUnchangedSentinel(t *testing.T) {
 	old := map[string]string{"CF_DNS_API_TOKEN": "old-token", "CF_ZONE_API_TOKEN": "old-zone"}
 	pub, sec, err := MergeUpdate("cloudflare", old, map[string]string{

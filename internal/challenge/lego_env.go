@@ -25,9 +25,12 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown DNS provider %q", code)
 	}
-	for k := range cfg {
+	for k, v := range cfg {
 		if _, known := e.secret[k]; !known {
 			return nil, fmt.Errorf("%w %q for provider %s", ErrUnknownField, k, e.meta.Code)
+		}
+		if v == Unchanged {
+			return nil, fmt.Errorf("%s: %q is a write-only sentinel and cannot be built into a live provider", k, Unchanged)
 		}
 	}
 	if e.factory != nil {

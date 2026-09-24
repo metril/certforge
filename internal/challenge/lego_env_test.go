@@ -3,6 +3,7 @@ package challenge
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -61,6 +62,18 @@ func TestBuildRejectsUnknownKeys(t *testing.T) {
 	}
 	if _, err := Build("nope", nil); err == nil {
 		t.Fatal("want unknown provider error")
+	}
+}
+
+// Review Focus: Unchanged is a write-only sentinel for stored credential
+// updates; it must never reach a live provider build.
+func TestBuildRejectsUnchangedSentinel(t *testing.T) {
+	_, err := Build("cloudflare", map[string]string{"CF_DNS_API_TOKEN": Unchanged})
+	if err == nil {
+		t.Fatal("want error for unresolved sentinel")
+	}
+	if !strings.Contains(err.Error(), Unchanged) {
+		t.Fatalf("error should name the sentinel: %v", err)
 	}
 }
 
