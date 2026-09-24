@@ -23,6 +23,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Issuance database schema: CAs, ACME accounts, DNS credentials, org issuance defaults, certificates, versions, attempts, manual-dns records.
 - Routing challenge provider: per-name verification rules (`*`, `*.zone`, `zone`), first match wins, uncovered names rejected before ordering.
 - JSON Schemas for all lego DNS providers, generated from lego's metadata, served under `dnsProviders` in `GET /api/v1/meta/schemas`, and documented in `docs/dns-providers.md`.
+- DNS credential handling: schema-validated config, write-only secrets with the `__unchanged__` sentinel, and lego provider construction with an isolated environment.
 
 ### Fixed
 - Final review fixes: published Pebble e2e ports, closed a setup/bootstrap-admin takeover gap (bootstrap-admin now refuses before setup completes; Complete revokes a pre-existing admin's sessions), added resource-exhaustion limits on public auth routes (body size, password length, argon2 concurrency, server timeouts), made the KEK canary write insert-if-absent, made audit-write failures log-and-continue, and corrected several doc inaccuracies.

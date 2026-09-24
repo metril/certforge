@@ -47,8 +47,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 |---|---|---|---|
 | 1 | Issuance schema and sealed columns | done | 5aa9f7e |
 | 2 | Challenge router and matchers | done | f92099f |
-| 3 | Lego provider schemas | done | pending |
-| 4 | Credential config and env-isolated provider build | todo | – |
+| 3 | Lego provider schemas | done | ad0e753 |
+| 4 | Credential config and env-isolated provider build | done | pending |
 | 5 | manual-dns provider | todo | – |
 | 6 | Signer interface and ACME signer | todo | – |
 | 7 | PEM renderer | todo | – |
