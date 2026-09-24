@@ -96,40 +96,53 @@ func (s *Store) CreateDNSCredential(ctx context.Context, orgID uuid.UUID, name, 
 }
 
 // UpdateDNSCredential replaces name and config; secret fields sent as
-// challenge.Unchanged keep their stored value.
-func (s *Store) UpdateDNSCredential(ctx context.Context, orgID, id uuid.UUID, name string, cfg map[string]string) (DNSCredential, error) {
+// challenge.Unchanged keep their stored value, unless the update also
+// changes a public field, in which case every secret must be re-entered (a
+// 422 ValidationError) rather than silently carried over to the changed
+// setting — the old secret would otherwise apply to a new connection
+// setting (for example, a stored token sent to a changed endpoint URL)
+// without the caller ever having re-entered it. changedPublic lists the
+// public keys the update changed, for the caller's audit record.
+func (s *Store) UpdateDNSCredential(ctx context.Context, orgID, id uuid.UUID, name string, cfg map[string]string) (DNSCredential, []string, error) {
 	row, err := s.q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: id, OrgID: orgID})
 	if err != nil {
-		return DNSCredential{}, notFound(err)
+		return DNSCredential{}, nil, notFound(err)
 	}
 	if meta, ok := challenge.Lookup(row.ProviderCode); ok && meta.Unsupported {
-		return DNSCredential{}, &ValidationError{"providerCode", meta.Name + " is not supported yet: " + meta.UnsupportedReason}
+		return DNSCredential{}, nil, &ValidationError{"providerCode", meta.Name + " is not supported yet: " + meta.UnsupportedReason}
 	}
-	var old map[string]string
-	if err := s.openJSON(ctx, row.SecretCfg, &old); err != nil {
-		return DNSCredential{}, err
+	var oldPublic map[string]string
+	if err := json.Unmarshal(row.PublicCfg, &oldPublic); err != nil {
+		return DNSCredential{}, nil, err
 	}
-	pub, sec, err := challenge.MergeUpdate(row.ProviderCode, old, cfg)
+	var oldSecret map[string]string
+	if err := s.openJSON(ctx, row.SecretCfg, &oldSecret); err != nil {
+		return DNSCredential{}, nil, err
+	}
+	pub, sec, changedPublic, reusedSecret, err := challenge.MergeUpdate(row.ProviderCode, oldPublic, oldSecret, cfg)
 	if err != nil {
-		return DNSCredential{}, splitErr(err)
+		return DNSCredential{}, nil, splitErr(err)
+	}
+	if len(changedPublic) > 0 && reusedSecret {
+		return DNSCredential{}, nil, &ValidationError{Field: "config", Msg: "secrets must be re-entered when connection settings change"}
 	}
 	if name = strings.TrimSpace(name); name == "" {
-		return DNSCredential{}, &ValidationError{"name", "required"}
+		return DNSCredential{}, nil, &ValidationError{"name", "required"}
 	}
 	pubJSON, err := json.Marshal(pub)
 	if err != nil {
-		return DNSCredential{}, err
+		return DNSCredential{}, nil, err
 	}
 	sealed, err := s.sealJSON(ctx, sec)
 	if err != nil {
-		return DNSCredential{}, err
+		return DNSCredential{}, nil, err
 	}
 	row, err = s.q.UpdateDNSCredential(ctx, sqlcgen.UpdateDNSCredentialParams{ID: id, OrgID: orgID, Name: name, PublicCfg: pubJSON, SecretCfg: sealed})
 	if err != nil {
-		return DNSCredential{}, dbErr(err, "name")
+		return DNSCredential{}, nil, dbErr(err, "name")
 	}
 	c, _, err := s.credFromRow(ctx, row)
-	return c, err
+	return c, changedPublic, err
 }
 
 // GetDNSCredential returns one credential without secrets.
@@ -165,11 +178,12 @@ func (s *Store) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]DNSC
 // KEY SHARE lock on the same row before validating and writing
 // (validateDefaultsTx/validateRulesOrgTx, ValidateGlobalDefaultsTx); the
 // reference checks (CountDNSCredentialUsers, globalDefaultsReferenceTx) run
-// after the lock is held, in the same transaction. Certificate writes don't
-// take this lock yet (Task 14 wires certificates through it), so a
-// concurrent certificate create/update referencing this credential is not
-// yet protected by it — CountDNSCredentialUsers still counts certificates
-// as users, it just isn't racing a lock against their writer yet.
+// after the lock is held, in the same transaction. Certificate writes take
+// this same FOR KEY SHARE lock too (store_certs.go's LockDNSCredentialKeyShare
+// calls), so a concurrent certificate create/update referencing this
+// credential is protected by it exactly like the org/global defaults case
+// above: CountDNSCredentialUsers counts certificates as users, and now races
+// a lock against their writer as well.
 func (s *Store) DeleteDNSCredential(ctx context.Context, orgID, id uuid.UUID) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

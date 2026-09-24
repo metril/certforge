@@ -6,10 +6,11 @@ Fields marked secret are write-only: the API never returns them, and a PUT with 
 
 The lego `exec` provider (runs an arbitrary program on the server) and `manual` provider (reads stdin) are not offered here; use verification rule method `manual-dns` instead.
 
-Fields whose name ends in `_FILE` or `_PATH` (schema `serverPath: true`) name a path on lego's own host filesystem; the API rejects a value for these with a 422. Most providers with such a field also have an inline field carrying the same material (used instead); a provider whose *only* input is that file has no inline alternative and is marked `unsupported: true` below — not offered until file-backed credentials arrive in Phase 5.
+A field marked `serverPath: true` (usually a name ending `_FILE` or `_PATH`, plus a handful of fields overridden individually where the name doesn't follow that convention) names a path on lego's own host filesystem; the API rejects a value for these with a 422. Most providers with such a field also have an inline field carrying the same material (used instead); a provider whose *only* input is that file has no inline alternative and is marked `unsupported: true` below — not offered until file-backed credentials arrive in Phase 5.
 
 ### Not yet supported
 
+- **HyperOne** (`hyperone`): requires a passport file (HYPERONE_PASSPORT_LOCATION only customizes where lego looks for one, it does not accept the passport content inline); supported when file-backed credentials arrive in Phase 5
 - **TransIP** (`transip`): requires a private key file; supported when file-backed credentials arrive in Phase 5
 
 ## Joohoi's ACME-DNS
@@ -916,6 +917,8 @@ Code: `hurricane`. Website: <https://dns.he.net/>
 ## HyperOne
 
 Code: `hyperone`. Website: <https://www.hyperone.com>
+
+**Not supported yet:** requires a passport file (HYPERONE_PASSPORT_LOCATION only customizes where lego looks for one, it does not accept the passport content inline); supported when file-backed credentials arrive in Phase 5
 
 | Field | Group | Secret | Description |
 |---|---|---|---|

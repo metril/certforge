@@ -47,6 +47,26 @@ func NewTimeline(now func() time.Time, save func([]Step, string)) *Timeline {
 	return &Timeline{now: now, save: save}
 }
 
+// SetSave replaces the save callback and returns a restore func that puts
+// the previous one back. Used to scope a different save path (for example,
+// one that writes through an open transaction instead of the store's
+// connection pool) to a section of the attempt without losing whatever
+// callback was active before or after it.
+func (t *Timeline) SetSave(save func([]Step, string)) (restore func()) {
+	if save == nil {
+		save = func([]Step, string) {}
+	}
+	t.mu.Lock()
+	old := t.save
+	t.save = save
+	t.mu.Unlock()
+	return func() {
+		t.mu.Lock()
+		t.save = old
+		t.mu.Unlock()
+	}
+}
+
 func terminal(status string) bool {
 	return status == challenge.StepSuccess || status == challenge.StepFailed || status == challenge.StepSkipped
 }

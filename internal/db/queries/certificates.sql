@@ -162,10 +162,23 @@ WHERE next_renew_at IS NOT NULL AND next_renew_at <= now()
 ORDER BY next_renew_at
 LIMIT $1;
 
--- name: MarkCertificateIssued :exec
-UPDATE certificates SET status = 'active', current_version_id = $2, next_renew_at = $3,
+-- name: MarkCertificateIssued :one
+-- issued_common_name/issued_sans are the names the version being stored
+-- actually covers (as captured when the attempt started). If the row's
+-- current common_name/sans no longer match — an operator changed the
+-- certificate's names while this attempt was running — the CASE keeps
+-- next_renew_at at now() instead of the normal renewal date
+-- (next_renew_at), so the scheduler reissues for the new names within its
+-- next sweep instead of losing the edit for the certificate's whole
+-- lifetime. The comparison and the write happen in one statement (no
+-- separate FOR UPDATE read) so there is no window for a concurrent name
+-- change to race between reading and writing.
+UPDATE certificates SET status = 'active', current_version_id = $2,
+    next_renew_at = CASE WHEN common_name = sqlc.arg(issued_common_name) AND sans = sqlc.arg(issued_sans)
+                          THEN sqlc.arg(next_renew_at)::timestamptz ELSE now() END,
     failure_count = 0, last_error = '', updated_at = now()
-WHERE id = $1;
+WHERE id = $1
+RETURNING next_renew_at;
 
 -- name: MarkCertificateFailed :exec
 UPDATE certificates SET status = $2, failure_count = $3, last_error = $4, next_renew_at = $5, updated_at = now()

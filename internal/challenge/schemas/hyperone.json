@@ -7,6 +7,8 @@
     "title": "HyperOne",
     "type": "object",
     "additionalProperties": false,
+    "unsupported": true,
+    "unsupportedReason": "requires a passport file (HYPERONE_PASSPORT_LOCATION only customizes where lego looks for one, it does not accept the passport content inline); supported when file-backed credentials arrive in Phase 5",
     "properties": {
       "HYPERONE_API_URL": {
         "type": "string",

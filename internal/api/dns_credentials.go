@@ -92,17 +92,21 @@ func (s *Server) GetDNSCredential(ctx context.Context, r gen.GetDNSCredentialReq
 }
 
 // UpdateDNSCredential replaces a credential's name and config; the provider
-// cannot change, and a secret field set to __unchanged__ keeps its stored value.
+// cannot change, and a secret field set to __unchanged__ keeps its stored
+// value — unless the update also changes a public (connection) field, in
+// which case the store rejects it with a 422: every secret must be
+// re-entered so an old secret can never be silently carried over to a new
+// connection setting.
 func (s *Server) UpdateDNSCredential(ctx context.Context, r gen.UpdateDNSCredentialRequestObject) (gen.UpdateDNSCredentialResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionDNSCredsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	c, err := s.d.Issuance.Store.UpdateDNSCredential(ctx, r.OrgId, r.Id, r.Body.Name, r.Body.Config)
+	c, changedPublic, err := s.d.Issuance.Store.UpdateDNSCredential(ctx, r.OrgId, r.Id, r.Body.Name, r.Body.Config)
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	s.audit(ctx, audit.Event{Action: "dns_credential.update", ResourceType: "dns_credential", ResourceID: c.ID.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"name": c.Name}})
+		Details: map[string]any{"name": c.Name, "changedConfig": changedPublic}})
 	return gen.UpdateDNSCredential200JSONResponse(dnsCredOut(c)), nil
 }
 

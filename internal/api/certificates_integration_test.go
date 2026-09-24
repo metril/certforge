@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/api/gen"
@@ -80,6 +81,91 @@ func TestDownloadRejectsUnknownPartAndForeignVersion(t *testing.T) {
 	_, err := f.download(f.as("viewer"), c.ID, v.ID, "cert,p12")
 	wantStatus(t, err, http.StatusUnprocessableEntity)
 	_, err = f.download(f.as("viewer"), other.ID, v.ID, "cert")
+	wantStatus(t, err, http.StatusNotFound)
+}
+
+// Fix wave item 14: an authorization/tenancy matrix for the certificate
+// handlers — viewer is denied every write/issue action, operator is denied
+// a key-bearing download, and a certificate or version id belonging to
+// another org is reported 404 (never exposed, never silently reinterpreted
+// under the caller's own org) — plus a spot-check of the update, delete and
+// versions response shapes.
+func TestCertificateAuthorizationMatrix(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.issuedCert(t, "web")
+
+	// viewer is read-only: every write/issue action is 403.
+	_, err := f.srv.CreateCertificate(f.as("viewer"), gen.CreateCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateInput{Name: "x", CommonName: "x.example.test"}})
+	wantStatus(t, err, http.StatusForbidden)
+	_, err = f.srv.UpdateCertificate(f.as("viewer"), gen.UpdateCertificateRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.CertificateInput{Name: c.Name, CommonName: c.CommonName}})
+	wantStatus(t, err, http.StatusForbidden)
+	_, err = f.srv.DeleteCertificate(f.as("viewer"), gen.DeleteCertificateRequestObject{OrgId: f.org, Id: c.ID})
+	wantStatus(t, err, http.StatusForbidden)
+	_, err = f.srv.RenewCertificate(f.as("viewer"), gen.RenewCertificateRequestObject{OrgId: f.org, Id: c.ID})
+	wantStatus(t, err, http.StatusForbidden)
+	_, err = f.srv.ConfirmManualDNS(f.as("viewer"), gen.ConfirmManualDNSRequestObject{OrgId: f.org, Id: c.ID})
+	wantStatus(t, err, http.StatusForbidden)
+
+	// operator can write/issue, but not export a key-bearing download.
+	_, err = f.download(f.as("operator"), c.ID, v.ID, "key")
+	wantStatus(t, err, http.StatusForbidden)
+	_, err = f.download(f.as("operator"), c.ID, v.ID, "combined")
+	wantStatus(t, err, http.StatusForbidden)
+
+	// A certificate or version id from another org is reported 404, never a
+	// dangling reference or another org's data.
+	foreignOrg := dbtest.Org(t, f.pool)
+	foreign, err := f.store.CreateCertificate(context.Background(), foreignOrg,
+		issuance.CertInput{Name: "foreign", CommonName: "foreign.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.srv.GetCertificate(f.as("operator"), gen.GetCertificateRequestObject{OrgId: f.org, Id: foreign.ID})
+	wantStatus(t, err, http.StatusNotFound)
+	_, err = f.srv.UpdateCertificate(f.as("operator"), gen.UpdateCertificateRequestObject{OrgId: f.org, Id: foreign.ID,
+		Body: &gen.CertificateInput{Name: "foreign", CommonName: "foreign.example.test"}})
+	wantStatus(t, err, http.StatusNotFound)
+	_, err = f.srv.DeleteCertificate(f.as("operator"), gen.DeleteCertificateRequestObject{OrgId: f.org, Id: foreign.ID})
+	wantStatus(t, err, http.StatusNotFound)
+	_, err = f.download(f.as("operator"), foreign.ID, v.ID, "cert")
+	wantStatus(t, err, http.StatusNotFound)
+	_, err = f.download(f.as("operator"), c.ID, uuid.New(), "cert") // unknown version id
+	wantStatus(t, err, http.StatusNotFound)
+
+	// Update, versions and delete response shapes.
+	up, err := f.srv.UpdateCertificate(f.as("operator"), gen.UpdateCertificateRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.CertificateInput{Name: "web2", CommonName: c.CommonName}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// issuedCert stores a version directly (bypassing the worker's
+	// MarkCertificateIssued), so the certificate row's own current_version_id
+	// is never set; this checks the identifying/renamed fields the update
+	// actually changed, not a current-version link issuedCert never created.
+	uc := up.(gen.UpdateCertificate200JSONResponse)
+	if uc.Id != c.ID || uc.Name != "web2" || uc.CommonName != c.CommonName {
+		t.Fatalf("update response = %+v", uc)
+	}
+
+	vs, err := f.srv.ListCertificateVersions(f.as("operator"), gen.ListCertificateVersionsRequestObject{OrgId: f.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := vs.(gen.ListCertificateVersions200JSONResponse)
+	if len(list) != 1 || list[0].Id != v.ID || list[0].Serial != v.Serial || list[0].Sha256Fingerprint != v.SHA256 {
+		t.Fatalf("versions response = %+v", list)
+	}
+
+	del, err := f.srv.DeleteCertificate(f.as("operator"), gen.DeleteCertificateRequestObject{OrgId: f.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := del.(gen.DeleteCertificate204Response); !ok {
+		t.Fatalf("delete response = %+v", del)
+	}
+	_, err = f.srv.GetCertificate(f.as("operator"), gen.GetCertificateRequestObject{OrgId: f.org, Id: c.ID})
 	wantStatus(t, err, http.StatusNotFound)
 }
 

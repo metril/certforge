@@ -179,6 +179,33 @@ func TestTransipMarkedUnsupported(t *testing.T) {
 	}
 }
 
+// TestHyperoneMarkedUnsupported (fix wave item 9): hyperone's only
+// credential material is a passport file; HYPERONE_PASSPORT_LOCATION only
+// customizes where lego looks for it on the server's own filesystem, it
+// does not accept the passport content inline, so the provider is entirely
+// unusable through the API like transip.
+func TestHyperoneMarkedUnsupported(t *testing.T) {
+	f := readRealSchema(t, "hyperone")
+	if !f.Schema.Unsupported {
+		t.Fatal("hyperone must be marked unsupported: its only credential material is a passport file")
+	}
+	if f.Schema.UnsupportedReason == "" {
+		t.Error("hyperone's unsupportedReason must not be empty")
+	}
+}
+
+// TestInfobloxCACertificateIsServerPath (fix wave item 9):
+// INFOBLOX_CA_CERTIFICATE's name doesn't end in _FILE or _PATH, but lego
+// documents it as "The path to the CA certificate (PEM encoded)" — a path
+// on the server's own filesystem, same as any other serverPath field.
+func TestInfobloxCACertificateIsServerPath(t *testing.T) {
+	f := readRealSchema(t, "infoblox")
+	p, ok := f.Schema.Properties["INFOBLOX_CA_CERTIFICATE"]
+	if !ok || !p.ServerPath {
+		t.Errorf("INFOBLOX_CA_CERTIFICATE = %+v, ok=%v; want a serverPath field", p, ok)
+	}
+}
+
 func TestGenerateIsDeterministic(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
 	if err := generate("testdata", a, filepath.Join(a, "d.md")); err != nil {

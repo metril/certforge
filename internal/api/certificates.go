@@ -401,6 +401,6 @@ func (s *Server) ConfirmManualDNS(ctx context.Context, r gen.ConfirmManualDNSReq
 		return nil, &HTTPError{Status: http.StatusConflict, Title: "Nothing to confirm", Detail: "no manual-dns records are waiting, or they expired"}
 	}
 	s.audit(ctx, audit.Event{Action: "certificate.manual_dns_confirmed", ResourceType: "certificate", ResourceID: r.Id.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"confirmed": n}})
+		Details: map[string]any{"confirmed": int(n)}})
 	return gen.ConfirmManualDNS202JSONResponse{Confirmed: int(n)}, nil
 }

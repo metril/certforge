@@ -73,6 +73,12 @@ func DefaultSigner(ca CA) signer.Signer {
 // Timeout covers a manual-dns wait plus propagation and finalisation.
 func (w *IssueWorker) Timeout(*river.Job[IssueArgs]) time.Duration { return 3 * time.Hour }
 
+// saveTimeout bounds a single attempt-progress save (SaveAttemptProgress):
+// without it, a stalled connection would hang inside Timeline.Step/Logf,
+// which run synchronously on every challenge callback, for as long as the
+// surrounding context allows — unbounded for bg (context.WithoutCancel).
+const saveTimeout = 5 * time.Second
+
 // maxPanicStackBytes bounds how much of a recovered panic's stack trace
 // goes into the attempt log; the full trace can run to tens of KiB and
 // would otherwise dominate maxLogBytes on its own.
@@ -114,22 +120,25 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 	}
 	bg := context.WithoutCancel(ctx)
 	tl := NewTimeline(w.Now, func(steps []Step, log string) {
-		if err := w.Store.SaveAttemptProgress(bg, attemptID, steps, log); err != nil {
+		sctx, cancel := context.WithTimeout(bg, saveTimeout)
+		defer cancel()
+		if err := w.Store.SaveAttemptProgress(sctx, nil, attemptID, steps, log); err != nil {
 			w.Log.Warn("save attempt progress", "attempt", attemptID, "err", err)
 		}
 	})
 	// A panic anywhere below (a bug in this worker or a challenge provider)
-	// must not leave the attempt row stuck "running" forever: river's own
-	// executor recovers a panicking Work call and applies its own retry
-	// policy, but nothing else closes out the row we already created. Record
-	// it as failed here, then re-panic so river's contract (its own logging,
-	// error handler and retry/backoff) still applies.
+	// must not leave the attempt row stuck "running" forever, or the
+	// certificate stuck without a backoff scheduling its next attempt: river's
+	// own executor recovers a panicking Work call and applies its own retry
+	// policy, but nothing else closes out the row we already created or
+	// advances the certificate's failure_count/next_renew_at. Record it as a
+	// normal failure (same backoff as any other error) here, then re-panic so
+	// river's contract (its own logging, error handler and retry/backoff)
+	// still applies.
 	defer func() {
 		if r := recover(); r != nil {
-			tl.Finish(challenge.StepFailed, fmt.Sprintf("panic: %v", r))
 			tl.Logf("panic: %v\n%s", r, truncatedStack())
-			steps, log := tl.Snapshot()
-			if ferr := w.Store.FinishAttempt(bg, nil, attemptID, OutcomeFailed, "", nil, steps, log); ferr != nil {
+			if ferr := w.fail(bg, cert, attemptID, tl, fmt.Errorf("panic: %v", r)); ferr != nil {
 				w.Log.Error("finish attempt after panic", "attempt", attemptID, "err", ferr)
 			}
 			panic(r)
@@ -296,14 +305,39 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // no-op after commit
+	// Any Timeline save triggered below (tl.Step/tl.Logf) must not go
+	// through the store's own connection pool while this transaction holds a
+	// row lock on issuance_attempts: a pool-based UPDATE of the same row
+	// would block on that lock and, with a small pool, can deadlock outright
+	// (the pool's only connection is the one tx is holding). Route it
+	// through tx instead for the rest of this function.
+	restore := tl.SetSave(func(steps []Step, log string) {
+		sctx, cancel := context.WithTimeout(ctx, saveTimeout)
+		defer cancel()
+		if err := w.Store.SaveAttemptProgress(sctx, tx, attemptID, steps, log); err != nil {
+			w.Log.Warn("save attempt progress", "attempt", attemptID, "err", err)
+		}
+	})
+	defer restore()
 	v, err := w.Certs.Insert(ctx, tx, cert.ID, iss, string(eff.KeyType.Value))
 	if err != nil {
 		return err
 	}
 	next := NextRenewAt(eff.RenewPolicy.Value, iss.NotBefore, iss.NotAfter, w.Now())
-	if err := w.Store.q.WithTx(tx).MarkCertificateIssued(ctx, sqlcgen.MarkCertificateIssuedParams{
-		ID: cert.ID, CurrentVersionID: &v.ID, NextRenewAt: &next}); err != nil {
+	// The names this attempt actually issued for are cert.Names() as it was
+	// captured at the start of the attempt (run's req.Names); comparing them
+	// against the row's current common_name/sans in the same UPDATE detects
+	// an operator having changed them while this attempt was in flight — see
+	// MarkCertificateIssued.
+	actualNext, err := w.Store.q.WithTx(tx).MarkCertificateIssued(ctx, sqlcgen.MarkCertificateIssuedParams{
+		ID: cert.ID, CurrentVersionID: &v.ID, IssuedCommonName: cert.CommonName, IssuedSans: cert.SANs, NextRenewAt: next})
+	if err != nil {
 		return err
+	}
+	if actualNext != nil && !actualNext.Equal(next) {
+		tl.Logf("names changed while this attempt was running; scheduling an immediate reissue at %s instead of the normal renewal date %s",
+			actualNext.UTC().Format(time.RFC3339), next.UTC().Format(time.RFC3339))
+		next = *actualNext
 	}
 	tl.Step("store", challenge.StepSuccess, "version "+v.ID.String())
 	tl.Logf("issued serial %s valid until %s; next renewal %s", iss.Serial, iss.NotAfter.UTC().Format(time.RFC3339), next.UTC().Format(time.RFC3339))

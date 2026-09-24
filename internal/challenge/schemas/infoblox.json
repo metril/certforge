@@ -13,6 +13,7 @@
         "title": "INFOBLOX_CA_CERTIFICATE",
         "description": "The path to the CA certificate (PEM encoded)",
         "secret": false,
+        "serverPath": true,
         "x-group": "additional"
       },
       "INFOBLOX_DNS_VIEW": {

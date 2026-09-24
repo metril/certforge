@@ -41,8 +41,8 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 | `preferredChain` | empty | Issuer common name of an alternate chain. |
 | `reuseKey` | off | Keeps the private key across renewals when the key type is unchanged. |
 | `mustStaple` | off | Adds the OCSP must-staple extension. |
-| `verificationRules` | none | Catch-all rules appended after a certificate's own rules. |
-| `propagationSeconds` | 120 | How long to wait for TXT records. |
+| `verificationRules` | none | Catch-all rules appended after a certificate's own rules. A level that sets this replaces the level above's list entirely — global, org and certificate never merge, only the closest non-null one applies. |
+| `propagationSeconds` | none (provider default) | How long to wait for TXT records. Unset (or 0) uses each rule's own DNS provider's default instead, so a DNS credential's own `*_PROPAGATION_TIMEOUT` setting takes effect; set a value here or on a rule to override it. |
 | `resolvers` | none | Resolvers for propagation checks. |
 
 `GET /api/v1/orgs/{orgId}/issuance-defaults/effective` and each certificate's `effective` field show the resolved value and its `source`: `default` (built-in), `global`, `org` or `cert`. A changed default applies at the next renewal of every certificate that inherits it. Saving the global section (`PUT /settings/issuance_defaults`) and org defaults (`PUT /orgs/{orgId}/issuance-defaults`) both validate that a referenced CA, account or DNS credential exists (and, for org defaults, belongs to the org) before storing; an unknown id is a 422.
@@ -70,10 +70,11 @@ To give one name its own credential, put a rule for exactly that name first: `a.
 
 Optional per rule: `propagationSeconds`, `resolvers`, `cnameAliasZone`.
 
+- **Propagation budget**: each name gets its own propagation-check budget (its rule's `propagationSeconds`, or its provider's default) once past any manual-dns wait; it fails within that budget regardless of how long another name of the same certificate is still allowed to run (for example a `manual-dns` name's hour-long wait does not extend a `dns-01` name's much shorter budget).
 - **Ordering with overlapping zones**: put the narrow rule first. With `dev.example.com → B` above `example.com → A`, `x.dev.example.com` uses B; reversed, A shadows B.
 - **Uncovered names**: if a name matches no rule and no catch-all exists, the attempt fails before contacting the CA: `no verification rule matches <name> and no catch-all rule is configured`. Add a rule or a catch-all in the defaults.
 - **Apex and wildcard** (`example.com` + `*.example.com`) share `_acme-challenge.example.com`; the rule matching the apex serves both.
-- **CNAME delegation**: point `_acme-challenge.<name>` at a record in a zone your credential controls. lego follows the CNAME automatically. Set `cnameAliasZone` to that zone and CertForge fails early with a clear message if the CNAME is missing.
+- **CNAME delegation**: point `_acme-challenge.<name>` at a record in a zone your credential controls. lego follows the CNAME automatically. Set `cnameAliasZone` to that zone; a mismatched or missing CNAME fails that name with a clear message on its first propagation check, within its own per-name propagation budget — not necessarily "early", and independent of how long any other name of the same certificate is still allowed to wait.
 - Phase 1 supports DNS methods only; HTTP-01 and TLS-ALPN-01 arrive in Phase 4.
 
 ### DNS credentials

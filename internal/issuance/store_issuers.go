@@ -129,7 +129,13 @@ func (s *Store) CreateCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, 
 	return caFromRow(row), nil
 }
 
-// UpdateCA replaces a CA's fields.
+// UpdateCA replaces a CA's fields. Changing directoryUrl while an ACME
+// account is registered against the CA is rejected (409): the account's key
+// is enrolled with the old ACME server, not the new one, so silently
+// repointing the CA would orphan it. CountCAUsers also counts certificates
+// and issuance defaults that pin this CA by id; those would just re-resolve
+// against the new directory on their next issuance, but are included too
+// since they're the same "in use" check DeleteCA already uses.
 func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (CA, error) {
 	cur, err := s.q.GetCA(ctx, sqlcgen.GetCAParams{ID: id, OrgID: orgID})
 	if err != nil {
@@ -138,6 +144,15 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	p, err := in.normalize()
 	if err != nil {
 		return CA{}, err
+	}
+	if in.DirectoryURL != cur.DirectoryUrl {
+		n, err := s.q.CountCAUsers(ctx, id)
+		if err != nil {
+			return CA{}, err
+		}
+		if n > 0 {
+			return CA{}, &InUseError{Users: n}
+		}
 	}
 	sealed := cur.EabHmac
 	if in.EABHmac != nil && *in.EABHmac != challenge.Unchanged {

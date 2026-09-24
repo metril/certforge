@@ -75,15 +75,21 @@ type Effective struct {
 
 // BuiltinDefaults are the global values used when nothing is configured.
 // Percent renewal suits 90-, 45- and 6-day certificates alike.
+//
+// PropagationSeconds is deliberately left nil (not defaulted to any
+// duration): Rule.Timeout treats 0 as "use the rule's DNS provider's own
+// default" (internal/challenge/router.go's ruleTimeout), which is what lets
+// a DNS credential's own *_PROPAGATION_TIMEOUT config take effect. A fixed
+// built-in value here would always win over it, since a non-zero
+// Rule.Timeout is never overridden by the provider default.
 func BuiltinDefaults() Defaults {
 	kt := signer.EC256
 	pol := RenewPolicy{Mode: RenewPercent, Value: 33}
 	chain, f := "", false
-	prop := 120
 	rules := []challenge.RuleSpec{}
 	res := []string{}
 	return Defaults{KeyType: &kt, RenewPolicy: &pol, PreferredChain: &chain, ReuseKey: &f, MustStaple: &f,
-		VerificationRules: &rules, PropagationSeconds: &prop, Resolvers: &res}
+		VerificationRules: &rules, Resolvers: &res}
 }
 
 func pick[T any](global, org, cert *T, builtin T) Field[T] {
@@ -116,15 +122,17 @@ func pickID(global, org, cert *uuid.UUID) Field[*uuid.UUID] {
 func Resolve(global, org, cert Defaults) Effective {
 	b := BuiltinDefaults()
 	return Effective{
-		CAID:               pickID(global.CAID, org.CAID, cert.CAID),
-		AccountID:          pickID(global.AccountID, org.AccountID, cert.AccountID),
-		KeyType:            pick(global.KeyType, org.KeyType, cert.KeyType, *b.KeyType),
-		RenewPolicy:        pick(global.RenewPolicy, org.RenewPolicy, cert.RenewPolicy, *b.RenewPolicy),
-		PreferredChain:     pick(global.PreferredChain, org.PreferredChain, cert.PreferredChain, *b.PreferredChain),
-		ReuseKey:           pick(global.ReuseKey, org.ReuseKey, cert.ReuseKey, *b.ReuseKey),
-		MustStaple:         pick(global.MustStaple, org.MustStaple, cert.MustStaple, *b.MustStaple),
-		VerificationRules:  pick(global.VerificationRules, org.VerificationRules, cert.VerificationRules, *b.VerificationRules),
-		PropagationSeconds: pick(global.PropagationSeconds, org.PropagationSeconds, cert.PropagationSeconds, *b.PropagationSeconds),
+		CAID:              pickID(global.CAID, org.CAID, cert.CAID),
+		AccountID:         pickID(global.AccountID, org.AccountID, cert.AccountID),
+		KeyType:           pick(global.KeyType, org.KeyType, cert.KeyType, *b.KeyType),
+		RenewPolicy:       pick(global.RenewPolicy, org.RenewPolicy, cert.RenewPolicy, *b.RenewPolicy),
+		PreferredChain:    pick(global.PreferredChain, org.PreferredChain, cert.PreferredChain, *b.PreferredChain),
+		ReuseKey:          pick(global.ReuseKey, org.ReuseKey, cert.ReuseKey, *b.ReuseKey),
+		MustStaple:        pick(global.MustStaple, org.MustStaple, cert.MustStaple, *b.MustStaple),
+		VerificationRules: pick(global.VerificationRules, org.VerificationRules, cert.VerificationRules, *b.VerificationRules),
+		// 0 = "use the rule's DNS provider's own default" (see
+		// BuiltinDefaults); there is no other built-in value to fall back to.
+		PropagationSeconds: pick(global.PropagationSeconds, org.PropagationSeconds, cert.PropagationSeconds, 0),
 		Resolvers:          pick(global.Resolvers, org.Resolvers, cert.Resolvers, *b.Resolvers),
 	}
 }

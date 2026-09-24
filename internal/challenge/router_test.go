@@ -9,8 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/miekg/dns"
 )
+
+var routerTestNow = time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
 
 type recProvider struct {
 	name    string
@@ -147,17 +150,140 @@ func TestRouterTimeoutUsesLargestRuleInUse(t *testing.T) {
 	}
 }
 
+// Review Focus (fix wave item 2): lego's wait.For ignores a PreCheck error
+// and keeps polling until its own (much longer) timeout, so a CNAME alias
+// mismatch — like a manual-dns timeout — must fail fast (report ready and
+// mark the step failed) instead of returning an error lego would just keep
+// retrying against.
 func TestRouterPreCheckAliasZone(t *testing.T) {
-	ru := rule(t, "example.com", &recProvider{})
+	sink := &sinkRec{}
+	ru := rule(t, "example.com", &recProvider{timeout: time.Minute})
 	ru.AliasZone = "acme.example.net"
-	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, nil)
+	step := "challenge example.com"
+	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, sink)
 	ok, err := r.PreCheck("example.com", "_acme-challenge.example.com.", "v", func(string, string) (bool, error) { return true, nil })
-	if ok || err == nil || !strings.Contains(err.Error(), "alias zone") {
-		t.Fatalf("PreCheck = %v, %v", ok, err)
+	if !ok || err != nil {
+		t.Fatalf("PreCheck must fail fast (true, nil), not return an error: %v, %v", ok, err)
 	}
-	ok, err = r.PreCheck("example.com", "example.com.acme.example.net.", "v", func(string, string) (bool, error) { return true, nil })
+	if sink.steps[step] != StepFailed {
+		t.Fatalf("step = %q", sink.steps[step])
+	}
+	if msg := sink.lastMessage(step); !strings.Contains(msg, "alias zone") {
+		t.Fatalf("message should name the alias mismatch: %q", msg)
+	}
+	if got, iv := r.Timeout(); got != failFastTimeout || iv != failFastInterval {
+		t.Fatalf("router Timeout after alias mismatch = %v, %v", got, iv)
+	}
+
+	sink2 := &sinkRec{}
+	r2 := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, sink2)
+	ok, err = r2.PreCheck("example.com", "example.com.acme.example.net.", "v", func(string, string) (bool, error) { return true, nil })
 	if !ok || err != nil {
 		t.Fatalf("PreCheck in alias zone = %v, %v", ok, err)
+	}
+	if sink2.steps[step] == StepFailed {
+		t.Fatal("a matching CNAME must not be marked failed")
+	}
+}
+
+// Review Focus (fix wave item 2): a name's per-name propagation budget
+// (ruleTimeout) starts at its first PreCheck and fails fast once it elapses,
+// independent of Router.Timeout's own (order-wide) value — this is what
+// keeps a name with a short rule timeout from being polled by lego for as
+// long as a much longer rule shares its order (see the mixed-rule test
+// below).
+func TestRouterPreCheckBudgetExpires(t *testing.T) {
+	sink := &sinkRec{}
+	prov := &recProvider{timeout: 20 * time.Millisecond}
+	ru := rule(t, "example.com", prov)
+	step := "challenge example.com"
+	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, sink)
+	clock := routerTestNow
+	r.now = func() time.Time { return clock }
+	check := func(string, string) (bool, error) { return false, nil } // never propagates
+
+	ok, err := r.PreCheck("example.com", "_acme-challenge.example.com.", "v", check)
+	if ok || err != nil {
+		t.Fatalf("first PreCheck (budget just started) = %v, %v", ok, err)
+	}
+	if sink.steps[step] == StepFailed {
+		t.Fatal("must not fail before the budget elapses")
+	}
+
+	clock = clock.Add(21 * time.Millisecond)
+	ok, err = r.PreCheck("example.com", "_acme-challenge.example.com.", "v", check)
+	if !ok || err != nil {
+		t.Fatalf("PreCheck after the budget elapsed = %v, %v", ok, err)
+	}
+	if sink.steps[step] != StepFailed {
+		t.Fatalf("step = %q", sink.steps[step])
+	}
+	if msg := sink.lastMessage(step); !strings.Contains(msg, "propagation") {
+		t.Fatalf("message should name the propagation budget: %q", msg)
+	}
+}
+
+// Review Focus (fix wave item 2): a dns-01 name sharing an order with a
+// long manual-dns wait must not be polled for as long as the manual name;
+// its own (short) rule budget fails it fast regardless of Router.Timeout's
+// order-wide value, which is driven by the manual rule.
+func TestRouterMixedRuleBudgetFailsIndependentlyOfLongerRule(t *testing.T) {
+	store := &memManual{}
+	mp := NewManual(store, uuid.New(), uuid.New())
+	mp.Wait = time.Hour
+	dnsProv := &recProvider{timeout: 20 * time.Millisecond}
+	dnsRule := rule(t, "dns.example.com", dnsProv)
+	manualRule := rule(t, "manual.example.com", mp)
+	sink := &sinkRec{}
+	names := []string{"dns.example.com", "manual.example.com"}
+	r := NewRouter(context.Background(), names, []Rule{dnsRule, manualRule}, sink)
+	clock := routerTestNow
+	r.now = func() time.Time { return clock }
+	check := func(string, string) (bool, error) { return false, nil } // never propagates
+	step := "challenge dns.example.com"
+
+	if before, _ := r.Timeout(); before < mp.Wait {
+		t.Fatalf("order-wide Timeout should be driven by the manual rule's wait budget: %v", before)
+	}
+	ok, err := r.PreCheck("dns.example.com", "_acme-challenge.dns.example.com.", "v", check)
+	if ok || err != nil {
+		t.Fatalf("first PreCheck = %v, %v", ok, err)
+	}
+	clock = clock.Add(21 * time.Millisecond)
+	ok, err = r.PreCheck("dns.example.com", "_acme-challenge.dns.example.com.", "v", check)
+	if !ok || err != nil {
+		t.Fatalf("PreCheck after the dns-01 name's own budget elapsed = %v, %v", ok, err)
+	}
+	if sink.steps[step] != StepFailed {
+		t.Fatalf("step = %q", sink.steps[step])
+	}
+	if got, iv := r.Timeout(); got != failFastTimeout || iv != failFastInterval {
+		t.Fatalf("router Timeout after the failure = %v, %v", got, iv)
+	}
+}
+
+// Review Focus (fix wave item 2): Timeout must stop adding the manual wait
+// budget for a name once its Waiter has returned (the operator confirmed),
+// so lego's own outer polling loop shrinks back toward the propagation
+// timeout instead of still allowing up to the full (already-spent) wait.
+func TestRouterTimeoutDropsManualWaitBudgetAfterConfirm(t *testing.T) {
+	store := &memManual{}
+	store.confirm()
+	r, mp, _ := manualRouter(t, store, time.Hour)
+	if err := r.Present("lab.example.test", "tok", "keyauth"); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := r.Timeout()
+	if before < mp.Wait {
+		t.Fatalf("before confirm, Timeout must include the wait budget: %v", before)
+	}
+	ok, err := r.PreCheck("lab.example.test", "_acme-challenge.lab.example.test.", "v", func(string, string) (bool, error) { return true, nil })
+	if !ok || err != nil {
+		t.Fatalf("PreCheck = %v, %v", ok, err)
+	}
+	after, _ := r.Timeout()
+	if after >= mp.Wait {
+		t.Fatalf("after confirm, Timeout must drop the wait budget: %v", after)
 	}
 }
 

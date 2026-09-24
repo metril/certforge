@@ -71,6 +71,34 @@ func (f *fakeSigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.Wi
 	return nil, nil
 }
 
+// renamingSigner wraps fakeSigner and, once Issue's challenge solving
+// succeeds, changes the certificate's names in the store before returning —
+// simulating an operator editing SANs while this attempt is still in
+// flight, after the names it is issuing for (req.Names, captured at the
+// start of the attempt) were already fixed.
+type renamingSigner struct {
+	fakeSigner
+	f       *fixture
+	certID  uuid.UUID
+	newSANs []string
+}
+
+func (s *renamingSigner) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Issued, error) {
+	iss, err := s.fakeSigner.Issue(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	cur, err := s.f.store.GetCertificate(ctx, s.f.org, s.certID)
+	if err != nil {
+		return nil, err
+	}
+	if _, _, err := s.f.store.UpdateCertificate(ctx, s.f.org, s.certID,
+		CertInput{Name: cur.Name, CommonName: cur.CommonName, SANs: s.newSANs, Rules: cur.Rules}); err != nil {
+		return nil, err
+	}
+	return iss, nil
+}
+
 // panicSigner simulates a worker/provider bug: Issue panics instead of
 // returning an error.
 type panicSigner struct{}
@@ -252,6 +280,86 @@ func TestIssuePanicRecordsFailedAttempt(t *testing.T) {
 	}
 	if !strings.Contains(a.Log, "panic") || !strings.Contains(a.Log, "simulated signer panic") {
 		t.Fatalf("log missing panic detail: %q", a.Log)
+	}
+	// Fix wave item 5: the panic-recovery path must apply the same backoff
+	// as a normal failure, not just record the attempt and leave the
+	// certificate's failure_count/next_renew_at untouched.
+	got, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != StatusFailed || got.FailureCount != 1 || !strings.Contains(got.LastError, "simulated signer panic") {
+		t.Fatalf("cert = %+v", got)
+	}
+	if d := got.NextRenewAt.Sub(now0); d != 5*time.Minute {
+		t.Fatalf("backoff = %v, want the normal first-failure backoff", d)
+	}
+}
+
+// Fix wave item 1: an operator changing a certificate's names while an
+// issuance is in flight enqueues its own reissue (UpdateCertificate's
+// reissue=true sets next_renew_at=now()), but that enqueue is deduplicated
+// against the job already running for the old names (IssueArgs.InsertOpts).
+// So when that in-flight attempt then succeeds for the old names, it must
+// not push next_renew_at out to the normal renewal date — losing the edit
+// for the certificate's whole lifetime — but keep it due now, so the
+// scheduler picks the new names back up within its next sweep.
+func TestIssueKeepsImmediateRenewalWhenNamesChangeDuringAttempt(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	fs := &renamingSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0)}, f: f, certID: c.ID, newSANs: []string{"extra.example.test"}}
+	w := newWorker(f, &fs.fakeSigner)
+	w.NewSigner = func(CA) signer.Signer { return fs }
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != StatusActive || got.CurrentVersionID == nil {
+		t.Fatalf("cert = %+v", got)
+	}
+	if got.NextRenewAt == nil || got.NextRenewAt.After(time.Now().Add(2*time.Second)) {
+		t.Fatalf("next_renew_at = %v, want at or just after now (names changed mid-attempt)", got.NextRenewAt)
+	}
+}
+
+// Fix wave item 3: with no propagationSeconds configured at any level (the
+// built-in default is now the "provider default" sentinel), the router's
+// rule timeout falls back to the DNS provider's own Timeout() — letting a
+// credential's own *_PROPAGATION_TIMEOUT config take effect instead of
+// always being shadowed by a fixed built-in value.
+type timeoutCapturingSigner struct {
+	fakeSigner
+	gotTimeout time.Duration
+}
+
+func (f *timeoutCapturingSigner) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Issued, error) {
+	f.gotTimeout, _ = req.Challenge.Timeout()
+	return f.fakeSigner.Issue(ctx, req)
+}
+
+// slowDNS is a lego provider whose own Timeout() reports a distinctive
+// value, standing in for a credential's own *_PROPAGATION_TIMEOUT config.
+type slowDNS struct{ nopDNS }
+
+func (slowDNS) Timeout() (time.Duration, time.Duration) { return 42 * time.Second, 5 * time.Second }
+
+func TestIssuePropagationDefaultsToProviderTimeout(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	fs := &timeoutCapturingSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0)}}
+	w := newWorker(f, &fs.fakeSigner)
+	w.NewSigner = func(CA) signer.Signer { return fs }
+	w.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return slowDNS{}, nil }
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fs.gotTimeout != 42*time.Second {
+		t.Fatalf("router timeout = %v, want the provider's 42s (no propagationSeconds configured anywhere)", fs.gotTimeout)
 	}
 }
 

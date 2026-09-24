@@ -10,6 +10,11 @@ services:
         # HTTP API (CF_E2E_BASE_URL), not by reaching those services
         # directly, so only Pebble's management port needs a host port below.
         GO_TAGS: e2e
+    # Distinct from compose.yaml's ghcr.io/metril/certforge:dev tag: without
+    # this, `make e2e`'s build would retag "dev" with the e2e-only provider
+    # compiled in, and a later plain `docker compose up` (dev) would then run
+    # that e2e image instead of rebuilding a production one.
+    image: certforge:e2e
   pebble:
     image: ghcr.io/letsencrypt/pebble:2.10.1
     command: -config test/config/pebble-config.json -strict -dnsserver challtestsrv:8053

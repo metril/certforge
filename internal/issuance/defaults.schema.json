@@ -43,7 +43,7 @@
         }
       }
     },
-    "propagationSeconds": {"type": ["integer", "null"], "minimum": 0, "maximum": 3600, "title": "Propagation timeout (s)", "description": "How long to wait for TXT records to appear."},
+    "propagationSeconds": {"type": ["integer", "null"], "minimum": 0, "maximum": 3600, "title": "Propagation timeout (s)", "description": "How long to wait for TXT records to appear. Null or 0 (the built-in default) uses each verification rule's own DNS provider's default instead, so a DNS credential's own *_PROPAGATION_TIMEOUT config takes effect."},
     "resolvers": {"type": ["array", "null"], "items": {"type": "string"}, "title": "Resolvers", "description": "host or host:port used for propagation checks."}
   }
 }

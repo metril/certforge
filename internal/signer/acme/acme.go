@@ -93,6 +93,15 @@ func (t *ctxTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if err := t.ctx.Err(); err != nil {
 		return nil, err
 	}
+	// r.WithContext replaces r's context, including the deadline
+	// net/http.Client.do already derived from it to enforce httpClient's own
+	// Timeout (60s, set below) — so that per-request wall-clock timeout does
+	// not simply stop working here. Request.WithContext copies every other
+	// field of r unchanged, including the legacy Cancel channel Client.do
+	// also wires up alongside that context deadline; net/http's own
+	// Transport.RoundTrip still selects on req.Cancel for backward
+	// compatibility, so httpClient's Timeout keeps firing through that path
+	// even though the context carrying its deadline was replaced here.
 	return t.base.RoundTrip(r.WithContext(t.ctx))
 }
 

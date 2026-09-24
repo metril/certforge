@@ -1126,21 +1126,44 @@ func (q *Queries) MarkCertificateFailed(ctx context.Context, arg MarkCertificate
 	return err
 }
 
-const markCertificateIssued = `-- name: MarkCertificateIssued :exec
-UPDATE certificates SET status = 'active', current_version_id = $2, next_renew_at = $3,
+const markCertificateIssued = `-- name: MarkCertificateIssued :one
+UPDATE certificates SET status = 'active', current_version_id = $2,
+    next_renew_at = CASE WHEN common_name = $3 AND sans = $4
+                          THEN $5::timestamptz ELSE now() END,
     failure_count = 0, last_error = '', updated_at = now()
 WHERE id = $1
+RETURNING next_renew_at
 `
 
 type MarkCertificateIssuedParams struct {
 	ID               uuid.UUID  `json:"id"`
 	CurrentVersionID *uuid.UUID `json:"current_version_id"`
-	NextRenewAt      *time.Time `json:"next_renew_at"`
+	IssuedCommonName string     `json:"issued_common_name"`
+	IssuedSans       []string   `json:"issued_sans"`
+	NextRenewAt      time.Time  `json:"next_renew_at"`
 }
 
-func (q *Queries) MarkCertificateIssued(ctx context.Context, arg MarkCertificateIssuedParams) error {
-	_, err := q.db.Exec(ctx, markCertificateIssued, arg.ID, arg.CurrentVersionID, arg.NextRenewAt)
-	return err
+// issued_common_name/issued_sans are the names the version being stored
+// actually covers (as captured when the attempt started). If the row's
+// current common_name/sans no longer match — an operator changed the
+// certificate's names while this attempt was running — the CASE keeps
+// next_renew_at at now() instead of the normal renewal date
+// (next_renew_at), so the scheduler reissues for the new names within its
+// next sweep instead of losing the edit for the certificate's whole
+// lifetime. The comparison and the write happen in one statement (no
+// separate FOR UPDATE read) so there is no window for a concurrent name
+// change to race between reading and writing.
+func (q *Queries) MarkCertificateIssued(ctx context.Context, arg MarkCertificateIssuedParams) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, markCertificateIssued,
+		arg.ID,
+		arg.CurrentVersionID,
+		arg.IssuedCommonName,
+		arg.IssuedSans,
+		arg.NextRenewAt,
+	)
+	var next_renew_at *time.Time
+	err := row.Scan(&next_renew_at)
+	return next_renew_at, err
 }
 
 const markExpiredCertificates = `-- name: MarkExpiredCertificates :execrows

@@ -26,7 +26,7 @@ func TestAttemptLifecycle(t *testing.T) {
 	}
 
 	running := []Step{{Name: "order", Status: challenge.StepRunning, StartedAt: time.Now().UTC()}}
-	if err := f.store.SaveAttemptProgress(ctx, id, running, "started\n"); err != nil {
+	if err := f.store.SaveAttemptProgress(ctx, nil, id, running, "started\n"); err != nil {
 		t.Fatal(err)
 	}
 

@@ -45,8 +45,9 @@ func TestSplitConfigRejectsNULByte(t *testing.T) {
 }
 
 func TestMergeUpdateUnchangedSentinel(t *testing.T) {
-	old := map[string]string{"CF_DNS_API_TOKEN": "old-token", "CF_ZONE_API_TOKEN": "old-zone"}
-	pub, sec, err := MergeUpdate("cloudflare", old, map[string]string{
+	oldPublic := map[string]string{"CF_API_EMAIL": "old@example.com"}
+	oldSecret := map[string]string{"CF_DNS_API_TOKEN": "old-token", "CF_ZONE_API_TOKEN": "old-zone"}
+	pub, sec, changed, reused, err := MergeUpdate("cloudflare", oldPublic, oldSecret, map[string]string{
 		"CF_API_EMAIL": "new@example.com", "CF_DNS_API_TOKEN": Unchanged, // keep
 		// CF_ZONE_API_TOKEN omitted: removed
 		"CF_API_KEY": Unchanged, // never stored: dropped
@@ -59,5 +60,29 @@ func TestMergeUpdateUnchangedSentinel(t *testing.T) {
 	}
 	if got := SecretKeys(sec); len(got) != 1 || got[0] != "CF_DNS_API_TOKEN" {
 		t.Fatalf("SecretKeys = %v", got)
+	}
+	if len(changed) != 1 || changed[0] != "CF_API_EMAIL" {
+		t.Fatalf("changedPublic = %v", changed)
+	}
+	if !reused {
+		t.Fatal("reusedSecret should be true: CF_DNS_API_TOKEN was sent as Unchanged")
+	}
+}
+
+// Review Focus (fix wave item 4): a secret update alongside a public change
+// that never touches a secret field must not be reported as reusing one —
+// CF_API_KEY here is Unchanged but was never a secret field with a stored
+// value, and no other secret is referenced at all.
+func TestMergeUpdateReusedSecretOnlyWhenFieldIsSecret(t *testing.T) {
+	_, _, changed, reused, err := MergeUpdate("cloudflare", map[string]string{"CF_API_EMAIL": "a@example.com"}, nil,
+		map[string]string{"CF_API_EMAIL": "b@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reused {
+		t.Fatal("reusedSecret should be false: no secret field was sent as Unchanged")
+	}
+	if len(changed) != 1 || changed[0] != "CF_API_EMAIL" {
+		t.Fatalf("changedPublic = %v", changed)
 	}
 }

@@ -149,14 +149,15 @@ func TestListAndUpdateDNSCredential(t *testing.T) {
 	if _, leaked := list.(gen.ListDNSCredentials200JSONResponse)[0].Config["CF_DNS_API_TOKEN"]; leaked {
 		t.Fatal("list leaked a secret value")
 	}
-	// __unchanged__ keeps the stored secret; the new email replaces the old.
+	// __unchanged__ keeps the stored secret when no public field changes
+	// (only the name, which lives outside config, changes here).
 	up, err := f.srv.UpdateDNSCredential(f.as("operator"), gen.UpdateDNSCredentialRequestObject{OrgId: f.org, Id: c.Id,
-		Body: &gen.DNSCredentialUpdate{Name: "cf2", Config: map[string]string{"CF_API_EMAIL": "b@example.test", "CF_DNS_API_TOKEN": challenge.Unchanged}}})
+		Body: &gen.DNSCredentialUpdate{Name: "cf2", Config: map[string]string{"CF_API_EMAIL": "a@example.test", "CF_DNS_API_TOKEN": challenge.Unchanged}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	u := up.(gen.UpdateDNSCredential200JSONResponse)
-	if u.Name != "cf2" || u.Config["CF_API_EMAIL"] != "b@example.test" || u.StoredSecrets == nil || len(*u.StoredSecrets) != 1 {
+	if u.Name != "cf2" || u.Config["CF_API_EMAIL"] != "a@example.test" || u.StoredSecrets == nil || len(*u.StoredSecrets) != 1 {
 		t.Fatalf("updated = %+v", u)
 	}
 	if _, leaked := u.Config["CF_DNS_API_TOKEN"]; leaked {
@@ -171,6 +172,69 @@ func TestListAndUpdateDNSCredential(t *testing.T) {
 	}
 	if _, leaked := got.(gen.GetDNSCredential200JSONResponse).Config["CF_DNS_API_TOKEN"]; leaked {
 		t.Fatal("get leaked a secret value")
+	}
+
+	// Changing a public field (the email) while keeping the secret
+	// Unchanged is rejected: re-entering the secret alongside it succeeds.
+	_, err = f.srv.UpdateDNSCredential(f.as("operator"), gen.UpdateDNSCredentialRequestObject{OrgId: f.org, Id: c.Id,
+		Body: &gen.DNSCredentialUpdate{Name: "cf2", Config: map[string]string{"CF_API_EMAIL": "b@example.test", "CF_DNS_API_TOKEN": challenge.Unchanged}}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	up, err = f.srv.UpdateDNSCredential(f.as("operator"), gen.UpdateDNSCredentialRequestObject{OrgId: f.org, Id: c.Id,
+		Body: &gen.DNSCredentialUpdate{Name: "cf2", Config: map[string]string{"CF_API_EMAIL": "b@example.test", "CF_DNS_API_TOKEN": "t0p"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := up.(gen.UpdateDNSCredential200JSONResponse); got.Config["CF_API_EMAIL"] != "b@example.test" {
+		t.Fatalf("updated = %+v", got)
+	}
+}
+
+// Fix wave item 4: an update that changes a connection setting (here
+// httpreq's endpoint URL, which decides where the stored secret is sent)
+// while keeping the secret Unchanged must be rejected — the operator could
+// otherwise silently redirect a stored credential to a different server. The
+// audit record for an allowed update lists the changed public keys.
+func TestUpdateDNSCredentialRejectsSecretReuseAcrossEndpointChange(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "hr", ProviderCode: "httpreq", Config: map[string]string{
+			"HTTPREQ_ENDPOINT": "https://good.example.test", "HTTPREQ_PASSWORD": "s3cret"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.(gen.CreateDNSCredential201JSONResponse).Id
+
+	_, err = f.srv.UpdateDNSCredential(f.as("operator"), gen.UpdateDNSCredentialRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialUpdate{Name: "hr", Config: map[string]string{
+			"HTTPREQ_ENDPOINT": "https://evil.example.test", "HTTPREQ_PASSWORD": challenge.Unchanged}}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	// Resending the same config (no public field actually changes) with the
+	// secret Unchanged is fine.
+	up, err := f.srv.UpdateDNSCredential(f.as("operator"), gen.UpdateDNSCredentialRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialUpdate{Name: "hr2", Config: map[string]string{
+			"HTTPREQ_ENDPOINT": "https://good.example.test", "HTTPREQ_PASSWORD": challenge.Unchanged}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := up.(gen.UpdateDNSCredential200JSONResponse); got.Name != "hr2" {
+		t.Fatalf("updated = %+v", got)
+	}
+
+	// Re-entering the secret alongside the endpoint change is allowed, and
+	// the audit record names the changed public key.
+	up, err = f.srv.UpdateDNSCredential(f.as("operator"), gen.UpdateDNSCredentialRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialUpdate{Name: "hr2", Config: map[string]string{
+			"HTTPREQ_ENDPOINT": "https://evil.example.test", "HTTPREQ_PASSWORD": "new-secret"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := up.(gen.UpdateDNSCredential200JSONResponse); got.Config["HTTPREQ_ENDPOINT"] != "https://evil.example.test" {
+		t.Fatalf("updated = %+v", got)
+	}
+	if n := f.auditCount(t, "dns_credential.update"); n != 2 {
+		t.Fatalf("dns_credential.update audit count = %d", n)
 	}
 }
 

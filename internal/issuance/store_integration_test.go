@@ -92,6 +92,26 @@ func TestDeleteCABlockedWhileReferenced(t *testing.T) {
 	}
 }
 
+// Fix wave item 7: changing directoryUrl while an ACME account is
+// registered against the CA is rejected (409) like a delete — the
+// account's key is enrolled with the old ACME server, so silently
+// repointing the CA would orphan it. f.ca already has f.acct registered
+// against it. Every other field may still change freely.
+func TestUpdateCARejectsDirectoryURLChangeWhileReferenced(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	var iu *InUseError
+	if _, err := f.store.UpdateCA(ctx, f.org, f.ca.ID, CAInput{Name: f.ca.Name, Preset: f.ca.Preset,
+		DirectoryURL: "https://pebble2.test/dir", Resolvers: f.ca.Resolvers}); !errors.As(err, &iu) {
+		t.Fatalf("err = %v, want InUseError", err)
+	}
+	ca, err := f.store.UpdateCA(ctx, f.org, f.ca.ID, CAInput{Name: "Pebble renamed", Preset: f.ca.Preset,
+		DirectoryURL: f.ca.DirectoryURL, Resolvers: f.ca.Resolvers})
+	if err != nil || ca.Name != "Pebble renamed" {
+		t.Fatalf("ca = %+v err = %v", ca, err)
+	}
+}
+
 // TestDeleteCaLockBlocksConcurrentOrgDefaultsWrite (review fix round 1):
 // proves the FOR UPDATE / FOR KEY SHARE pairing actually serializes a
 // delete against a concurrent org-defaults write referencing the same CA,
@@ -171,14 +191,22 @@ func TestDNSCredentialSecretsAndSentinel(t *testing.T) {
 	if string(raw[:7]) != "sealed:" {
 		t.Fatal("secret_cfg not sealed")
 	}
-	if _, err := f.store.UpdateDNSCredential(ctx, f.org, c.ID, "cf", map[string]string{"CF_API_EMAIL": "b@example.test", "CF_DNS_API_TOKEN": challenge.Unchanged}); err != nil {
+	// Renaming a stored secret's value: keeping CF_DNS_API_TOKEN Unchanged
+	// while CF_API_EMAIL (a public field) changes is rejected (fix wave
+	// item 4) — re-entering the secret alongside the change succeeds.
+	var ve *ValidationError
+	if _, _, err := f.store.UpdateDNSCredential(ctx, f.org, c.ID, "cf", map[string]string{"CF_API_EMAIL": "b@example.test", "CF_DNS_API_TOKEN": challenge.Unchanged}); !errors.As(err, &ve) || ve.Field != "config" {
+		t.Fatalf("public change + Unchanged secret should be rejected: %v", err)
+	}
+	if _, changed, err := f.store.UpdateDNSCredential(ctx, f.org, c.ID, "cf", map[string]string{"CF_API_EMAIL": "b@example.test", "CF_DNS_API_TOKEN": "t1"}); err != nil {
 		t.Fatal(err)
+	} else if len(changed) != 1 || changed[0] != "CF_API_EMAIL" {
+		t.Fatalf("changedPublic = %v", changed)
 	}
 	_, cfg, err := f.store.DNSCredentialConfig(ctx, f.org, c.ID)
 	if err != nil || cfg["CF_DNS_API_TOKEN"] != "t1" || cfg["CF_API_EMAIL"] != "b@example.test" {
 		t.Fatalf("cfg = %v err = %v", cfg, err)
 	}
-	var ve *ValidationError
 	if _, err := f.store.CreateDNSCredential(ctx, f.org, "bad", "cloudflare", map[string]string{"PATH": "/x"}); !errors.As(err, &ve) {
 		t.Fatalf("unknown field: %v", err)
 	}

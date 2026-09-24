@@ -66,10 +66,26 @@ func SplitConfig(code string, cfg map[string]string) (public, secret map[string]
 // MergeUpdate applies a full-replacement update. Secret keys set to Unchanged
 // keep oldSecret's value (dropped if nothing was stored); every other key is
 // taken from in, so a secret omitted from in is removed.
-func MergeUpdate(code string, oldSecret, in map[string]string) (public, secret map[string]string, err error) {
+//
+// changedPublic lists the public (non-secret) keys whose resolved value
+// differs from oldPublic — added, removed or changed — sorted. reusedSecret
+// reports whether in set any *secret* field to Unchanged. A caller that
+// allows both at once lets an update silently repoint a stored secret at a
+// changed connection setting (for example a provider's endpoint URL): the
+// old secret value would be sent to the new destination without the caller
+// ever having re-entered it. See issuance.Store.UpdateDNSCredential, which
+// rejects that combination.
+func MergeUpdate(code string, oldPublic, oldSecret, in map[string]string) (public, secret map[string]string, changedPublic []string, reusedSecret bool, err error) {
+	e, ok := lookupEntry(code)
+	if !ok {
+		return nil, nil, nil, false, fmt.Errorf("%w %q", ErrUnknownProvider, code)
+	}
 	resolved := make(map[string]string, len(in))
 	for k, v := range in {
 		if v == Unchanged {
+			if e.secret[k] {
+				reusedSecret = true
+			}
 			if old, ok := oldSecret[k]; ok {
 				resolved[k] = old
 			}
@@ -77,7 +93,30 @@ func MergeUpdate(code string, oldSecret, in map[string]string) (public, secret m
 		}
 		resolved[k] = v
 	}
-	return SplitConfig(code, resolved)
+	public, secret, err = SplitConfig(code, resolved)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+	changedPublic = changedKeys(oldPublic, public)
+	return public, secret, changedPublic, reusedSecret, nil
+}
+
+// changedKeys returns the sorted keys where new differs from old (added,
+// removed, or a different value).
+func changedKeys(old, new map[string]string) []string {
+	var out []string
+	for k, v := range new {
+		if ov, ok := old[k]; !ok || ov != v {
+			out = append(out, k)
+		}
+	}
+	for k := range old {
+		if _, ok := new[k]; !ok {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // SecretKeys returns the sorted secret keys present in secret, for API

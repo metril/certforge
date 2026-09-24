@@ -46,13 +46,21 @@ func (s *Store) CreateAttempt(ctx context.Context, certID uuid.UUID) (uuid.UUID,
 	return row.ID, err
 }
 
-// SaveAttemptProgress persists the live timeline.
-func (s *Store) SaveAttemptProgress(ctx context.Context, id uuid.UUID, steps []Step, log string) error {
+// SaveAttemptProgress persists the live timeline. tx may be nil to use the
+// store's own connection pool; a caller that already holds tx (for example
+// the worker's succeed, mid-transaction) must pass it instead of the pool: a
+// pool-based write of the same issuance_attempts row would block on the row
+// lock tx already holds, which can deadlock a small connection pool outright.
+func (s *Store) SaveAttemptProgress(ctx context.Context, tx pgx.Tx, id uuid.UUID, steps []Step, log string) error {
 	b, err := json.Marshal(steps)
 	if err != nil {
 		return err
 	}
-	return s.q.SaveAttemptProgress(ctx, sqlcgen.SaveAttemptProgressParams{ID: id, Steps: b, Log: log})
+	q := s.q
+	if tx != nil {
+		q = q.WithTx(tx)
+	}
+	return q.SaveAttemptProgress(ctx, sqlcgen.SaveAttemptProgressParams{ID: id, Steps: b, Log: log})
 }
 
 // FinishAttempt closes an attempt; tx may be nil. It is a no-op (not an
