@@ -1,0 +1,55 @@
+{
+  "code": "shellrent",
+  "name": "Shellrent",
+  "url": "https://www.shellrent.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Shellrent",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "SHELLRENT_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "SHELLRENT_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SHELLRENT_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "SHELLRENT_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SHELLRENT_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "SHELLRENT_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SHELLRENT_TOKEN": {
+        "type": "string",
+        "title": "SHELLRENT_TOKEN",
+        "description": "Token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "SHELLRENT_TTL": {
+        "type": "string",
+        "title": "SHELLRENT_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SHELLRENT_USERNAME": {
+        "type": "string",
+        "title": "SHELLRENT_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "code": "luadns",
+  "name": "LuaDNS",
+  "url": "https://luadns.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "LuaDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "LUADNS_API_TOKEN": {
+        "type": "string",
+        "title": "LUADNS_API_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "LUADNS_API_USERNAME": {
+        "type": "string",
+        "title": "LUADNS_API_USERNAME",
+        "description": "Username (your email)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "LUADNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "LUADNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LUADNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "LUADNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LUADNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "LUADNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LUADNS_TTL": {
+        "type": "string",
+        "title": "LUADNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

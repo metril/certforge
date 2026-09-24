@@ -1,0 +1,55 @@
+{
+  "code": "brandit",
+  "name": "Brandit (deprecated)",
+  "url": "https://www.brandit.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Brandit (deprecated)",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "BRANDIT_API_KEY": {
+        "type": "string",
+        "title": "BRANDIT_API_KEY",
+        "description": "The API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "BRANDIT_API_USERNAME": {
+        "type": "string",
+        "title": "BRANDIT_API_USERNAME",
+        "description": "The API username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "BRANDIT_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "BRANDIT_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BRANDIT_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "BRANDIT_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BRANDIT_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "BRANDIT_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BRANDIT_TTL": {
+        "type": "string",
+        "title": "BRANDIT_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

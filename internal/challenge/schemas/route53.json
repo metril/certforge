@@ -1,0 +1,118 @@
+{
+  "code": "route53",
+  "name": "Amazon Route 53",
+  "url": "https://aws.amazon.com/route53/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Amazon Route 53",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "AWS_ACCESS_KEY_ID": {
+        "type": "string",
+        "title": "AWS_ACCESS_KEY_ID",
+        "description": "Managed by the AWS client. Access key ID (`AWS_ACCESS_KEY_ID_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AWS_ASSUME_ROLE_ARN": {
+        "type": "string",
+        "title": "AWS_ASSUME_ROLE_ARN",
+        "description": "Managed by the AWS Role ARN (`AWS_ASSUME_ROLE_ARN_FILE` is not supported)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AWS_EXTERNAL_ID": {
+        "type": "string",
+        "title": "AWS_EXTERNAL_ID",
+        "description": "Managed by STS AssumeRole API operation (`AWS_EXTERNAL_ID_FILE` is not supported)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AWS_HOSTED_ZONE_ID": {
+        "type": "string",
+        "title": "AWS_HOSTED_ZONE_ID",
+        "description": "Override the hosted zone ID.",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AWS_MAX_RETRIES": {
+        "type": "string",
+        "title": "AWS_MAX_RETRIES",
+        "description": "The number of maximum returns the service will use to make an individual API request",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AWS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "AWS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 4)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AWS_PRIVATE_ZONE": {
+        "type": "string",
+        "title": "AWS_PRIVATE_ZONE",
+        "description": "Set to true to use private zones only (default: use public zones only)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AWS_PROFILE": {
+        "type": "string",
+        "title": "AWS_PROFILE",
+        "description": "Managed by the AWS client (`AWS_PROFILE_FILE` is not supported)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AWS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "AWS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AWS_REGION": {
+        "type": "string",
+        "title": "AWS_REGION",
+        "description": "Managed by the AWS client (`AWS_REGION_FILE` is not supported)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AWS_SDK_LOAD_CONFIG": {
+        "type": "string",
+        "title": "AWS_SDK_LOAD_CONFIG",
+        "description": "Managed by the AWS client. Retrieve the region from the CLI config file (`AWS_SDK_LOAD_CONFIG_FILE` is not supported)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AWS_SECRET_ACCESS_KEY": {
+        "type": "string",
+        "title": "AWS_SECRET_ACCESS_KEY",
+        "description": "Managed by the AWS client. Secret access key (`AWS_SECRET_ACCESS_KEY_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AWS_SHARED_CREDENTIALS_FILE": {
+        "type": "string",
+        "title": "AWS_SHARED_CREDENTIALS_FILE",
+        "description": "Managed by the AWS client. Shared credentials file.",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AWS_TTL": {
+        "type": "string",
+        "title": "AWS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AWS_WAIT_FOR_RECORD_SETS_CHANGED": {
+        "type": "string",
+        "title": "AWS_WAIT_FOR_RECORD_SETS_CHANGED",
+        "description": "Wait for changes to be INSYNC (it can be unstable)",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

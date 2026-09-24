@@ -21,9 +21,10 @@ const (
 
 // Entry is one pluggable type and its configuration schema.
 type Entry struct {
-	Code   string          `json:"code"`
-	Name   string          `json:"name"`
-	Schema json.RawMessage `json:"schema"`
+	Code    string          `json:"code"`
+	Name    string          `json:"name"`
+	Schema  json.RawMessage `json:"schema"`
+	Aliases []string        `json:"aliases,omitempty"` // other codes that select this type
 }
 
 // Registry is safe for concurrent use.

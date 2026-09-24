@@ -1,0 +1,55 @@
+{
+  "code": "lightsail",
+  "name": "Amazon Lightsail",
+  "url": "https://aws.amazon.com/lightsail/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Amazon Lightsail",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "AWS_ACCESS_KEY_ID": {
+        "type": "string",
+        "title": "AWS_ACCESS_KEY_ID",
+        "description": "Managed by the AWS client. Access key ID (`AWS_ACCESS_KEY_ID_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AWS_SECRET_ACCESS_KEY": {
+        "type": "string",
+        "title": "AWS_SECRET_ACCESS_KEY",
+        "description": "Managed by the AWS client. Secret access key (`AWS_SECRET_ACCESS_KEY_FILE` is not supported, use `AWS_SHARED_CREDENTIALS_FILE` instead)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AWS_SHARED_CREDENTIALS_FILE": {
+        "type": "string",
+        "title": "AWS_SHARED_CREDENTIALS_FILE",
+        "description": "Managed by the AWS client. Shared credentials file.",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNS_ZONE": {
+        "type": "string",
+        "title": "DNS_ZONE",
+        "description": "Domain name of the DNS zone",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "LIGHTSAIL_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "LIGHTSAIL_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LIGHTSAIL_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "LIGHTSAIL_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

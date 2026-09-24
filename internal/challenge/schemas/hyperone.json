@@ -1,0 +1,62 @@
+{
+  "code": "hyperone",
+  "name": "HyperOne",
+  "url": "https://www.hyperone.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "HyperOne",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "HYPERONE_API_URL": {
+        "type": "string",
+        "title": "HYPERONE_API_URL",
+        "description": "Allows to pass custom API Endpoint to be used in the challenge (default https://api.hyperone.com/v2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HYPERONE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "HYPERONE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HYPERONE_LOCATION_ID": {
+        "type": "string",
+        "title": "HYPERONE_LOCATION_ID",
+        "description": "Specifies location (region) to be used in API calls. (default pl-waw-1)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HYPERONE_PASSPORT_LOCATION": {
+        "type": "string",
+        "title": "HYPERONE_PASSPORT_LOCATION",
+        "description": "Allows to pass custom passport file location (default ~/.h1/passport.json)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HYPERONE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "HYPERONE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HYPERONE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "HYPERONE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HYPERONE_TTL": {
+        "type": "string",
+        "title": "HYPERONE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

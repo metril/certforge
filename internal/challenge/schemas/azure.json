@@ -1,0 +1,104 @@
+{
+  "code": "azure",
+  "name": "Azure (deprecated)",
+  "url": "https://azure.microsoft.com/services/dns/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Azure (deprecated)",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "AZURE_CLIENT_ID": {
+        "type": "string",
+        "title": "AZURE_CLIENT_ID",
+        "description": "Client ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AZURE_CLIENT_SECRET": {
+        "type": "string",
+        "title": "AZURE_CLIENT_SECRET",
+        "description": "Client secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AZURE_ENVIRONMENT": {
+        "type": "string",
+        "title": "AZURE_ENVIRONMENT",
+        "description": "Azure environment, one of: public, usgovernment, german, and china",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AZURE_METADATA_ENDPOINT": {
+        "type": "string",
+        "title": "AZURE_METADATA_ENDPOINT",
+        "description": "Metadata Service endpoint URL",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZURE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "AZURE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZURE_PRIVATE_ZONE": {
+        "type": "string",
+        "title": "AZURE_PRIVATE_ZONE",
+        "description": "Set to true to use Azure Private DNS Zones and not public",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZURE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "AZURE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZURE_RESOURCE_GROUP": {
+        "type": "string",
+        "title": "AZURE_RESOURCE_GROUP",
+        "description": "Resource group",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AZURE_SUBSCRIPTION_ID": {
+        "type": "string",
+        "title": "AZURE_SUBSCRIPTION_ID",
+        "description": "Subscription ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AZURE_TENANT_ID": {
+        "type": "string",
+        "title": "AZURE_TENANT_ID",
+        "description": "Tenant ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AZURE_TTL": {
+        "type": "string",
+        "title": "AZURE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZURE_ZONE_NAME": {
+        "type": "string",
+        "title": "AZURE_ZONE_NAME",
+        "description": "Zone name to use inside Azure DNS service to add the TXT record in",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "instance metadata service": {
+        "type": "string",
+        "title": "instance metadata service",
+        "description": "If the credentials are **not** set via the environment, then it will attempt to get a bearer token via the [instance metadata service](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/instance-metadata-service).",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

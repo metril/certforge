@@ -1,0 +1,69 @@
+{
+  "code": "pdns",
+  "name": "PowerDNS",
+  "url": "https://www.powerdns.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "PowerDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "PDNS_API_KEY": {
+        "type": "string",
+        "title": "PDNS_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "PDNS_API_URL": {
+        "type": "string",
+        "title": "PDNS_API_URL",
+        "description": "API URL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "PDNS_API_VERSION": {
+        "type": "string",
+        "title": "PDNS_API_VERSION",
+        "description": "Skip API version autodetection and use the provided version number.",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PDNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "PDNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PDNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "PDNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PDNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "PDNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PDNS_SERVER_NAME": {
+        "type": "string",
+        "title": "PDNS_SERVER_NAME",
+        "description": "Name of the server in the URL, 'localhost' by default",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PDNS_TTL": {
+        "type": "string",
+        "title": "PDNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

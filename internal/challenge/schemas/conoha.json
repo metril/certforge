@@ -1,0 +1,69 @@
+{
+  "code": "conoha",
+  "name": "ConoHa v2",
+  "url": "https://www.conoha.jp/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ConoHa v2",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "CONOHA_API_PASSWORD": {
+        "type": "string",
+        "title": "CONOHA_API_PASSWORD",
+        "description": "The API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CONOHA_API_USERNAME": {
+        "type": "string",
+        "title": "CONOHA_API_USERNAME",
+        "description": "The API username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CONOHA_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "CONOHA_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CONOHA_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "CONOHA_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CONOHA_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "CONOHA_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CONOHA_REGION": {
+        "type": "string",
+        "title": "CONOHA_REGION",
+        "description": "The region (Default: tyo1)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CONOHA_TENANT_ID": {
+        "type": "string",
+        "title": "CONOHA_TENANT_ID",
+        "description": "Tenant ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CONOHA_TTL": {
+        "type": "string",
+        "title": "CONOHA_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "code": "corenetworks",
+  "name": "Core-Networks",
+  "url": "https://www.core-networks.de/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Core-Networks",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "CORENETWORKS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "CORENETWORKS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CORENETWORKS_LOGIN": {
+        "type": "string",
+        "title": "CORENETWORKS_LOGIN",
+        "description": "The username of the API account",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CORENETWORKS_PASSWORD": {
+        "type": "string",
+        "title": "CORENETWORKS_PASSWORD",
+        "description": "The password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CORENETWORKS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "CORENETWORKS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CORENETWORKS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "CORENETWORKS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CORENETWORKS_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "CORENETWORKS_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CORENETWORKS_TTL": {
+        "type": "string",
+        "title": "CORENETWORKS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

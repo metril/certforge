@@ -1,0 +1,69 @@
+{
+  "code": "tencentcloud",
+  "name": "Tencent Cloud DNS",
+  "url": "https://cloud.tencent.com/product/cns",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Tencent Cloud DNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "TENCENTCLOUD_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "TENCENTCLOUD_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TENCENTCLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "TENCENTCLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TENCENTCLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "TENCENTCLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TENCENTCLOUD_REGION": {
+        "type": "string",
+        "title": "TENCENTCLOUD_REGION",
+        "description": "Region",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TENCENTCLOUD_SECRET_ID": {
+        "type": "string",
+        "title": "TENCENTCLOUD_SECRET_ID",
+        "description": "Access key ID",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "TENCENTCLOUD_SECRET_KEY": {
+        "type": "string",
+        "title": "TENCENTCLOUD_SECRET_KEY",
+        "description": "Access Key secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "TENCENTCLOUD_SESSION_TOKEN": {
+        "type": "string",
+        "title": "TENCENTCLOUD_SESSION_TOKEN",
+        "description": "Access Key token",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TENCENTCLOUD_TTL": {
+        "type": "string",
+        "title": "TENCENTCLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

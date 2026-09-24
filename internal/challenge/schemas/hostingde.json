@@ -1,0 +1,55 @@
+{
+  "code": "hostingde",
+  "name": "Hosting.de",
+  "url": "https://www.hosting.de/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Hosting.de",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "HOSTINGDE_API_KEY": {
+        "type": "string",
+        "title": "HOSTINGDE_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "HOSTINGDE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "HOSTINGDE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HOSTINGDE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "HOSTINGDE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HOSTINGDE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "HOSTINGDE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HOSTINGDE_TTL": {
+        "type": "string",
+        "title": "HOSTINGDE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HOSTINGDE_ZONE_NAME": {
+        "type": "string",
+        "title": "HOSTINGDE_ZONE_NAME",
+        "description": "Zone name in ACE format",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

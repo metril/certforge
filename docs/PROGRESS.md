@@ -46,8 +46,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Issuance schema and sealed columns | done | 5aa9f7e |
-| 2 | Challenge router and matchers | done | pending |
-| 3 | Lego provider schemas | todo | – |
+| 2 | Challenge router and matchers | done | f92099f |
+| 3 | Lego provider schemas | done | pending |
 | 4 | Credential config and env-isolated provider build | todo | – |
 | 5 | manual-dns provider | todo | – |
 | 6 | Signer interface and ACME signer | todo | – |
@@ -77,6 +77,7 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1A final-review housekeeping folded into 1B Task 1: `dummyHash` (authn) now builds without the argon2 semaphore so a saturated first call cannot permanently disable `EqualizeTiming`; the semaphore release closure now captures the channel it acquired instead of re-reading the package variable; `settings.EnsureCanary`'s insert-if-absent write is now insert-or-fill, treating a `crypto.canary` row with a NULL secret as absent; docs/architecture.md and the `bootstrap-admin` help summary now say "reset (after setup)" instead of "create or reset".
 - 1B: verification rule `match` follows plan 1C's matcher: `*`, `*.zone` (one label below zone, or `*.zone` itself), `zone` (zone and everything below). There is no separate exact-only syntax; list a name's own rule first.
 - 1B: DNS propagation checks against configured resolvers use CertForge's own TXT query (`challenge.CheckTXT`) because lego v4's `AddRecursiveNameservers` is process-global.
+- 1B: lego pinned at v4.24.0, the last v4 release whose go.mod allows Go 1.23. lego `exec` and `manual` providers are not offered.
 
 ## Known gaps
 

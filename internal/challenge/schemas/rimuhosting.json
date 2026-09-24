@@ -1,0 +1,48 @@
+{
+  "code": "rimuhosting",
+  "name": "RimuHosting",
+  "url": "https://rimuhosting.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "RimuHosting",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "RIMUHOSTING_API_KEY": {
+        "type": "string",
+        "title": "RIMUHOSTING_API_KEY",
+        "description": "User API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "RIMUHOSTING_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "RIMUHOSTING_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "RIMUHOSTING_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "RIMUHOSTING_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "RIMUHOSTING_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "RIMUHOSTING_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "RIMUHOSTING_TTL": {
+        "type": "string",
+        "title": "RIMUHOSTING_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

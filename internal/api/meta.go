@@ -40,7 +40,11 @@ func (s *Server) schemaEntries(k meta.Kind) ([]gen.SchemaEntry, error) {
 		if err := json.Unmarshal(e.Schema, &schema); err != nil {
 			return nil, fmt.Errorf("meta %s/%s: %w", k, e.Code, err)
 		}
-		out = append(out, gen.SchemaEntry{Code: e.Code, Name: e.Name, Schema: schema})
+		se := gen.SchemaEntry{Code: e.Code, Name: e.Name, Schema: schema}
+		if len(e.Aliases) > 0 {
+			se.Aliases = &e.Aliases
+		}
+		out = append(out, se)
 	}
 	return out, nil
 }

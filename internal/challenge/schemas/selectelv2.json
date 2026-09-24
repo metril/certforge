@@ -1,0 +1,76 @@
+{
+  "code": "selectelv2",
+  "name": "Selectel v2",
+  "url": "https://selectel.ru",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Selectel v2",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "SELECTELV2_ACCOUNT_ID": {
+        "type": "string",
+        "title": "SELECTELV2_ACCOUNT_ID",
+        "description": "Selectel account ID (INT)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "SELECTELV2_BASE_URL": {
+        "type": "string",
+        "title": "SELECTELV2_BASE_URL",
+        "description": "API endpoint URL",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SELECTELV2_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "SELECTELV2_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SELECTELV2_PASSWORD": {
+        "type": "string",
+        "title": "SELECTELV2_PASSWORD",
+        "description": "Openstack username's password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "SELECTELV2_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "SELECTELV2_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SELECTELV2_PROJECT_ID": {
+        "type": "string",
+        "title": "SELECTELV2_PROJECT_ID",
+        "description": "Cloud project ID (UUID)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "SELECTELV2_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "SELECTELV2_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SELECTELV2_TTL": {
+        "type": "string",
+        "title": "SELECTELV2_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SELECTELV2_USERNAME": {
+        "type": "string",
+        "title": "SELECTELV2_USERNAME",
+        "description": "Openstack username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

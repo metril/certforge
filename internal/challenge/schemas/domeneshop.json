@@ -1,0 +1,51 @@
+{
+  "code": "domeneshop",
+  "name": "Domeneshop",
+  "url": "https://domene.shop",
+  "aliases": [
+    "domainnameshop"
+  ],
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Domeneshop",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DOMENESHOP_API_SECRET": {
+        "type": "string",
+        "title": "DOMENESHOP_API_SECRET",
+        "description": "API secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DOMENESHOP_API_TOKEN": {
+        "type": "string",
+        "title": "DOMENESHOP_API_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DOMENESHOP_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DOMENESHOP_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DOMENESHOP_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DOMENESHOP_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 20)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DOMENESHOP_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DOMENESHOP_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "code": "glesys",
+  "name": "Glesys",
+  "url": "https://glesys.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Glesys",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "GLESYS_API_KEY": {
+        "type": "string",
+        "title": "GLESYS_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "GLESYS_API_USER": {
+        "type": "string",
+        "title": "GLESYS_API_USER",
+        "description": "API user",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "GLESYS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "GLESYS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GLESYS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "GLESYS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 20)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GLESYS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "GLESYS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 1200)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GLESYS_TTL": {
+        "type": "string",
+        "title": "GLESYS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

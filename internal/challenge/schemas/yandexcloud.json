@@ -1,0 +1,48 @@
+{
+  "code": "yandexcloud",
+  "name": "Yandex Cloud",
+  "url": "https://cloud.yandex.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Yandex Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "YANDEX_CLOUD_FOLDER_ID": {
+        "type": "string",
+        "title": "YANDEX_CLOUD_FOLDER_ID",
+        "description": "The string id of folder (aka project) in Yandex Cloud",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "YANDEX_CLOUD_IAM_TOKEN": {
+        "type": "string",
+        "title": "YANDEX_CLOUD_IAM_TOKEN",
+        "description": "The base64 encoded json which contains information about iam token of service account with `dns.admin` permissions",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "YANDEX_CLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "YANDEX_CLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "YANDEX_CLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "YANDEX_CLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "YANDEX_CLOUD_TTL": {
+        "type": "string",
+        "title": "YANDEX_CLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

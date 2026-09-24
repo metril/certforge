@@ -1,0 +1,76 @@
+{
+  "code": "efficientip",
+  "name": "Efficient IP",
+  "url": "https://efficientip.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Efficient IP",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "EFFICIENTIP_DNS_NAME": {
+        "type": "string",
+        "title": "EFFICIENTIP_DNS_NAME",
+        "description": "DNS name (ex: dns.smart)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "EFFICIENTIP_HOSTNAME": {
+        "type": "string",
+        "title": "EFFICIENTIP_HOSTNAME",
+        "description": "Hostname (ex: foo.example.com)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "EFFICIENTIP_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "EFFICIENTIP_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EFFICIENTIP_INSECURE_SKIP_VERIFY": {
+        "type": "string",
+        "title": "EFFICIENTIP_INSECURE_SKIP_VERIFY",
+        "description": "Whether or not to verify EfficientIP API certificate",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EFFICIENTIP_PASSWORD": {
+        "type": "string",
+        "title": "EFFICIENTIP_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EFFICIENTIP_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "EFFICIENTIP_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EFFICIENTIP_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "EFFICIENTIP_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EFFICIENTIP_USERNAME": {
+        "type": "string",
+        "title": "EFFICIENTIP_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "EFFICIENTIP_VIEW_NAME": {
+        "type": "string",
+        "title": "EFFICIENTIP_VIEW_NAME",
+        "description": "View name (ex: external)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

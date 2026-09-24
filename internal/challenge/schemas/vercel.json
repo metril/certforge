@@ -1,0 +1,55 @@
+{
+  "code": "vercel",
+  "name": "Vercel",
+  "url": "https://vercel.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Vercel",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "VERCEL_API_TOKEN": {
+        "type": "string",
+        "title": "VERCEL_API_TOKEN",
+        "description": "Authentication token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VERCEL_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "VERCEL_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VERCEL_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "VERCEL_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VERCEL_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "VERCEL_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VERCEL_TEAM_ID": {
+        "type": "string",
+        "title": "VERCEL_TEAM_ID",
+        "description": "Team ID (ex: team_xxxxxxxxxxxxxxxxxxxxxxxx)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VERCEL_TTL": {
+        "type": "string",
+        "title": "VERCEL_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

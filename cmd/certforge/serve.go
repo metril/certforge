@@ -11,6 +11,7 @@ import (
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -37,7 +38,8 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	}
 	sections := settings.DefaultRegistry()
 	metaReg := meta.NewRegistry()
-	// Later phases register settings sections and pluggable type schemas here.
+	challenge.AddToMeta(metaReg)
+	// Later phases register settings sections and other pluggable type schemas here.
 	aud := audit.New(pool)
 	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
 	handler := api.NewRouter(api.Deps{

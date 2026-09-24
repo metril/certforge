@@ -1,0 +1,48 @@
+{
+  "code": "baiducloud",
+  "name": "Baidu Cloud",
+  "url": "https://cloud.baidu.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Baidu Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "BAIDUCLOUD_ACCESS_KEY_ID": {
+        "type": "string",
+        "title": "BAIDUCLOUD_ACCESS_KEY_ID",
+        "description": "Access key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "BAIDUCLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "BAIDUCLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BAIDUCLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "BAIDUCLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BAIDUCLOUD_SECRET_ACCESS_KEY": {
+        "type": "string",
+        "title": "BAIDUCLOUD_SECRET_ACCESS_KEY",
+        "description": "Secret access key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "BAIDUCLOUD_TTL": {
+        "type": "string",
+        "title": "BAIDUCLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "code": "gcloud",
+  "name": "Google Cloud",
+  "url": "https://cloud.google.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Google Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "Application Default Credentials": {
+        "type": "string",
+        "title": "Application Default Credentials",
+        "description": "[Documentation](https://cloud.google.com/docs/authentication/production#providing_credentials_to_your_application)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "GCE_ALLOW_PRIVATE_ZONE": {
+        "type": "string",
+        "title": "GCE_ALLOW_PRIVATE_ZONE",
+        "description": "Allows requested domain to be in private DNS zone, works only with a private ACME server (by default: false)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GCE_IMPERSONATE_SERVICE_ACCOUNT": {
+        "type": "string",
+        "title": "GCE_IMPERSONATE_SERVICE_ACCOUNT",
+        "description": "Service account email to impersonate",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GCE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "GCE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GCE_PROJECT": {
+        "type": "string",
+        "title": "GCE_PROJECT",
+        "description": "Project name (by default, the project name is auto-detected by using the metadata service)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "GCE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "GCE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 180)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GCE_SERVICE_ACCOUNT": {
+        "type": "string",
+        "title": "GCE_SERVICE_ACCOUNT",
+        "description": "Account",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "GCE_SERVICE_ACCOUNT_FILE": {
+        "type": "string",
+        "title": "GCE_SERVICE_ACCOUNT_FILE",
+        "description": "Account file path",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "GCE_TTL": {
+        "type": "string",
+        "title": "GCE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GCE_ZONE_ID": {
+        "type": "string",
+        "title": "GCE_ZONE_ID",
+        "description": "Allows to skip the automatic detection of the zone",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

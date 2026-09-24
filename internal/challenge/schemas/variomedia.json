@@ -1,0 +1,55 @@
+{
+  "code": "variomedia",
+  "name": "Variomedia",
+  "url": "https://www.variomedia.de/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Variomedia",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "VARIOMEDIA_API_TOKEN": {
+        "type": "string",
+        "title": "VARIOMEDIA_API_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VARIOMEDIA_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "VARIOMEDIA_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VARIOMEDIA_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "VARIOMEDIA_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VARIOMEDIA_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "VARIOMEDIA_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VARIOMEDIA_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "VARIOMEDIA_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VARIOMEDIA_TTL": {
+        "type": "string",
+        "title": "VARIOMEDIA_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "code": "technitium",
+  "name": "Technitium",
+  "url": "https://technitium.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Technitium",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "TECHNITIUM_API_TOKEN": {
+        "type": "string",
+        "title": "TECHNITIUM_API_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "TECHNITIUM_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "TECHNITIUM_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TECHNITIUM_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "TECHNITIUM_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TECHNITIUM_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "TECHNITIUM_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TECHNITIUM_SERVER_BASE_URL": {
+        "type": "string",
+        "title": "TECHNITIUM_SERVER_BASE_URL",
+        "description": "Server base URL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "TECHNITIUM_TTL": {
+        "type": "string",
+        "title": "TECHNITIUM_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

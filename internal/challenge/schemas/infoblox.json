@@ -1,0 +1,97 @@
+{
+  "code": "infoblox",
+  "name": "Infoblox",
+  "url": "https://www.infoblox.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Infoblox",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "INFOBLOX_CA_CERTIFICATE": {
+        "type": "string",
+        "title": "INFOBLOX_CA_CERTIFICATE",
+        "description": "The path to the CA certificate (PEM encoded)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INFOBLOX_DNS_VIEW": {
+        "type": "string",
+        "title": "INFOBLOX_DNS_VIEW",
+        "description": "The view for the TXT records (Default: External)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INFOBLOX_HOST": {
+        "type": "string",
+        "title": "INFOBLOX_HOST",
+        "description": "Host URI",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "INFOBLOX_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "INFOBLOX_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INFOBLOX_PASSWORD": {
+        "type": "string",
+        "title": "INFOBLOX_PASSWORD",
+        "description": "Account Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "INFOBLOX_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "INFOBLOX_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INFOBLOX_PORT": {
+        "type": "string",
+        "title": "INFOBLOX_PORT",
+        "description": "The port for the infoblox grid manager  (Default: 443)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INFOBLOX_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "INFOBLOX_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INFOBLOX_SSL_VERIFY": {
+        "type": "string",
+        "title": "INFOBLOX_SSL_VERIFY",
+        "description": "Whether or not to verify the TLS certificate  (Default: true)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INFOBLOX_TTL": {
+        "type": "string",
+        "title": "INFOBLOX_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INFOBLOX_USERNAME": {
+        "type": "string",
+        "title": "INFOBLOX_USERNAME",
+        "description": "Account Username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "INFOBLOX_WAPI_VERSION": {
+        "type": "string",
+        "title": "INFOBLOX_WAPI_VERSION",
+        "description": "The version of WAPI being used  (Default: 2.11)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

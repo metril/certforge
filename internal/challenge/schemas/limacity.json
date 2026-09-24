@@ -1,0 +1,55 @@
+{
+  "code": "limacity",
+  "name": "Lima-City",
+  "url": "https://www.lima-city.de",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Lima-City",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "LIMACITY_API_KEY": {
+        "type": "string",
+        "title": "LIMACITY_API_KEY",
+        "description": "The API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "LIMACITY_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "LIMACITY_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LIMACITY_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "LIMACITY_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 80)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LIMACITY_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "LIMACITY_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 480)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LIMACITY_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "LIMACITY_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 90)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LIMACITY_TTL": {
+        "type": "string",
+        "title": "LIMACITY_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

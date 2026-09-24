@@ -1,0 +1,55 @@
+{
+  "code": "vegadns",
+  "name": "VegaDNS",
+  "url": "https://github.com/shupp/VegaDNS-API",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "VegaDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "SECRET_VEGADNS_KEY": {
+        "type": "string",
+        "title": "SECRET_VEGADNS_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "SECRET_VEGADNS_SECRET": {
+        "type": "string",
+        "title": "SECRET_VEGADNS_SECRET",
+        "description": "API secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VEGADNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "VEGADNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VEGADNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "VEGADNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 720)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VEGADNS_TTL": {
+        "type": "string",
+        "title": "VEGADNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VEGADNS_URL": {
+        "type": "string",
+        "title": "VEGADNS_URL",
+        "description": "API endpoint URL",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

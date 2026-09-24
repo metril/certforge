@@ -1,0 +1,48 @@
+{
+  "code": "mailinabox",
+  "name": "Mail-in-a-Box",
+  "url": "https://mailinabox.email",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Mail-in-a-Box",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "MAILINABOX_BASE_URL": {
+        "type": "string",
+        "title": "MAILINABOX_BASE_URL",
+        "description": "Base API URL (ex: https://box.example.com)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "MAILINABOX_EMAIL": {
+        "type": "string",
+        "title": "MAILINABOX_EMAIL",
+        "description": "User email",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "MAILINABOX_PASSWORD": {
+        "type": "string",
+        "title": "MAILINABOX_PASSWORD",
+        "description": "User password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "MAILINABOX_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "MAILINABOX_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 4)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MAILINABOX_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "MAILINABOX_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

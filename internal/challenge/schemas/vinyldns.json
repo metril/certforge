@@ -1,0 +1,55 @@
+{
+  "code": "vinyldns",
+  "name": "VinylDNS",
+  "url": "https://www.vinyldns.io",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "VinylDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "VINYLDNS_ACCESS_KEY": {
+        "type": "string",
+        "title": "VINYLDNS_ACCESS_KEY",
+        "description": "The VinylDNS API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VINYLDNS_HOST": {
+        "type": "string",
+        "title": "VINYLDNS_HOST",
+        "description": "The VinylDNS API URL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "VINYLDNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "VINYLDNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 4)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VINYLDNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "VINYLDNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VINYLDNS_SECRET_KEY": {
+        "type": "string",
+        "title": "VINYLDNS_SECRET_KEY",
+        "description": "The VinylDNS API Secret key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VINYLDNS_TTL": {
+        "type": "string",
+        "title": "VINYLDNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

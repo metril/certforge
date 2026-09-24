@@ -1,0 +1,120 @@
+package challenge
+
+//go:generate go run ../../tools/gen-lego-schemas -out schemas -docs ../../docs/dns-providers.md
+
+import (
+	"embed"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"sort"
+	"strings"
+	"sync"
+
+	legochallenge "github.com/go-acme/lego/v4/challenge"
+)
+
+//go:embed schemas/*.json
+var schemaFS embed.FS
+
+// ProviderMeta describes one DNS provider for GET /meta/schemas.
+type ProviderMeta struct {
+	Code    string          `json:"code"`
+	Name    string          `json:"name"`
+	Schema  json.RawMessage `json:"schema"`
+	Aliases []string        `json:"aliases,omitempty"`
+	URL     string          `json:"url,omitempty"`
+}
+
+// Factory builds a provider without lego's env-var path (used by the e2e
+// challtestsrv provider).
+type Factory func(cfg map[string]string) (legochallenge.Provider, error)
+
+type entry struct {
+	meta    ProviderMeta
+	secret  map[string]bool // every schema property; true = secret
+	factory Factory
+}
+
+var (
+	regMu   sync.RWMutex
+	entries = map[string]*entry{}
+	aliases = map[string]string{}
+)
+
+func init() {
+	files, err := fs.Glob(schemaFS, "schemas/*.json")
+	if err != nil {
+		panic(err)
+	}
+	for _, f := range files {
+		b, err := schemaFS.ReadFile(f)
+		if err != nil {
+			panic(err)
+		}
+		var m ProviderMeta
+		if err := json.Unmarshal(b, &m); err != nil {
+			panic(fmt.Sprintf("%s: %v", f, err))
+		}
+		if err := Register(m, nil); err != nil {
+			panic(err)
+		}
+	}
+}
+
+// Register adds or replaces a provider. f may be nil for lego providers.
+func Register(m ProviderMeta, f Factory) error {
+	var s struct {
+		Properties map[string]struct {
+			Secret bool `json:"secret"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(m.Schema, &s); err != nil {
+		return fmt.Errorf("provider %s schema: %w", m.Code, err)
+	}
+	e := &entry{meta: m, secret: map[string]bool{}, factory: f}
+	for k, p := range s.Properties {
+		e.secret[k] = p.Secret
+	}
+	regMu.Lock()
+	defer regMu.Unlock()
+	entries[m.Code] = e
+	for _, a := range m.Aliases {
+		aliases[a] = m.Code
+	}
+	return nil
+}
+
+func lookupEntry(code string) (*entry, bool) {
+	regMu.RLock()
+	defer regMu.RUnlock()
+	if e, ok := entries[code]; ok {
+		return e, true
+	}
+	if c, ok := aliases[code]; ok {
+		e, ok := entries[c]
+		return e, ok
+	}
+	return nil, false
+}
+
+// Providers lists every provider sorted by name.
+func Providers() []ProviderMeta {
+	regMu.RLock()
+	out := make([]ProviderMeta, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.meta)
+	}
+	regMu.RUnlock()
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out
+}
+
+// Lookup finds a provider by code or alias.
+func Lookup(code string) (ProviderMeta, bool) {
+	e, ok := lookupEntry(code)
+	if !ok {
+		return ProviderMeta{}, false
+	}
+	return e.meta, true
+}

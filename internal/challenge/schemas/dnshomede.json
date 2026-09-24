@@ -1,0 +1,48 @@
+{
+  "code": "dnshomede",
+  "name": "dnsHome.de",
+  "url": "https://www.dnshome.de",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "dnsHome.de",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DNSHOMEDE_CREDENTIALS": {
+        "type": "string",
+        "title": "DNSHOMEDE_CREDENTIALS",
+        "description": "Comma-separated list of domain:password credential pairs",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "DNSHOMEDE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DNSHOMEDE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSHOMEDE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DNSHOMEDE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 1200)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSHOMEDE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DNSHOMEDE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSHOMEDE_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "DNSHOMEDE_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

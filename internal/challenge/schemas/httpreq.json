@@ -1,0 +1,62 @@
+{
+  "code": "httpreq",
+  "name": "HTTP request",
+  "url": "/lego/dns/httpreq/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "HTTP request",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "HTTPREQ_ENDPOINT": {
+        "type": "string",
+        "title": "HTTPREQ_ENDPOINT",
+        "description": "The URL of the server",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "HTTPREQ_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "HTTPREQ_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HTTPREQ_MODE": {
+        "type": "string",
+        "title": "HTTPREQ_MODE",
+        "description": "`RAW`, none",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "HTTPREQ_PASSWORD": {
+        "type": "string",
+        "title": "HTTPREQ_PASSWORD",
+        "description": "Basic authentication password",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HTTPREQ_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "HTTPREQ_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HTTPREQ_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "HTTPREQ_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HTTPREQ_USERNAME": {
+        "type": "string",
+        "title": "HTTPREQ_USERNAME",
+        "description": "Basic authentication username",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

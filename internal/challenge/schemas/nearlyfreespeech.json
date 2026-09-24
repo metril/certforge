@@ -1,0 +1,62 @@
+{
+  "code": "nearlyfreespeech",
+  "name": "NearlyFreeSpeech.NET",
+  "url": "https://nearlyfreespeech.net/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "NearlyFreeSpeech.NET",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NEARLYFREESPEECH_API_KEY": {
+        "type": "string",
+        "title": "NEARLYFREESPEECH_API_KEY",
+        "description": "API Key for API requests",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NEARLYFREESPEECH_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NEARLYFREESPEECH_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NEARLYFREESPEECH_LOGIN": {
+        "type": "string",
+        "title": "NEARLYFREESPEECH_LOGIN",
+        "description": "Username for API requests",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "NEARLYFREESPEECH_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NEARLYFREESPEECH_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NEARLYFREESPEECH_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NEARLYFREESPEECH_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NEARLYFREESPEECH_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "NEARLYFREESPEECH_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NEARLYFREESPEECH_TTL": {
+        "type": "string",
+        "title": "NEARLYFREESPEECH_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

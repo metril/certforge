@@ -1,0 +1,41 @@
+{
+  "code": "dreamhost",
+  "name": "DreamHost",
+  "url": "https://www.dreamhost.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DreamHost",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DREAMHOST_API_KEY": {
+        "type": "string",
+        "title": "DREAMHOST_API_KEY",
+        "description": "The API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DREAMHOST_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DREAMHOST_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DREAMHOST_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DREAMHOST_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DREAMHOST_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DREAMHOST_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 3600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "code": "cloudns",
+  "name": "ClouDNS",
+  "url": "https://www.cloudns.net",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ClouDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "CLOUDNS_AUTH_ID": {
+        "type": "string",
+        "title": "CLOUDNS_AUTH_ID",
+        "description": "The API user ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CLOUDNS_AUTH_PASSWORD": {
+        "type": "string",
+        "title": "CLOUDNS_AUTH_PASSWORD",
+        "description": "The password for API user ID",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CLOUDNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "CLOUDNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "CLOUDNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "CLOUDNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 180)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDNS_SUB_AUTH_ID": {
+        "type": "string",
+        "title": "CLOUDNS_SUB_AUTH_ID",
+        "description": "The API sub user ID",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDNS_TTL": {
+        "type": "string",
+        "title": "CLOUDNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

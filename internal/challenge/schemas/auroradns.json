@@ -1,0 +1,55 @@
+{
+  "code": "auroradns",
+  "name": "Aurora DNS",
+  "url": "https://www.pcextreme.com/dns-health-checks",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Aurora DNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "AURORA_API_KEY": {
+        "type": "string",
+        "title": "AURORA_API_KEY",
+        "description": "API key or username to used",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AURORA_ENDPOINT": {
+        "type": "string",
+        "title": "AURORA_ENDPOINT",
+        "description": "API endpoint URL",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AURORA_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "AURORA_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AURORA_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "AURORA_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AURORA_SECRET": {
+        "type": "string",
+        "title": "AURORA_SECRET",
+        "description": "Secret password to be used",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AURORA_TTL": {
+        "type": "string",
+        "title": "AURORA_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

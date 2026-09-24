@@ -1,0 +1,76 @@
+{
+  "code": "joker",
+  "name": "Joker",
+  "url": "https://joker.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Joker",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "JOKER_API_KEY": {
+        "type": "string",
+        "title": "JOKER_API_KEY",
+        "description": "API key (only with DMAPI mode)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "JOKER_API_MODE": {
+        "type": "string",
+        "title": "JOKER_API_MODE",
+        "description": "'DMAPI' or 'SVC'. DMAPI is for resellers accounts. (Default: DMAPI)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "JOKER_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "JOKER_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "JOKER_PASSWORD": {
+        "type": "string",
+        "title": "JOKER_PASSWORD",
+        "description": "Joker.com password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "JOKER_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "JOKER_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "JOKER_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "JOKER_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "JOKER_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "JOKER_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60), only with 'SVC' mode",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "JOKER_TTL": {
+        "type": "string",
+        "title": "JOKER_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "JOKER_USERNAME": {
+        "type": "string",
+        "title": "JOKER_USERNAME",
+        "description": "Joker.com username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

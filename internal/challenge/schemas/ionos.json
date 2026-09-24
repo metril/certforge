@@ -1,0 +1,48 @@
+{
+  "code": "ionos",
+  "name": "Ionos",
+  "url": "https://ionos.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Ionos",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "IONOS_API_KEY": {
+        "type": "string",
+        "title": "IONOS_API_KEY",
+        "description": "API key `\u003cprefix\u003e.\u003csecret\u003e` https://developer.hosting.ionos.com/docs/getstarted",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "IONOS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "IONOS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IONOS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "IONOS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IONOS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "IONOS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IONOS_TTL": {
+        "type": "string",
+        "title": "IONOS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "code": "clouddns",
+  "name": "CloudDNS",
+  "url": "https://vshosting.eu/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "CloudDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "CLOUDDNS_CLIENT_ID": {
+        "type": "string",
+        "title": "CLOUDDNS_CLIENT_ID",
+        "description": "Client ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CLOUDDNS_EMAIL": {
+        "type": "string",
+        "title": "CLOUDDNS_EMAIL",
+        "description": "Account email",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CLOUDDNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "CLOUDDNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDDNS_PASSWORD": {
+        "type": "string",
+        "title": "CLOUDDNS_PASSWORD",
+        "description": "Account password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CLOUDDNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "CLOUDDNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDDNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "CLOUDDNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDDNS_TTL": {
+        "type": "string",
+        "title": "CLOUDDNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

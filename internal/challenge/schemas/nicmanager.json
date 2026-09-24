@@ -1,0 +1,83 @@
+{
+  "code": "nicmanager",
+  "name": "Nicmanager",
+  "url": "https://www.nicmanager.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Nicmanager",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NICMANAGER_API_EMAIL": {
+        "type": "string",
+        "title": "NICMANAGER_API_EMAIL",
+        "description": "Email-based login",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "NICMANAGER_API_LOGIN": {
+        "type": "string",
+        "title": "NICMANAGER_API_LOGIN",
+        "description": "Login, used for Username-based login",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "NICMANAGER_API_MODE": {
+        "type": "string",
+        "title": "NICMANAGER_API_MODE",
+        "description": "mode: 'anycast' or 'zones' (for FreeDNS) (default: 'anycast')",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NICMANAGER_API_OTP": {
+        "type": "string",
+        "title": "NICMANAGER_API_OTP",
+        "description": "TOTP Secret (optional)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NICMANAGER_API_PASSWORD": {
+        "type": "string",
+        "title": "NICMANAGER_API_PASSWORD",
+        "description": "Password, always required",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NICMANAGER_API_USERNAME": {
+        "type": "string",
+        "title": "NICMANAGER_API_USERNAME",
+        "description": "Username, used for Username-based login",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "NICMANAGER_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NICMANAGER_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NICMANAGER_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NICMANAGER_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NICMANAGER_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NICMANAGER_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NICMANAGER_TTL": {
+        "type": "string",
+        "title": "NICMANAGER_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 900)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

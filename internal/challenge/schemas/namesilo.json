@@ -1,0 +1,41 @@
+{
+  "code": "namesilo",
+  "name": "Namesilo",
+  "url": "https://www.namesilo.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Namesilo",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NAMESILO_API_KEY": {
+        "type": "string",
+        "title": "NAMESILO_API_KEY",
+        "description": "Client ID",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NAMESILO_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NAMESILO_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMESILO_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NAMESILO_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60), it is better to set larger than 15 minutes",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMESILO_TTL": {
+        "type": "string",
+        "title": "NAMESILO_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600), should be in [3600, 2592000]",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

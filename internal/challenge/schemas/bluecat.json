@@ -1,0 +1,83 @@
+{
+  "code": "bluecat",
+  "name": "Bluecat",
+  "url": "https://www.bluecatnetworks.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Bluecat",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "BLUECAT_CONFIG_NAME": {
+        "type": "string",
+        "title": "BLUECAT_CONFIG_NAME",
+        "description": "Configuration name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "BLUECAT_DNS_VIEW": {
+        "type": "string",
+        "title": "BLUECAT_DNS_VIEW",
+        "description": "External DNS View Name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "BLUECAT_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "BLUECAT_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECAT_PASSWORD": {
+        "type": "string",
+        "title": "BLUECAT_PASSWORD",
+        "description": "API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "BLUECAT_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "BLUECAT_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECAT_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "BLUECAT_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECAT_SERVER_URL": {
+        "type": "string",
+        "title": "BLUECAT_SERVER_URL",
+        "description": "The server URL, should have scheme, hostname, and port (if required) of the authoritative Bluecat BAM serve",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "BLUECAT_SKIP_DEPLOY": {
+        "type": "string",
+        "title": "BLUECAT_SKIP_DEPLOY",
+        "description": "Skip deployements",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECAT_TTL": {
+        "type": "string",
+        "title": "BLUECAT_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECAT_USER_NAME": {
+        "type": "string",
+        "title": "BLUECAT_USER_NAME",
+        "description": "API username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "code": "iijdpf",
+  "name": "IIJ DNS Platform Service",
+  "url": "https://www.iij.ad.jp/en/biz/dns-pfm/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "IIJ DNS Platform Service",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "IIJ_DPF_API_ENDPOINT": {
+        "type": "string",
+        "title": "IIJ_DPF_API_ENDPOINT",
+        "description": "API endpoint URL, defaults to https://api.dns-platform.jp/dpf/v1",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IIJ_DPF_API_TOKEN": {
+        "type": "string",
+        "title": "IIJ_DPF_API_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "IIJ_DPF_DPM_SERVICE_CODE": {
+        "type": "string",
+        "title": "IIJ_DPF_DPM_SERVICE_CODE",
+        "description": "IIJ Managed DNS Service's service code",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "IIJ_DPF_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "IIJ_DPF_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IIJ_DPF_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "IIJ_DPF_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 660)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IIJ_DPF_TTL": {
+        "type": "string",
+        "title": "IIJ_DPF_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

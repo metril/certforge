@@ -1,0 +1,48 @@
+{
+  "code": "ns1",
+  "name": "NS1",
+  "url": "https://ns1.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "NS1",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NS1_API_KEY": {
+        "type": "string",
+        "title": "NS1_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NS1_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NS1_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NS1_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NS1_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NS1_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NS1_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NS1_TTL": {
+        "type": "string",
+        "title": "NS1_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

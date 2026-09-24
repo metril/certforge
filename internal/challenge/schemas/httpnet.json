@@ -1,0 +1,55 @@
+{
+  "code": "httpnet",
+  "name": "http.net",
+  "url": "https://www.http.net/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "http.net",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "HTTPNET_API_KEY": {
+        "type": "string",
+        "title": "HTTPNET_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "HTTPNET_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "HTTPNET_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HTTPNET_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "HTTPNET_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HTTPNET_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "HTTPNET_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HTTPNET_TTL": {
+        "type": "string",
+        "title": "HTTPNET_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HTTPNET_ZONE_NAME": {
+        "type": "string",
+        "title": "HTTPNET_ZONE_NAME",
+        "description": "Zone name in ACE format",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

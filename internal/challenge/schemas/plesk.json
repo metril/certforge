@@ -1,0 +1,62 @@
+{
+  "code": "plesk",
+  "name": "plesk.com",
+  "url": "https://www.plesk.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "plesk.com",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "PLESK_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "PLESK_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PLESK_PASSWORD": {
+        "type": "string",
+        "title": "PLESK_PASSWORD",
+        "description": "API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "PLESK_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "PLESK_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PLESK_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "PLESK_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PLESK_SERVER_BASE_URL": {
+        "type": "string",
+        "title": "PLESK_SERVER_BASE_URL",
+        "description": "Base URL of the server (ex: https://plesk.myserver.com:8443)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "PLESK_TTL": {
+        "type": "string",
+        "title": "PLESK_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "PLESK_USERNAME": {
+        "type": "string",
+        "title": "PLESK_USERNAME",
+        "description": "API username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

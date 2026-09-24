@@ -1,0 +1,55 @@
+{
+  "code": "scaleway",
+  "name": "Scaleway",
+  "url": "https://developers.scaleway.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Scaleway",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "SCW_ACCESS_KEY": {
+        "type": "string",
+        "title": "SCW_ACCESS_KEY",
+        "description": "Access key",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SCW_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "SCW_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SCW_PROJECT_ID": {
+        "type": "string",
+        "title": "SCW_PROJECT_ID",
+        "description": "Project to use (optional)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "SCW_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "SCW_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SCW_SECRET_KEY": {
+        "type": "string",
+        "title": "SCW_SECRET_KEY",
+        "description": "Secret key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "SCW_TTL": {
+        "type": "string",
+        "title": "SCW_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "code": "axelname",
+  "name": "Axelname",
+  "url": "https://axelname.ru",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Axelname",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "AXELNAME_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "AXELNAME_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AXELNAME_NICKNAME": {
+        "type": "string",
+        "title": "AXELNAME_NICKNAME",
+        "description": "Account nickname",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AXELNAME_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "AXELNAME_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AXELNAME_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "AXELNAME_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AXELNAME_TOKEN": {
+        "type": "string",
+        "title": "AXELNAME_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AXELNAME_TTL": {
+        "type": "string",
+        "title": "AXELNAME_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "code": "manageengine",
+  "name": "ManageEngine CloudDNS",
+  "url": "https://clouddns.manageengine.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ManageEngine CloudDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "MANAGEENGINE_CLIENT_ID": {
+        "type": "string",
+        "title": "MANAGEENGINE_CLIENT_ID",
+        "description": "Client ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "MANAGEENGINE_CLIENT_SECRET": {
+        "type": "string",
+        "title": "MANAGEENGINE_CLIENT_SECRET",
+        "description": "Client Secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "MANAGEENGINE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "MANAGEENGINE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MANAGEENGINE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "MANAGEENGINE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MANAGEENGINE_TTL": {
+        "type": "string",
+        "title": "MANAGEENGINE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

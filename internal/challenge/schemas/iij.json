@@ -1,0 +1,55 @@
+{
+  "code": "iij",
+  "name": "Internet Initiative Japan",
+  "url": "https://www.iij.ad.jp/en/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Internet Initiative Japan",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "IIJ_API_ACCESS_KEY": {
+        "type": "string",
+        "title": "IIJ_API_ACCESS_KEY",
+        "description": "API access key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "IIJ_API_SECRET_KEY": {
+        "type": "string",
+        "title": "IIJ_API_SECRET_KEY",
+        "description": "API secret key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "IIJ_DO_SERVICE_CODE": {
+        "type": "string",
+        "title": "IIJ_DO_SERVICE_CODE",
+        "description": "DO service code",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "IIJ_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "IIJ_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 4)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IIJ_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "IIJ_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 240)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IIJ_TTL": {
+        "type": "string",
+        "title": "IIJ_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

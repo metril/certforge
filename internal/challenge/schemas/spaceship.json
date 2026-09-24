@@ -1,0 +1,55 @@
+{
+  "code": "spaceship",
+  "name": "Spaceship",
+  "url": "https://www.spaceship.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Spaceship",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "SPACESHIP_API_KEY": {
+        "type": "string",
+        "title": "SPACESHIP_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "SPACESHIP_API_SECRET": {
+        "type": "string",
+        "title": "SPACESHIP_API_SECRET",
+        "description": "API secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "SPACESHIP_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "SPACESHIP_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SPACESHIP_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "SPACESHIP_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SPACESHIP_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "SPACESHIP_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SPACESHIP_TTL": {
+        "type": "string",
+        "title": "SPACESHIP_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

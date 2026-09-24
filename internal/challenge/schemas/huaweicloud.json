@@ -1,0 +1,62 @@
+{
+  "code": "huaweicloud",
+  "name": "Huawei Cloud",
+  "url": "https://huaweicloud.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Huawei Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "HUAWEICLOUD_ACCESS_KEY_ID": {
+        "type": "string",
+        "title": "HUAWEICLOUD_ACCESS_KEY_ID",
+        "description": "Access key ID",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "HUAWEICLOUD_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "HUAWEICLOUD_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HUAWEICLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "HUAWEICLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HUAWEICLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "HUAWEICLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HUAWEICLOUD_REGION": {
+        "type": "string",
+        "title": "HUAWEICLOUD_REGION",
+        "description": "Region",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "HUAWEICLOUD_SECRET_ACCESS_KEY": {
+        "type": "string",
+        "title": "HUAWEICLOUD_SECRET_ACCESS_KEY",
+        "description": "Access Key secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "HUAWEICLOUD_TTL": {
+        "type": "string",
+        "title": "HUAWEICLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

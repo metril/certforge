@@ -1,0 +1,55 @@
+{
+  "code": "duckdns",
+  "name": "Duck DNS",
+  "url": "https://www.duckdns.org/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Duck DNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DUCKDNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DUCKDNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DUCKDNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DUCKDNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DUCKDNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DUCKDNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DUCKDNS_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "DUCKDNS_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DUCKDNS_TOKEN": {
+        "type": "string",
+        "title": "DUCKDNS_TOKEN",
+        "description": "Account token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DUCKDNS_TTL": {
+        "type": "string",
+        "title": "DUCKDNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

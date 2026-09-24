@@ -1,0 +1,69 @@
+{
+  "code": "autodns",
+  "name": "Autodns",
+  "url": "https://www.internetx.com/domains/autodns/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Autodns",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "AUTODNS_API_PASSWORD": {
+        "type": "string",
+        "title": "AUTODNS_API_PASSWORD",
+        "description": "User Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AUTODNS_API_USER": {
+        "type": "string",
+        "title": "AUTODNS_API_USER",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AUTODNS_CONTEXT": {
+        "type": "string",
+        "title": "AUTODNS_CONTEXT",
+        "description": "API context (4 for production, 1 for testing. Defaults to 4)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AUTODNS_ENDPOINT": {
+        "type": "string",
+        "title": "AUTODNS_ENDPOINT",
+        "description": "API endpoint URL, defaults to https://api.autodns.com/v1/",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AUTODNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "AUTODNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AUTODNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "AUTODNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AUTODNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "AUTODNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AUTODNS_TTL": {
+        "type": "string",
+        "title": "AUTODNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "code": "dyn",
+  "name": "Dyn",
+  "url": "https://dyn.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Dyn",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DYN_CUSTOMER_NAME": {
+        "type": "string",
+        "title": "DYN_CUSTOMER_NAME",
+        "description": "Customer name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "DYN_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DYN_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DYN_PASSWORD": {
+        "type": "string",
+        "title": "DYN_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DYN_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DYN_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DYN_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DYN_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DYN_TTL": {
+        "type": "string",
+        "title": "DYN_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DYN_USER_NAME": {
+        "type": "string",
+        "title": "DYN_USER_NAME",
+        "description": "User name",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

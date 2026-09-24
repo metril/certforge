@@ -1,0 +1,48 @@
+{
+  "code": "nodion",
+  "name": "Nodion",
+  "url": "https://www.nodion.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Nodion",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NODION_API_TOKEN": {
+        "type": "string",
+        "title": "NODION_API_TOKEN",
+        "description": "The API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NODION_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NODION_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NODION_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NODION_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NODION_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NODION_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NODION_TTL": {
+        "type": "string",
+        "title": "NODION_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

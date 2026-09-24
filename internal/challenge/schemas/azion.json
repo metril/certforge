@@ -1,0 +1,55 @@
+{
+  "code": "azion",
+  "name": "Azion",
+  "url": "https://www.azion.com/en/products/edge-dns/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Azion",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "AZION_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "AZION_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZION_PAGE_SIZE": {
+        "type": "string",
+        "title": "AZION_PAGE_SIZE",
+        "description": "The page size for the API request (Default: 50)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZION_PERSONAL_TOKEN": {
+        "type": "string",
+        "title": "AZION_PERSONAL_TOKEN",
+        "description": "Your Azion personal token.",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AZION_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "AZION_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZION_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "AZION_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AZION_TTL": {
+        "type": "string",
+        "title": "AZION_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

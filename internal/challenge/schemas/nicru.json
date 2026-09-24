@@ -1,0 +1,69 @@
+{
+  "code": "nicru",
+  "name": "RU CENTER",
+  "url": "https://nic.ru/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "RU CENTER",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NICRU_PASSWORD": {
+        "type": "string",
+        "title": "NICRU_PASSWORD",
+        "description": "Password for an account in RU CENTER",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NICRU_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NICRU_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NICRU_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NICRU_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NICRU_SECRET": {
+        "type": "string",
+        "title": "NICRU_SECRET",
+        "description": "Secret for application in DNS-hosting RU CENTER",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NICRU_SERVICE_ID": {
+        "type": "string",
+        "title": "NICRU_SERVICE_ID",
+        "description": "Service ID for application in DNS-hosting RU CENTER",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "NICRU_SERVICE_NAME": {
+        "type": "string",
+        "title": "NICRU_SERVICE_NAME",
+        "description": "Service Name for DNS-hosting RU CENTER",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "NICRU_TTL": {
+        "type": "string",
+        "title": "NICRU_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NICRU_USER": {
+        "type": "string",
+        "title": "NICRU_USER",
+        "description": "Agreement for an account in RU CENTER",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

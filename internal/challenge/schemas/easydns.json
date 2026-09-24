@@ -1,0 +1,69 @@
+{
+  "code": "easydns",
+  "name": "EasyDNS",
+  "url": "https://easydns.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "EasyDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "EASYDNS_ENDPOINT": {
+        "type": "string",
+        "title": "EASYDNS_ENDPOINT",
+        "description": "The endpoint URL of the API Server",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EASYDNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "EASYDNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EASYDNS_KEY": {
+        "type": "string",
+        "title": "EASYDNS_KEY",
+        "description": "API Key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EASYDNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "EASYDNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EASYDNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "EASYDNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EASYDNS_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "EASYDNS_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EASYDNS_TOKEN": {
+        "type": "string",
+        "title": "EASYDNS_TOKEN",
+        "description": "API Token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EASYDNS_TTL": {
+        "type": "string",
+        "title": "EASYDNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

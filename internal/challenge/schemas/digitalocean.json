@@ -1,0 +1,55 @@
+{
+  "code": "digitalocean",
+  "name": "Digital Ocean",
+  "url": "https://www.digitalocean.com/docs/networking/dns/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Digital Ocean",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DO_API_URL": {
+        "type": "string",
+        "title": "DO_API_URL",
+        "description": "The URL of the API",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DO_AUTH_TOKEN": {
+        "type": "string",
+        "title": "DO_AUTH_TOKEN",
+        "description": "Authentication token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DO_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DO_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DO_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DO_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DO_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DO_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DO_TTL": {
+        "type": "string",
+        "title": "DO_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

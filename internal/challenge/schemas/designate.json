@@ -1,0 +1,118 @@
+{
+  "code": "designate",
+  "name": "Designate DNSaaS for Openstack",
+  "url": "https://docs.openstack.org/designate/latest/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Designate DNSaaS for Openstack",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DESIGNATE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DESIGNATE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DESIGNATE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DESIGNATE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DESIGNATE_TTL": {
+        "type": "string",
+        "title": "DESIGNATE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DESIGNATE_ZONE_NAME": {
+        "type": "string",
+        "title": "DESIGNATE_ZONE_NAME",
+        "description": "The zone name to use in the OpenStack Project to manage TXT records.",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OS_APPLICATION_CREDENTIAL_ID": {
+        "type": "string",
+        "title": "OS_APPLICATION_CREDENTIAL_ID",
+        "description": "Application credential ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OS_APPLICATION_CREDENTIAL_NAME": {
+        "type": "string",
+        "title": "OS_APPLICATION_CREDENTIAL_NAME",
+        "description": "Application credential name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OS_APPLICATION_CREDENTIAL_SECRET": {
+        "type": "string",
+        "title": "OS_APPLICATION_CREDENTIAL_SECRET",
+        "description": "Application credential secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OS_AUTH_URL": {
+        "type": "string",
+        "title": "OS_AUTH_URL",
+        "description": "Identity endpoint URL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OS_PASSWORD": {
+        "type": "string",
+        "title": "OS_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OS_PROJECT_ID": {
+        "type": "string",
+        "title": "OS_PROJECT_ID",
+        "description": "Project ID",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OS_PROJECT_NAME": {
+        "type": "string",
+        "title": "OS_PROJECT_NAME",
+        "description": "Project name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OS_REGION_NAME": {
+        "type": "string",
+        "title": "OS_REGION_NAME",
+        "description": "Region name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OS_TENANT_NAME": {
+        "type": "string",
+        "title": "OS_TENANT_NAME",
+        "description": "Tenant name (deprecated see OS_PROJECT_NAME and OS_PROJECT_ID)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OS_USERNAME": {
+        "type": "string",
+        "title": "OS_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OS_USER_ID": {
+        "type": "string",
+        "title": "OS_USER_ID",
+        "description": "User ID",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

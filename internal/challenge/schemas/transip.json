@@ -1,0 +1,48 @@
+{
+  "code": "transip",
+  "name": "TransIP",
+  "url": "https://www.transip.nl/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "TransIP",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "TRANSIP_ACCOUNT_NAME": {
+        "type": "string",
+        "title": "TRANSIP_ACCOUNT_NAME",
+        "description": "Account name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "TRANSIP_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "TRANSIP_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TRANSIP_PRIVATE_KEY_PATH": {
+        "type": "string",
+        "title": "TRANSIP_PRIVATE_KEY_PATH",
+        "description": "Private key path",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "TRANSIP_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "TRANSIP_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TRANSIP_TTL": {
+        "type": "string",
+        "title": "TRANSIP_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

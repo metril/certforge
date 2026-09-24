@@ -1,0 +1,69 @@
+{
+  "code": "alidns",
+  "name": "Alibaba Cloud DNS",
+  "url": "https://www.alibabacloud.com/product/dns",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Alibaba Cloud DNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ALICLOUD_ACCESS_KEY": {
+        "type": "string",
+        "title": "ALICLOUD_ACCESS_KEY",
+        "description": "Access key ID",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ALICLOUD_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ALICLOUD_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ALICLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ALICLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ALICLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ALICLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ALICLOUD_RAM_ROLE": {
+        "type": "string",
+        "title": "ALICLOUD_RAM_ROLE",
+        "description": "Your instance RAM role (https://www.alibabacloud.com/help/en/ecs/user-guide/attach-an-instance-ram-role-to-an-ecs-instance)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "ALICLOUD_SECRET_KEY": {
+        "type": "string",
+        "title": "ALICLOUD_SECRET_KEY",
+        "description": "Access Key secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ALICLOUD_SECURITY_TOKEN": {
+        "type": "string",
+        "title": "ALICLOUD_SECURITY_TOKEN",
+        "description": "STS Security Token (optional)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ALICLOUD_TTL": {
+        "type": "string",
+        "title": "ALICLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

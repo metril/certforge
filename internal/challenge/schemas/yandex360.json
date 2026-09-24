@@ -1,0 +1,55 @@
+{
+  "code": "yandex360",
+  "name": "Yandex 360",
+  "url": "https://360.yandex.ru",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Yandex 360",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "YANDEX360_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "YANDEX360_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "YANDEX360_OAUTH_TOKEN": {
+        "type": "string",
+        "title": "YANDEX360_OAUTH_TOKEN",
+        "description": "The OAuth Token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "YANDEX360_ORG_ID": {
+        "type": "string",
+        "title": "YANDEX360_ORG_ID",
+        "description": "The organization ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "YANDEX360_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "YANDEX360_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "YANDEX360_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "YANDEX360_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "YANDEX360_TTL": {
+        "type": "string",
+        "title": "YANDEX360_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 21600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

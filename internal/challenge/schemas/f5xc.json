@@ -1,0 +1,62 @@
+{
+  "code": "f5xc",
+  "name": "F5 XC",
+  "url": "https://www.f5.com/products/distributed-cloud-services",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "F5 XC",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "F5XC_API_TOKEN": {
+        "type": "string",
+        "title": "F5XC_API_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "F5XC_GROUP_NAME": {
+        "type": "string",
+        "title": "F5XC_GROUP_NAME",
+        "description": "Group name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "F5XC_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "F5XC_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "F5XC_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "F5XC_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "F5XC_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "F5XC_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "F5XC_TENANT_NAME": {
+        "type": "string",
+        "title": "F5XC_TENANT_NAME",
+        "description": "XC Tenant shortname",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "F5XC_TTL": {
+        "type": "string",
+        "title": "F5XC_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

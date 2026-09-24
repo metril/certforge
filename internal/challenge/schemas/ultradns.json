@@ -1,0 +1,55 @@
+{
+  "code": "ultradns",
+  "name": "Ultradns",
+  "url": "https://vercara.com/authoritative-dns",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Ultradns",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ULTRADNS_ENDPOINT": {
+        "type": "string",
+        "title": "ULTRADNS_ENDPOINT",
+        "description": "API endpoint URL, defaults to https://api.ultradns.com/",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ULTRADNS_PASSWORD": {
+        "type": "string",
+        "title": "ULTRADNS_PASSWORD",
+        "description": "API Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ULTRADNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ULTRADNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 4)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ULTRADNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ULTRADNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ULTRADNS_TTL": {
+        "type": "string",
+        "title": "ULTRADNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ULTRADNS_USERNAME": {
+        "type": "string",
+        "title": "ULTRADNS_USERNAME",
+        "description": "API Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

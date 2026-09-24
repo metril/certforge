@@ -1,0 +1,55 @@
+{
+  "code": "stackpath",
+  "name": "Stackpath",
+  "url": "https://www.stackpath.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Stackpath",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "STACKPATH_CLIENT_ID": {
+        "type": "string",
+        "title": "STACKPATH_CLIENT_ID",
+        "description": "Client ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "STACKPATH_CLIENT_SECRET": {
+        "type": "string",
+        "title": "STACKPATH_CLIENT_SECRET",
+        "description": "Client secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "STACKPATH_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "STACKPATH_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "STACKPATH_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "STACKPATH_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "STACKPATH_STACK_ID": {
+        "type": "string",
+        "title": "STACKPATH_STACK_ID",
+        "description": "Stack ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "STACKPATH_TTL": {
+        "type": "string",
+        "title": "STACKPATH_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

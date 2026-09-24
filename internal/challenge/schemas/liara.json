@@ -1,0 +1,48 @@
+{
+  "code": "liara",
+  "name": "Liara",
+  "url": "https://liara.ir",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Liara",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "LIARA_API_KEY": {
+        "type": "string",
+        "title": "LIARA_API_KEY",
+        "description": "The API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "LIARA_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "LIARA_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LIARA_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "LIARA_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LIARA_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "LIARA_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "LIARA_TTL": {
+        "type": "string",
+        "title": "LIARA_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

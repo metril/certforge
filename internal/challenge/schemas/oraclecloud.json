@@ -1,0 +1,90 @@
+{
+  "code": "oraclecloud",
+  "name": "Oracle Cloud",
+  "url": "https://cloud.oracle.com/home",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Oracle Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "OCI_COMPARTMENT_OCID": {
+        "type": "string",
+        "title": "OCI_COMPARTMENT_OCID",
+        "description": "Compartment OCID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OCI_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "OCI_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OCI_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "OCI_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OCI_PRIVKEY_FILE": {
+        "type": "string",
+        "title": "OCI_PRIVKEY_FILE",
+        "description": "Private key file",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OCI_PRIVKEY_PASS": {
+        "type": "string",
+        "title": "OCI_PRIVKEY_PASS",
+        "description": "Private key password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OCI_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "OCI_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OCI_PUBKEY_FINGERPRINT": {
+        "type": "string",
+        "title": "OCI_PUBKEY_FINGERPRINT",
+        "description": "Public key fingerprint",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OCI_REGION": {
+        "type": "string",
+        "title": "OCI_REGION",
+        "description": "Region",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OCI_TENANCY_OCID": {
+        "type": "string",
+        "title": "OCI_TENANCY_OCID",
+        "description": "Tenancy OCID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OCI_TTL": {
+        "type": "string",
+        "title": "OCI_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OCI_USER_OCID": {
+        "type": "string",
+        "title": "OCI_USER_OCID",
+        "description": "User OCID",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

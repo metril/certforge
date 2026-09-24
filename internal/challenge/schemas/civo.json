@@ -1,0 +1,41 @@
+{
+  "code": "civo",
+  "name": "Civo",
+  "url": "https://civo.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Civo",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "CIVO_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "CIVO_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CIVO_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "CIVO_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CIVO_TOKEN": {
+        "type": "string",
+        "title": "CIVO_TOKEN",
+        "description": "Authentication token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CIVO_TTL": {
+        "type": "string",
+        "title": "CIVO_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

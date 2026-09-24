@@ -1,0 +1,62 @@
+{
+  "code": "exoscale",
+  "name": "Exoscale",
+  "url": "https://www.exoscale.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Exoscale",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "EXOSCALE_API_KEY": {
+        "type": "string",
+        "title": "EXOSCALE_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EXOSCALE_API_SECRET": {
+        "type": "string",
+        "title": "EXOSCALE_API_SECRET",
+        "description": "API secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EXOSCALE_ENDPOINT": {
+        "type": "string",
+        "title": "EXOSCALE_ENDPOINT",
+        "description": "API endpoint URL",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EXOSCALE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "EXOSCALE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EXOSCALE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "EXOSCALE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EXOSCALE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "EXOSCALE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EXOSCALE_TTL": {
+        "type": "string",
+        "title": "EXOSCALE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

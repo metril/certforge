@@ -1,0 +1,90 @@
+{
+  "code": "ovh",
+  "name": "OVH",
+  "url": "https://www.ovh.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "OVH",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "OVH_ACCESS_TOKEN": {
+        "type": "string",
+        "title": "OVH_ACCESS_TOKEN",
+        "description": "Access token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OVH_APPLICATION_KEY": {
+        "type": "string",
+        "title": "OVH_APPLICATION_KEY",
+        "description": "Application key (Application Key authentication)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OVH_APPLICATION_SECRET": {
+        "type": "string",
+        "title": "OVH_APPLICATION_SECRET",
+        "description": "Application secret (Application Key authentication)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OVH_CLIENT_ID": {
+        "type": "string",
+        "title": "OVH_CLIENT_ID",
+        "description": "Client ID (OAuth2)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OVH_CLIENT_SECRET": {
+        "type": "string",
+        "title": "OVH_CLIENT_SECRET",
+        "description": "Client secret (OAuth2)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OVH_CONSUMER_KEY": {
+        "type": "string",
+        "title": "OVH_CONSUMER_KEY",
+        "description": "Consumer key (Application Key authentication)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OVH_ENDPOINT": {
+        "type": "string",
+        "title": "OVH_ENDPOINT",
+        "description": "Endpoint URL (ovh-eu or ovh-ca)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OVH_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "OVH_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 180)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OVH_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "OVH_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OVH_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "OVH_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OVH_TTL": {
+        "type": "string",
+        "title": "OVH_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

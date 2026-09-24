@@ -1,0 +1,62 @@
+{
+  "code": "websupport",
+  "name": "Websupport",
+  "url": "https://websupport.sk",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Websupport",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "WEBSUPPORT_API_KEY": {
+        "type": "string",
+        "title": "WEBSUPPORT_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "WEBSUPPORT_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "WEBSUPPORT_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "WEBSUPPORT_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "WEBSUPPORT_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "WEBSUPPORT_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "WEBSUPPORT_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "WEBSUPPORT_SECRET": {
+        "type": "string",
+        "title": "WEBSUPPORT_SECRET",
+        "description": "API secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "WEBSUPPORT_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "WEBSUPPORT_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "WEBSUPPORT_TTL": {
+        "type": "string",
+        "title": "WEBSUPPORT_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "code": "dnsimple",
+  "name": "DNSimple",
+  "url": "https://dnsimple.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DNSimple",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DNSIMPLE_BASE_URL": {
+        "type": "string",
+        "title": "DNSIMPLE_BASE_URL",
+        "description": "API endpoint URL",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSIMPLE_OAUTH_TOKEN": {
+        "type": "string",
+        "title": "DNSIMPLE_OAUTH_TOKEN",
+        "description": "OAuth token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DNSIMPLE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DNSIMPLE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSIMPLE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DNSIMPLE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSIMPLE_TTL": {
+        "type": "string",
+        "title": "DNSIMPLE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

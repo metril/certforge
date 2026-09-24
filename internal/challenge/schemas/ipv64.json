@@ -1,0 +1,41 @@
+{
+  "code": "ipv64",
+  "name": "IPv64",
+  "url": "https://ipv64.net/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "IPv64",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "IPV64_API_KEY": {
+        "type": "string",
+        "title": "IPV64_API_KEY",
+        "description": "Account API Key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "IPV64_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "IPV64_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IPV64_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "IPV64_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IPV64_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "IPV64_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

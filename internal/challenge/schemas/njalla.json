@@ -1,0 +1,48 @@
+{
+  "code": "njalla",
+  "name": "Njalla",
+  "url": "https://njal.la",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Njalla",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NJALLA_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NJALLA_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NJALLA_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NJALLA_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NJALLA_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NJALLA_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NJALLA_TOKEN": {
+        "type": "string",
+        "title": "NJALLA_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NJALLA_TTL": {
+        "type": "string",
+        "title": "NJALLA_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

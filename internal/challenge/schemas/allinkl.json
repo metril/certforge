@@ -1,0 +1,48 @@
+{
+  "code": "allinkl",
+  "name": "all-inkl",
+  "url": "https://all-inkl.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "all-inkl",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ALL_INKL_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ALL_INKL_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ALL_INKL_LOGIN": {
+        "type": "string",
+        "title": "ALL_INKL_LOGIN",
+        "description": "KAS login",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "ALL_INKL_PASSWORD": {
+        "type": "string",
+        "title": "ALL_INKL_PASSWORD",
+        "description": "KAS password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ALL_INKL_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ALL_INKL_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ALL_INKL_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ALL_INKL_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

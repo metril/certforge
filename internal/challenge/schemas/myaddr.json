@@ -1,0 +1,55 @@
+{
+  "code": "myaddr",
+  "name": "myaddr.{tools,dev,io}",
+  "url": "https://myaddr.tools/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "myaddr.{tools,dev,io}",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "MYADDR_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "MYADDR_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYADDR_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "MYADDR_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYADDR_PRIVATE_KEYS_MAPPING": {
+        "type": "string",
+        "title": "MYADDR_PRIVATE_KEYS_MAPPING",
+        "description": "Mapping between subdomains and private keys. The format is: `\u003csubdomain1\u003e:\u003cprivate_key1\u003e,\u003csubdomain2\u003e:\u003cprivate_key2\u003e,\u003csubdomain3\u003e:\u003cprivate_key3\u003e`",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "MYADDR_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "MYADDR_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYADDR_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "MYADDR_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYADDR_TTL": {
+        "type": "string",
+        "title": "MYADDR_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

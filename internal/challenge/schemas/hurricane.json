@@ -1,0 +1,48 @@
+{
+  "code": "hurricane",
+  "name": "Hurricane Electric DNS",
+  "url": "https://dns.he.net/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Hurricane Electric DNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "HURRICANE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "HURRICANE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HURRICANE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "HURRICANE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HURRICANE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "HURRICANE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HURRICANE_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "HURRICANE_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HURRICANE_TOKENS": {
+        "type": "string",
+        "title": "HURRICANE_TOKENS",
+        "description": "TXT record names and tokens",
+        "secret": true,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

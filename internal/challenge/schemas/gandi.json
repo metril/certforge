@@ -1,0 +1,48 @@
+{
+  "code": "gandi",
+  "name": "Gandi",
+  "url": "https://www.gandi.net",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Gandi",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "GANDI_API_KEY": {
+        "type": "string",
+        "title": "GANDI_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "GANDI_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "GANDI_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GANDI_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "GANDI_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GANDI_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "GANDI_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 2400)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GANDI_TTL": {
+        "type": "string",
+        "title": "GANDI_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

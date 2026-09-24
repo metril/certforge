@@ -1,0 +1,76 @@
+{
+  "code": "volcengine",
+  "name": "Volcano Engine/火山引擎",
+  "url": "https://www.volcengine.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Volcano Engine/火山引擎",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "VOLC_ACCESSKEY": {
+        "type": "string",
+        "title": "VOLC_ACCESSKEY",
+        "description": "Access Key ID (AK)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VOLC_HOST": {
+        "type": "string",
+        "title": "VOLC_HOST",
+        "description": "API host",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VOLC_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "VOLC_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 15)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VOLC_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "VOLC_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VOLC_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "VOLC_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 240)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VOLC_REGION": {
+        "type": "string",
+        "title": "VOLC_REGION",
+        "description": "Region",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VOLC_SCHEME": {
+        "type": "string",
+        "title": "VOLC_SCHEME",
+        "description": "API scheme",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VOLC_SECRETKEY": {
+        "type": "string",
+        "title": "VOLC_SECRETKEY",
+        "description": "Secret Access Key (SK)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VOLC_TTL": {
+        "type": "string",
+        "title": "VOLC_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

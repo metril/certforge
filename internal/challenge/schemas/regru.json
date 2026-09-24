@@ -1,0 +1,69 @@
+{
+  "code": "regru",
+  "name": "reg.ru",
+  "url": "https://www.reg.ru/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "reg.ru",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "REGRU_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "REGRU_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "REGRU_PASSWORD": {
+        "type": "string",
+        "title": "REGRU_PASSWORD",
+        "description": "API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "REGRU_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "REGRU_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "REGRU_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "REGRU_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "REGRU_TLS_CERT": {
+        "type": "string",
+        "title": "REGRU_TLS_CERT",
+        "description": "authentication certificate",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "REGRU_TLS_KEY": {
+        "type": "string",
+        "title": "REGRU_TLS_KEY",
+        "description": "authentication private key",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "REGRU_TTL": {
+        "type": "string",
+        "title": "REGRU_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "REGRU_USERNAME": {
+        "type": "string",
+        "title": "REGRU_USERNAME",
+        "description": "API username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "code": "mythicbeasts",
+  "name": "MythicBeasts",
+  "url": "https://www.mythic-beasts.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "MythicBeasts",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "MYTHICBEASTS_API_ENDPOINT": {
+        "type": "string",
+        "title": "MYTHICBEASTS_API_ENDPOINT",
+        "description": "The endpoint for the API (must implement v2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYTHICBEASTS_AUTH_API_ENDPOINT": {
+        "type": "string",
+        "title": "MYTHICBEASTS_AUTH_API_ENDPOINT",
+        "description": "The endpoint for Mythic Beasts' Authentication",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYTHICBEASTS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "MYTHICBEASTS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYTHICBEASTS_PASSWORD": {
+        "type": "string",
+        "title": "MYTHICBEASTS_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "MYTHICBEASTS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "MYTHICBEASTS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYTHICBEASTS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "MYTHICBEASTS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYTHICBEASTS_TTL": {
+        "type": "string",
+        "title": "MYTHICBEASTS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYTHICBEASTS_USERNAME": {
+        "type": "string",
+        "title": "MYTHICBEASTS_USERNAME",
+        "description": "User name",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

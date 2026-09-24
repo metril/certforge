@@ -1,0 +1,55 @@
+{
+  "code": "ibmcloud",
+  "name": "IBM Cloud (SoftLayer)",
+  "url": "https://www.ibm.com/cloud/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "IBM Cloud (SoftLayer)",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "SOFTLAYER_API_KEY": {
+        "type": "string",
+        "title": "SOFTLAYER_API_KEY",
+        "description": "Classic Infrastructure API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "SOFTLAYER_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "SOFTLAYER_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SOFTLAYER_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "SOFTLAYER_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SOFTLAYER_TIMEOUT": {
+        "type": "string",
+        "title": "SOFTLAYER_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SOFTLAYER_TTL": {
+        "type": "string",
+        "title": "SOFTLAYER_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SOFTLAYER_USERNAME": {
+        "type": "string",
+        "title": "SOFTLAYER_USERNAME",
+        "description": "Username (IBM Cloud is \u003caccountID\u003e_\u003cemailAddress\u003e)",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

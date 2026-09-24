@@ -1,0 +1,69 @@
+{
+  "code": "directadmin",
+  "name": "DirectAdmin",
+  "url": "https://www.directadmin.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DirectAdmin",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DIRECTADMIN_API_URL": {
+        "type": "string",
+        "title": "DIRECTADMIN_API_URL",
+        "description": "URL of the API",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "DIRECTADMIN_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DIRECTADMIN_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DIRECTADMIN_PASSWORD": {
+        "type": "string",
+        "title": "DIRECTADMIN_PASSWORD",
+        "description": "API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DIRECTADMIN_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DIRECTADMIN_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DIRECTADMIN_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DIRECTADMIN_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DIRECTADMIN_TTL": {
+        "type": "string",
+        "title": "DIRECTADMIN_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DIRECTADMIN_USERNAME": {
+        "type": "string",
+        "title": "DIRECTADMIN_USERNAME",
+        "description": "API username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "DIRECTADMIN_ZONE_NAME": {
+        "type": "string",
+        "title": "DIRECTADMIN_ZONE_NAME",
+        "description": "Zone name used to add the TXT record",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

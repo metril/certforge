@@ -1,0 +1,104 @@
+{
+  "code": "cloudflare",
+  "name": "Cloudflare",
+  "url": "https://www.cloudflare.com/dns/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Cloudflare",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "CF_API_EMAIL": {
+        "type": "string",
+        "title": "CF_API_EMAIL",
+        "description": "Account email",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CF_API_KEY": {
+        "type": "string",
+        "title": "CF_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CF_DNS_API_TOKEN": {
+        "type": "string",
+        "title": "CF_DNS_API_TOKEN",
+        "description": "API token with DNS:Edit permission (since v3.1.0)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CF_ZONE_API_TOKEN": {
+        "type": "string",
+        "title": "CF_ZONE_API_TOKEN",
+        "description": "API token with Zone:Read permission (since v3.1.0)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CLOUDFLARE_API_KEY": {
+        "type": "string",
+        "title": "CLOUDFLARE_API_KEY",
+        "description": "Alias to CF_API_KEY",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CLOUDFLARE_BASE_URL": {
+        "type": "string",
+        "title": "CLOUDFLARE_BASE_URL",
+        "description": "API base URL (Default: https://api.cloudflare.com/client/v4)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDFLARE_DNS_API_TOKEN": {
+        "type": "string",
+        "title": "CLOUDFLARE_DNS_API_TOKEN",
+        "description": "Alias to CF_DNS_API_TOKEN",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CLOUDFLARE_EMAIL": {
+        "type": "string",
+        "title": "CLOUDFLARE_EMAIL",
+        "description": "Alias to CF_API_EMAIL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CLOUDFLARE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "CLOUDFLARE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: )",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDFLARE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "CLOUDFLARE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDFLARE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "CLOUDFLARE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDFLARE_TTL": {
+        "type": "string",
+        "title": "CLOUDFLARE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDFLARE_ZONE_API_TOKEN": {
+        "type": "string",
+        "title": "CLOUDFLARE_ZONE_API_TOKEN",
+        "description": "Alias to CF_ZONE_API_TOKEN",
+        "secret": true,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

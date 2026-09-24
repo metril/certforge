@@ -1,0 +1,55 @@
+{
+  "code": "netcup",
+  "name": "Netcup",
+  "url": "https://www.netcup.eu/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Netcup",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NETCUP_API_KEY": {
+        "type": "string",
+        "title": "NETCUP_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NETCUP_API_PASSWORD": {
+        "type": "string",
+        "title": "NETCUP_API_PASSWORD",
+        "description": "API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NETCUP_CUSTOMER_NUMBER": {
+        "type": "string",
+        "title": "NETCUP_CUSTOMER_NUMBER",
+        "description": "Customer number",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "NETCUP_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NETCUP_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NETCUP_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NETCUP_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NETCUP_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NETCUP_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 900)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

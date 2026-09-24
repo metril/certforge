@@ -1,0 +1,44 @@
+{
+  "code": "acme-dns",
+  "name": "Joohoi's ACME-DNS",
+  "url": "https://github.com/joohoi/acme-dns",
+  "aliases": [
+    "acmedns"
+  ],
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Joohoi's ACME-DNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ACME_DNS_ALLOWLIST": {
+        "type": "string",
+        "title": "ACME_DNS_ALLOWLIST",
+        "description": "Source networks using CIDR notation (multiple values should be separated with a comma).",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ACME_DNS_API_BASE": {
+        "type": "string",
+        "title": "ACME_DNS_API_BASE",
+        "description": "The ACME-DNS API address",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "ACME_DNS_STORAGE_BASE_URL": {
+        "type": "string",
+        "title": "ACME_DNS_STORAGE_BASE_URL",
+        "description": "The ACME-DNS JSON account data server.",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "ACME_DNS_STORAGE_PATH": {
+        "type": "string",
+        "title": "ACME_DNS_STORAGE_PATH",
+        "description": "The ACME-DNS JSON account data file. A per-domain account will be registered/persisted to this file and used for TXT updates.",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

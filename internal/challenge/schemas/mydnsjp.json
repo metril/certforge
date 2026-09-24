@@ -1,0 +1,48 @@
+{
+  "code": "mydnsjp",
+  "name": "MyDNS.jp",
+  "url": "https://www.mydns.jp",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "MyDNS.jp",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "MYDNSJP_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "MYDNSJP_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYDNSJP_MASTER_ID": {
+        "type": "string",
+        "title": "MYDNSJP_MASTER_ID",
+        "description": "Master ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "MYDNSJP_PASSWORD": {
+        "type": "string",
+        "title": "MYDNSJP_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "MYDNSJP_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "MYDNSJP_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "MYDNSJP_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "MYDNSJP_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

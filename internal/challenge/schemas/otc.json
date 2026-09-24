@@ -1,0 +1,83 @@
+{
+  "code": "otc",
+  "name": "Open Telekom Cloud",
+  "url": "https://cloud.telekom.de/en",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Open Telekom Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "OTC_DOMAIN_NAME": {
+        "type": "string",
+        "title": "OTC_DOMAIN_NAME",
+        "description": "Domain name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OTC_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "OTC_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OTC_IDENTITY_ENDPOINT": {
+        "type": "string",
+        "title": "OTC_IDENTITY_ENDPOINT",
+        "description": "Identity endpoint URL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OTC_PASSWORD": {
+        "type": "string",
+        "title": "OTC_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OTC_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "OTC_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OTC_PROJECT_NAME": {
+        "type": "string",
+        "title": "OTC_PROJECT_NAME",
+        "description": "Project name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OTC_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "OTC_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OTC_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "OTC_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OTC_TTL": {
+        "type": "string",
+        "title": "OTC_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OTC_USER_NAME": {
+        "type": "string",
+        "title": "OTC_USER_NAME",
+        "description": "User name",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

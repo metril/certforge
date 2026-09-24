@@ -1,0 +1,41 @@
+{
+  "code": "bindman",
+  "name": "Bindman",
+  "url": "https://github.com/labbsr0x/bindman-dns-webhook",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Bindman",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "BINDMAN_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "BINDMAN_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BINDMAN_MANAGER_ADDRESS": {
+        "type": "string",
+        "title": "BINDMAN_MANAGER_ADDRESS",
+        "description": "The server URL, should have scheme, hostname, and port (if required) of the Bindman-DNS Manager server",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "BINDMAN_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "BINDMAN_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BINDMAN_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "BINDMAN_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

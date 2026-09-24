@@ -3,6 +3,7 @@ module github.com/metril/certforge
 go 1.23.0
 
 require (
+	github.com/BurntSushi/toml v1.5.0
 	github.com/getkin/kin-openapi v0.128.0
 	github.com/go-acme/lego/v4 v4.24.0
 	github.com/go-chi/chi/v5 v5.1.0

@@ -1,0 +1,55 @@
+{
+  "code": "bookmyname",
+  "name": "BookMyName",
+  "url": "https://www.bookmyname.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "BookMyName",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "BOOKMYNAME_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "BOOKMYNAME_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BOOKMYNAME_PASSWORD": {
+        "type": "string",
+        "title": "BOOKMYNAME_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "BOOKMYNAME_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "BOOKMYNAME_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BOOKMYNAME_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "BOOKMYNAME_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BOOKMYNAME_TTL": {
+        "type": "string",
+        "title": "BOOKMYNAME_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BOOKMYNAME_USERNAME": {
+        "type": "string",
+        "title": "BOOKMYNAME_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

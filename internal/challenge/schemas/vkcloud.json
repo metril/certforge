@@ -1,0 +1,76 @@
+{
+  "code": "vkcloud",
+  "name": "VK Cloud",
+  "url": "https://mcs.mail.ru/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "VK Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "VK_CLOUD_DNS_ENDPOINT": {
+        "type": "string",
+        "title": "VK_CLOUD_DNS_ENDPOINT",
+        "description": "URL of DNS API. Defaults to https://mcs.mail.ru/public-dns but can be changed for usage with private clouds",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VK_CLOUD_DOMAIN_NAME": {
+        "type": "string",
+        "title": "VK_CLOUD_DOMAIN_NAME",
+        "description": "Openstack users domain name. Defaults to `users` but can be changed for usage with private clouds",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VK_CLOUD_IDENTITY_ENDPOINT": {
+        "type": "string",
+        "title": "VK_CLOUD_IDENTITY_ENDPOINT",
+        "description": "URL of OpenStack Auth API, Defaults to https://infra.mail.ru:35357/v3/ but can be changed for usage with private clouds",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VK_CLOUD_PASSWORD": {
+        "type": "string",
+        "title": "VK_CLOUD_PASSWORD",
+        "description": "Password for VK Cloud account",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VK_CLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "VK_CLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VK_CLOUD_PROJECT_ID": {
+        "type": "string",
+        "title": "VK_CLOUD_PROJECT_ID",
+        "description": "String ID of project in VK Cloud",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "VK_CLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "VK_CLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VK_CLOUD_TTL": {
+        "type": "string",
+        "title": "VK_CLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VK_CLOUD_USERNAME": {
+        "type": "string",
+        "title": "VK_CLOUD_USERNAME",
+        "description": "Email of VK Cloud account",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

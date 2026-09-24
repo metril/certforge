@@ -1,0 +1,48 @@
+{
+  "code": "dyndnsfree",
+  "name": "DynDnsFree.de",
+  "url": "https://www.dyndnsfree.de",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DynDnsFree.de",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DYNDNSFREE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DYNDNSFREE_HTTP_TIMEOUT",
+        "description": "Request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DYNDNSFREE_PASSWORD": {
+        "type": "string",
+        "title": "DYNDNSFREE_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DYNDNSFREE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DYNDNSFREE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DYNDNSFREE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DYNDNSFREE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DYNDNSFREE_USERNAME": {
+        "type": "string",
+        "title": "DYNDNSFREE_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

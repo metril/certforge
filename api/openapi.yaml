@@ -233,6 +233,11 @@ components:
           type: object
           additionalProperties: true
           description: JSON Schema for the type's configuration. Fields with secret true are write-only.
+        aliases:
+          type: array
+          description: Other codes that select this type; used by search.
+          items:
+            type: string
     MetaSchemas:
       type: object
       description: Pluggable type schemas grouped by kind.

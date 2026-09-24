@@ -1,0 +1,62 @@
+{
+  "code": "dnsmadeeasy",
+  "name": "DNS Made Easy",
+  "url": "https://dnsmadeeasy.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DNS Made Easy",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DNSMADEEASY_API_KEY": {
+        "type": "string",
+        "title": "DNSMADEEASY_API_KEY",
+        "description": "The API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DNSMADEEASY_API_SECRET": {
+        "type": "string",
+        "title": "DNSMADEEASY_API_SECRET",
+        "description": "The API Secret key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DNSMADEEASY_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DNSMADEEASY_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSMADEEASY_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DNSMADEEASY_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSMADEEASY_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DNSMADEEASY_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSMADEEASY_SANDBOX": {
+        "type": "string",
+        "title": "DNSMADEEASY_SANDBOX",
+        "description": "Activate the sandbox (boolean)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSMADEEASY_TTL": {
+        "type": "string",
+        "title": "DNSMADEEASY_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

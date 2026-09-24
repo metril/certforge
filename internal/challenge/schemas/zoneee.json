@@ -1,0 +1,55 @@
+{
+  "code": "zoneee",
+  "name": "Zone.ee",
+  "url": "https://www.zone.ee/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Zone.ee",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ZONEEE_API_KEY": {
+        "type": "string",
+        "title": "ZONEEE_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ZONEEE_API_USER": {
+        "type": "string",
+        "title": "ZONEEE_API_USER",
+        "description": "API user",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "ZONEEE_ENDPOINT": {
+        "type": "string",
+        "title": "ZONEEE_ENDPOINT",
+        "description": "API endpoint URL",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ZONEEE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ZONEEE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ZONEEE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ZONEEE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ZONEEE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ZONEEE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

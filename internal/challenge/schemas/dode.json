@@ -1,0 +1,55 @@
+{
+  "code": "dode",
+  "name": "Domain Offensive (do.de)",
+  "url": "https://www.do.de/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Domain Offensive (do.de)",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DODE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DODE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DODE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DODE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DODE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DODE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DODE_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "DODE_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DODE_TOKEN": {
+        "type": "string",
+        "title": "DODE_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DODE_TTL": {
+        "type": "string",
+        "title": "DODE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

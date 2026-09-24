@@ -1,0 +1,41 @@
+{
+  "code": "timewebcloud",
+  "name": "Timeweb Cloud",
+  "url": "https://timeweb.cloud/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Timeweb Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "TIMEWEBCLOUD_AUTH_TOKEN": {
+        "type": "string",
+        "title": "TIMEWEBCLOUD_AUTH_TOKEN",
+        "description": "Authentication token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "TIMEWEBCLOUD_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "TIMEWEBCLOUD_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TIMEWEBCLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "TIMEWEBCLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TIMEWEBCLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "TIMEWEBCLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

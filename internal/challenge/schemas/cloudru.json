@@ -1,0 +1,69 @@
+{
+  "code": "cloudru",
+  "name": "Cloud.ru",
+  "url": "https://cloud.ru",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Cloud.ru",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "CLOUDRU_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "CLOUDRU_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDRU_KEY_ID": {
+        "type": "string",
+        "title": "CLOUDRU_KEY_ID",
+        "description": "Key ID (login)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CLOUDRU_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "CLOUDRU_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 5)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDRU_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "CLOUDRU_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDRU_SECRET": {
+        "type": "string",
+        "title": "CLOUDRU_SECRET",
+        "description": "Key Secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CLOUDRU_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "CLOUDRU_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CLOUDRU_SERVICE_INSTANCE_ID": {
+        "type": "string",
+        "title": "CLOUDRU_SERVICE_INSTANCE_ID",
+        "description": "Service Instance ID (parentId)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CLOUDRU_TTL": {
+        "type": "string",
+        "title": "CLOUDRU_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

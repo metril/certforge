@@ -1,0 +1,41 @@
+{
+  "code": "googledomains",
+  "name": "Google Domains",
+  "url": "https://github.com/go-acme/lego/issues/2553",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Google Domains",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "GOOGLE_DOMAINS_ACCESS_TOKEN": {
+        "type": "string",
+        "title": "GOOGLE_DOMAINS_ACCESS_TOKEN",
+        "description": "Access token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "GOOGLE_DOMAINS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "GOOGLE_DOMAINS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GOOGLE_DOMAINS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "GOOGLE_DOMAINS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GOOGLE_DOMAINS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "GOOGLE_DOMAINS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

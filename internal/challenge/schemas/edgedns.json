@@ -1,0 +1,86 @@
+{
+  "code": "edgedns",
+  "name": "Akamai EdgeDNS",
+  "url": "https://www.akamai.com/us/en/products/security/edge-dns.jsp",
+  "aliases": [
+    "fastdns"
+  ],
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Akamai EdgeDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "AKAMAI_ACCESS_TOKEN": {
+        "type": "string",
+        "title": "AKAMAI_ACCESS_TOKEN",
+        "description": "Access token, managed by the Akamai EdgeGrid client",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AKAMAI_ACCOUNT_SWITCH_KEY": {
+        "type": "string",
+        "title": "AKAMAI_ACCOUNT_SWITCH_KEY",
+        "description": "Target account ID when the DNS zone and credentials belong to different accounts",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AKAMAI_CLIENT_SECRET": {
+        "type": "string",
+        "title": "AKAMAI_CLIENT_SECRET",
+        "description": "Client secret, managed by the Akamai EdgeGrid client",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AKAMAI_CLIENT_TOKEN": {
+        "type": "string",
+        "title": "AKAMAI_CLIENT_TOKEN",
+        "description": "Client token, managed by the Akamai EdgeGrid client",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "AKAMAI_EDGERC": {
+        "type": "string",
+        "title": "AKAMAI_EDGERC",
+        "description": "Path to the .edgerc file, managed by the Akamai EdgeGrid client",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AKAMAI_EDGERC_SECTION": {
+        "type": "string",
+        "title": "AKAMAI_EDGERC_SECTION",
+        "description": "Configuration section, managed by the Akamai EdgeGrid client",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AKAMAI_HOST": {
+        "type": "string",
+        "title": "AKAMAI_HOST",
+        "description": "API host, managed by the Akamai EdgeGrid client",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "AKAMAI_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "AKAMAI_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 15)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AKAMAI_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "AKAMAI_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 180)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "AKAMAI_TTL": {
+        "type": "string",
+        "title": "AKAMAI_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    }
+  }
+}

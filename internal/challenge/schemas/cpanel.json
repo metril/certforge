@@ -1,0 +1,69 @@
+{
+  "code": "cpanel",
+  "name": "CPanel/WHM",
+  "url": "https://cpanel.net/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "CPanel/WHM",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "CPANEL_BASE_URL": {
+        "type": "string",
+        "title": "CPANEL_BASE_URL",
+        "description": "API server URL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "CPANEL_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "CPANEL_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CPANEL_MODE": {
+        "type": "string",
+        "title": "CPANEL_MODE",
+        "description": "use cpanel API or WHM API (Default: cpanel)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CPANEL_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "CPANEL_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CPANEL_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "CPANEL_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CPANEL_TOKEN": {
+        "type": "string",
+        "title": "CPANEL_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CPANEL_TTL": {
+        "type": "string",
+        "title": "CPANEL_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "CPANEL_USERNAME": {
+        "type": "string",
+        "title": "CPANEL_USERNAME",
+        "description": "username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

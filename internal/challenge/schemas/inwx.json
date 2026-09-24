@@ -1,0 +1,62 @@
+{
+  "code": "inwx",
+  "name": "INWX",
+  "url": "https://www.inwx.de/en",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "INWX",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "INWX_PASSWORD": {
+        "type": "string",
+        "title": "INWX_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "INWX_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "INWX_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INWX_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "INWX_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 360)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INWX_SANDBOX": {
+        "type": "string",
+        "title": "INWX_SANDBOX",
+        "description": "Activate the sandbox (boolean)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INWX_SHARED_SECRET": {
+        "type": "string",
+        "title": "INWX_SHARED_SECRET",
+        "description": "shared secret related to 2FA",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INWX_TTL": {
+        "type": "string",
+        "title": "INWX_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "INWX_USERNAME": {
+        "type": "string",
+        "title": "INWX_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}

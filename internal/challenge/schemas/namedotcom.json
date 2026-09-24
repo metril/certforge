@@ -1,0 +1,55 @@
+{
+  "code": "namedotcom",
+  "name": "Name.com",
+  "url": "https://www.name.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Name.com",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NAMECOM_API_TOKEN": {
+        "type": "string",
+        "title": "NAMECOM_API_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NAMECOM_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NAMECOM_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMECOM_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NAMECOM_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 20)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMECOM_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NAMECOM_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 900)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMECOM_TTL": {
+        "type": "string",
+        "title": "NAMECOM_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMECOM_USERNAME": {
+        "type": "string",
+        "title": "NAMECOM_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    }
+  }
+}
