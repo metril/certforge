@@ -15,11 +15,13 @@ export function createAppRouter(queryClient: QueryClient, history?: RouterHistor
   });
   resetUnauthorized();
   // Adaptation (controller ruling): replaces Task 2's default `window.location`
-  // 401 handler with an SPA navigation that keeps the return URL.
+  // 401 handler with an SPA navigation that keeps the return URL, using the
+  // same `next` search-param convention as client.ts's defaultUnauthorized
+  // (fix round 1: it was `redirect` here, out of step with that convention).
   setUnauthorizedHandler(() => {
-    const redirect = router.state.location.href;
+    const next = router.state.location.href;
     queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== setupStatusQuery.queryKey[0] });
-    void router.navigate({ to: '/login', search: { redirect } });
+    void router.navigate({ to: '/login', search: { next } });
   });
   return router;
 }

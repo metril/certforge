@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CircleAlert, CircleCheck, CircleX, RotateCw, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { useCompleteSetup } from '@/api/queries/auth';
+import { ApiError, errorMessage } from '@/api/errors';
+import { setupStatusQuery, useCompleteSetup } from '@/api/queries/auth';
 import { readinessQuery } from '@/api/queries/health';
 import { HelpTip } from '@/components/HelpTip';
 import { Stepper } from '@/components/Stepper';
@@ -45,6 +46,7 @@ function Row({ id, label, help, error, children }: { id: string; label: string; 
 
 export function SetupWizard() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const complete = useCompleteSetup();
   const [step, setStep] = useState(0);
   const [password, setPassword] = useState('');
@@ -53,20 +55,42 @@ export function SetupWizard() {
   const [orgName, setOrgName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
   const readiness = useQuery({ ...readinessQuery, enabled: step === 2, refetchInterval: false });
 
   const cleanBase = baseUrl.trim().replace(/\/+$/, '');
+  // Fix round 1 (controller ruling): gate specifically on the kek check, not
+  // overall readiness.ok, and fail closed if the key is missing entirely.
+  const kekOk = readiness.data?.checks.find((c) => c.name === 'kek')?.ok === true;
   const canNext = [
     password.length >= 12 && confirm === password,
     isHttpUrl(cleanBase),
-    readiness.data?.ok === true,
+    kekOk,
     orgName.trim() !== '' && SLUG_RE.test(orgSlug),
   ][step];
 
   async function finish() {
-    await complete.mutateAsync({ adminPassword: password, orgName: orgName.trim(), orgSlug, baseUrl: cleanBase });
-    toast.success('Setup complete');
-    await navigate({ to: '/o/$org/overview', params: { org: orgSlug } });
+    setFinishError(null);
+    try {
+      await complete.mutateAsync({ adminPassword: password, orgName: orgName.trim(), orgSlug, baseUrl: cleanBase });
+      toast.success('Setup complete');
+      await navigate({ to: '/o/$org/overview', params: { org: orgSlug } });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // Fix round 1: another session finished setup first. setup-status has
+        // staleTime: Infinity and no active observer here, so `invalidateQueries`
+        // alone marks it stale without changing what the next `ensureQueryData`
+        // call in a route guard returns (it only refetches on a cache miss);
+        // `setQueryData` makes /login's and /setup's guards see needsSetup:
+        // false immediately, without an extra round trip to a 409ing endpoint.
+        qc.setQueryData(setupStatusQuery.queryKey, { needsSetup: false });
+        await qc.invalidateQueries({ queryKey: setupStatusQuery.queryKey });
+        toast.error('Setup was already completed. Sign in instead.');
+        await navigate({ to: '/login' });
+        return;
+      }
+      setFinishError(errorMessage(err));
+    }
   }
 
   return (
@@ -117,6 +141,12 @@ export function SetupWizard() {
                 <HelpTip id="setup.kek" />
               </div>
               {readiness.isPending && <p className="text-ink-muted">Checking…</p>}
+              {readiness.isError && (
+                <p className="flex items-center gap-1 text-xs">
+                  <CircleX className="size-3.5 text-failed" aria-hidden />
+                  {errorMessage(readiness.error)}
+                </p>
+              )}
               {readiness.data && (
                 <ul className="grid gap-1.5">
                   {(readiness.data.checks.length ? readiness.data.checks : [{ name: 'server', ok: readiness.data.ok }]).map((c) => (
@@ -128,10 +158,10 @@ export function SetupWizard() {
                   ))}
                 </ul>
               )}
-              {readiness.data && !readiness.data.ok && (
-                <Button type="button" variant="outline" className="w-fit" onClick={() => void readiness.refetch()}>
+              {(readiness.isError || (readiness.data && !kekOk)) && (
+                <Button type="button" variant="outline" className="w-fit" disabled={readiness.isFetching} onClick={() => void readiness.refetch()}>
                   <RotateCw className="size-4" aria-hidden />
-                  Check again
+                  {readiness.isFetching ? 'Checking…' : 'Check again'}
                 </Button>
               )}
             </section>
@@ -162,6 +192,12 @@ export function SetupWizard() {
                   }}
                 />
               </Row>
+              {finishError && (
+                <p role="alert" className="flex items-center gap-1 text-xs">
+                  <CircleAlert className="size-3.5 text-failed" aria-hidden />
+                  {finishError}
+                </p>
+              )}
             </>
           )}
           <div className="flex gap-2">

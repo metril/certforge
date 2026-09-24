@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_app')({
       const me = await queryClient.ensureQueryData(meQuery);
       return { me };
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) throw redirect({ to: '/login', search: { redirect: location.href } });
+      if (e instanceof ApiError && e.status === 401) throw redirect({ to: '/login', search: { next: location.href } });
       throw e;
     }
   },

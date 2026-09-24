@@ -10,7 +10,7 @@ it('sends a signed-out deep link through login and back', async () => {
   server.use(...authHandlers({ authed: false }));
   const { router, user } = renderRoute('/o/acme/overview?focus=failed');
   await screen.findByLabelText('Admin password');
-  expect(router.state.location.search).toEqual({ redirect: '/o/acme/overview?focus=failed' });
+  expect(router.state.location.search).toEqual({ next: '/o/acme/overview?focus=failed' });
   await user.type(screen.getByLabelText('Admin password'), PASSWORD);
   await user.click(screen.getByRole('button', { name: 'Sign in' }));
   await waitFor(() => expect(router.state.location.href).toBe('/o/acme/overview?focus=failed'));
@@ -37,8 +37,21 @@ it('sends a 401 mid-session to login once, keeping the return URL', async () => 
     ),
   );
   await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
-  expect(router.state.location.search).toEqual({ redirect: '/o/acme/overview?focus=expired' });
+  expect(router.state.location.search).toEqual({ next: '/o/acme/overview?focus=expired' });
   await user.type(screen.getByLabelText('Admin password'), PASSWORD);
   await user.click(screen.getByRole('button', { name: 'Sign in' }));
   await waitFor(() => expect(router.state.location.href).toBe('/o/acme/overview?focus=expired'));
+});
+
+it('redirects an already signed-in visitor away from /login, through safeRedirect', async () => {
+  server.use(...authHandlers({ authed: true }));
+  const { router } = renderRoute('/login?next=/o/acme/overview?focus=x');
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/overview'));
+  expect(router.state.location.search).toEqual({ focus: 'x' });
+});
+
+it('sends a first-run visitor away from /login to /setup', async () => {
+  server.use(...authHandlers({ authed: false, needsSetup: true }));
+  const { router } = renderRoute('/login');
+  await waitFor(() => expect(router.state.location.pathname).toBe('/setup'));
 });

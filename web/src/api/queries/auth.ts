@@ -25,6 +25,8 @@ export function useLogin() {
     // Login answers with Me (1A), so the session's CSRF token is known at once.
     mutationFn: (password: string) => call(api.POST('/auth/login', { body: { password } })),
     meta: { silent: true },
+    // Fix round 1: don't let a submitted password linger in the mutation cache.
+    gcTime: 0,
     onSuccess: (me) => {
       resetUnauthorized();
       setCsrfToken(me.csrfToken);
@@ -51,6 +53,11 @@ export function useCompleteSetup() {
   return useMutation({
     // Setup signs the admin in and answers with Me (1A); no second login call.
     mutationFn: (input: SetupInput) => call(api.POST('/setup/complete', { body: input })),
+    // Fix round 1: SetupWizard handles its own error display (409 recovery vs.
+    // inline detail), so the global mutation-cache toast would double up.
+    meta: { silent: true },
+    // Fix round 1: don't let the submitted admin password linger in the cache.
+    gcTime: 0,
     onSuccess: (me) => {
       resetUnauthorized();
       setCsrfToken(me.csrfToken);

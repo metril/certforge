@@ -6,7 +6,10 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { safeRedirect } from '@/features/auth/redirect';
 
 export const Route = createFileRoute('/login')({
-  validateSearch: z.object({ redirect: z.string().optional().catch(undefined) }),
+  // Adaptation (fix round 1, controller ruling): the return-URL search
+  // param is `next` (matching client.ts's defaultUnauthorized, the
+  // reference emitter), not `redirect`.
+  validateSearch: z.object({ next: z.string().optional().catch(undefined) }),
   beforeLoad: async ({ context, search }) => {
     const status = await context.queryClient.ensureQueryData(setupStatusQuery);
     if (status.needsSetup) throw redirect({ to: '/setup' });
@@ -21,10 +24,10 @@ export const Route = createFileRoute('/login')({
       if (e instanceof ApiError && e.status === 401) return;
       throw e;
     }
-    throw redirect({ href: safeRedirect(search.redirect) });
+    throw redirect({ href: safeRedirect(search.next) });
   },
   component: function LoginRoute() {
-    const { redirect: target } = Route.useSearch();
+    const { next: target } = Route.useSearch();
     return <LoginPage redirectTo={safeRedirect(target)} />;
   },
 });

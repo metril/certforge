@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, me, PASSWORD, url } from '@/test/fixtures';
+import { authHandlers, me, PASSWORD, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 it('walks the four setup steps, completes setup, and signs in', async () => {
@@ -53,4 +53,58 @@ it('blocks the key step while the server is not ready', async () => {
   await user.click(screen.getByRole('button', { name: 'Next' }));
   expect(await screen.findByText('failed')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+});
+
+it('shows an error and offers a retry when the readiness check itself fails', async () => {
+  server.use(...authHandlers({ authed: false, needsSetup: true }), http.get('*/readyz', () => HttpResponse.error()));
+  const { user } = renderRoute('/setup');
+  await user.type(await screen.findByLabelText('Admin password'), PASSWORD);
+  await user.type(screen.getByLabelText('Confirm password'), PASSWORD);
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByRole('button', { name: 'Check again' });
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+});
+
+it('treats a readiness response missing the kek check as not ready', async () => {
+  server.use(
+    ...authHandlers({ authed: false, needsSetup: true }),
+    http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok' } })),
+  );
+  const { user } = renderRoute('/setup');
+  await user.type(await screen.findByLabelText('Admin password'), PASSWORD);
+  await user.type(screen.getByLabelText('Confirm password'), PASSWORD);
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('database');
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+});
+
+it('recovers from a 409 (setup completed elsewhere) by sending the admin to sign in', async () => {
+  const state = { authed: false, needsSetup: true };
+  server.use(
+    ...authHandlers(state),
+    http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })),
+    http.post(url('/setup/complete'), () => {
+      // Someone else's setup/complete call won the race before this one landed.
+      state.needsSetup = false;
+      return problem(409, 'Setup already completed.');
+    }),
+  );
+  const { router, user } = renderRoute('/setup');
+  await user.type(await screen.findByLabelText('Admin password'), PASSWORD);
+  await user.type(screen.getByLabelText('Confirm password'), PASSWORD);
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('kek');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.type(screen.getByLabelText('Organization'), 'Acme');
+  await user.click(screen.getByRole('button', { name: 'Finish setup' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+});
+
+it('redirects away from /setup once setup is already complete', async () => {
+  server.use(...authHandlers({ authed: true, needsSetup: false }));
+  const { router } = renderRoute('/setup');
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/overview'));
 });
