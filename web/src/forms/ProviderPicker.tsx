@@ -65,7 +65,17 @@ export function ProviderPicker({ open, onOpenChange, providers, credentials = []
     return (
       <CommandItem
         key={`${section}:${p.code}`}
-        value={p.name}
+        // Fix round 2: a plain `p.name` value collides across sections
+        // (every COMMON_PROVIDERS entry also appears in "All providers")
+        // and cmdk tracks the highlighted item, and resolves Enter, by
+        // finding the *first* DOM node whose value matches the store's
+        // current value — with duplicates, arrow-key navigation and Enter
+        // both silently resolve to the wrong (first-matching) node. The
+        // `section:code` composite stays globally unique; it's safe to
+        // reuse as cmdk's search-relevant `value` too now, since
+        // `keywordFilter` (below) never matches against `value`, only
+        // `keywords`.
+        value={`${section}:${p.code}`}
         keywords={[p.name, p.code, ...(p.aliases ?? [])]}
         disabled={unsupported}
         onSelect={() => pick(p)}
@@ -107,7 +117,10 @@ export function ProviderPicker({ open, onOpenChange, providers, credentials = []
             {credentials.map((c) => (
               <CommandItem
                 key={c.id}
-                value={c.name}
+                // Fix round 2: two credentials can share a display name
+                // (it's user-supplied), so the name alone isn't a safe cmdk
+                // value either — the id always is.
+                value={`cred:${c.id}`}
                 keywords={[c.name, c.providerCode, byCode.get(c.providerCode)?.name ?? '']}
                 onSelect={() => {
                   onPickCredential(c);

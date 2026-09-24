@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { Providers } from '@/app/Providers';
 import { readRecent } from '@/lib/recent';
@@ -91,4 +91,42 @@ it('shows the unsupported reason tooltip on keyboard focus, not just hover', asy
 it('does not show credentials or the "no credential" affordance when the caller has no credential handler', () => {
   renderUI(<ProviderPicker open onOpenChange={() => {}} providers={[hyperone]} onPickProvider={() => {}} />);
   expect(screen.queryByText('Credentials in this org')).not.toBeInTheDocument();
+});
+
+// Fix round 2 (re-review): cmdk tracks the highlighted item, and resolves
+// Enter, by finding the *first* DOM node whose `value` matches the store's
+// current value — a plain `p.name`/`c.name` value (fix round 1) collides
+// whenever the same provider appears in two sections (every COMMON_PROVIDERS
+// entry also appears in "All providers") or two credentials share a
+// display name, silently breaking arrow-key navigation and Enter selection.
+it('arrow-key navigation crosses from the last Common item into the first All-providers item, highlighting exactly one node', async () => {
+  const { user } = renderUI(<ProviderPicker open onOpenChange={() => {}} providers={providers} onPickProvider={() => {}} />);
+  await user.click(screen.getByRole('combobox'));
+  // Common (Cloudflare, Amazon Route 53, Hetzner) -> 3 ArrowDowns lands one
+  // past the last Common item, on the first (alphabetical) All-providers
+  // item — also named "Amazon Route 53", the same name as Common's own
+  // second item, so this only passes if the two are distinct cmdk items.
+  await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
+  const selected = document.querySelectorAll('[cmdk-item][aria-selected="true"]');
+  expect(selected).toHaveLength(1);
+  expect(selected[0]).toHaveTextContent('Amazon Route 53');
+  const group = (selected[0] as HTMLElement).closest('[cmdk-group]') as HTMLElement;
+  expect(within(group).getByText('All providers')).toBeInTheDocument();
+});
+
+it('two credentials sharing a display name are still separately navigable and selectable by Enter', async () => {
+  const onPickCredential = vi.fn();
+  const creds = [
+    { id: 'd-1', name: 'Prod', providerCode: 'cloudflare', config: {} },
+    { id: 'd-2', name: 'Prod', providerCode: 'route53', config: {} },
+  ];
+  const { user } = renderUI(
+    <ProviderPicker open onOpenChange={() => {}} providers={providers} credentials={creds} onPickProvider={() => {}} onPickCredential={onPickCredential} />,
+  );
+  await user.click(screen.getByRole('combobox'));
+  // The first credential is highlighted by default (first item overall);
+  // one ArrowDown moves to the second, same-named, credential.
+  await user.keyboard('{ArrowDown}{Enter}');
+  expect(onPickCredential).toHaveBeenCalledTimes(1);
+  expect(onPickCredential).toHaveBeenCalledWith(creds[1]);
 });
