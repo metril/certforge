@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createRef, useState, type Ref } from 'react';
 import { act, screen } from '@testing-library/react';
 import type { RJSFSchema } from '@rjsf/utils';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { renderUI } from '@/test/render';
 import { SchemaForm, type SchemaFormHandle } from './SchemaForm';
 import { withSecretSentinels } from './uiSchema';
@@ -23,9 +23,9 @@ const schema = {
   },
 } as RJSFSchema;
 
-function Harness({ storedSecrets, handle }: { storedSecrets?: string[]; handle?: Ref<SchemaFormHandle> }) {
+function Harness({ storedSecrets, handle, readonly }: { storedSecrets?: string[]; handle?: Ref<SchemaFormHandle>; readonly?: boolean }) {
   const [v, setV] = useState<Record<string, unknown>>(storedSecrets ? withSecretSentinels(schema, {}, storedSecrets) : {});
-  return <SchemaForm ref={handle} schema={schema} value={v} onChange={setV} storedSecrets={storedSecrets} />;
+  return <SchemaForm ref={handle} schema={schema} value={v} onChange={setV} storedSecrets={storedSecrets} readonly={readonly} />;
 }
 
 it('maps schema types to spec controls, renders no native checkbox or radio, and hides serverPath fields', () => {
@@ -49,6 +49,42 @@ it('shows a stored secret as Stored with Replace, and a non-stored secret as a p
   renderUI(<Harness storedSecrets={['apiToken']} />);
   expect(screen.getByText('Stored')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Replace API token' })).toBeInTheDocument();
+});
+
+it('readonly disables the secret widget: no Replace button and no editable input for a stored secret', () => {
+  renderUI(<Harness storedSecrets={['apiToken']} readonly />);
+  expect(screen.getByText('Stored')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Replace API token' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('API token')).not.toBeInTheDocument();
+});
+
+it('readonly shows "Not set" for a non-stored secret, with no input', () => {
+  renderUI(<Harness readonly />);
+  expect(screen.getByText('Not set')).toBeInTheDocument();
+  expect(screen.queryByLabelText('API token')).not.toBeInTheDocument();
+});
+
+it('strips serverPath fields from the value it hands back, even if the caller seeded one (an older credential)', async () => {
+  const onChange = vi.fn();
+  function StaleHarness() {
+    const [v, setV] = useState<Record<string, unknown>>({ internalPath: 'stale-value', ttl: 1 });
+    return (
+      <SchemaForm
+        schema={schema}
+        value={v}
+        onChange={(next) => {
+          onChange(next);
+          setV(next);
+        }}
+      />
+    );
+  }
+  const { user } = renderUI(<StaleHarness />);
+  await user.clear(screen.getByLabelText('TTL'));
+  await user.type(screen.getByLabelText('TTL'), '5');
+  expect(onChange).toHaveBeenCalled();
+  const last = onChange.mock.calls.at(-1)![0] as Record<string, unknown>;
+  expect(last).not.toHaveProperty('internalPath');
 });
 
 it('validates required fields on demand', async () => {

@@ -5,7 +5,7 @@ import type { RJSFSchema } from '@rjsf/utils';
 import { customizeValidator } from '@rjsf/validator-ajv8';
 import Ajv2020 from 'ajv/dist/2020';
 import { shadcnTheme } from './theme';
-import { buildUiSchema } from './uiSchema';
+import { buildUiSchema, serverPathKeys } from './uiSchema';
 
 const ThemedForm = withTheme(shadcnTheme);
 
@@ -41,6 +41,7 @@ type Props = {
 export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false }, ref) {
   const formRef = useRef<Form>(null);
   const uiSchema = useMemo(() => buildUiSchema(schema, { storedSecrets }), [schema, storedSecrets]);
+  const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
   useImperativeHandle(ref, () => ({ validate: () => formRef.current?.validateForm() ?? false }), []);
   return (
     <ThemedForm
@@ -52,7 +53,16 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
       readonly={readonly}
       showErrorList={false}
       noHtml5Validate
-      onChange={(e) => onChange((e.formData ?? {}) as Record<string, unknown>)}
+      onChange={(e) => {
+        const data = { ...((e.formData ?? {}) as Record<string, unknown>) };
+        // Fix round 1: a serverPath field is server-managed (preflight A10);
+        // the API 422s if the client sends one at all. The widget is
+        // hidden, so nothing here ever sets it, but an older credential's
+        // `config` can still carry a stale value for it, so it's stripped
+        // on every change rather than trusting every caller to omit it.
+        for (const k of serverPath) delete data[k];
+        onChange(data);
+      }}
     />
   );
 });

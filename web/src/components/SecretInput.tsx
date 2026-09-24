@@ -12,6 +12,7 @@ type Props = {
   onChange: (v: string | undefined) => void;
   stored: boolean;
   placeholder?: string;
+  disabled?: boolean;
 };
 
 /**
@@ -21,8 +22,11 @@ type Props = {
  * global "has secrets" boolean). When stored and untouched, emits UNCHANGED
  * on its own (review round 1: a caller that starts with `undefined` must
  * not silently omit the key and erase the secret on PUT); never emits "".
+ * `disabled` (fix round 1: a read-only SchemaForm) drops both the input and
+ * the Replace/Keep-stored buttons — there's nothing a disabled field can let
+ * the caller do, so it shows only the static "Stored"/"Not set" state.
  */
-export function SecretInput({ id, label, value, onChange, stored, placeholder }: Props) {
+export function SecretInput({ id, label, value, onChange, stored, placeholder, disabled = false }: Props) {
   const [editing, setEditing] = useState(!stored);
 
   // `stored` flipping (mount, or a parent record reloading with a secret it
@@ -36,6 +40,17 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder }:
   useEffect(() => {
     if (stored && !editing && value !== UNCHANGED) onChange(UNCHANGED);
   }, [stored, editing, value, onChange]);
+
+  if (disabled) {
+    return (
+      <div className="flex h-9 items-center gap-2">
+        <span className="inline-flex h-6 items-center gap-1 rounded-sm bg-subtle px-2 text-xs font-semibold text-ink-muted">
+          <Lock className="size-3.5" aria-hidden />
+          {stored ? 'Stored' : 'Not set'}
+        </span>
+      </div>
+    );
+  }
 
   if (stored && !editing) {
     return (

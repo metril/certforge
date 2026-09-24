@@ -17,6 +17,13 @@ export function secretKeys(schema: RJSFSchema): string[] {
     .map(([k]) => k);
 }
 
+/** Property keys the server derives itself; the API 422s if the client sends one (preflight A10). */
+export function serverPathKeys(schema: RJSFSchema): string[] {
+  return props(schema)
+    .filter(([, p]) => p.serverPath === true)
+    .map(([k]) => k);
+}
+
 // snake_case / SCREAMING_SNAKE_CASE / camelCase -> "Title Case", keeping
 // short (<=3 char) runs upper-cased so acronyms (API, ID, URL, TTL, ...)
 // read naturally. Only used as a fallback when the schema has no title.

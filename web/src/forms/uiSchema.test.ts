@@ -7,13 +7,13 @@ import { buildUiSchema, secretKeys, withSecretSentinels } from './uiSchema';
 const schema = cloudflare.schema as RJSFSchema;
 
 it('finds secret fields', () => {
-  expect(secretKeys(schema)).toEqual(['apiToken', 'zoneToken']);
+  expect(secretKeys(schema)).toEqual(['CF_DNS_API_TOKEN', 'CF_ZONE_API_TOKEN']);
 });
 
 it('routes each secret to the secret widget with its own stored flag, and hides the submit button', () => {
-  const ui = buildUiSchema(schema, { storedSecrets: ['apiToken'] });
-  expect(ui.apiToken).toEqual({ 'ui:widget': 'secret', 'ui:options': { stored: true } });
-  expect(ui.zoneToken).toEqual({ 'ui:widget': 'secret', 'ui:options': { stored: false } });
+  const ui = buildUiSchema(schema, { storedSecrets: ['CF_DNS_API_TOKEN'] });
+  expect(ui.CF_DNS_API_TOKEN).toEqual({ 'ui:widget': 'secret', 'ui:options': { stored: true } });
+  expect(ui.CF_ZONE_API_TOKEN).toEqual({ 'ui:widget': 'secret', 'ui:options': { stored: false } });
   expect(ui['ui:submitButtonOptions']).toEqual({ norender: true });
 });
 
@@ -29,5 +29,8 @@ it('humanizes a label when the schema has no title', () => {
 });
 
 it('fills only the listed stored secrets with the unchanged sentinel; new secrets stay absent', () => {
-  expect(withSecretSentinels(schema, { ttl: 300 }, ['apiToken'])).toEqual({ ttl: 300, apiToken: UNCHANGED });
+  expect(withSecretSentinels(schema, { CLOUDFLARE_TTL: '300' }, ['CF_DNS_API_TOKEN'])).toEqual({
+    CLOUDFLARE_TTL: '300',
+    CF_DNS_API_TOKEN: UNCHANGED,
+  });
 });

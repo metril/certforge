@@ -12,6 +12,11 @@ it('persists recent provider codes, most recent first, deduped', () => {
   expect(readRecent()).toEqual(['cloudflare', 'route53']);
 });
 
+it('caps the list at 5, dropping the oldest', () => {
+  for (const code of ['a', 'b', 'c', 'd', 'e', 'f']) pushRecent(code);
+  expect(readRecent()).toEqual(['f', 'e', 'd', 'c', 'b']);
+});
+
 it('never throws when storage is blocked; reads fall back to empty', () => {
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
     throw new Error('blocked');

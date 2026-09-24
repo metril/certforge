@@ -83,17 +83,27 @@ export const account: AcmeAccount = { id: 'acc-1', caId: 'ca-1', email: 'ops@exa
 // server-managed AWS_SHARED_CREDENTIALS_FILE as a `serverPath` field, and
 // hyperone mirrors the real hyperone.json's unsupported flag/reason, so
 // SchemaForm/ProviderPicker tests exercise both against realistic shapes.
+// Fix round 1 (preflight A12): every real provider config property is
+// `type: 'string'` (the API's DNSCredential.config is `{[key: string]: string}`);
+// an `integer` field here (the original `ttl` fixture) is a shape the API
+// never actually sends. Field names/titles mirror the real cloudflare.json.
 export const cloudflare = {
   code: 'cloudflare',
   name: 'Cloudflare',
   aliases: ['cf'],
   schema: {
     type: 'object',
-    required: ['apiToken'],
+    required: ['CF_DNS_API_TOKEN'],
     properties: {
-      apiToken: { type: 'string', title: 'API token', secret: true, description: 'Token with Zone.DNS edit rights. Create it under My Profile.' },
-      zoneToken: { type: 'string', title: 'Zone token', secret: true },
-      ttl: { type: 'integer', title: 'TTL', minimum: 120 },
+      CF_DNS_API_TOKEN: {
+        type: 'string',
+        title: 'CF_DNS_API_TOKEN',
+        secret: true,
+        description: 'API token with Zone.DNS edit rights (since v3.1.0). Create it under My Profile.',
+      },
+      CF_ZONE_API_TOKEN: { type: 'string', title: 'CF_ZONE_API_TOKEN', secret: true },
+      CLOUDFLARE_TTL: { type: 'string', title: 'CLOUDFLARE_TTL', description: 'The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)' },
+      CLOUDFLARE_PROPAGATION_TIMEOUT: { type: 'string', title: 'CLOUDFLARE_PROPAGATION_TIMEOUT' },
     },
   },
 } as ProviderSchema;

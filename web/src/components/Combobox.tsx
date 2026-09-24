@@ -3,7 +3,7 @@ import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { cn, keywordFilter } from '@/lib/utils';
 
 export type ComboOption = { value: string; label: string; hint?: string; keywords?: string[] };
 
@@ -20,15 +20,6 @@ type Props = {
   mono?: boolean;
   'aria-label'?: string;
 };
-
-// Search matches only the visible label and keywords, never the raw option
-// value: values are frequently opaque ids (a CA or DNS credential UUID), and
-// matching them meant typing hex-looking text could surface an unrelated
-// option by accident (review round 1).
-function labelOnlyFilter(_value: string, search: string, keywords?: string[]): number {
-  const haystack = (keywords ?? []).join(' ').toLowerCase();
-  return haystack.includes(search.trim().toLowerCase()) ? 1 : 0;
-}
 
 export function Combobox({ id, value, onChange, options, placeholder, emptyText, footer, disabled, mono, ...rest }: Props) {
   const [open, setOpen] = useState(false);
@@ -52,7 +43,7 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-(--radix-popover-trigger-width) min-w-64 p-0">
-          <Command filter={labelOnlyFilter}>
+          <Command filter={keywordFilter}>
             <CommandInput placeholder="Search" />
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>

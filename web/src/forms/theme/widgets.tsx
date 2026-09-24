@@ -83,8 +83,18 @@ function TextareaWidget({ id, value, onChange, disabled, readonly, placeholder, 
   );
 }
 
-function SecretWidget({ id, value, onChange, options, label, placeholder }: WidgetProps) {
-  return <SecretInput id={id} label={label} value={value as string | undefined} onChange={onChange} stored={options.stored === true} placeholder={placeholder} />;
+function SecretWidget({ id, value, onChange, options, label, placeholder, disabled, readonly }: WidgetProps) {
+  return (
+    <SecretInput
+      id={id}
+      label={label}
+      value={value as string | undefined}
+      onChange={onChange}
+      stored={options.stored === true}
+      placeholder={placeholder}
+      disabled={disabled || readonly}
+    />
+  );
 }
 
 export const widgets: RegistryWidgetsType = {
