@@ -74,8 +74,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 |---|---|---|---|
 | 1 | Scaffold, tokens, fonts, theme, lint | done | 07f60a1 |
 | 2 | API client and query plumbing | done | 8db1cf4 |
-| 3 | Router, login, setup wizard | done | pending |
-| 4 | App shell and navigation | planned | |
+| 3 | Router, login, setup wizard | done | b4274c4 |
+| 4 | App shell and navigation | done | pending |
 | 5 | Form controls | planned | |
 | 6 | Status chip and validity bar | planned | |
 | 7 | Issuers: CAs and ACME accounts | planned | |
@@ -153,6 +153,7 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 - 1C Task 2: `authMiddleware` clones a mutating request's body before it is sent (`Request.clone()`, stashed in a `WeakMap`) so a CSRF-flavoured 403 (a valid session whose cached token went stale — `authn.Middleware` 403s any mutating request with a bad or missing token) can refresh `/auth/me` and retry exactly once, guarded by a `WeakSet` against looping if the retry is also rejected.
 - 1C Task 2: the default `setUnauthorizedHandler` performs a full-page navigation to `/login?next=<path>` on an unexpected 401 rather than an SPA route push; that also clears every in-memory cache (React Query's `me` included), so no separate query-cache clear is needed. Router-aware tasks may still call `setUnauthorizedHandler` to override it.
 - 1C Task 2: `make generate` now also runs `npm --prefix web run gen` (guarded by `[ -d web ]`) so the CI drift check covers `web/src/api/schema.d.ts`.
+- 1C Task 4: `Sidebar`'s active-row indicator is a token-backed `border-l-2 border-primary` instead of an arbitrary `shadow-[inset_...]` value, since `no-hardcoded-values.test.ts` blocks the `shadow-[` escape hatch. `src/components/OrgSwitcher.tsx` is added ahead of its design.md folder-structure listing (controller ruling: the org switcher must exist at the top of the sidebar and render nothing while `me.orgs.length <= 1`, which is every Phase 1 fixture and deployment); it switches to `/o/:slug/overview` and has no "All orgs" option yet (no cross-org view exists to switch into). `src/lib/shortcuts.ts` adds a `g o`/`g c` chord registry and reserves the Ctrl/Cmd-K binding (`preventDefault`, no-op until a handler is passed) for Task 17's command palette; `g l` (Clients) is left unregistered since that page ships in a later phase. `useActiveOrgSlug` (`src/lib/org.ts`) centralizes "route param, else the user's first org" for chrome that renders on both org-scoped and org-less (`/settings/*`) routes.
 
 ## Known gaps
 

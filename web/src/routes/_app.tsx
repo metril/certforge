@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
 import { ApiError } from '@/api/errors';
 import { meQuery, setupStatusQuery } from '@/api/queries/auth';
+import { AppShell } from '@/components/AppShell';
 
 export const Route = createFileRoute('/_app')({
   beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -14,5 +15,9 @@ export const Route = createFileRoute('/_app')({
       throw e;
     }
   },
-  component: Outlet,
+  component: () => (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  ),
 });
