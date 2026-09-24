@@ -51,7 +51,13 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 
 A certificate has a common name plus any number of SANs: wildcards (`*.example.com`, leftmost label only), names from different zones, and IP addresses where the CA supports them (not with DNS-01). Names are lower-cased and de-duplicated; the first is the common name. Changing names issues a new certificate immediately; other changes apply at the next renewal.
 
-In the web UI, paste names into the wizard's multi-line box separated by commas, spaces, or new lines; each becomes a chip, wildcards are flagged as DNS-01 only, and the first name becomes the common name (drag to change).
+In the web UI, paste names into the wizard's multi-line box separated by commas, spaces, semicolons, or new lines; each becomes a chip, grouped by registered domain (for example `a.example.co.uk` groups under `example.co.uk`; a private zone like `lab.local` groups under itself).
+
+- `*.example.com` is a wildcard and is marked **DNS only**: wildcards can only be proven with DNS verification.
+- IP addresses are marked **IP**. They need HTTP-01, which arrives in a later phase.
+- Invalid names get a red outline; hover the icon for the reason. Remove them to continue.
+- The first valid name is the common name. Drag another chip onto the Common name box, or use its crown button, to change it.
+- A certificate holds at most 100 names.
 
 ## Verification rules
 

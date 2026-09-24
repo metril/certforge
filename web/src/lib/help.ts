@@ -65,6 +65,7 @@ export const help = {
     learnMore: 'configuration.md#issuance-defaults',
   },
   'cert.names': { text: 'Paste names separated by commas, spaces, or new lines. Wildcards need DNS verification.', learnMore: 'certificates.md#names' },
+  'cert.cn': { text: 'Shown as the subject of the certificate. Drag a name here or use its crown button.', learnMore: 'certificates.md#names' },
   // Fix round 1 (review): the list column needs its own key — `cert.names`
   // is wizard copy about pasting names into the create-certificate step
   // (Task 12), not what a read-only SANs column means.

@@ -47,6 +47,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web UI DNS credentials for every lego provider, with forms generated from provider schemas, usage counts, and a zone test.
 - Web UI settings: General (base URL, read-only organizations list) and Backup (KEK status from `/readyz`, escrow-confirmed switch) from server schemas, and issuance defaults with Global and Org tabs, per-field inherited-value badges sourced from the effective-defaults endpoint, and override/reset-to-inherited controls reused by the future certificate wizard.
 - Web UI certificates list: status and search filters in the URL, removable filter chips, saved views, validity bars, click and shift-click selection, and bulk renew or delete.
+- Web UI name entry for new certificates: paste lists, chips grouped by registered domain, wildcard and IP markers, and a drag-to-set common name.
 
 ### Fixed
 - Deleting a CA or ACME account locks the row for the whole count-then-delete in one transaction, so a concurrent `acme_accounts` insert (an actual foreign key) cannot slip a new reference in between the check and the delete.
