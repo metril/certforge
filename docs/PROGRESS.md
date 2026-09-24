@@ -32,8 +32,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 8 | Audit log | done | ef291d3 |
 | 9 | OpenAPI skeleton, router, problem+json | done | 2cd22ee |
 | 10 | Auth and settings endpoints | done | 1d8d3ab |
-| 11 | Setup wizard and bootstrap-admin | done | pending |
-| 12 | Health, web UI placeholder, serve | todo | – |
+| 11 | Setup wizard and bootstrap-admin | done | d273abb |
+| 12 | Health, web UI placeholder, serve | done | pending |
 | 13 | Container image and compose | todo | – |
 | 14 | Architecture docs and phase close-out | todo | – |
 

@@ -125,3 +125,17 @@ func TestWriteProblem(t *testing.T) {
 		t.Fatalf("problem %d %v", rec.Code, p)
 	}
 }
+
+func TestHealthz(t *testing.T) {
+	rec := serve(t, http.MethodGet, "/healthz", "", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ok"`) {
+		t.Fatalf("healthz %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestSPAMounted(t *testing.T) {
+	rec := serve(t, http.MethodGet, "/o/home/overview", "", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "CertForge") {
+		t.Fatalf("spa %d", rec.Code)
+	}
+}

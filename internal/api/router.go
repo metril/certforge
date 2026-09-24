@@ -14,6 +14,7 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/webui"
 )
 
 // NewRouter builds the handler for the main HTTP listener.
@@ -24,13 +25,15 @@ func NewRouter(d Deps) http.Handler {
 	s := &Server{d: d}
 	r := chi.NewRouter()
 	r.Use(recoverer(d.Log), securityHeaders)
+	webHandler := webui.Handler()
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			Write(w, http.StatusNotFound, "Not found", "")
 			return
 		}
-		// Non-API paths keep the default 404 until Task 12 adds the SPA fallback.
-		http.NotFound(w, r)
+		// Any path chi has no route for is a client-side SPA route (or the
+		// UI's own root); webHandler serves index.html for those.
+		webHandler.ServeHTTP(w, r)
 	})
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -40,6 +43,8 @@ func NewRouter(d Deps) http.Handler {
 		http.Error(w, "405 method not allowed", http.StatusMethodNotAllowed)
 	})
 	mountDocs(r)
+	r.Get("/healthz", s.healthz)
+	r.Get("/readyz", s.readyz)
 	r.Route("/api/v1", func(v1 chi.Router) {
 		v1.Use(withClientIP, requireJSON, authn.Middleware(authn.MiddlewareOptions{
 			Sessions: d.Sessions, Queries: d.Queries, Public: isPublic, Fail: Write, Log: d.Log,

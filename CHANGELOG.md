@@ -17,3 +17,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - OpenAPI spec with generated strict server, problem+json errors, Swagger UI at /api/docs, meta schema registry, org listing.
 - Local admin login, logout, /auth/me with CSRF token, and schema-driven settings GET/PUT endpoints.
 - First-run setup endpoints (status, complete) and the bootstrap-admin command.
+- serve and healthcheck commands, /healthz and /readyz (DB and KEK canary), embedded web UI handler with SPA fallback and placeholder page.

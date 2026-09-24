@@ -6,7 +6,7 @@ Status: in design and early implementation. See [docs/PROGRESS.md](docs/PROGRESS
 
 ## Planned documentation
 
-- `docs/architecture.md`, `docs/configuration.md`, `docs/certificates.md`, `docs/dns-providers.md`, `docs/agent.md`, `docs/deploy-targets.md`, `docs/notifications.md`, `docs/vault.md`, `docs/private-ca.md`, `docs/api.md`, `docs/security.md`, `docs/operations.md`, `docs/development.md`, `docs/adr/`.
+- `docs/architecture.md`, `docs/configuration.md`, `docs/certificates.md`, `docs/dns-providers.md`, `docs/agent.md`, `docs/deploy-targets.md`, `docs/notifications.md`, `docs/vault.md`, `docs/private-ca.md`, `docs/api.md`, `docs/security.md`, [`docs/operations.md`](docs/operations.md), `docs/development.md`, `docs/adr/`.
 
 ## License
 
