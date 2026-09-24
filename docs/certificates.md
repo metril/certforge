@@ -53,8 +53,8 @@ A certificate has a common name plus any number of SANs: wildcards (`*.example.c
 
 In the web UI, paste names into the wizard's multi-line box separated by commas, spaces, semicolons, or new lines; each becomes a chip, grouped by registered domain (for example `a.example.co.uk` groups under `example.co.uk`; a private zone like `lab.local` groups under itself).
 
-- `*.example.com` is a wildcard and is marked **DNS only**: wildcards can only be proven with DNS verification.
-- IP addresses are marked **IP**. They need HTTP-01, which arrives in a later phase.
+- `*.example.com` is a wildcard and is marked **DNS only**: wildcards can only be proven with DNS verification (dns-01 or manual-dns), never HTTP-01. A wildcard under a registrable "private" zone such as `*.github.io` groups and validates the same way; a wildcard directly on an ICANN suffix such as `*.co.uk` is invalid, since nobody controls that whole zone.
+- IP addresses are marked **IP**. Phase 1 cannot validate IP names (dns-01 and manual-dns only), so the certificate will fail until HTTP-01 lands.
 - Invalid names get a red outline; hover the icon for the reason. Remove them to continue.
 - The first valid name is the common name. Drag another chip onto the Common name box, or use its crown button, to change it.
 - A certificate holds at most 100 names.

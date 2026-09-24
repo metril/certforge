@@ -1,6 +1,6 @@
 import { useReducer } from 'react';
 import { screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { renderUI } from '@/test/render';
 import { NamesStep } from './NamesStep';
 import { initialWizard, wizardReducer } from './state';
@@ -57,18 +57,56 @@ it('lays out name chips in a wrapping flex row', async () => {
   expect(container.querySelector('[class*="min-w-"]')).toBeNull();
 });
 
+// Fix round 1 (review, Important #2): the wildcard and IP markers are a
+// plan-mandated icon-plus-word-plus-tooltip chip, not a bare word; the IP
+// tooltip specifically must say Phase 1 can't validate IP names.
+it('gives the wildcard marker a tooltip explaining it', async () => {
+  const { user } = renderUI(<H />);
+  await user.click(screen.getByLabelText('Names'));
+  await user.paste('*.example.com');
+  await user.hover(screen.getByText('DNS only'));
+  expect(await screen.findByText(/only be proven with DNS verification/)).toBeInTheDocument();
+});
+
+it('gives the IP marker a tooltip explaining Phase 1 cannot validate it', async () => {
+  const { user } = renderUI(<H />);
+  await user.click(screen.getByLabelText('Names'));
+  await user.paste('10.0.0.1');
+  await user.hover(screen.getByText('IP'));
+  expect(await screen.findByText(/Phase 1 cannot validate IP names \(dns-01 and manual-dns only\)/)).toBeInTheDocument();
+});
+
+// Fix round 1 (review, Take-now #3): a disabled draggable (the CN chip
+// itself, and any invalid chip) must not sit in the tab order as a
+// keyboard-focusable no-op — dnd-kit's own `attributes` keeps
+// `role="button" tabIndex={0}` even when `disabled: true`, so NameChip has
+// to drop them itself.
+it('does not leave a disabled chip (the CN, or an invalid name) as a dead tab stop', async () => {
+  const { user } = renderUI(<H />);
+  await user.click(screen.getByLabelText('Names'));
+  await user.paste('www.example.com bad_name.example.com');
+  const zone = screen.getByRole('region', { name: 'example.com' });
+  const invalid = screen.getByRole('region', { name: 'Invalid' });
+  const cnHandle = within(zone).getByText('www.example.com');
+  const invalidHandle = within(invalid).getByText('bad_name.example.com');
+  for (const handle of [cnHandle, invalidHandle]) {
+    expect(handle).not.toHaveAttribute('tabindex');
+    expect(handle).not.toHaveAttribute('role', 'button');
+  }
+});
+
 // Controller ruling: CN reassignment must also work via dnd-kit's keyboard
 // sensor (the accessible alternative to pointer drag), not only the menu
 // button covered above. jsdom computes every element's bounding rect as a
 // zero-size box at the origin, so collision detection never finds an
 // overlap; both the draggable chip and the Common name drop target are
-// stubbed to the same non-zero rect here so a real KeyboardSensor
-// activate-then-end sequence (Space to pick up, Space to drop) has a real
-// droppable to land on, exercising the actual DndContext/onDragEnd wiring
-// rather than calling the dispatch by hand.
-let rectSpy: ReturnType<typeof vi.spyOn>;
-beforeEach(() => {
-  rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+// stubbed to the same non-zero rect here (scoped to this one test — fix
+// round 1, Take-now #5) so a real KeyboardSensor activate-then-end sequence
+// (Space to pick up, Space to drop) has a real droppable to land on,
+// exercising the actual DndContext/onDragEnd wiring rather than calling the
+// dispatch by hand.
+it('makes another name the common name by dragging with the keyboard', async () => {
+  const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
     x: 0,
     y: 0,
     top: 0,
@@ -81,17 +119,17 @@ beforeEach(() => {
       return this;
     },
   } as DOMRect);
-});
-afterEach(() => rectSpy.mockRestore());
-
-it('makes another name the common name by dragging with the keyboard', async () => {
-  const { user } = renderUI(<H />);
-  await user.click(screen.getByLabelText('Names'));
-  await user.paste('www.example.com api.other.net');
-  const handle = screen.getByText('api.other.net');
-  handle.focus();
-  await user.keyboard('[Space]');
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await user.keyboard('[Space]');
-  expect(screen.getByTestId('cn')).toHaveTextContent('api.other.net');
+  try {
+    const { user } = renderUI(<H />);
+    await user.click(screen.getByLabelText('Names'));
+    await user.paste('www.example.com api.other.net');
+    const handle = screen.getByText('api.other.net');
+    handle.focus();
+    await user.keyboard('[Space]');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await user.keyboard('[Space]');
+    expect(screen.getByTestId('cn')).toHaveTextContent('api.other.net');
+  } finally {
+    rectSpy.mockRestore();
+  }
 });

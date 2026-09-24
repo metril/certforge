@@ -64,8 +64,19 @@ export const help = {
     text: 'Unset fields inherit from the level above. Changes apply at each certificate’s next renewal.',
     learnMore: 'configuration.md#issuance-defaults',
   },
-  'cert.names': { text: 'Paste names separated by commas, spaces, or new lines. Wildcards need DNS verification.', learnMore: 'certificates.md#names' },
+  'cert.names': {
+    text: 'Paste names separated by commas, spaces, semicolons, or new lines. Wildcards need DNS verification.',
+    learnMore: 'certificates.md#names',
+  },
   'cert.cn': { text: 'Shown as the subject of the certificate. Drag a name here or use its crown button.', learnMore: 'certificates.md#names' },
+  'cert.wildcardMarker': {
+    text: 'A wildcard can only be proven with DNS verification (dns-01 or manual-dns), never HTTP-01.',
+    learnMore: 'certificates.md#names',
+  },
+  'cert.ipMarker': {
+    text: 'Phase 1 cannot validate IP names (dns-01 and manual-dns only), so the certificate will fail until HTTP-01 lands.',
+    learnMore: 'certificates.md#names',
+  },
   // Fix round 1 (review): the list column needs its own key — `cert.names`
   // is wizard copy about pasting names into the create-certificate step
   // (Task 12), not what a read-only SANs column means.

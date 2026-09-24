@@ -1,14 +1,38 @@
-import { useMemo, useState, type Dispatch } from 'react';
-import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
-import { CircleAlert, Crown, X } from 'lucide-react';
+import { memo, useMemo, useState, type Dispatch } from 'react';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type Announcements,
+} from '@dnd-kit/core';
+import { CircleAlert, Crown, Globe, ShieldAlert, X } from 'lucide-react';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Textarea } from '@/components/ui/textarea';
+import { help, type HelpKey } from '@/lib/help';
 import { classifyName, groupByZone, MAX_NAMES, splitNames, type ParsedName } from '@/lib/names';
 import { cn } from '@/lib/utils';
 import type { WizardAction, WizardState } from './state';
 
 const CN_SLOT = 'cn-slot';
+const CN_SLOT_LABEL = 'Common name';
+
+// Fix round 1 (review, Take-now #3): dnd-kit's default screen-reader
+// announcements name a droppable by its raw `id` ("cn-slot"); name it the
+// way it reads on screen instead.
+const announcements: Announcements = {
+  onDragStart: ({ active }) => `Picked up ${active.id}.`,
+  onDragOver: ({ active, over }) =>
+    over ? `${active.id} is over ${over.id === CN_SLOT ? CN_SLOT_LABEL : over.id}.` : `${active.id} is no longer over a droppable area.`,
+  onDragEnd: ({ active, over }) =>
+    over ? `${active.id} was dropped over ${over.id === CN_SLOT ? CN_SLOT_LABEL : over.id}.` : `${active.id} was dropped.`,
+  onDragCancel: ({ active }) => `Dragging ${active.id} was cancelled.`,
+};
 
 function CnSlot({ value }: { value: string | null }) {
   const { setNodeRef, isOver } = useDroppable({ id: CN_SLOT });
@@ -20,7 +44,7 @@ function CnSlot({ value }: { value: string | null }) {
         isOver ? 'border-primary bg-primary/8' : 'border-border',
       )}
     >
-      <span className="text-sm font-semibold">Common name</span>
+      <span className="text-sm font-semibold">{CN_SLOT_LABEL}</span>
       <HelpTip id="cert.cn" />
       <span data-testid="cn" className="font-mono text-xs">
         {value ?? '–'}
@@ -29,15 +53,49 @@ function CnSlot({ value }: { value: string | null }) {
   );
 }
 
-function Tag({ children }: { children: string }) {
-  return <span className="rounded-sm bg-subtle px-1 font-sans text-xs leading-4 text-ink-muted">{children}</span>;
+// Fix round 1 (review, Important #2): a plan-mandated chip marker is an
+// icon plus a word plus a tooltip when it needs explaining, not a bare word
+// — the wildcard and IP markers below now carry both, sourced from
+// `lib/help.ts` like every other tooltip in the app.
+function MarkerTag({ icon: Icon, label, helpKey }: { icon: typeof Globe; label: string; helpKey: HelpKey }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className="inline-flex items-center gap-0.5 rounded-sm bg-subtle px-1 font-sans text-xs leading-4 text-ink-muted"
+        >
+          <Icon className="size-3" aria-hidden />
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-64 text-xs leading-snug">
+        {help[helpKey].text}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
-function NameChip({ name, isCn, dispatch }: { name: ParsedName; isCn: boolean; dispatch: Dispatch<WizardAction> }) {
+// Fix round 1 (review, Take-now #5): every NameChip subscribes to dnd-kit's
+// internal drag context (via useDraggable), so memoizing it doesn't block
+// that; what it does stop is every chip re-rendering whenever NamesStep
+// itself re-renders for an unrelated reason (typing in the paste box, a
+// sibling's own state) despite this chip's own props (name, isCn, dispatch)
+// staying referentially equal.
+const NameChip = memo(function NameChip({
+  name,
+  isCn,
+  dispatch,
+}: {
+  name: ParsedName;
+  isCn: boolean;
+  dispatch: Dispatch<WizardAction>;
+}) {
   const bad = name.kind === 'invalid';
+  const disabled = bad || isCn;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } = useDraggable({
     id: name.value,
-    disabled: bad || isCn,
+    disabled,
   });
   return (
     <span
@@ -52,14 +110,14 @@ function NameChip({ name, isCn, dispatch }: { name: ParsedName; isCn: boolean; d
       <span
         ref={setActivatorNodeRef}
         {...listeners}
-        {...attributes}
-        aria-roledescription="draggable name"
-        className={cn(!bad && !isCn && 'cursor-grab')}
+        {...(disabled ? undefined : attributes)}
+        aria-roledescription={disabled ? undefined : 'draggable name'}
+        className={cn(!disabled && 'cursor-grab')}
       >
         {name.value}
       </span>
-      {name.kind === 'wildcard' && <Tag>DNS only</Tag>}
-      {name.kind === 'ip' && <Tag>IP</Tag>}
+      {name.kind === 'wildcard' && <MarkerTag icon={Globe} label="DNS only" helpKey="cert.wildcardMarker" />}
+      {name.kind === 'ip' && <MarkerTag icon={ShieldAlert} label="IP" helpKey="cert.ipMarker" />}
       {bad && (
         <>
           <CircleAlert className="size-3.5 text-failed" aria-hidden />
@@ -87,7 +145,7 @@ function NameChip({ name, isCn, dispatch }: { name: ParsedName; isCn: boolean; d
       </button>
     </span>
   );
-}
+});
 
 export function NamesStep({ state, dispatch }: { state: WizardState; dispatch: Dispatch<WizardAction> }) {
   const [draft, setDraft] = useState('');
@@ -127,6 +185,7 @@ export function NamesStep({ state, dispatch }: { state: WizardState; dispatch: D
       </Field>
       <DndContext
         sensors={sensors}
+        accessibility={{ announcements }}
         onDragEnd={(e) => {
           if (e.over?.id === CN_SLOT && typeof e.active.id === 'string') dispatch({ type: 'setCn', name: e.active.id });
         }}

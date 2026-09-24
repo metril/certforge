@@ -7,7 +7,40 @@ export type ParsedName = { value: string; kind: NameKind; zone: string | null; e
 export type NameGroup = { zone: string; kind: 'zone' | 'ip' | 'invalid'; names: ParsedName[] };
 
 const LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
-const IPV6 = /^[0-9a-f:]+(%\w+)?$/i;
+// Loose "looks like an IP attempt" shapes, used only to pick a clearer error
+// message for a near-miss than the generic DNS-label one.
+const IPV4_SHAPE = /^\d{1,3}(\.\d{1,3}){3}$/;
+const IPV6_SHAPE = /^[0-9a-f:]+(%.+)?$/i;
+
+// Fix round 1 (review, Important #1): mirrors Go's `net.ParseIP` exactly
+// (verified empirically against it) rather than tldts's looser `isIp`,
+// which accepts out-of-range octets, malformed IPv6, and zone ids the
+// server's `net.ParseIP` rejects.
+function isIPv4(s: string): boolean {
+  const parts = s.split('.');
+  return parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255 && (p.length === 1 || p[0] !== '0'));
+}
+
+function isIPv6(s: string): boolean {
+  if (!s.includes(':') || s.includes('%')) return false;
+  if (s.split('::').length > 2) return false;
+  const compressed = s.includes('::');
+  const lastColon = s.lastIndexOf(':');
+  const afterLast = s.slice(lastColon + 1);
+  let ipv4Groups = 0;
+  let head = s;
+  if (afterLast.includes('.')) {
+    if (!isIPv4(afterLast)) return false;
+    ipv4Groups = 2;
+    head = s.slice(0, lastColon + 1);
+    if (!head.endsWith('::')) head = head.slice(0, -1);
+  }
+  const parts = compressed ? head.split('::') : [head];
+  const groups = parts.flatMap((p) => (p ? p.split(':') : []));
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) return false;
+  const total = groups.length + ipv4Groups;
+  return compressed ? total < 8 : total === 8;
+}
 
 export function splitNames(text: string): string[] {
   const seen = new Set<string>();
@@ -25,8 +58,11 @@ export function splitNames(text: string): string[] {
 const invalid = (value: string, error: string): ParsedName => ({ value, kind: 'invalid', zone: null, error });
 
 export function classifyName(value: string): ParsedName {
-  if (value.includes(':') && IPV6.test(value)) return { value, kind: 'ip', zone: null };
-  if (parse(value).isIp) return { value, kind: 'ip', zone: null };
+  if (isIPv4(value) || isIPv6(value)) return { value, kind: 'ip', zone: null };
+  if (IPV4_SHAPE.test(value)) return invalid(value, 'Not a valid IPv4 address: each part must be 0-255');
+  if (value.includes(':') && IPV6_SHAPE.test(value)) {
+    return invalid(value, value.includes('%') ? 'IPv6 zone ids, like %eth0, are not supported' : 'Not a valid IPv6 address');
+  }
   const wildcard = value.startsWith('*.');
   const host = wildcard ? value.slice(2) : value;
   if (host.includes('*')) return invalid(value, 'Wildcard only as the first label, like *.example.com');
@@ -34,7 +70,17 @@ export function classifyName(value: string): ParsedName {
   const labels = host.split('.');
   if (labels.length < 2) return invalid(value, 'Needs a domain, like host.example.com');
   if (!labels.every((l) => LABEL.test(l))) return invalid(value, 'Letters, digits, and hyphens only; use xn-- for IDNs');
-  const zone = parse(host, { allowPrivateDomains: true }).domain;
+  const parsed = parse(host, { allowPrivateDomains: true });
+  // Fix round 1 (review, Important #4): the server's own validator has no
+  // public-suffix list at all, so it accepts any dotted, syntactically
+  // valid FQDN regardless of whether tldts considers it "registrable". A
+  // bare ICANN suffix (co.uk, com — `isPrivate: false`) stays invalid: it's
+  // never anyone's zone to control. A "private" PSL entry (github.io,
+  // herokuapp.com — `isPrivate: true`) is itself the registrable unit third
+  // parties get subdomains under, matching what the server would accept;
+  // group it under itself, the same way an unknown-TLD private zone
+  // (lab.local) already groups under itself below.
+  const zone = parsed.domain ?? (parsed.isPrivate ? host : null);
   if (!zone) return invalid(value, 'Not under a registrable domain');
   return { value, kind: wildcard ? 'wildcard' : 'dns', zone };
 }

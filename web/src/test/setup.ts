@@ -20,6 +20,11 @@ if (typeof Element !== 'undefined') {
   Element.prototype.releasePointerCapture ??= () => {};
 }
 if (typeof window !== 'undefined') {
+  // dnd-kit's KeyboardSensor calls scrollIntoViewIfNeeded on drag start,
+  // which falls back to window.scrollTo; jsdom *does* define scrollTo (so
+  // `??=` never applies), but its body just logs "Not implemented" to
+  // stderr for every such test — replace it outright, not conditionally.
+  window.scrollTo = (() => {}) as typeof window.scrollTo;
   window.matchMedia ??= (query: string) =>
     ({
       matches: false,
