@@ -5,24 +5,55 @@ import { HelpTip } from '@/components/HelpTip';
 import { SourceBadge } from '@/forms/InheritableField';
 import { isCovered, type Coverage } from '@/lib/coverage';
 
+// Fix round 1 (review, item 4): "(via apex)" marks a wildcard whose apex is
+// also on the certificate — the router strips "*." before routing, so the
+// two names share the apex's rule (see coverage()'s viaApex).
+function suffix(c: Coverage): ReactNode {
+  return c.viaApex ? ' (via apex)' : null;
+}
+
 function describe(c: Coverage, credName: (id?: string) => string | undefined): ReactNode {
   switch (c.state) {
     case 'rule': {
       const target = c.rule!.method === 'manual-dns' ? 'manual' : (credName(c.rule!.dnsCredentialId) ?? 'credential');
-      return `Rule ${c.ruleIndex! + 1}: ${c.rule!.match} → ${target}`;
+      return (
+        <>
+          Rule {c.ruleIndex! + 1}: {c.rule!.match} → {target}
+          {suffix(c)}
+        </>
+      );
     }
     case 'inherited':
       return (
         <>
           Catch-all: inherited from <SourceBadge source={c.source!} />
+          {suffix(c)}
         </>
       );
     case 'missing-credential':
-      return 'No credential';
+      // Fix round 1 (review, item 4): distinguish a certificate's own
+      // rule missing a credential from an inherited one — otherwise the
+      // user looks for a rule of their own that doesn't exist.
+      return c.source ? (
+        <>
+          Inherited rule (<SourceBadge source={c.source} />): no credential
+          {suffix(c)}
+        </>
+      ) : (
+        <>
+          No credential
+          {suffix(c)}
+        </>
+      );
     case 'ip':
       return 'IP names need HTTP-01 (later phase)';
     case 'none':
-      return 'No matching rule';
+      return (
+        <>
+          No matching rule
+          {suffix(c)}
+        </>
+      );
   }
 }
 

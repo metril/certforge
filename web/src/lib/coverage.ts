@@ -3,7 +3,15 @@ import { classifyName } from './names';
 
 export type Inherited = { rules: VerificationRule[]; source: Source } | null;
 export type CoverageState = 'rule' | 'inherited' | 'missing-credential' | 'ip' | 'none';
-export type Coverage = { name: string; state: CoverageState; ruleIndex?: number; rule?: VerificationRule; source?: Source };
+export type Coverage = {
+  name: string;
+  state: CoverageState;
+  ruleIndex?: number;
+  rule?: VerificationRule;
+  source?: Source;
+  /** This name is a wildcard whose apex is also on the certificate, so the router's `*.` strip means the apex's rule actually serves it (docs/certificates.md "the rule matching the apex serves both"). */
+  viaApex?: boolean;
+};
 
 // Adaptation (preflight A31, matcher row): the server (challenge/match.go)
 // lowercases and IDNA-normalises both the certificate name and the rule
@@ -13,7 +21,7 @@ export type Coverage = { name: string; state: CoverageState; ruleIndex?: number;
 // `*` and `_` untouched (neither is a forbidden host code point), so it
 // doubles as a zero-dependency punycode/IDNA-to-ASCII helper. Falls back to
 // a plain lowercase/trim for anything URL can't parse (empty string, ...).
-function toAscii(s: string): string {
+export function toAscii(s: string): string {
   const v = s.trim();
   if (!v) return '';
   try {
@@ -40,6 +48,36 @@ export function matchRule(name: string, pattern: string): boolean {
   return bare === p || bare.endsWith(`.${p}`);
 }
 
+// Fix round 1 (review, Important-adjacent): does NOT reuse toAscii(), which
+// extracts a URL's `.hostname` and would silently drop anything after the
+// first "/" or "@" — exactly the malformed input this must catch. Mirrors
+// challenge/match.go's ParseMatch/validZone directly: "*", or an optional
+// leading "*." followed by dotted labels of letters, digits, hyphens, and
+// underscores only. A label byte above ASCII is tentatively accepted (the
+// server would attempt a real IDNA ToASCII conversion first; this has no
+// IDNA library, so it defers to the server for genuine Unicode validation
+// and only rejects what's unambiguously invalid — ASCII punctuation like
+// "/" or "@" that no domain label, Unicode or not, ever contains).
+function labelOk(label: string): boolean {
+  if (!label) return false;
+  for (const ch of label) {
+    const c = ch.codePointAt(0)!;
+    if (c > 127) continue;
+    if (!((c >= 48 && c <= 57) || (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 45 || c === 95)) return false;
+  }
+  return true;
+}
+
+/** A rule's `match`, validated against the server's own pattern grammar. Returns an error message, or null when valid. */
+export function matchError(pattern: string): string | null {
+  const raw = pattern.trim().replace(/\.$/, '');
+  if (!raw) return 'Required.';
+  if (raw === '*') return null;
+  const zone = (raw.startsWith('*.') ? raw.slice(2) : raw).toLowerCase();
+  const ok = zone !== '' && zone.split('.').every(labelOk);
+  return ok ? null : 'Letters, digits, hyphens and underscores only; "*" only as a leading "*.".';
+}
+
 const usable = (r: VerificationRule) => r.method !== 'dns-01' || !!r.dnsCredentialId;
 
 export function inheritedFrom(eff: EffectiveMap | undefined): Inherited {
@@ -47,28 +85,47 @@ export function inheritedFrom(eff: EffectiveMap | undefined): Inherited {
   return e && Array.isArray(e.value) && e.value.length ? { rules: e.value, source: e.source } : null;
 }
 
+function resolveName(name: string, rules: VerificationRule[], inherited: Inherited): Coverage {
+  if (classifyName(name).kind === 'ip') return { name, state: 'ip' };
+  const i = rules.findIndex((r) => matchRule(name, r.match));
+  if (i >= 0) {
+    const rule = rules[i]!;
+    return { name, state: usable(rule) ? 'rule' : 'missing-credential', ruleIndex: i, rule };
+  }
+  // Adaptation (preflight A31): the server takes the *first* matching
+  // rule, full stop — it has no concept of "usable" to skip past. Take
+  // only the first inherited match too, rather than searching past an
+  // unusable one for a later match that the server would never reach.
+  const inh = inherited?.rules.find((r) => matchRule(name, r.match));
+  if (inh && inherited) return { name, state: usable(inh) ? 'inherited' : 'missing-credential', rule: inh, source: inherited.source };
+  return { name, state: 'none' };
+}
+
 export function coverage(names: string[], rules: VerificationRule[], inherited: Inherited): Coverage[] {
+  // Fix round 1 (review, Important): the challenge router strips a
+  // wildcard name's "*." before routing (docs/certificates.md: "Apex and
+  // wildcard ... share `_acme-challenge.example.com`; the rule matching
+  // the apex serves both"), so whenever a wildcard's apex is also on the
+  // certificate, the two names are proven by the SAME rule — the apex's —
+  // not whatever a wildcard's own direct match happens to be. With rules
+  // [*.example.com -> B, example.com -> A] the server only ever evaluates
+  // "example.com" for both names and gets A; resolving each name
+  // independently would show the wildcard as B, a display the runtime
+  // never produces.
+  const present = new Set(names.map((n) => toAscii(n)));
   return names.map((name): Coverage => {
-    if (classifyName(name).kind === 'ip') return { name, state: 'ip' };
-    const i = rules.findIndex((r) => matchRule(name, r.match));
-    if (i >= 0) {
-      const rule = rules[i]!;
-      return { name, state: usable(rule) ? 'rule' : 'missing-credential', ruleIndex: i, rule };
+    if (name.startsWith('*.')) {
+      const apex = toAscii(name.slice(2));
+      if (present.has(apex)) return { ...resolveName(apex, rules, inherited), name, viaApex: true };
     }
-    // Adaptation (preflight A31): the server takes the *first* matching
-    // rule, full stop — it has no concept of "usable" to skip past. Take
-    // only the first inherited match too, rather than searching past an
-    // unusable one for a later match that the server would never reach.
-    const inh = inherited?.rules.find((r) => matchRule(name, r.match));
-    if (inh && inherited) return { name, state: usable(inh) ? 'inherited' : 'missing-credential', rule: inh, source: inherited.source };
-    return { name, state: 'none' };
+    return resolveName(name, rules, inherited);
   });
 }
 
 export const isCovered = (c: Coverage) => c.state === 'rule' || c.state === 'inherited';
 
 export function verificationReady(names: string[], rules: VerificationRule[], inherited: Inherited): boolean {
-  return names.length > 0 && rules.every((r) => r.match.trim() !== '') && coverage(names, rules, inherited).every(isCovered);
+  return names.length > 0 && rules.every((r) => matchError(r.match) === null) && coverage(names, rules, inherited).every(isCovered);
 }
 
 export function prefillRules(

@@ -8,7 +8,7 @@ import { CoveragePanel } from '@/forms/CoveragePanel';
 import { ProviderPicker } from '@/forms/ProviderPicker';
 import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
 import { coverage, prefillRules, type Inherited } from '@/lib/coverage';
-import { makeSuggester, rememberCredentials } from '@/lib/lastCredential';
+import { makeSuggester } from '@/lib/lastCredential';
 import type { WizardAction, WizardState } from './state';
 
 type Props = { orgId: string; state: WizardState; dispatch: Dispatch<WizardAction>; inherited: Inherited };
@@ -28,17 +28,18 @@ export function VerificationStep({ orgId, state, dispatch, inherited }: Props) {
     if (JSON.stringify(rules) !== JSON.stringify(state.rules)) dispatch({ type: 'prefillRules', rules });
   }, [state.rulesTouched, state.names, state.method, state.rules, credsQ.isSuccess, certsQ.isSuccess, certsQ.data, creds, inherited, dispatch]);
 
-  const setRules = (rules: typeof state.rules) => {
-    dispatch({ type: 'setRules', rules });
-    rememberCredentials(rules);
-  };
-  const setCredential = (i: number, id: string) => setRules(state.rules.map((r, j) => (j === i ? { ...r, dnsCredentialId: id } : r)));
+  // Fix round 1 (review): remembering a rule's credential per zone happens
+  // once, after a certificate is actually created (Task 14, via
+  // `rememberFromRules`) — not here on every keystroke, which would write a
+  // junk localStorage key per character typed into the match field.
+  const setCredential = (i: number, id: string) =>
+    dispatch({ type: 'setRules', rules: state.rules.map((r, j) => (j === i ? { ...r, dnsCredentialId: id } : r)) });
 
   return (
     <div className="grid gap-6">
       <VerificationRulesEditor
         rules={state.rules}
-        onChange={setRules}
+        onChange={(rules) => dispatch({ type: 'setRules', rules })}
         method={state.method}
         onMethodChange={(method) => dispatch({ type: 'setMethod', method })}
         credentials={creds}

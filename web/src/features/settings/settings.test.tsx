@@ -180,6 +180,18 @@ it('clearing an overridden lookup field resets to inherited, not an empty string
   await waitFor(() => expect(puts.org).toEqual(allNull));
 });
 
+// Fix round 1 (review, item 5): the verificationRules field (Task 13's
+// VerificationRulesEditor, wired into ISSUANCE_FIELDS) renders under
+// Override and its rules round-trip through a save like any other field.
+it('renders and saves the Verification rules field', async () => {
+  const { user } = renderRoute('/settings/issuance-defaults');
+  const rulesField = within(await screen.findByRole('group', { name: 'Verification rules' }));
+  await user.click(rulesField.getByRole('switch', { name: 'Override Verification rules' }));
+  expect(await rulesField.findByLabelText('Rule 1 match')).toHaveValue('*');
+  await user.click(screen.getByRole('button', { name: 'Save org defaults' }));
+  await waitFor(() => expect((puts.org as Record<string, unknown>).verificationRules).toEqual([{ match: '*', method: 'dns-01' }]));
+});
+
 it('disables Override for a lookup field with nothing to choose', async () => {
   server.use(http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([])), http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([])));
   renderRoute('/settings/issuance-defaults');

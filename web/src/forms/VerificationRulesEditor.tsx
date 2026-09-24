@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Plus, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, CircleAlert, GripVertical, Plus, X } from 'lucide-react';
 import type { DnsCredential, VerificationMethod, VerificationRule } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
@@ -11,6 +11,7 @@ import { ListInput } from '@/components/ListInput';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { matchError } from '@/lib/coverage';
 import { LATER } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 
@@ -35,38 +36,39 @@ function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onM
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const [advanced, setAdvanced] = useState(false);
   const n = index + 1;
+  // Fix round 1 (review, item 2): only nag once the operator has typed
+  // something — an empty freshly-added row still blocks Next (via
+  // verificationReady) without an immediate "Required." error.
+  const matchErr = rule.match.trim() ? matchError(rule.match) : null;
+  const errorId = `${id}-match-error`;
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn('grid gap-2 border-b border-border py-2 last:border-b-0 md:rounded-none md:border md:border-transparent', isDragging && 'bg-subtle', 'max-md:rounded-md max-md:border max-md:border-border max-md:p-2')}
+      className={cn('grid gap-2 border-b border-border py-2 last:border-b-0 max-md:rounded-md max-md:border max-md:p-2', isDragging && 'bg-subtle')}
     >
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" aria-label={`Reorder rule ${n}`} {...attributes} {...listeners} className="cursor-grab rounded-sm p-1 text-ink-muted hover:text-ink">
           <GripVertical className="size-4" aria-hidden />
         </button>
         <div className="flex flex-col">
-          <button
-            type="button"
-            aria-label={`Move rule ${n} up`}
-            disabled={!canMoveUp}
-            onClick={() => onMove(-1)}
-            className="rounded-sm px-1 text-xs leading-none text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            ▲
-          </button>
-          <button
-            type="button"
-            aria-label={`Move rule ${n} down`}
-            disabled={!canMoveDown}
-            onClick={() => onMove(1)}
-            className="rounded-sm px-1 text-xs leading-none text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            ▼
-          </button>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move rule ${n} up`} disabled={!canMoveUp} onClick={() => onMove(-1)}>
+            <ChevronUp className="size-4" aria-hidden />
+          </Button>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move rule ${n} down`} disabled={!canMoveDown} onClick={() => onMove(1)}>
+            <ChevronDown className="size-4" aria-hidden />
+          </Button>
         </div>
         <span className="w-4 text-xs tabular-nums text-ink-muted">{n}</span>
-        <Input aria-label={`Rule ${n} match`} className="w-full font-mono text-xs sm:w-56" value={rule.match} placeholder="*.example.com" onChange={(e) => onUpdate({ match: e.target.value })} />
+        <Input
+          aria-label={`Rule ${n} match`}
+          aria-describedby={matchErr ? errorId : undefined}
+          aria-invalid={!!matchErr}
+          className="w-full font-mono text-xs sm:w-56"
+          value={rule.match}
+          placeholder="*.example.com"
+          onChange={(e) => onUpdate({ match: e.target.value })}
+        />
         {method === 'dns-01' && (
           <div className="w-full sm:w-64">
             <Combobox
@@ -94,6 +96,12 @@ function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onM
           <X className="size-4" aria-hidden />
         </Button>
       </div>
+      {matchErr && (
+        <p id={errorId} role="alert" className="flex items-center gap-1 pl-11 text-xs">
+          <CircleAlert className="size-3.5 shrink-0 text-failed" aria-hidden />
+          {matchErr}
+        </p>
+      )}
       {advanced && (
         <div className="grid gap-3 md:pl-11 lg:grid-cols-3">
           <Field id={`${id}-prop`} label="Propagation" help="rules.propagation" optional>
@@ -157,6 +165,22 @@ export function VerificationRulesEditor({ rules, onChange, method, onMethodChang
             { value: 'http-01', label: 'HTTP-01', disabled: true, hint: LATER },
           ]}
         />
+      </div>
+      {/* Fix round 1 (review, item 4): column headers, hidden below md
+          (the row becomes a stacked card there), wiring the previously
+          unused rules.match / rules.credential help entries. */}
+      <div className="hidden items-center gap-2 px-1 text-xs font-medium text-ink-muted md:flex">
+        <span className="w-6" aria-hidden />
+        <span className="w-8" aria-hidden />
+        <span className="w-4" aria-hidden />
+        <span className="flex w-56 items-center gap-1">
+          Match <HelpTip id="rules.match" />
+        </span>
+        {method === 'dns-01' && (
+          <span className="flex w-64 items-center gap-1">
+            Credential <HelpTip id="rules.credential" />
+          </span>
+        )}
       </div>
       <DndContext
         sensors={sensors}

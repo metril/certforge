@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { coverage, matchRule, prefillRules, verificationReady } from './coverage';
+import { coverage, matchError, matchRule, prefillRules, verificationReady } from './coverage';
 
 it.each([
   ['www.example.com', 'example.com', true],
@@ -12,7 +12,26 @@ it.each([
   ['*.a.example.com', '*.example.com', false],
   ['anything.test', '*', true],
   ['EXAMPLE.com.', 'example.com', true],
+  // IDNA: a Unicode name and a punycode pattern (or vice versa) for the
+  // same zone normalise to the same A-label and match, mirroring the
+  // server's idna.Lookup.ToASCII normalization (preflight A31).
+  ['xn--bcher-kva.example.com', 'bücher.example.com', true],
+  ['bücher.example.com', 'xn--bcher-kva.example.com', true],
 ])('matchRule(%s, %s) = %s', (name, pattern, expected) => expect(matchRule(name, pattern)).toBe(expected));
+
+it.each([
+  ['*', true],
+  ['example.com', true],
+  ['*.example.com', true],
+  ['a-b_c.example.com', true],
+  ['example.com/foo', false],
+  ['a@b.com', false],
+  ['', false],
+  // Mirrors challenge/match.go's normalize(): a lone trailing dot is
+  // stripped before the "*" check, so "*." is just "*" (valid), same as a
+  // trailing-dot zone name is just that zone.
+  ['*.', true],
+])('matchError(%s) valid = %s', (pattern, valid) => expect(matchError(pattern) === null).toBe(valid));
 
 const names = ['www.example.com', '*.example.com', 'api.other.net', '10.0.0.1'];
 
@@ -23,6 +42,37 @@ it('reports first-match rules, missing credentials, inherited catch-all, and IPs
   expect(coverage(['api.other.net'], [], inh)[0]).toMatchObject({ state: 'inherited', source: 'org' });
   expect(verificationReady(['api.other.net'], [], inh)).toBe(true);
   expect(verificationReady(['api.other.net'], [], null)).toBe(false);
+});
+
+// Fix round 1 (review, Important): the router strips a wildcard name's
+// "*." before routing, so the apex's rule serves both names whenever the
+// apex is also on the certificate (docs/certificates.md "the rule matching
+// the apex serves both") — not whatever the wildcard's own direct match
+// happens to be.
+it('routes a wildcard through its apex rule when the apex is also on the certificate', () => {
+  const rules = [
+    { match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-2' },
+    { match: 'example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+  ];
+  const c = coverage(['example.com', '*.example.com'], rules, null);
+  expect(c[0]).toMatchObject({ name: 'example.com', state: 'rule', ruleIndex: 1 });
+  expect(c[0]!.viaApex).toBeUndefined();
+  expect(c[1]).toMatchObject({ name: '*.example.com', state: 'rule', ruleIndex: 1, viaApex: true });
+});
+
+it('a wildcard whose apex is NOT on the certificate uses its own rule', () => {
+  const rules = [
+    { match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-2' },
+    { match: 'example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+  ];
+  const c = coverage(['*.example.com'], rules, null);
+  expect(c[0]).toMatchObject({ name: '*.example.com', state: 'rule', ruleIndex: 0 });
+  expect(c[0]!.viaApex).toBeUndefined();
+});
+
+it('an invalid match pattern blocks verificationReady even when coverage would otherwise pass', () => {
+  const rules = [{ match: 'example.com/oops', method: 'dns-01' as const, dnsCredentialId: 'd-1' }];
+  expect(verificationReady(['a.example.com'], rules, null)).toBe(false);
 });
 
 it('prefills one rule per zone, never guesses a credential, and leans on a catch-all', () => {
