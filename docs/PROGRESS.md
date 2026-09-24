@@ -49,8 +49,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 2 | Challenge router and matchers | done | f92099f |
 | 3 | Lego provider schemas | done | ad0e753 |
 | 4 | Credential config and env-isolated provider build | done | 245a832 |
-| 5 | manual-dns provider | done | pending |
-| 6 | Signer interface and ACME signer | todo | – |
+| 5 | manual-dns provider | done | 449429b |
+| 6 | Signer interface and ACME signer | done | pending |
 | 7 | PEM renderer | todo | – |
 | 8 | Defaults resolver, renewal policy, backoff, timeline | todo | – |
 | 9 | Issuance data layer | todo | – |
@@ -78,6 +78,7 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1B: verification rule `match` follows plan 1C's matcher: `*`, `*.zone` (one label below zone, or `*.zone` itself), `zone` (zone and everything below). There is no separate exact-only syntax; list a name's own rule first.
 - 1B: DNS propagation checks against configured resolvers use CertForge's own TXT query (`challenge.CheckTXT`) because lego v4's `AddRecursiveNameservers` is process-global.
 - 1B: lego pinned at v4.24.0, the last v4 release whose go.mod allows Go 1.23. lego `exec` and `manual` providers are not offered.
+- 1B: the ACME signer's lego `http.Client` transport is `ctxTransport` (checks the issuance ctx before every request, attaches it to each one) wrapping `retryAfterTransport` (records the largest Retry-After on 429/503, since lego's `ProblemDetails` drops response headers); cancelling the issuance context now fails every in-flight CA call promptly, not just manual-dns waits.
 
 ## Known gaps
 
@@ -96,3 +97,5 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - Audit event IPs are whatever `r.RemoteAddr` reports; behind a reverse proxy that is the proxy's address, not the client's. Add a trusted-proxy setting in Phase 2.
 - `CF_KEK_FILE` accepts a raw 32-byte key file as-is, before trying base64 decoding; only `CF_KEK` (the env var) requires base64.
 - No CSP or HSTS headers yet; add them with the real UI in Phase 1C.
+- 1B: lego v4 is not context-aware on its own; the ACME signer wraps its HTTP transport to check the issuance context before every request and attach it to each one, so cancellation now aborts an in-flight CA call (not just manual-dns waits). lego's internal nonce-retry backoff sleeps (bounded at 20s, only on nonce invalidation) are not ctx-aware.
+- 1B: lego's log output is process-global and is not copied into attempt logs; attempts log CertForge's own steps and errors.

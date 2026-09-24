@@ -25,6 +25,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - JSON Schemas for all lego DNS providers, generated from lego's metadata, served under `dnsProviders` in `GET /api/v1/meta/schemas`, and documented in `docs/dns-providers.md`.
 - DNS credential handling: schema-validated config, write-only secrets with the `__unchanged__` sentinel, and lego provider construction with an isolated environment.
 - manual-dns verification: TXT records shown to the operator, attempt resumes on confirmation, fails after 1 hour without it.
+- ACME signer on lego v4 with CA presets (Let's Encrypt, staging, ZeroSSL, Buypass, Google Trust Services, SSL.com, custom), EAB registration and Retry-After capture. Cancelling the issuance context now aborts an in-flight CA call promptly, not just manual-dns waits.
 
 ### Fixed
 - Final review fixes: published Pebble e2e ports, closed a setup/bootstrap-admin takeover gap (bootstrap-admin now refuses before setup completes; Complete revokes a pre-existing admin's sessions), added resource-exhaustion limits on public auth routes (body size, password length, argon2 concurrency, server timeouts), made the KEK canary write insert-if-absent, made audit-write failures log-and-continue, and corrected several doc inaccuracies.
