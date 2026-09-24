@@ -1,0 +1,15 @@
+# Build outputs
+/bin/
+/dist/
+web/dist/
+web/node_modules/
+
+# Local data
+/data/
+*.env
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
