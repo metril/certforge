@@ -1,0 +1,43 @@
+run:
+  timeout: 5m
+  build-tags:
+    - integration
+    - e2e
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - gosimple
+    - unused
+    - ineffassign
+    - gofmt
+    - goimports
+    - misspell
+    - revive
+    - errorlint
+    - bodyclose
+    - noctx
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Fprint
+  goimports:
+    local-prefixes: github.com/metril/certforge
+  revive:
+    rules:
+      - name: package-comments
+      - name: blank-imports
+      - name: context-as-argument
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: var-naming
+      - name: indent-error-flow
+issues:
+  exclude-dirs:
+    - internal/db/sqlcgen
+    - internal/api/gen

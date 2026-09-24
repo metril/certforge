@@ -13,3 +13,5 @@ web/node_modules/
 .vscode/
 .idea/
 *.swp
+internal/webui/dist/
+deploy/secrets/
