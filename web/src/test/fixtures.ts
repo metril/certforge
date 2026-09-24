@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { AcmeAccount, CA, CAPreset, Certificate, Me, Org } from '@/api/types';
+import type { AcmeAccount, CA, CAPreset, Certificate, Me, Org, ProviderSchema } from '@/api/types';
 
 export const url = (path: string) => `*/api/v1${path}`;
 export const DAY = 86_400_000;
@@ -74,3 +74,54 @@ export const presets: CAPreset[] = [
 ];
 export const ca: CA = { id: 'ca-1', name: "Let's Encrypt", preset: 'letsencrypt', directoryUrl: presets[0]!.directoryUrl, resolvers: [] };
 export const account: AcmeAccount = { id: 'acc-1', caId: 'ca-1', email: 'ops@example.com', status: 'valid', registrationUri: 'https://acme-v02.api.letsencrypt.org/acme/acct/123456' };
+
+// Provider schemas (Task 8). `secret`, `serverPath`, `unsupported`, and
+// `unsupportedReason` are non-standard keywords the real provider JSON
+// Schemas (internal/challenge/schemas/*.json) carry inside `schema`;
+// ProviderSchema['schema'] is typed as a bag of unknown so they pass through
+// untyped (preflight A10). route53 mirrors the real route53.json's
+// server-managed AWS_SHARED_CREDENTIALS_FILE as a `serverPath` field, and
+// hyperone mirrors the real hyperone.json's unsupported flag/reason, so
+// SchemaForm/ProviderPicker tests exercise both against realistic shapes.
+export const cloudflare = {
+  code: 'cloudflare',
+  name: 'Cloudflare',
+  aliases: ['cf'],
+  schema: {
+    type: 'object',
+    required: ['apiToken'],
+    properties: {
+      apiToken: { type: 'string', title: 'API token', secret: true, description: 'Token with Zone.DNS edit rights. Create it under My Profile.' },
+      zoneToken: { type: 'string', title: 'Zone token', secret: true },
+      ttl: { type: 'integer', title: 'TTL', minimum: 120 },
+    },
+  },
+} as ProviderSchema;
+export const route53 = {
+  code: 'route53',
+  name: 'Amazon Route 53',
+  aliases: ['aws', 'amazon'],
+  schema: {
+    type: 'object',
+    required: ['accessKeyId', 'secretAccessKey'],
+    properties: {
+      accessKeyId: { type: 'string', title: 'Access key ID' },
+      secretAccessKey: { type: 'string', title: 'Secret access key', secret: true },
+      credentialsFile: { type: 'string', title: 'Credentials file', description: 'Managed by the AWS client.', serverPath: true },
+    },
+  },
+} as ProviderSchema;
+export const hetzner = { code: 'hetzner', name: 'Hetzner', aliases: [], schema: { type: 'object', properties: { apiKey: { type: 'string', title: 'API key', secret: true } } } } as ProviderSchema;
+export const acmedns = { code: 'acme-dns', name: 'Joohoi ACME-DNS', aliases: ['acmedns'], schema: { type: 'object', properties: {} } } as ProviderSchema;
+export const hyperone = {
+  code: 'hyperone',
+  name: 'HyperOne',
+  aliases: [],
+  schema: {
+    type: 'object',
+    unsupported: true,
+    unsupportedReason: 'Requires a passport file; supported when file-backed credentials arrive in Phase 5.',
+    properties: {},
+  },
+} as ProviderSchema;
+export const providers: ProviderSchema[] = [acmedns, route53, cloudflare, hetzner, hyperone];
