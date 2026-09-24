@@ -9,6 +9,31 @@ import (
 	"github.com/metril/certforge/internal/challenge"
 )
 
+// TestTimelineLogCap is the Review Focus for the fix-round log bound: a
+// wedged or chatty provider (or a manual-dns wait spanning up to an hour of
+// poll attempts) must not grow the stored log without limit.
+func TestTimelineLogCap(t *testing.T) {
+	tl := NewTimeline(func() time.Time { return t0 }, nil)
+	line := strings.Repeat("x", 100)
+	for i := 0; i < 2000; i++ { // 2000 * ~107 bytes > 200 KiB, well past the 64 KiB cap
+		tl.Logf("%s", line)
+	}
+	_, log := tl.Snapshot()
+	if len(log) > maxLogBytes+len(truncatedMarker) {
+		t.Fatalf("log is %d bytes, want at most ~%d", len(log), maxLogBytes)
+	}
+	if !strings.HasPrefix(log, truncatedMarker) {
+		t.Fatalf("log does not start with the truncation marker: %q", log[:min(len(log), 80)])
+	}
+	if strings.Count(log, "[log truncated]") != 1 {
+		t.Fatalf("want exactly one truncation marker, log = %d bytes", len(log))
+	}
+	// The most recent line must survive truncation (oldest lines drop first).
+	if !strings.Contains(log, line) {
+		t.Fatal("newest log line was dropped instead of the oldest")
+	}
+}
+
 func TestTimeline(t *testing.T) {
 	now := t0
 	saves := 0

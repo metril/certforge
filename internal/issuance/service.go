@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	legochallenge "github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/signer"
@@ -28,6 +30,16 @@ type Service struct {
 	Jobs         Inserter
 	NewRegistrar func(CA) Registrar
 	BuildDNS     func(code string, cfg map[string]string) (legochallenge.Provider, error)
+
+	// Auditor records certificate.create/certificate.update right after the
+	// write transaction commits and before EnqueueIssue runs, so the audit
+	// trail reflects a write that has already durably happened even when
+	// enqueuing the follow-up job then fails. nil disables it (tests that
+	// don't exercise auditing).
+	Auditor *audit.Auditor
+	// Log receives a warning when an audit write or EnqueueIssue fails
+	// after a successful certificate write; nil defaults to slog.Default().
+	Log *slog.Logger
 }
 
 // NewService wires production defaults.
@@ -36,6 +48,39 @@ func NewService(store *Store, certs *certstore.Store, jobs Inserter) *Service {
 		NewRegistrar: func(ca CA) Registrar {
 			return acmesigner.New(acmesigner.Config{DirectoryURL: ca.DirectoryURL, TrustBundlePEM: ca.TrustBundlePEM})
 		}}
+}
+
+func (s *Service) logger() *slog.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return slog.Default()
+}
+
+// auditCertificateWrite records action ("create" or "update") for c. A
+// failed audit write is logged, not returned: by the time this runs the
+// write it documents has already committed, so there is nothing left to
+// roll back.
+func (s *Service) auditCertificateWrite(ctx context.Context, c Certificate, action string, details map[string]any) {
+	if s.Auditor == nil {
+		return
+	}
+	org := c.OrgID
+	event := audit.Event{Action: "certificate." + action, ResourceType: "certificate", ResourceID: c.ID.String(), OrgID: &org, Details: details}
+	if err := s.Auditor.Record(ctx, event); err != nil {
+		s.logger().Error("audit record failed", "action", event.Action, "certificate", c.ID, "err", err)
+	}
+}
+
+// enqueueBestEffort calls EnqueueIssue and logs, rather than returns, a
+// failure: the certificate write it follows has already committed, so
+// failing the request here would report a 500 for a change that in fact
+// succeeded, and the periodic scheduler will pick the certificate up within
+// SchedulePeriod regardless.
+func (s *Service) enqueueBestEffort(ctx context.Context, certID uuid.UUID, reason string) {
+	if _, err := s.EnqueueIssue(ctx, certID); err != nil {
+		s.logger().Warn("enqueue issuance failed; the periodic scheduler will pick it up", "certificate", certID, "reason", reason, "err", err)
+	}
 }
 
 // RegisterAccount registers email at the CA (with the CA's EAB) and stores
@@ -62,24 +107,32 @@ func (s *Service) RegisterAccount(ctx context.Context, orgID, caID uuid.UUID, em
 	return s.Store.InsertAccount(ctx, orgID, caID, m)
 }
 
-// CreateCertificate stores the definition and enqueues the first issuance.
+// CreateCertificate stores the definition, audits the write, and enqueues
+// the first issuance. A failed enqueue does not fail the call; see
+// enqueueBestEffort.
 func (s *Service) CreateCertificate(ctx context.Context, orgID uuid.UUID, in CertInput) (Certificate, error) {
 	c, err := s.Store.CreateCertificate(ctx, orgID, in)
 	if err != nil {
 		return c, err
 	}
-	_, err = s.EnqueueIssue(ctx, c.ID)
-	return c, err
+	s.auditCertificateWrite(ctx, c, "create", map[string]any{"name": c.Name, "commonName": c.CommonName, "sans": c.SANs})
+	s.enqueueBestEffort(ctx, c.ID, "create")
+	return c, nil
 }
 
-// UpdateCertificate stores the definition and re-issues when names changed.
+// UpdateCertificate stores the definition, audits the write, and re-issues
+// when names changed. A failed enqueue does not fail the call; see
+// enqueueBestEffort.
 func (s *Service) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in CertInput) (Certificate, error) {
 	c, reissue, err := s.Store.UpdateCertificate(ctx, orgID, id, in)
-	if err != nil || !reissue {
+	if err != nil {
 		return c, err
 	}
-	_, err = s.EnqueueIssue(ctx, c.ID)
-	return c, err
+	s.auditCertificateWrite(ctx, c, "update", map[string]any{"name": c.Name})
+	if reissue {
+		s.enqueueBestEffort(ctx, c.ID, "update")
+	}
+	return c, nil
 }
 
 // EnqueueIssue inserts an issue job; false means one is already queued or running.

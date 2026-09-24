@@ -130,6 +130,40 @@ func (q *Queries) GetCertificateByID(ctx context.Context, id uuid.UUID) (Certifi
 	return i, err
 }
 
+const getCertificateForUpdate = `-- name: GetCertificateForUpdate :one
+SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at FROM certificates WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type GetCertificateForUpdateParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the row for the duration of UpdateCertificate's read-compute-write,
+// so a concurrent update cannot compute reissue from names that are already
+// stale by the time this transaction commits.
+func (q *Queries) GetCertificateForUpdate(ctx context.Context, arg GetCertificateForUpdateParams) (Certificate, error) {
+	row := q.db.QueryRow(ctx, getCertificateForUpdate, arg.ID, arg.OrgID)
+	var i Certificate
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.CommonName,
+		&i.Sans,
+		&i.VerificationRules,
+		&i.Overrides,
+		&i.Status,
+		&i.CurrentVersionID,
+		&i.NextRenewAt,
+		&i.FailureCount,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getCertificateVersion = `-- name: GetCertificateVersion :one
 SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, chain_der, private_key, source, ari_window, revoked_at, created_at FROM certificate_versions WHERE id = $1 AND cert_id = $2
 `
@@ -332,19 +366,85 @@ func (q *Queries) ListCertificateVersionsByIDs(ctx context.Context, dollar_1 []u
 	return items, nil
 }
 
-const listCertificates = `-- name: ListCertificates :many
-SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at FROM certificates WHERE org_id = $1 ORDER BY name
+const listCertificatesPageByNameAsc = `-- name: ListCertificatesPageByNameAsc :many
+
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.name AS sort_key FROM certificates c
+WHERE c.org_id = $1
+  AND ($2::text = '' OR c.status = $2)
+  AND ($3::text = ''
+       OR position(lower($3::text) in lower(c.name)) > 0
+       OR position(lower($3::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower($3::text) in lower(s)) > 0))
+  AND (NOT $4::bool OR (c.name, c.id) > ($5::text, $6::uuid))
+ORDER BY c.name ASC, c.id ASC
+LIMIT $7::int
 `
 
-func (q *Queries) ListCertificates(ctx context.Context, orgID uuid.UUID) ([]Certificate, error) {
-	rows, err := q.db.Query(ctx, listCertificates, orgID)
+type ListCertificatesPageByNameAscParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	StatusFilter string    `json:"status_filter"`
+	QFilter      string    `json:"q_filter"`
+	HasCursor    bool      `json:"has_cursor"`
+	LastKey      string    `json:"last_key"`
+	LastID       uuid.UUID `json:"last_id"`
+	PageLimit    int32     `json:"page_limit"`
+}
+
+type ListCertificatesPageByNameAscRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	SortKey           string     `json:"sort_key"`
+}
+
+// The 8 queries below back ListCertificates' keyset-paged listing (one per
+// supported sort field x direction). They share the same q/status filter
+// and cursor shape:
+//   - status_filter/q_filter: ” means "no filter"; q is a case-insensitive
+//     substring match against the certificate's name, common name, and any
+//     SAN (mirrors the old in-memory listParams.matches).
+//   - has_cursor/last_key/last_id: has_cursor false means "first page";
+//     otherwise the predicate resumes strictly after (last_key, last_id) in
+//     the query's sort order, which is why every ORDER BY also breaks ties
+//     on id.
+//   - page_limit is the caller's page size + 1, so the handler can detect
+//     whether there is a next page without a second round trip.
+//
+// A nullable sort column (next_renew_at, and not_after via the current
+// version, which is null for a pending certificate) is coalesced to the
+// X.509 "no well-defined expiration" sentinel (9999-12-31T23:59:59Z, well
+// outside any real certificate lifetime) so it sorts last ascending and
+// first descending — Postgres's own NULLS LAST/NULLS FIRST defaults —
+// without the keyset predicate's row comparison ever seeing a NULL, which
+// would otherwise silently exclude every subsequent row.
+func (q *Queries) ListCertificatesPageByNameAsc(ctx context.Context, arg ListCertificatesPageByNameAscParams) ([]ListCertificatesPageByNameAscRow, error) {
+	rows, err := q.db.Query(ctx, listCertificatesPageByNameAsc,
+		arg.OrgID,
+		arg.StatusFilter,
+		arg.QFilter,
+		arg.HasCursor,
+		arg.LastKey,
+		arg.LastID,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Certificate{}
+	items := []ListCertificatesPageByNameAscRow{}
 	for rows.Next() {
-		var i Certificate
+		var i ListCertificatesPageByNameAscRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
@@ -360,6 +460,610 @@ func (q *Queries) ListCertificates(ctx context.Context, orgID uuid.UUID) ([]Cert
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SortKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCertificatesPageByNameDesc = `-- name: ListCertificatesPageByNameDesc :many
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.name AS sort_key FROM certificates c
+WHERE c.org_id = $1
+  AND ($2::text = '' OR c.status = $2)
+  AND ($3::text = ''
+       OR position(lower($3::text) in lower(c.name)) > 0
+       OR position(lower($3::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower($3::text) in lower(s)) > 0))
+  AND (NOT $4::bool OR (c.name, c.id) < ($5::text, $6::uuid))
+ORDER BY c.name DESC, c.id DESC
+LIMIT $7::int
+`
+
+type ListCertificatesPageByNameDescParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	StatusFilter string    `json:"status_filter"`
+	QFilter      string    `json:"q_filter"`
+	HasCursor    bool      `json:"has_cursor"`
+	LastKey      string    `json:"last_key"`
+	LastID       uuid.UUID `json:"last_id"`
+	PageLimit    int32     `json:"page_limit"`
+}
+
+type ListCertificatesPageByNameDescRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	SortKey           string     `json:"sort_key"`
+}
+
+func (q *Queries) ListCertificatesPageByNameDesc(ctx context.Context, arg ListCertificatesPageByNameDescParams) ([]ListCertificatesPageByNameDescRow, error) {
+	rows, err := q.db.Query(ctx, listCertificatesPageByNameDesc,
+		arg.OrgID,
+		arg.StatusFilter,
+		arg.QFilter,
+		arg.HasCursor,
+		arg.LastKey,
+		arg.LastID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificatesPageByNameDescRow{}
+	for rows.Next() {
+		var i ListCertificatesPageByNameDescRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.CommonName,
+			&i.Sans,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.Status,
+			&i.CurrentVersionID,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SortKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCertificatesPageByNextRenewAtAsc = `-- name: ListCertificatesPageByNextRenewAtAsc :many
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
+WHERE c.org_id = $1
+  AND ($2::text = '' OR c.status = $2)
+  AND ($3::text = ''
+       OR position(lower($3::text) in lower(c.name)) > 0
+       OR position(lower($3::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower($3::text) in lower(s)) > 0))
+  AND (NOT $4::bool
+       OR (COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00'), c.id) > ($5::timestamptz, $6::uuid))
+ORDER BY sort_key ASC, c.id ASC
+LIMIT $7::int
+`
+
+type ListCertificatesPageByNextRenewAtAscParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	StatusFilter string    `json:"status_filter"`
+	QFilter      string    `json:"q_filter"`
+	HasCursor    bool      `json:"has_cursor"`
+	LastKey      time.Time `json:"last_key"`
+	LastID       uuid.UUID `json:"last_id"`
+	PageLimit    int32     `json:"page_limit"`
+}
+
+type ListCertificatesPageByNextRenewAtAscRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	SortKey           *time.Time `json:"sort_key"`
+}
+
+func (q *Queries) ListCertificatesPageByNextRenewAtAsc(ctx context.Context, arg ListCertificatesPageByNextRenewAtAscParams) ([]ListCertificatesPageByNextRenewAtAscRow, error) {
+	rows, err := q.db.Query(ctx, listCertificatesPageByNextRenewAtAsc,
+		arg.OrgID,
+		arg.StatusFilter,
+		arg.QFilter,
+		arg.HasCursor,
+		arg.LastKey,
+		arg.LastID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificatesPageByNextRenewAtAscRow{}
+	for rows.Next() {
+		var i ListCertificatesPageByNextRenewAtAscRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.CommonName,
+			&i.Sans,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.Status,
+			&i.CurrentVersionID,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SortKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCertificatesPageByNextRenewAtDesc = `-- name: ListCertificatesPageByNextRenewAtDesc :many
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
+WHERE c.org_id = $1
+  AND ($2::text = '' OR c.status = $2)
+  AND ($3::text = ''
+       OR position(lower($3::text) in lower(c.name)) > 0
+       OR position(lower($3::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower($3::text) in lower(s)) > 0))
+  AND (NOT $4::bool
+       OR (COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00'), c.id) < ($5::timestamptz, $6::uuid))
+ORDER BY sort_key DESC, c.id DESC
+LIMIT $7::int
+`
+
+type ListCertificatesPageByNextRenewAtDescParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	StatusFilter string    `json:"status_filter"`
+	QFilter      string    `json:"q_filter"`
+	HasCursor    bool      `json:"has_cursor"`
+	LastKey      time.Time `json:"last_key"`
+	LastID       uuid.UUID `json:"last_id"`
+	PageLimit    int32     `json:"page_limit"`
+}
+
+type ListCertificatesPageByNextRenewAtDescRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	SortKey           *time.Time `json:"sort_key"`
+}
+
+func (q *Queries) ListCertificatesPageByNextRenewAtDesc(ctx context.Context, arg ListCertificatesPageByNextRenewAtDescParams) ([]ListCertificatesPageByNextRenewAtDescRow, error) {
+	rows, err := q.db.Query(ctx, listCertificatesPageByNextRenewAtDesc,
+		arg.OrgID,
+		arg.StatusFilter,
+		arg.QFilter,
+		arg.HasCursor,
+		arg.LastKey,
+		arg.LastID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificatesPageByNextRenewAtDescRow{}
+	for rows.Next() {
+		var i ListCertificatesPageByNextRenewAtDescRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.CommonName,
+			&i.Sans,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.Status,
+			&i.CurrentVersionID,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SortKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCertificatesPageByNotAfterAsc = `-- name: ListCertificatesPageByNotAfterAsc :many
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.org_id = $1
+  AND ($2::text = '' OR c.status = $2)
+  AND ($3::text = ''
+       OR position(lower($3::text) in lower(c.name)) > 0
+       OR position(lower($3::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower($3::text) in lower(s)) > 0))
+  AND (NOT $4::bool
+       OR (COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00'), c.id) > ($5::timestamptz, $6::uuid))
+ORDER BY sort_key ASC, c.id ASC
+LIMIT $7::int
+`
+
+type ListCertificatesPageByNotAfterAscParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	StatusFilter string    `json:"status_filter"`
+	QFilter      string    `json:"q_filter"`
+	HasCursor    bool      `json:"has_cursor"`
+	LastKey      time.Time `json:"last_key"`
+	LastID       uuid.UUID `json:"last_id"`
+	PageLimit    int32     `json:"page_limit"`
+}
+
+type ListCertificatesPageByNotAfterAscRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	SortKey           time.Time  `json:"sort_key"`
+}
+
+func (q *Queries) ListCertificatesPageByNotAfterAsc(ctx context.Context, arg ListCertificatesPageByNotAfterAscParams) ([]ListCertificatesPageByNotAfterAscRow, error) {
+	rows, err := q.db.Query(ctx, listCertificatesPageByNotAfterAsc,
+		arg.OrgID,
+		arg.StatusFilter,
+		arg.QFilter,
+		arg.HasCursor,
+		arg.LastKey,
+		arg.LastID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificatesPageByNotAfterAscRow{}
+	for rows.Next() {
+		var i ListCertificatesPageByNotAfterAscRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.CommonName,
+			&i.Sans,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.Status,
+			&i.CurrentVersionID,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SortKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCertificatesPageByNotAfterDesc = `-- name: ListCertificatesPageByNotAfterDesc :many
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.org_id = $1
+  AND ($2::text = '' OR c.status = $2)
+  AND ($3::text = ''
+       OR position(lower($3::text) in lower(c.name)) > 0
+       OR position(lower($3::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower($3::text) in lower(s)) > 0))
+  AND (NOT $4::bool
+       OR (COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00'), c.id) < ($5::timestamptz, $6::uuid))
+ORDER BY sort_key DESC, c.id DESC
+LIMIT $7::int
+`
+
+type ListCertificatesPageByNotAfterDescParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	StatusFilter string    `json:"status_filter"`
+	QFilter      string    `json:"q_filter"`
+	HasCursor    bool      `json:"has_cursor"`
+	LastKey      time.Time `json:"last_key"`
+	LastID       uuid.UUID `json:"last_id"`
+	PageLimit    int32     `json:"page_limit"`
+}
+
+type ListCertificatesPageByNotAfterDescRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	SortKey           time.Time  `json:"sort_key"`
+}
+
+func (q *Queries) ListCertificatesPageByNotAfterDesc(ctx context.Context, arg ListCertificatesPageByNotAfterDescParams) ([]ListCertificatesPageByNotAfterDescRow, error) {
+	rows, err := q.db.Query(ctx, listCertificatesPageByNotAfterDesc,
+		arg.OrgID,
+		arg.StatusFilter,
+		arg.QFilter,
+		arg.HasCursor,
+		arg.LastKey,
+		arg.LastID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificatesPageByNotAfterDescRow{}
+	for rows.Next() {
+		var i ListCertificatesPageByNotAfterDescRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.CommonName,
+			&i.Sans,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.Status,
+			&i.CurrentVersionID,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SortKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCertificatesPageByStatusAsc = `-- name: ListCertificatesPageByStatusAsc :many
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.status AS sort_key FROM certificates c
+WHERE c.org_id = $1
+  AND ($2::text = '' OR c.status = $2)
+  AND ($3::text = ''
+       OR position(lower($3::text) in lower(c.name)) > 0
+       OR position(lower($3::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower($3::text) in lower(s)) > 0))
+  AND (NOT $4::bool OR (c.status, c.id) > ($5::text, $6::uuid))
+ORDER BY c.status ASC, c.id ASC
+LIMIT $7::int
+`
+
+type ListCertificatesPageByStatusAscParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	StatusFilter string    `json:"status_filter"`
+	QFilter      string    `json:"q_filter"`
+	HasCursor    bool      `json:"has_cursor"`
+	LastKey      string    `json:"last_key"`
+	LastID       uuid.UUID `json:"last_id"`
+	PageLimit    int32     `json:"page_limit"`
+}
+
+type ListCertificatesPageByStatusAscRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	SortKey           string     `json:"sort_key"`
+}
+
+func (q *Queries) ListCertificatesPageByStatusAsc(ctx context.Context, arg ListCertificatesPageByStatusAscParams) ([]ListCertificatesPageByStatusAscRow, error) {
+	rows, err := q.db.Query(ctx, listCertificatesPageByStatusAsc,
+		arg.OrgID,
+		arg.StatusFilter,
+		arg.QFilter,
+		arg.HasCursor,
+		arg.LastKey,
+		arg.LastID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificatesPageByStatusAscRow{}
+	for rows.Next() {
+		var i ListCertificatesPageByStatusAscRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.CommonName,
+			&i.Sans,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.Status,
+			&i.CurrentVersionID,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SortKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCertificatesPageByStatusDesc = `-- name: ListCertificatesPageByStatusDesc :many
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.status AS sort_key FROM certificates c
+WHERE c.org_id = $1
+  AND ($2::text = '' OR c.status = $2)
+  AND ($3::text = ''
+       OR position(lower($3::text) in lower(c.name)) > 0
+       OR position(lower($3::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower($3::text) in lower(s)) > 0))
+  AND (NOT $4::bool OR (c.status, c.id) < ($5::text, $6::uuid))
+ORDER BY c.status DESC, c.id DESC
+LIMIT $7::int
+`
+
+type ListCertificatesPageByStatusDescParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	StatusFilter string    `json:"status_filter"`
+	QFilter      string    `json:"q_filter"`
+	HasCursor    bool      `json:"has_cursor"`
+	LastKey      string    `json:"last_key"`
+	LastID       uuid.UUID `json:"last_id"`
+	PageLimit    int32     `json:"page_limit"`
+}
+
+type ListCertificatesPageByStatusDescRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	CommonName        string     `json:"common_name"`
+	Sans              []string   `json:"sans"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	Status            string     `json:"status"`
+	CurrentVersionID  *uuid.UUID `json:"current_version_id"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	SortKey           string     `json:"sort_key"`
+}
+
+func (q *Queries) ListCertificatesPageByStatusDesc(ctx context.Context, arg ListCertificatesPageByStatusDescParams) ([]ListCertificatesPageByStatusDescRow, error) {
+	rows, err := q.db.Query(ctx, listCertificatesPageByStatusDesc,
+		arg.OrgID,
+		arg.StatusFilter,
+		arg.QFilter,
+		arg.HasCursor,
+		arg.LastKey,
+		arg.LastID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificatesPageByStatusDescRow{}
+	for rows.Next() {
+		var i ListCertificatesPageByStatusDescRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.CommonName,
+			&i.Sans,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.Status,
+			&i.CurrentVersionID,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SortKey,
 		); err != nil {
 			return nil, err
 		}

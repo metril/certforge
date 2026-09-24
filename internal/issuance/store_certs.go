@@ -492,7 +492,9 @@ func (s *Store) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in C
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
-	curRow, err := q.GetCertificate(ctx, sqlcgen.GetCertificateParams{ID: id, OrgID: orgID})
+	// FOR UPDATE: a concurrent update racing this one must not compute
+	// reissue from names that are already stale by the time either commits.
+	curRow, err := q.GetCertificateForUpdate(ctx, sqlcgen.GetCertificateForUpdateParams{ID: id, OrgID: orgID})
 	if err != nil {
 		return Certificate{}, false, notFound(err)
 	}
@@ -545,21 +547,242 @@ func (s *Store) CertificateByID(ctx context.Context, id uuid.UUID) (Certificate,
 	return certFromRow(row)
 }
 
-// ListCertificates returns the org's certificates by name.
-func (s *Store) ListCertificates(ctx context.Context, orgID uuid.UUID) ([]Certificate, error) {
-	rows, err := s.q.ListCertificates(ctx, orgID)
-	if err != nil {
-		return nil, err
+// ListSort is a supported certificate list sort field.
+type ListSort string
+
+// Supported certificate list sort fields.
+const (
+	SortName        ListSort = "name"
+	SortStatus      ListSort = "status"
+	SortNextRenewAt ListSort = "nextRenewAt"
+	SortNotAfter    ListSort = "notAfter"
+)
+
+// ListCursor resumes a keyset page strictly after the row whose sort field
+// formatted to Key and whose id is ID.
+type ListCursor struct {
+	Key string
+	ID  uuid.UUID
+}
+
+// ListQuery is one page's filter, sort and paging request.
+type ListQuery struct {
+	Status string // "" = no filter
+	Q      string // "" = no filter; case-insensitive substring of the name, common name, or any SAN
+	Sort   ListSort
+	Desc   bool
+	Cursor *ListCursor // nil = first page
+	Limit  int
+}
+
+// ListPage is one page of certificates plus the cursor for the next one
+// (nil on the last page).
+type ListPage struct {
+	Certificates []Certificate
+	NextCursor   *ListCursor
+}
+
+// certListRow is the shape shared by every ListCertificatesPageBy*Row type,
+// used to build a Certificate without repeating the same field list eight
+// times.
+type certListRow struct {
+	ID                uuid.UUID
+	OrgID             uuid.UUID
+	Name              string
+	CommonName        string
+	Sans              []string
+	VerificationRules []byte
+	Overrides         []byte
+	Status            string
+	CurrentVersionID  *uuid.UUID
+	NextRenewAt       *time.Time
+	FailureCount      int32
+	LastError         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+func (r certListRow) toCertificate() (Certificate, error) {
+	return certFromRow(sqlcgen.Certificate{ID: r.ID, OrgID: r.OrgID, Name: r.Name, CommonName: r.CommonName, Sans: r.Sans,
+		VerificationRules: r.VerificationRules, Overrides: r.Overrides, Status: r.Status, CurrentVersionID: r.CurrentVersionID,
+		NextRenewAt: r.NextRenewAt, FailureCount: r.FailureCount, LastError: r.LastError, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt})
+}
+
+func formatCursorTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+
+// buildListPage trims rows (already fetched as limit+1, in sort order) to a
+// page of at most limit certificates and computes the next cursor from the
+// last row kept, when there were more rows than the page holds.
+func buildListPage(certs []Certificate, keys []string, limit int) ListPage {
+	more := len(certs) > limit
+	if more {
+		certs = certs[:limit]
+		keys = keys[:limit]
 	}
-	out := make([]Certificate, 0, len(rows))
-	for _, r := range rows {
-		c, err := certFromRow(r)
-		if err != nil {
-			return nil, err
+	p := ListPage{Certificates: certs}
+	if more && len(certs) > 0 {
+		last := len(certs) - 1
+		p.NextCursor = &ListCursor{Key: keys[last], ID: certs[last].ID}
+	}
+	return p
+}
+
+// ListCertificatesPage returns one keyset page of the org's certificates,
+// filtered by q.Status and q.Q and ordered by q.Sort (q.Desc for
+// descending), every sort breaking ties on id. Unlike an offset cursor over
+// an in-memory sort of the whole org, a keyset cursor stays correct while
+// rows are inserted or deleted between calls: it resumes strictly after the
+// specific row it names, not after a row count that shifts as the
+// underlying set changes.
+func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q ListQuery) (ListPage, error) {
+	hasCursor := q.Cursor != nil
+	var lastID uuid.UUID
+	var lastKeyText string
+	var lastKeyTime time.Time
+	if hasCursor {
+		lastID = q.Cursor.ID
+		switch q.Sort {
+		case SortNextRenewAt, SortNotAfter:
+			t, err := time.Parse(time.RFC3339Nano, q.Cursor.Key)
+			if err != nil {
+				return ListPage{}, &ValidationError{"cursor", "cursor is not from this list"}
+			}
+			lastKeyTime = t
+		default:
+			lastKeyText = q.Cursor.Key
 		}
-		out = append(out, c)
 	}
-	return out, nil
+	limit := int32(q.Limit + 1)
+	var certs []Certificate
+	var keys []string
+	appendRow := func(r certListRow, key string) error {
+		c, err := r.toCertificate()
+		if err != nil {
+			return err
+		}
+		certs = append(certs, c)
+		keys = append(keys, key)
+		return nil
+	}
+
+	switch {
+	case q.Sort == SortName && !q.Desc:
+		rows, err := s.q.ListCertificatesPageByNameAsc(ctx, sqlcgen.ListCertificatesPageByNameAscParams{
+			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
+		if err != nil {
+			return ListPage{}, err
+		}
+		for _, r := range rows {
+			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+			if err := appendRow(row, r.SortKey); err != nil {
+				return ListPage{}, err
+			}
+		}
+	case q.Sort == SortName && q.Desc:
+		rows, err := s.q.ListCertificatesPageByNameDesc(ctx, sqlcgen.ListCertificatesPageByNameDescParams{
+			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
+		if err != nil {
+			return ListPage{}, err
+		}
+		for _, r := range rows {
+			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+			if err := appendRow(row, r.SortKey); err != nil {
+				return ListPage{}, err
+			}
+		}
+	case q.Sort == SortStatus && !q.Desc:
+		rows, err := s.q.ListCertificatesPageByStatusAsc(ctx, sqlcgen.ListCertificatesPageByStatusAscParams{
+			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
+		if err != nil {
+			return ListPage{}, err
+		}
+		for _, r := range rows {
+			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+			if err := appendRow(row, r.SortKey); err != nil {
+				return ListPage{}, err
+			}
+		}
+	case q.Sort == SortStatus && q.Desc:
+		rows, err := s.q.ListCertificatesPageByStatusDesc(ctx, sqlcgen.ListCertificatesPageByStatusDescParams{
+			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
+		if err != nil {
+			return ListPage{}, err
+		}
+		for _, r := range rows {
+			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+			if err := appendRow(row, r.SortKey); err != nil {
+				return ListPage{}, err
+			}
+		}
+	case q.Sort == SortNextRenewAt && !q.Desc:
+		rows, err := s.q.ListCertificatesPageByNextRenewAtAsc(ctx, sqlcgen.ListCertificatesPageByNextRenewAtAscParams{
+			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
+		if err != nil {
+			return ListPage{}, err
+		}
+		for _, r := range rows {
+			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+			var key time.Time
+			if r.SortKey != nil {
+				key = *r.SortKey
+			}
+			if err := appendRow(row, formatCursorTime(key)); err != nil {
+				return ListPage{}, err
+			}
+		}
+	case q.Sort == SortNextRenewAt && q.Desc:
+		rows, err := s.q.ListCertificatesPageByNextRenewAtDesc(ctx, sqlcgen.ListCertificatesPageByNextRenewAtDescParams{
+			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
+		if err != nil {
+			return ListPage{}, err
+		}
+		for _, r := range rows {
+			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+			var key time.Time
+			if r.SortKey != nil {
+				key = *r.SortKey
+			}
+			if err := appendRow(row, formatCursorTime(key)); err != nil {
+				return ListPage{}, err
+			}
+		}
+	case q.Sort == SortNotAfter && !q.Desc:
+		rows, err := s.q.ListCertificatesPageByNotAfterAsc(ctx, sqlcgen.ListCertificatesPageByNotAfterAscParams{
+			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
+		if err != nil {
+			return ListPage{}, err
+		}
+		for _, r := range rows {
+			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+			if err := appendRow(row, formatCursorTime(r.SortKey)); err != nil {
+				return ListPage{}, err
+			}
+		}
+	case q.Sort == SortNotAfter && q.Desc:
+		rows, err := s.q.ListCertificatesPageByNotAfterDesc(ctx, sqlcgen.ListCertificatesPageByNotAfterDescParams{
+			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
+		if err != nil {
+			return ListPage{}, err
+		}
+		for _, r := range rows {
+			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+			if err := appendRow(row, formatCursorTime(r.SortKey)); err != nil {
+				return ListPage{}, err
+			}
+		}
+	default:
+		return ListPage{}, &ValidationError{"sort", "sort by one of name, notAfter, nextRenewAt, status"}
+	}
+
+	return buildListPage(certs, keys, q.Limit), nil
 }
 
 // DeleteCertificate deletes a certificate and all its versions and attempts.

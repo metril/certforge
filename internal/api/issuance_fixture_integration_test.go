@@ -69,9 +69,12 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	}
 	store := issuance.NewStore(pool, box, settingsStore)
 	certs := certstore.New(pool, box)
+	aud := audit.New(pool)
 	svc := issuance.NewService(store, certs, &fakeJobs{queued: map[uuid.UUID]bool{}})
 	svc.NewRegistrar = func(issuance.CA) issuance.Registrar { return &fakeRegistrar{} }
-	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Auditor: audit.New(pool), Issuance: svc, Certs: certs,
+	svc.Auditor = aud
+	svc.Log = slog.Default()
+	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Auditor: aud, Issuance: svc, Certs: certs,
 		Settings: settingsStore, Sections: sections}}
 	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, org: dbtest.Org(t, pool)}
 }

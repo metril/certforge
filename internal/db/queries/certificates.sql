@@ -16,8 +16,135 @@ SELECT * FROM certificates WHERE id = $1 AND org_id = $2;
 -- name: GetCertificateByID :one
 SELECT * FROM certificates WHERE id = $1;
 
--- name: ListCertificates :many
-SELECT * FROM certificates WHERE org_id = $1 ORDER BY name;
+-- name: GetCertificateForUpdate :one
+-- Locks the row for the duration of UpdateCertificate's read-compute-write,
+-- so a concurrent update cannot compute reissue from names that are already
+-- stale by the time this transaction commits.
+SELECT * FROM certificates WHERE id = $1 AND org_id = $2 FOR UPDATE;
+
+-- The 8 queries below back ListCertificates' keyset-paged listing (one per
+-- supported sort field x direction). They share the same q/status filter
+-- and cursor shape:
+--   - status_filter/q_filter: '' means "no filter"; q is a case-insensitive
+--     substring match against the certificate's name, common name, and any
+--     SAN (mirrors the old in-memory listParams.matches).
+--   - has_cursor/last_key/last_id: has_cursor false means "first page";
+--     otherwise the predicate resumes strictly after (last_key, last_id) in
+--     the query's sort order, which is why every ORDER BY also breaks ties
+--     on id.
+--   - page_limit is the caller's page size + 1, so the handler can detect
+--     whether there is a next page without a second round trip.
+-- A nullable sort column (next_renew_at, and not_after via the current
+-- version, which is null for a pending certificate) is coalesced to the
+-- X.509 "no well-defined expiration" sentinel (9999-12-31T23:59:59Z, well
+-- outside any real certificate lifetime) so it sorts last ascending and
+-- first descending — Postgres's own NULLS LAST/NULLS FIRST defaults —
+-- without the keyset predicate's row comparison ever seeing a NULL, which
+-- would otherwise silently exclude every subsequent row.
+
+-- name: ListCertificatesPageByNameAsc :many
+SELECT c.*, c.name AS sort_key FROM certificates c
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
+  AND (sqlc.arg(q_filter)::text = ''
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower(sqlc.arg(q_filter)::text) in lower(s)) > 0))
+  AND (NOT sqlc.arg(has_cursor)::bool OR (c.name, c.id) > (sqlc.arg(last_key)::text, sqlc.arg(last_id)::uuid))
+ORDER BY c.name ASC, c.id ASC
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ListCertificatesPageByNameDesc :many
+SELECT c.*, c.name AS sort_key FROM certificates c
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
+  AND (sqlc.arg(q_filter)::text = ''
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower(sqlc.arg(q_filter)::text) in lower(s)) > 0))
+  AND (NOT sqlc.arg(has_cursor)::bool OR (c.name, c.id) < (sqlc.arg(last_key)::text, sqlc.arg(last_id)::uuid))
+ORDER BY c.name DESC, c.id DESC
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ListCertificatesPageByStatusAsc :many
+SELECT c.*, c.status AS sort_key FROM certificates c
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
+  AND (sqlc.arg(q_filter)::text = ''
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower(sqlc.arg(q_filter)::text) in lower(s)) > 0))
+  AND (NOT sqlc.arg(has_cursor)::bool OR (c.status, c.id) > (sqlc.arg(last_key)::text, sqlc.arg(last_id)::uuid))
+ORDER BY c.status ASC, c.id ASC
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ListCertificatesPageByStatusDesc :many
+SELECT c.*, c.status AS sort_key FROM certificates c
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
+  AND (sqlc.arg(q_filter)::text = ''
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower(sqlc.arg(q_filter)::text) in lower(s)) > 0))
+  AND (NOT sqlc.arg(has_cursor)::bool OR (c.status, c.id) < (sqlc.arg(last_key)::text, sqlc.arg(last_id)::uuid))
+ORDER BY c.status DESC, c.id DESC
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ListCertificatesPageByNextRenewAtAsc :many
+SELECT c.*, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
+  AND (sqlc.arg(q_filter)::text = ''
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower(sqlc.arg(q_filter)::text) in lower(s)) > 0))
+  AND (NOT sqlc.arg(has_cursor)::bool
+       OR (COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00'), c.id) > (sqlc.arg(last_key)::timestamptz, sqlc.arg(last_id)::uuid))
+ORDER BY sort_key ASC, c.id ASC
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ListCertificatesPageByNextRenewAtDesc :many
+SELECT c.*, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
+  AND (sqlc.arg(q_filter)::text = ''
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower(sqlc.arg(q_filter)::text) in lower(s)) > 0))
+  AND (NOT sqlc.arg(has_cursor)::bool
+       OR (COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00'), c.id) < (sqlc.arg(last_key)::timestamptz, sqlc.arg(last_id)::uuid))
+ORDER BY sort_key DESC, c.id DESC
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ListCertificatesPageByNotAfterAsc :many
+SELECT c.*, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
+  AND (sqlc.arg(q_filter)::text = ''
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower(sqlc.arg(q_filter)::text) in lower(s)) > 0))
+  AND (NOT sqlc.arg(has_cursor)::bool
+       OR (COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00'), c.id) > (sqlc.arg(last_key)::timestamptz, sqlc.arg(last_id)::uuid))
+ORDER BY sort_key ASC, c.id ASC
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ListCertificatesPageByNotAfterDesc :many
+SELECT c.*, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
+  AND (sqlc.arg(q_filter)::text = ''
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
+       OR position(lower(sqlc.arg(q_filter)::text) in lower(c.common_name)) > 0
+       OR EXISTS (SELECT 1 FROM unnest(c.sans) AS s WHERE position(lower(sqlc.arg(q_filter)::text) in lower(s)) > 0))
+  AND (NOT sqlc.arg(has_cursor)::bool
+       OR (COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00'), c.id) < (sqlc.arg(last_key)::timestamptz, sqlc.arg(last_id)::uuid))
+ORDER BY sort_key DESC, c.id DESC
+LIMIT sqlc.arg(page_limit)::int;
 
 -- name: UpdateCertificate :one
 UPDATE certificates SET name = $3, common_name = $4, sans = $5, verification_rules = $6,

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -160,5 +161,152 @@ func TestListCertificatesPagesAndFilters(t *testing.T) {
 	filtered := res.(gen.ListCertificates200JSONResponse)
 	if len(filtered.Items) != 1 || filtered.Items[0].Name != "b-mail" {
 		t.Fatalf("q filter = %+v", filtered)
+	}
+}
+
+// TestListCertificatesKeysetSurvivesInsert is the Review Focus for the
+// keyset cursor fix: an offset cursor over an in-memory sort would either
+// skip or repeat a row here, because inserting "a-api" between the two
+// list calls shifts every row after it by one position. A keyset cursor
+// resumes strictly after the specific (name, id) pair page 1 ended on, so
+// the insert can only ever affect what page 1 itself would have returned
+// (had it run after the insert), never what page 2 returns from an
+// already-issued cursor: "a-api" sorts before that anchor, so it must not
+// appear on page 2, "b-mail" must not repeat, and "c-web" must not be
+// skipped.
+func TestListCertificatesKeysetSurvivesInsert(t *testing.T) {
+	f := newAPIFixture(t)
+	for _, name := range []string{"b-mail", "c-web"} {
+		in := issuance.CertInput{Name: name, CommonName: name + ".example.test"}
+		if _, err := f.store.CreateCertificate(context.Background(), f.org, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	one := 1
+	res, err := f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org, Params: gen.ListCertificatesParams{Limit: &one}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page1 := res.(gen.ListCertificates200JSONResponse)
+	if len(page1.Items) != 1 || page1.Items[0].Name != "b-mail" || page1.NextCursor == nil {
+		t.Fatalf("page1 = %+v", page1)
+	}
+
+	// Insert a row that sorts before the cursor's anchor, between the two
+	// page fetches - exactly the case that breaks an offset cursor.
+	in := issuance.CertInput{Name: "a-api", CommonName: "a-api.example.test"}
+	if _, err := f.store.CreateCertificate(context.Background(), f.org, in); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err = f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org,
+		Params: gen.ListCertificatesParams{Limit: &one, Cursor: page1.NextCursor}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page2 := res.(gen.ListCertificates200JSONResponse)
+	if len(page2.Items) != 1 || page2.Items[0].Name != "c-web" {
+		t.Fatalf("page2 skipped or duplicated a row after a concurrent insert: %+v", page2)
+	}
+}
+
+// TestListCertificatesTamperedCursor is the Review Focus for cursor
+// binding: a cursor decoded against different status/q/sort query
+// parameters than the ones it was issued for must be rejected, not
+// silently resume from the wrong place; so must a cursor string that isn't
+// valid base64url/JSON at all.
+func TestListCertificatesTamperedCursor(t *testing.T) {
+	f := newAPIFixture(t)
+	for _, name := range []string{"a-api", "b-mail"} {
+		in := issuance.CertInput{Name: name, CommonName: name + ".example.test"}
+		if _, err := f.store.CreateCertificate(context.Background(), f.org, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	one := 1
+	res, err := f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org, Params: gen.ListCertificatesParams{Limit: &one}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor := res.(gen.ListCertificates200JSONResponse).NextCursor
+	if cursor == nil {
+		t.Fatal("want a next cursor")
+	}
+
+	// The same cursor replayed with a different q no longer matches what it
+	// was issued for.
+	q := "mail"
+	_, err = f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org,
+		Params: gen.ListCertificatesParams{Limit: &one, Cursor: cursor, Q: &q}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	// A cursor that isn't the opaque format at all.
+	junk := "not-a-real-cursor"
+	_, err = f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org,
+		Params: gen.ListCertificatesParams{Limit: &one, Cursor: &junk}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+}
+
+// TestListCertificatesStatusFilterAndSort exercises the status filter and
+// two SQL-level sorts (status, nextRenewAt) end to end; the existing list
+// test only exercised the default name sort.
+func TestListCertificatesStatusFilterAndSort(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	var failedID string
+	for _, name := range []string{"a", "c"} {
+		in := issuance.CertInput{Name: name, CommonName: name + ".example.test"}
+		if _, err := f.store.CreateCertificate(ctx, f.org, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	in := issuance.CertInput{Name: "b", CommonName: "b.example.test"}
+	failed, err := f.store.CreateCertificate(ctx, f.org, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedID = failed.ID.String()
+	if err := f.store.MarkFailed(ctx, failed.ID, "failed", 1, "boom", time.Now().Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	status := "pending"
+	res, err := f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org, Params: gen.ListCertificatesParams{Status: (*gen.ListCertificatesParamsStatus)(&status)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := res.(gen.ListCertificates200JSONResponse)
+	if len(pending.Items) != 2 || pending.Items[0].Name != "a" || pending.Items[1].Name != "c" {
+		t.Fatalf("status=pending = %+v", pending)
+	}
+
+	status = "failed"
+	res, err = f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org, Params: gen.ListCertificatesParams{Status: (*gen.ListCertificatesParamsStatus)(&status)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedPage := res.(gen.ListCertificates200JSONResponse)
+	if len(failedPage.Items) != 1 || failedPage.Items[0].Id.String() != failedID {
+		t.Fatalf("status=failed = %+v", failedPage)
+	}
+
+	sortStatus := "status"
+	res, err = f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org, Params: gen.ListCertificatesParams{Sort: &sortStatus}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byStatus := res.(gen.ListCertificates200JSONResponse)
+	if len(byStatus.Items) != 3 || byStatus.Items[0].Status != "failed" || byStatus.Items[1].Status != "pending" || byStatus.Items[2].Status != "pending" {
+		t.Fatalf("sort=status = %+v", byStatus)
+	}
+
+	sortNextRenewDesc := "-nextRenewAt"
+	res, err = f.srv.ListCertificates(f.as("viewer"), gen.ListCertificatesRequestObject{OrgId: f.org, Params: gen.ListCertificatesParams{Sort: &sortNextRenewDesc}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byRenew := res.(gen.ListCertificates200JSONResponse)
+	if len(byRenew.Items) != 3 || byRenew.Items[0].Name != "b" {
+		t.Fatalf("sort=-nextRenewAt = %+v", byRenew)
 	}
 }

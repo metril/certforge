@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -100,12 +99,13 @@ func certIn(b *gen.CertificateInput) (issuance.CertInput, error) {
 	return in, nil
 }
 
-// ListCertificates returns one page of the org's certificates, filtered by
-// status and q and sorted per p. The effective config (global and org
-// defaults) and every matched certificate's current version are each
-// loaded once for the whole page rather than once per certificate, which a
-// naive per-item certOut call would otherwise do (2-3 queries per
-// certificate).
+// ListCertificates returns one keyset page of the org's certificates,
+// filtered by status and q and ordered by sort. Pagination resumes strictly
+// after a specific (sort key, id) pair rather than an in-memory row count,
+// so it stays correct while certificates are created or deleted between
+// pages. The effective config (global and org defaults) and every
+// certificate's current version on this page are each loaded once for the
+// whole page, not once per certificate.
 func (s *Server) ListCertificates(ctx context.Context, r gen.ListCertificatesRequestObject) (gen.ListCertificatesResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
 		return nil, err
@@ -114,23 +114,17 @@ func (s *Server) ListCertificates(ctx context.Context, r gen.ListCertificatesReq
 	if r.Params.Status != nil {
 		status = ptr(string(*r.Params.Status))
 	}
-	p, err := parseList(status, r.Params.Q, r.Params.Sort, r.Params.Limit, r.Params.Cursor)
+	p, err := parseCertList(status, r.Params.Q, r.Params.Sort, r.Params.Limit, r.Params.Cursor)
 	if err != nil {
 		return nil, err
 	}
-	certs, err := s.d.Issuance.Store.ListCertificates(ctx, r.OrgId)
-	if err != nil {
-		return nil, err
+	q := issuance.ListQuery{Status: p.status, Q: p.q, Sort: issuance.ListSort(p.sort), Desc: p.desc, Limit: p.limit}
+	if p.cursor != nil {
+		q.Cursor = &issuance.ListCursor{Key: p.cursor.LastKey, ID: p.cursor.LastID}
 	}
-	matched := make([]issuance.Certificate, 0, len(certs))
-	for _, c := range certs {
-		if p.status != "" && p.status != c.Status {
-			continue
-		}
-		if !p.matches(append([]string{c.Name}, c.Names()...)...) {
-			continue
-		}
-		matched = append(matched, c)
+	pg, err := s.d.Issuance.Store.ListCertificatesPage(ctx, r.OrgId, q)
+	if err != nil {
+		return nil, mapErr(err)
 	}
 
 	global, err := s.d.Issuance.Store.GlobalDefaults(ctx)
@@ -142,7 +136,7 @@ func (s *Server) ListCertificates(ctx context.Context, r gen.ListCertificatesReq
 		return nil, err
 	}
 	var versionIDs []uuid.UUID
-	for _, c := range matched {
+	for _, c := range pg.Certificates {
 		if c.CurrentVersionID != nil {
 			versionIDs = append(versionIDs, *c.CurrentVersionID)
 		}
@@ -152,8 +146,8 @@ func (s *Server) ListCertificates(ctx context.Context, r gen.ListCertificatesReq
 		return nil, err
 	}
 
-	items := make([]gen.Certificate, 0, len(matched))
-	for _, c := range matched {
+	items := make([]gen.Certificate, 0, len(pg.Certificates))
+	for _, c := range pg.Certificates {
 		eff := issuance.Resolve(global, org, c.Overrides)
 		var v *certstore.Version
 		if c.CurrentVersionID != nil {
@@ -168,33 +162,19 @@ func (s *Server) ListCertificates(ctx context.Context, r gen.ListCertificatesReq
 		items = append(items, o)
 	}
 
-	never := time.Unix(1<<40, 0) // sorts unset times last
-	renew := func(c gen.Certificate) time.Time {
-		if c.NextRenewAt == nil {
-			return never
-		}
-		return *c.NextRenewAt
+	var next *string
+	if pg.NextCursor != nil {
+		n := encodeCertCursor(certCursor{Sort: p.sort, Desc: p.desc, Q: p.q, Status: p.status,
+			LastKey: pg.NextCursor.Key, LastID: pg.NextCursor.ID})
+		next = &n
 	}
-	expiry := func(c gen.Certificate) time.Time {
-		if c.CurrentVersion == nil {
-			return never
-		}
-		return c.CurrentVersion.NotAfter
-	}
-	err = sortItems(items, p, "name", map[string]func(a, b gen.Certificate) int{
-		"name":        byString(func(c gen.Certificate) string { return c.Name }),
-		"status":      byString(func(c gen.Certificate) string { return string(c.Status) }),
-		"nextRenewAt": func(a, b gen.Certificate) int { return renew(a).Compare(renew(b)) },
-		"notAfter":    func(a, b gen.Certificate) int { return expiry(a).Compare(expiry(b)) },
-	})
-	if err != nil {
-		return nil, err
-	}
-	pg, next := page(items, p)
-	return gen.ListCertificates200JSONResponse{Items: pg, NextCursor: next}, nil
+	return gen.ListCertificates200JSONResponse{Items: items, NextCursor: next}, nil
 }
 
-// CreateCertificate stores a definition and queues the first issuance.
+// CreateCertificate stores a definition and queues the first issuance. The
+// audit event and the (best-effort) enqueue happen inside
+// Issuance.CreateCertificate, right after the write commits, not here: a
+// failure enqueuing must not turn an already-committed write into a 500.
 func (s *Server) CreateCertificate(ctx context.Context, r gen.CreateCertificateRequestObject) (gen.CreateCertificateResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
@@ -207,8 +187,6 @@ func (s *Server) CreateCertificate(ctx context.Context, r gen.CreateCertificateR
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	s.audit(ctx, audit.Event{Action: "certificate.create", ResourceType: "certificate", ResourceID: c.ID.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"name": c.Name, "commonName": c.CommonName, "sans": c.SANs}})
 	o, err := s.certOut(ctx, c)
 	return gen.CreateCertificate201JSONResponse(o), err
 }
@@ -227,7 +205,9 @@ func (s *Server) GetCertificate(ctx context.Context, r gen.GetCertificateRequest
 }
 
 // UpdateCertificate replaces a definition; changing names queues a new
-// issuance, other changes apply at the next renewal.
+// issuance, other changes apply at the next renewal. The audit event and
+// the (best-effort) enqueue happen inside Issuance.UpdateCertificate, right
+// after the write commits; see CreateCertificate.
 func (s *Server) UpdateCertificate(ctx context.Context, r gen.UpdateCertificateRequestObject) (gen.UpdateCertificateResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
@@ -240,8 +220,6 @@ func (s *Server) UpdateCertificate(ctx context.Context, r gen.UpdateCertificateR
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	s.audit(ctx, audit.Event{Action: "certificate.update", ResourceType: "certificate", ResourceID: c.ID.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"name": c.Name}})
 	o, err := s.certOut(ctx, c)
 	return gen.UpdateCertificate200JSONResponse(o), err
 }

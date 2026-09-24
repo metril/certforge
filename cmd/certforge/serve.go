@@ -66,8 +66,10 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return fmt.Errorf("start river: %w", err)
 	}
 	defer stopRiver(riverClient, log)
-	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	aud := audit.New(pool)
+	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
+	issuanceSvc.Auditor = aud
+	issuanceSvc.Log = log
 	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
 	handler := api.NewRouter(api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,

@@ -18,14 +18,25 @@ type Step struct {
 	Message    string     `json:"message,omitempty"`
 }
 
+// maxLogBytes bounds an attempt's stored log: a wedged or chatty provider
+// (or a manual-dns wait spanning up to an hour of poll attempts) must not
+// grow issuance_attempts.log without bound. Past the cap, the oldest lines
+// are dropped to make room for new ones and a single marker records that
+// truncation happened, instead of silently losing history with no trace.
+const maxLogBytes = 64 * 1024
+
+const truncatedMarker = "[log truncated]\n"
+
 // Timeline records the steps and log of one attempt and persists every
 // change through save. It implements challenge.StepSink.
 type Timeline struct {
-	mu    sync.Mutex
-	now   func() time.Time
-	save  func(steps []Step, log string)
-	steps []Step
-	log   strings.Builder
+	mu        sync.Mutex
+	now       func() time.Time
+	save      func(steps []Step, log string)
+	steps     []Step
+	logLines  []string
+	logBytes  int
+	truncated bool
 }
 
 // NewTimeline returns a Timeline; save may be nil.
@@ -54,12 +65,33 @@ func (t *Timeline) Step(name, status, message string) {
 	}
 	t.setLocked(name, status, message, now, false)
 	if message != "" {
-		fmt.Fprintf(&t.log, "%s %s [%s] %s\n", now.Format(time.RFC3339), name, status, message)
+		t.appendLog(fmt.Sprintf("%s %s [%s] %s\n", now.Format(time.RFC3339), name, status, message))
 	} else {
-		fmt.Fprintf(&t.log, "%s %s [%s]\n", now.Format(time.RFC3339), name, status)
+		t.appendLog(fmt.Sprintf("%s %s [%s]\n", now.Format(time.RFC3339), name, status))
 	}
 	steps, log := t.snapshotLocked()
 	t.save(steps, log)
+}
+
+// appendLog adds line to the log, dropping the oldest lines first when the
+// total would exceed maxLogBytes. Must be called with t.mu held.
+func (t *Timeline) appendLog(line string) {
+	t.logLines = append(t.logLines, line)
+	t.logBytes += len(line)
+	for t.logBytes > maxLogBytes && len(t.logLines) > 1 {
+		t.logBytes -= len(t.logLines[0])
+		t.logLines = t.logLines[1:]
+		t.truncated = true
+	}
+}
+
+// renderLog joins the retained log lines, prefixed with a single truncation
+// marker when older lines were dropped. Must be called with t.mu held.
+func (t *Timeline) renderLog() string {
+	if !t.truncated {
+		return strings.Join(t.logLines, "")
+	}
+	return truncatedMarker + strings.Join(t.logLines, "")
 }
 
 func (t *Timeline) setLocked(name, status, message string, now time.Time, onlyIfRunning bool) {
@@ -96,7 +128,7 @@ func (t *Timeline) setLocked(name, status, message string, now time.Time, onlyIf
 func (t *Timeline) Logf(format string, args ...any) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	fmt.Fprintf(&t.log, "%s %s\n", t.now().UTC().Format(time.RFC3339), fmt.Sprintf(format, args...))
+	t.appendLog(fmt.Sprintf("%s %s\n", t.now().UTC().Format(time.RFC3339), fmt.Sprintf(format, args...)))
 	steps, log := t.snapshotLocked()
 	t.save(steps, log)
 }
@@ -128,5 +160,5 @@ func (t *Timeline) Snapshot() ([]Step, string) {
 }
 
 func (t *Timeline) snapshotLocked() ([]Step, string) {
-	return append([]Step(nil), t.steps...), t.log.String()
+	return append([]Step(nil), t.steps...), t.renderLog()
 }

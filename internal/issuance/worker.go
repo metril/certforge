@@ -73,6 +73,27 @@ func DefaultSigner(ca CA) signer.Signer {
 // Timeout covers a manual-dns wait plus propagation and finalisation.
 func (w *IssueWorker) Timeout(*river.Job[IssueArgs]) time.Duration { return 3 * time.Hour }
 
+// maxPanicStackBytes bounds how much of a recovered panic's stack trace
+// goes into the attempt log; the full trace can run to tens of KiB and
+// would otherwise dominate maxLogBytes on its own.
+const maxPanicStackBytes = 4 * 1024
+
+// truncatedStack returns the current goroutine's stack trace, capped at
+// maxPanicStackBytes with a trailing marker when it was cut short.
+func truncatedStack() []byte { return truncateBytes(debug.Stack(), maxPanicStackBytes) }
+
+// truncateBytes returns the first max bytes of b, with a trailing marker
+// when b was longer than that.
+func truncateBytes(b []byte, max int) []byte {
+	if len(b) <= max {
+		return b
+	}
+	out := make([]byte, 0, max+32)
+	out = append(out, b[:max]...)
+	out = append(out, []byte("\n...[stack truncated]")...)
+	return out
+}
+
 // Work implements river.Worker.
 func (w *IssueWorker) Work(ctx context.Context, job *river.Job[IssueArgs]) error {
 	return w.Issue(ctx, job.Args.CertID)
@@ -106,7 +127,7 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 	defer func() {
 		if r := recover(); r != nil {
 			tl.Finish(challenge.StepFailed, fmt.Sprintf("panic: %v", r))
-			tl.Logf("panic: %v\n%s", r, debug.Stack())
+			tl.Logf("panic: %v\n%s", r, truncatedStack())
 			steps, log := tl.Snapshot()
 			if ferr := w.Store.FinishAttempt(bg, nil, attemptID, OutcomeFailed, "", nil, steps, log); ferr != nil {
 				w.Log.Error("finish attempt after panic", "attempt", attemptID, "err", ferr)

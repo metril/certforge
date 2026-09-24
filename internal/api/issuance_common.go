@@ -1,14 +1,14 @@
 package api
 
 import (
-	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/issuance"
@@ -53,23 +53,80 @@ func convert[T any](in any) (T, error) {
 
 func ptr[T any](v T) *T { return &v }
 
-// listParams are ?status=&q=&sort=&limit=&cursor= for paged lists.
-type listParams struct {
-	status, q, sort string
-	limit, offset   int
+// certSortFields are the values ?sort= accepts (without a leading "-").
+var certSortFields = []string{"name", "notAfter", "nextRenewAt", "status"}
+
+// certCursor is the opaque nextCursor/?cursor= payload: base64url JSON. It
+// binds to the exact status/q/sort/desc of the request it was issued for —
+// decodeCertCursor rejects a cursor whose bound params differ from the
+// current request, not just one that fails to parse — because a keyset
+// cursor names a specific row in a specific ordering: replaying it against
+// a different filter or sort would silently resume from the wrong place.
+type certCursor struct {
+	Sort    string    `json:"sort"`
+	Desc    bool      `json:"desc"`
+	Q       string    `json:"q"`
+	Status  string    `json:"status"`
+	LastKey string    `json:"lastKey"`
+	LastID  uuid.UUID `json:"lastId"`
 }
 
-// parseList validates and normalizes the standard list query parameters.
-func parseList(status, q, sort *string, limit *int, cursor *string) (listParams, error) {
-	p := listParams{limit: 50}
+func encodeCertCursor(c certCursor) string {
+	b, err := json.Marshal(c)
+	if err != nil {
+		panic(err) // certCursor always marshals
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func decodeCertCursor(s, status, q, sort string, desc bool) (*certCursor, error) {
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, unprocessable("cursor", "cursor is not from this list")
+	}
+	var c certCursor
+	if err := json.Unmarshal(b, &c); err != nil {
+		return nil, unprocessable("cursor", "cursor is not from this list")
+	}
+	if c.Status != status || c.Q != q || c.Sort != sort || c.Desc != desc {
+		return nil, unprocessable("cursor", "cursor does not match this request's status, q, or sort")
+	}
+	return &c, nil
+}
+
+// certListParams is one page's parsed and validated
+// ?status=&q=&sort=&limit=&cursor= request.
+type certListParams struct {
+	status string // "" = no filter
+	q      string // "" = no filter; lower-cased, trimmed
+	sort   string // canonical sort field, no leading "-"
+	desc   bool
+	limit  int
+	cursor *certCursor // nil = first page
+}
+
+// parseCertList validates and normalizes the certificate list's query
+// parameters. Sorting and filtering happen in the store (SQL), not here;
+// this only validates shape and, for a cursor, that it matches the rest of
+// the request.
+func parseCertList(status, q, sort *string, limit *int, cursor *string) (certListParams, error) {
+	p := certListParams{limit: 50, sort: "name"}
 	if status != nil {
 		p.status = *status
 	}
 	if q != nil {
 		p.q = strings.ToLower(strings.TrimSpace(*q))
 	}
-	if sort != nil {
-		p.sort = *sort
+	raw := "name"
+	if sort != nil && *sort != "" {
+		raw = *sort
+	}
+	p.desc = strings.HasPrefix(raw, "-")
+	p.sort = strings.TrimPrefix(raw, "-")
+	if !slices.Contains(certSortFields, p.sort) {
+		names := append([]string(nil), certSortFields...)
+		slices.Sort(names)
+		return p, unprocessable("sort", "sort by one of "+strings.Join(names, ", "))
 	}
 	if limit != nil {
 		if *limit < 1 || *limit > 500 {
@@ -78,70 +135,11 @@ func parseList(status, q, sort *string, limit *int, cursor *string) (listParams,
 		p.limit = *limit
 	}
 	if cursor != nil && *cursor != "" {
-		b, err := base64.RawURLEncoding.DecodeString(*cursor)
-		off, err2 := strconv.Atoi(strings.TrimPrefix(string(b), "o:"))
-		if err != nil || err2 != nil || off < 0 {
-			return p, unprocessable("cursor", "cursor is not from this list")
+		c, err := decodeCertCursor(*cursor, p.status, p.q, p.sort, p.desc)
+		if err != nil {
+			return p, err
 		}
-		p.offset = off
+		p.cursor = c
 	}
 	return p, nil
-}
-
-// matches reports whether the q search hits any field.
-//
-//nolint:unused // used by Task 14's certificate list handler.
-func (p listParams) matches(fields ...string) bool {
-	if p.q == "" {
-		return true
-	}
-	for _, f := range fields {
-		if strings.Contains(strings.ToLower(f), p.q) {
-			return true
-		}
-	}
-	return false
-}
-
-// sortItems sorts by p.sort ("key" or "-key"), def when empty; unknown keys are 422.
-func sortItems[T any](items []T, p listParams, def string, keys map[string]func(a, b T) int) error {
-	key := p.sort
-	if key == "" {
-		key = def
-	}
-	desc := strings.HasPrefix(key, "-")
-	cmpFn, ok := keys[strings.TrimPrefix(key, "-")]
-	if !ok {
-		names := make([]string, 0, len(keys))
-		for k := range keys {
-			names = append(names, k)
-		}
-		slices.Sort(names)
-		return unprocessable("sort", "sort by one of "+strings.Join(names, ", "))
-	}
-	slices.SortStableFunc(items, func(a, b T) int {
-		if desc {
-			return cmpFn(b, a)
-		}
-		return cmpFn(a, b)
-	})
-	return nil
-}
-
-// page cuts one page and returns the next cursor (nil on the last page).
-func page[T any](items []T, p listParams) ([]T, *string) {
-	if p.offset >= len(items) {
-		return []T{}, nil
-	}
-	end := min(p.offset+p.limit, len(items))
-	var next *string
-	if end < len(items) {
-		c := base64.RawURLEncoding.EncodeToString([]byte("o:" + strconv.Itoa(end)))
-		next = &c
-	}
-	return items[p.offset:end], next
-}
-
-func byString[T any](f func(T) string) func(a, b T) int {
-	return func(a, b T) int { return cmp.Compare(f(a), f(b)) }
 }
