@@ -11,10 +11,44 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 )
+
+// TestLoadPrincipalIgnoresSiteScopedBindings guards against privilege
+// escalation: site scope is not modelled in Phase 1, so a role_bindings row
+// with a non-NULL site_id must not be treated as an org-wide or global grant.
+func TestLoadPrincipalIgnoresSiteScopedBindings(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+	u, err := q.CreateLocalAdmin(ctx, "unused-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	org, err := q.CreateOrg(ctx, sqlcgen.CreateOrgParams{Slug: "home", Name: "Home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var siteID uuid.UUID
+	if err := pool.QueryRow(ctx, "INSERT INTO sites (org_id, name) VALUES ($1, $2) RETURNING id", org.ID, "Main").Scan(&siteID); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{
+		SubjectType: "user", Subject: u.ID.String(), Role: "admin", OrgID: &org.ID, SiteID: &siteID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := authn.LoadPrincipal(ctx, q, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Roles) != 0 || len(p.Bindings) != 0 || len(p.OrgIDs) != 0 {
+		t.Fatalf("principal %+v", p)
+	}
+}
 
 func seedAdmin(t *testing.T, q *sqlcgen.Queries) sqlcgen.User {
 	t.Helper()

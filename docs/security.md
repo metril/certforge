@@ -13,3 +13,4 @@
 - Sessions are server-side rows. The `cf_session` cookie holds a random 256-bit token. The database stores only its SHA-256. The cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` when the base URL is https or the request came over TLS. Lifetime is 12 hours. Expired sessions are rejected and purged hourly.
 - Every session has its own CSRF token, returned by `GET /api/v1/auth/me`. POST, PUT, PATCH, and DELETE with a session must send it in `X-CSRF-Token`, or they get 403. Request bodies must be `application/json` (415 otherwise), so a cross-site form cannot reach even public endpoints such as login and setup.
 - Disabled users and deleted users lose access on their next request.
+- Site scope is not modelled in Phase 1: role bindings with a non-NULL `site_id` are ignored when a principal is loaded, until site scope lands in Phase 2.

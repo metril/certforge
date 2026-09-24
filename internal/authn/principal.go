@@ -67,6 +67,11 @@ func LoadPrincipal(ctx context.Context, q *sqlcgen.Queries, u sqlcgen.User) (Pri
 	seenOrg := map[uuid.UUID]bool{}
 	global := false
 	for _, rb := range rbs {
+		if rb.SiteID != nil {
+			// Site scope is not modelled in Phase 1; a site-scoped binding
+			// contributes nothing until site scope lands in Phase 2.
+			continue
+		}
 		p.Bindings = append(p.Bindings, Binding{Role: rb.Role, OrgID: rb.OrgID})
 		if !seenRole[rb.Role] {
 			seenRole[rb.Role] = true
