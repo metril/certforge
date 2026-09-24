@@ -63,3 +63,13 @@ Generated code is committed. CI runs `make generate && git diff --exit-code`, so
 - One commit per plan task, made only after `make lint test test-integration` passes.
 - Author `metril <1517921+metril@users.noreply.github.com>`. Conventional prefix with scope, for example `feat(authn): ...`.
 - Each commit updates `docs/PROGRESS.md` and `CHANGELOG.md`, plus the docs for the code it changes.
+
+## Adding a settings section
+
+Register it at startup in `cmd/certforge/serve.go`:
+
+```go
+sections.MustRegister("my_section", json.RawMessage(schemaJSON), json.RawMessage(`{}`))
+```
+
+The default must validate against the schema. Every property needs `title` and `description` because the UI builds the form and tooltips from them.

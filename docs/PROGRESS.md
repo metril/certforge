@@ -25,8 +25,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 1 | Scaffold, Makefile, CI, lint | done | bf1241e |
 | 2 | Bootstrap config | done | d487450 |
 | 3 | Database, migrations, sqlc | done | f9421d2 |
-| 4 | Envelope encryption | done | pending |
-| 5 | Settings store, sections, canary | todo | – |
+| 4 | Envelope encryption | done | 5fdb42a |
+| 5 | Settings store, sections, canary | done | pending |
 | 6 | Local admin auth, sessions, CSRF | todo | – |
 | 7 | Authorization | todo | – |
 | 8 | Audit log | todo | – |
