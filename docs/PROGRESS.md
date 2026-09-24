@@ -55,8 +55,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 8 | Defaults resolver, renewal policy, backoff, timeline | done | b66a1b3 |
 | 9 | Issuance data layer | done | dacbf57 |
 | 10 | Certificate store and IssueWorker | done | 3df0fe4 |
-| 11 | Scheduler, river wiring, issuance service | done | pending |
-| 12 | API: CAs, accounts, defaults | todo | – |
+| 11 | Scheduler, river wiring, issuance service | done | 2ee0a17 |
+| 12 | API: CAs, accounts, defaults | done | pending |
 | 13 | API: DNS credentials | todo | – |
 | 14 | API: certificates, downloads, manual-dns | todo | – |
 | 15 | Pebble end-to-end test | todo | – |
@@ -89,6 +89,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 - 1B: the DNS credential test writes `_acme-challenge._certforge-test.<zone>` (lego always prepends `_acme-challenge.`).
 - 1B: fixed from Task 10's re-review — `FinishAttempt` only updates a row still `outcome = 'running'`, so a second finish (for example a panic recovery racing the worker's own error path) cannot overwrite a previously recorded outcome; the store now discards the `:execrows` row count since a no-op finish is not an error.
 - 1B: `api.Deps` gains `Issuance *issuance.Service`, wired in `serve.go` from the same `Store`/`certstore.Store`/river client the scheduler uses, so Tasks 12–14 build handlers directly on it. River's client is started with `context.Background()`, not the process's signal context, because cancelling the context passed to `Start` aborts running jobs immediately; graceful draining is `stopRiver`'s job (30 s `Stop`, then a 10 s `StopAndCancel`). `IssueWorker.Log` is now set to the server's configured logger instead of defaulting to `slog.Default()`.
+- 1B: API shapes follow plan 1C: CAs, accounts, credentials, versions, attempts and manual-dns records are plain arrays; only certificates page with `{items, nextCursor}` (offset cursor, filtered and sorted in memory at Phase 1 scale). Effective values report `source` `default` for built-ins.
+- 1B Task 12: `api.Deps` also gains `Certs *certstore.Store` (Task 14 downloads read certificate versions directly, without a second facade). `(*issuance.Store).DeleteCA` and `DeleteAccount` now run their count-then-delete inside one transaction that locks the parent row (`SELECT ... FOR UPDATE`, new `LockCA`/`LockAccount` queries) first, so a concurrent `acme_accounts` insert (which takes a lock on the referenced `cas` row for its foreign key) cannot slip a new reference in between the count and the delete; Task 13's DNS credential delete should follow the same pattern. `PUT /settings/issuance_defaults` (the generic settings-section handler) now special-cases the `issuance_defaults` section: it unmarshals the body and calls `(*issuance.Store).ValidateGlobalDefaults` before `Settings.PutSection`, returning 422 on failure, since the generic JSON-Schema validation alone does not check that a referenced CA/account/DNS credential exists. CA create/update/delete and ACME account create/delete are audited (`ca.create`/`update`/`delete`, `acme_account.create`/`delete`); org issuance-defaults writes are audited as `issuance_defaults.update`; the global section's write was already audited as `settings.update` by 1A and needed no new event.
 
 ## Known gaps
 

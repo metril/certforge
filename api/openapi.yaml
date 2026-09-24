@@ -27,6 +27,10 @@ tags:
     description: Schema-driven settings sections.
   - name: setup
     description: First-run setup wizard.
+  - name: issuers
+    description: CAs, ACME accounts and DNS credentials.
+  - name: certificates
+    description: Certificates and issuance defaults.
 paths:
   /setup/status:
     get:
@@ -168,6 +172,185 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SettingsSection"
+  /meta/ca-presets:
+    get:
+      operationId: listCaPresets
+      tags: [issuers]
+      summary: List CA presets
+      description: Well-known ACME CAs with their directory URLs and whether they require External Account Binding. Needs cas:read.
+      responses:
+        "200":
+          description: Presets in display order.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Presets.
+                items: {$ref: "#/components/schemas/CAPreset"}
+  /orgs/{orgId}/cas:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listCas
+      tags: [issuers]
+      summary: List ACME CAs
+      description: CAs of the org sorted by name. Needs cas:read.
+      responses:
+        "200":
+          description: All CAs of the org.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: CAs.
+                items: {$ref: "#/components/schemas/CA"}
+    post:
+      operationId: createCa
+      tags: [issuers]
+      summary: Add an ACME CA
+      description: Needs cas:write (global admin). A preset fills directoryUrl when omitted. Presets that require EAB return 422 without eabKid and eabHmac.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CAInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CA"}
+  /orgs/{orgId}/cas/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getCa
+      tags: [issuers]
+      summary: Get a CA
+      description: Needs cas:read.
+      responses:
+        "200":
+          description: The CA.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CA"}
+    put:
+      operationId: updateCa
+      tags: [issuers]
+      summary: Replace a CA
+      description: Needs cas:write. eabHmac omitted, null or __unchanged__ keeps the stored HMAC; an empty string removes it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CAInput"}
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CA"}
+    delete:
+      operationId: deleteCa
+      tags: [issuers]
+      summary: Delete a CA
+      description: Needs cas:write. 409 while accounts, certificates or defaults reference it.
+      responses:
+        "204":
+          description: Deleted.
+  /orgs/{orgId}/acme-accounts:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listAcmeAccounts
+      tags: [issuers]
+      summary: List ACME accounts
+      description: Accounts of the org sorted by email. Needs accounts:read.
+      responses:
+        "200":
+          description: All accounts of the org.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Accounts.
+                items: {$ref: "#/components/schemas/AcmeAccount"}
+    post:
+      operationId: createAcmeAccount
+      tags: [issuers]
+      summary: Register an ACME account
+      description: Needs accounts:write. Registers at the CA now (with the CA's EAB) and stores the account key encrypted. A CA rejection returns 502 with the ACME problem in detail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AcmeAccountInput"}
+      responses:
+        "201":
+          description: Registered.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AcmeAccount"}
+  /orgs/{orgId}/acme-accounts/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getAcmeAccount
+      tags: [issuers]
+      summary: Get an ACME account
+      description: Needs accounts:read.
+      responses:
+        "200":
+          description: The account.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AcmeAccount"}
+    delete:
+      operationId: deleteAcmeAccount
+      tags: [issuers]
+      summary: Delete an ACME account
+      description: Needs accounts:write. Removes the stored account only; it is not deactivated at the CA. 409 while referenced.
+      responses:
+        "204":
+          description: Deleted.
+  /orgs/{orgId}/issuance-defaults:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: getOrgIssuanceDefaults
+      tags: [certificates]
+      summary: Get org issuance defaults
+      description: The org level only; null fields inherit from the global settings section issuance_defaults. Needs certs:read.
+      responses:
+        "200":
+          description: Org defaults.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IssuanceDefaults"}
+    put:
+      operationId: putOrgIssuanceDefaults
+      tags: [certificates]
+      summary: Replace org issuance defaults
+      description: Null or omitted fields inherit from global. Applies at each inheriting certificate's next renewal. Needs certs:write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/IssuanceDefaults"}
+      responses:
+        "200":
+          description: Stored defaults.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IssuanceDefaults"}
+  /orgs/{orgId}/issuance-defaults/effective:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: getEffectiveIssuanceDefaults
+      tags: [certificates]
+      summary: Get effective org defaults
+      description: Each field's resolved value and the level it came from (default, global, org). Needs certs:read.
+      responses:
+        "200":
+          description: Effective defaults.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EffectiveIssuanceDefaults"}
 components:
   securitySchemes:
     sessionCookie:
@@ -175,6 +358,19 @@ components:
       in: cookie
       name: cf_session
       description: Session cookie from POST /auth/login.
+  parameters:
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      description: Org id.
+      schema: {type: string, format: uuid}
+    Id:
+      name: id
+      in: path
+      required: true
+      description: Resource id.
+      schema: {type: string, format: uuid}
   schemas:
     Problem:
       type: object
@@ -359,3 +555,231 @@ components:
         baseUrl:
           type: string
           description: Public URL of this CertForge instance, for example https://certs.example.com.
+    CAPresetCode:
+      type: string
+      description: CA preset code; custom takes any directory URL.
+      enum: [letsencrypt, letsencrypt-staging, zerossl, buypass, google, sslcom, custom]
+    CAPreset:
+      type: object
+      description: A well-known ACME CA.
+      required: [preset, name, directoryUrl, requiresEab]
+      properties:
+        preset:
+          description: Preset code.
+          allOf:
+            - $ref: "#/components/schemas/CAPresetCode"
+        name: {type: string, description: Display name.}
+        directoryUrl: {type: string, description: ACME directory URL; empty for custom.}
+        requiresEab: {type: boolean, description: The CA needs External Account Binding.}
+    CA:
+      type: object
+      description: An ACME certificate authority.
+      required: [id, name, preset, directoryUrl, resolvers]
+      properties:
+        id: {type: string, format: uuid, description: CA id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Unique name in the org.}
+        preset:
+          description: Preset code.
+          allOf:
+            - $ref: "#/components/schemas/CAPresetCode"
+        directoryUrl: {type: string, description: ACME directory URL.}
+        trustBundlePem: {type: string, description: Extra PEM roots for a private ACME server.}
+        eabKid: {type: string, description: EAB key id; empty when unused.}
+        hasEab: {type: boolean, description: An EAB HMAC is stored (it is never returned).}
+        resolvers: {type: array, items: {type: string}, description: DNS resolvers (host or host:port) for propagation checks.}
+        shared: {type: boolean, description: Reserved for Phase 2 global CAs; false in Phase 1.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    CAInput:
+      type: object
+      description: Fields to create or replace a CA.
+      required: [name, preset]
+      properties:
+        name: {type: string, description: Unique name in the org.}
+        preset:
+          description: Preset code.
+          allOf:
+            - $ref: "#/components/schemas/CAPresetCode"
+        directoryUrl: {type: string, description: Required for custom; defaults to the preset URL.}
+        trustBundlePem: {type: string, description: Extra PEM roots.}
+        eabKid: {type: string, description: EAB key id.}
+        eabHmac: {type: string, nullable: true, writeOnly: true, description: "EAB HMAC key (base64url). Write-only: on update null or __unchanged__ keeps it, empty string removes it."}
+        resolvers: {type: array, items: {type: string}, description: DNS resolvers for propagation checks.}
+    AcmeAccount:
+      type: object
+      description: A registered ACME account; its key never leaves the server.
+      required: [id, caId, email, status, registrationUri]
+      properties:
+        id: {type: string, format: uuid, description: Account id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        caId: {type: string, format: uuid, description: CA the account is registered with.}
+        email: {type: string, description: Contact email.}
+        status: {type: string, enum: [valid, deactivated], description: Account status.}
+        registrationUri: {type: string, description: Account URL (kid) at the CA.}
+        createdAt: {type: string, format: date-time, description: Registration time.}
+    AcmeAccountInput:
+      type: object
+      description: Account to register.
+      required: [caId, email]
+      properties:
+        caId: {type: string, format: uuid, description: CA to register with.}
+        email: {type: string, description: Contact email.}
+    KeyType:
+      type: string
+      description: Certificate key algorithm.
+      enum: [rsa2048, rsa3072, rsa4096, ec256, ec384]
+    RenewPolicy:
+      type: object
+      description: When to renew.
+      required: [mode, value, useAri]
+      properties:
+        mode: {type: string, enum: [days, percent], description: "days: renew value days before expiry. percent: renew when value percent of the lifetime remains."}
+        value: {type: integer, minimum: 1, maximum: 365, description: Days (1-365) or percent (1-99).}
+        useAri: {type: boolean, description: Stored now; ACME Renewal Information is used from Phase 4.}
+    VerificationRule:
+      type: object
+      description: How to prove control of the names this rule matches. First match wins.
+      required: [match, method]
+      properties:
+        match: {type: string, example: "*.example.com", description: "* (every name), *.zone (names one label below zone, and *.zone itself), or zone (the zone, its subdomains and wildcards)."}
+        method: {type: string, enum: [dns-01, manual-dns], description: Verification method.}
+        dnsCredentialId: {type: string, format: uuid, description: DNS credential; required for dns-01.}
+        propagationSeconds: {type: integer, minimum: 0, maximum: 3600, description: Propagation timeout override.}
+        resolvers: {type: array, items: {type: string}, description: Resolvers for propagation checks.}
+        cnameAliasZone: {type: string, description: Zone that _acme-challenge is CNAMEd into; checked before validation.}
+    IssuanceDefaults:
+      type: object
+      description: One level of issuance settings (org defaults or certificate overrides). Null or omitted inherits from the level above.
+      properties:
+        caId: {type: string, format: uuid, nullable: true, description: CA.}
+        accountId: {type: string, format: uuid, nullable: true, description: ACME account; must belong to the CA.}
+        keyType: {allOf: [{$ref: "#/components/schemas/KeyType"}], nullable: true, description: Key algorithm.}
+        renewPolicy: {allOf: [{$ref: "#/components/schemas/RenewPolicy"}], nullable: true, description: Renewal policy.}
+        preferredChain: {type: string, nullable: true, description: Issuer common name of the preferred alternate chain.}
+        reuseKey: {type: boolean, nullable: true, description: Keep the private key across renewals.}
+        mustStaple: {type: boolean, nullable: true, description: Request OCSP must-staple.}
+        verificationRules: {type: array, nullable: true, items: {$ref: "#/components/schemas/VerificationRule"}, description: Catch-all rules checked after a certificate's own rules.}
+        propagationSeconds: {type: integer, nullable: true, minimum: 0, maximum: 3600, description: Propagation timeout in seconds.}
+        resolvers: {type: array, nullable: true, items: {type: string}, description: Resolvers for propagation checks.}
+    Source:
+      type: string
+      description: Level an effective value came from; default means the built-in value.
+      enum: [default, global, org, cert]
+    EffectiveUuid:
+      type: object
+      description: Effective id and its source.
+      required: [source]
+      properties:
+        value: {type: string, format: uuid, nullable: true, description: Resolved value.}
+        source:
+          description: Level this value came from.
+          allOf:
+            - $ref: "#/components/schemas/Source"
+    EffectiveString:
+      type: object
+      description: Effective string and its source.
+      required: [value, source]
+      properties:
+        value: {type: string, description: Resolved value.}
+        source:
+          description: Level this value came from.
+          allOf:
+            - $ref: "#/components/schemas/Source"
+    EffectiveBool:
+      type: object
+      description: Effective flag and its source.
+      required: [value, source]
+      properties:
+        value: {type: boolean, description: Resolved value.}
+        source:
+          description: Level this value came from.
+          allOf:
+            - $ref: "#/components/schemas/Source"
+    EffectiveInt:
+      type: object
+      description: Effective number and its source.
+      required: [value, source]
+      properties:
+        value: {type: integer, description: Resolved value.}
+        source:
+          description: Level this value came from.
+          allOf:
+            - $ref: "#/components/schemas/Source"
+    EffectiveStrings:
+      type: object
+      description: Effective string list and its source.
+      required: [value, source]
+      properties:
+        value: {type: array, items: {type: string}, description: Resolved value.}
+        source:
+          description: Level this value came from.
+          allOf:
+            - $ref: "#/components/schemas/Source"
+    EffectiveRenewPolicy:
+      type: object
+      description: Effective renewal policy and its source.
+      required: [value, source]
+      properties:
+        value:
+          description: Resolved renewal policy.
+          allOf:
+            - $ref: "#/components/schemas/RenewPolicy"
+        source:
+          description: Level this value came from.
+          allOf:
+            - $ref: "#/components/schemas/Source"
+    EffectiveRules:
+      type: object
+      description: Effective catch-all rules and their source.
+      required: [value, source]
+      properties:
+        value: {type: array, items: {$ref: "#/components/schemas/VerificationRule"}, description: Resolved rules.}
+        source:
+          description: Level this value came from.
+          allOf:
+            - $ref: "#/components/schemas/Source"
+    EffectiveIssuanceDefaults:
+      type: object
+      description: Resolved issuance settings, each with the level it came from.
+      properties:
+        caId:
+          description: Resolved CA and its source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveUuid"
+        accountId:
+          description: Resolved ACME account and its source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveUuid"
+        keyType:
+          description: Resolved key algorithm and its source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveString"
+        renewPolicy:
+          description: Resolved renewal policy and its source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveRenewPolicy"
+        preferredChain:
+          description: Resolved preferred chain and its source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveString"
+        reuseKey:
+          description: Resolved reuse-key flag and its source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveBool"
+        mustStaple:
+          description: Resolved must-staple flag and its source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveBool"
+        verificationRules:
+          description: Resolved catch-all rules and their source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveRules"
+        propagationSeconds:
+          description: Resolved propagation timeout and its source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveInt"
+        resolvers:
+          description: Resolved resolvers and their source.
+          allOf:
+            - $ref: "#/components/schemas/EffectiveStrings"

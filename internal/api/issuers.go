@@ -1,0 +1,213 @@
+package api
+
+import (
+	"context"
+
+	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/authz"
+	"github.com/metril/certforge/internal/issuance"
+	acmesigner "github.com/metril/certforge/internal/signer/acme"
+)
+
+func caOut(c issuance.CA) gen.CA {
+	return gen.CA{Id: c.ID, OrgId: ptr(c.OrgID), Name: c.Name, Preset: gen.CAPresetCode(c.Preset), DirectoryUrl: c.DirectoryURL,
+		TrustBundlePem: ptr(c.TrustBundlePEM), EabKid: ptr(c.EABKid), HasEab: ptr(c.HasEAB), Resolvers: c.Resolvers,
+		Shared: ptr(c.Shared), CreatedAt: ptr(c.CreatedAt), UpdatedAt: ptr(c.UpdatedAt)}
+}
+
+func caIn(b *gen.CAInput) issuance.CAInput {
+	in := issuance.CAInput{Name: b.Name, Preset: string(b.Preset), EABHmac: b.EabHmac}
+	if b.DirectoryUrl != nil {
+		in.DirectoryURL = *b.DirectoryUrl
+	}
+	if b.TrustBundlePem != nil {
+		in.TrustBundlePEM = *b.TrustBundlePem
+	}
+	if b.EabKid != nil {
+		in.EABKid = *b.EabKid
+	}
+	if b.Resolvers != nil {
+		in.Resolvers = *b.Resolvers
+	}
+	return in
+}
+
+func accountOut(a issuance.Account) gen.AcmeAccount {
+	return gen.AcmeAccount{Id: a.ID, OrgId: ptr(a.OrgID), CaId: a.CAID, Email: a.Email, Status: gen.AcmeAccountStatus(a.Status),
+		RegistrationUri: a.RegistrationURI, CreatedAt: ptr(a.CreatedAt)}
+}
+
+// ListCaPresets returns the well-known ACME CAs offered on the CA screen.
+func (s *Server) ListCaPresets(ctx context.Context, _ gen.ListCaPresetsRequestObject) (gen.ListCaPresetsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCAsRead, nil); err != nil {
+		return nil, err
+	}
+	out, err := convert[[]gen.CAPreset](acmesigner.Presets())
+	return gen.ListCaPresets200JSONResponse(out), err
+}
+
+// ListCas returns the org's CAs sorted by name.
+func (s *Server) ListCas(ctx context.Context, r gen.ListCasRequestObject) (gen.ListCasResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCAsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	cas, err := s.d.Issuance.Store.ListCAs(ctx, r.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	out := make(gen.ListCas200JSONResponse, 0, len(cas))
+	for _, c := range cas {
+		out = append(out, caOut(c))
+	}
+	return out, nil
+}
+
+// CreateCa adds a CA to the org.
+func (s *Server) CreateCa(ctx context.Context, r gen.CreateCaRequestObject) (gen.CreateCaResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCAsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	c, err := s.d.Issuance.Store.CreateCA(ctx, r.OrgId, caIn(r.Body))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	s.audit(ctx, audit.Event{Action: "ca.create", ResourceType: "ca", ResourceID: c.ID.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"name": c.Name, "preset": c.Preset}})
+	return gen.CreateCa201JSONResponse(caOut(c)), nil
+}
+
+// GetCa returns one CA of the org.
+func (s *Server) GetCa(ctx context.Context, r gen.GetCaRequestObject) (gen.GetCaResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCAsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	c, err := s.d.Issuance.Store.GetCA(ctx, r.OrgId, r.Id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gen.GetCa200JSONResponse(caOut(c)), nil
+}
+
+// UpdateCa replaces a CA's fields.
+func (s *Server) UpdateCa(ctx context.Context, r gen.UpdateCaRequestObject) (gen.UpdateCaResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCAsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	c, err := s.d.Issuance.Store.UpdateCA(ctx, r.OrgId, r.Id, caIn(r.Body))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	s.audit(ctx, audit.Event{Action: "ca.update", ResourceType: "ca", ResourceID: c.ID.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"name": c.Name, "preset": c.Preset}})
+	return gen.UpdateCa200JSONResponse(caOut(c)), nil
+}
+
+// DeleteCa deletes a CA unreferenced by accounts, certificates or defaults.
+func (s *Server) DeleteCa(ctx context.Context, r gen.DeleteCaRequestObject) (gen.DeleteCaResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCAsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	if err := s.d.Issuance.Store.DeleteCA(ctx, r.OrgId, r.Id); err != nil {
+		return nil, mapErr(err)
+	}
+	s.audit(ctx, audit.Event{Action: "ca.delete", ResourceType: "ca", ResourceID: r.Id.String(), OrgID: &r.OrgId})
+	return gen.DeleteCa204Response{}, nil
+}
+
+// ListAcmeAccounts returns the org's ACME accounts sorted by email.
+func (s *Server) ListAcmeAccounts(ctx context.Context, r gen.ListAcmeAccountsRequestObject) (gen.ListAcmeAccountsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionAccountsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	accts, err := s.d.Issuance.Store.ListAccounts(ctx, r.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	out := make(gen.ListAcmeAccounts200JSONResponse, 0, len(accts))
+	for _, a := range accts {
+		out = append(out, accountOut(a))
+	}
+	return out, nil
+}
+
+// CreateAcmeAccount registers an account at the CA and stores it.
+func (s *Server) CreateAcmeAccount(ctx context.Context, r gen.CreateAcmeAccountRequestObject) (gen.CreateAcmeAccountResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionAccountsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	a, err := s.d.Issuance.RegisterAccount(ctx, r.OrgId, r.Body.CaId, r.Body.Email)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	s.audit(ctx, audit.Event{Action: "acme_account.create", ResourceType: "acme_account", ResourceID: a.ID.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"email": a.Email, "caId": a.CAID.String()}})
+	return gen.CreateAcmeAccount201JSONResponse(accountOut(a)), nil
+}
+
+// GetAcmeAccount returns one account of the org.
+func (s *Server) GetAcmeAccount(ctx context.Context, r gen.GetAcmeAccountRequestObject) (gen.GetAcmeAccountResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionAccountsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	a, err := s.d.Issuance.Store.GetAccount(ctx, r.OrgId, r.Id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return gen.GetAcmeAccount200JSONResponse(accountOut(a)), nil
+}
+
+// DeleteAcmeAccount removes a stored account; it is not deactivated at the CA.
+func (s *Server) DeleteAcmeAccount(ctx context.Context, r gen.DeleteAcmeAccountRequestObject) (gen.DeleteAcmeAccountResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionAccountsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	if err := s.d.Issuance.Store.DeleteAccount(ctx, r.OrgId, r.Id); err != nil {
+		return nil, mapErr(err)
+	}
+	s.audit(ctx, audit.Event{Action: "acme_account.delete", ResourceType: "acme_account", ResourceID: r.Id.String(), OrgID: &r.OrgId})
+	return gen.DeleteAcmeAccount204Response{}, nil
+}
+
+// GetOrgIssuanceDefaults returns the org's own issuance defaults (unresolved).
+func (s *Server) GetOrgIssuanceDefaults(ctx context.Context, r gen.GetOrgIssuanceDefaultsRequestObject) (gen.GetOrgIssuanceDefaultsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	d, err := s.d.Issuance.Store.OrgDefaults(ctx, r.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	out, err := convert[gen.IssuanceDefaults](d)
+	return gen.GetOrgIssuanceDefaults200JSONResponse(out), err
+}
+
+// PutOrgIssuanceDefaults validates and replaces the org's issuance defaults.
+func (s *Server) PutOrgIssuanceDefaults(ctx context.Context, r gen.PutOrgIssuanceDefaultsRequestObject) (gen.PutOrgIssuanceDefaultsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	d, err := convert[issuance.Defaults](r.Body)
+	if err != nil {
+		return nil, unprocessable("defaults", err.Error())
+	}
+	if err := s.d.Issuance.Store.PutOrgDefaults(ctx, r.OrgId, d); err != nil {
+		return nil, mapErr(err)
+	}
+	s.audit(ctx, audit.Event{Action: "issuance_defaults.update", ResourceType: "issuance_defaults", ResourceID: r.OrgId.String(), OrgID: &r.OrgId})
+	out, err := convert[gen.IssuanceDefaults](d)
+	return gen.PutOrgIssuanceDefaults200JSONResponse(out), err
+}
+
+// GetEffectiveIssuanceDefaults resolves global and org levels, each with its source.
+func (s *Server) GetEffectiveIssuanceDefaults(ctx context.Context, r gen.GetEffectiveIssuanceDefaultsRequestObject) (gen.GetEffectiveIssuanceDefaultsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	e, err := s.d.Issuance.Store.EffectiveOrg(ctx, r.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	out, err := convert[gen.EffectiveIssuanceDefaults](e)
+	return gen.GetEffectiveIssuanceDefaults200JSONResponse(out), err
+}

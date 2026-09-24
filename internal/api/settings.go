@@ -9,6 +9,7 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authz"
+	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/settings"
 )
 
@@ -43,6 +44,15 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	raw, err := json.Marshal(req.Body)
 	if err != nil {
 		return nil, badRequest("%v", err)
+	}
+	if sec.Name == issuance.SettingsKey {
+		var d issuance.Defaults
+		if err := json.Unmarshal(raw, &d); err != nil {
+			return nil, badRequest("%v", err)
+		}
+		if err := s.d.Issuance.Store.ValidateGlobalDefaults(ctx, d); err != nil {
+			return nil, mapErr(err)
+		}
 	}
 	if err := s.d.Settings.PutSection(ctx, sec, raw); err != nil {
 		if errors.Is(err, settings.ErrInvalid) {

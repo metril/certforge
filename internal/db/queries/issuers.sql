@@ -20,6 +20,12 @@ UPDATE cas SET name = $3, preset = $4, directory_url = $5, trust_bundle_pem = $6
 WHERE id = $1 AND org_id = $2
 RETURNING *;
 
+-- name: LockCA :one
+-- Locks the row for the duration of a delete's count-then-delete, so a
+-- concurrent insert that references this CA (acme_accounts.ca_id has an FK
+-- to cas.id) blocks until the delete's transaction commits or rolls back.
+SELECT * FROM cas WHERE id = $1 AND org_id = $2 FOR UPDATE;
+
 -- name: DeleteCA :execrows
 DELETE FROM cas WHERE id = $1 AND org_id = $2;
 
@@ -46,6 +52,10 @@ SELECT * FROM acme_accounts WHERE id = $1;
 
 -- name: ListAccounts :many
 SELECT * FROM acme_accounts WHERE org_id = $1 ORDER BY email;
+
+-- name: LockAccount :one
+-- Locks the row for the duration of a delete's count-then-delete.
+SELECT * FROM acme_accounts WHERE id = $1 AND org_id = $2 FOR UPDATE;
 
 -- name: DeleteAccount :execrows
 DELETE FROM acme_accounts WHERE id = $1 AND org_id = $2;

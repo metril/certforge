@@ -72,7 +72,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	handler := api.NewRouter(api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
-		Issuance: issuanceSvc,
+		Issuance: issuanceSvc, Certs: certStore,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenHTTP,

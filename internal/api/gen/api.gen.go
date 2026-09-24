@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
@@ -25,6 +26,301 @@ import (
 const (
 	SessionCookieScopes = "sessionCookie.Scopes"
 )
+
+// Defines values for AcmeAccountStatus.
+const (
+	Deactivated AcmeAccountStatus = "deactivated"
+	Valid       AcmeAccountStatus = "valid"
+)
+
+// Defines values for CAPresetCode.
+const (
+	Buypass            CAPresetCode = "buypass"
+	Custom             CAPresetCode = "custom"
+	Google             CAPresetCode = "google"
+	Letsencrypt        CAPresetCode = "letsencrypt"
+	LetsencryptStaging CAPresetCode = "letsencrypt-staging"
+	Sslcom             CAPresetCode = "sslcom"
+	Zerossl            CAPresetCode = "zerossl"
+)
+
+// Defines values for KeyType.
+const (
+	Ec256   KeyType = "ec256"
+	Ec384   KeyType = "ec384"
+	Rsa2048 KeyType = "rsa2048"
+	Rsa3072 KeyType = "rsa3072"
+	Rsa4096 KeyType = "rsa4096"
+)
+
+// Defines values for RenewPolicyMode.
+const (
+	Days    RenewPolicyMode = "days"
+	Percent RenewPolicyMode = "percent"
+)
+
+// Defines values for Source.
+const (
+	SourceCert    Source = "cert"
+	SourceDefault Source = "default"
+	SourceGlobal  Source = "global"
+	SourceOrg     Source = "org"
+)
+
+// Defines values for VerificationRuleMethod.
+const (
+	Dns01     VerificationRuleMethod = "dns-01"
+	ManualDns VerificationRuleMethod = "manual-dns"
+)
+
+// AcmeAccount A registered ACME account; its key never leaves the server.
+type AcmeAccount struct {
+	// CaId CA the account is registered with.
+	CaId openapi_types.UUID `json:"caId"`
+
+	// CreatedAt Registration time.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// Email Contact email.
+	Email string `json:"email"`
+
+	// Id Account id.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Owning org.
+	OrgId *openapi_types.UUID `json:"orgId,omitempty"`
+
+	// RegistrationUri Account URL (kid) at the CA.
+	RegistrationUri string `json:"registrationUri"`
+
+	// Status Account status.
+	Status AcmeAccountStatus `json:"status"`
+}
+
+// AcmeAccountStatus Account status.
+type AcmeAccountStatus string
+
+// AcmeAccountInput Account to register.
+type AcmeAccountInput struct {
+	// CaId CA to register with.
+	CaId openapi_types.UUID `json:"caId"`
+
+	// Email Contact email.
+	Email string `json:"email"`
+}
+
+// CA An ACME certificate authority.
+type CA struct {
+	// CreatedAt Creation time.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// DirectoryUrl ACME directory URL.
+	DirectoryUrl string `json:"directoryUrl"`
+
+	// EabKid EAB key id; empty when unused.
+	EabKid *string `json:"eabKid,omitempty"`
+
+	// HasEab An EAB HMAC is stored (it is never returned).
+	HasEab *bool `json:"hasEab,omitempty"`
+
+	// Id CA id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+
+	// OrgId Owning org.
+	OrgId *openapi_types.UUID `json:"orgId,omitempty"`
+
+	// Preset Preset code.
+	Preset CAPresetCode `json:"preset"`
+
+	// Resolvers DNS resolvers (host or host:port) for propagation checks.
+	Resolvers []string `json:"resolvers"`
+
+	// Shared Reserved for Phase 2 global CAs; false in Phase 1.
+	Shared *bool `json:"shared,omitempty"`
+
+	// TrustBundlePem Extra PEM roots for a private ACME server.
+	TrustBundlePem *string `json:"trustBundlePem,omitempty"`
+
+	// UpdatedAt Last change.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
+
+// CAInput Fields to create or replace a CA.
+type CAInput struct {
+	// DirectoryUrl Required for custom; defaults to the preset URL.
+	DirectoryUrl *string `json:"directoryUrl,omitempty"`
+
+	// EabHmac EAB HMAC key (base64url). Write-only: on update null or __unchanged__ keeps it, empty string removes it.
+	EabHmac *string `json:"eabHmac"`
+
+	// EabKid EAB key id.
+	EabKid *string `json:"eabKid,omitempty"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+
+	// Preset Preset code.
+	Preset CAPresetCode `json:"preset"`
+
+	// Resolvers DNS resolvers for propagation checks.
+	Resolvers *[]string `json:"resolvers,omitempty"`
+
+	// TrustBundlePem Extra PEM roots.
+	TrustBundlePem *string `json:"trustBundlePem,omitempty"`
+}
+
+// CAPreset A well-known ACME CA.
+type CAPreset struct {
+	// DirectoryUrl ACME directory URL; empty for custom.
+	DirectoryUrl string `json:"directoryUrl"`
+
+	// Name Display name.
+	Name string `json:"name"`
+
+	// Preset Preset code.
+	Preset CAPresetCode `json:"preset"`
+
+	// RequiresEab The CA needs External Account Binding.
+	RequiresEab bool `json:"requiresEab"`
+}
+
+// CAPresetCode CA preset code; custom takes any directory URL.
+type CAPresetCode string
+
+// EffectiveBool Effective flag and its source.
+type EffectiveBool struct {
+	// Source Level this value came from.
+	Source Source `json:"source"`
+
+	// Value Resolved value.
+	Value bool `json:"value"`
+}
+
+// EffectiveInt Effective number and its source.
+type EffectiveInt struct {
+	// Source Level this value came from.
+	Source Source `json:"source"`
+
+	// Value Resolved value.
+	Value int `json:"value"`
+}
+
+// EffectiveIssuanceDefaults Resolved issuance settings, each with the level it came from.
+type EffectiveIssuanceDefaults struct {
+	// AccountId Resolved ACME account and its source.
+	AccountId *EffectiveUuid `json:"accountId,omitempty"`
+
+	// CaId Resolved CA and its source.
+	CaId *EffectiveUuid `json:"caId,omitempty"`
+
+	// KeyType Resolved key algorithm and its source.
+	KeyType *EffectiveString `json:"keyType,omitempty"`
+
+	// MustStaple Resolved must-staple flag and its source.
+	MustStaple *EffectiveBool `json:"mustStaple,omitempty"`
+
+	// PreferredChain Resolved preferred chain and its source.
+	PreferredChain *EffectiveString `json:"preferredChain,omitempty"`
+
+	// PropagationSeconds Resolved propagation timeout and its source.
+	PropagationSeconds *EffectiveInt `json:"propagationSeconds,omitempty"`
+
+	// RenewPolicy Resolved renewal policy and its source.
+	RenewPolicy *EffectiveRenewPolicy `json:"renewPolicy,omitempty"`
+
+	// Resolvers Resolved resolvers and their source.
+	Resolvers *EffectiveStrings `json:"resolvers,omitempty"`
+
+	// ReuseKey Resolved reuse-key flag and its source.
+	ReuseKey *EffectiveBool `json:"reuseKey,omitempty"`
+
+	// VerificationRules Resolved catch-all rules and their source.
+	VerificationRules *EffectiveRules `json:"verificationRules,omitempty"`
+}
+
+// EffectiveRenewPolicy Effective renewal policy and its source.
+type EffectiveRenewPolicy struct {
+	// Source Level this value came from.
+	Source Source `json:"source"`
+
+	// Value Resolved renewal policy.
+	Value RenewPolicy `json:"value"`
+}
+
+// EffectiveRules Effective catch-all rules and their source.
+type EffectiveRules struct {
+	// Source Level this value came from.
+	Source Source `json:"source"`
+
+	// Value Resolved rules.
+	Value []VerificationRule `json:"value"`
+}
+
+// EffectiveString Effective string and its source.
+type EffectiveString struct {
+	// Source Level this value came from.
+	Source Source `json:"source"`
+
+	// Value Resolved value.
+	Value string `json:"value"`
+}
+
+// EffectiveStrings Effective string list and its source.
+type EffectiveStrings struct {
+	// Source Level this value came from.
+	Source Source `json:"source"`
+
+	// Value Resolved value.
+	Value []string `json:"value"`
+}
+
+// EffectiveUuid Effective id and its source.
+type EffectiveUuid struct {
+	// Source Level this value came from.
+	Source Source `json:"source"`
+
+	// Value Resolved value.
+	Value *openapi_types.UUID `json:"value"`
+}
+
+// IssuanceDefaults One level of issuance settings (org defaults or certificate overrides). Null or omitted inherits from the level above.
+type IssuanceDefaults struct {
+	// AccountId ACME account; must belong to the CA.
+	AccountId *openapi_types.UUID `json:"accountId"`
+
+	// CaId CA.
+	CaId *openapi_types.UUID `json:"caId"`
+
+	// KeyType Key algorithm.
+	KeyType *KeyType `json:"keyType"`
+
+	// MustStaple Request OCSP must-staple.
+	MustStaple *bool `json:"mustStaple"`
+
+	// PreferredChain Issuer common name of the preferred alternate chain.
+	PreferredChain *string `json:"preferredChain"`
+
+	// PropagationSeconds Propagation timeout in seconds.
+	PropagationSeconds *int `json:"propagationSeconds"`
+
+	// RenewPolicy Renewal policy.
+	RenewPolicy *RenewPolicy `json:"renewPolicy"`
+
+	// Resolvers Resolvers for propagation checks.
+	Resolvers *[]string `json:"resolvers"`
+
+	// ReuseKey Keep the private key across renewals.
+	ReuseKey *bool `json:"reuseKey"`
+
+	// VerificationRules Catch-all rules checked after a certificate's own rules.
+	VerificationRules *[]VerificationRule `json:"verificationRules"`
+}
+
+// KeyType Certificate key algorithm.
+type KeyType string
 
 // LoginRequest Local admin credentials.
 type LoginRequest struct {
@@ -95,6 +391,21 @@ type Problem struct {
 	Type string `json:"type"`
 }
 
+// RenewPolicy When to renew.
+type RenewPolicy struct {
+	// Mode days: renew value days before expiry. percent: renew when value percent of the lifetime remains.
+	Mode RenewPolicyMode `json:"mode"`
+
+	// UseAri Stored now; ACME Renewal Information is used from Phase 4.
+	UseAri bool `json:"useAri"`
+
+	// Value Days (1-365) or percent (1-99).
+	Value int `json:"value"`
+}
+
+// RenewPolicyMode days: renew value days before expiry. percent: renew when value percent of the lifetime remains.
+type RenewPolicyMode string
+
 // SchemaEntry One registered pluggable type.
 type SchemaEntry struct {
 	// Aliases Other codes that select this type; used by search.
@@ -146,6 +457,9 @@ type SetupStatus struct {
 	NeedsSetup bool `json:"needsSetup"`
 }
 
+// Source Level an effective value came from; default means the built-in value.
+type Source string
+
 // User A CertForge user.
 type User struct {
 	// DisplayName Name shown in the UI.
@@ -158,8 +472,50 @@ type User struct {
 	LocalAdmin bool `json:"localAdmin"`
 }
 
+// VerificationRule How to prove control of the names this rule matches. First match wins.
+type VerificationRule struct {
+	// CnameAliasZone Zone that _acme-challenge is CNAMEd into; checked before validation.
+	CnameAliasZone *string `json:"cnameAliasZone,omitempty"`
+
+	// DnsCredentialId DNS credential; required for dns-01.
+	DnsCredentialId *openapi_types.UUID `json:"dnsCredentialId,omitempty"`
+
+	// Match * (every name), *.zone (names one label below zone, and *.zone itself), or zone (the zone, its subdomains and wildcards).
+	Match string `json:"match"`
+
+	// Method Verification method.
+	Method VerificationRuleMethod `json:"method"`
+
+	// PropagationSeconds Propagation timeout override.
+	PropagationSeconds *int `json:"propagationSeconds,omitempty"`
+
+	// Resolvers Resolvers for propagation checks.
+	Resolvers *[]string `json:"resolvers,omitempty"`
+}
+
+// VerificationRuleMethod Verification method.
+type VerificationRuleMethod string
+
+// Id defines model for Id.
+type Id = openapi_types.UUID
+
+// OrgId defines model for OrgId.
+type OrgId = openapi_types.UUID
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
+
+// CreateAcmeAccountJSONRequestBody defines body for CreateAcmeAccount for application/json ContentType.
+type CreateAcmeAccountJSONRequestBody = AcmeAccountInput
+
+// CreateCaJSONRequestBody defines body for CreateCa for application/json ContentType.
+type CreateCaJSONRequestBody = CAInput
+
+// UpdateCaJSONRequestBody defines body for UpdateCa for application/json ContentType.
+type UpdateCaJSONRequestBody = CAInput
+
+// PutOrgIssuanceDefaultsJSONRequestBody defines body for PutOrgIssuanceDefaults for application/json ContentType.
+type PutOrgIssuanceDefaultsJSONRequestBody = IssuanceDefaults
 
 // PutSettingsSectionJSONRequestBody defines body for PutSettingsSection for application/json ContentType.
 type PutSettingsSectionJSONRequestBody = SettingsValue
@@ -178,12 +534,51 @@ type ServerInterface interface {
 	// Current principal
 	// (GET /auth/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// List CA presets
+	// (GET /meta/ca-presets)
+	ListCaPresets(w http.ResponseWriter, r *http.Request)
 	// List pluggable type schemas
 	// (GET /meta/schemas)
 	GetMetaSchemas(w http.ResponseWriter, r *http.Request)
 	// List organizations
 	// (GET /orgs)
 	ListOrgs(w http.ResponseWriter, r *http.Request)
+	// List ACME accounts
+	// (GET /orgs/{orgId}/acme-accounts)
+	ListAcmeAccounts(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Register an ACME account
+	// (POST /orgs/{orgId}/acme-accounts)
+	CreateAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Delete an ACME account
+	// (DELETE /orgs/{orgId}/acme-accounts/{id})
+	DeleteAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Get an ACME account
+	// (GET /orgs/{orgId}/acme-accounts/{id})
+	GetAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// List ACME CAs
+	// (GET /orgs/{orgId}/cas)
+	ListCas(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Add an ACME CA
+	// (POST /orgs/{orgId}/cas)
+	CreateCa(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Delete a CA
+	// (DELETE /orgs/{orgId}/cas/{id})
+	DeleteCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Get a CA
+	// (GET /orgs/{orgId}/cas/{id})
+	GetCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Replace a CA
+	// (PUT /orgs/{orgId}/cas/{id})
+	UpdateCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Get org issuance defaults
+	// (GET /orgs/{orgId}/issuance-defaults)
+	GetOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Replace org issuance defaults
+	// (PUT /orgs/{orgId}/issuance-defaults)
+	PutOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Get effective org defaults
+	// (GET /orgs/{orgId}/issuance-defaults/effective)
+	GetEffectiveIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId)
 	// Read a settings section
 	// (GET /settings/{section})
 	GetSettingsSection(w http.ResponseWriter, r *http.Request, section string)
@@ -220,6 +615,12 @@ func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List CA presets
+// (GET /meta/ca-presets)
+func (_ Unimplemented) ListCaPresets(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // List pluggable type schemas
 // (GET /meta/schemas)
 func (_ Unimplemented) GetMetaSchemas(w http.ResponseWriter, r *http.Request) {
@@ -229,6 +630,78 @@ func (_ Unimplemented) GetMetaSchemas(w http.ResponseWriter, r *http.Request) {
 // List organizations
 // (GET /orgs)
 func (_ Unimplemented) ListOrgs(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List ACME accounts
+// (GET /orgs/{orgId}/acme-accounts)
+func (_ Unimplemented) ListAcmeAccounts(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Register an ACME account
+// (POST /orgs/{orgId}/acme-accounts)
+func (_ Unimplemented) CreateAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete an ACME account
+// (DELETE /orgs/{orgId}/acme-accounts/{id})
+func (_ Unimplemented) DeleteAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get an ACME account
+// (GET /orgs/{orgId}/acme-accounts/{id})
+func (_ Unimplemented) GetAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List ACME CAs
+// (GET /orgs/{orgId}/cas)
+func (_ Unimplemented) ListCas(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add an ACME CA
+// (POST /orgs/{orgId}/cas)
+func (_ Unimplemented) CreateCa(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a CA
+// (DELETE /orgs/{orgId}/cas/{id})
+func (_ Unimplemented) DeleteCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a CA
+// (GET /orgs/{orgId}/cas/{id})
+func (_ Unimplemented) GetCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Replace a CA
+// (PUT /orgs/{orgId}/cas/{id})
+func (_ Unimplemented) UpdateCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get org issuance defaults
+// (GET /orgs/{orgId}/issuance-defaults)
+func (_ Unimplemented) GetOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Replace org issuance defaults
+// (PUT /orgs/{orgId}/issuance-defaults)
+func (_ Unimplemented) PutOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get effective org defaults
+// (GET /orgs/{orgId}/issuance-defaults/effective)
+func (_ Unimplemented) GetEffectiveIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -319,6 +792,26 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// ListCaPresets operation middleware
+func (siw *ServerInterfaceWrapper) ListCaPresets(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCaPresets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMetaSchemas operation middleware
 func (siw *ServerInterfaceWrapper) GetMetaSchemas(w http.ResponseWriter, r *http.Request) {
 
@@ -350,6 +843,423 @@ func (siw *ServerInterfaceWrapper) ListOrgs(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListOrgs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAcmeAccounts operation middleware
+func (siw *ServerInterfaceWrapper) ListAcmeAccounts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAcmeAccounts(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAcmeAccount operation middleware
+func (siw *ServerInterfaceWrapper) CreateAcmeAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAcmeAccount(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAcmeAccount operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAcmeAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAcmeAccount(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAcmeAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetAcmeAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAcmeAccount(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCas operation middleware
+func (siw *ServerInterfaceWrapper) ListCas(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCas(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCa operation middleware
+func (siw *ServerInterfaceWrapper) CreateCa(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCa(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCa operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCa(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCa(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCa operation middleware
+func (siw *ServerInterfaceWrapper) GetCa(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCa(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCa operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCa(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCa(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrgIssuanceDefaults operation middleware
+func (siw *ServerInterfaceWrapper) GetOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrgIssuanceDefaults(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutOrgIssuanceDefaults operation middleware
+func (siw *ServerInterfaceWrapper) PutOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutOrgIssuanceDefaults(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEffectiveIssuanceDefaults operation middleware
+func (siw *ServerInterfaceWrapper) GetEffectiveIssuanceDefaults(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEffectiveIssuanceDefaults(w, r, orgId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -572,10 +1482,49 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/auth/me", wrapper.GetMe)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/meta/ca-presets", wrapper.ListCaPresets)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/meta/schemas", wrapper.GetMetaSchemas)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/orgs", wrapper.ListOrgs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/acme-accounts", wrapper.ListAcmeAccounts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/orgs/{orgId}/acme-accounts", wrapper.CreateAcmeAccount)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/orgs/{orgId}/acme-accounts/{id}", wrapper.DeleteAcmeAccount)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/acme-accounts/{id}", wrapper.GetAcmeAccount)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/cas", wrapper.ListCas)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/orgs/{orgId}/cas", wrapper.CreateCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/orgs/{orgId}/cas/{id}", wrapper.DeleteCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/cas/{id}", wrapper.GetCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/orgs/{orgId}/cas/{id}", wrapper.UpdateCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/issuance-defaults", wrapper.GetOrgIssuanceDefaults)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/orgs/{orgId}/issuance-defaults", wrapper.PutOrgIssuanceDefaults)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/issuance-defaults/effective", wrapper.GetEffectiveIssuanceDefaults)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/settings/{section}", wrapper.GetSettingsSection)
@@ -641,6 +1590,22 @@ func (response GetMe200JSONResponse) VisitGetMeResponse(w http.ResponseWriter) e
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListCaPresetsRequestObject struct {
+}
+
+type ListCaPresetsResponseObject interface {
+	VisitListCaPresetsResponse(w http.ResponseWriter) error
+}
+
+type ListCaPresets200JSONResponse []CAPreset
+
+func (response ListCaPresets200JSONResponse) VisitListCaPresetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetMetaSchemasRequestObject struct {
 }
 
@@ -667,6 +1632,217 @@ type ListOrgsResponseObject interface {
 type ListOrgs200JSONResponse OrgList
 
 func (response ListOrgs200JSONResponse) VisitListOrgsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListAcmeAccountsRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+}
+
+type ListAcmeAccountsResponseObject interface {
+	VisitListAcmeAccountsResponse(w http.ResponseWriter) error
+}
+
+type ListAcmeAccounts200JSONResponse []AcmeAccount
+
+func (response ListAcmeAccounts200JSONResponse) VisitListAcmeAccountsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAcmeAccountRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Body  *CreateAcmeAccountJSONRequestBody
+}
+
+type CreateAcmeAccountResponseObject interface {
+	VisitCreateAcmeAccountResponse(w http.ResponseWriter) error
+}
+
+type CreateAcmeAccount201JSONResponse AcmeAccount
+
+func (response CreateAcmeAccount201JSONResponse) VisitCreateAcmeAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAcmeAccountRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type DeleteAcmeAccountResponseObject interface {
+	VisitDeleteAcmeAccountResponse(w http.ResponseWriter) error
+}
+
+type DeleteAcmeAccount204Response struct {
+}
+
+func (response DeleteAcmeAccount204Response) VisitDeleteAcmeAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetAcmeAccountRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type GetAcmeAccountResponseObject interface {
+	VisitGetAcmeAccountResponse(w http.ResponseWriter) error
+}
+
+type GetAcmeAccount200JSONResponse AcmeAccount
+
+func (response GetAcmeAccount200JSONResponse) VisitGetAcmeAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCasRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+}
+
+type ListCasResponseObject interface {
+	VisitListCasResponse(w http.ResponseWriter) error
+}
+
+type ListCas200JSONResponse []CA
+
+func (response ListCas200JSONResponse) VisitListCasResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateCaRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Body  *CreateCaJSONRequestBody
+}
+
+type CreateCaResponseObject interface {
+	VisitCreateCaResponse(w http.ResponseWriter) error
+}
+
+type CreateCa201JSONResponse CA
+
+func (response CreateCa201JSONResponse) VisitCreateCaResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteCaRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type DeleteCaResponseObject interface {
+	VisitDeleteCaResponse(w http.ResponseWriter) error
+}
+
+type DeleteCa204Response struct {
+}
+
+func (response DeleteCa204Response) VisitDeleteCaResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetCaRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type GetCaResponseObject interface {
+	VisitGetCaResponse(w http.ResponseWriter) error
+}
+
+type GetCa200JSONResponse CA
+
+func (response GetCa200JSONResponse) VisitGetCaResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateCaRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+	Body  *UpdateCaJSONRequestBody
+}
+
+type UpdateCaResponseObject interface {
+	VisitUpdateCaResponse(w http.ResponseWriter) error
+}
+
+type UpdateCa200JSONResponse CA
+
+func (response UpdateCa200JSONResponse) VisitUpdateCaResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetOrgIssuanceDefaultsRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+}
+
+type GetOrgIssuanceDefaultsResponseObject interface {
+	VisitGetOrgIssuanceDefaultsResponse(w http.ResponseWriter) error
+}
+
+type GetOrgIssuanceDefaults200JSONResponse IssuanceDefaults
+
+func (response GetOrgIssuanceDefaults200JSONResponse) VisitGetOrgIssuanceDefaultsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PutOrgIssuanceDefaultsRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Body  *PutOrgIssuanceDefaultsJSONRequestBody
+}
+
+type PutOrgIssuanceDefaultsResponseObject interface {
+	VisitPutOrgIssuanceDefaultsResponse(w http.ResponseWriter) error
+}
+
+type PutOrgIssuanceDefaults200JSONResponse IssuanceDefaults
+
+func (response PutOrgIssuanceDefaults200JSONResponse) VisitPutOrgIssuanceDefaultsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEffectiveIssuanceDefaultsRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+}
+
+type GetEffectiveIssuanceDefaultsResponseObject interface {
+	VisitGetEffectiveIssuanceDefaultsResponse(w http.ResponseWriter) error
+}
+
+type GetEffectiveIssuanceDefaults200JSONResponse EffectiveIssuanceDefaults
+
+func (response GetEffectiveIssuanceDefaults200JSONResponse) VisitGetEffectiveIssuanceDefaultsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
@@ -752,12 +1928,51 @@ type StrictServerInterface interface {
 	// Current principal
 	// (GET /auth/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// List CA presets
+	// (GET /meta/ca-presets)
+	ListCaPresets(ctx context.Context, request ListCaPresetsRequestObject) (ListCaPresetsResponseObject, error)
 	// List pluggable type schemas
 	// (GET /meta/schemas)
 	GetMetaSchemas(ctx context.Context, request GetMetaSchemasRequestObject) (GetMetaSchemasResponseObject, error)
 	// List organizations
 	// (GET /orgs)
 	ListOrgs(ctx context.Context, request ListOrgsRequestObject) (ListOrgsResponseObject, error)
+	// List ACME accounts
+	// (GET /orgs/{orgId}/acme-accounts)
+	ListAcmeAccounts(ctx context.Context, request ListAcmeAccountsRequestObject) (ListAcmeAccountsResponseObject, error)
+	// Register an ACME account
+	// (POST /orgs/{orgId}/acme-accounts)
+	CreateAcmeAccount(ctx context.Context, request CreateAcmeAccountRequestObject) (CreateAcmeAccountResponseObject, error)
+	// Delete an ACME account
+	// (DELETE /orgs/{orgId}/acme-accounts/{id})
+	DeleteAcmeAccount(ctx context.Context, request DeleteAcmeAccountRequestObject) (DeleteAcmeAccountResponseObject, error)
+	// Get an ACME account
+	// (GET /orgs/{orgId}/acme-accounts/{id})
+	GetAcmeAccount(ctx context.Context, request GetAcmeAccountRequestObject) (GetAcmeAccountResponseObject, error)
+	// List ACME CAs
+	// (GET /orgs/{orgId}/cas)
+	ListCas(ctx context.Context, request ListCasRequestObject) (ListCasResponseObject, error)
+	// Add an ACME CA
+	// (POST /orgs/{orgId}/cas)
+	CreateCa(ctx context.Context, request CreateCaRequestObject) (CreateCaResponseObject, error)
+	// Delete a CA
+	// (DELETE /orgs/{orgId}/cas/{id})
+	DeleteCa(ctx context.Context, request DeleteCaRequestObject) (DeleteCaResponseObject, error)
+	// Get a CA
+	// (GET /orgs/{orgId}/cas/{id})
+	GetCa(ctx context.Context, request GetCaRequestObject) (GetCaResponseObject, error)
+	// Replace a CA
+	// (PUT /orgs/{orgId}/cas/{id})
+	UpdateCa(ctx context.Context, request UpdateCaRequestObject) (UpdateCaResponseObject, error)
+	// Get org issuance defaults
+	// (GET /orgs/{orgId}/issuance-defaults)
+	GetOrgIssuanceDefaults(ctx context.Context, request GetOrgIssuanceDefaultsRequestObject) (GetOrgIssuanceDefaultsResponseObject, error)
+	// Replace org issuance defaults
+	// (PUT /orgs/{orgId}/issuance-defaults)
+	PutOrgIssuanceDefaults(ctx context.Context, request PutOrgIssuanceDefaultsRequestObject) (PutOrgIssuanceDefaultsResponseObject, error)
+	// Get effective org defaults
+	// (GET /orgs/{orgId}/issuance-defaults/effective)
+	GetEffectiveIssuanceDefaults(ctx context.Context, request GetEffectiveIssuanceDefaultsRequestObject) (GetEffectiveIssuanceDefaultsResponseObject, error)
 	// Read a settings section
 	// (GET /settings/{section})
 	GetSettingsSection(ctx context.Context, request GetSettingsSectionRequestObject) (GetSettingsSectionResponseObject, error)
@@ -880,6 +2095,30 @@ func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListCaPresets operation middleware
+func (sh *strictHandler) ListCaPresets(w http.ResponseWriter, r *http.Request) {
+	var request ListCaPresetsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCaPresets(ctx, request.(ListCaPresetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCaPresets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCaPresetsResponseObject); ok {
+		if err := validResponse.VisitListCaPresetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetMetaSchemas operation middleware
 func (sh *strictHandler) GetMetaSchemas(w http.ResponseWriter, r *http.Request) {
 	var request GetMetaSchemasRequestObject
@@ -921,6 +2160,351 @@ func (sh *strictHandler) ListOrgs(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListOrgsResponseObject); ok {
 		if err := validResponse.VisitListOrgsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAcmeAccounts operation middleware
+func (sh *strictHandler) ListAcmeAccounts(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request ListAcmeAccountsRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAcmeAccounts(ctx, request.(ListAcmeAccountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAcmeAccounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAcmeAccountsResponseObject); ok {
+		if err := validResponse.VisitListAcmeAccountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAcmeAccount operation middleware
+func (sh *strictHandler) CreateAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request CreateAcmeAccountRequestObject
+
+	request.OrgId = orgId
+
+	var body CreateAcmeAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAcmeAccount(ctx, request.(CreateAcmeAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAcmeAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAcmeAccountResponseObject); ok {
+		if err := validResponse.VisitCreateAcmeAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAcmeAccount operation middleware
+func (sh *strictHandler) DeleteAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request DeleteAcmeAccountRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAcmeAccount(ctx, request.(DeleteAcmeAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAcmeAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAcmeAccountResponseObject); ok {
+		if err := validResponse.VisitDeleteAcmeAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAcmeAccount operation middleware
+func (sh *strictHandler) GetAcmeAccount(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request GetAcmeAccountRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAcmeAccount(ctx, request.(GetAcmeAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAcmeAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAcmeAccountResponseObject); ok {
+		if err := validResponse.VisitGetAcmeAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCas operation middleware
+func (sh *strictHandler) ListCas(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request ListCasRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCas(ctx, request.(ListCasRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCas")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCasResponseObject); ok {
+		if err := validResponse.VisitListCasResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCa operation middleware
+func (sh *strictHandler) CreateCa(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request CreateCaRequestObject
+
+	request.OrgId = orgId
+
+	var body CreateCaJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCa(ctx, request.(CreateCaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCa")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCaResponseObject); ok {
+		if err := validResponse.VisitCreateCaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCa operation middleware
+func (sh *strictHandler) DeleteCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request DeleteCaRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCa(ctx, request.(DeleteCaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCa")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCaResponseObject); ok {
+		if err := validResponse.VisitDeleteCaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCa operation middleware
+func (sh *strictHandler) GetCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request GetCaRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCa(ctx, request.(GetCaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCa")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCaResponseObject); ok {
+		if err := validResponse.VisitGetCaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateCa operation middleware
+func (sh *strictHandler) UpdateCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request UpdateCaRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	var body UpdateCaJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateCa(ctx, request.(UpdateCaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateCa")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateCaResponseObject); ok {
+		if err := validResponse.VisitUpdateCaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrgIssuanceDefaults operation middleware
+func (sh *strictHandler) GetOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request GetOrgIssuanceDefaultsRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrgIssuanceDefaults(ctx, request.(GetOrgIssuanceDefaultsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrgIssuanceDefaults")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrgIssuanceDefaultsResponseObject); ok {
+		if err := validResponse.VisitGetOrgIssuanceDefaultsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutOrgIssuanceDefaults operation middleware
+func (sh *strictHandler) PutOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request PutOrgIssuanceDefaultsRequestObject
+
+	request.OrgId = orgId
+
+	var body PutOrgIssuanceDefaultsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutOrgIssuanceDefaults(ctx, request.(PutOrgIssuanceDefaultsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutOrgIssuanceDefaults")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutOrgIssuanceDefaultsResponseObject); ok {
+		if err := validResponse.VisitPutOrgIssuanceDefaultsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEffectiveIssuanceDefaults operation middleware
+func (sh *strictHandler) GetEffectiveIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request GetEffectiveIssuanceDefaultsRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEffectiveIssuanceDefaults(ctx, request.(GetEffectiveIssuanceDefaultsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEffectiveIssuanceDefaults")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEffectiveIssuanceDefaultsResponseObject); ok {
+		if err := validResponse.VisitGetEffectiveIssuanceDefaultsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1045,51 +2629,99 @@ func (sh *strictHandler) GetSetupStatus(w http.ResponseWriter, r *http.Request) 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/9Q9aXMbN5Z/BdU7VZFmmxQl25mJ9Imm5cTrQyodydbaXhvsfiQRgUAPgBbNuPTfpx6A",
+	"vtEUJUue5MvEYuN4ePcFzNcokctMChBGR4dfo4wqugQDyv71KsX/TUEnimWGSREdRmegZa4SICwdRnHE",
+	"8LeMmkUUR4IuITqMWBrFkYJ/5UxBGh0alUMc6WQBS4rLzaRaUhMdRnluR5p1hrO0UUzMo5ubODpR89DO",
+	"J2rev6m0c75l35tisD36OFnCOElkLkwXkjFRMGfagIKUjCdvjwl1Q48IM5pcwZoIuAZFONBr0MQsgGhQ",
+	"16AQ+kzJDJRhYDdKaOisk7Gd5JclTNd3XDGzwIVuOVEcJQqogXRsQmTE5RTFP4lhS2gsmFIDA/w1tCos",
+	"KeMBkKUwNDHEfh6GJrLAQcfFCdOtTiR7WGMlmJgTqeZbraJqh79UrB+qy7M3ZOeKpbuEGkuQyTh4Mm2o",
+	"yXX/Ou47TgWRL6PD99E15Ra2FGhi2DWSKfoYEoaKod87ybIMU1Ch3Lp7qGo1Of0dEoNw1rj6lchy0w+x",
+	"kSXH3YVnq1nbc+k9+amFmwZaQmefjAOnFU58EzzbjCXUAKG5WUjFzDpw7n55muCnu8tSyhQkRqr1pQqg",
+	"wMJWDkFuDHIf0OnrkGwdj59bXcTSIwLLzKzJagGC5CLXkAZXWlB9TKdBPOFiv7wdT1AXaSNRD+0wq5mc",
+	"qlNgciUg3a0tPJWSAxV9sj8Zbyv2Tsm3518K9q8cCH4kTFj59BrgkfRGpkCDJT7l/GQWHb7/Gv1NwSw6",
+	"jP5rrzKke96O7E3Gp3bGRKYQ3XyMW7u7jySRKQydWtKSX3vb2xz64t05KT+TnYXUhkhF8L+HmVRml8yk",
+	"IsitdO74MFlAcmVVDjOwtEt2zuN/oErRtVVjC2qlKWDz0XqldpPTBdVADsicyynlZDLWR2RGubY0cB/3",
+	"wzxgVK7N81ykHE5hGeDXL0ZRcnr8ligpjba7UZIpqx6doFZWtHOYPEv7hPMN1YYkCyrmW4tmSPNaLiy5",
+	"oCW8dfKF1U+Pxn3JgKcaVadTL0hXBRmnCRDqDU5TDW1WGmcebIu+JNdGLo9ICjOac2O3QTlxZ9ikUX5Z",
+	"0iSsUqwWQL2yM6UafnyaK747JL8pZmAgBV8fEimIowYROed4oE+fcuEIkH76RK4AMk2Yib1achsTBUuJ",
+	"7hIzCBROpVMOhSfXBDKOVrjhieBrN2ArPTh8FOXyZ1ELD6EC7iijt9vlptCEJeO0RGDbz14B54MrIVfe",
+	"UN9dHLo2tDCGlXzcgS1eMJ1xurZ88Z9hBovasJm+sB4qEQCpJsdfDChBOSlcuudMpEzMQ7q5RbNSw3ni",
+	"dRRdBcMmgtojhax+Vh3qyJOAGHoFmlCx7jo8hc/MwWgQiVpnCFvtr4E2dO60wh+gpNYI5TRfZ1SjZzyX",
+	"cs7xHFrzRC7Rh7Z7BhzuODqezQA9cnguZYCdys9kxumcUJHakM/FxF3edL9vzw3nbnyXD97ANXBiFkyT",
+	"a8pzIAkqpplC5r2JI/tbOFjnaLjt9y0o79aJC7hD1C0x8CoUGlf4EflyCuoviyEmDMxBfRuGtM6pSOCF",
+	"t74btmd+KNFgDBNzHROgycJGUdb4cHs8ZurHauPSpwucp7sdOktYL9Hn7WK1BLCe5ugQ9SYuY8IH3nYy",
+	"Dm12BesLi/U773fuBb1/R/QUKJ9jCLhYhjZf5tqcG5rx++xvtcqG3XFxVGcZ79EwzsTMQClIJwvKxKMg",
+	"odwC3WYmwlCUnsY5JFKk+h6QoA7ZCEblzaCfLvMg7ykQsDqVnCXre8BwVpu9ARa7CeUksyPDYNQctXuR",
+	"RG8GoHD0cG+zAKaau+caXsP6EZjSLj1AwehjyWtQLn/CpDjLOdwHBW7eBjASapLFgHJOFA4NoeFmkzo+",
+	"a7JJn+G6hdD/cQO23Tb34urhN5m7kvB9mL2dgH9W78DC24ikNkHxa0sauoHWN2DZK+8NaPbh9F/V8+oJ",
+	"JO+OI70FkjjT5q+HqW3j+W9AoXXMNuCPpX89tLUTvJtTTG3sbcDa7Y7+iShceDnrOvtkR6p5laSTqlGR",
+	"kNegFEtB7w7JO59Qk0tmDMYNYgEKiYDYqAUKdCqv4ZYIIZAoKeuY6IeSKXAp5kXO0OVe7ojDuLdYdK/F",
+	"7uz4v/YTukz1uu7ndxOOHUe/m2UFbcjJ5Py07rRvyFzWMuFdD765OvITKJLI5VIKl4OUsyJx6x1zym1+",
+	"x4Bz0YfboC/ss7czTl2fmwmi3XjcZkm/sGW+jA6f/DgaxdGSCffnqBeCMpi+p69+mzPT9GECpNyQQz37",
+	"pvxpz4HLfGrdK2/zH2SepK7AYQPPREmtC69Mb8dNQee7JW4tz8seDZloZkARWlc3P2giV+IBPJ7NqAl5",
+	"6q8r6W6BX9OGV225LdKDStOD0dN/RjH+68noHwfuX09HP/2Io5KDZ+6/T/75NJj5eyPnTHi5DtSQZEI5",
+	"oemSCZIoSEEY5inUVLEZ1XolVbp5iWJUQwuWU28zReXAkDF6C+HMsGZzAekAN1dMJCyjPFDi1mp2Ia8g",
+	"oJTOAe29K4X872ByfvZyYEeSBdAUFJGCwDWoNTk9Ob+Iyekl/s/4YvJLbD2FF8dvji+O+6qzOtjv41pn",
+	"co26kKIOgq058kQF6xtKBuXjBdOGicQQ/G4VriZTmWN8IksY7lZJwRnba7hLHN1VbU26OSDazGA3Kk7m",
+	"kRnXCBnmEUPPq26nlgXg+XyOkktwHvEgkrmSeQYpma7JFRNpoBADGZfrC6rmEHKBXtjPxLjvWxPSgXks",
+	"jFqH0JwKfarkNUv7CmSD0T5qdTfioXYVEvVRcMt30pSq0BadBfAH29fyggpabWdEJmPixzzMli1ea2A7",
+	"blG8jpYK1BD7oXCGmkykmlPB/rC4OyJLqY3NeqHfrQlVyIsSWdBIIkXAvWUb2wbv2WZya8lP8zxwnMuz",
+	"NwNNZxgpoa1AtMSEyxWohGp0040BpWOSsjkz2unIxTpbgNiiqmrht/t6qHuw/IbpYF3Vhr1y1kB4wJaV",
+	"/NNBaTWLaKmMUwsFhu6voNvHtAuFznaq5JSHCtRnLyfkp6fP/oEyjyNICoYyrmOiQRhXT0mkMPiHVW80",
+	"y7gX1z0/579/11KE9JsJdqodf8k4FU7gdQYJir+zG0wTmSS5UiASuFPn4C8XF6e+bdAXf0POtGEmFJyc",
+	"L6QyMVnkSyoGCmhqlbnOl0uq1kEwTNDt8kh2eLo8e3WEYWVuDqeciivrLs9BgGIJseCCUlJtwbz2awF8",
+	"iYIQlTdmbH9bgHAdhwJWXWotg9XnlK71oZvicwn4C5nCTCog8CVjaj0kGagEhCkG2rY5N9p/KcIxzmaA",
+	"QRJRsKRMNFo8cWGEys0Iupy5hnGo//TcNdgJuTpyhbcixHklnBJDVmMaHYLURf6u8eppuPGqJ0HyAk++",
+	"sz948uOzXYKxjz/bzv7gp592W5Hes1qgt39rldQiPy4TTv6cIRLXrU8wa1JrfM4ajkkgu8EZ1SH37sQs",
+	"bDid2mZsaogGDolxEoprHTlUTtdEA1XJ4m6uXhJktXNT+VA4IrYSA1/oMuNAEi7zdMapgofsPqna3Wma",
+	"MpxF+WkNRy4Say76P+cn74gjg4UQ+RoX/gE1j5ixee6aiofEt6pZHaohUWAILmgt86rs/6oBVpC53avr",
+	"uMN3l3iYg8zh82PnkDhgu5asTKFpN8ZBZ9OSdt1AWvIbcbSTKjoz5GB0MBrsH+wWqsDy+pH95+UrVBzo",
+	"I9k/UWSdlLrOts4xdd/x/Ln76X3HolCBz1/ttJ5ww+2J1LeGyxT5004+1ENdUrAAZxMlfy0B3hr3ARp7",
+	"XFsqL2gGqAtTmDHhZNhUx6hxQQimPOsN+F8ypc1A5chRf1CFoW+Wm4DSwXj+tDfofwcrwgOBf0yoIRyo",
+	"NmT/AOMERRPj3fZQQmDJxBsQc7OIDvcPApwwpRqCDXCn+ZSzxF5lsJzKNJmAMi+lmgNhQhsqkpZuWhiT",
+	"6cO9vQSU0UP/6zDpaZSTav7uVm1VSMkMsVp0Ui7pl/JMPpNY/h3e6HxbVzu4X0bR58YZ//+eDv4YDX76",
+	"6P87+Ph1FP94cPO3W52XJrmr01fgVbT42Md05z1eX8Vz6BQFLJxt7bNLBHI8qIpzYRi3GRiyp3GcVQMc",
+	"DPp/SYLTt2gDq20TPENZ2AnVaaggUJaJWvWashOZLIEKpx6nOeNmwERVpyk9KDc2iiPXbO6QHMURMmbQ",
+	"obr0SZe2Bqk4vkjktHtILauG+Rh/JXohV6JIf12+2vqCE0K0bfxp9cQYGayHuoV5niqgV4M5p1rXlcsW",
+	"lHWXjmqnbewaInYntduNVeQK/fBMyWuwsZWSvJA/l0qzWkflHMiSmmQBGn0JFEz7J1mxUPCZ4NwxunT/",
+	"J0VgW/zVeXOfaLKEQbKgnIOYW2sweTd+e4w628ijMtvtvXx798q5NME7OUJPygRvqHb14t15LQV8RFS9",
+	"4z4VejDa34rc9vDd5f9OdlweFc+/G5O/D//Ak+44VOI/OZ0Ct9W5FcFvLnngxzGjgc92Y/To3USkgxtm",
+	"DWY+TaUNVuysFeNpQlWqrcPvdT1CUdf7QejBLGQAO3V+IW5QQ6YtfqzyFznlg1TooCTft1RVFEtvKVSF",
+	"ClOPVCLamOFwPFBi82PIddaQ5IqZtfU/vQ8LWjMpJlJesVDo4T6TxH73EaK1CTQ3iz0u505Z2Iu0blB1",
+	"lTaZffLLV2SnGXsNa3dLlomZDJdonIY9Oz6/IOPTV0My5pxk1Cxc7k4Bp9YmGEn2aMb2rveHH8QHMc7N",
+	"AkXJscyhVRufKyA+F6fQYNC5a58D+Txk74YfxKZChIsTKPG7uIK3BteRRD7XCxyfiwoHTvkgPpep9c8O",
+	"sz8fFwAtYUiKyvBUpgx0UUgnn+t5pt+1FJ/t4Y9tzsTip8xcfe5LSX0mqUzyJbr0ZEcDWFCLJI1zdHcP",
+	"P4inoxGZ0tTqJdAmJk9H+0RIY682ekxDij8/QYaesjQFi0Y8MplRxnMF+PmpnTWTuUhjXPYnGxByluCa",
+	"+8/ISkkxb2TTYvL04KCmYKvVno1G/vaWyxMNP4gyB1TnnvHpq8iWNLXjq9Fwfziy3l8GgmYsOoyeDEfD",
+	"J86dW1hpqHGDrcDJkD//PGwziRMGcg7GuSMV53nGG5KTVy8mbhyhSjF7R6m463aAcoRmy54XzYUrJPp7",
+	"EqDNc5na1IbHk40ZWrzQDEs3RXCNIuVNU5tUte5MCp8HORiNHmzvt+B2bFc153PbiHJEmnhDgR02FFh0",
+	"+P5jHPk8pJuKiKQO8TWiIGfQubb+dm4W0UdcpaSydNfowmQ+Fqmno49eC6BQ9BMO1AflBW39dTndKGkG",
+	"aYrbdrD7NFTmtQiReXH6xnndKn2nc+7nPHQZqlsKjG21Usfkmmk25faCmi8k2H4dlGZjK7Rotpa5ocZd",
+	"s7Pco7uH/BnMW4i+OwdNPKVqZekm3joDwhhcgqF7CR2460W6F5O/dS6V6fKeBVPN+0feSVqAzSCaBawL",
+	"d6//ghV5Zy9gJVQfKqBpgJmYNhN66sH8RnyH7ottX/wrL991HZWb8F00q/t8BEGkSouSdI3NmTakvOal",
+	"a8Ritq9J1+lVe3MjSKxa5s25X843rmWF0R0vCrwxSetV5pgUFUknFq4mOSQXzSQdeupVB92yRzCqivmj",
+	"Ski1TYAE5321+AAFsmAZv0YNxL8nRdGBESRBs9xXKBvfGJFg0KXCPH7iWhEeDVlFgTOAqF8rlVgvcAbQ",
+	"1BhRw45FSYWdva/2DYGbPRtr+j7Jfpx5naCLOFiqea1Q6t608HqiWGuDsqi92/HA+qJYdWuFUX8YZwud",
+	"gSEA7eIiSIl6B2pYa8SNB4p6kt3VkD33ktDNx7jHWWgRwNYw0CVwukVXr74QIVdkp7yMNxn/oMnx+Pmu",
+	"0ypGKv/KT3FB7grWxF9OhXRIxriEgt99Ttq9laHJs9FBdcHPnr4oWqOKtdXmLj/Yl0agTobH8TQ7b8Vs",
+	"5W3uP8b+IcY6Kw1Am5eKL4SKBkv12qF+8d77ytIbxzYYUm7PQO4hA1uHcKXcgjGk4Osj4h9OkYbU3v+p",
+	"vTFEMNZaLRjHqHkGtn0goBpeWKjarHCbf+pmddDmft4KaXFY522lzn4GsxHg0fdioItKXNuo+BnMlni4",
+	"lzqKbx1olVaHNZMNbhL6sEFTY0uHW3qkD2xbJuO7+KHbWpPmSfsNyWT8PW0IotZKP9nxD+PYQHYXdb9/",
+	"7mDGONek/paCayzxVzmGpPCvbU67jDLGz729sKkVNBcyN8S9dWLNj3+spc9STOgjGYjiRZvvbBeQUwIx",
+	"pHuaq80O4zQtJXky3s4CJHRbvV8Sva6wC/0X15vq7Z2e8n5PqdN9Q0BIq3uyfaMy7zv0Rg3eryZ+BhOC",
+	"a/TIxL3wt48CWrr/gI+pmuMo+JRThyu8aBYiHm98D6nmLfzydjw5soXU/veRmpS5tO8t/Tlk/bHZwZ01",
+	"4PdVj2ZtJ+nFPbxBWru315t8Q7vqr/BZJ87ScuZaovw1vOoWnjcCnc6VYstPxZalbQa1yWdC/mxfMnxE",
+	"xHf2CpDhpHZlMSSbiK/ypmNaAV0Qpq4ev80uB2WxdVEyRChHpCEZI57Ahnv20RU/CGWueTFKwBdTXM5q",
+	"Es4JfIdyp3kv5R5eSMNE+37Sug3T+M7WPr4pZPiOvHO7ZO+VLSm9Mn6MpLds8oMuHtvwl4fLnHr3FR6y",
+	"47eIPTvFCPzulmLd/1TQI9Kpf9MAwaob35tkvWr4qV9kfnhhR0IXOnXvq1eqN70kPfOJFtPoa6w3cxZ3",
+	"2Bu9jq5louhU8o+majC7QRq2m1QfkXLtrUIC1uh7tOer9W/WJY2mtvzdNFA1khWfQuTqb1NtdhLa+wEo",
+	"E1OaXOWZbUrpmsDwk966hs++R73bvXp91uBXV5H2ORkv03PKhDaBblGyg6FWVb1upPmYGRLbLUWKZueO",
+	"yg9xxMOr+1Yz7/fV9dtwolP1HrX93tp2LOglv9bg0V8DLmv54cbbWr52SjWQy7M3sX98VTebRl3ViEt/",
+	"EdUtxMSQ/CbVlSZSJHBEODX2fipG93MwGAoOieu6DcTkHnjXXPlojFH1Nf8pegQsRCSVAu7eJFBgzFHF",
+	"Ncd65NXYJM8aPFJdqwpXgKt6bnvZottbG8a5f0rTSKJy0U9UZwTKtt7HFbtym148F6/Nb8Jqs9M41yFs",
+	"Nqd3ms7ef0R163p6nFXIFY8OI9/bZV1zv2bP//sA+txy1ipUukcPnAmwFUoMyjcUJIeN/xMIHRhue2Zi",
+	"4jpHqv6IpNt2UK5kuwq6KzmnYZAqdg2io7jqoJSaq7vIyyDDNefmWWDiZKzjZpHM9bM12lHrQBShb2Cp",
+	"emrK+kBtZ7u2TMN3u/l48+8AAAD//22exjk1ZAAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

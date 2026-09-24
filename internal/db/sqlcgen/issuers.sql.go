@@ -333,6 +333,65 @@ func (q *Queries) ListCAs(ctx context.Context, orgID uuid.UUID) ([]Ca, error) {
 	return items, nil
 }
 
+const lockAccount = `-- name: LockAccount :one
+SELECT id, org_id, ca_id, email, account_key, registration_uri, status, created_at FROM acme_accounts WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type LockAccountParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the row for the duration of a delete's count-then-delete.
+func (q *Queries) LockAccount(ctx context.Context, arg LockAccountParams) (AcmeAccount, error) {
+	row := q.db.QueryRow(ctx, lockAccount, arg.ID, arg.OrgID)
+	var i AcmeAccount
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.CaID,
+		&i.Email,
+		&i.AccountKey,
+		&i.RegistrationUri,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const lockCA = `-- name: LockCA :one
+SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at FROM cas WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type LockCAParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the row for the duration of a delete's count-then-delete, so a
+// concurrent insert that references this CA (acme_accounts.ca_id has an FK
+// to cas.id) blocks until the delete's transaction commits or rolls back.
+func (q *Queries) LockCA(ctx context.Context, arg LockCAParams) (Ca, error) {
+	row := q.db.QueryRow(ctx, lockCA, arg.ID, arg.OrgID)
+	var i Ca
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Preset,
+		&i.DirectoryUrl,
+		&i.TrustBundlePem,
+		&i.EabKid,
+		&i.EabHmac,
+		&i.Resolvers,
+		&i.Shared,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateCA = `-- name: UpdateCA :one
 UPDATE cas SET name = $3, preset = $4, directory_url = $5, trust_bundle_pem = $6,
     eab_kid = $7, eab_hmac = $8, resolvers = $9, updated_at = now()

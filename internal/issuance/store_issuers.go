@@ -178,12 +178,21 @@ func (s *Store) ListCAs(ctx context.Context, orgID uuid.UUID) ([]CA, error) {
 	return out, nil
 }
 
-// DeleteCA deletes an unreferenced CA.
+// DeleteCA deletes an unreferenced CA. The row is locked for the whole
+// count-then-delete (in one transaction) so a concurrent account create,
+// which takes a lock on the same row to satisfy its foreign key, cannot
+// slip a new reference in between the count and the delete.
 func (s *Store) DeleteCA(ctx context.Context, orgID, id uuid.UUID) error {
-	if _, err := s.GetCA(ctx, orgID, id); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	n, err := s.q.CountCAUsers(ctx, id)
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	if _, err := q.LockCA(ctx, sqlcgen.LockCAParams{ID: id, OrgID: orgID}); err != nil {
+		return notFound(err)
+	}
+	n, err := q.CountCAUsers(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -197,8 +206,10 @@ func (s *Store) DeleteCA(ctx context.Context, orgID, id uuid.UUID) error {
 	if n > 0 {
 		return &InUseError{Users: n}
 	}
-	_, err = s.q.DeleteCA(ctx, sqlcgen.DeleteCAParams{ID: id, OrgID: orgID})
-	return err
+	if _, err := q.DeleteCA(ctx, sqlcgen.DeleteCAParams{ID: id, OrgID: orgID}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CAEAB returns the decrypted EAB material, or nil when the CA has none.
@@ -254,12 +265,19 @@ func (s *Store) ListAccounts(ctx context.Context, orgID uuid.UUID) ([]Account, e
 }
 
 // DeleteAccount deletes an unreferenced account (the CA-side account is not
-// deactivated).
+// deactivated). The row is locked for the whole count-then-delete (in one
+// transaction) so a concurrent create cannot slip a new reference in.
 func (s *Store) DeleteAccount(ctx context.Context, orgID, id uuid.UUID) error {
-	if _, err := s.GetAccount(ctx, orgID, id); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	n, err := s.q.CountAccountUsers(ctx, id)
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	if _, err := q.LockAccount(ctx, sqlcgen.LockAccountParams{ID: id, OrgID: orgID}); err != nil {
+		return notFound(err)
+	}
+	n, err := q.CountAccountUsers(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -273,8 +291,10 @@ func (s *Store) DeleteAccount(ctx context.Context, orgID, id uuid.UUID) error {
 	if n > 0 {
 		return &InUseError{Users: n}
 	}
-	_, err = s.q.DeleteAccount(ctx, sqlcgen.DeleteAccountParams{ID: id, OrgID: orgID})
-	return err
+	if _, err := q.DeleteAccount(ctx, sqlcgen.DeleteAccountParams{ID: id, OrgID: orgID}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // AccountMaterial returns the account with its decrypted key.
