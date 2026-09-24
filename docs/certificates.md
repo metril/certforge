@@ -85,6 +85,18 @@ Optional per rule: `propagationSeconds`, `resolvers`, `cnameAliasZone`.
 - **CNAME delegation**: point `_acme-challenge.<name>` at a record in a zone your credential controls. lego follows the CNAME automatically. Set `cnameAliasZone` to that zone; a mismatched or missing CNAME fails that name with a clear message on its first propagation check, within its own per-name propagation budget — not necessarily "early", and independent of how long any other name of the same certificate is still allowed to wait.
 - Phase 1 supports DNS methods only; HTTP-01 and TLS-ALPN-01 arrive in Phase 4.
 
+### The verification rules step (web UI)
+
+Pick a **Method** first: **DNS-01** (a DNS credential writes the TXT record) or **Manual DNS** (you add the records by hand; see [manual-dns](#manual-dns)). One method per certificate in this version; a per-rule method selector arrives in Phase 4.
+
+Rules are an ordered list; drag a row's grip to reorder, or use its **Move up**/**Move down** buttons. The wizard pre-fills one rule per registered domain with the credential you last used for that zone (remembered locally) or, failing that, a credential an existing certificate already uses there. If no credential is known and your organization's catch-all rule already covers the name, no rule is added; otherwise the rule is added without a credential, and the **Coverage** list shows **No credential** — issuing stays blocked until you pick one or use **Add credential**, which opens the provider picker and the credential form without leaving the wizard. **Advanced** per rule: propagation wait, resolvers, and a CNAME alias zone.
+
+The **Coverage** panel lists every certificate name with the rule that proves it, or **Catch-all: inherited from Org/Global** when none of the certificate's own rules match but the org or global catch-all does. A name with neither is flagged and blocks **Next**.
+
+### CNAME delegation
+
+To keep DNS API credentials away from a production zone, point `_acme-challenge.<name>` at a record in a separate zone with a CNAME, for example `_acme-challenge.www.example.com CNAME www.example.com.acme.example.net`. lego follows the CNAME automatically. Set **CNAME alias zone** to `acme.example.net` and give the rule a credential for that zone.
+
 ### DNS credentials
 
 Issuers → DNS credentials. The form comes from the provider schema ([DNS providers](dns-providers.md)). Secret fields are stored encrypted and never returned; the API lists them in `storedSecrets`. On update, send `__unchanged__` to keep a secret. **Test** creates and deletes a TXT record at `_acme-challenge._certforge-test.<zone>`. A credential used by any rule cannot be deleted.

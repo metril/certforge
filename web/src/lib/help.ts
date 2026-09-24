@@ -83,6 +83,13 @@ export const help = {
   'cert.namesColumn': { text: 'Subject alternative names besides the common name shown under Name.', learnMore: 'certificates.md#names' },
   'cert.nextRenew': { text: 'When CertForge next tries to renew. ARI can move it earlier.' },
   'status.column': { text: 'State of the certificate itself, not of its last attempt.' },
+  'rules.method': { text: 'How you prove control of each name. One method per certificate in this version.', learnMore: 'certificates.md#verification-rules' },
+  'rules.match': { text: 'Name pattern. The first matching rule wins; * matches everything.' },
+  'rules.credential': { text: 'DNS credential that writes the _acme-challenge TXT record.' },
+  'rules.propagation': { text: 'Seconds to wait for the TXT record to spread. Empty uses the default.' },
+  'rules.cnameAlias': { text: 'Zone that _acme-challenge is delegated to by CNAME.', learnMore: 'certificates.md#cname-delegation' },
+  'rules.coverage': { text: 'Which rule proves each name. Names without one block issuing.' },
+  'rules.catchAll': { text: 'Rules that certificates fall back to when none of their own match.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

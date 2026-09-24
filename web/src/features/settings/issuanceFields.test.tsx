@@ -41,7 +41,7 @@ describe('fieldFromTitle (a 422 title is always "Invalid <field>")', () => {
     ['Invalid renewPolicy.value', 'renewPolicy'],
     ['Invalid renewPolicy.mode', 'renewPolicy'],
     ['Invalid propagationSeconds', 'propagationSeconds'],
-    ['Invalid verificationRules', null],
+    ['Invalid verificationRules', 'verificationRules'],
     ['Something else', null],
   ])('%s -> %s', (title, field) => {
     expect(fieldFromTitle(title)).toBe(field);
@@ -69,19 +69,22 @@ describe('fullPayload (review fix round 1, #1/#3)', () => {
       mustStaple: null,
       propagationSeconds: null,
       resolvers: null,
+      // Task 13: verificationRules now has its own ISSUANCE_FIELDS entry
+      // (VerificationRulesEditor), so it's sent explicitly like every
+      // other field rather than only surviving via the spread below.
+      verificationRules: null,
     });
   });
 
-  // Review fix round 2: verificationRules (and anything else this page
-  // doesn't render) has no ISSUANCE_FIELDS entry, so the old
-  // Object.fromEntries-only build dropped it — a "replace the whole
-  // object" PUT would then delete stored catch-all rules on any unrelated
-  // save.
-  it('passes an unrendered key (verificationRules) through untouched', () => {
-    const rules = [{ match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' }];
-    expect(fullPayload({ keyType: 'rsa2048', verificationRules: rules })).toEqual(
-      expect.objectContaining({ keyType: 'rsa2048', verificationRules: rules }),
-    );
+  // Review fix round 2: a key this page doesn't render has no ISSUANCE_FIELDS
+  // entry, so the old Object.fromEntries-only build dropped it — a "replace
+  // the whole object" PUT would then delete a stored-but-unrendered section
+  // on any unrelated save. verificationRules itself gained an entry in Task
+  // 13 (see the explicit-null case above), so a value it doesn't know about
+  // stands in here for "anything added later that this page still doesn't render".
+  it('passes an unrendered key through untouched', () => {
+    const value = { keyType: 'rsa2048' as const, ...({ someFutureField: 'x' } as Record<string, unknown>) } as Parameters<typeof fullPayload>[0];
+    expect(fullPayload(value)).toEqual(expect.objectContaining({ keyType: 'rsa2048', someFutureField: 'x' }));
   });
 });
 

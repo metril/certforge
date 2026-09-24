@@ -18,6 +18,7 @@ const allNull = {
   mustStaple: null,
   propagationSeconds: null,
   resolvers: null,
+  verificationRules: null,
 };
 
 const puts: Record<string, unknown> = {};

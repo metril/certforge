@@ -83,8 +83,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 | 9 | DNS credentials | done | 1b3d449 |
 | 10 | InheritableField and Settings | done | 1154695 |
 | 11 | Certificates list | done | 65a19e1 |
-| 12 | Wizard names step | done | pending |
-| 13 | Verification rules and coverage | planned | |
+| 12 | Wizard names step | done | 34419a9 |
+| 13 | Verification rules and coverage | done | pending |
 | 14 | Wizard assembly | planned | |
 | 15 | Attempts and manual DNS | planned | |
 | 16 | Certificate detail | planned | |

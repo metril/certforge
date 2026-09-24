@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { accountsQuery } from '@/api/queries/accounts';
 import { casQuery } from '@/api/queries/cas';
 import { dnsCredentialsQuery } from '@/api/queries/dns';
-import type { AcmeAccount, CA, DnsCredential, EffectiveMap, EffectiveValue, IssuanceDefaults, KeyType, Source } from '@/api/types';
+import type { AcmeAccount, CA, DnsCredential, EffectiveMap, EffectiveValue, IssuanceDefaults, KeyType, Source, VerificationRule } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { ListInput } from '@/components/ListInput';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
@@ -11,6 +11,7 @@ import { SwitchField } from '@/components/SwitchField';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { InheritableField, type ChainEntry } from '@/forms/InheritableField';
+import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
 import type { HelpKey } from '@/lib/help';
 
 export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[] };
@@ -203,7 +204,32 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
       </div>
     ),
   }),
+  def({
+    key: 'verificationRules',
+    label: 'Verification rules',
+    help: 'rules.catchAll',
+    initial: (c) => [{ match: '*', method: 'dns-01', dnsCredentialId: c.credentials[0]?.id }],
+    display: (v, c) => rulesSummary(v, c.credentials),
+    editor: (v, set, c) => (
+      <div className="w-full">
+        <VerificationRulesEditor
+          rules={v}
+          onChange={set}
+          method={v[0]?.method ?? 'dns-01'}
+          onMethodChange={(m) => set(v.map((r) => (m === 'manual-dns' ? { match: r.match, method: m } : { ...r, method: m })))}
+          credentials={c.credentials}
+        />
+      </div>
+    ),
+  }),
 ];
+
+export function rulesSummary(rules: VerificationRule[], creds: DnsCredential[]): string {
+  if (!rules.length) return 'None';
+  return rules
+    .map((r) => `${r.match} → ${r.method === 'manual-dns' ? 'manual' : (creds.find((c) => c.id === r.dnsCredentialId)?.name ?? 'no credential')}`)
+    .join('; ');
+}
 
 // enabled: !!orgId guards the no-org edge case (IssuanceDefaultsSection
 // still calls this hook unconditionally, with orgId '', before its own
