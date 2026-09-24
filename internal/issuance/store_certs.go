@@ -315,7 +315,7 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 		}
 	}
 	if d.VerificationRules != nil {
-		return s.validateRulesOrg(ctx, orgID, *d.VerificationRules)
+		return s.validateRulesOrgTx(ctx, q, orgID, *d.VerificationRules)
 	}
 	return nil
 }
@@ -408,12 +408,15 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 			if r.DNSCredentialID == nil {
 				continue
 			}
-			ok, err := q.DNSCredentialExists(ctx, *r.DNSCredentialID)
-			if err != nil {
+			// LockDNSCredentialKeyShare doubles as the existence check (its
+			// FOR KEY SHARE SELECT returns pgx.ErrNoRows when the credential
+			// is gone), same as the CAID check above; it also blocks a
+			// concurrent DeleteDNSCredential until this transaction ends.
+			if _, err := q.LockDNSCredentialKeyShare(ctx, *r.DNSCredentialID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential"}
+				}
 				return err
-			}
-			if !ok {
-				return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential"}
 			}
 		}
 	}
@@ -430,6 +433,31 @@ func (s *Store) validateRulesOrg(ctx context.Context, orgID uuid.UUID, rules []c
 				}
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// validateRulesOrgTx is validateRulesOrg run with tx-scoped queries, taking a
+// FOR KEY SHARE lock on any referenced credential first so
+// DeleteDNSCredential's FOR UPDATE lock on the same row blocks until this
+// transaction ends; see validateDefaultsTx.
+func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, rules []challenge.RuleSpec) error {
+	for _, r := range rules {
+		if r.DNSCredentialID == nil {
+			continue
+		}
+		if _, err := q.LockDNSCredentialKeyShare(ctx, *r.DNSCredentialID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
+			}
+			return err
+		}
+		if _, err := q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: *r.DNSCredentialID, OrgID: orgID}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
+			}
+			return err
 		}
 	}
 	return nil

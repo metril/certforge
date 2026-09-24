@@ -190,6 +190,78 @@ type CAPreset struct {
 // CAPresetCode CA preset code; custom takes any directory URL.
 type CAPresetCode string
 
+// DNSCredential A DNS provider credential. Secret values are never returned.
+type DNSCredential struct {
+	// Config Non-secret field values.
+	Config map[string]string `json:"config"`
+
+	// CreatedAt Creation time.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// Id Credential id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+
+	// OrgId Owning org.
+	OrgId *openapi_types.UUID `json:"orgId,omitempty"`
+
+	// ProviderCode Provider code from GET /meta/schemas dnsProviders.
+	ProviderCode string `json:"providerCode"`
+
+	// StoredSecrets Secret fields that have a stored value.
+	StoredSecrets *[]string `json:"storedSecrets,omitempty"`
+
+	// UpdatedAt Last change.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+
+	// UsedBy Certificates and defaults whose rules reference this credential.
+	UsedBy *int `json:"usedBy,omitempty"`
+}
+
+// DNSCredentialInput A new DNS credential.
+type DNSCredentialInput struct {
+	// Config Field values keyed by schema property.
+	Config map[string]string `json:"config"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+
+	// ProviderCode Provider code or alias.
+	ProviderCode string `json:"providerCode"`
+}
+
+// DNSCredentialTestRequest Zone to test against.
+type DNSCredentialTestRequest struct {
+	// Zone A zone the credential manages.
+	Zone string `json:"zone"`
+}
+
+// DNSCredentialTestResult Outcome of a credential test.
+type DNSCredentialTestResult struct {
+	// DurationMs Test duration in milliseconds.
+	DurationMs int `json:"durationMs"`
+
+	// Error Provider error when ok is false.
+	Error *string `json:"error,omitempty"`
+
+	// Fqdn TXT record name used.
+	Fqdn string `json:"fqdn"`
+
+	// Ok The record was created and removed.
+	Ok bool `json:"ok"`
+}
+
+// DNSCredentialUpdate Replacement name and config.
+type DNSCredentialUpdate struct {
+	// Config Full config; secret fields may be __unchanged__.
+	Config map[string]string `json:"config"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+}
+
 // EffectiveBool Effective flag and its source.
 type EffectiveBool struct {
 	// Source Level this value came from.
@@ -514,6 +586,15 @@ type CreateCaJSONRequestBody = CAInput
 // UpdateCaJSONRequestBody defines body for UpdateCa for application/json ContentType.
 type UpdateCaJSONRequestBody = CAInput
 
+// CreateDNSCredentialJSONRequestBody defines body for CreateDNSCredential for application/json ContentType.
+type CreateDNSCredentialJSONRequestBody = DNSCredentialInput
+
+// UpdateDNSCredentialJSONRequestBody defines body for UpdateDNSCredential for application/json ContentType.
+type UpdateDNSCredentialJSONRequestBody = DNSCredentialUpdate
+
+// TestDNSCredentialJSONRequestBody defines body for TestDNSCredential for application/json ContentType.
+type TestDNSCredentialJSONRequestBody = DNSCredentialTestRequest
+
 // PutOrgIssuanceDefaultsJSONRequestBody defines body for PutOrgIssuanceDefaults for application/json ContentType.
 type PutOrgIssuanceDefaultsJSONRequestBody = IssuanceDefaults
 
@@ -570,6 +651,24 @@ type ServerInterface interface {
 	// Replace a CA
 	// (PUT /orgs/{orgId}/cas/{id})
 	UpdateCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// List DNS credentials
+	// (GET /orgs/{orgId}/dns-credentials)
+	ListDNSCredentials(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Add a DNS credential
+	// (POST /orgs/{orgId}/dns-credentials)
+	CreateDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	// Delete a DNS credential
+	// (DELETE /orgs/{orgId}/dns-credentials/{id})
+	DeleteDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Get a DNS credential
+	// (GET /orgs/{orgId}/dns-credentials/{id})
+	GetDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Replace a DNS credential
+	// (PUT /orgs/{orgId}/dns-credentials/{id})
+	UpdateDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
+	// Test a DNS credential
+	// (POST /orgs/{orgId}/dns-credentials/{id}/test)
+	TestDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
 	// Get org issuance defaults
 	// (GET /orgs/{orgId}/issuance-defaults)
 	GetOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId)
@@ -684,6 +783,42 @@ func (_ Unimplemented) GetCa(w http.ResponseWriter, r *http.Request, orgId OrgId
 // Replace a CA
 // (PUT /orgs/{orgId}/cas/{id})
 func (_ Unimplemented) UpdateCa(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List DNS credentials
+// (GET /orgs/{orgId}/dns-credentials)
+func (_ Unimplemented) ListDNSCredentials(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add a DNS credential
+// (POST /orgs/{orgId}/dns-credentials)
+func (_ Unimplemented) CreateDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a DNS credential
+// (DELETE /orgs/{orgId}/dns-credentials/{id})
+func (_ Unimplemented) DeleteDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a DNS credential
+// (GET /orgs/{orgId}/dns-credentials/{id})
+func (_ Unimplemented) GetDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Replace a DNS credential
+// (PUT /orgs/{orgId}/dns-credentials/{id})
+func (_ Unimplemented) UpdateDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Test a DNS credential
+// (POST /orgs/{orgId}/dns-credentials/{id}/test)
+func (_ Unimplemented) TestDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1176,6 +1311,228 @@ func (siw *ServerInterfaceWrapper) UpdateCa(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// ListDNSCredentials operation middleware
+func (siw *ServerInterfaceWrapper) ListDNSCredentials(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDNSCredentials(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDNSCredential operation middleware
+func (siw *ServerInterfaceWrapper) CreateDNSCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDNSCredential(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteDNSCredential operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDNSCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteDNSCredential(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDNSCredential operation middleware
+func (siw *ServerInterfaceWrapper) GetDNSCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDNSCredential(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDNSCredential operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDNSCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDNSCredential(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestDNSCredential operation middleware
+func (siw *ServerInterfaceWrapper) TestDNSCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId OrgId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id Id
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestDNSCredential(w, r, orgId, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetOrgIssuanceDefaults operation middleware
 func (siw *ServerInterfaceWrapper) GetOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request) {
 
@@ -1518,6 +1875,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/orgs/{orgId}/cas/{id}", wrapper.UpdateCa)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/dns-credentials", wrapper.ListDNSCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/orgs/{orgId}/dns-credentials", wrapper.CreateDNSCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/orgs/{orgId}/dns-credentials/{id}", wrapper.DeleteDNSCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orgs/{orgId}/dns-credentials/{id}", wrapper.GetDNSCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/orgs/{orgId}/dns-credentials/{id}", wrapper.UpdateDNSCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/orgs/{orgId}/dns-credentials/{id}/test", wrapper.TestDNSCredential)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/orgs/{orgId}/issuance-defaults", wrapper.GetOrgIssuanceDefaults)
 	})
 	r.Group(func(r chi.Router) {
@@ -1797,6 +2172,114 @@ func (response UpdateCa200JSONResponse) VisitUpdateCaResponse(w http.ResponseWri
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListDNSCredentialsRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+}
+
+type ListDNSCredentialsResponseObject interface {
+	VisitListDNSCredentialsResponse(w http.ResponseWriter) error
+}
+
+type ListDNSCredentials200JSONResponse []DNSCredential
+
+func (response ListDNSCredentials200JSONResponse) VisitListDNSCredentialsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDNSCredentialRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Body  *CreateDNSCredentialJSONRequestBody
+}
+
+type CreateDNSCredentialResponseObject interface {
+	VisitCreateDNSCredentialResponse(w http.ResponseWriter) error
+}
+
+type CreateDNSCredential201JSONResponse DNSCredential
+
+func (response CreateDNSCredential201JSONResponse) VisitCreateDNSCredentialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteDNSCredentialRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type DeleteDNSCredentialResponseObject interface {
+	VisitDeleteDNSCredentialResponse(w http.ResponseWriter) error
+}
+
+type DeleteDNSCredential204Response struct {
+}
+
+func (response DeleteDNSCredential204Response) VisitDeleteDNSCredentialResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetDNSCredentialRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+}
+
+type GetDNSCredentialResponseObject interface {
+	VisitGetDNSCredentialResponse(w http.ResponseWriter) error
+}
+
+type GetDNSCredential200JSONResponse DNSCredential
+
+func (response GetDNSCredential200JSONResponse) VisitGetDNSCredentialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateDNSCredentialRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+	Body  *UpdateDNSCredentialJSONRequestBody
+}
+
+type UpdateDNSCredentialResponseObject interface {
+	VisitUpdateDNSCredentialResponse(w http.ResponseWriter) error
+}
+
+type UpdateDNSCredential200JSONResponse DNSCredential
+
+func (response UpdateDNSCredential200JSONResponse) VisitUpdateDNSCredentialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TestDNSCredentialRequestObject struct {
+	OrgId OrgId `json:"orgId"`
+	Id    Id    `json:"id"`
+	Body  *TestDNSCredentialJSONRequestBody
+}
+
+type TestDNSCredentialResponseObject interface {
+	VisitTestDNSCredentialResponse(w http.ResponseWriter) error
+}
+
+type TestDNSCredential200JSONResponse DNSCredentialTestResult
+
+func (response TestDNSCredential200JSONResponse) VisitTestDNSCredentialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetOrgIssuanceDefaultsRequestObject struct {
 	OrgId OrgId `json:"orgId"`
 }
@@ -1964,6 +2447,24 @@ type StrictServerInterface interface {
 	// Replace a CA
 	// (PUT /orgs/{orgId}/cas/{id})
 	UpdateCa(ctx context.Context, request UpdateCaRequestObject) (UpdateCaResponseObject, error)
+	// List DNS credentials
+	// (GET /orgs/{orgId}/dns-credentials)
+	ListDNSCredentials(ctx context.Context, request ListDNSCredentialsRequestObject) (ListDNSCredentialsResponseObject, error)
+	// Add a DNS credential
+	// (POST /orgs/{orgId}/dns-credentials)
+	CreateDNSCredential(ctx context.Context, request CreateDNSCredentialRequestObject) (CreateDNSCredentialResponseObject, error)
+	// Delete a DNS credential
+	// (DELETE /orgs/{orgId}/dns-credentials/{id})
+	DeleteDNSCredential(ctx context.Context, request DeleteDNSCredentialRequestObject) (DeleteDNSCredentialResponseObject, error)
+	// Get a DNS credential
+	// (GET /orgs/{orgId}/dns-credentials/{id})
+	GetDNSCredential(ctx context.Context, request GetDNSCredentialRequestObject) (GetDNSCredentialResponseObject, error)
+	// Replace a DNS credential
+	// (PUT /orgs/{orgId}/dns-credentials/{id})
+	UpdateDNSCredential(ctx context.Context, request UpdateDNSCredentialRequestObject) (UpdateDNSCredentialResponseObject, error)
+	// Test a DNS credential
+	// (POST /orgs/{orgId}/dns-credentials/{id}/test)
+	TestDNSCredential(ctx context.Context, request TestDNSCredentialRequestObject) (TestDNSCredentialResponseObject, error)
 	// Get org issuance defaults
 	// (GET /orgs/{orgId}/issuance-defaults)
 	GetOrgIssuanceDefaults(ctx context.Context, request GetOrgIssuanceDefaultsRequestObject) (GetOrgIssuanceDefaultsResponseObject, error)
@@ -2427,6 +2928,187 @@ func (sh *strictHandler) UpdateCa(w http.ResponseWriter, r *http.Request, orgId 
 	}
 }
 
+// ListDNSCredentials operation middleware
+func (sh *strictHandler) ListDNSCredentials(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request ListDNSCredentialsRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDNSCredentials(ctx, request.(ListDNSCredentialsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDNSCredentials")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDNSCredentialsResponseObject); ok {
+		if err := validResponse.VisitListDNSCredentialsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDNSCredential operation middleware
+func (sh *strictHandler) CreateDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request CreateDNSCredentialRequestObject
+
+	request.OrgId = orgId
+
+	var body CreateDNSCredentialJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDNSCredential(ctx, request.(CreateDNSCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDNSCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDNSCredentialResponseObject); ok {
+		if err := validResponse.VisitCreateDNSCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteDNSCredential operation middleware
+func (sh *strictHandler) DeleteDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request DeleteDNSCredentialRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteDNSCredential(ctx, request.(DeleteDNSCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteDNSCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteDNSCredentialResponseObject); ok {
+		if err := validResponse.VisitDeleteDNSCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDNSCredential operation middleware
+func (sh *strictHandler) GetDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request GetDNSCredentialRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDNSCredential(ctx, request.(GetDNSCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDNSCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDNSCredentialResponseObject); ok {
+		if err := validResponse.VisitGetDNSCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDNSCredential operation middleware
+func (sh *strictHandler) UpdateDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request UpdateDNSCredentialRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	var body UpdateDNSCredentialJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDNSCredential(ctx, request.(UpdateDNSCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDNSCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDNSCredentialResponseObject); ok {
+		if err := validResponse.VisitUpdateDNSCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestDNSCredential operation middleware
+func (sh *strictHandler) TestDNSCredential(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id) {
+	var request TestDNSCredentialRequestObject
+
+	request.OrgId = orgId
+	request.Id = id
+
+	var body TestDNSCredentialJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestDNSCredential(ctx, request.(TestDNSCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestDNSCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestDNSCredentialResponseObject); ok {
+		if err := validResponse.VisitTestDNSCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetOrgIssuanceDefaults operation middleware
 func (sh *strictHandler) GetOrgIssuanceDefaults(w http.ResponseWriter, r *http.Request, orgId OrgId) {
 	var request GetOrgIssuanceDefaultsRequestObject
@@ -2629,99 +3311,112 @@ func (sh *strictHandler) GetSetupStatus(w http.ResponseWriter, r *http.Request) 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

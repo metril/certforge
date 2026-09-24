@@ -153,6 +153,45 @@ func (q *Queries) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]Dn
 	return items, nil
 }
 
+const lockDNSCredential = `-- name: LockDNSCredential :one
+SELECT id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at FROM dns_provider_credentials WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type LockDNSCredentialParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the row for the duration of a delete's count-then-delete.
+func (q *Queries) LockDNSCredential(ctx context.Context, arg LockDNSCredentialParams) (DnsProviderCredential, error) {
+	row := q.db.QueryRow(ctx, lockDNSCredential, arg.ID, arg.OrgID)
+	var i DnsProviderCredential
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.ProviderCode,
+		&i.PublicCfg,
+		&i.SecretCfg,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockDNSCredentialKeyShare = `-- name: LockDNSCredentialKeyShare :one
+SELECT id FROM dns_provider_credentials WHERE id = $1 FOR KEY SHARE
+`
+
+// FOR KEY SHARE counterpart to LockDNSCredential; see LockCAKeyShare. Not
+// org-scoped: callers that need org ownership check it separately while
+// still holding this lock.
+func (q *Queries) LockDNSCredentialKeyShare(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockDNSCredentialKeyShare, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const updateDNSCredential = `-- name: UpdateDNSCredential :one
 UPDATE dns_provider_credentials SET name = $3, public_cfg = $4, secret_cfg = $5, updated_at = now()
 WHERE id = $1 AND org_id = $2

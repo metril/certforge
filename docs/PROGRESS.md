@@ -56,8 +56,8 @@ Phase 1A; 4ea34b6 was Task 14's own last commit.
 | 9 | Issuance data layer | done | dacbf57 |
 | 10 | Certificate store and IssueWorker | done | 3df0fe4 |
 | 11 | Scheduler, river wiring, issuance service | done | 2ee0a17 |
-| 12 | API: CAs, accounts, defaults | done | pending |
-| 13 | API: DNS credentials | todo | – |
+| 12 | API: CAs, accounts, defaults | done | 018cfca |
+| 13 | API: DNS credentials | done | pending |
 | 14 | API: certificates, downloads, manual-dns | todo | – |
 | 15 | Pebble end-to-end test | todo | – |
 

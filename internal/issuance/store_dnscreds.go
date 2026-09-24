@@ -152,17 +152,41 @@ func (s *Store) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]DNSC
 	return out, nil
 }
 
-// DeleteDNSCredential deletes an unreferenced credential.
+// DeleteDNSCredential deletes an unreferenced credential. The row is FOR
+// UPDATE-locked for the whole count-then-delete (in one transaction), which
+// blocks a concurrent org or global issuance-defaults write (or certificate
+// write) that takes a FOR KEY SHARE lock on the same row before validating
+// and writing (validateDefaultsTx/validateRulesOrgTx, ValidateGlobalDefaultsTx);
+// the reference checks (CountDNSCredentialUsers, globalDefaultsReferenceTx)
+// run after the lock is held, in the same transaction.
 func (s *Store) DeleteDNSCredential(ctx context.Context, orgID, id uuid.UUID) error {
-	c, err := s.GetDNSCredential(ctx, orgID, id)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if c.UsedBy > 0 {
-		return &InUseError{Users: c.UsedBy}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	if _, err := q.LockDNSCredential(ctx, sqlcgen.LockDNSCredentialParams{ID: id, OrgID: orgID}); err != nil {
+		return notFound(err)
 	}
-	_, err = s.q.DeleteDNSCredential(ctx, sqlcgen.DeleteDNSCredentialParams{ID: id, OrgID: orgID})
-	return err
+	n, err := q.CountDNSCredentialUsers(ctx, id)
+	if err != nil {
+		return err
+	}
+	ref, err := s.globalDefaultsReferenceTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if ref {
+		n++
+	}
+	if n > 0 {
+		return &InUseError{Users: n}
+	}
+	if _, err := q.DeleteDNSCredential(ctx, sqlcgen.DeleteDNSCredentialParams{ID: id, OrgID: orgID}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // DNSCredentialConfig returns the credential and its full decrypted config.

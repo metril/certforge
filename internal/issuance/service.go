@@ -94,7 +94,10 @@ func (s *Service) EnqueueIssue(ctx context.Context, certID uuid.UUID) (bool, err
 // TestDNSCredential presents and cleans up a TXT record for
 // _certforge-test.<zone> (lego providers always add the _acme-challenge.
 // prefix, so the record is _acme-challenge._certforge-test.<zone>) and
-// returns the record name used.
+// returns the record name used. CleanUp always runs, even when Present
+// failed partway through (some providers create the record before
+// returning an error), so a failed test never leaves the record behind;
+// Present's error takes priority when both fail.
 func (s *Service) TestDNSCredential(ctx context.Context, orgID, id uuid.UUID, zone string) (string, error) {
 	zone = dns01.UnFqdn(zone)
 	if zone == "" {
@@ -111,11 +114,13 @@ func (s *Service) TestDNSCredential(ctx context.Context, orgID, id uuid.UUID, zo
 	domain := "_certforge-test." + zone
 	keyAuth := "certforge-test-" + time.Now().UTC().Format("20060102T150405")
 	fqdn := dns01.UnFqdn(dns01.GetChallengeInfo(domain, keyAuth).EffectiveFQDN)
-	if err := p.Present(domain, "certforge-test", keyAuth); err != nil {
-		return fqdn, fmt.Errorf("present %s: %w", fqdn, err)
+	presentErr := p.Present(domain, "certforge-test", keyAuth)
+	cleanErr := p.CleanUp(domain, "certforge-test", keyAuth)
+	if presentErr != nil {
+		return fqdn, fmt.Errorf("present %s: %w", fqdn, presentErr)
 	}
-	if err := p.CleanUp(domain, "certforge-test", keyAuth); err != nil {
-		return fqdn, fmt.Errorf("clean up %s: %w", fqdn, err)
+	if cleanErr != nil {
+		return fqdn, fmt.Errorf("clean up %s: %w", fqdn, cleanErr)
 	}
 	return fqdn, nil
 }

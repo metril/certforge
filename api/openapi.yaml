@@ -309,6 +309,93 @@ paths:
       responses:
         "204":
           description: Deleted.
+  /orgs/{orgId}/dns-credentials:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listDNSCredentials
+      tags: [issuers]
+      summary: List DNS credentials
+      description: Credentials of the org sorted by name, without secrets. Needs dnscreds:read.
+      responses:
+        "200":
+          description: All credentials of the org.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Credentials.
+                items: {$ref: "#/components/schemas/DNSCredential"}
+    post:
+      operationId: createDNSCredential
+      tags: [issuers]
+      summary: Add a DNS credential
+      description: Needs dnscreds:write. config keys must be properties of the provider schema from GET /meta/schemas; fields with secret true are stored encrypted. Unknown keys return 422.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DNSCredentialInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DNSCredential"}
+  /orgs/{orgId}/dns-credentials/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getDNSCredential
+      tags: [issuers]
+      summary: Get a DNS credential
+      description: Secrets are never returned. Needs dnscreds:read.
+      responses:
+        "200":
+          description: The credential.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DNSCredential"}
+    put:
+      operationId: updateDNSCredential
+      tags: [issuers]
+      summary: Replace a DNS credential
+      description: Needs dnscreds:write. config is replaced as a whole; a secret field set to __unchanged__ keeps its stored value and a secret field left out is removed. The provider cannot change.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DNSCredentialUpdate"}
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DNSCredential"}
+    delete:
+      operationId: deleteDNSCredential
+      tags: [issuers]
+      summary: Delete a DNS credential
+      description: Needs dnscreds:write. 409 while certificates, org defaults or the global defaults reference it.
+      responses:
+        "204":
+          description: Deleted.
+  /orgs/{orgId}/dns-credentials/{id}/test:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: testDNSCredential
+      tags: [issuers]
+      summary: Test a DNS credential
+      description: Needs dnscreds:write. Creates and removes a TXT record at _acme-challenge._certforge-test.<zone> (lego always adds the _acme-challenge label). Provider failures return 200 with ok false.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DNSCredentialTestRequest"}
+      responses:
+        "200":
+          description: Test outcome.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DNSCredentialTestResult"}
   /orgs/{orgId}/issuance-defaults:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -625,6 +712,50 @@ components:
       properties:
         caId: {type: string, format: uuid, description: CA to register with.}
         email: {type: string, description: Contact email.}
+    DNSCredential:
+      type: object
+      description: A DNS provider credential. Secret values are never returned.
+      required: [id, name, providerCode, config]
+      properties:
+        id: {type: string, format: uuid, description: Credential id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Unique name in the org.}
+        providerCode: {type: string, description: Provider code from GET /meta/schemas dnsProviders.}
+        config: {type: object, additionalProperties: {type: string}, description: Non-secret field values.}
+        storedSecrets: {type: array, items: {type: string}, description: Secret fields that have a stored value.}
+        usedBy: {type: integer, description: Certificates and defaults whose rules reference this credential.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    DNSCredentialInput:
+      type: object
+      description: A new DNS credential.
+      required: [name, providerCode, config]
+      properties:
+        name: {type: string, description: Unique name in the org.}
+        providerCode: {type: string, description: Provider code or alias.}
+        config: {type: object, additionalProperties: {type: string}, description: Field values keyed by schema property.}
+    DNSCredentialUpdate:
+      type: object
+      description: Replacement name and config.
+      required: [name, config]
+      properties:
+        name: {type: string, description: Unique name in the org.}
+        config: {type: object, additionalProperties: {type: string}, description: Full config; secret fields may be __unchanged__.}
+    DNSCredentialTestRequest:
+      type: object
+      description: Zone to test against.
+      required: [zone]
+      properties:
+        zone: {type: string, example: example.com, description: A zone the credential manages.}
+    DNSCredentialTestResult:
+      type: object
+      description: Outcome of a credential test.
+      required: [ok, fqdn, durationMs]
+      properties:
+        ok: {type: boolean, description: The record was created and removed.}
+        fqdn: {type: string, description: TXT record name used.}
+        error: {type: string, description: Provider error when ok is false.}
+        durationMs: {type: integer, description: Test duration in milliseconds.}
     KeyType:
       type: string
       description: Certificate key algorithm.

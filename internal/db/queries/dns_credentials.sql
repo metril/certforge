@@ -19,6 +19,16 @@ UPDATE dns_provider_credentials SET name = $3, public_cfg = $4, secret_cfg = $5,
 WHERE id = $1 AND org_id = $2
 RETURNING *;
 
+-- name: LockDNSCredential :one
+-- Locks the row for the duration of a delete's count-then-delete.
+SELECT * FROM dns_provider_credentials WHERE id = $1 AND org_id = $2 FOR UPDATE;
+
+-- name: LockDNSCredentialKeyShare :one
+-- FOR KEY SHARE counterpart to LockDNSCredential; see LockCAKeyShare. Not
+-- org-scoped: callers that need org ownership check it separately while
+-- still holding this lock.
+SELECT id FROM dns_provider_credentials WHERE id = $1 FOR KEY SHARE;
+
 -- name: DeleteDNSCredential :execrows
 DELETE FROM dns_provider_credentials WHERE id = $1 AND org_id = $2;
 

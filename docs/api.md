@@ -40,3 +40,6 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET, PUT /orgs/{orgId}/issuance-defaults` | org defaults (null inherits global) |
 | `GET /orgs/{orgId}/issuance-defaults/effective` | resolved defaults with sources |
 | `GET, PUT /settings/issuance_defaults` | global defaults (settings section) |
+| `GET, POST /orgs/{orgId}/dns-credentials` | list, add DNS credentials |
+| `GET, PUT, DELETE /orgs/{orgId}/dns-credentials/{id}` | read, replace, delete a credential |
+| `POST /orgs/{orgId}/dns-credentials/{id}/test` | create and remove a test TXT record |
