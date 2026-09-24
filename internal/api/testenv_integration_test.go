@@ -27,6 +27,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
+	"github.com/metril/certforge/internal/setup"
 )
 
 type testEnv struct {
@@ -52,6 +53,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		Meta:     meta.NewRegistry(),
 		Sessions: authn.NewSessions(q, 12*time.Hour),
 		Auditor:  aud,
+		Setup:    setup.New(pool, aud),
 	}
 	srv := httptest.NewServer(api.NewRouter(d))
 	t.Cleanup(srv.Close)

@@ -25,7 +25,43 @@ tags:
     description: Login, logout, and the current principal.
   - name: settings
     description: Schema-driven settings sections.
+  - name: setup
+    description: First-run setup wizard.
 paths:
+  /setup/status:
+    get:
+      operationId: getSetupStatus
+      tags: [setup]
+      summary: First-run status
+      description: Whether the first-run setup wizard still needs to run. Public.
+      security: []
+      responses:
+        "200":
+          description: Setup status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatus"
+  /setup/complete:
+    post:
+      operationId: completeSetup
+      tags: [setup]
+      summary: Complete first-run setup
+      description: Sets the local admin password, stores the base URL, creates the first org, and logs the admin in. Works once; later calls get 409. Public.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "200":
+          description: Setup done; session cookie set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
   /meta/schemas:
     get:
       operationId: getMetaSchemas
@@ -288,3 +324,33 @@ components:
           description: The section's current value.
           allOf:
             - $ref: "#/components/schemas/SettingsValue"
+    SetupStatus:
+      type: object
+      description: First-run state.
+      required: [needsSetup]
+      properties:
+        needsSetup:
+          type: boolean
+          description: True until POST /setup/complete succeeds.
+    SetupRequest:
+      type: object
+      description: First-run wizard input.
+      required: [adminPassword, orgName, orgSlug, baseUrl]
+      properties:
+        adminPassword:
+          type: string
+          format: password
+          minLength: 12
+          description: New local admin password, at least 12 characters.
+        orgName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Display name of the first org.
+        orgSlug:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+          description: URL-safe identifier of the first org.
+        baseUrl:
+          type: string
+          description: Public URL of this CertForge instance, for example https://certs.example.com.

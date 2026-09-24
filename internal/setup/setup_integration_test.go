@@ -1,0 +1,136 @@
+//go:build integration
+
+package setup_test
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+
+	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/db/dbtest"
+	"github.com/metril/certforge/internal/setup"
+)
+
+var good = setup.Input{AdminPassword: "correct horse battery", OrgName: "Home", OrgSlug: "home", BaseURL: "https://certs.example.com/"}
+
+func TestComplete(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+	svc := setup.New(pool, audit.New(pool))
+	if needs, err := svc.NeedsSetup(ctx); err != nil || !needs {
+		t.Fatalf("needs %v err %v", needs, err)
+	}
+	res, err := svc.Complete(ctx, good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if needs, _ := svc.NeedsSetup(ctx); needs {
+		t.Fatal("still needs setup")
+	}
+	admin, err := q.GetLocalAdmin(ctx)
+	if err != nil || admin.ID != res.AdminID {
+		t.Fatalf("admin %v err %v", admin.ID, err)
+	}
+	if ok, _ := authn.VerifyPassword(*admin.LocalPasswordHash, good.AdminPassword); !ok {
+		t.Fatal("password not stored")
+	}
+	rbs, _ := q.ListRoleBindingsForUser(ctx, admin.ID.String())
+	if len(rbs) != 1 || rbs[0].Role != "admin" || rbs[0].OrgID != nil {
+		t.Fatalf("bindings %+v", rbs)
+	}
+	org, err := q.GetOrgBySlug(ctx, "home")
+	if err != nil || org.ID != res.OrgID {
+		t.Fatalf("org %v err %v", org, err)
+	}
+	row, err := q.GetSetting(ctx, "section.general")
+	if err != nil || string(row.Value) != `{"baseUrl": "https://certs.example.com"}` {
+		t.Fatalf("general %s err %v", row.Value, err)
+	}
+	if _, err := svc.Complete(ctx, good); !errors.Is(err, setup.ErrAlreadyComplete) {
+		t.Fatalf("second complete err = %v", err)
+	}
+}
+
+func TestCompleteConcurrent(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	svc := setup.New(pool, audit.New(pool))
+	var wg sync.WaitGroup
+	errs := make(chan error, 3)
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := svc.Complete(ctx, good)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	ok, already := 0, 0
+	for err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, setup.ErrAlreadyComplete):
+			already++
+		default:
+			t.Fatalf("unexpected err %v", err)
+		}
+	}
+	if ok != 1 || already != 2 {
+		t.Fatalf("ok=%d already=%d", ok, already)
+	}
+}
+
+func TestCompleteInvalid(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	svc := setup.New(pool, audit.New(pool))
+	bad := []setup.Input{
+		{AdminPassword: "short", OrgName: "Home", OrgSlug: "home", BaseURL: "https://x.example"},
+		{AdminPassword: good.AdminPassword, OrgName: " ", OrgSlug: "home", BaseURL: "https://x.example"},
+		{AdminPassword: good.AdminPassword, OrgName: "Home", OrgSlug: "Bad Slug", BaseURL: "https://x.example"},
+		{AdminPassword: good.AdminPassword, OrgName: "Home", OrgSlug: "home", BaseURL: "ftp://x"},
+	}
+	for i, in := range bad {
+		if _, err := svc.Complete(ctx, in); !errors.Is(err, setup.ErrInvalid) {
+			t.Fatalf("case %d err = %v", i, err)
+		}
+	}
+	if needs, _ := svc.NeedsSetup(ctx); !needs {
+		t.Fatal("invalid input completed setup")
+	}
+}
+
+func TestSetAdminPassword(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+	svc := setup.New(pool, audit.New(pool))
+	id, err := svc.SetAdminPassword(ctx, "first password 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
+	token, _, err := sessions.Create(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := svc.SetAdminPassword(ctx, "second password 2")
+	if err != nil || id2 != id {
+		t.Fatalf("id %v -> %v err %v", id, id2, err)
+	}
+	admin, _ := q.GetLocalAdmin(ctx)
+	if ok, _ := authn.VerifyPassword(*admin.LocalPasswordHash, "second password 2"); !ok {
+		t.Fatal("password not updated")
+	}
+	if _, err := sessions.Lookup(ctx, token); !errors.Is(err, authn.ErrNoSession) {
+		t.Fatalf("old session survived: %v", err)
+	}
+	if _, err := svc.SetAdminPassword(ctx, "short"); !errors.Is(err, setup.ErrInvalid) {
+		t.Fatalf("short err = %v", err)
+	}
+}

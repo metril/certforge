@@ -31,8 +31,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 7 | Authorization | done | 6bff6f1 |
 | 8 | Audit log | done | ef291d3 |
 | 9 | OpenAPI skeleton, router, problem+json | done | 2cd22ee |
-| 10 | Auth and settings endpoints | done | pending |
-| 11 | Setup wizard and bootstrap-admin | todo | – |
+| 10 | Auth and settings endpoints | done | 1d8d3ab |
+| 11 | Setup wizard and bootstrap-admin | done | pending |
 | 12 | Health, web UI placeholder, serve | todo | – |
 | 13 | Container image and compose | todo | – |
 | 14 | Architecture docs and phase close-out | todo | – |
@@ -40,6 +40,7 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.
+- bootstrap-admin reads CF_ADMIN_PASSWORD as one-shot CLI input; it is not server configuration and serve never reads it.
 
 ## Known gaps
 

@@ -24,3 +24,7 @@ Roles: `admin` (everything, including CAs, KEK, global settings, key export), `o
 `audit_events` is append-only. Triggers reject UPDATE, DELETE, and TRUNCATE. Each row stores `prev_hash` (unique) and `hash = SHA-256(prev_hash, timestamp, actor, action, resource, org, ip, canonical details)`. Appends are serialized with a Postgres advisory lock. Logins, failed logins, logouts, setup, and settings changes are recorded.
 
 `Auditor.Verify` walks the chain and detects an in-place edit to any row, or a row deleted from the middle of the chain: either breaks the `prev_hash`/`hash` link and `Verify` reports the first bad id. It does not detect truncation from the tail (deleting the newest rows leaves a shorter but internally consistent chain) or a full rewrite by a role that owns the table, since the hash is unkeyed and the application role owns `audit_events`. Hardening follow-ups: a keyed HMAC instead of a plain hash, anchoring the head hash outside the table (e.g. in a separate append-only store or external log), and running the application under a role that cannot alter or own `audit_events`.
+
+## First run
+
+Until setup completes, anyone who can reach the server can claim it through `POST /api/v1/setup/complete`. Complete setup right after the first start, or keep the port private until then. Completion is atomic (transaction plus advisory lock) and happens only once.

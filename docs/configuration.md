@@ -33,3 +33,25 @@ Live configuration is stored in the `settings` table (`key`, JSON `value`, encry
 - Each Settings page is a **section** with a JSON Schema. `GET /api/v1/settings/{section}` returns `{section, schema, value}`. `PUT` takes the value object, validates it against the schema (422 on failure), and stores it under the key `section.<name>`. An unset section returns its default.
 - Phase 1 sections: `general` (`baseUrl`), `backup` (`kekEscrowConfirmed`), and `issuance_defaults` (from the issuance plan).
 - Secrets are stored with envelope encryption in the `secret` column and are never returned by the API.
+
+## First-run setup wizard
+
+Until setup completes, `GET /api/v1/setup/status` returns `{"needsSetup": true}` and the UI shows `/setup`. The wizard posts to `POST /api/v1/setup/complete`:
+
+```json
+{"adminPassword": "at least 12 characters", "orgName": "Home", "orgSlug": "home", "baseUrl": "https://certs.example.com"}
+```
+
+This sets the local admin password, stores `baseUrl` in Settings → General, creates the first org, grants the local admin the global `admin` role, and logs you in. It runs once. Later calls return 409.
+
+## Break-glass: bootstrap-admin
+
+Reset (or create) the local admin password from the server host. This also revokes all of that user's sessions:
+
+```bash
+docker compose exec -e CF_ADMIN_PASSWORD='new long password' certforge certforge bootstrap-admin
+# or
+printf '%s\n' 'new long password' | certforge bootstrap-admin --password-stdin
+```
+
+`CF_ADMIN_PASSWORD` is read once, by the `bootstrap-admin` subcommand only, as one-shot input for that break-glass action. It is not part of the server's configuration: `serve` never reads it.

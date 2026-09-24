@@ -19,6 +19,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
+	"github.com/metril/certforge/internal/setup"
 )
 
 // Deps are the services handlers use.
@@ -32,6 +33,7 @@ type Deps struct {
 	Meta     *meta.Registry
 	Sessions *authn.Sessions
 	Auditor  *audit.Auditor
+	Setup    *setup.Service
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.
