@@ -80,7 +80,7 @@ func (a *Auditor) Record(ctx context.Context, e Event) error {
 		return fmt.Errorf("audit: details: %w", err)
 	}
 	row := sqlcgen.InsertAuditEventParams{
-		Ts: a.now().UTC().Truncate(time.Microsecond), ActorType: actorType, ActorID: actorID,
+		ActorType: actorType, ActorID: actorID,
 		Action: e.Action, ResourceType: e.ResourceType, ResourceID: e.ResourceID,
 		OrgID: e.OrgID, Ip: ipFrom(ctx), Details: canon,
 	}
@@ -92,6 +92,9 @@ func (a *Auditor) Record(ctx context.Context, e Event) error {
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
 		return fmt.Errorf("audit: lock: %w", err)
 	}
+	// Stamp ts only after the lock is held, so id order and ts order agree
+	// with chain order under contention.
+	row.Ts = a.now().UTC().Truncate(time.Microsecond)
 	q := sqlcgen.New(tx)
 	prev, err := q.LastAuditHash(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {

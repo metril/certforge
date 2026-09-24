@@ -97,6 +97,28 @@ func TestVerifyDetectsTamper(t *testing.T) {
 	}
 }
 
+func TestVerifyDetectsDeletedRow(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	ctx := context.Background()
+	a := audit.New(pool)
+	for i := 0; i < 3; i++ {
+		if err := a.Record(ctx, audit.Event{Action: "x", ResourceType: "y", Details: map[string]any{"i": i}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, stmt := range []string{
+		"ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable",
+		"DELETE FROM audit_events WHERE id = (SELECT id FROM audit_events ORDER BY id LIMIT 1 OFFSET 1)",
+	} {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.Verify(ctx); !errors.Is(err, audit.ErrChainBroken) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestConcurrentRecords(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()

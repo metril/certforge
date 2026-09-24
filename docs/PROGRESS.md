@@ -43,4 +43,4 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 
 ## Known gaps
 
-None yet.
+- Audit log tamper-evidence hardening not yet done: keyed HMAC instead of a plain hash, anchoring the head hash outside the table, and running the app under a role that does not own `audit_events`.
