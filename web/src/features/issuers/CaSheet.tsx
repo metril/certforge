@@ -96,6 +96,10 @@ export function CaSheet({ orgId, open, ca, onOpenChange }: Props) {
     (serverError?.field === key && (key !== 'eab' || showEab) ? serverError.message : null);
 
   function pickPreset(p: CAPreset) {
+    // Fix round 2: re-clicking the already-selected preset card is not a
+    // switch — it must not wipe EAB values (or a typed custom directory URL)
+    // the operator already entered for it.
+    if (p.preset === form.preset) return;
     setForm((f) => ({
       ...f,
       preset: p.preset,
@@ -133,7 +137,10 @@ export function CaSheet({ orgId, open, ca, onOpenChange }: Props) {
       await save.mutateAsync({ id: ca?.id, body });
       onOpenChange(false);
     } catch (e) {
-      if (e instanceof ApiError) setServerError({ field: fieldFromDetail(e.problem.detail ?? ''), message: errorMessage(e) });
+      // Fix round 2: a plain network failure (offline, timeout — not an
+      // ApiError) must still surface, not just stop the button spinning.
+      const field = e instanceof ApiError ? fieldFromDetail(e.problem.detail ?? '') : null;
+      setServerError({ field, message: errorMessage(e) });
     }
   }
 

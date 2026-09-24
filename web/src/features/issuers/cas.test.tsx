@@ -111,6 +111,35 @@ it('clears EAB fields when switching from an EAB preset to one that has none', a
   expect(posted).not.toHaveProperty('eabHmac');
 });
 
+// Fix round 2: re-clicking the already-selected preset card is not a switch
+// and must not wipe EAB values the operator already typed for it.
+it('keeps typed EAB values when re-clicking the already-selected preset', async () => {
+  const { user } = renderRoute('/o/acme/issuers/cas');
+  await user.click(await screen.findByRole('button', { name: 'Add CA' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  const zerossl = await within(sheet).findByRole('button', { name: /ZeroSSL/ });
+  await user.click(zerossl);
+  await user.type(within(sheet).getByLabelText('Key ID'), 'kid-1');
+  await user.type(within(sheet).getByLabelText('HMAC key'), 'secret-hmac');
+  await user.click(zerossl);
+  expect(within(sheet).getByLabelText('Key ID')).toHaveValue('kid-1');
+  await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
+  await waitFor(() => expect(posted).toMatchObject({ eabKid: 'kid-1', eabHmac: 'secret-hmac' }));
+});
+
+// Fix round 2 (Important): a plain network failure (fetch rejects) is not an
+// ApiError; it must still surface as a form-level error, not just stop the
+// button spinning silently.
+it('shows a form-level error when saving fails with a non-API error', async () => {
+  server.use(http.post(url('/orgs/org-1/cas'), () => HttpResponse.error()));
+  const { user } = renderRoute('/o/acme/issuers/cas');
+  await user.click(await screen.findByRole('button', { name: 'Add CA' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await user.click(await within(sheet).findByRole('button', { name: (name) => name.startsWith("Let's Encrypt") && !name.includes('staging') }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
+  expect(await within(sheet).findByRole('alert')).toBeInTheDocument();
+});
+
 it('keeps a stored EAB HMAC when editing', async () => {
   cas = [{ ...ca, id: 'ca-2', name: 'ZeroSSL', preset: 'zerossl', directoryUrl: presets[2]!.directoryUrl, eabKid: 'kid-1', hasEab: true }];
   const { user } = renderRoute('/o/acme/issuers/cas?edit=ca-2');

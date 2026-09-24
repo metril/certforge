@@ -48,6 +48,26 @@ it('truncates a long registration URI within its cell', async () => {
   expect(code.className).toMatch(/min-w-0/);
 });
 
+// Fix round 2 (Important): a plain network failure (fetch rejects) is not an
+// ApiError; it must still surface as a form-level error, not just stop the
+// button spinning silently.
+it('shows a form-level error when registering fails with a non-API error', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca])),
+    http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([])),
+    http.post(url('/orgs/org-1/acme-accounts'), () => HttpResponse.error()),
+  );
+  const { user } = renderRoute('/o/acme/issuers/accounts');
+  await user.click(await screen.findByRole('button', { name: 'Register account' }));
+  const dialog = screen.getByRole('dialog', { name: 'Register ACME account' });
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate authority' }));
+  await user.click(screen.getByRole('option', { name: "Let's Encrypt" }));
+  await user.type(within(dialog).getByLabelText('Contact email'), 'new@example.com');
+  await user.click(within(dialog).getByRole('button', { name: 'Register' }));
+  expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+});
+
 it('shows why an account cannot be deleted', async () => {
   server.use(
     ...authHandlers({ authed: true }),

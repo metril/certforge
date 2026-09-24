@@ -38,10 +38,10 @@ function RegisterDialog({ orgId, open, onOpenChange }: { orgId: string; open: bo
       await create.mutateAsync({ caId, email });
       onOpenChange(false);
     } catch (e) {
-      if (e instanceof ApiError) {
-        const detail = (e.problem.detail ?? '').toLowerCase();
-        setServerError({ onEmail: detail.includes('email'), message: errorMessage(e) });
-      }
+      // Fix round 2: a plain network failure (offline, timeout — not an
+      // ApiError) must still surface, not just stop the button spinning.
+      const onEmail = e instanceof ApiError && (e.problem.detail ?? '').toLowerCase().includes('email');
+      setServerError({ onEmail, message: errorMessage(e) });
     }
   }
 
