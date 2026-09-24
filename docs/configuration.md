@@ -46,12 +46,14 @@ This sets the local admin password, stores `baseUrl` in Settings → General, cr
 
 ## Break-glass: bootstrap-admin
 
-Reset (or create) the local admin password from the server host. This also revokes all of that user's sessions:
+Reset the local admin password from the server host, after first-run setup has completed. This also revokes all of that user's sessions and clears the account's disabled flag:
 
 ```bash
 docker compose exec -e CF_ADMIN_PASSWORD='new long password' certforge certforge bootstrap-admin
 # or
 printf '%s\n' 'new long password' | certforge bootstrap-admin --password-stdin
 ```
+
+Before setup completes there is no local admin to reset, and `bootstrap-admin` refuses rather than create one outside the setup wizard: complete `POST /api/v1/setup/complete` (or the `/setup` UI) first.
 
 `CF_ADMIN_PASSWORD` is read once, by the `bootstrap-admin` subcommand only, as one-shot input for that break-glass action. It is not part of the server's configuration: `serve` never reads it.

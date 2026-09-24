@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/metril/certforge/internal/authn"
@@ -92,5 +93,34 @@ func TestLoginNoAdmin(t *testing.T) {
 	resp, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "anything at all"}, "") //nolint:bodyclose // testEnv.doRaw closes the body
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("code %d", resp.StatusCode)
+	}
+}
+
+func TestLoginPasswordTooLong(t *testing.T) {
+	e := newTestEnv(t)
+	seedAdminPassword(t, e, "correct horse battery")
+	long := strings.Repeat("a", authn.MaxPasswordLength+1)
+	resp, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": long}, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("code %d", resp.StatusCode)
+	}
+}
+
+func TestLoginArgonBusy(t *testing.T) {
+	e := newTestEnv(t)
+	seedAdminPassword(t, e, "correct horse battery")
+	restore := authn.SetArgonConcurrency(1)
+	defer restore()
+	release, ok := authn.TryAcquireArgonSlot()
+	if !ok {
+		t.Fatal("could not acquire the only argon2 slot")
+	}
+	defer release()
+	resp, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "correct horse battery"}, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("code %d", resp.StatusCode)
+	}
+	if ra := resp.Header.Get("Retry-After"); ra != "1" {
+		t.Fatalf("retry-after %q", ra)
 	}
 }

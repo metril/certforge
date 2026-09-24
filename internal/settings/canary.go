@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/metril/certforge/internal/crypto"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
 // CanaryKey holds a sealed known value that proves the KEK matches the DB.
@@ -27,11 +29,22 @@ func (s *Store) VerifyCanary(ctx context.Context) error {
 }
 
 // EnsureCanary writes the canary on first boot and verifies it afterwards.
-// A canary sealed under another KEK is reported, never overwritten.
+// A canary sealed under another KEK is reported, never overwritten. The
+// write is insert-if-absent (ON CONFLICT DO NOTHING), not an upsert: if two
+// processes race to boot against a fresh database, only the first insert
+// wins, and every caller re-verifies against whatever ended up stored
+// instead of assuming its own write took effect.
 func (s *Store) EnsureCanary(ctx context.Context) error {
 	err := s.VerifyCanary(ctx)
-	if errors.Is(err, ErrNotFound) {
-		return s.SetSecret(ctx, CanaryKey, crypto.CanaryPlaintext)
+	if !errors.Is(err, ErrNotFound) {
+		return err
 	}
-	return err
+	b, err := s.env.Encrypt(ctx, crypto.CanaryPlaintext)
+	if err != nil {
+		return fmt.Errorf("settings: seal %s: %w", CanaryKey, err)
+	}
+	if _, err := s.q.InsertSettingSecretIfAbsent(ctx, sqlcgen.InsertSettingSecretIfAbsentParams{Key: CanaryKey, Secret: b.Marshal()}); err != nil {
+		return fmt.Errorf("settings: seal %s: %w", CanaryKey, err)
+	}
+	return s.VerifyCanary(ctx)
 }

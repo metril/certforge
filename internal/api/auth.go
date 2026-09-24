@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -18,10 +19,18 @@ import (
 
 var errInvalidCredentials = &HTTPError{Status: http.StatusUnauthorized, Title: "Invalid credentials"}
 
+var errPasswordTooLong = &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid password",
+	Detail: fmt.Sprintf("password must not exceed %d bytes", authn.MaxPasswordLength)}
+
 // Login authenticates the local admin and starts a session.
 func (s *Server) Login(ctx context.Context, req gen.LoginRequestObject) (gen.LoginResponseObject, error) {
 	if req.Body == nil {
 		return nil, badRequest("missing body")
+	}
+	// Reject before the database round trip or any hashing: a password this
+	// long can only be a resource-exhaustion attempt, not a real one.
+	if len(req.Body.Password) > authn.MaxPasswordLength {
+		return nil, errPasswordTooLong
 	}
 	admin, err := s.d.Queries.GetLocalAdmin(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -32,6 +41,10 @@ func (s *Server) Login(ctx context.Context, req gen.LoginRequestObject) (gen.Log
 		return nil, err
 	}
 	ok, err := authn.VerifyPassword(*admin.LocalPasswordHash, req.Body.Password)
+	if errors.Is(err, authn.ErrBusy) {
+		writeRetryAfter(ctx, "1")
+		return nil, errTooBusy
+	}
 	if err != nil {
 		return nil, err
 	}

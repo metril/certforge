@@ -6,7 +6,7 @@ Single status file. Updated in every commit that completes a task.
 
 | # | Phase | Status | Spec | Plan | Started | Finished |
 |---|---|---|---|---|---|---|
-| 1 | Core issuance slice | in progress | [design](design.md) | [1A](plans/2026-09-24-phase-1a-backend-foundation.md) | 2026-09-24 | – |
+| 1 | Core issuance slice | in progress | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) | 2026-09-24 | – |
 | 2 | Identity and tenancy | planned | [design](design.md) | – | – | – |
 | 3 | Agent | planned | [design](design.md) | – | – | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
@@ -18,7 +18,7 @@ Single status file. Updated in every commit that completes a task.
 
 Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI.
 
-### Phase 1A: backend foundation ([plan](plans/2026-09-24-phase-1a-backend-foundation.md))
+### Phase 1A: backend foundation ([plan](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md))
 
 | # | Task | Status | Commit |
 |---|---|---|---|
@@ -35,7 +35,7 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 11 | Setup wizard and bootstrap-admin | done | d273abb |
 | 12 | Health, web UI placeholder, serve | done | 519abbe |
 | 13 | Container image and compose | done | 17455a8 |
-| 14 | Architecture docs and phase close-out | done | pending |
+| 14 | Architecture docs and phase close-out | done | 4ea34b6 |
 
 Phase 1A complete; 1B (issuance) and 1C (web UI) build on it.
 
@@ -49,6 +49,7 @@ Phase 1A complete; 1B (issuance) and 1C (web UI) build on it.
 - Login and setup-complete build the full principal before starting the session; the cf_session cookie is set only once every step has succeeded, and a partially-failed login/setup deletes the session row it created.
 - setup.Service.Complete validates baseUrl against the general settings section's JSON Schema (the same schema PUT /settings/general enforces) in addition to config.ValidateBaseURL, and short-circuits with ErrAlreadyComplete as soon as setup is already done.
 - `make e2e` runs under the isolated compose project `certforge-e2e` (not the dev stack's `certforge` project), with host ports overridable via CF_HTTP_PORT, CF_AGENT_PORT, and CF_CHALLTESTSRV_PORT.
+- Pebble's ACME and management ports are published to the host in `deploy/compose.test.yaml` (`CF_PEBBLE_PORT` default 14000, `CF_PEBBLE_MGMT_PORT` default 15000), not just reachable over the compose network, because plan 1B's issuance e2e runs as a host-side `go test` process and needs to reach `:15000/intermediates/0` directly.
 
 ## Known gaps
 
@@ -61,3 +62,9 @@ Phase 1A complete; 1B (issuance) and 1C (web UI) build on it.
 - The SPA fallback (root NotFound) answers non-GET methods with `index.html` instead of 404/405, since it does not check the request method.
 - A new login does not revoke the caller's existing sessions, so an old session survives a new login; only bootstrap-admin revokes sessions today.
 - The viewer role's "read-only, no secrets" guarantee has nothing to enforce yet in Phase 1A (no secret-bearing read endpoint exists); it depends on plan 1B's read handlers redacting secret fields correctly.
+- Encrypted blobs are not bound to their row: the AAD is the KEK id only, not a per-row identifier, so per-row AAD binding is deferred.
+- The OpenAPI spec lists only 2xx responses; it does not document the 4xx/5xx problem+json responses handlers actually return.
+- A valid session on a public route (for example `POST /api/v1/auth/login` while already logged in) still requires the CSRF header, since `authn.Middleware` checks CSRF whenever a session resolves, regardless of the route's public status.
+- Audit event IPs are whatever `r.RemoteAddr` reports; behind a reverse proxy that is the proxy's address, not the client's. Add a trusted-proxy setting in Phase 2.
+- `CF_KEK_FILE` accepts a raw 32-byte key file as-is, before trying base64 decoding; only `CF_KEK` (the env var) requires base64.
+- No CSP or HSTS headers yet; add them with the real UI in Phase 1C.

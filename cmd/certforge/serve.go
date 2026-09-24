@@ -44,7 +44,13 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 	})
-	srv := &http.Server{Addr: cfg.ListenHTTP, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{
+		Addr:              cfg.ListenHTTP,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	go purgeSessions(ctx, sessions, log)
 	errCh := make(chan error, 1)
 	go func() {

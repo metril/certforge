@@ -15,8 +15,25 @@ import (
 // MinPasswordLength is the minimum local admin password length.
 const MinPasswordLength = 12
 
+// MaxPasswordLength caps password input accepted before hashing or
+// verifying. Argon2's cost is proportional to input size only up to a
+// point, but without a cap a client can still send an arbitrarily large
+// body to force extra copying and hashing work; callers (the auth and
+// setup HTTP handlers) reject an over-length password with 422 before
+// calling Hash/VerifyPassword, and these functions guard the same limit
+// for any caller that forgets to.
+const MaxPasswordLength = 1024
+
 // ErrInvalidHash means a stored password hash cannot be parsed.
 var ErrInvalidHash = errors.New("authn: invalid password hash")
+
+// ErrPasswordTooLong means the input exceeds MaxPasswordLength.
+var ErrPasswordTooLong = errors.New("authn: password exceeds maximum length")
+
+// ErrBusy means the argon2 concurrency limit was reached; callers should
+// answer with 503 and a Retry-After header so the client backs off instead
+// of every request paying full argon2 cost under load.
+var ErrBusy = errors.New("authn: too many concurrent password operations, try again shortly")
 
 const (
 	argonMemory  uint32 = 64 * 1024
@@ -27,8 +44,46 @@ const (
 
 var b64 = base64.RawStdEncoding
 
+// argonSlots bounds how many argon2 hash/verify operations may run at once,
+// so a burst of login or setup requests cannot exhaust server CPU. Capacity
+// 4 is generous for a single local-admin auth path while still bounding
+// worst-case concurrent cost.
+var argonSlots = make(chan struct{}, 4)
+
+// SetArgonConcurrency replaces the argon2 concurrency limit and returns a
+// func that restores the previous one. Test-only.
+func SetArgonConcurrency(n int) (restore func()) {
+	prev := argonSlots
+	argonSlots = make(chan struct{}, n)
+	return func() { argonSlots = prev }
+}
+
+// TryAcquireArgonSlot reserves one argon2 slot without hashing anything, so
+// tests can force ErrBusy from HashPassword/VerifyPassword. Release the
+// slot with the returned func when done.
+func TryAcquireArgonSlot() (release func(), ok bool) {
+	return acquireArgonSlot()
+}
+
+func acquireArgonSlot() (release func(), ok bool) {
+	select {
+	case argonSlots <- struct{}{}:
+		return func() { <-argonSlots }, true
+	default:
+		return func() {}, false
+	}
+}
+
 // HashPassword returns an argon2id PHC string.
 func HashPassword(pw string) (string, error) {
+	if len(pw) > MaxPasswordLength {
+		return "", ErrPasswordTooLong
+	}
+	release, ok := acquireArgonSlot()
+	if !ok {
+		return "", ErrBusy
+	}
+	defer release()
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
@@ -40,6 +95,9 @@ func HashPassword(pw string) (string, error) {
 
 // VerifyPassword checks pw against an argon2id PHC string in constant time.
 func VerifyPassword(encoded, pw string) (bool, error) {
+	if len(pw) > MaxPasswordLength {
+		return false, ErrPasswordTooLong
+	}
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" {
 		return false, ErrInvalidHash
@@ -66,6 +124,11 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 	if err != nil || len(want) == 0 {
 		return false, ErrInvalidHash
 	}
+	release, ok := acquireArgonSlot()
+	if !ok {
+		return false, ErrBusy
+	}
+	defer release()
 	got := argon2.IDKey([]byte(pw), salt, t, m, p, uint32(len(want)))
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }

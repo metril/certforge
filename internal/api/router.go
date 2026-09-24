@@ -94,12 +94,19 @@ func withClientIP(next http.Handler) http.Handler {
 	})
 }
 
+// maxRequestBody caps request bodies (including on public, unauthenticated
+// routes such as login and setup) so a client cannot exhaust server memory
+// or CPU with an oversized JSON payload.
+const maxRequestBody = 1 << 20 // 1 MiB
+
 // requireJSON rejects non-JSON bodies so cross-site HTML forms cannot reach
-// the API (they cannot send application/json without a CORS preflight).
+// the API (they cannot send application/json without a CORS preflight), and
+// caps the body size read by any later handler.
 func requireJSON(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch:
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 			if r.ContentLength != 0 {
 				mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 				if err != nil || mt != "application/json" {

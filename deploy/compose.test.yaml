@@ -7,6 +7,12 @@ services:
       # Disable authorization reuse so plan 1B's issuance e2e always sees a
       # fresh pending challenge instead of a cached valid authorization.
       PEBBLE_AUTHZREUSE: "0"
+    ports:
+      # Published so host-side `go test` (make e2e runs it outside the
+      # compose network) can reach Pebble directly; plan 1B verifies chains
+      # against https://localhost:${CF_PEBBLE_MGMT_PORT:-15000}/intermediates/0.
+      - "${CF_PEBBLE_PORT:-14000}:14000"
+      - "${CF_PEBBLE_MGMT_PORT:-15000}:15000"
     depends_on:
       - challtestsrv
   challtestsrv:

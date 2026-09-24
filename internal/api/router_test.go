@@ -76,6 +76,21 @@ func TestRequireJSON(t *testing.T) {
 	}
 }
 
+func TestBodyTooLarge(t *testing.T) {
+	big := `{"password":"` + strings.Repeat("a", 2<<20) + `"}`
+	rec := serve(t, http.MethodPost, "/api/v1/auth/login", "application/json", big)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("code %d body %s", rec.Code, rec.Body)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Fatalf("content type %q", ct)
+	}
+	var prob map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil || prob["status"] != float64(413) {
+		t.Fatalf("body %s", rec.Body)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	rec := serve(t, http.MethodGet, "/api/v1/orgs", "", "")
 	if rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("X-Frame-Options") != "DENY" {

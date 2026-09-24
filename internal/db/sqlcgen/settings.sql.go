@@ -25,6 +25,24 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (Setting, error) {
 	return i, err
 }
 
+const insertSettingSecretIfAbsent = `-- name: InsertSettingSecretIfAbsent :execrows
+INSERT INTO settings (key, secret, updated_at) VALUES ($1, $2, now())
+ON CONFLICT (key) DO NOTHING
+`
+
+type InsertSettingSecretIfAbsentParams struct {
+	Key    string `json:"key"`
+	Secret []byte `json:"secret"`
+}
+
+func (q *Queries) InsertSettingSecretIfAbsent(ctx context.Context, arg InsertSettingSecretIfAbsentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertSettingSecretIfAbsent, arg.Key, arg.Secret)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upsertSettingSecret = `-- name: UpsertSettingSecret :exec
 INSERT INTO settings (key, secret, updated_at) VALUES ($1, $2, now())
 ON CONFLICT (key) DO UPDATE SET secret = EXCLUDED.secret, updated_at = now()

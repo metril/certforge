@@ -43,3 +43,16 @@ func badRequest(format string, a ...any) error {
 func notFound(format string, a ...any) error {
 	return &HTTPError{Status: http.StatusNotFound, Title: "Not found", Detail: fmt.Sprintf(format, a...)}
 }
+
+// errTooBusy is returned when the argon2 concurrency limit (internal/authn's
+// authn.ErrBusy) is reached; the caller must also call writeRetryAfter.
+var errTooBusy = &HTTPError{Status: http.StatusServiceUnavailable, Title: "Service busy",
+	Detail: "Too many concurrent password operations; retry shortly."}
+
+// writeRetryAfter sets Retry-After for a 503 response. Handlers must call it
+// before returning errTooBusy, since HTTPError carries no headers.
+func writeRetryAfter(ctx context.Context, seconds string) {
+	if w, _ := httpFrom(ctx); w != nil {
+		w.Header().Set("Retry-After", seconds)
+	}
+}

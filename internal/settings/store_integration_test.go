@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/metril/certforge/internal/crypto"
@@ -90,6 +91,35 @@ func TestCanary(t *testing.T) {
 	}
 	if err := a.VerifyCanary(ctx); err != nil {
 		t.Fatalf("canary overwritten: %v", err)
+	}
+}
+
+// TestCanaryConcurrent covers several processes booting at once against a
+// fresh database: EnsureCanary's insert-if-absent write means only the
+// first one's canary blob lands, and every caller must still come back
+// verified rather than erroring or silently overwriting another's blob.
+func TestCanaryConcurrent(t *testing.T) {
+	ctx := context.Background()
+	_, q := dbtest.New(t)
+	st := settings.NewStore(q, envelope(1))
+	var wg sync.WaitGroup
+	errs := make(chan error, 5)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- st.EnsureCanary(ctx)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("EnsureCanary err = %v", err)
+		}
+	}
+	if err := st.VerifyCanary(ctx); err != nil {
+		t.Fatalf("verify after concurrent ensure: %v", err)
 	}
 }
 

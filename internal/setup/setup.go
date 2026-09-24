@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -33,6 +34,10 @@ var (
 	ErrAlreadyComplete = errors.New("setup: already complete")
 	// ErrInvalid wraps input validation failures.
 	ErrInvalid = errors.New("setup: invalid input")
+	// ErrSetupPending means bootstrap-admin was invoked before first-run
+	// setup completed. No local admin may be created outside the setup
+	// wizard, so bootstrap-admin only resets an existing one.
+	ErrSetupPending = errors.New("setup: setup is pending; complete POST /api/v1/setup/complete before resetting the local admin")
 )
 
 var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
@@ -102,9 +107,18 @@ func (s *Service) Complete(ctx context.Context, in Input) (Result, error) {
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		adminID, err := upsertLocalAdmin(ctx, q, hash)
+		adminID, existed, err := upsertLocalAdmin(ctx, q, hash)
 		if err != nil {
 			return err
+		}
+		if existed {
+			// A local admin row survived from a previous, uncompleted setup
+			// attempt (or a restored database); Complete is about to
+			// overwrite its password, so any session against the old one
+			// must not remain valid.
+			if err := q.DeleteUserSessions(ctx, adminID); err != nil {
+				return err
+			}
 		}
 		org, err := q.CreateOrg(ctx, sqlcgen.CreateOrgParams{Slug: in.OrgSlug, Name: in.OrgName})
 		if err != nil {
@@ -130,22 +144,34 @@ func (s *Service) Complete(ctx context.Context, in Input) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	err = s.aud.Record(ctx, audit.Event{
+	// Setup already committed at this point: an audit-write failure must not
+	// be reported as a failed setup (the caller would retry and hit
+	// ErrAlreadyComplete). Log and continue instead.
+	if err := s.aud.Record(ctx, audit.Event{
 		Action: "setup.complete", ResourceType: "org", ResourceID: res.OrgID.String(), OrgID: &res.OrgID,
 		ActorType: authn.KindUser, ActorID: res.AdminID.String(),
 		Details: map[string]any{"orgSlug": in.OrgSlug, "baseUrl": in.BaseURL},
-	})
-	if err != nil {
-		return res, fmt.Errorf("setup: audit: %w", err)
+	}); err != nil {
+		slog.Default().Error("setup: audit record failed", "action", "setup.complete", "err", err)
 	}
 	return res, nil
 }
 
-// SetAdminPassword creates or resets the local admin, ensures its global
-// admin binding, and revokes its sessions.
+// SetAdminPassword resets the existing local admin's password, clears its
+// disabled flag, ensures its global admin binding, and revokes its sessions.
+// It refuses with ErrSetupPending while first-run setup has not completed:
+// no local admin may be created outside the setup wizard, so bootstrap-admin
+// (the only caller) may only reset one that setup already created.
 func (s *Service) SetAdminPassword(ctx context.Context, password string) (uuid.UUID, error) {
 	if len(password) < authn.MinPasswordLength {
 		return uuid.Nil, fmt.Errorf("%w: password must be at least %d characters", ErrInvalid, authn.MinPasswordLength)
+	}
+	// Quick check before spending an argon2 hash; inLockedTx re-checks under
+	// the lock so a concurrent setup completing cannot be raced past this.
+	if needs, err := s.NeedsSetup(ctx); err != nil {
+		return uuid.Nil, err
+	} else if needs {
+		return uuid.Nil, ErrSetupPending
 	}
 	hash, err := authn.HashPassword(password)
 	if err != nil {
@@ -153,8 +179,14 @@ func (s *Service) SetAdminPassword(ctx context.Context, password string) (uuid.U
 	}
 	var id uuid.UUID
 	err = s.inLockedTx(ctx, func(q *sqlcgen.Queries) error {
+		if _, err := q.GetSetting(ctx, CompletedKey); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrSetupPending
+			}
+			return err
+		}
 		var err error
-		if id, err = upsertLocalAdmin(ctx, q, hash); err != nil {
+		if id, _, err = upsertLocalAdmin(ctx, q, hash); err != nil {
 			return err
 		}
 		return q.DeleteUserSessions(ctx, id)
@@ -162,10 +194,11 @@ func (s *Service) SetAdminPassword(ctx context.Context, password string) (uuid.U
 	if err != nil {
 		return uuid.Nil, err
 	}
-	err = s.aud.Record(ctx, audit.Event{Action: "auth.local_admin_password_set", ResourceType: "user",
-		ResourceID: id.String(), ActorType: "system", ActorID: "bootstrap-admin"})
-	if err != nil {
-		return id, fmt.Errorf("setup: audit: %w", err)
+	// The password reset already committed; an audit-write failure must not
+	// be reported as a failed reset. Log and continue instead.
+	if err := s.aud.Record(ctx, audit.Event{Action: "auth.local_admin_password_set", ResourceType: "user",
+		ResourceID: id.String(), ActorType: "system", ActorID: "bootstrap-admin"}); err != nil {
+		slog.Default().Error("setup: audit record failed", "action", "auth.local_admin_password_set", "err", err)
 	}
 	return id, nil
 }
@@ -188,31 +221,39 @@ func (s *Service) inLockedTx(ctx context.Context, fn func(q *sqlcgen.Queries) er
 	return tx.Commit(ctx)
 }
 
-func upsertLocalAdmin(ctx context.Context, q *sqlcgen.Queries, hash string) (uuid.UUID, error) {
+// upsertLocalAdmin creates the local admin if none exists, or resets its
+// password hash and clears its disabled flag if one does. existed reports
+// which happened, so callers can revoke sessions only when resetting.
+func upsertLocalAdmin(ctx context.Context, q *sqlcgen.Queries, hash string) (id uuid.UUID, existed bool, err error) {
 	u, err := q.GetLocalAdmin(ctx)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		if u, err = q.CreateLocalAdmin(ctx, hash); err != nil {
-			return uuid.Nil, fmt.Errorf("create local admin: %w", err)
+			return uuid.Nil, false, fmt.Errorf("create local admin: %w", err)
 		}
 	case err != nil:
-		return uuid.Nil, err
+		return uuid.Nil, false, err
 	default:
+		existed = true
 		if err := q.SetLocalPasswordHash(ctx, sqlcgen.SetLocalPasswordHashParams{Hash: hash, ID: u.ID}); err != nil {
-			return uuid.Nil, err
+			return uuid.Nil, false, err
+		}
+		if err := q.SetUserDisabled(ctx, sqlcgen.SetUserDisabledParams{ID: u.ID, Disabled: false}); err != nil {
+			return uuid.Nil, false, err
 		}
 	}
-	err = q.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{SubjectType: "user", Subject: u.ID.String(), Role: authz.RoleAdmin})
-	if err != nil {
-		return uuid.Nil, err
+	if err := q.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{SubjectType: "user", Subject: u.ID.String(), Role: authz.RoleAdmin}); err != nil {
+		return uuid.Nil, false, err
 	}
-	return u.ID, nil
+	return u.ID, existed, nil
 }
 
 func (s *Service) validate(in Input) error {
 	var problems []string
 	if len(in.AdminPassword) < authn.MinPasswordLength {
 		problems = append(problems, fmt.Sprintf("adminPassword must be at least %d characters", authn.MinPasswordLength))
+	} else if len(in.AdminPassword) > authn.MaxPasswordLength {
+		problems = append(problems, fmt.Sprintf("adminPassword must not exceed %d bytes", authn.MaxPasswordLength))
 	}
 	if in.OrgName == "" || len(in.OrgName) > 100 {
 		problems = append(problems, "orgName must be 1 to 100 characters")

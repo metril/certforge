@@ -49,10 +49,13 @@ overridable, useful when the defaults are already taken:
 | `CF_HTTP_PORT` | `8080` | certforge HTTP (also sets `CF_E2E_BASE_URL` and the default `CF_BASE_URL`) |
 | `CF_AGENT_PORT` | `8443` | certforge agent listener |
 | `CF_CHALLTESTSRV_PORT` | `8055` | challtestsrv management API |
+| `CF_PEBBLE_PORT` | `14000` | Pebble ACME API |
+| `CF_PEBBLE_MGMT_PORT` | `15000` | Pebble management API (plan 1B's e2e reads issued chains from `/intermediates/0` here) |
 
-Pebble's ACME/management ports are not published to the host; certforge and
-the e2e tests reach it over the compose network at `pebble:14000`. Example:
-`CF_HTTP_PORT=18080 make e2e`.
+Pebble's ACME and management ports are published to the host (unlike
+challtestsrv, certforge and the e2e tests also reach Pebble over the compose
+network at `pebble:14000`/`pebble:15000`; the host ports are for the
+host-side `go test` process plan 1B adds). Example: `CF_HTTP_PORT=18080 make e2e`.
 
 ## Code generation
 

@@ -35,6 +35,11 @@ func (e *HTTPError) Error() string {
 var errUnauthenticated = &HTTPError{Status: http.StatusUnauthorized, Title: "Authentication required"}
 
 func requestError(w http.ResponseWriter, _ *http.Request, err error) {
+	var mbe *http.MaxBytesError
+	if errors.As(err, &mbe) {
+		Write(w, http.StatusRequestEntityTooLarge, "Payload too large", fmt.Sprintf("Request body must not exceed %d bytes.", mbe.Limit))
+		return
+	}
 	Write(w, http.StatusBadRequest, "Bad request", err.Error())
 }
 

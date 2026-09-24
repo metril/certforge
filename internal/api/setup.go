@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/setup"
 )
 
@@ -34,6 +35,9 @@ func (s *Server) CompleteSetup(ctx context.Context, req gen.CompleteSetupRequest
 		return nil, &HTTPError{Status: http.StatusConflict, Title: "Setup already completed"}
 	case errors.Is(err, setup.ErrInvalid):
 		return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid setup input", Detail: err.Error()}
+	case errors.Is(err, authn.ErrBusy):
+		writeRetryAfter(ctx, "1")
+		return nil, errTooBusy
 	case err != nil:
 		return nil, err
 	}

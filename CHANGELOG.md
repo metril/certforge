@@ -20,3 +20,6 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - serve and healthcheck commands, /healthz and /readyz (DB and KEK canary), embedded web UI handler with SPA fallback and placeholder page.
 - Server container image, compose stack with Postgres 16, test overlay with Pebble and challtestsrv, e2e health test.
 - Architecture overview and documentation index.
+
+### Fixed
+- Final review fixes: published Pebble e2e ports, closed a setup/bootstrap-admin takeover gap (bootstrap-admin now refuses before setup completes; Complete revokes a pre-existing admin's sessions), added resource-exhaustion limits on public auth routes (body size, password length, argon2 concurrency, server timeouts), made the KEK canary write insert-if-absent, made audit-write failures log-and-continue, and corrected several doc inaccuracies.

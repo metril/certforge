@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/metril/certforge/internal/authn"
 )
 
 func TestSetupHTTP(t *testing.T) {
@@ -43,5 +45,24 @@ func TestSetupHTTP(t *testing.T) {
 	_, body = e.do(http.MethodGet, "/api/v1/setup/status", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
 	if !strings.Contains(string(body), `"needsSetup":false`) {
 		t.Fatalf("status after %s", body)
+	}
+}
+
+func TestCompleteSetupArgonBusy(t *testing.T) {
+	e := newTestEnv(t)
+	restore := authn.SetArgonConcurrency(1)
+	defer restore()
+	release, ok := authn.TryAcquireArgonSlot()
+	if !ok {
+		t.Fatal("could not acquire the only argon2 slot")
+	}
+	defer release()
+	in := map[string]string{"adminPassword": "correct horse battery", "orgName": "Home", "orgSlug": "home", "baseUrl": "http://example.test"}
+	resp, _ := e.do(http.MethodPost, "/api/v1/setup/complete", in, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("code %d", resp.StatusCode)
+	}
+	if ra := resp.Header.Get("Retry-After"); ra != "1" {
+		t.Fatalf("retry-after %q", ra)
 	}
 }

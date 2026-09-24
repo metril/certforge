@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -22,6 +23,43 @@ func TestHashAndVerify(t *testing.T) {
 	h2, _ := HashPassword("correct horse battery")
 	if h == h2 {
 		t.Fatal("salt not random")
+	}
+}
+
+func TestPasswordTooLong(t *testing.T) {
+	long := strings.Repeat("a", MaxPasswordLength+1)
+	if _, err := HashPassword(long); !errors.Is(err, ErrPasswordTooLong) {
+		t.Fatalf("hash err = %v, want ErrPasswordTooLong", err)
+	}
+	h, err := HashPassword(strings.Repeat("a", MaxPasswordLength))
+	if err != nil {
+		t.Fatalf("hash at limit: %v", err)
+	}
+	if _, err := VerifyPassword(h, long); !errors.Is(err, ErrPasswordTooLong) {
+		t.Fatalf("verify err = %v, want ErrPasswordTooLong", err)
+	}
+}
+
+func TestArgonBusy(t *testing.T) {
+	// Hash before capping concurrency, so this doesn't race the package's
+	// lazily-cached dummyHash (used by EqualizeTiming) into being primed
+	// while the limiter is saturated.
+	h, err := HashPassword("correct horse battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := SetArgonConcurrency(1)
+	defer restore()
+	release, ok := TryAcquireArgonSlot()
+	if !ok {
+		t.Fatal("could not acquire the only slot")
+	}
+	defer release()
+	if _, err := HashPassword("correct horse battery"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("hash err = %v, want ErrBusy", err)
+	}
+	if _, err := VerifyPassword(h, "x"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("verify err = %v, want ErrBusy", err)
 	}
 }
 

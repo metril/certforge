@@ -44,6 +44,8 @@ flowchart LR
 | `internal/api` | Router, handlers, problem+json, generated server in `gen/` |
 | `internal/webui` | Embedded SPA with index.html fallback (placeholder page unless built with `-tags embedweb`) |
 
+`deploy/compose.yaml` publishes the agent mTLS port (`${CF_AGENT_PORT:-8443}:8443`) alongside the HTTP port, but nothing listens on `:8443` yet; the agent listener is Phase 3 work.
+
 ## Startup
 
 1. `config.Load` validates env; a bad KEK length or missing DB URL exits.
@@ -69,7 +71,7 @@ flowchart LR
   CT & WDEK --> Blob
 ```
 
-Blob bytes: `0x01 | len(kek_id) | kek_id | u16 len(wrapped) | wrapped | len(nonce) | nonce | ciphertext`. `kek_id` is `static-` plus 16 hex characters of SHA-256 of the key, so a different KEK is detected before any decryption. `Decrypt` validates every length and never panics on malformed input. Phase 5 adds a Vault Transit `KeyWrapper` and rewrap.
+Blob bytes: `0x01 | len(kek_id) | kek_id | u16 len(wrapped) | wrapped | len(nonce) | nonce | ciphertext`. `kek_id` (`crypto.KeyID`) is `static-` plus 16 hex characters of a domain-separated hash, `SHA-256("certforge-kek-id:" || key)`, not a plain SHA-256 of the key, so a different KEK is detected before any decryption. `Decrypt` validates every length and never panics on malformed input. Phase 5 adds a Vault Transit `KeyWrapper` and rewrap.
 
 ## Data model (Phase 1A)
 
