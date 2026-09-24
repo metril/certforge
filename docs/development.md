@@ -48,16 +48,15 @@ overridable, useful when the defaults are already taken:
 |---|---|---|
 | `CF_HTTP_PORT` | `8080` | certforge HTTP (also sets `CF_E2E_BASE_URL` and the default `CF_BASE_URL`) |
 | `CF_AGENT_PORT` | `8443` | certforge agent listener |
-| `CF_E2E_PG_PORT` | `55432` | Postgres, for the issuance e2e test's own database (`CF_E2E_DATABASE_URL`) |
-| `CF_CHALLTESTSRV_PORT` | `8055` | challtestsrv management API |
-| `CF_CHALLTESTSRV_DNS_PORT` | `8053` | challtestsrv DNS (UDP only; the issuance e2e's propagation check) |
-| `CF_PEBBLE_PORT` | `14000` | Pebble ACME API |
-| `CF_PEBBLE_MGMT_PORT` | `15000` | Pebble management API (the issuance e2e reads issued chains from `/intermediates/0` here) |
+| `CF_PEBBLE_MGMT_PORT` | `15000` | Pebble management API (also sets `CF_E2E_PEBBLE_MGMT`; the issuance e2e independently verifies the issued chain against `/intermediates/0` here) |
 
-Pebble's ACME and management ports are published to the host (unlike
-challtestsrv, certforge and the e2e tests also reach Pebble over the compose
-network at `pebble:14000`/`pebble:15000`; the host ports are for the
-host-side `go test` process plan 1B adds). Example: `CF_HTTP_PORT=18080 make e2e`.
+The issuance e2e test drives the compose server through its own HTTP API
+(`CF_E2E_BASE_URL`), the same way a real client would; it never talks to
+Pebble or challtestsrv directly — only the compose server does, over the
+compose network (`pebble:14000`, `challtestsrv:8055`/`:8053`). Pebble's
+management port is the one exception, published to the host so the test can
+independently check the chain it got back through the API against Pebble's
+own roots/intermediates. Example: `CF_HTTP_PORT=18080 make e2e`.
 
 ## Code generation
 
@@ -70,7 +69,7 @@ Generated code is committed. CI runs `make generate && git diff --exit-code`, so
 
 - Unit: `make test`. No external services.
 - Integration: files start with `//go:build integration`. `dbtest.New(t)` returns a migrated pool on a fresh database inside one Postgres 16 container per test binary.
-- E2E: files in `test/e2e/` start with `//go:build e2e` and hit `CF_E2E_BASE_URL` (default `http://localhost:8080`). `make e2e` also runs the issuance test (`test/e2e/issuance_test.go`) against Pebble; it creates its own database on the compose Postgres (`CF_E2E_DATABASE_URL`, default `localhost:55432`). The `e2e-challtestsrv` DNS provider exists only in `-tags e2e` builds; the test compose builds the server with `GO_TAGS=e2e`.
+- E2E: files in `test/e2e/` start with `//go:build e2e` and hit `CF_E2E_BASE_URL` (default `http://localhost:8080`). `make e2e` also runs the issuance test (`test/e2e/issuance_test.go`), which drives the running compose server through its HTTP API — log in (or complete first-run setup), create a CA/credential/account/certificate against Pebble and challtestsrv, poll for `active`, verify the chain, force a renewal, then break the credential and verify the resulting failure and backoff. The `e2e-challtestsrv` DNS provider (`internal/challenge/challtestsrv_e2e.go`) exists only in `-tags e2e` builds; the test compose builds the server with `GO_TAGS=e2e` so the running server can present TXT records on pebble-challtestsrv.
 
 | Build tag | Purpose |
 |---|---|
