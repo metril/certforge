@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -96,6 +97,23 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 			w.Log.Warn("save attempt progress", "attempt", attemptID, "err", err)
 		}
 	})
+	// A panic anywhere below (a bug in this worker or a challenge provider)
+	// must not leave the attempt row stuck "running" forever: river's own
+	// executor recovers a panicking Work call and applies its own retry
+	// policy, but nothing else closes out the row we already created. Record
+	// it as failed here, then re-panic so river's contract (its own logging,
+	// error handler and retry/backoff) still applies.
+	defer func() {
+		if r := recover(); r != nil {
+			tl.Finish(challenge.StepFailed, fmt.Sprintf("panic: %v", r))
+			tl.Logf("panic: %v\n%s", r, debug.Stack())
+			steps, log := tl.Snapshot()
+			if ferr := w.Store.FinishAttempt(bg, nil, attemptID, OutcomeFailed, "", nil, steps, log); ferr != nil {
+				w.Log.Error("finish attempt after panic", "attempt", attemptID, "err", ferr)
+			}
+			panic(r)
+		}
+	}()
 	tl.Step("caa", challenge.StepSkipped, "CAA pre-check arrives in Phase 4")
 	tl.Step("rate_ledger", challenge.StepSkipped, "rate-limit ledger arrives in Phase 4")
 
@@ -103,7 +121,21 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 	if err != nil {
 		return w.fail(bg, cert, attemptID, tl, err)
 	}
-	return w.succeed(bg, cert, attemptID, tl, iss, eff)
+	if err := w.succeed(bg, cert, attemptID, tl, iss, eff); err != nil {
+		// succeed's own transaction rolled back, so the attempt row is still
+		// "running"; best-effort finish it as failed instead of leaving it
+		// stuck until FailStaleAttempts eventually catches it. This is an
+		// infrastructure error (DB), so the certificate row itself (status,
+		// failure_count, next_renew_at) is left untouched: river retries the
+		// job, and a successful retry needs no backoff to undo.
+		tl.Logf("error: %v", err)
+		steps, log := tl.Snapshot()
+		if ferr := w.Store.FinishAttempt(bg, nil, attemptID, OutcomeFailed, "", nil, steps, log); ferr != nil {
+			w.Log.Warn("finish attempt after succeed error", "attempt", attemptID, "err", ferr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline) (*signer.Issued, Effective, error) {
@@ -136,26 +168,36 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 		MustStaple: eff.MustStaple.Value, Account: material, Challenge: router}
 	if eff.ReuseKey.Value && cert.CurrentVersionID != nil {
 		key, kt, err := w.Certs.PrivateKey(ctx, cert.ID, *cert.CurrentVersionID)
-		if err == nil && kt == string(eff.KeyType.Value) {
+		switch {
+		case err == nil && kt == string(eff.KeyType.Value):
 			req.ReuseKeyPKCS8 = key
-		} else if err == nil {
+		case err == nil:
 			tl.Logf("reuseKey requested but the stored key is %s, not %s; generating a fresh key", kt, eff.KeyType.Value)
+		default:
+			tl.Logf("reuseKey requested but the stored key could not be read (%v); generating a fresh key", err)
 		}
 	}
 	tl.Step("order", challenge.StepRunning, strings.Join(req.Names, ", "))
 	iss, err := w.NewSigner(ca).Issue(ctx, req)
 	if err != nil {
+		// PreCheck reports readiness (true, nil) to lego even after a
+		// manual-dns timeout, so lego proceeds to ask the CA to validate,
+		// and a real CA then fails that validation for the masked reason:
+		// the CA's own error (unauthorized, usually) is what Issue returns
+		// here, not the timeout. Outcome only returns non-nil once WaitReady
+		// has actually run and failed, so this can't misfire when the
+		// failure was unrelated to manual-dns (or there was no manual-dns
+		// rule at all). Joining keeps both the CA's error and the real
+		// reason behind it in the recorded error and in errors.As reach.
+		if manual != nil {
+			if mErr := manual.Outcome(); errors.Is(mErr, challenge.ErrManualTimeout) {
+				err = errors.Join(mErr, err)
+			}
+		}
 		return nil, eff, err
 	}
-	// PreCheck reports readiness (true, nil) to lego even after a manual-dns
-	// timeout, so lego proceeds to ask the CA to validate; a real CA then
-	// fails that validation for the masked reason, but a minimal signer may
-	// not. WaitReady is idempotent (sync.Once), so this only re-reads the
-	// cached result; it never waits again.
-	if manual != nil {
-		if err := manual.WaitReady(ctx); err != nil {
-			return nil, eff, err
-		}
+	if iss == nil {
+		return nil, eff, fmt.Errorf("signer %s returned no certificate and no error", ca.Name)
 	}
 	tl.Finish(challenge.StepSuccess, "")
 	tl.Step("finalize", challenge.StepSuccess, "serial "+iss.Serial)
@@ -163,10 +205,8 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 }
 
 // buildRouter also returns the ManualProvider used for manual-dns rules (nil
-// when none), so run can re-check WaitReady after Issue returns: PreCheck
-// reports readiness even after a manual-dns timeout so lego does not keep
-// polling every other name of the order, which can otherwise hide the
-// timeout from a signer that trusts that readiness at face value.
+// when none), so run can consult its non-blocking Outcome after a failed
+// Issue call and recover the real reason behind a masked manual-dns timeout.
 func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Effective, ca CA, attemptID uuid.UUID, tl *Timeline) (*challenge.Router, *challenge.ManualProvider, error) {
 	specs := append(append([]challenge.RuleSpec{}, cert.Rules...), eff.VerificationRules.Value...)
 	type built struct {

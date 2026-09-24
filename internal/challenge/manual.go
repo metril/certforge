@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-acme/lego/v4/challenge/dns01"
@@ -47,6 +48,7 @@ type ManualProvider struct {
 	mu       sync.Mutex
 	deadline time.Time
 	once     sync.Once
+	ran      atomic.Bool // WaitReady has run to completion
 	err      error
 }
 
@@ -93,7 +95,23 @@ func (m *ManualProvider) CleanUp(ctx context.Context, _, _, _ string) error {
 // confirmed. The result is cached: after a timeout, later calls fail
 // immediately without waiting again.
 func (m *ManualProvider) WaitReady(ctx context.Context) error {
-	m.once.Do(func() { m.err = m.wait(ctx) })
+	m.once.Do(func() {
+		m.err = m.wait(ctx)
+		m.ran.Store(true)
+	})
+	return m.err
+}
+
+// Outcome returns the error WaitReady recorded, but only once WaitReady has
+// actually run to completion; it is nil both when WaitReady succeeded and
+// when WaitReady was never called (for example because the CA reused an
+// existing valid authorization and lego never asked this provider to solve
+// one), so a caller cannot mistake "never ran" for "succeeded". It never
+// blocks.
+func (m *ManualProvider) Outcome() error {
+	if !m.ran.Load() {
+		return nil
+	}
 	return m.err
 }
 

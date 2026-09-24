@@ -56,10 +56,31 @@ func (f *fakeSigner) Issue(_ context.Context, req signer.IssueRequest) (*signer.
 	if f.err != nil {
 		return nil, f.err
 	}
+	if f.issued == nil {
+		// A well-behaved CA never hands back a certificate with no error:
+		// PreCheck reports readiness (true, nil) even after a masked
+		// manual-dns timeout, so this is what a real CA's own validation
+		// failure looks like once lego asks it to finalize the order.
+		return nil, &signer.Error{Type: "urn:ietf:params:acme:error:unauthorized", Status: 403,
+			Detail: "one or more domain validations failed"}
+	}
 	return f.issued, nil
 }
 func (f *fakeSigner) Revoke(context.Context, *x509.Certificate, int) error { return nil }
 func (f *fakeSigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.Window, error) {
+	return nil, nil
+}
+
+// panicSigner simulates a worker/provider bug: Issue panics instead of
+// returning an error.
+type panicSigner struct{}
+
+func (panicSigner) Kind() string { return "panic" }
+func (panicSigner) Issue(context.Context, signer.IssueRequest) (*signer.Issued, error) {
+	panic("simulated signer panic")
+}
+func (panicSigner) Revoke(context.Context, *x509.Certificate, int) error { return nil }
+func (panicSigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.Window, error) {
 	return nil, nil
 }
 
@@ -104,6 +125,11 @@ func TestIssueSuccess(t *testing.T) {
 	f := newFixture(t)
 	cred := f.credential(t, "cf")
 	c := f.cert(t, []string{"example.test", "*.example.test"}, []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	// Seed a prior failure so success is shown to reset failure_count to 0,
+	// not merely leave an already-zero count alone.
+	if err := f.store.MarkFailed(context.Background(), c.ID, StatusFailed, 2, "boom", now0); err != nil {
+		t.Fatal(err)
+	}
 	fs := &fakeSigner{issued: issuedFor(t, c.Names(), now0)}
 	if err := newWorker(f, fs).Issue(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
@@ -171,7 +197,12 @@ func TestIssueRateLimitedHonoursRetryAfter(t *testing.T) {
 	}
 }
 
-// Review Focus: manual-dns timeout while the operator is away.
+// Review Focus: manual-dns timeout while the operator is away. Against a real
+// CA, PreCheck's masking means Issue fails with the CA's own validation
+// error (here fakeSigner's unauthorized signer.Error), not the timeout
+// directly; the recorded error must still surface the real reason (the
+// manual-dns timeout) via errors.Join, and the attempt must still record the
+// CA's ACME error type.
 func TestIssueManualTimeout(t *testing.T) {
 	f := newFixture(t)
 	c := f.cert(t, []string{"lab.example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodManualDNS}})
@@ -191,6 +222,37 @@ func TestIssueManualTimeout(t *testing.T) {
 	if st := stepStatus(lastAttempt(t, f, c.ID)); st["challenge lab.example.test"] != "failed" {
 		t.Fatalf("steps = %v", st)
 	}
+	a := lastAttempt(t, f, c.ID)
+	if a.ACMEErrorType != "urn:ietf:params:acme:error:unauthorized" {
+		t.Fatalf("attempt = %+v", a)
+	}
+}
+
+// Review Focus: a panic anywhere in the attempt (a worker or provider bug)
+// must not leave the attempt row stuck "running" forever for river to keep
+// retrying against a fresh CA order; Issue must record it as failed and
+// re-panic so river's own panic handling still applies.
+func TestIssuePanicRecordsFailedAttempt(t *testing.T) {
+	f := newFixture(t)
+	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: ptr(f.credential(t, "cf"))}})
+	w := newWorker(f, &fakeSigner{})
+	w.NewSigner = func(CA) signer.Signer { return panicSigner{} }
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("Issue did not re-panic")
+			}
+		}()
+		_ = w.Issue(context.Background(), c.ID)
+		t.Fatal("unreachable: Issue should have panicked")
+	}()
+	a := lastAttempt(t, f, c.ID)
+	if a.Outcome != OutcomeFailed || a.FinishedAt == nil {
+		t.Fatalf("attempt = %+v", a)
+	}
+	if !strings.Contains(a.Log, "panic") || !strings.Contains(a.Log, "simulated signer panic") {
+		t.Fatalf("log missing panic detail: %q", a.Log)
+	}
 }
 
 func TestIssueManualConfirm(t *testing.T) {
@@ -199,7 +261,9 @@ func TestIssueManualConfirm(t *testing.T) {
 	w := newWorker(f, &fakeSigner{issued: issuedFor(t, []string{"lab.example.test"}, now0)})
 	w.Now = time.Now
 	w.ManualPoll = 10 * time.Millisecond
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for i := 0; i < 200; i++ {
 			recs, _ := f.store.ManualPending(context.Background(), f.org, c.ID)
 			if len(recs) == 1 {
@@ -215,6 +279,7 @@ func TestIssueManualConfirm(t *testing.T) {
 	if err := w.Issue(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
 	}
+	<-done // the goroutine still calls t.Errorf; it must finish before the test does
 	if got, _ := f.store.GetCertificate(context.Background(), f.org, c.ID); got.Status != StatusActive {
 		t.Fatalf("cert = %+v", got)
 	}
