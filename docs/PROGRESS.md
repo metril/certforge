@@ -80,8 +80,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 | 6 | Status chip and validity bar | done | b25ed6d |
 | 7 | Issuers: CAs and ACME accounts | done | 3caba41 |
 | 8 | SchemaForm and provider picker | done | ae8d173 |
-| 9 | DNS credentials | done | pending |
-| 10 | InheritableField and Settings | planned | |
+| 9 | DNS credentials | done | 1b3d449 |
+| 10 | InheritableField and Settings | done | pending |
 | 11 | Certificates list | planned | |
 | 12 | Wizard names step | planned | |
 | 13 | Verification rules and coverage | planned | |
@@ -168,6 +168,11 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 - 1C Task 9 (controller ruling): editing a stored credential warns inline ("stored secrets … must be re-entered") as soon as a non-secret `config` value changes while a `storedSecrets` field is still the `__unchanged__` sentinel — the same condition `internal/issuance/store_dnscreds.go`'s `UpdateDNSCredential` 422s on ("secrets must be re-entered when connection settings change"). Its problem response has no structured field, only `title: "Invalid " + field`/`detail: msg`, so `CredentialSheet` reads the field name back out of the title (`Invalid config` -> `config`, `Invalid name` -> inline under Name) instead of guessing from prose, and falls back to a form-level banner for anything else.
 - 1C Task 9 (D13): the row's Delete button is disabled with a tooltip ("Used by N; remove those references first") whenever `usedBy > 0`, in addition to (not instead of) the existing 409-in-`ConfirmDestructive` path, which still covers a `usedBy` that went stale between page load and delete.
 - 1C Task 9: the brief's test fixtures/assertions used names the real API doesn't have (`ttl: 300`, `apiToken`/`zoneToken`, `getAllByLabelText('New value')`, a full `DNSCredentialInput` on PUT) — `credentials.test.tsx` uses `test/fixtures.ts`'s real `cloudflare` field names (`CF_DNS_API_TOKEN`, `CF_ZONE_API_TOKEN`, `CLOUDFLARE_TTL`) and queries `SecretInput`'s actual accessible name (the field's own label, per `SchemaForm.test.tsx`), not a shared "New value" hint (that text is only an `aria-describedby` description, which `getByLabelText` does not match).
+- 1C Task 10 (preflight A7): `/settings/backup`'s schema is one editable boolean, `kekEscrowConfirmed` — the brief's read-only `kekProvider` doesn't exist. `SchemaSection` (reused generically from Task 8's `SwitchWidget`) renders that switch and its Save button; the KEK's actual status comes from `GET /readyz`'s `checks.kek` (the same check `SetupWizard` already gates on), shown above it by a new small `KekStatus` component.
+- 1C Task 10 (preflight A8, controller ruling): the Org tab's `inherited` prop is `fromEffective` over `GET .../issuance-defaults/effective`, never the brief's `fromGlobal(globalSaved)` — `GET /settings/issuance_defaults` fills in `BuiltinDefaults()` for display even when the global section was never saved (`issuance.Store.GlobalDefaults` returns a zero `Defaults{}` then, which is what the effective resolver actually sees), so a raw non-null global value does not mean the true source is `global`. The Global tab keeps `fromDefault` (Global has no level above it to ask); `chainFor` now also takes the org's own raw value for its hover chain.
+- 1C Task 10 (preflight A9): `RenewPolicy.value` in percent mode is the share of the lifetime *remaining* when renewal fires (`internal/issuance/policy.go`'s `NextRenewAt`), not elapsed; the built-in default is 33, not the brief's 66. `ISSUANCE_FIELDS`' `renewPolicy` initial/display/help/mode-switch and `docs/configuration.md` all say "remains"/33.
+- 1C Task 10: a 422 from either issuance-defaults PUT (global or org) is mapped to its field via the problem's `title`, always `"Invalid <field>"` or `"Invalid <field>.<sub>"` (`internal/api/issuance_common.go`'s `mapErr`/`unprocessable` — the same convention Task 9's review already found for DNS credentials), not prose keyword-matching in `detail`; `fieldFromTitle` in `issuanceFields.tsx` does an exact lookup against `ISSUANCE_FIELDS`' own keys. `useSaveOrgDefaults` and the Global-tab `useSaveSettings('issuance_defaults', {silent:true})` call suppress the default toast so the inline error is the only surfacing, matching `useSaveCa`/`useSaveCredential`'s existing pattern; `useSaveSettings` also invalidates the `['defaults']` query family on an `issuance_defaults` save, since a global change can move any org's effective sources.
+- 1C Task 10: docs/design.md's Settings → General row lists "base URL, orgs, sites"; there is no `/sites` endpoint in Phase 1A (see Known gaps), so `OrgsList` shows only the read-only organizations list, from a new `orgsQuery` (`GET /orgs`).
 
 ## Known gaps
 
@@ -200,3 +205,4 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 - `MaxWorkers=4` is shared by every river job kind, including the periodic scan job and hour-long manual-dns waits; a burst of manual-dns issuances can starve renewals.
 - 1C: Overview "recent activity" needs the audit log (Phase 2).
 - 1C: Revoke action needs a revoke endpoint; Deployments tab is Phase 3.
+- 1C Task 10: Settings → General lists organizations only; there is no `/sites` endpoint yet (sites are a later-phase entity), so the sites list docs/design.md's "Settings" row describes is not shown.

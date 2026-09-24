@@ -34,6 +34,33 @@ Live configuration is stored in the `settings` table (`key`, JSON `value`, encry
 - Phase 1 sections: `general` (`baseUrl`), `backup` (`kekEscrowConfirmed`), and `issuance_defaults` (from the issuance plan).
 - Secrets are stored with envelope encryption in the `secret` column and are never returned by the API.
 
+## Settings
+
+Open **Settings** in the sidebar. Sections that arrive in later phases (Access, Authentication, Agents, Integrations) are shown disabled.
+
+### General
+
+Rendered from the server's settings schema: base URL and other server-wide values. **Save** applies immediately; no restart. Below it, a read-only list of the organizations visible to your account (site management arrives in a later phase).
+
+### Issuance defaults
+
+Two tabs: **Global** and your organization. Each field shows the value in effect and where it comes from (**Default**, **Global**, **Org**; hover the badge for the chain). Turn on **Override** to set a value at this level; **Reset to inherited** clears it. A reference that no longer exists (a deleted CA or account) shows its error next to the field.
+
+| Field | Meaning |
+|---|---|
+| Certificate authority, ACME account | Used when a certificate does not pick its own |
+| Key type | EC P-256, EC P-384, RSA 2048, RSA 3072, RSA 4096 |
+| Renewal | **Days** before expiry, or **Percent**: renew once that share of the certificate's lifetime remains; **ARI** lets the CA suggest the window |
+| Preferred chain | Root common name to prefer when the CA offers alternates |
+| Reuse key, Must-Staple | Keep the key across renewals; request OCSP Must-Staple |
+| Propagation wait, Resolvers | DNS-01 wait time and the resolvers used to check it |
+
+Changing a default takes effect at the next renewal of every certificate that inherits it.
+
+### Backup and keys
+
+Shows the key-encryption key's status (from `/readyz`'s `kek` check) and the **KEK escrow confirmed** switch, which must be on before scheduled backups run.
+
 ## First-run setup wizard
 
 Until setup completes, `GET /api/v1/setup/status` returns `{"needsSetup": true}` and the UI shows `/setup`. The wizard posts to `POST /api/v1/setup/complete`:

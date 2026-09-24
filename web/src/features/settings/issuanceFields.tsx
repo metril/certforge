@@ -1,0 +1,280 @@
+import type { ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { accountsQuery } from '@/api/queries/accounts';
+import { casQuery } from '@/api/queries/cas';
+import { dnsCredentialsQuery } from '@/api/queries/dns';
+import type { AcmeAccount, CA, DnsCredential, EffectiveMap, EffectiveValue, IssuanceDefaults, KeyType, Source } from '@/api/types';
+import { Combobox } from '@/components/Combobox';
+import { ListInput } from '@/components/ListInput';
+import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
+import { SwitchField } from '@/components/SwitchField';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { InheritableField, type ChainEntry } from '@/forms/InheritableField';
+import type { HelpKey } from '@/lib/help';
+
+export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[] };
+export type FieldKey = keyof IssuanceDefaults;
+type V<K extends FieldKey> = NonNullable<IssuanceDefaults[K]>;
+
+export type IssuanceField = {
+  key: FieldKey;
+  label: string;
+  help: HelpKey;
+  initial: (c: FieldCtx) => unknown;
+  display: (v: unknown, c: FieldCtx) => ReactNode;
+  editor: (v: unknown, set: (v: unknown) => void, c: FieldCtx, id: string) => ReactNode;
+};
+
+export function def<K extends FieldKey>(d: {
+  key: K;
+  label: string;
+  help: HelpKey;
+  initial: (c: FieldCtx) => V<K>;
+  display: (v: V<K>, c: FieldCtx) => ReactNode;
+  editor: (v: V<K>, set: (v: V<K>) => void, c: FieldCtx, id: string) => ReactNode;
+}): IssuanceField {
+  return d as unknown as IssuanceField;
+}
+
+export const KEY_TYPES: SegmentOption<KeyType>[] = [
+  { value: 'ec256', label: 'EC P-256' },
+  { value: 'ec384', label: 'EC P-384' },
+  { value: 'rsa2048', label: 'RSA 2048' },
+  { value: 'rsa3072', label: 'RSA 3072' },
+  { value: 'rsa4096', label: 'RSA 4096' },
+];
+
+function boolEditor(label: string, on: string, off: string) {
+  return (v: boolean, set: (v: boolean) => void) => (
+    <span className="flex items-center gap-2">
+      <Switch aria-label={label} checked={v} onCheckedChange={set} />
+      <span className="text-sm text-ink-muted">{v ? on : off}</span>
+    </span>
+  );
+}
+
+// Adaptation (preflight A9): `RenewPolicy.value` in percent mode is the
+// share of the lifetime REMAINING when renewal fires (internal/issuance/
+// policy.go's NextRenewAt: notAfter - life/100*value), not elapsed — the
+// built-in default (BuiltinDefaults()) is 33, not a majority-elapsed value,
+// and the copy below says "remains", matching RenewPolicy.mode's own
+// description in api/openapi.yaml.
+export const ISSUANCE_FIELDS: IssuanceField[] = [
+  def({
+    key: 'caId',
+    label: 'Certificate authority',
+    help: 'defaults.caId',
+    initial: (c) => c.cas[0]?.id ?? '',
+    display: (v, c) => c.cas.find((x) => x.id === v)?.name ?? <span className="font-mono text-xs">{v}</span>,
+    editor: (v, set, c, id) => (
+      <div className="w-72">
+        <Combobox
+          id={id}
+          aria-label="Certificate authority"
+          value={v}
+          onChange={(x) => set(x ?? '')}
+          options={c.cas.map((x) => ({ value: x.id, label: x.name }))}
+          placeholder="Choose CA"
+          emptyText="No CAs yet"
+        />
+      </div>
+    ),
+  }),
+  def({
+    key: 'accountId',
+    label: 'ACME account',
+    help: 'defaults.accountId',
+    initial: (c) => c.accounts[0]?.id ?? '',
+    display: (v, c) => <span className="font-mono text-xs">{c.accounts.find((a) => a.id === v)?.email ?? v}</span>,
+    editor: (v, set, c, id) => (
+      <div className="w-72">
+        <Combobox
+          id={id}
+          aria-label="ACME account"
+          mono
+          value={v}
+          onChange={(x) => set(x ?? '')}
+          options={c.accounts.map((a) => ({ value: a.id, label: a.email, hint: c.cas.find((x) => x.id === a.caId)?.name }))}
+          placeholder="Choose account"
+          emptyText="No accounts yet"
+        />
+      </div>
+    ),
+  }),
+  def({
+    key: 'keyType',
+    label: 'Key type',
+    help: 'defaults.keyType',
+    initial: () => 'ec256',
+    display: (v) => KEY_TYPES.find((k) => k.value === v)?.label ?? v,
+    editor: (v, set) => <SegmentedControl<KeyType> aria-label="Key type" value={v} onChange={set} options={KEY_TYPES} />,
+  }),
+  def({
+    key: 'renewPolicy',
+    label: 'Renewal',
+    help: 'defaults.renewPolicy',
+    initial: () => ({ mode: 'percent', value: 33, useAri: false }),
+    display: (v) => `${v.mode === 'days' ? `${v.value} days before expiry` : `When ${v.value}% of the lifetime remains`}${v.useAri ? ', ARI on' : ''}`,
+    editor: (v, set, _c, id) => (
+      <div className="flex flex-wrap items-center gap-3">
+        <SegmentedControl
+          aria-label="Renewal mode"
+          value={v.mode}
+          onChange={(mode) => set({ ...v, mode, value: mode === 'days' ? 30 : 33 })}
+          options={[
+            { value: 'days', label: 'Days' },
+            { value: 'percent', label: 'Percent' },
+          ]}
+        />
+        <Input
+          id={id}
+          type="number"
+          min={1}
+          max={v.mode === 'days' ? 365 : 99}
+          className="w-24"
+          aria-label={v.mode === 'days' ? 'Days before expiry' : 'Percent of lifetime remaining'}
+          value={v.value}
+          onChange={(e) => set({ ...v, value: Number(e.target.value) })}
+        />
+        <div className="w-96">
+          <SwitchField id={`${id}-ari`} label="ARI" help="defaults.useAri" checked={v.useAri} onCheckedChange={(useAri) => set({ ...v, useAri })} onText="Use renewal info" offText="Ignore renewal info" />
+        </div>
+      </div>
+    ),
+  }),
+  def({
+    key: 'preferredChain',
+    label: 'Preferred chain',
+    help: 'defaults.preferredChain',
+    initial: () => '',
+    display: (v) => (v ? <span className="font-mono text-xs">{v}</span> : 'CA default'),
+    editor: (v, set, _c, id) => <Input id={id} className="w-72 font-mono text-xs" value={v} onChange={(e) => set(e.target.value)} placeholder="ISRG Root X1" />,
+  }),
+  def({
+    key: 'reuseKey',
+    label: 'Reuse key',
+    help: 'defaults.reuseKey',
+    initial: () => false,
+    display: (v) => (v ? 'Keep key' : 'New key each renewal'),
+    editor: boolEditor('Reuse key', 'Keep key', 'New key each renewal'),
+  }),
+  def({
+    key: 'mustStaple',
+    label: 'Must-Staple',
+    help: 'defaults.mustStaple',
+    initial: () => false,
+    display: (v) => (v ? 'On' : 'Off'),
+    editor: boolEditor('Must-Staple', 'On', 'Off'),
+  }),
+  def({
+    key: 'propagationSeconds',
+    label: 'Propagation wait',
+    help: 'defaults.propagationSeconds',
+    initial: () => 120,
+    display: (v) => `${v} s`,
+    editor: (v, set, _c, id) => (
+      <span className="flex items-center gap-2">
+        <Input id={id} type="number" min={0} max={3600} className="w-24" aria-label="Propagation wait in seconds" value={v} onChange={(e) => set(Number(e.target.value))} />
+        <span className="text-ink-muted">s</span>
+      </span>
+    ),
+  }),
+  def({
+    key: 'resolvers',
+    label: 'Resolvers',
+    help: 'defaults.resolvers',
+    initial: () => [],
+    display: (v) => (v.length ? <span className="font-mono text-xs">{v.join(', ')}</span> : 'System resolvers'),
+    editor: (v, set, _c, id) => (
+      <div className="w-96">
+        <ListInput id={id} aria-label="Resolvers" value={v} onChange={set} placeholder="1.1.1.1:53" />
+      </div>
+    ),
+  }),
+];
+
+// enabled: !!orgId guards the no-org edge case (IssuanceDefaultsSection
+// still calls this hook unconditionally, with orgId '', before its own
+// early return) so it doesn't fire requests against a malformed /orgs//...
+// path.
+export function useFieldCtx(orgId: string): FieldCtx {
+  const cas = useQuery({ ...casQuery(orgId), enabled: !!orgId }).data ?? [];
+  const accounts = useQuery({ ...accountsQuery(orgId), enabled: !!orgId }).data ?? [];
+  const credentials = useQuery({ ...dnsCredentialsQuery(orgId), enabled: !!orgId }).data ?? [];
+  return { cas, accounts, credentials };
+}
+
+export const fromDefault = (): EffectiveValue => ({ value: null, source: 'default' });
+
+export function fromGlobal(global: IssuanceDefaults) {
+  return (k: FieldKey): EffectiveValue => ({ value: global[k] ?? null, source: global[k] == null ? 'default' : 'global' }) as EffectiveValue;
+}
+
+// Adaptation (preflight A8): the source of truth for the Org tab's badge —
+// GET .../issuance-defaults/effective already resolves cert > org > global >
+// built-in and names the level, so this is a plain lookup, never a
+// raw-value comparison.
+export function fromEffective(eff: EffectiveMap) {
+  return (k: FieldKey): EffectiveValue => (eff[k] as EffectiveValue | undefined) ?? fromDefault();
+}
+
+export function chainFor(global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
+  return (k: FieldKey): ChainEntry[] => {
+    const f = ISSUANCE_FIELDS.find((x) => x.key === k);
+    const show = (v: unknown): ReactNode => (v == null ? 'server default' : f ? f.display(v, ctx) : String(v));
+    const out: ChainEntry[] = [{ level: 'Global', value: show(global[k]) }];
+    if (org) out.push({ level: 'Org', value: org[k] == null ? 'inherits' : show(org[k]) });
+    return out;
+  };
+}
+
+// A 422's title is "Invalid <field>" or "Invalid <field>.<sub>" (mapErr /
+// unprocessable in internal/api), so this is an exact lookup against the
+// field keys this form actually renders — no prose keyword-matching needed.
+export function fieldFromTitle(title: string): FieldKey | null {
+  const name = title.replace(/^Invalid\s+/, '').split('.')[0];
+  return ISSUANCE_FIELDS.some((f) => f.key === name) ? (name as FieldKey) : null;
+}
+
+type FormProps = {
+  value: IssuanceDefaults;
+  onChange: (v: IssuanceDefaults) => void;
+  inherited: (k: FieldKey) => EffectiveValue;
+  chain?: (k: FieldKey) => ChainEntry[];
+  ctx: FieldCtx;
+  exclude?: FieldKey[];
+  error?: (k: FieldKey) => string | null | undefined;
+};
+
+export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, exclude = [], error }: FormProps) {
+  return (
+    <div className="grid">
+      {ISSUANCE_FIELDS.filter((f) => !exclude.includes(f.key)).map((f) => {
+        const id = `f-${f.key}`;
+        return (
+          <InheritableField<unknown>
+            key={f.key}
+            id={id}
+            label={f.label}
+            help={f.help}
+            value={value[f.key] as unknown}
+            // EffectiveValue is a union across each field's own Effective*
+            // shape (EffectiveUuid | EffectiveString | ...); TS widens their
+            // merged 'value' key to optional, but every variant always
+            // carries it (see api/openapi.yaml's Effective* schemas, all
+            // `required: [value, source]`) — this cast only relaxes that,
+            // it doesn't change what's passed.
+            inherited={inherited(f.key) as { value: unknown; source: Source }}
+            chain={chain?.(f.key)}
+            initial={f.initial(ctx)}
+            display={(v) => f.display(v, ctx)}
+            editor={(v, set) => f.editor(v, set, ctx, id)}
+            onChange={(v) => onChange({ ...value, [f.key]: v })}
+            error={error?.(f.key)}
+          />
+        );
+      })}
+    </div>
+  );
+}

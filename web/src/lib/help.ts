@@ -42,6 +42,28 @@ export const help = {
   'dns.provider': { text: 'The DNS host that serves your zone. CertForge writes TXT records there.' },
   'dns.usedBy': { text: 'Certificates and issuance defaults whose verification rules use this credential.' },
   'dns.test': { text: 'Creates and removes a test TXT record in the zone.' },
+  'settings.orgs': { text: 'Organizations visible to your account. Full org management arrives in a later phase.' },
+  'backup.kek': {
+    text: 'Whether the key-encryption key is loaded and passes its startup check.',
+    learnMore: 'configuration.md#the-kek',
+  },
+  'defaults.caId': { text: 'CA used when a certificate does not pick one.' },
+  'defaults.accountId': { text: 'ACME account used to order from that CA.' },
+  'defaults.keyType': { text: 'Key algorithm for new certificates. EC P-256 is small and widely supported.' },
+  'defaults.renewPolicy': {
+    text: 'Days: renew this many days before expiry. Percent: renew once this share of the lifetime remains.',
+    learnMore: 'configuration.md#issuance-defaults',
+  },
+  'defaults.useAri': { text: 'Let the CA suggest the renewal window (ACME Renewal Information).' },
+  'defaults.preferredChain': { text: 'Common name of the root to prefer when the CA offers several chains.' },
+  'defaults.reuseKey': { text: 'Keep the same private key across renewals. Needed for key pinning.' },
+  'defaults.mustStaple': { text: 'Ask the CA to set OCSP Must-Staple. Only use it if every server staples.' },
+  'defaults.propagationSeconds': { text: 'How long to wait for TXT records to reach every nameserver.' },
+  'defaults.resolvers': { text: 'DNS servers used to check propagation. Empty means system resolvers.' },
+  'defaults.inherit': {
+    text: 'Unset fields inherit from the level above. Changes apply at each certificate’s next renewal.',
+    learnMore: 'configuration.md#issuance-defaults',
+  },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

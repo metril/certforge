@@ -84,8 +84,15 @@ it('signs out from the user menu', async () => {
 
 it('highlights Settings on any section, not just the one the link resolves to', async () => {
   viewport(true);
-  server.use(...authHandlers({ authed: true }));
-  renderRoute('/settings/tls');
+  server.use(
+    ...authHandlers({ authed: true }),
+    // The Sidebar's own Settings link resolves to /settings/general
+    // (Sidebar.tsx); /settings/backup proves isNavPathActive's prefix
+    // match, not an exact-href match. Backup's own content needs these two.
+    http.get(url('/settings/backup'), () => HttpResponse.json({ schema: { type: 'object', properties: {} }, value: {} })),
+    http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })),
+  );
+  renderRoute('/settings/backup');
   const nav = await screen.findByRole('navigation', { name: 'Main' });
   expect(within(nav).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
 });

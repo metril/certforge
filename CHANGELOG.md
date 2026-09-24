@@ -45,6 +45,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web UI issuers: CA preset cards and custom ACME directories with trust bundle and EAB, and ACME account registration.
 - Web UI schema-driven forms: switches, segmented controls, chips, and write-only secrets generated from provider JSON Schemas, and a searchable DNS provider picker.
 - Web UI DNS credentials for every lego provider, with forms generated from provider schemas, usage counts, and a zone test.
+- Web UI settings: General (base URL, read-only organizations list) and Backup (KEK status from `/readyz`, escrow-confirmed switch) from server schemas, and issuance defaults with Global and Org tabs, per-field inherited-value badges sourced from the effective-defaults endpoint, and override/reset-to-inherited controls reused by the future certificate wizard.
 
 ### Fixed
 - Deleting a CA or ACME account locks the row for the whole count-then-delete in one transaction, so a concurrent `acme_accounts` insert (an actual foreign key) cannot slip a new reference in between the check and the delete.
