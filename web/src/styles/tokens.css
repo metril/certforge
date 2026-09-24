@@ -11,6 +11,10 @@
   --cf-primary: #2848B8;
   --cf-on-primary: #FFFFFF;
   --cf-on-status: #FFFFFF;
+  /* Unchecked switch/control track. Same value as ink-muted: proven >=4.5:1
+     (thus >=3:1) against panel and surface by the tokens test below, which
+     is what the Switch contrast ruling (Task 1 review carry-in) requires. */
+  --cf-control-track: #566173;
   --cf-valid: #2E7D57;
   --cf-expiring: #B7791F;
   --cf-expired: #7F1D2D;
@@ -31,6 +35,7 @@
   --cf-primary: #7C97F0;
   --cf-on-primary: #161B24;
   --cf-on-status: #161B24;
+  --cf-control-track: #9AA3B2;
   --cf-valid: #5BC08A;
   --cf-expiring: #E0A83F;
   --cf-expired: #D9647A;
@@ -53,6 +58,7 @@
     --cf-primary: #7C97F0;
     --cf-on-primary: #161B24;
     --cf-on-status: #161B24;
+    --cf-control-track: #9AA3B2;
     --cf-valid: #5BC08A;
     --cf-expiring: #E0A83F;
     --cf-expired: #D9647A;

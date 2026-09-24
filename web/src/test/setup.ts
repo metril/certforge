@@ -32,6 +32,21 @@ if (typeof window !== 'undefined') {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+// jsdom has no Clipboard API (Task 5 preflight: CopyField needs
+// navigator.clipboard.writeText/readText); an in-memory stub is enough for
+// tests, reset between them below.
+let clipboardText = '';
+if (typeof navigator !== 'undefined' && !navigator.clipboard) {
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      writeText: async (text: string) => {
+        clipboardText = text;
+      },
+      readText: async () => clipboardText,
+    },
+  });
+}
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 // Every relative date ("in 60 d") in fixtures.ts is computed from this fixed
@@ -44,5 +59,6 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
   if (typeof localStorage !== 'undefined') localStorage.clear();
+  clipboardText = '';
 });
 afterAll(() => server.close());

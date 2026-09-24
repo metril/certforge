@@ -53,6 +53,18 @@ describe.each([['light', light], ['dark', dark]] as const)('%s tokens', (_, t) =
     // modifier) would drop below this — the review round 1 fix removed it.
     expect(contrast(t['on-status']!, t['failed']!)).toBeGreaterThanOrEqual(4.5);
   });
+  it('switch: the unchecked track (control-track) reaches 3:1 against panel and surface', () => {
+    // Task 1 review carry-in: Switch's unchecked track must reach >=3:1
+    // against panel, in both themes.
+    expect(contrast(t['control-track']!, t.panel!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(t['control-track']!, t.surface!)).toBeGreaterThanOrEqual(3);
+  });
+  it('switch: the thumb (panel) reaches 3:1 against both the unchecked and checked track', () => {
+    // Switch renders its thumb in the panel colour against control-track
+    // (unchecked) or primary (checked); both must clear 3:1.
+    expect(contrast(t.panel!, t['control-track']!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(t.panel!, t.primary!)).toBeGreaterThanOrEqual(3);
+  });
 });
 
 it('the no-JS dark fallback block matches [data-theme="dark"] exactly', () => {

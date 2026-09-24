@@ -53,6 +53,7 @@
   --color-subtle: var(--cf-subtle);
   --color-on-primary: var(--cf-on-primary);
   --color-on-status: var(--cf-on-status);
+  --color-control-track: var(--cf-control-track);
   --color-valid: var(--cf-valid);
   --color-expiring: var(--cf-expiring);
   --color-expired: var(--cf-expired);
