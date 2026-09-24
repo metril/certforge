@@ -21,6 +21,7 @@ type command struct {
 func commands() []command {
 	return []command{
 		{name: "version", summary: "Print the version", run: runVersion},
+		{name: "migrate", summary: "Apply database migrations", run: runMigrate},
 	}
 }
 
