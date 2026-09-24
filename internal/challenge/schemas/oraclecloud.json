@@ -32,7 +32,7 @@
       "OCI_PRIVKEY": {
         "type": "string",
         "title": "OCI_PRIVKEY",
-        "description": "Private key (PEM), inline; alternative to OCI_PRIVKEY_FILE",
+        "description": "Base64-encoded PEM private key (base64 of the whole PEM file), inline; alternative to OCI_PRIVKEY_FILE",
         "secret": true,
         "x-group": "credentials"
       },

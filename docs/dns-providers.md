@@ -1448,7 +1448,7 @@ Code: `oraclecloud`. Website: <https://cloud.oracle.com/home>
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `OCI_COMPARTMENT_OCID` | credentials | no | Compartment OCID |
-| `OCI_PRIVKEY` | credentials | yes | Private key (PEM), inline; alternative to OCI_PRIVKEY_FILE |
+| `OCI_PRIVKEY` | credentials | yes | Base64-encoded PEM private key (base64 of the whole PEM file), inline; alternative to OCI_PRIVKEY_FILE |
 | `OCI_PRIVKEY_FILE` | credentials | no | Private key file |
 | `OCI_PRIVKEY_PASS` | credentials | yes | Private key password |
 | `OCI_PUBKEY_FINGERPRINT` | credentials | no | Public key fingerprint |

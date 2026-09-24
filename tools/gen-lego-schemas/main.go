@@ -91,14 +91,16 @@ var forceSecret = map[string]bool{
 
 // extraCredentialFields adds a Credentials-group field lego's own TOML
 // metadata omits, but that its provider actually accepts as an inline env
-// var: oraclecloud.go reads its private key via env.Get(envPrivKey, ...)
-// where envPrivKey = "OCI_PRIVKEY" (env.Get falls back to "<name>_FILE"
-// itself), but the TOML only documents the _FILE form. Without this,
-// oraclecloud would be unusable through the API (its only credential field
-// would be a rejected serverPath one). Keyed by provider code, then field
-// name to description.
+// var: oraclecloud's configprovider.go (getPrivateKey) reads OCI_PRIVKEY
+// directly via os.Getenv and base64.StdEncoding.DecodeString's it — it is
+// the base64 encoding of the whole PEM file, not the PEM text itself, and
+// falls back to OCI_PRIVKEY_FILE (raw PEM bytes, no base64) only when unset.
+// The TOML only documents the _FILE form; without this override oraclecloud
+// would be unusable through the API (its only credential field would be a
+// rejected serverPath one). Keyed by provider code, then field name to
+// description.
 var extraCredentialFields = map[string]map[string]string{
-	"oraclecloud": {"OCI_PRIVKEY": "Private key (PEM), inline; alternative to OCI_PRIVKEY_FILE"},
+	"oraclecloud": {"OCI_PRIVKEY": "Base64-encoded PEM private key (base64 of the whole PEM file), inline; alternative to OCI_PRIVKEY_FILE"},
 }
 
 // unsupportedProviders lists providers whose only lego credential input is
