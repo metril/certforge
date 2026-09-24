@@ -33,8 +33,8 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 | 9 | OpenAPI skeleton, router, problem+json | done | 2cd22ee |
 | 10 | Auth and settings endpoints | done | 1d8d3ab |
 | 11 | Setup wizard and bootstrap-admin | done | d273abb |
-| 12 | Health, web UI placeholder, serve | done | pending |
-| 13 | Container image and compose | todo | – |
+| 12 | Health, web UI placeholder, serve | done | 519abbe |
+| 13 | Container image and compose | done | pending |
 | 14 | Architecture docs and phase close-out | todo | – |
 
 ## Decisions made during implementation
@@ -44,6 +44,7 @@ Phase 1 is split into three plans: 1A backend foundation, 1B issuance, 1C web UI
 
 ## Known gaps
 
+- Pebble and challtestsrv images are pinned to tag 2.10.1, not a digest; pin digests when the issuance e2e lands.
 - Audit log tamper-evidence hardening not yet done: keyed HMAC instead of a plain hash, anchoring the head hash outside the table, and running the app under a role that does not own `audit_events`.
 - Login attempts are not rate limited yet (argon2id cost only); add per-IP throttling with the Phase 2 auth work.
 - Settings sections cannot hold secret fields yet; add write-only secret: true support when the first secret-bearing section lands (Phase 2 OIDC).

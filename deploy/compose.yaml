@@ -1,0 +1,48 @@
+name: certforge
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: certforge
+      POSTGRES_USER: certforge
+      POSTGRES_PASSWORD: ${CF_DB_PASSWORD:-certforge}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U certforge -d certforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  certforge:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.server
+      args:
+        WITH_WEB: ${WITH_WEB:-0}
+    image: ghcr.io/metril/certforge:dev
+    restart: unless-stopped
+    environment:
+      CF_DATABASE_URL: postgres://certforge:${CF_DB_PASSWORD:-certforge}@postgres:5432/certforge?sslmode=disable
+      CF_KEK_FILE: /run/secrets/cf_kek
+      CF_BASE_URL: ${CF_BASE_URL:-http://localhost:8080}
+      CF_LOG_LEVEL: ${CF_LOG_LEVEL:-info}
+    secrets:
+      - cf_kek
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/certforge", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+secrets:
+  cf_kek:
+    file: ./secrets/kek
+volumes:
+  pgdata:

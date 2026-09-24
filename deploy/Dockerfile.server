@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+ARG WITH_WEB=0
+
+FROM node:22-alpine AS webbuild
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+FROM scratch AS web-1
+COPY --from=webbuild /src/web/dist /dist
+
+FROM alpine:3.22 AS web-0
+RUN mkdir -p /dist
+
+FROM web-${WITH_WEB} AS web
+
+FROM golang:1.23-alpine AS build
+ARG WITH_WEB=0
+ARG VERSION=dev
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+COPY --from=web /dist /tmp/webdist
+RUN set -eux; tags=""; \
+    if [ "$WITH_WEB" = "1" ]; then rm -rf internal/webui/dist && cp -r /tmp/webdist internal/webui/dist && tags="embedweb"; fi; \
+    CGO_ENABLED=0 go build -trimpath -tags "$tags" -ldflags "-s -w -X main.version=${VERSION}" -o /out/certforge ./cmd/certforge
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/certforge /usr/local/bin/certforge
+USER nonroot:nonroot
+EXPOSE 8080 8443
+ENTRYPOINT ["/usr/local/bin/certforge"]
+CMD ["serve"]
