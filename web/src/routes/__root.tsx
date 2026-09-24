@@ -1,9 +1,16 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router';
+import type { QueryClient } from '@tanstack/react-query';
+import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router';
 
-// Placeholder root route: Task 3 (router, login, setup wizard) replaces this
-// with the real layout and auth guard. Needed now only so the TanStack
-// Router Vite plugin (which scans src/routes at config-resolve time, even
-// though main.tsx does not mount a router yet) does not fail the build.
-export const Route = createRootRoute({
+export type RouterContext = { queryClient: QueryClient };
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: Outlet,
+  notFoundComponent: () => (
+    <main className="grid gap-3 p-8">
+      <h1 className="text-xl font-semibold">Page not found</h1>
+      <Link to="/" className="text-primary underline underline-offset-2">
+        Go to overview
+      </Link>
+    </main>
+  ),
 });

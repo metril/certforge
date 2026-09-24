@@ -44,6 +44,17 @@ Until setup completes, `GET /api/v1/setup/status` returns `{"needsSetup": true}`
 
 This sets the local admin password, stores `baseUrl` in Settings → General, creates the first org, grants the local admin the global `admin` role, and logs you in. It runs once. Later calls return 409.
 
+The `/setup` wizard walks this in four steps:
+
+| Step | Field | Notes |
+|---|---|---|
+| Admin password | Admin password, Confirm password | At least 12 characters. This is the local break-glass login. |
+| Base URL | Base URL | Pre-filled with the address in your browser. A warning appears if it differs, for example behind a reverse proxy. |
+| Encryption key | – | Shows the server's readiness checks. The key (`CF_KEK` or `CF_KEK_FILE`) must load and pass its canary before you can continue. Fix the environment and select **Check again**. |
+| First organization | Organization, Slug | The slug appears in URLs (`/o/<slug>/…`). |
+
+**Finish setup** creates the admin and the organization, signs you in, and opens the organization.
+
 ## Break-glass: bootstrap-admin
 
 Reset the local admin password from the server host, after first-run setup has completed. This also revokes all of that user's sessions and clears the account's disabled flag:

@@ -43,3 +43,19 @@ export function useLogout() {
     },
   });
 }
+
+export type SetupInput = { adminPassword: string; orgName: string; orgSlug: string; baseUrl: string };
+
+export function useCompleteSetup() {
+  const qc = useQueryClient();
+  return useMutation({
+    // Setup signs the admin in and answers with Me (1A); no second login call.
+    mutationFn: (input: SetupInput) => call(api.POST('/setup/complete', { body: input })),
+    onSuccess: (me) => {
+      resetUnauthorized();
+      setCsrfToken(me.csrfToken);
+      qc.setQueryData(meQuery.queryKey, me);
+      qc.setQueryData(setupStatusQuery.queryKey, { needsSetup: false });
+    },
+  });
+}

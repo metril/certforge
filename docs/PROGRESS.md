@@ -73,8 +73,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Scaffold, tokens, fonts, theme, lint | done | 07f60a1 |
-| 2 | API client and query plumbing | done | pending |
-| 3 | Router, login, setup wizard | planned | |
+| 2 | API client and query plumbing | done | 8db1cf4 |
+| 3 | Router, login, setup wizard | done | pending |
 | 4 | App shell and navigation | planned | |
 | 5 | Form controls | planned | |
 | 6 | Status chip and validity bar | planned | |
@@ -138,6 +138,10 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 - 1C: tooltip "Learn more" links resolve against `VITE_DOCS_BASE` (default `https://github.com/metril/certforge/blob/main/docs/`).
 - 1C: the CA edit sheet is addressed by `?edit=<id>` on `/issuers/cas` rather than a `/:id` segment.
 - 1C: certificate create sends `sans` including the common name.
+- 1C Task 3: `/login`'s `beforeLoad` also tries `ensureQueryData(meQuery)` (preflight A28) — an already-signed-in visitor is sent straight to `safeRedirect(search.redirect)` instead of seeing the form, and the probe caches `Me.csrfToken` before the sign-in form's own `POST /auth/login`; a 401 falls through to render the form as usual.
+- 1C Task 3: `createAppRouter`'s `setUnauthorizedHandler` replaces Task 2's default `window.location` 401 redirect with an SPA `router.navigate({ to: '/login', search: { redirect } })`, keeping the return URL without a full page reload.
+- 1C Task 3 (preflight D7): `docs/configuration.md` already has a "## First-run setup wizard" heading; the wizard's step table was appended under it instead of adding a near-duplicate "## First-run setup" heading (which GitHub would slug `-1`, breaking anchors). `help.ts`'s `setup.kek` entry links to `configuration.md#first-run-setup-wizard` accordingly.
+- 1C Task 3: fixed a bug in the plan's `toSlug` — `.replace(/[^a-z0-9]+/g, '-')` turned characters NFKD doesn't decompose (for example "ß", which has no decomposition) into a spurious hyphen instead of dropping them ("Straße" → "stra-e", not "strae"). `toSlug` now collapses an explicit ASCII whitespace/punctuation class (including "-") to one hyphen, then strips any character that still isn't `[a-z0-9-]` outright.
 - 1C Task 1: the Vite dev proxy's default backend is `http://localhost:${CF_HTTP_PORT:-8080}` (not a bare `:8080`), since `CF_HTTP_PORT` is already how `make e2e`/compose pick a non-default host port and this host runs the dev API on 18080.
 - 1C Task 1: `shadcn@4.21.0 add` generates components importing `cn` from a package literally named `cn` rather than `@/lib/utils`, and adds that package to `package.json`; both are reverted (`sed` the imports back to `@/lib/utils`, drop the `cn` dependency) to keep the exact-pinned dependency set and a single `cn` implementation.
 - 1C Task 1: `src/test/setup.ts`'s jsdom shims (`Element.prototype.*`, `window.matchMedia`, `localStorage.clear()`) are guarded with `typeof ... !== 'undefined'` checks, because `setupFiles` also runs for `lint.test.ts` and `tokens.test.ts`, which opt into `@vitest-environment node` and have no DOM globals.

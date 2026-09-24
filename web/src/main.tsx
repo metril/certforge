@@ -2,18 +2,18 @@ import '@/styles/fonts';
 import '@/styles/app.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ThemeProvider } from '@/lib/theme';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { RouterProvider } from '@tanstack/react-router';
+import { Providers } from '@/app/Providers';
+import { makeQueryClient } from '@/lib/queryClient';
+import { createAppRouter } from './router';
+
+const queryClient = makeQueryClient();
+const router = createAppRouter(queryClient);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider>
-      <TooltipProvider delayDuration={300}>
-        <main className="p-6">
-          <ThemeToggle />
-        </main>
-      </TooltipProvider>
-    </ThemeProvider>
+    <Providers queryClient={queryClient}>
+      <RouterProvider router={router} />
+    </Providers>
   </StrictMode>,
 );
