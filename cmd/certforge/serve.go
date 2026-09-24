@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/audit"
@@ -109,8 +110,25 @@ func stopRiver(c *river.Client[pgx.Tx], log *slog.Logger) {
 		log.Warn("river did not stop in time; cancelling running jobs", "err", err)
 		cctx, ccancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer ccancel()
-		_ = c.StopAndCancel(cctx)
+		if cancelErr := c.StopAndCancel(cctx); cancelErr != nil {
+			log.Error("river did not cancel running jobs cleanly; process is exiting with jobs still in flight",
+				"err", cancelErr, "jobs_still_running", riverRunningJobs(context.Background(), c))
+		}
 	}
+}
+
+// riverRunningJobs best-effort counts jobs still in the running state, for
+// the shutdown error log above. -1 means the count itself could not be
+// fetched (for example the database is unreachable, which is also why
+// StopAndCancel above likely failed).
+func riverRunningJobs(ctx context.Context, c *river.Client[pgx.Tx]) int {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	res, err := c.JobList(ctx, river.NewJobListParams().States(rivertype.JobStateRunning).First(10_000))
+	if err != nil {
+		return -1
+	}
+	return len(res.Jobs)
 }
 
 func purgeSessions(ctx context.Context, s *authn.Sessions, log *slog.Logger) {

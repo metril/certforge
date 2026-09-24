@@ -45,9 +45,18 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	defer sqlDB.Close()
-	if _, err := p.Up(ctx); err != nil {
-		return fmt.Errorf("db: migrate: %w", err)
+	_, upErr := p.Up(ctx)
+	// Closed here, before river's migration runs, not deferred to the end of
+	// Migrate: goose's sql.DB holds idle connections checked out of pool
+	// until it's closed, and releasing them promptly (rather than holding
+	// them for the rest of Migrate's duration) leaves more headroom in a
+	// pool shared with other callers while migrateRiver does its own work.
+	closeErr := sqlDB.Close()
+	if upErr != nil {
+		return fmt.Errorf("db: migrate: %w", upErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("db: migrate: close goose connection: %w", closeErr)
 	}
 	return migrateRiver(ctx, pool)
 }

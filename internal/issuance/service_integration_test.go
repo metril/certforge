@@ -62,6 +62,28 @@ func TestRegisterAccountPassesEAB(t *testing.T) {
 	}
 }
 
+// TestRegisterAccountPropagatesNonNotFoundErrors: only a CA lookup that
+// actually finds no such row in this org should become a 422
+// *ValidationError; any other error from the lookup (here, a database error
+// from a cancelled context) must come back unchanged so it isn't misreported
+// as a bad caId and, e.g. mapped to a client-facing 422 instead of a 500.
+func TestRegisterAccountPropagatesNonNotFoundErrors(t *testing.T) {
+	f := newFixture(t)
+	svc, _ := newService(f)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := svc.RegisterAccount(ctx, f.org, f.ca.ID, "ops@example.test")
+	if err == nil {
+		t.Fatal("want an error from a cancelled context")
+	}
+	var ve *ValidationError
+	if errors.As(err, &ve) {
+		t.Fatalf("cancelled context reported as %v", err)
+	}
+}
+
 func TestCreateCertificateEnqueues(t *testing.T) {
 	f := newFixture(t)
 	svc, ins := newService(f)

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/metril/certforge/internal/db"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -34,12 +36,30 @@ func TestMigrateIdempotent(t *testing.T) {
 	}
 }
 
+// TestMigrateConcurrent must reproduce a deadlock regardless of the host's
+// CPU count: pgxpool.Config.MaxConns otherwise defaults to
+// max(4, runtime.NumCPU()), so on a wide-enough machine the default pool
+// dwarfs the handful of connections goose and river's migrator want and the
+// old bug (each concurrent Migrate call holding a connection on the advisory
+// lock while asking the pool for a second one for the migration itself)
+// never starves the pool enough to hang. Pinning MaxConns to 2 and running
+// more callers than that guarantees the contention every time.
 func TestMigrateConcurrent(t *testing.T) {
 	ctx := context.Background()
-	pool := dbtest.Empty(t)
+	cfg, err := pgxpool.ParseConfig(dbtest.URL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = 2
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	const callers = 8
 	var wg sync.WaitGroup
-	errs := make(chan error, 4)
-	for i := 0; i < 4; i++ {
+	errs := make(chan error, callers)
+	for i := 0; i < callers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

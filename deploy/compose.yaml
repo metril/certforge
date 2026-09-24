@@ -22,6 +22,10 @@ services:
         WITH_WEB: ${WITH_WEB:-0}
     image: ghcr.io/metril/certforge:dev
     restart: unless-stopped
+    # Longer than Docker's 10s default: graceful shutdown can take up to 15s
+    # draining HTTP plus up to 40s draining river (30s Stop + 10s
+    # StopAndCancel fallback); see "Shutdown" in docs/operations.md.
+    stop_grace_period: 60s
     environment:
       CF_DATABASE_URL: postgres://certforge:${CF_DB_PASSWORD:-certforge}@postgres:5432/certforge?sslmode=disable
       CF_KEK_FILE: /run/secrets/cf_kek

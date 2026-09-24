@@ -2,6 +2,7 @@ package issuance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -45,7 +46,10 @@ func (s *Service) RegisterAccount(ctx context.Context, orgID, caID uuid.UUID, em
 	}
 	ca, err := s.Store.GetCA(ctx, orgID, caID)
 	if err != nil {
-		return Account{}, &ValidationError{"caId", "no such CA in this org"}
+		if errors.Is(err, ErrNotFound) {
+			return Account{}, &ValidationError{"caId", "no such CA in this org"}
+		}
+		return Account{}, err
 	}
 	eab, err := s.Store.CAEAB(ctx, orgID, caID)
 	if err != nil {
