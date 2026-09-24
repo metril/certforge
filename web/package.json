@@ -6,7 +6,7 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/check-chunks.mjs",
     "preview": "vite preview",
     "gen": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts && tsr generate",
     "typecheck": "tsc -b",

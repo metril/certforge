@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useState } from 'react';
+import { useMemo, useReducer, useState, type Dispatch } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CircleAlert } from 'lucide-react';
@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
 import { useCreateCertificate, useUpdateCertificate } from '@/api/queries/certificates';
 import { effectiveDefaultsQuery } from '@/api/queries/defaults';
-import type { Certificate } from '@/api/types';
+import type { Certificate, VerificationRule } from '@/api/types';
 import { PageHeader } from '@/components/PageHeader';
 import { Stepper } from '@/components/Stepper';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import { useOrg } from '@/lib/org';
 import { NamesStep } from './NamesStep';
 import { OptionsStep } from './OptionsStep';
 import { ReviewStep } from './ReviewStep';
-import { canContinueNames, fromCertificate, initialWizard, toCertificateInput, wizardReducer } from './state';
+import { canContinueNames, fromCertificate, initialWizard, toCertificateInput, wizardReducer, type WizardAction } from './state';
 import { SummaryRail } from './SummaryRail';
 import { VerificationStep } from './VerificationStep';
 
@@ -52,11 +52,41 @@ function stepForField(field: string | null): number {
   return REVIEW_STEP;
 }
 
+// Fix round 1 (review, Important #1): mirrors the server's own reissue
+// check exactly — internal/issuance/store_certs.go's UpdateCertificate
+// compares `cur.Names()` (`[commonName, ...sans]`, already normalised by a
+// prior NormalizeNames) against the freshly `NormalizeNames`d submission,
+// with `slices.Equal` (ordered). A plain set comparison of `state.names`
+// (the previous version of this function) missed a common-name-only change
+// (the set doesn't change, only which element leads) and never built the
+// `[cn, ...sans]` order the server actually compares. `NormalizeNames`
+// itself (internal/issuance/names.go): lowercase, trim, drop a trailing
+// dot, drop empties, de-duplicate keeping the first occurrence.
+function normalizeNames(commonName: string | null | undefined, names: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [commonName ?? '', ...names]) {
+    const n = raw.trim().replace(/\.$/, '').toLowerCase();
+    if (!n || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
+}
+
+function namesEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((n, i) => n === b[i]);
+}
+
+function rulesEqual(a: VerificationRule[], b: VerificationRule[]): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: Certificate }) {
   const org = useOrg();
   const navigate = useNavigate();
   const source = edit ?? from;
-  const [state, dispatch] = useReducer(wizardReducer, source, (c) =>
+  const [state, rawDispatch] = useReducer(wizardReducer, source, (c) =>
     c ? (edit ? fromCertificate(c) : { ...fromCertificate(c), name: `${c.name} copy` }) : initialWizard,
   );
   const [step, setStep] = useState(0);
@@ -71,13 +101,22 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
   const verOk = namesOk && verificationReady(state.names, state.rules, inherited);
   const reachable = [true, namesOk, verOk, verOk];
 
-  // fromCertificate's own SANs normalisation (apex folded in when missing)
-  // means comparing against the *loaded* names, not the raw API sans/cn,
-  // so an unrelated field edit never falsely reads as a name change.
-  const originalNames = useMemo(() => (edit ? fromCertificate(edit).names : []), [edit]);
-  const namesChanged = !!edit && (state.names.length !== originalNames.length || state.names.some((n) => !originalNames.includes(n)));
+  const originalNames = useMemo(() => (edit ? normalizeNames(edit.commonName, edit.sans) : []), [edit]);
+  const currentNames = useMemo(() => normalizeNames(state.cn, state.names), [state.cn, state.names]);
+  const namesChanged = !!edit && !namesEqual(currentNames, originalNames);
+  const originalRules = edit?.verificationRules ?? [];
+
+  // Fix round 1 (review, Important #2): a 422/500 banner that only clears
+  // on the *next* submit attempt stays on screen through every subsequent
+  // edit, even once the field it named no longer applies. Any dispatch (the
+  // user changing something) or step navigation clears it instead.
+  const dispatch: Dispatch<WizardAction> = (action) => {
+    setSubmitError(null);
+    rawDispatch(action);
+  };
 
   function goToStep(i: number) {
+    setSubmitError(null);
     setStep(i);
   }
 
@@ -85,9 +124,17 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
     setSubmitError(null);
     try {
       const cert = edit ? await update.mutateAsync(toCertificateInput(state)) : await create.mutateAsync(toCertificateInput(state));
-      rememberFromRules(state.rules);
+      // Fix round 1 (review, Important #3): saving an edit that touched
+      // nothing about verification (only, say, the key type) must not
+      // silently overwrite a credential the user picked for an unrelated
+      // certificate's rule sharing the same zone since this one was loaded.
+      if (!edit || !rulesEqual(originalRules, state.rules)) rememberFromRules(state.rules);
       toast.success(edit ? `Saved ${cert.name}` : `Issuing ${cert.name}`);
-      await navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id: cert.id, tab: 'attempts' } });
+      // Fix round 1 (take-now #6): an edit that didn't change names doesn't
+      // queue a new issuance (server: "other changes apply at the next
+      // renewal"), so there's no live attempt to land on — go to Overview.
+      const tab = edit && !namesChanged ? 'overview' : 'attempts';
+      await navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id: cert.id, tab } });
     } catch (e) {
       const field = e instanceof ApiError && e.status === 422 ? fieldOfTitle(e.problem.title) : null;
       goToStep(stepForField(field));
@@ -102,7 +149,7 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
       <div className="mb-6">
         <Stepper steps={STEPS} current={step} onSelect={goToStep} canSelect={(i) => reachable[i]!} />
       </div>
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_280px]">
         <div className="grid min-w-0 content-start gap-6">
           {submitError && (
             <p role="alert" className="flex items-center gap-1.5 text-sm text-failed">

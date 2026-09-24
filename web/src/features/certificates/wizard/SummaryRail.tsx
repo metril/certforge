@@ -42,7 +42,7 @@ export function SummaryRail({ orgId, state, inherited }: { orgId: string; state:
     ['Renewal', show('renewPolicy')],
   ];
   return (
-    <aside aria-label="Summary" className="h-fit border-border text-sm lg:sticky lg:top-6 lg:border-l lg:pl-6">
+    <aside aria-label="Summary" className="h-fit border-border text-sm md:sticky md:top-6 md:border-l md:pl-6">
       <dl className="grid gap-3">
         {rows.map(([label, value]) => (
           <div key={label} className="grid gap-0.5">

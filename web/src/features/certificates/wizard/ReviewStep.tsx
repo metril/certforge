@@ -30,12 +30,12 @@ export function ReviewStep({ orgId, state, dispatch, inherited }: Props) {
         <h3 id="review-names" className="text-sm font-semibold">
           Names
         </h3>
-        <p className="font-mono text-xs leading-relaxed">{state.names.join(', ')}</p>
+        <p className="break-all font-mono text-xs leading-relaxed">{state.names.join(', ')}</p>
       </section>
       <CoveragePanel items={coverage(state.names, state.rules, inherited)} credentials={ctx.credentials} />
       <section aria-label="Options" className="grid gap-2">
         <h3 className="text-sm font-semibold">Options</h3>
-        <dl className="grid grid-cols-[200px_1fr] gap-x-4 gap-y-2 text-sm">
+        <dl className="grid grid-cols-1 gap-1 text-sm md:grid-cols-[200px_1fr] md:gap-x-4 md:gap-y-2">
           {ISSUANCE_FIELDS.filter((f) => f.key !== 'verificationRules').map((f) => {
             const e = effectiveOf(state.overrides, eff, f.key);
             return (

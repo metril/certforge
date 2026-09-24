@@ -48,7 +48,9 @@ it('fast path: paste names, credential pre-filled, Issue from step 2', async () 
     }),
   );
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-new/attempts'));
-  // rememberFromRules ran once on success (fix round: not on every keystroke).
+  // rememberFromRules ran exactly once on success (fix round: not on every
+  // keystroke) — the end state has exactly the one zone->credential entry
+  // this create's own rules produced, nothing left over or duplicated.
   expect(JSON.parse(localStorage.getItem('cf-last-cred') ?? '{}')).toEqual({ 'example.com': 'd-1' });
 });
 
@@ -87,7 +89,7 @@ it('disables Next on the Names step until a valid name and common name exist', a
   expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
 });
 
-it('a 422 on issue sends the user back to the step that owns the field, with the detail inline', async () => {
+it('a 422 on issue sends the user back to the step that owns the field, with the detail inline, and clears on the next edit', async () => {
   server.use(
     http.post(url('/orgs/org-1/certificates'), () => problem(422, 'rule example.com: no such DNS credential in this org', {}, 'Invalid verificationRules')),
   );
@@ -102,9 +104,13 @@ it('a 422 on issue sends the user back to the step that owns the field, with the
   // Landed back on Verification (step 2 of 4), which owns `verificationRules`.
   await waitFor(() => expect(screen.getByText(/no such DNS credential/)).toBeInTheDocument());
   expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toBeInTheDocument();
+  // Fix round 1 (review, Important #2): any further edit clears the banner,
+  // not just the next submit attempt.
+  await user.type(screen.getByLabelText('Rule 1 match'), 'x');
+  expect(screen.queryByText(/no such DNS credential/)).not.toBeInTheDocument();
 });
 
-it('shows a banner on Review for an error that maps to no field', async () => {
+it('shows a banner on Review for an error that maps to no field, and never remembers a credential on failure', async () => {
   server.use(http.post(url('/orgs/org-1/certificates'), () => problem(500, 'Something broke.', {}, 'Internal error')));
   const { user } = renderRoute('/o/acme/certificates/new');
   await user.click(await screen.findByLabelText('Names'));
@@ -114,9 +120,78 @@ it('shows a banner on Review for an error that maps to no field', async () => {
   await user.click(screen.getByRole('button', { name: 'Issue certificate' }));
   await waitFor(() => expect(screen.getByText('Something broke.')).toBeInTheDocument());
   expect(screen.getByRole('region', { name: 'Options' })).toBeInTheDocument(); // landed on Review
+  // Fix round 1 (review, take-now #7): a failed create must not leave a
+  // stale credential mapping behind.
+  expect(localStorage.getItem('cf-last-cred')).toBeNull();
+  // Fix round 1 (review, Important #2): stepping back (any navigation, not
+  // just an edit) also clears the banner.
+  await user.click(screen.getByRole('button', { name: 'Back' }));
+  expect(screen.queryByText('Something broke.')).not.toBeInTheDocument();
 });
 
-it('edit mode: loads the certificate, notes a name change, and PUTs', async () => {
+it('edit mode: a common-name-only change (same set of names) still shows the reissue notice', async () => {
+  server.use(http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ sans: ['www.example.com', 'api.example.com'] }))));
+  const { user } = renderRoute('/o/acme/certificates/c-1/edit');
+  await user.click(await screen.findByLabelText('Names'));
+  expect(screen.queryByText(/will issue a new certificate/i)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Make api.example.com the common name' }));
+  expect(screen.getByText(/will issue a new certificate/i)).toBeInTheDocument();
+});
+
+it('edit mode: an untouched save keeps overrides, remembers no credential, and lands on Overview', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ overrides: { keyType: 'rsa2048' } }))),
+    http.put(url('/orgs/org-1/certificates/c-1'), async ({ request }) => {
+      updated = await request.json();
+      return HttpResponse.json(makeCert({ overrides: { keyType: 'rsa2048' } }));
+    }),
+  );
+  const { router, user } = renderRoute('/o/acme/certificates/c-1/edit');
+  await user.click(await screen.findByLabelText('Names'));
+  expect(screen.queryByText(/will issue a new certificate/i)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
+  await user.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() =>
+    expect(updated).toMatchObject({
+      commonName: 'www.example.com',
+      sans: ['www.example.com'],
+      overrides: { keyType: 'rsa2048' },
+    }),
+  );
+  // Fix round 1 (review, Important #3): rules never changed, so nothing new is remembered.
+  expect(localStorage.getItem('cf-last-cred')).toBeNull();
+  // Fix round 1 (review, take-now #6): no name change -> no new issuance -> Overview, not Attempts.
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/overview'));
+});
+
+it('edit mode: changing a rule credential (names unchanged) remembers it and still lands on Overview', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/dns-credentials'), () =>
+      HttpResponse.json([
+        { id: 'd-1', name: 'Cloudflare prod', providerCode: 'cloudflare', config: {} },
+        { id: 'd-2', name: 'Cloudflare prod 2', providerCode: 'cloudflare', config: {} },
+      ]),
+    ),
+    http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert())),
+    http.put(url('/orgs/org-1/certificates/c-1'), async ({ request }) => {
+      updated = await request.json();
+      return HttpResponse.json(makeCert());
+    }),
+  );
+  const { router, user } = renderRoute('/o/acme/certificates/c-1/edit');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
+  await user.click(screen.getByRole('combobox', { name: 'Rule 1 credential' }));
+  await user.click(await screen.findByText('Cloudflare prod 2'));
+  await user.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(updated).toMatchObject({ verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-2' }] }));
+  expect(JSON.parse(localStorage.getItem('cf-last-cred') ?? '{}')).toEqual({ 'example.com': 'd-2' });
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/overview'));
+});
+
+it('edit mode: a name change reissues, PUTs, and lands on Attempts', async () => {
   server.use(
     http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert())),
     http.put(url('/orgs/org-1/certificates/c-1'), async ({ request }) => {
