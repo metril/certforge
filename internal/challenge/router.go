@@ -2,13 +2,24 @@ package challenge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-acme/lego/v4/challenge/dns01"
+)
+
+// failFastTimeout and failFastInterval are what Router.Timeout returns once
+// a name can no longer succeed (a Waiter failed, or the router's context is
+// done), so lego stops polling the remaining names of the order quickly
+// instead of for up to their normal propagation timeout.
+const (
+	failFastTimeout  = 5 * time.Second
+	failFastInterval = time.Second
 )
 
 // Rule is one resolved verification rule.
@@ -29,6 +40,10 @@ type Router struct {
 	names []string
 	rules []Rule
 	sink  StepSink
+
+	mu         sync.Mutex
+	failedStep map[string]bool // "challenge "+name already reported StepFailed
+	anyFailed  bool            // at least one PreCheck has failed fast
 }
 
 // NewRouter binds rules to the certificate names of one issuance. ctx is used
@@ -137,8 +152,19 @@ func (r *Router) CleanUp(domain, token, keyAuth string) error {
 }
 
 // Timeout implements lego challenge.ProviderTimeout: the largest timeout of
-// the rules in use, plus the manual wait budget for manual rules.
+// the rules in use, plus the manual wait budget for manual rules. Once
+// PreCheck has failed fast for any name (a Waiter failed, or the router's
+// context is done), it returns failFastTimeout/failFastInterval instead:
+// lego's dns01.Solve reads Timeout() again for each remaining authorization
+// of the order, so this is what stops it from also polling those for up to
+// their normal timeout after one name can no longer succeed.
 func (r *Router) Timeout() (time.Duration, time.Duration) {
+	r.mu.Lock()
+	failed := r.anyFailed
+	r.mu.Unlock()
+	if failed || r.ctx.Err() != nil {
+		return failFastTimeout, failFastInterval
+	}
 	var longest time.Duration
 	for _, n := range r.names {
 		rule, ok := r.ruleFor(r.routingKey(n))
@@ -165,16 +191,34 @@ func (r *Router) Timeout() (time.Duration, time.Duration) {
 // PreCheck is installed with dns01.WrapPreCheck. domain is lego's targeted
 // domain for the authorization ("*.x" for a wildcard authorization, "x"
 // otherwise); see routingKey.
+//
+// lego v4's platform/wait.For does not stop polling when PreCheck returns an
+// error: it records the error and keeps calling PreCheck until its own
+// timeout, and challenge.parallelSolve keeps the other authorizations of the
+// same order running too. So once a Waiter has failed (a manual-dns timeout)
+// or the router's context is done, PreCheck cannot report that by returning
+// an error without leaving this and every other name of the order polling
+// for up to an hour. Instead it marks the step failed and reports ready
+// (true, nil): lego proceeds straight to CA validation, which then fails the
+// authorization for the real reason. Router.Timeout shrinks the same way so
+// dns01.Solve does not keep polling the other names either. markFailed makes
+// the step update idempotent, since the cached Waiter error (or the same
+// context.Err) is returned again on every later PreCheck for this name.
 func (r *Router) PreCheck(domain, fqdn, value string, check func(fqdn, value string) (bool, error)) (bool, error) {
 	name, rule, err := r.route(domain)
 	if err != nil {
 		return false, err
 	}
 	if w, ok := rule.Provider.(Waiter); ok {
-		if err := w.WaitReady(r.ctx); err != nil {
-			return false, err
+		if werr := w.WaitReady(r.ctx); werr != nil {
+			r.markFailed(name, werr)
+			return true, nil
 		}
 		r.sink.Step("challenge "+name, StepRunning, "confirmed; checking propagation")
+	}
+	if cerr := r.ctx.Err(); cerr != nil {
+		r.markFailed(name, cerr)
+		return true, nil
 	}
 	if rule.AliasZone != "" {
 		z := normalize(rule.AliasZone)
@@ -187,4 +231,35 @@ func (r *Router) PreCheck(domain, fqdn, value string, check func(fqdn, value str
 		return CheckTXT(r.ctx, rule.Resolvers, fqdn, value)
 	}
 	return check(fqdn, value)
+}
+
+// markFailed records StepFailed for name's step once; later calls for the
+// same name (lego calling PreCheck again for the same authorization, or a
+// second name sharing this failure) only refresh anyFailed, which is
+// already true, so Timeout keeps returning the short values.
+func (r *Router) markFailed(name string, cause error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.anyFailed = true
+	if r.failedStep == nil {
+		r.failedStep = map[string]bool{}
+	}
+	if r.failedStep[name] {
+		return
+	}
+	r.failedStep[name] = true
+	r.sink.Step("challenge "+name, StepFailed, failCause(cause))
+}
+
+// failCause names the cause of a PreCheck failure for the timeline: a
+// manual-dns timeout or a cancelled/expired context.
+func failCause(err error) string {
+	switch {
+	case errors.Is(err, ErrManualTimeout):
+		return "manual-dns timed out: " + err.Error()
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "cancelled: " + err.Error()
+	default:
+		return err.Error()
+	}
 }
