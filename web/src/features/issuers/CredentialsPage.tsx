@@ -24,10 +24,33 @@ const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 type SheetState = { provider: ProviderSchema; credential?: DnsCredential } | null;
 
+function Header() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead className={cn('w-40', stickyCol)}>Name</TableHead>
+        <TableHead className="w-40">
+          <span className="inline-flex items-center gap-1">
+            Provider <HelpTip id="dns.provider" />
+          </span>
+        </TableHead>
+        <TableHead className="w-28">
+          <span className="inline-flex items-center gap-1">
+            Used by <HelpTip id="dns.usedBy" />
+          </span>
+        </TableHead>
+        <TableHead className="w-32">
+          <span className="sr-only">Actions</span>
+        </TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+}
+
 export function CredentialsPage() {
   const org = useOrg();
   const { data: creds = [], isPending, isError, error, refetch } = useQuery(dnsCredentialsQuery(org.id));
-  const { data: meta } = useQuery(metaSchemasQuery);
+  const { data: meta, isPending: metaPending } = useQuery(metaSchemasQuery);
   const del = useDeleteCredential(org.id);
   const [picker, setPicker] = useState(false);
   const [sheet, setSheet] = useState<SheetState>(null);
@@ -39,7 +62,18 @@ export function CredentialsPage() {
   return (
     <section className="grid gap-4" aria-label="DNS credentials">
       {isPending ? (
-        <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
+        // Fix round 1: a loading table row (not a bare paragraph), so the
+        // column layout doesn't jump once data arrives.
+        <Table className="table-fixed">
+          <Header />
+          <TableBody>
+            <TableRow>
+              <TableCell colSpan={4} className="py-10 text-center text-sm text-ink-muted">
+                Loading…
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
       ) : isError ? (
         <ErrorState message={`Couldn't load DNS credentials. ${errorMessage(error)}`} onRetry={() => void refetch()} />
       ) : creds.length === 0 ? (
@@ -55,30 +89,17 @@ export function CredentialsPage() {
             </Button>
           </div>
           <Table className="table-fixed">
-            <TableHeader>
-              <TableRow>
-                <TableHead className={cn('w-40', stickyCol)}>Name</TableHead>
-                <TableHead className="w-40">
-                  <span className="inline-flex items-center gap-1">
-                    Provider <HelpTip id="dns.provider" />
-                  </span>
-                </TableHead>
-                <TableHead className="w-28">
-                  <span className="inline-flex items-center gap-1">
-                    Used by <HelpTip id="dns.usedBy" />
-                  </span>
-                </TableHead>
-                <TableHead className="w-32">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
+            <Header />
             <TableBody>
               {creds.map((c) => {
                 const provider = providerOf(c.providerCode);
                 // preflight A14: usedBy (certificates and defaults) comes
                 // straight from the API; no client-side counting.
                 const usedBy = c.usedBy ?? 0;
+                // Fix round 1: explain the disabled Edit button — the
+                // provider list is still loading, or the credential's own
+                // provider code isn't (or no longer is) in it.
+                const editReason = metaPending ? 'Provider data is loading.' : `Unknown provider "${c.providerCode}".`;
                 return (
                   <TableRow key={c.id}>
                     <TableCell className={cn('truncate py-1 font-semibold', stickyCol)}>{c.name}</TableCell>
@@ -88,16 +109,22 @@ export function CredentialsPage() {
                       <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Test ${c.name}`} onClick={() => setTesting(c)}>
                         <FlaskConical className="size-3.5" aria-hidden />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="size-7"
-                        aria-label={`Edit ${c.name}`}
-                        disabled={!provider}
-                        onClick={() => provider && setSheet({ provider, credential: c })}
-                      >
-                        <Pencil className="size-3.5" aria-hidden />
-                      </Button>
+                      {provider ? (
+                        <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Edit ${c.name}`} onClick={() => setSheet({ provider, credential: c })}>
+                          <Pencil className="size-3.5" aria-hidden />
+                        </Button>
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span tabIndex={0} className="inline-flex">
+                              <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Edit ${c.name}`} disabled>
+                                <Pencil className="size-3.5" aria-hidden />
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>{editReason}</TooltipContent>
+                        </Tooltip>
+                      )}
                       {/* D13: proactively disable rather than rely only on a
                           409 after the operator types the confirmation text —
                           the 409 path (ConfirmDestructive's inline alert)
@@ -147,7 +174,10 @@ export function CredentialsPage() {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title="Delete credential"
-        consequence={`Used by ${deleting?.usedBy ?? 0}. Certificates and defaults that reference it can no longer renew.`}
+        // Fix round 1: Delete is only reachable here when usedBy is already
+        // 0 (the row's own button is disabled otherwise), so this dialog
+        // never has a count to report.
+        consequence="Certificates and defaults that reference it can no longer renew."
         confirmText={deleting?.name ?? ''}
         actionLabel="Delete credential"
         onConfirm={() => del.mutateAsync(deleting!.id)}

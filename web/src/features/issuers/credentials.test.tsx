@@ -52,6 +52,15 @@ beforeEach(() => {
   );
 });
 
+// Fix round 1 (take-now #4): the loading state is a row inside the table,
+// not a bare paragraph outside it (keeps the column layout stable).
+it('shows the loading state as a row inside the table', async () => {
+  creds = [cred];
+  renderRoute('/o/acme/issuers/dns');
+  const loading = await screen.findByText('Loading…');
+  expect(loading.closest('table')).not.toBeNull();
+});
+
 it('adds a credential through the provider picker', async () => {
   const { user } = renderRoute('/o/acme/issuers/dns');
   await user.click(await screen.findByRole('button', { name: 'Add credential' }));
@@ -65,12 +74,17 @@ it('adds a credential through the provider picker', async () => {
   await waitFor(() => expect(posted).toEqual({ name: 'Cloudflare prod', providerCode: 'cloudflare', config: { CF_DNS_API_TOKEN: 'tok' } }));
 });
 
-it('does not open a sheet for an unsupported provider from the credentials page picker', async () => {
+// Fix round 1: click the disabled option itself (not just assert the
+// attribute) and confirm nothing was picked — the picker stays open with no
+// credential sheet behind it.
+it('clicking an unsupported provider option does not pick it', async () => {
   const { user } = renderRoute('/o/acme/issuers/dns');
   await user.click(await screen.findByRole('button', { name: 'Add credential' }));
   const opt = await screen.findByRole('option', { name: /HyperOne/ });
   expect(opt).toHaveAttribute('aria-disabled', 'true');
-  expect(screen.queryByRole('dialog', { name: /Add HyperOne/ })).not.toBeInTheDocument();
+  await user.click(opt);
+  expect(screen.getByRole('combobox')).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: /^Add /i })).not.toBeInTheDocument();
 });
 
 it('editing keeps stored secrets that were replaced then reverted, sending DNSCredentialUpdate with no providerCode', async () => {
@@ -171,4 +185,94 @@ it('shows a 409 detail inline when a delete is blocked by a stale usedBy', async
   await user.click(within(dialog).getByRole('button', { name: 'Delete credential' }));
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('DNS credential is used by 2 certificates');
   expect(deleted).toBe('d-1');
+});
+
+// Fix round 1 (Important): RJSF keeps `{key: undefined}` in formData when a
+// field is cleared; String(undefined) is the literal string "undefined",
+// which must never reach the request body.
+it('omits a cleared optional field instead of sending the string "undefined"', async () => {
+  creds = [{ ...cred, config: { CLOUDFLARE_TTL: '300', CLOUDFLARE_PROPAGATION_TIMEOUT: '60' } }];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  await user.clear(within(sheet).getByLabelText('CLOUDFLARE_PROPAGATION_TIMEOUT'));
+  await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
+  await waitFor(() => expect(put).toBeDefined());
+  const body = put as { config: Record<string, string> };
+  expect(body.config).not.toHaveProperty('CLOUDFLARE_PROPAGATION_TIMEOUT');
+  expect(Object.values(body.config)).not.toContain('undefined');
+});
+
+it('shows no re-entry notice on open, or after a no-op edit', async () => {
+  creds = [cred];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  expect(within(sheet).queryByText(/must be re-entered/i)).not.toBeInTheDocument();
+  await user.click(within(sheet).getByLabelText('CLOUDFLARE_TTL'));
+  await user.tab();
+  expect(within(sheet).queryByText(/must be re-entered/i)).not.toBeInTheDocument();
+});
+
+it('"Change provider" starts the new provider\'s form fresh', async () => {
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Add credential' }));
+  await user.type(screen.getByRole('combobox'), 'cloudflare');
+  await user.click(screen.getByRole('option', { name: /Cloudflare/ }));
+  let sheet = await screen.findByRole('dialog', { name: 'Add Cloudflare credential' });
+  await user.type(within(sheet).getByLabelText('CF_DNS_API_TOKEN'), 'tok');
+  await user.click(within(sheet).getByRole('button', { name: 'Change provider' }));
+  await user.type(screen.getByRole('combobox'), 'route53');
+  await user.click(screen.getByRole('option', { name: /Amazon Route 53/ }));
+  sheet = await screen.findByRole('dialog', { name: 'Add Amazon Route 53 credential' });
+  expect(within(sheet).queryByLabelText('CF_DNS_API_TOKEN')).not.toBeInTheDocument();
+  expect(within(sheet).getByLabelText('Access key ID')).toHaveValue('');
+});
+
+it('shows a form-level error when saving fails with a non-API error', async () => {
+  server.use(http.post(url('/orgs/org-1/dns-credentials'), () => HttpResponse.error()));
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Add credential' }));
+  await user.type(screen.getByRole('combobox'), 'cloudflare');
+  await user.click(screen.getByRole('option', { name: /Cloudflare/ }));
+  const sheet = await screen.findByRole('dialog', { name: 'Add Cloudflare credential' });
+  await user.type(within(sheet).getByLabelText('CF_DNS_API_TOKEN'), 'tok');
+  await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
+  expect(await within(sheet).findByRole('alert')).toBeInTheDocument();
+});
+
+// Fix round 1 (take-now #3): a pasted URL is normalized to a bare hostname.
+it('normalizes a pasted URL to a bare zone before testing', async () => {
+  creds = [cred];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  const row = (await screen.findByText('Cloudflare prod')).closest('tr')!;
+  await user.click(within(row).getByRole('button', { name: 'Test Cloudflare prod' }));
+  const dialog = screen.getByRole('dialog', { name: 'Test Cloudflare prod' });
+  await user.type(within(dialog).getByLabelText('Zone'), 'https://example.com/');
+  await user.click(within(dialog).getByRole('button', { name: 'Run test' }));
+  await waitFor(() => expect(tested).toEqual({ zone: 'example.com' }));
+  expect(await within(dialog).findByText('Works for example.com')).toBeInTheDocument();
+});
+
+it('rejects a zone with spaces instead of sending it', async () => {
+  creds = [cred];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  const row = (await screen.findByText('Cloudflare prod')).closest('tr')!;
+  await user.click(within(row).getByRole('button', { name: 'Test Cloudflare prod' }));
+  const dialog = screen.getByRole('dialog', { name: 'Test Cloudflare prod' });
+  await user.type(within(dialog).getByLabelText('Zone'), 'exa mple.com');
+  expect(within(dialog).getByRole('button', { name: 'Run test' })).toBeDisabled();
+  expect(within(dialog).getByText('Enter a valid hostname')).toBeInTheDocument();
+  expect(tested).toBeUndefined();
+});
+
+// Fix round 1 (take-now #6): the disabled Edit button (unknown/loading
+// provider) explains why.
+it('disables Edit with a tooltip for a credential whose provider is unknown', async () => {
+  creds = [{ ...cred, providerCode: 'not-a-real-provider' }];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  const edit = await screen.findByRole('button', { name: 'Edit Cloudflare prod' });
+  expect(edit).toBeDisabled();
+  await user.hover(edit);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Unknown provider "not-a-real-provider"');
 });

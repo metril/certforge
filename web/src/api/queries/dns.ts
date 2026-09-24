@@ -25,6 +25,11 @@ export function useSaveCredential(orgId: string) {
     // Fix round pattern (matches useSaveCa): 422s are shown inline next to the
     // form (CredentialSheet), so a toast on top would be redundant/out of context.
     meta: { silent: true, success: 'Credential saved' },
+    // Fix round 1 (Important): the mutation's own variables (a typed secret,
+    // for create or replace) sit in the MutationCache until gc; the default
+    // 5-minute gcTime otherwise keeps a plaintext secret in memory well past
+    // the request. Evict immediately once settled.
+    gcTime: 0,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['dns', orgId] }),
   });
 }
@@ -46,5 +51,8 @@ export function useTestCredential(orgId: string) {
     // TestCredentialDialog renders both a 200 ok:false and a thrown ApiError
     // (incl. a 503 + Retry-After from the test semaphore) inline itself.
     meta: { silent: true },
+    // Fix round 1: symmetry with useSaveCredential's gcTime — no mutation
+    // touching credential data lingers in the MutationCache.
+    gcTime: 0,
   });
 }

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { CircleAlert } from 'lucide-react';
 import type { RJSFSchema } from '@rjsf/utils';
 import { useSaveCredential } from '@/api/queries/dns';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -63,7 +64,19 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
     const body: DnsCredentialInput = {
       name: name.trim(),
       providerCode: provider.code,
-      config: Object.fromEntries(Object.entries(config).map(([k, v]) => [k, String(v)])),
+      // Fix round 1 (Important): RJSF 6.10 keeps `{key: undefined}` in
+      // formData when a field is cleared (its default text widget sets
+      // `options.emptyValue`, which is `undefined`) rather than dropping the
+      // key — Object.entries then still visits it, and `String(undefined)`
+      // is the literal string "undefined", which the server would store as
+      // the value (a secret included). Cleared/never-set entries are
+      // dropped instead; an untouched stored secret keeps sending
+      // UNCHANGED (a real, non-empty string), so it's unaffected.
+      config: Object.fromEntries(
+        Object.entries(config)
+          .filter(([, v]) => v !== undefined && v !== null && v !== '')
+          .map(([k, v]) => [k, String(v)]),
+      ),
     };
     try {
       const saved = await save.mutateAsync({ id: credential?.id, body });
@@ -107,7 +120,10 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
             <p className="text-xs text-ink-muted">Connection settings changed — stored secrets above must be re-entered before saving.</p>
           )}
           {serverError && serverError.field !== 'name' && (
-            <p role="alert" className="text-xs">
+            // Fix round 1: same CircleAlert + text-failed treatment as
+            // TestCredentialDialog's inline error, not a plain unstyled line.
+            <p role="alert" className="flex items-center gap-1.5 text-sm">
+              <CircleAlert className="size-4 text-failed" aria-hidden />
               {serverError.message}
             </p>
           )}

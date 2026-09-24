@@ -7,12 +7,17 @@ import { Field } from '@/components/Field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { normalizeZone } from '@/lib/zone';
 
 type Props = { orgId: string; credential: DnsCredential; onOpenChange: (open: boolean) => void };
 
 export function TestCredentialDialog({ orgId, credential, onOpenChange }: Props) {
   const test = useTestCredential(orgId);
   const [zone, setZone] = useState('');
+  // Fix round 1: accept a pasted URL, but reject spaces/empty labels rather
+  // than sending them to the API as-is.
+  const normalized = normalizeZone(zone);
+  const zoneError = zone.trim() && !normalized ? 'Enter a valid hostname' : null;
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -25,10 +30,10 @@ export function TestCredentialDialog({ orgId, credential, onOpenChange }: Props)
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (zone.trim()) test.mutate({ id: credential.id, zone: zone.trim() });
+            if (normalized) test.mutate({ id: credential.id, zone: normalized });
           }}
         >
-          <Field id="test-zone" label="Zone" help="dns.test">
+          <Field id="test-zone" label="Zone" help="dns.test" error={zoneError}>
             <Input id="test-zone" className="font-mono text-xs" value={zone} onChange={(e) => setZone(e.target.value)} placeholder="example.com" disabled={test.isPending} />
           </Field>
           <div aria-live="polite" className="min-h-5">
@@ -37,7 +42,7 @@ export function TestCredentialDialog({ orgId, credential, onOpenChange }: Props)
             {test.isSuccess && test.data.ok && (
               <p className="flex items-center gap-1.5 text-sm">
                 <CircleCheck className="size-4 text-valid" aria-hidden />
-                Works for {test.variables?.zone ?? zone}
+                Works for {test.variables?.zone ?? normalized ?? zone}
               </p>
             )}
             {test.isSuccess && !test.data.ok && (
@@ -56,7 +61,7 @@ export function TestCredentialDialog({ orgId, credential, onOpenChange }: Props)
             )}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={!zone.trim() || test.isPending}>
+            <Button type="submit" disabled={!normalized || test.isPending}>
               {test.isPending ? 'Testing…' : 'Run test'}
             </Button>
           </DialogFooter>
