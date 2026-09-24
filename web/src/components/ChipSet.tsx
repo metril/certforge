@@ -31,7 +31,7 @@ export function ChipSet<T extends string>({ value, onChange, options, id, ...res
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >
-            {on && <Check className="size-3.5" aria-hidden />}
+            {on && <Check data-testid="chip-check" className="size-3.5" aria-hidden />}
             {o.label}
           </ToggleGroup.Item>
         );

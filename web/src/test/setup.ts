@@ -34,7 +34,12 @@ if (typeof window !== 'undefined') {
 }
 // jsdom has no Clipboard API (Task 5 preflight: CopyField needs
 // navigator.clipboard.writeText/readText); an in-memory stub is enough for
-// tests, reset between them below.
+// tests, reset between them below. Note: @testing-library/user-event's
+// userEvent.setup() (called by every renderUI) installs its OWN
+// navigator.clipboard stub the first time a test renders, which overrides
+// this one — a test that wants to control navigator.clipboard itself (e.g.
+// to simulate a rejected write) must override it after calling renderUI,
+// not before.
 let clipboardText = '';
 if (typeof navigator !== 'undefined' && !navigator.clipboard) {
   Object.defineProperty(navigator, 'clipboard', {

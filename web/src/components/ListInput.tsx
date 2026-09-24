@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { CircleAlert, X } from 'lucide-react';
 
 type Props = {
@@ -11,6 +11,9 @@ type Props = {
 };
 
 export function ListInput({ id, value, onChange, placeholder, validate, ...rest }: Props) {
+  const autoId = useId();
+  const inputId = id ?? autoId;
+  const errorId = `${inputId}-error`;
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -48,12 +51,19 @@ export function ListInput({ id, value, onChange, placeholder, validate, ...rest 
           </span>
         ))}
         <input
-          id={id}
+          id={inputId}
           aria-label={rest['aria-label']}
+          aria-describedby={error ? errorId : undefined}
+          aria-invalid={!!error}
           value={draft}
           placeholder={value.length ? undefined : placeholder}
           className="h-6 min-w-24 flex-1 bg-transparent font-mono text-xs outline-none"
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            // A stale error from a previous rejected entry shouldn't keep
+            // showing once the operator starts fixing it.
+            if (error) setError(null);
+          }}
           onKeyDown={(e) => {
             if ((e.key === 'Enter' || e.key === ',') && draft.trim()) {
               e.preventDefault();
@@ -73,7 +83,7 @@ export function ListInput({ id, value, onChange, placeholder, validate, ...rest 
         />
       </div>
       {error && (
-        <p className="flex items-center gap-1 text-xs">
+        <p id={errorId} role="alert" className="flex items-center gap-1 text-xs">
           <CircleAlert className="size-3.5 text-failed" aria-hidden />
           {error}
         </p>
