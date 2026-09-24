@@ -1,5 +1,4 @@
 import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { POLL } from '@/lib/polling';
 import { api, call } from '../client';
 import type { Certificate, CertStatus } from '../types';
@@ -40,28 +39,53 @@ export const certificatesInfinite = (orgId: string, s: CertListQuery) =>
     refetchInterval: POLL.list,
   });
 
-function plural(n: number, word: string): string {
+export function plural(n: number, word: string): string {
   return n === 1 ? `1 ${word}` : `${n} ${word}s`;
 }
 
-// Adaptation (preflight D15): a plain `Promise.all` over per-id mutation
-// calls means one rejection loses every other result and the caller never
-// learns how many actually went through. `Promise.allSettled` always
-// resolves with a per-id outcome so the toast can report partial success.
+export type BulkResult = { ok: string[]; failed: string[] };
+
+// Fix round 1 (review, Important): a total failure must reject the mutation
+// (not just report `failed: ids.length`) so a caller like `ConfirmDestructive`
+// — which only shows its inline error and stays open when `onConfirm` throws
+// — actually does that instead of quietly closing. `BulkActionError` carries
+// the failed ids so the caller can re-select them and name them in a toast;
+// it's thrown only when nothing at all succeeded (a partial failure still
+// resolves normally with both arrays, since some of the bulk action did go
+// through).
+export class BulkActionError extends Error {
+  readonly failed: string[];
+  constructor(failed: string[]) {
+    super(`All ${plural(failed.length, 'certificate')} failed.`);
+    this.name = 'BulkActionError';
+    this.failed = failed;
+  }
+}
+
+// Adaptation (preflight D15) + fix round 1: a plain `Promise.all` over
+// per-id mutation calls means one rejection loses every other result and
+// the caller never learns which ids actually went through.
+// `Promise.allSettled` always resolves with a per-id outcome; the ids (not
+// just counts) travel back so the caller can keep the failed rows selected
+// and name them, and neither hook shows its own toast any more (see
+// `BulkActionError`'s doc comment) — the caller has the certificate names,
+// the hook only has ids.
+async function settleBulk(ids: string[], run: (id: string) => Promise<unknown>): Promise<BulkResult> {
+  const results = await Promise.allSettled(ids.map((id) => run(id)));
+  const ok: string[] = [];
+  const failed: string[] = [];
+  results.forEach((r, i) => (r.status === 'fulfilled' ? ok : failed).push(ids[i]!));
+  if (ok.length === 0 && failed.length > 0) throw new BulkActionError(failed);
+  return { ok, failed };
+}
+
 export function useRenewCertificates(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (ids: string[]) => {
-      const results = await Promise.allSettled(
-        ids.map((id) => call(api.POST('/orgs/{orgId}/certificates/{id}/renew', { params: { path: { orgId, id } } }))),
-      );
-      const ok = results.filter((r) => r.status === 'fulfilled').length;
-      return { ok, failed: results.length - ok };
-    },
+    mutationFn: (ids: string[]) =>
+      settleBulk(ids, (id) => call(api.POST('/orgs/{orgId}/certificates/{id}/renew', { params: { path: { orgId, id } } }))),
     meta: { silent: true },
-    onSuccess: async ({ ok, failed }) => {
-      if (ok > 0) toast.success(`Renewal queued for ${plural(ok, 'certificate')}`);
-      if (failed > 0) toast.error(`Failed to queue renewal for ${plural(failed, 'certificate')}`);
+    onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['certs', orgId] });
       await qc.invalidateQueries({ queryKey: ['attempts', orgId] });
     },
@@ -71,18 +95,11 @@ export function useRenewCertificates(orgId: string) {
 export function useDeleteCertificates(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (ids: string[]) => {
-      const results = await Promise.allSettled(
-        ids.map((id) => call(api.DELETE('/orgs/{orgId}/certificates/{id}', { params: { path: { orgId, id } } }))),
-      );
-      const ok = results.filter((r) => r.status === 'fulfilled').length;
-      return { ok, failed: results.length - ok };
-    },
+    mutationFn: (ids: string[]) =>
+      settleBulk(ids, (id) => call(api.DELETE('/orgs/{orgId}/certificates/{id}', { params: { path: { orgId, id } } }))),
     meta: { silent: true },
-    onSuccess: ({ ok, failed }) => {
-      if (ok > 0) toast.success(`Deleted ${plural(ok, 'certificate')}`);
-      if (failed > 0) toast.error(`Failed to delete ${plural(failed, 'certificate')}`);
-      void qc.invalidateQueries({ queryKey: ['certs', orgId] });
+    onSuccess: ({ ok }) => {
+      if (ok.length > 0) void qc.invalidateQueries({ queryKey: ['certs', orgId] });
     },
   });
 }

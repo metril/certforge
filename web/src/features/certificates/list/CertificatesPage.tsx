@@ -1,14 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus, RotateCw, Search, Trash2 } from 'lucide-react';
-import { ApiError } from '@/api/errors';
+import { toast } from 'sonner';
+import { ApiError, errorMessage } from '@/api/errors';
 import { casQuery } from '@/api/queries/cas';
-import { certificatesInfinite, certListQueryKey, useDeleteCertificates, useRenewCertificates } from '@/api/queries/certificates';
+import {
+  BulkActionError,
+  certificatesInfinite,
+  certListQueryKey,
+  plural,
+  useDeleteCertificates,
+  useRenewCertificates,
+  type BulkResult,
+} from '@/api/queries/certificates';
 import { BulkBar } from '@/components/BulkBar';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
 import { FilterChips } from '@/components/FilterChips';
 import { PageHeader } from '@/components/PageHeader';
 import { SavedViews } from '@/components/SavedViews';
@@ -26,7 +36,28 @@ import { relDays } from '@/lib/time';
 import { certColumns } from './columns';
 import { certListSearch, type CertListSearch } from './search';
 
-type StatusFilter = 'all' | 'active' | 'pending' | 'failed' | 'expired';
+type StatusFilter = 'all' | 'active' | 'pending' | 'failed' | 'expired' | 'revoked';
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'expired', label: 'Expired' },
+  // Fix round 1 (review): the segmented control silently fell back to "All"
+  // for status=revoked, even though the filter chip above it correctly said
+  // "Status: Revoked" — a visible mismatch. Revoked gets its own segment,
+  // matching every other real status.
+  { value: 'revoked', label: 'Revoked' },
+];
+
+// Up to 5 names in a bulk-failure toast (review fix round 1); ids beyond
+// that collapse into a "+N more" suffix instead of an unbounded list.
+function bulkFailureMessage(ids: string[], nameOf: (id: string) => string): string {
+  const shown = ids.slice(0, 5).map(nameOf);
+  const rest = ids.length - shown.length;
+  return `${plural(ids.length, 'certificate')} failed: ${shown.join(', ')}${rest > 0 ? `, +${rest} more` : ''}`;
+}
 
 // Card rows below `md` (controller ruling / preflight D9: the spec calls for
 // "card lists" under 768 px; a fixed-width table would scroll horizontally
@@ -51,6 +82,22 @@ function CertCard({ cert, org }: { cert: Certificate; org: string }) {
   );
 }
 
+function CertCardSkeleton() {
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
+      <div className="flex items-center justify-between gap-2">
+        <div className="h-4 w-24 animate-pulse rounded-sm bg-subtle" />
+        <div className="h-6 w-16 animate-pulse rounded-sm bg-subtle" />
+      </div>
+      <div className="h-1.5 w-full animate-pulse rounded-sm bg-subtle" />
+      <div className="flex items-center justify-between">
+        <div className="h-3 w-20 animate-pulse rounded-sm bg-subtle" />
+        <div className="h-3 w-12 animate-pulse rounded-sm bg-subtle" />
+      </div>
+    </div>
+  );
+}
+
 export function CertificatesPage() {
   const org = useOrg();
   const qc = useQueryClient();
@@ -69,33 +116,58 @@ export function CertificatesPage() {
   const ids = useMemo(() => rows.map((r) => r.id), [rows]);
   const sel = useRowSelection(ids);
   const columns = useMemo(() => certColumns(org.slug, (id) => cas.find((c) => c.id === id)?.name), [org.slug, cas]);
+  const nameOf = useMemo(() => {
+    const byId = new Map(rows.map((r) => [r.id, r.name]));
+    return (id: string) => byId.get(id) ?? id;
+  }, [rows]);
 
   const setSearch = (patch: Partial<CertListSearch>) => void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
 
+  // Fix round 1 (review, Important): this used to read `search.q` only at
+  // mount, so applying a saved view, browser back/forward, or a filter chip
+  // removal set the URL's `q` correctly but left `text` — and therefore the
+  // debounce below — holding the old typed value, which 250ms later
+  // navigated right back over the external change. `pushedQ` tracks the
+  // last `q` *this* effect itself pushed to the URL: when the URL's `q`
+  // differs from that, it's an external change, so sync `text` from it and
+  // skip scheduling a navigate entirely (both branches live in one effect
+  // so an external change is detected before any stale `text` can trigger a
+  // debounce on the very same render).
+  const pushedQ = useRef(search.q ?? '');
   useEffect(() => {
+    const urlQ = search.q ?? '';
+    if (urlQ !== pushedQ.current) {
+      pushedQ.current = urlQ;
+      if (urlQ !== text) setText(urlQ);
+      return;
+    }
+    if (text === urlQ) return;
     const t = window.setTimeout(() => {
-      if ((search.q ?? '') !== text) void navigate({ search: (prev) => ({ ...prev, q: text || undefined }), replace: true });
+      pushedQ.current = text;
+      void navigate({ search: (prev) => ({ ...prev, q: text || undefined }), replace: true });
     }, 250);
     return () => window.clearTimeout(t);
   }, [text, search.q, navigate]);
 
   // A saved view, a typed filter, or a sort change starts a fresh query key
   // (certificatesInfinite keys on the whole search object), which drops any
-  // cursor automatically; clear a stale-cursor notice from a previous page
-  // once the visible filters move on.
+  // cursor automatically; clear a stale-cursor notice from a previous page,
+  // and (review fix round 1) explicitly drop row selection too, instead of
+  // relying on `useRowSelection`'s own "still in the new result set" prune,
+  // which could coincidentally keep a row selected that just happens to
+  // reappear in the newly filtered page.
   useEffect(() => {
     setCursorNotice(false);
-  }, [search.status, search.q, search.sort]);
+    sel.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.status, search.q, search.sort, sel.clear]);
 
   const chips = [
     ...(search.status ? [{ key: 'status', label: `Status: ${STATUS_META[search.status].label}` }] : []),
     ...(search.q ? [{ key: 'q', label: `Search: ${search.q}` }] : []),
   ];
-  const clearAll = () => {
-    setText('');
-    void navigate({ search: {} });
-  };
-  const emptyUnfiltered = !list.isPending && rows.length === 0 && chips.length === 0;
+  const clearAll = () => void navigate({ search: {} });
+  const emptyUnfiltered = !list.isPending && !list.isError && rows.length === 0 && chips.length === 0;
   const newLink = (
     <Button asChild>
       <Link to="/o/$org/certificates/new" params={{ org: org.slug }}>
@@ -119,6 +191,22 @@ export function CertificatesPage() {
     }
   };
 
+  // Fix round 1 (review, Important): both bulk actions used to clear the
+  // whole selection and report only counts, even when every id failed —
+  // for delete that also meant the confirm dialog closed as if nothing had
+  // gone wrong. `settleBulk` (in the query hooks) now throws
+  // `BulkActionError` on a total failure and returns the failed ids
+  // otherwise, so this handler can keep exactly those rows selected and
+  // name them (the hooks only have ids; this page has `rows` to name them
+  // with).
+  const reportBulk = ({ ok, failed }: BulkResult, verb: string) => {
+    if (ok.length > 0) toast.success(`${verb} ${plural(ok.length, 'certificate')}`);
+    if (failed.length > 0) {
+      toast.error(bulkFailureMessage(failed, nameOf));
+      sel.replace(failed);
+    }
+  };
+
   return (
     <>
       <PageHeader title="Certificates" actions={emptyUnfiltered ? undefined : newLink} />
@@ -129,15 +217,9 @@ export function CertificatesPage() {
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <SegmentedControl<StatusFilter>
               aria-label="Status"
-              value={search.status && search.status !== 'revoked' ? search.status : 'all'}
+              value={search.status ?? 'all'}
               onChange={(v) => setSearch({ status: v === 'all' ? undefined : v })}
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'active', label: 'Active' },
-                { value: 'pending', label: 'Pending' },
-                { value: 'failed', label: 'Failed' },
-                { value: 'expired', label: 'Expired' },
-              ]}
+              options={STATUS_OPTIONS}
             />
             <div className="relative w-72">
               <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
@@ -145,18 +227,20 @@ export function CertificatesPage() {
             </div>
             <SavedViews list="certificates" current={{ status: search.status, q: search.q, sort: search.sort }} onApply={(s) => void navigate({ search: certListSearch.parse(s) })} />
           </div>
-          <FilterChips
-            className="mb-3"
-            chips={chips}
-            onRemove={(k) => {
-              if (k === 'q') setText('');
-              setSearch({ [k]: undefined });
-            }}
-            onClear={clearAll}
-          />
+          <FilterChips className="mb-3" chips={chips} onRemove={(k) => setSearch({ [k]: undefined })} onClear={clearAll} />
           {cursorNotice && <p className="mb-3 text-xs text-ink-muted">The list changed since it was loaded; showing the first page again.</p>}
-          {list.isPending ? (
-            <p className="text-ink-muted">Loading…</p>
+          {list.isError && rows.length === 0 ? (
+            <ErrorState message={`Couldn't load certificates. ${errorMessage(list.error)}`} onRetry={() => void list.refetch()} />
+          ) : list.isPending ? (
+            isMdUp ? (
+              <DataTable ariaLabel="Certificates" data={[]} columns={columns} getRowId={(r) => r.id} skeletonRows={3} />
+            ) : (
+              <div role="status" aria-label="Loading certificates" className="grid gap-2">
+                <CertCardSkeleton />
+                <CertCardSkeleton />
+                <CertCardSkeleton />
+              </div>
+            )
           ) : rows.length === 0 ? (
             <EmptyState message="No certificates match these filters.">
               <Button variant="outline" onClick={clearAll}>Clear filters</Button>
@@ -187,26 +271,56 @@ export function CertificatesPage() {
           )}
         </>
       )}
-      <BulkBar count={sel.selected.size} onClear={sel.clear}>
-        <Button size="sm" disabled={renew.isPending} onClick={() => renew.mutate([...sel.selected], { onSuccess: sel.clear })}>
-          <RotateCw className="size-4" aria-hidden />
-          Renew
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setConfirmDelete(true)}>
-          <Trash2 className="size-4" aria-hidden />
-          Delete
-        </Button>
-      </BulkBar>
+      {isMdUp && (
+        <BulkBar count={sel.selected.size} onClear={sel.clear}>
+          <Button
+            size="sm"
+            disabled={renew.isPending}
+            onClick={() => {
+              const targets = [...sel.selected];
+              renew.mutate(targets, {
+                onSuccess: (r) => reportBulk(r, 'Renewal queued for'),
+                onError: (err) => {
+                  if (err instanceof BulkActionError) {
+                    toast.error(bulkFailureMessage(err.failed, nameOf));
+                    sel.replace(err.failed);
+                  }
+                },
+              });
+            }}
+          >
+            <RotateCw className="size-4" aria-hidden />
+            Renew
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setConfirmDelete(true)}>
+            <Trash2 className="size-4" aria-hidden />
+            Delete
+          </Button>
+        </BulkBar>
+      )}
       <ConfirmDestructive
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title={`Delete ${sel.selected.size} certificates`}
+        title={`Delete ${plural(sel.selected.size, 'certificate')}`}
         consequence="Their versions and private keys are deleted and they stop renewing."
         confirmText="delete"
         actionLabel="Delete"
         onConfirm={async () => {
-          await del.mutateAsync([...sel.selected]);
-          sel.clear();
+          const targets = [...sel.selected];
+          try {
+            const result = await del.mutateAsync(targets);
+            reportBulk(result, 'Deleted');
+            if (result.failed.length === 0) sel.clear();
+          } catch (err) {
+            if (err instanceof BulkActionError) {
+              toast.error(bulkFailureMessage(err.failed, nameOf));
+              sel.replace(err.failed);
+            }
+            // Re-thrown so ConfirmDestructive's own catch shows the inline
+            // error and keeps the dialog open (review fix round 1) instead
+            // of closing as if the delete had gone through.
+            throw err;
+          }
         }}
       />
     </>

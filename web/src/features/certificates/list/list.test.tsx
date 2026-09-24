@@ -148,3 +148,170 @@ it('saves a view under a blocked localStorage without losing it across the same 
   await rowOf('www');
   expect(screen.queryByRole('button', { name: 'Failing' })).toBeNull();
 });
+
+// Fix round 1 (review, Important items 1-4) below.
+
+it('keeps an externally applied q (saved view) synced to the input, and survives navigating back without the debounce reverting it', async () => {
+  const { router, user } = renderRoute('/o/acme/certificates');
+  await rowOf('www');
+  await user.type(screen.getByRole('textbox', { name: 'Search certificates' }), 'api');
+  await waitFor(() => expect(router.state.location.search).toEqual({ q: 'api' }));
+  await user.click(screen.getByRole('button', { name: 'Save view' }));
+  await user.type(screen.getByRole('textbox', { name: 'View name' }), 'API only');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await user.click(screen.getByRole('button', { name: 'Remove filter Search: api' }));
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+
+  // Apply the saved view: the URL and the input should both show q=api
+  // immediately, without waiting for the (now-stale) debounce.
+  await user.click(screen.getByRole('button', { name: 'API only' }));
+  await waitFor(() => expect(router.state.location.search).toEqual({ q: 'api' }));
+  expect(screen.getByRole('textbox', { name: 'Search certificates' })).toHaveValue('api');
+
+  // Going back must not get silently reverted by a leftover debounce timer
+  // still holding the old (pre-apply) typed value.
+  router.history.back();
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+  await new Promise((r) => setTimeout(r, 300));
+  expect(router.state.location.search).toEqual({});
+});
+
+it('shows an error state with Retry when the list fetch fails, then loads after retrying', async () => {
+  let fail = true;
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), () => {
+      if (fail) return problem(500, 'boom');
+      return HttpResponse.json({ items: all.slice(0, 3), nextCursor: null });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/certificates');
+  expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  expect(screen.getByText(/boom/)).toBeInTheDocument();
+  fail = false;
+  await user.click(screen.getByRole('button', { name: 'Retry' }));
+  await rowOf('www');
+});
+
+// Both loading-state tests gate the certificates response on a promise this
+// test controls, so the pending state can be asserted deterministically —
+// asserting immediately after `renderRoute` isn't reliable here, since
+// auth's own `/auth/me` fetch resolves (and mounts the route) asynchronously
+// too, and could race ahead of an ungated certificates fetch resolving as
+// well by the time a query finds the table.
+function gateCertificatesResponse() {
+  let resolve!: () => void;
+  const gate = new Promise<void>((r) => (resolve = r));
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), async () => {
+      await gate;
+      return HttpResponse.json({ items: all.slice(0, 3), nextCursor: null });
+    }),
+  );
+  return resolve;
+}
+
+it('renders loading rows inside the table while the list is pending', async () => {
+  const resolve = gateCertificatesResponse();
+  renderRoute('/o/acme/certificates');
+  const table = await screen.findByRole('table', { name: 'Certificates' });
+  expect(table).toHaveAttribute('aria-busy', 'true');
+  // The skeleton rows are `aria-hidden` (decorative), so a DOM query
+  // stands in for a role query here, which would only see the header row.
+  expect(table.querySelectorAll('tbody tr').length).toBe(3);
+  resolve();
+  await rowOf('www');
+});
+
+it('shows card skeletons instead of a table while pending below 768px', async () => {
+  stubViewport(false);
+  const resolve = gateCertificatesResponse();
+  renderRoute('/o/acme/certificates');
+  expect(await screen.findByRole('status', { name: 'Loading certificates' })).toBeInTheDocument();
+  expect(screen.queryByRole('table')).toBeNull();
+  resolve();
+  // The card `<Link>` wraps its whole card (name, status, validity, next
+  // renewal), so its accessible name isn't the bare name `rowOf` expects.
+  expect(await screen.findByRole('link', { name: /www/ })).toBeInTheDocument();
+});
+
+it('drops the cursor from the request when a filter changes after loading more', async () => {
+  const { user } = renderRoute('/o/acme/certificates');
+  await rowOf('www');
+  await user.click(screen.getByRole('button', { name: 'Load more' }));
+  await screen.findByRole('link', { name: 'vpn' });
+  expect(lastQuery.get('cursor')).toBe('p2');
+  await user.click(screen.getByRole('radio', { name: 'Failed' }));
+  await waitFor(() => expect(lastQuery.get('status')).toBe('failed'));
+  expect(lastQuery.get('cursor')).toBeNull();
+});
+
+it('deletes the selected certificates and clears the selection on the happy path', async () => {
+  const deleted: string[] = [];
+  server.use(
+    http.delete(url('/orgs/org-1/certificates/:id'), ({ params }) => {
+      deleted.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/certificates');
+  await user.click(await rowOf('www'));
+  await user.click(await rowOf('mail'));
+  const bar = screen.getByRole('region', { name: 'Bulk actions' });
+  await user.click(within(bar).getByRole('button', { name: 'Delete' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText('Delete 2 certificates')).toBeInTheDocument();
+  await user.type(within(dialog).getByLabelText(/type delete to confirm/i), 'delete');
+  await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  await waitFor(() => expect(deleted.sort()).toEqual(['c-1', 'c-3']));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.queryByRole('region', { name: 'Bulk actions' })).toBeNull();
+});
+
+it('keeps failed rows selected and names them in a toast on a partial bulk failure', async () => {
+  server.use(
+    http.post(url('/orgs/org-1/certificates/:id/renew'), ({ params }) => {
+      const id = params.id as string;
+      if (id === 'c-3') return problem(500, 'boom');
+      renewed.push(id);
+      return new HttpResponse(null, { status: 202 });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/certificates');
+  await user.click(await rowOf('www'));
+  await user.click(await rowOf('mail'));
+  const bar = screen.getByRole('region', { name: 'Bulk actions' });
+  await user.click(within(bar).getByRole('button', { name: 'Renew' }));
+  await waitFor(() => expect(renewed).toEqual(['c-1']));
+  // The failed row (mail, c-3) stays selected; the succeeded one (www) does not.
+  await waitFor(() => expect(within(screen.getByRole('region', { name: 'Bulk actions' })).getByText('1 selected')).toBeInTheDocument());
+  expect(await screen.findByText(/1 certificate failed: mail/)).toBeInTheDocument();
+});
+
+it('keeps the delete dialog open with its error on a total bulk failure', async () => {
+  server.use(http.delete(url('/orgs/org-1/certificates/:id'), () => problem(500, 'boom')));
+  const { user } = renderRoute('/o/acme/certificates');
+  await user.click(await rowOf('www'));
+  const bar = screen.getByRole('region', { name: 'Bulk actions' });
+  await user.click(within(bar).getByRole('button', { name: 'Delete' }));
+  const dialog = await screen.findByRole('dialog');
+  await user.type(within(dialog).getByLabelText(/type delete to confirm/i), 'delete');
+  await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(/failed/i);
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+});
+
+it('shows Revoked selected on the segmented control when the URL has status=revoked', async () => {
+  all = [makeCert({ id: 'c-5', name: 'old', status: 'revoked' })];
+  renderRoute('/o/acme/certificates?status=revoked');
+  await rowOf('old');
+  expect(screen.getByRole('radio', { name: 'Revoked', checked: true })).toBeInTheDocument();
+});
+
+it('tints the sticky Name cell to match the row when selected', async () => {
+  const { user } = renderRoute('/o/acme/certificates');
+  const row = await rowOf('www');
+  const nameCell = within(row).getByText('www').closest('td')!;
+  expect(nameCell.className).not.toContain('bg-primary/10');
+  await user.click(row);
+  expect(nameCell.className).toContain('bg-primary/10');
+});

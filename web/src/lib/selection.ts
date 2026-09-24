@@ -46,5 +46,8 @@ export function useRowSelection(ids: string[]) {
   );
 
   const clear = useCallback(() => setSelected(new Set()), []);
-  return { selected, onRowClick, clear };
+  // Sets the selection to exactly this set of ids (e.g. "keep only the rows
+  // a bulk action failed on"), regardless of what was selected before.
+  const replace = useCallback((next: Iterable<string>) => setSelected(new Set(next)), []);
+  return { selected, onRowClick, clear, replace };
 }

@@ -37,7 +37,7 @@ export function certColumns(org: string, caName: (id: string | undefined) => str
     // name in full — not just a count.
     col.accessor('sans', {
       header: 'Names',
-      meta: { help: 'cert.names', className: 'w-40' },
+      meta: { help: 'cert.namesColumn', className: 'w-40' },
       cell: ({ getValue }) => {
         const sans = getValue();
         if (sans.length === 0) return <span className="text-ink-muted">–</span>;

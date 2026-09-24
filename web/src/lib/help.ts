@@ -65,6 +65,10 @@ export const help = {
     learnMore: 'configuration.md#issuance-defaults',
   },
   'cert.names': { text: 'Paste names separated by commas, spaces, or new lines. Wildcards need DNS verification.', learnMore: 'certificates.md#names' },
+  // Fix round 1 (review): the list column needs its own key — `cert.names`
+  // is wizard copy about pasting names into the create-certificate step
+  // (Task 12), not what a read-only SANs column means.
+  'cert.namesColumn': { text: 'Subject alternative names besides the common name shown under Name.', learnMore: 'certificates.md#names' },
   'cert.nextRenew': { text: 'When CertForge next tries to renew. ARI can move it earlier.' },
   'status.column': { text: 'State of the certificate itself, not of its last attempt.' },
 } satisfies Record<string, Help>;

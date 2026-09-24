@@ -26,12 +26,16 @@ type Props<T> = {
   selected?: ReadonlySet<string>;
   onRowClick?: (id: string, e: MouseEvent | KeyboardEvent) => void;
   onRowOpen?: (id: string) => void;
+  /** Renders this many placeholder rows (real header, no interaction)
+   * instead of `data`'s rows, for a first-load fetch — a loading table
+   * shape instead of a layout-jumping bare paragraph (review fix round 1). */
+  skeletonRows?: number;
 };
 
-export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort, selected, onRowClick, onRowOpen }: Props<T>) {
+export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort, selected, onRowClick, onRowOpen, skeletonRows }: Props<T>) {
   const table = useReactTable({ data, columns, getRowId: (r) => getRowId(r), getCoreRowModel: getCoreRowModel(), manualSorting: true });
   return (
-    <Table aria-label={ariaLabel} className="table-fixed">
+    <Table aria-label={ariaLabel} aria-busy={!!skeletonRows} className="table-fixed">
       <TableHeader>
         {table.getHeaderGroups().map((hg) => (
           <TableRow key={hg.id}>
@@ -60,32 +64,52 @@ export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort,
         ))}
       </TableHeader>
       <TableBody>
-        {table.getRowModel().rows.map((row) => {
-          const isSel = selected?.has(row.id) ?? false;
-          return (
-            <TableRow
-              key={row.id}
-              aria-selected={onRowClick ? isSel : undefined}
-              tabIndex={onRowClick ? 0 : undefined}
-              className={cn('h-9 rounded-none', onRowClick && 'cursor-pointer', isSel && 'bg-primary/10 hover:bg-primary/15')}
-              onMouseDown={(e) => e.shiftKey && e.preventDefault()}
-              onClick={(e) => onRowClick?.(row.id, e)}
-              onKeyDown={(e) => {
-                if (e.target !== e.currentTarget) return;
-                if (e.key === ' ') {
-                  e.preventDefault();
-                  onRowClick?.(row.id, e);
-                } else if (e.key === 'Enter') onRowOpen?.(row.id);
-              }}
-            >
-              {row.getVisibleCells().map((c) => (
-                <TableCell key={c.id} className={c.column.columnDef.meta?.className}>
-                  {flexRender(c.column.columnDef.cell, c.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          );
-        })}
+        {skeletonRows
+          ? Array.from({ length: skeletonRows }).map((_, i) => (
+              <TableRow key={`skeleton-${i}`} aria-hidden className="h-9 rounded-none">
+                {columns.map((c, j) => (
+                  <TableCell key={j} className={c.meta?.className}>
+                    <div className="h-3 w-3/4 animate-pulse rounded-sm bg-subtle" />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          : table.getRowModel().rows.map((row) => {
+              const isSel = selected?.has(row.id) ?? false;
+              return (
+                <TableRow
+                  key={row.id}
+                  aria-selected={onRowClick ? isSel : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  className={cn('h-9 rounded-none', onRowClick && 'cursor-pointer', isSel && 'bg-primary/10 hover:bg-primary/15')}
+                  onMouseDown={(e) => e.shiftKey && e.preventDefault()}
+                  onClick={(e) => onRowClick?.(row.id, e)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === ' ') {
+                      e.preventDefault();
+                      onRowClick?.(row.id, e);
+                    } else if (e.key === 'Enter') onRowOpen?.(row.id);
+                  }}
+                >
+                  {row.getVisibleCells().map((c) => (
+                    // Fix round 1 (review): the sticky Name cell's own
+                    // opaque `bg-panel` (needed so scrolled-under cells
+                    // don't show through it) otherwise paints over the
+                    // row's `bg-primary/10` selected tint right where the
+                    // sticky column sits. `cn` resolves the conflicting
+                    // `bg-*` utility (tailwind-merge), so the tint wins once
+                    // selected, on every cell (a no-op visually on
+                    // non-sticky cells, which were already showing the
+                    // row's own background through their default
+                    // transparent one).
+                    <TableCell key={c.id} className={cn(c.column.columnDef.meta?.className, isSel && 'bg-primary/10')}>
+                      {flexRender(c.column.columnDef.cell, c.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+            })}
       </TableBody>
     </Table>
   );
