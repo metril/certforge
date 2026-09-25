@@ -2,8 +2,19 @@ import { forwardRef, type ComponentPropsWithoutRef, type MouseEvent, type ReactN
 import { Link, useLocation } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { isNavPathActive, LATER, NAV, navPrefix, NO_ORG, targetNeedsOrg, type NavItem, type NavTarget } from '@/lib/nav';
-import { useActiveOrgSlug } from '@/lib/org';
+import {
+  ALL_ORGS_ONLY_ONE,
+  ALL_ORGS_TARGETS,
+  isNavPathActive,
+  LATER,
+  NAV,
+  navPrefix,
+  NO_ORG,
+  targetNeedsOrg,
+  type NavItem,
+  type NavTarget,
+} from '@/lib/nav';
+import { ALL_ORGS_SLUG, useActiveOrgSlug } from '@/lib/org';
 import { cn } from '@/lib/utils';
 import { OrgSwitcher } from './OrgSwitcher';
 import { UserMenu } from './UserMenu';
@@ -129,6 +140,9 @@ function NavRow({
 }) {
   if (!item.target) return <DisabledRow item={item} compact={compact} reason={LATER} />;
   if (targetNeedsOrg(item.target) && !org) return <DisabledRow item={item} compact={compact} reason={NO_ORG} />;
+  if (item.target && org === ALL_ORGS_SLUG && !ALL_ORGS_TARGETS.has(item.target)) {
+    return <DisabledRow item={item} compact={compact} reason={ALL_ORGS_ONLY_ONE} />;
+  }
 
   const Icon = item.icon;
   const body = (

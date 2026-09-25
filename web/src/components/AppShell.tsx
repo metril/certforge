@@ -3,11 +3,12 @@ import { useLocation, useNavigate } from '@tanstack/react-router';
 import { Menu, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { useActiveOrgSlug } from '@/lib/org';
+import { ALL_ORGS_SLUG, useActiveOrgSlug } from '@/lib/org';
 import { useShortcuts } from '@/lib/shortcuts';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { CommandPalette } from './CommandPalette';
+import { ReadOnlyBanner } from './ReadOnlyBanner';
 import { Sidebar } from './Sidebar';
 import { Wordmark } from './Wordmark';
 
@@ -77,6 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Button>
         </header>
         <main id="content" className="flex-1 px-4 py-6 md:px-8">
+          {org === ALL_ORGS_SLUG && <ReadOnlyBanner />}
           {children}
         </main>
       </div>

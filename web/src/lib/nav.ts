@@ -53,3 +53,10 @@ export function navPrefix(target: NavTarget, org: string): string {
 export function isNavPathActive(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
+
+// Nav targets that stay usable under /o/all/... (the read-only All orgs
+// view); the rest (Issuers, and later Clients/Delivery/Alerts) redirect on
+// navigation (lib/org.ts's denyAllOrgs) and are shown disabled here with
+// ALL_ORGS_ONLY_ONE instead of navigating.
+export const ALL_ORGS_TARGETS: ReadonlySet<NavTarget> = new Set(['overview', 'certificates', 'settings']);
+export const ALL_ORGS_ONLY_ONE = 'Pick one organization';

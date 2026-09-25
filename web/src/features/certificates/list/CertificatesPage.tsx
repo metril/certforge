@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
 import { casQuery } from '@/api/queries/cas';
 import {
+  allOrgsCertificatesInfinite,
+  allOrgsCertificatesListKey,
   BulkActionError,
   certificatesInfinite,
   certListQueryKey,
@@ -29,7 +31,7 @@ import { Input } from '@/components/ui/input';
 import { CertValidity } from '@/components/ValidityBar';
 import type { Certificate } from '@/api/types';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { useOrg } from '@/lib/org';
+import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
 import { useRowSelection } from '@/lib/selection';
 import { STATUS_META } from '@/lib/status';
 import { relDays } from '@/lib/time';
@@ -100,12 +102,15 @@ function CertCardSkeleton() {
 
 export function CertificatesPage() {
   const org = useOrg();
+  const allOrgs = useAllOrgs();
+  const slugOf = useOrgSlugOf();
+  const me = useMe();
   const qc = useQueryClient();
   const search = useSearch({ from: '/_app/o/$org/certificates/' });
   const navigate = useNavigate({ from: '/o/$org/certificates/' });
   const isMdUp = useMediaQuery('(min-width: 768px)');
-  const list = useInfiniteQuery(certificatesInfinite(org.id, search));
-  const { data: cas = [] } = useQuery(casQuery(org.id));
+  const list = useInfiniteQuery(allOrgs ? allOrgsCertificatesInfinite(search) : certificatesInfinite(org.id, search));
+  const { data: cas = [] } = useQuery({ ...casQuery(org.id), enabled: !allOrgs });
   const renew = useRenewCertificates(org.id);
   const del = useDeleteCertificates(org.id);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -115,7 +120,17 @@ export function CertificatesPage() {
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
   const ids = useMemo(() => rows.map((r) => r.id), [rows]);
   const sel = useRowSelection(ids);
-  const columns = useMemo(() => certColumns(org.slug, (id) => cas.find((c) => c.id === id)?.name), [org.slug, cas]);
+  const columns = useMemo(
+    () =>
+      allOrgs
+        ? certColumns(
+            (c) => slugOf(c.orgId),
+            () => undefined,
+            (c) => me.orgs.find((o) => o.id === c.orgId)?.name ?? '–',
+          )
+        : certColumns(org.slug, (id) => cas.find((c) => c.id === id)?.name),
+    [allOrgs, org.slug, cas, me.orgs, slugOf],
+  );
   const nameOf = useMemo(() => {
     const byId = new Map(rows.map((r) => [r.id, r.name]));
     return (id: string) => byId.get(id) ?? id;
@@ -160,7 +175,7 @@ export function CertificatesPage() {
     setCursorNotice(false);
     sel.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search.status, search.q, search.sort, sel.clear]);
+  }, [search.status, search.q, search.sort, allOrgs, sel.clear]);
 
   const chips = [
     ...(search.status ? [{ key: 'status', label: `Status: ${STATUS_META[search.status].label}` }] : []),
@@ -187,7 +202,7 @@ export function CertificatesPage() {
     const res = await list.fetchNextPage();
     if (res.error instanceof ApiError && res.error.status === 422) {
       setCursorNotice(true);
-      await qc.resetQueries({ queryKey: certListQueryKey(org.id, search) });
+      await qc.resetQueries({ queryKey: allOrgs ? allOrgsCertificatesListKey(search) : certListQueryKey(org.id, search) });
     }
   };
 
@@ -209,9 +224,9 @@ export function CertificatesPage() {
 
   return (
     <>
-      <PageHeader title="Certificates" actions={emptyUnfiltered ? undefined : newLink} />
+      <PageHeader title="Certificates" actions={emptyUnfiltered || allOrgs ? undefined : newLink} />
       {emptyUnfiltered ? (
-        <EmptyState message="No certificates yet.">{newLink}</EmptyState>
+        <EmptyState message="No certificates yet.">{!allOrgs && newLink}</EmptyState>
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -253,14 +268,20 @@ export function CertificatesPage() {
               getRowId={(r) => r.id}
               sort={search.sort}
               onSort={(s) => setSearch({ sort: s as CertListSearch['sort'] })}
-              selected={sel.selected}
-              onRowClick={sel.onRowClick}
-              onRowOpen={(id) => void navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id, tab: 'overview' } })}
+              selected={allOrgs ? undefined : sel.selected}
+              onRowClick={allOrgs ? undefined : sel.onRowClick}
+              onRowOpen={(id) => {
+                const c = rows.find((r) => r.id === id);
+                void navigate({
+                  to: '/o/$org/certificates/$id/$tab',
+                  params: { org: allOrgs ? slugOf(c?.orgId) : org.slug, id, tab: 'overview' },
+                });
+              }}
             />
           ) : (
             <div className="grid gap-2">
               {rows.map((c) => (
-                <CertCard key={c.id} cert={c} org={org.slug} />
+                <CertCard key={c.id} cert={c} org={allOrgs ? slugOf(c.orgId) : org.slug} />
               ))}
             </div>
           )}
@@ -271,7 +292,7 @@ export function CertificatesPage() {
           )}
         </>
       )}
-      {isMdUp && (
+      {isMdUp && !allOrgs && (
         <BulkBar count={sel.selected.size} onClear={sel.clear}>
           <Button
             size="sm"

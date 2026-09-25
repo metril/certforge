@@ -79,6 +79,43 @@ export const certificatesInfinite = (orgId: string, s: CertListQuery) =>
     refetchInterval: POLL.list,
   });
 
+/** All orgs (lib/org.ts's ALL_ORGS_SLUG) view: pages through every
+ * certificate the caller can read across orgs. */
+export async function fetchAllOrgsCertificates(): Promise<Certificate[]> {
+  const out: Certificate[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < MAX_PAGES; i++) {
+    const page = await call(api.GET('/certificates', { params: { query: { limit: PAGE, cursor } } }));
+    out.push(...page.items);
+    if (!page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return out;
+}
+
+export const allOrgsCertificatesQuery = queryOptions({
+  queryKey: ['certs', 'all', 'every'],
+  queryFn: fetchAllOrgsCertificates,
+  refetchInterval: POLL.list,
+});
+
+export const allOrgsCertificatesListKey = (s: CertListQuery): readonly ['certs', string, 'list', CertListQuery] => [
+  'certs',
+  'all',
+  'list',
+  s,
+];
+
+export const allOrgsCertificatesInfinite = (s: CertListQuery) =>
+  infiniteQueryOptions({
+    queryKey: allOrgsCertificatesListKey(s),
+    queryFn: ({ pageParam }) =>
+      call(api.GET('/certificates', { params: { query: { status: s.status, q: s.q, sort: s.sort, limit: 100, cursor: pageParam } } })),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    refetchInterval: POLL.list,
+  });
+
 export function plural(n: number, word: string): string {
   return n === 1 ? `1 ${word}` : `${n} ${word}s`;
 }

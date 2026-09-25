@@ -1,19 +1,22 @@
 import { Link } from '@tanstack/react-router';
 import { Check, ChevronsUpDown } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { useMe } from '@/lib/org';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { hasGlobalBinding } from '@/lib/permissions';
+import { ALL_ORGS, ALL_ORGS_SLUG, useMe } from '@/lib/org';
 import { cn } from '@/lib/utils';
 
 /**
- * Switches between orgs. Spec: "Org switcher at the top of the sidebar
+ * Switches between orgs; admins with a global binding also get the
+ * read-only All orgs view. Spec: "Org switcher at the top of the sidebar
  * (hidden in Phase 1 when there is a single org, but the component
  * exists)". Phase 1 fixtures and deployments have exactly one org, so this
  * renders nothing until a second org exists.
  */
 export function OrgSwitcher({ activeOrg, compact }: { activeOrg?: string; compact: boolean }) {
   const me = useMe();
-  if (me.orgs.length <= 1) return null;
-  const current = me.orgs.find((o) => o.slug === activeOrg) ?? me.orgs[0];
+  const globalBinding = hasGlobalBinding(me);
+  if (me.orgs.length <= 1 && !globalBinding) return null;
+  const current = activeOrg === ALL_ORGS_SLUG ? ALL_ORGS : (me.orgs.find((o) => o.slug === activeOrg) ?? me.orgs[0]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -33,6 +36,17 @@ export function OrgSwitcher({ activeOrg, compact }: { activeOrg?: string; compac
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
+        {globalBinding && (
+          <>
+            <DropdownMenuItem asChild>
+              <Link to="/o/$org/overview" params={{ org: ALL_ORGS_SLUG }} className="flex items-center justify-between gap-2">
+                All orgs
+                {current?.slug === ALL_ORGS_SLUG && <Check className="size-4" aria-hidden />}
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {me.orgs.map((o) => (
           <DropdownMenuItem key={o.id} asChild>
             <Link to="/o/$org/overview" params={{ org: o.slug }} className="flex items-center justify-between gap-2">

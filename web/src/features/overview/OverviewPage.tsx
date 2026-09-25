@@ -1,7 +1,7 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, CircleCheck, CircleX, Clock, Hourglass, type LucideIcon } from 'lucide-react';
-import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
+import { allCertificatesQuery, allOrgsCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { errorMessage } from '@/api/errors';
 import { readinessQuery } from '@/api/queries/health';
 import type { Certificate } from '@/api/types';
@@ -13,8 +13,9 @@ import { ToneChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { ManualDnsCard } from '@/features/certificates/ManualDnsCard';
+import { can } from '@/lib/permissions';
 import { renewToastHandlers } from '@/lib/renewToast';
-import { useOrg } from '@/lib/org';
+import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
 import type { Tone } from '@/lib/status';
 import { DAY, relDays } from '@/lib/time';
 import { attentionItems, statusCounts, upcomingRenewals, usesManualDns, type AttentionKind } from './attention';
@@ -51,7 +52,10 @@ function CertRow({ cert, org, right }: { cert: Certificate; org: string; right: 
 
 export function OverviewPage() {
   const org = useOrg();
-  const { data: certs = [], isPending, isError, error, refetch } = useQuery(allCertificatesQuery(org.id));
+  const allOrgs = useAllOrgs();
+  const slugOf = useOrgSlugOf();
+  const me = useMe();
+  const { data: certs = [], isPending, isError, error, refetch } = useQuery(allOrgs ? allOrgsCertificatesQuery : allCertificatesQuery(org.id));
   const readiness = useQuery(readinessQuery);
   const renew = useRenewCertificates(org.id);
   const search = useSearch({ from: '/_app/o/$org/overview' });
@@ -59,6 +63,7 @@ export function OverviewPage() {
   const range = search.range ?? null;
   const setRange = (r: [number, number] | null) => void navigate({ search: (prev) => ({ ...prev, range: r ?? undefined }), replace: true });
   const now = Date.now();
+  const slug = (c: Certificate) => (allOrgs ? slugOf(c.orgId) : org.slug);
 
   if (isError) {
     return (
@@ -76,11 +81,13 @@ export function OverviewPage() {
         <div className="grid gap-6">
           <HealthStrip readiness={readiness.data} />
           <EmptyState message="No certificates yet.">
-            <Button asChild>
-              <Link to="/o/$org/certificates/new" params={{ org: org.slug }}>
-                New certificate
-              </Link>
-            </Button>
+            {!allOrgs && (
+              <Button asChild>
+                <Link to="/o/$org/certificates/new" params={{ org: org.slug }}>
+                  New certificate
+                </Link>
+              </Button>
+            )}
           </EmptyState>
         </div>
       </>
@@ -136,9 +143,8 @@ export function OverviewPage() {
             Needs attention <HelpTip id="overview.attention" />
             <span className="text-sm font-normal text-ink-muted">{items.length}</span>
           </h2>
-          {manualDnsCerts.map((c) => (
-            <ManualDnsCard key={c.id} orgId={org.id} cert={c} />
-          ))}
+          {!allOrgs &&
+            manualDnsCerts.map((c) => <ManualDnsCard key={c.id} orgId={org.id} cert={c} />)}
           {others.length > 0 ? (
             <ul className="grid">
               {others.map((i) => {
@@ -146,19 +152,21 @@ export function OverviewPage() {
                 return (
                   <li key={i.cert.id} className="grid min-h-9 grid-cols-1 items-center gap-2 border-b border-border py-2 text-sm md:grid-cols-[auto_minmax(0,160px)_minmax(0,1fr)_auto] md:gap-4 md:py-1">
                     <ToneChip tone={k.tone} icon={k.icon} label={k.label} />
-                    <Link to="/o/$org/certificates/$id/$tab" params={{ org: org.slug, id: i.cert.id, tab: 'attempts' }} className="truncate font-semibold hover:underline">
+                    <Link to="/o/$org/certificates/$id/$tab" params={{ org: slug(i.cert), id: i.cert.id, tab: 'attempts' }} className="truncate font-semibold hover:underline">
                       {i.cert.name}
                     </Link>
                     <span className="truncate text-ink-muted">{i.cause}</span>
-                    <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate([i.cert.id], renewToastHandlers(i.cert.name))}>
-                      Renew now
-                    </Button>
+                    {!allOrgs && can(me, 'certs:issue', org.id) && (
+                      <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate([i.cert.id], renewToastHandlers(i.cert.name))}>
+                        Renew now
+                      </Button>
+                    )}
                   </li>
                 );
               })}
             </ul>
           ) : (
-            manualDnsCerts.length === 0 && (
+            (allOrgs || manualDnsCerts.length === 0) && (
               <p className="flex items-center gap-1.5 text-sm">
                 <CircleCheck className="size-4 text-valid" aria-hidden />
                 Nothing needs attention.
@@ -179,7 +187,7 @@ export function OverviewPage() {
             </div>
             <ul className="grid">
               {inRange.map((c) => (
-                <CertRow key={c.id} cert={c} org={org.slug} right={relDays(c.currentVersion!.notAfter, now)} />
+                <CertRow key={c.id} cert={c} org={slug(c)} right={relDays(c.currentVersion!.notAfter, now)} />
               ))}
             </ul>
           </section>
@@ -189,7 +197,7 @@ export function OverviewPage() {
           {upcoming.length ? (
             <ul className="grid">
               {upcoming.map((c) => (
-                <CertRow key={c.id} cert={c} org={org.slug} right={relDays(c.nextRenewAt!, now)} />
+                <CertRow key={c.id} cert={c} org={slug(c)} right={relDays(c.nextRenewAt!, now)} />
               ))}
             </ul>
           ) : (

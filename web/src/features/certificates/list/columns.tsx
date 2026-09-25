@@ -13,7 +13,12 @@ const col = createColumnHelper<Certificate>();
 // in view while a narrow table scrolls horizontally.
 const stickyCol = 'sticky left-0 z-10 bg-panel';
 
-export function certColumns(org: string, caName: (id: string | undefined) => string | undefined) {
+export function certColumns(
+  org: string | ((c: Certificate) => string),
+  caName: (id: string | undefined) => string | undefined,
+  orgName?: (c: Certificate) => string,
+) {
+  const slugOf = typeof org === 'string' ? () => org : org;
   return [
     col.accessor('name', {
       header: 'Name',
@@ -22,7 +27,7 @@ export function certColumns(org: string, caName: (id: string | undefined) => str
         <div className="grid min-w-0">
           <Link
             to="/o/$org/certificates/$id/$tab"
-            params={{ org, id: row.original.id, tab: 'overview' }}
+            params={{ org: slugOf(row.original), id: row.original.id, tab: 'overview' }}
             onClick={(e) => e.stopPropagation()}
             className="truncate font-semibold hover:underline"
           >
@@ -32,6 +37,16 @@ export function certColumns(org: string, caName: (id: string | undefined) => str
         </div>
       ),
     }),
+    ...(orgName
+      ? [
+          col.display({
+            id: 'org',
+            header: 'Org',
+            meta: { className: 'w-28' },
+            cell: ({ row }) => orgName(row.original),
+          }),
+        ]
+      : []),
     // Controller ruling (design.md screen inventory, "certificates" row):
     // the names column is the SANs, truncated with a tooltip listing every
     // name in full — not just a count.

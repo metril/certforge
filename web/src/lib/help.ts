@@ -138,6 +138,7 @@ export const help = {
   'apikey.prefix': { text: 'The public part of the token. Match it against logs and scripts.' },
   'apikey.status': { text: 'Keys also stop working when their creator is disabled.' },
   'apikey.secretOnce': { text: 'Copy it now; it is never shown again. Only its hash is kept, so a lost key needs a new one.' },
+  'orgs.allOrgs': { text: 'Every org you can read, in one view. Switch to one org to make changes.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

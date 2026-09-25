@@ -34,6 +34,10 @@ Three tabs, kept in the URL (`?tab=users|bindings|keys`). **Users** lists everyo
 
 The redirect URI to register (copy button), the single sign-on form rendered from the section schema (the client secret shows Stored with Replace), **Test connection** for the issuer currently in the form, and **Group mappings**: group-to-role bindings, the same rows as group bindings in Access.
 
+## All orgs
+
+Users with a global role get **All orgs** at the top of the org switcher (/o/all/…). Overview, Certificates and the Audit log then span every org you can read and are read-only: no create, renew, delete or bulk actions, and pages that need one org (Issuers, the certificate wizard and detail) redirect to the All orgs overview. Opening a certificate switches to its org.
+
 ## Keyboard shortcuts
 
 | Keys | Action |
