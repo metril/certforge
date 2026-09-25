@@ -1,4 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from '@tanstack/react-router';
 import { api, call, resetUnauthorized, setCsrfToken } from '../client';
 
 export const meQuery = queryOptions({
@@ -59,6 +60,16 @@ export function useLogout() {
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'setup-status' });
     },
   });
+}
+
+/** Refetch /auth/me and re-run route guards so the shell sees new orgs and roles. */
+export function useRefreshMe() {
+  const qc = useQueryClient();
+  const router = useRouter();
+  return async () => {
+    await qc.refetchQueries({ queryKey: meQuery.queryKey });
+    await router.invalidate();
+  };
 }
 
 export type SetupInput = { adminPassword: string; orgName: string; orgSlug: string; baseUrl: string };

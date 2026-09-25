@@ -47,7 +47,11 @@ export const help = {
   'dns.provider': { text: 'The DNS host that serves your zone. CertForge writes TXT records there.' },
   'dns.usedBy': { text: 'Certificates and issuance defaults whose verification rules use this credential.' },
   'dns.test': { text: 'Creates and removes a test TXT record in the zone.' },
-  'settings.orgs': { text: 'Organizations visible to your account. Full org management arrives in a later phase.' },
+  'settings.orgs': {
+    text: 'Organizations separate certificates, credentials and access. Sites are filters inside an org.',
+    learnMore: 'configuration.md#general',
+  },
+  'org.slugPermanent': { text: 'Slugs are part of every URL, so they never change.' },
   'backup.kek': {
     text: 'Whether the key-encryption key is loaded and passes its startup check.',
     learnMore: 'configuration.md#the-kek',
