@@ -8,6 +8,7 @@ import (
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/settings"
@@ -62,6 +63,9 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	}
 	if err != nil {
 		return nil, err
+	}
+	if sec.Name == authn.SettingsSection && s.d.AuthSettings != nil {
+		s.d.AuthSettings.Invalidate()
 	}
 	after, err := sec.Public(raw)
 	if err != nil {

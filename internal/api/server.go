@@ -27,18 +27,19 @@ import (
 
 // Deps are the services handlers use.
 type Deps struct {
-	Config   config.Config
-	Log      *slog.Logger
-	Pool     *pgxpool.Pool
-	Queries  *sqlcgen.Queries
-	Settings *settings.Store
-	Sections *settings.Registry
-	Meta     *meta.Registry
-	Sessions *authn.Sessions
-	Auditor  *audit.Auditor
-	Setup    *setup.Service
-	Issuance *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
-	Certs    *certstore.Store  // certificate versions (Task 14)
+	Config       config.Config
+	Log          *slog.Logger
+	Pool         *pgxpool.Pool
+	Queries      *sqlcgen.Queries
+	Settings     *settings.Store
+	Sections     *settings.Registry
+	Meta         *meta.Registry
+	Sessions     *authn.Sessions
+	Auditor      *audit.Auditor
+	AuthSettings *authn.SettingsSource // authentication section; nil falls back to RemoteAddr
+	Setup        *setup.Service
+	Issuance     *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
+	Certs        *certstore.Store  // certificate versions (Task 14)
 
 	// DNSTestTimeout bounds POST .../dns-credentials/{id}/test; zero means
 	// the 2-minute default (a test override, since lego's Present/CleanUp

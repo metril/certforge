@@ -36,11 +36,23 @@ Live configuration is stored in the `settings` table (`key`, JSON `value`, encry
 
 ## Settings
 
-Open **Settings** in the sidebar. Sections that arrive in later phases (Access, Authentication, Agents, Integrations) are shown disabled.
+Open **Settings** in the sidebar. Sections that arrive in later phases (Agents, Integrations) are shown disabled.
 
 ### General
 
 Rendered from the server's settings schema: base URL and other server-wide values. **Save** applies immediately; no restart. Below it, a read-only list of the organizations visible to your account (site management arrives in a later phase).
+
+### Authentication
+
+| Field | Meaning |
+|---|---|
+| Single sign-on | Shows the single sign-on button on the login page. Needs issuer and client ID. |
+| Issuer URL | The OIDC issuer. CertForge reads `/.well-known/openid-configuration` from it. |
+| Client ID, Client secret | The client registered for CertForge. Redirect URI: `<base URL>/api/v1/auth/oidc/callback`. The secret is write-only; leave it empty for a public client (PKCE only). |
+| Scopes | Default `openid profile email groups`; must include `openid`. |
+| Groups claim | ID token claim holding the user's groups (default `groups`). Group role bindings (Settings → Access) match these. |
+| Session lifetime | Hours a sign-in lasts (1–720, default 12). Applies to new sessions. |
+| Trusted proxies | Addresses or CIDRs of reverse proxies. `X-Forwarded-For` is believed only from these; the audit log and the login rate limit use the resulting client address. |
 
 ### Issuance defaults
 

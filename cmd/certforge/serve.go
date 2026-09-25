@@ -47,6 +47,13 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	if err := issuance.RegisterSettings(sections); err != nil {
 		return err
 	}
+	if err := authn.RegisterSettings(sections); err != nil {
+		return err
+	}
+	authSettings, err := authn.NewSettingsSource(store, sections)
+	if err != nil {
+		return err
+	}
 	metaReg := meta.NewRegistry()
 	challenge.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
@@ -74,7 +81,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	handler := api.NewRouter(api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
-		Issuance: issuanceSvc, Certs: certStore,
+		Issuance: issuanceSvc, Certs: certStore, AuthSettings: authSettings,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenHTTP,

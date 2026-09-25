@@ -44,17 +44,26 @@ func newTestEnv(t *testing.T) *testEnv {
 	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(key), key))
 	aud := audit.New(pool)
 	sections := settings.DefaultRegistry()
+	if err := authn.RegisterSettings(sections); err != nil {
+		t.Fatal(err)
+	}
+	store := settings.NewStore(q, env)
+	authSrc, err := authn.NewSettingsSource(store, sections)
+	if err != nil {
+		t.Fatal(err)
+	}
 	d := api.Deps{
-		Config:   config.Config{BaseURL: "http://example.test"},
-		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Pool:     pool,
-		Queries:  q,
-		Settings: settings.NewStore(q, env),
-		Sections: sections,
-		Meta:     meta.NewRegistry(),
-		Sessions: authn.NewSessions(q, 12*time.Hour),
-		Auditor:  aud,
-		Setup:    setup.New(pool, aud, sections),
+		Config:       config.Config{BaseURL: "http://example.test"},
+		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Pool:         pool,
+		Queries:      q,
+		Settings:     store,
+		Sections:     sections,
+		Meta:         meta.NewRegistry(),
+		Sessions:     authn.NewSessions(q, 12*time.Hour),
+		Auditor:      aud,
+		Setup:        setup.New(pool, aud, sections),
+		AuthSettings: authSrc,
 	}
 	srv := httptest.NewServer(api.NewRouter(d))
 	t.Cleanup(srv.Close)
@@ -115,6 +124,39 @@ func (e *testEnv) doWithCookie(method, path, cookieValue string) (*http.Response
 	}
 	req.AddCookie(&http.Cookie{Name: authn.CookieName, Value: cookieValue})
 	resp, err := e.client.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return resp, out
+}
+
+// doClient sends a request with client c and extra headers hdr.
+func (e *testEnv) doClient(c *http.Client, method, path string, body any, hdr http.Header) (*http.Response, []byte) {
+	e.t.Helper()
+	var rdr io.Reader = http.NoBody
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		rdr = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), method, e.srv.URL+path, rdr)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range hdr {
+		req.Header[k] = v
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		e.t.Fatal(err)
 	}

@@ -46,6 +46,10 @@ Every response, API and web UI alike, carries (`internal/api/router.go`'s `secur
 - argon2 hashing/verification is limited to 4 concurrent operations server-wide (`internal/authn`'s package-level semaphore); a login or setup-complete that arrives while all slots are held gets `503 Service busy` with `Retry-After: 1` instead of queuing behind unbounded argon2 work.
 - The HTTP server sets `ReadHeaderTimeout` (10s), `ReadTimeout` (30s), and `IdleTimeout` (120s), so a slow or idle client cannot hold a connection open indefinitely.
 
+## Client addresses
+
+The client address comes from the TCP peer. X-Forwarded-For is used only when the peer is in Settings → Authentication → Trusted proxies; hops are read right to left and the first untrusted one wins, so a client cannot inject a fake address.
+
 ## First run
 
 Until setup completes, anyone who can reach the server can claim it through `POST /api/v1/setup/complete`. Complete setup right after the first start, or keep the port private until then. Completion is atomic (transaction plus advisory lock) and happens only once.

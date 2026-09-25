@@ -106,8 +106,8 @@ were Task 18's own commits.
 |---|---|---|---|
 | 1 | Settings secret fields | done | 8cf3c5f |
 | 2 | Principal, actions, group bindings | done | 3fb00fe |
-| 3 | OpenAPI problem responses | done | pending |
-| 4 | Authentication section and trusted proxies | todo | – |
+| 3 | OpenAPI problem responses | done | 0ca5e72 |
+| 4 | Authentication section and trusted proxies | done | pending |
 | 5 | Login hardening | todo | – |
 | 6 | OIDC client and fake provider | todo | – |
 | 7 | OIDC endpoints | todo | – |
@@ -246,7 +246,6 @@ were Task 18's own commits.
 - The viewer role's "read-only, no secrets" guarantee has nothing to enforce yet in Phase 1A (no secret-bearing read endpoint exists); it depends on plan 1B's read handlers redacting secret fields correctly.
 - Encrypted blobs are not bound to their row: the AAD is the KEK id only, not a per-row identifier, so per-row AAD binding is deferred.
 - A valid session on a public route (for example `POST /api/v1/auth/login` while already logged in) still requires the CSRF header, since `authn.Middleware` checks CSRF whenever a session resolves, regardless of the route's public status.
-- Audit event IPs are whatever `r.RemoteAddr` reports; behind a reverse proxy that is the proxy's address, not the client's. Add a trusted-proxy setting in Phase 2.
 - `CF_KEK_FILE` accepts a raw 32-byte key file as-is, before trying base64 decoding; only `CF_KEK` (the env var) requires base64.
 - 1B: lego v4 is not context-aware on its own; the ACME signer wraps its HTTP transport to check the issuance context before every request and attach it to each one, so cancellation now aborts an in-flight CA call (not just manual-dns waits). lego's internal nonce-retry backoff sleeps (bounded at 20s, only on nonce invalidation) are not ctx-aware.
 - 1B: lego's log output is process-global and is not copied into attempt logs; attempts log CertForge's own steps and errors.

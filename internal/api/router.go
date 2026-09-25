@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"mime"
-	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -46,7 +45,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/healthz", s.healthz)
 	r.Get("/readyz", s.readyz)
 	r.Route("/api/v1", func(v1 chi.Router) {
-		v1.Use(withClientIP, requireJSON, authn.Middleware(authn.MiddlewareOptions{
+		v1.Use(withClientIP(d.AuthSettings), requireJSON, authn.Middleware(authn.MiddlewareOptions{
 			Sessions: d.Sessions, Queries: d.Queries, Public: isPublic, Fail: Write, Log: d.Log,
 		}))
 		v1.NotFound(func(w http.ResponseWriter, _ *http.Request) { Write(w, http.StatusNotFound, "Not found", "") })
@@ -97,14 +96,20 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func withClientIP(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if host, _, err := net.SplitHostPort(ip); err == nil {
-			ip = host
-		}
-		next.ServeHTTP(w, r.WithContext(audit.WithIP(r.Context(), ip)))
-	})
+// withClientIP records the client address for audit events, honouring
+// X-Forwarded-For only from the authentication section's trusted proxies.
+func withClientIP(src *authn.SettingsSource) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := authn.RemoteIP(r)
+			if src != nil {
+				if st, err := src.Get(r.Context()); err == nil {
+					ip = st.ClientIP(r)
+				}
+			}
+			next.ServeHTTP(w, r.WithContext(audit.WithIP(r.Context(), ip)))
+		})
+	}
 }
 
 // maxRequestBody caps request bodies (including on public, unauthenticated
