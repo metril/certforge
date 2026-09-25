@@ -168,8 +168,8 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 | 3 | Agent CA | done | bb91960 |
 | 4 | Clients API | done | d4bf277 |
 | 5 | Agent listener and enrolment | done | 7a9535c |
-| 6 | Layouts, targets and hooks | done | pending |
-| 7 | Grants and revisions | todo | – |
+| 6 | Layouts, targets and hooks | done | 4d7fe77 |
+| 7 | Grants and revisions | done | pending |
 | 8 | Agent sync over REST | todo | – |
 | 9 | WebSocket hub | todo | – |
 | 10 | Agent CA API | todo | – |
@@ -351,3 +351,4 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 - 3A: R10: `CF_AGENT_PULL_INTERVAL` ticks in `run` whether or not the WebSocket is up: while connected the session reconciles on it; while the socket is down (for example a proxy that refuses upgrades) `run` pulls over REST, reports and sends a heartbeat.
 - 3A: R13: the e2e agent container runs as the host user (`user: "${CF_E2E_UID}:${CF_E2E_GID}"`) so the host-side test can tamper with and clean up files; the chown-as-root path is covered by a unit test that runs only as root.
 - 3A Task 5 (review carry-forward): `Enroll` and `Renew` each re-check the signing CA's status under `LockAgentCA` (row `FOR UPDATE`) inside the same transaction that writes `clients.agent_ca_id`/`agent_cert_serial`, right before that write. This serializes against `agentca.Store.Retire`'s own `LockAgentCA` call on the same row, so a CA retired concurrently with an in-flight enrolment or renewal can never end up referenced by a committed client row; both paths return 409 in that case. Covered by `TestEnrollBlocksOnConcurrentRetire`/`TestRenewBlocksOnConcurrentRetire` (`internal/api/agent_router_integration_test.go`), which hold the CA row lock from the test, start the request, then flip the row to `retired` and commit to unblock it.
+- 3A Task 7 (review carry-forward from Task 6): `hook_ids` has no FK, so a grant create/update locks its referenced hook rows `FOR SHARE` (`LockHooksInOrg`, inside `agents.checkRefs`, same transaction as the grant write) and `DeleteHook` locks the hook row `FOR UPDATE` before re-checking `HookDependents`, both inside one transaction with the delete. The two serialize on the row lock: whichever commits first is seen by the other (the grant create then blocks the delete with 409, or the delete then makes the grant create's recount fail with 422); a hook id can never end up referenced by a grant after the hook itself is gone. Covered by `TestGrantVsDeleteHookNoDangling` (`internal/api/grants_integration_test.go`), which runs a grant create and a hook delete concurrently over 10 iterations and asserts neither both succeed nor any grant is left referencing a missing hook.

@@ -536,6 +536,35 @@ func (q *Queries) ListLayouts(ctx context.Context, orgID uuid.UUID) ([]OutputSpe
 	return items, nil
 }
 
+const lockHook = `-- name: LockHook :one
+SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at FROM hooks WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type LockHookParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the hook row FOR UPDATE before DeleteHook re-checks HookDependents,
+// so a concurrent grant create/update that locks this row FOR SHARE
+// (LockHooksInOrg) either finishes and is seen by the dependents re-check,
+// or blocks behind this delete and later finds the hook gone.
+func (q *Queries) LockHook(ctx context.Context, arg LockHookParams) (Hook, error) {
+	row := q.db.QueryRow(ctx, lockHook, arg.ID, arg.OrgID)
+	var i Hook
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Phase,
+		&i.Argv,
+		&i.TimeoutSeconds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateDeployTarget = `-- name: UpdateDeployTarget :one
 UPDATE deploy_targets SET name = $1, config = $2, updated_at = now()
 WHERE id = $3 AND org_id = $4 RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at

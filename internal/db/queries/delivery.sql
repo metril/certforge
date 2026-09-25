@@ -64,6 +64,13 @@ SELECT * FROM hooks WHERE org_id = $1 ORDER BY lower(name), id;
 -- name: GetHook :one
 SELECT * FROM hooks WHERE id = $1 AND org_id = $2;
 
+-- name: LockHook :one
+-- Locks the hook row FOR UPDATE before DeleteHook re-checks HookDependents,
+-- so a concurrent grant create/update that locks this row FOR SHARE
+-- (LockHooksInOrg) either finishes and is seen by the dependents re-check,
+-- or blocks behind this delete and later finds the hook gone.
+SELECT * FROM hooks WHERE id = $1 AND org_id = $2 FOR UPDATE;
+
 -- name: CreateHook :one
 INSERT INTO hooks (org_id, name, phase, argv, timeout_seconds) VALUES ($1, $2, $3, $4, $5) RETURNING *;
 

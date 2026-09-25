@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authz"
@@ -207,7 +208,12 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	if err != nil {
 		return nil, err
 	}
-	q := s.queries()
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
 	cur, err := q.GetLayout(ctx, sqlcgen.GetLayoutParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("layout %s", r.Id)
@@ -222,6 +228,14 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	if err != nil {
 		return nil, err
 	}
+	nudge, err := s.d.Agents.Resync(ctx, q, agents.RefLayout, l.ID)
+	if err != nil {
+		return nil, mapAgentErr(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	nudge()
 	s.audit(ctx, audit.Event{Action: "layout.update", ResourceType: "layout", ResourceID: l.ID.String(), OrgID: &l.OrgID,
 		Details: map[string]any{"before": map[string]any{"name": cur.Name, "files": json.RawMessage(cur.Files)},
 			"after": map[string]any{"name": l.Name, "files": json.RawMessage(l.Files)}}})
@@ -395,7 +409,12 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	if err != nil {
 		return nil, err
 	}
-	q := s.queries()
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
 	cur, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("deploy target %s", r.Id)
@@ -413,6 +432,14 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	if err != nil {
 		return nil, err
 	}
+	nudge, err := s.d.Agents.Resync(ctx, q, agents.RefTarget, t.ID)
+	if err != nil {
+		return nil, mapAgentErr(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	nudge()
 	s.audit(ctx, audit.Event{Action: "deploy_target.update", ResourceType: "deploy_target", ResourceID: t.ID.String(), OrgID: &t.OrgID,
 		Details: map[string]any{"before": map[string]any{"name": cur.Name, "config": json.RawMessage(cur.Config)},
 			"after": map[string]any{"name": t.Name, "config": json.RawMessage(t.Config)}}})
@@ -572,7 +599,12 @@ func (s *Server) UpdateHook(ctx context.Context, r gen.UpdateHookRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	q := s.queries()
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
 	cur, err := q.GetHook(ctx, sqlcgen.GetHookParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("hook %s", r.Id)
@@ -587,6 +619,14 @@ func (s *Server) UpdateHook(ctx context.Context, r gen.UpdateHookRequestObject) 
 	if err != nil {
 		return nil, err
 	}
+	nudge, err := s.d.Agents.Resync(ctx, q, agents.RefHook, h.ID)
+	if err != nil {
+		return nil, mapAgentErr(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	nudge()
 	s.audit(ctx, audit.Event{Action: "hook.update", ResourceType: "hook", ResourceID: h.ID.String(), OrgID: &h.OrgID,
 		Details: map[string]any{
 			"before": map[string]any{"name": cur.Name, "phase": cur.Phase, "argv": cur.Argv, "timeoutSeconds": cur.TimeoutSeconds},
@@ -598,13 +638,23 @@ func (s *Server) UpdateHook(ctx context.Context, r gen.UpdateHookRequestObject) 
 	return gen.UpdateHook200JSONResponse(out[0]), nil
 }
 
-// DeleteHook removes a hook no grant uses.
+// DeleteHook removes a hook no grant uses. It locks the hook row FOR UPDATE
+// before re-checking dependents, inside one transaction with the delete:
+// hook_ids has no FK, so a concurrent grant create/update that locks the
+// same row FOR SHARE (agents.checkRefs) either commits first and is then
+// seen by the dependents re-check, or blocks behind this delete and finds
+// the hook gone.
 func (s *Server) DeleteHook(ctx context.Context, r gen.DeleteHookRequestObject) (gen.DeleteHookResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	q := s.queries()
-	cur, err := q.GetHook(ctx, sqlcgen.GetHookParams{ID: r.Id, OrgID: r.OrgId})
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
+	cur, err := q.LockHook(ctx, sqlcgen.LockHookParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("hook %s", r.Id)
 	}
@@ -628,6 +678,9 @@ func (s *Server) DeleteHook(ctx context.Context, r gen.DeleteHookRequestObject) 
 	}
 	if n == 0 {
 		return nil, notFound("hook %s", r.Id)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "hook.delete", ResourceType: "hook", ResourceID: r.Id.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"name": cur.Name}})

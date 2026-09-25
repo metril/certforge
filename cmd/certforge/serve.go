@@ -99,7 +99,8 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Auditor: aud, Settings: agentSettings, Log: log}
 	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
 	issueWorker.Log = log
-	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log, agentListener.RegisterRiver)
+	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc)
+	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log, agentListener.RegisterRiver, agentSvc.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)
 	}

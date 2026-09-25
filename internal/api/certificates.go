@@ -201,6 +201,9 @@ func (s *Server) listCerts(ctx context.Context, orgIDs []uuid.UUID, status, q, s
 			LastKey: pg.NextCursor.Key, LastID: pg.NextCursor.ID})
 		next = &n
 	}
+	if err := s.addGrantCounts(ctx, items); err != nil {
+		return gen.CertificateList{}, err
+	}
 	return gen.CertificateList{Items: items, NextCursor: next}, nil
 }
 
@@ -266,6 +269,11 @@ func (s *Server) UpdateCertificate(ctx context.Context, r gen.UpdateCertificateR
 func (s *Server) DeleteCertificate(ctx context.Context, r gen.DeleteCertificateRequestObject) (gen.DeleteCertificateResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
+	}
+	if rows, err := s.queries().CountLiveGrantsByCert(ctx, []uuid.UUID{r.Id}); err != nil {
+		return nil, err
+	} else if len(rows) > 0 && rows[0].Grants > 0 {
+		return nil, conflict("This certificate is granted to %d client(s); delete those grants first.", rows[0].Grants)
 	}
 	if err := s.d.Issuance.Store.DeleteCertificate(ctx, r.OrgId, r.Id); err != nil {
 		return nil, mapErr(err)

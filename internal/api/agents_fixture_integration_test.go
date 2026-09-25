@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/crypto/cryptotest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/delivery"
 )
 
 // fakeHub records what the agents service sends to sockets.
@@ -113,4 +115,25 @@ func (f *agentFixture) activeClient(t *testing.T, name string) sqlcgen.Client {
 		t.Fatal(err)
 	}
 	return c
+}
+
+// currentCert stores an issued certificate and makes the version current.
+func (f *agentFixture) currentCert(t *testing.T, name string) (uuid.UUID, uuid.UUID) {
+	t.Helper()
+	c, v := f.issuedCert(t, name)
+	if _, err := f.pool.Exec(context.Background(), `UPDATE certificates SET current_version_id = $2, status = 'active' WHERE id = $1`, c.ID, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	return c.ID, v.ID
+}
+
+// layout stores a one-file fullchain layout.
+func (f *agentFixture) layout(t *testing.T, name, path string) uuid.UUID {
+	t.Helper()
+	files, _ := json.Marshal([]delivery.OutputFile{{Path: path, Format: "pem", Parts: []string{"fullchain"}, Mode: "0644"}})
+	l, err := f.q.CreateLayout(context.Background(), sqlcgen.CreateLayoutParams{OrgID: f.org, Name: name, Files: files})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return l.ID
 }
