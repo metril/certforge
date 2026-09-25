@@ -1027,7 +1027,7 @@ export interface paths {
         };
         /**
          * Audit chain status
-         * @description Walks the whole HMAC chain and reports the first broken row. Cached for 60 seconds. Needs audit:read in any org.
+         * @description Walks the whole HMAC chain and reports the first broken row. Cached for 60 seconds. Needs global audit:read (the chain covers every org and global events; an org-scoped auditor gets 403).
          */
         get: operations["verifyAuditChain"];
         put?: never;
@@ -4033,7 +4033,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": string;
+                    "text/csv; charset=utf-8": string;
                 };
             };
             400: components["responses"]["BadRequest"];

@@ -102,10 +102,18 @@ func (f auditFilter) countParams(limit int) sqlcgen.CountAuditEventsCappedParams
 	return p
 }
 
+// auditOut renders one queried row. Every event this package records has an
+// object for details, but a legacy or hand-inserted row could in principle
+// carry null or a non-object JSON value; rather than 500 the whole page for
+// one such row, it degrades to an empty details object.
 func auditOut(r sqlcgen.ListAuditEventsRow) (gen.AuditEvent, error) {
-	details := map[string]interface{}{}
-	if err := json.Unmarshal(r.Details, &details); err != nil {
+	var raw any
+	if err := json.Unmarshal(r.Details, &raw); err != nil {
 		return gen.AuditEvent{}, err
+	}
+	details, ok := raw.(map[string]interface{})
+	if !ok {
+		details = map[string]interface{}{}
 	}
 	return gen.AuditEvent{Id: r.ID, Ts: r.Ts, ActorType: r.ActorType, ActorId: r.ActorID, ActorName: r.ActorName, Action: r.Action,
 		ResourceType: r.ResourceType, ResourceId: r.ResourceID, OrgId: r.OrgID, Ip: r.Ip, Details: details}, nil
@@ -126,6 +134,12 @@ func (s *Server) ListAuditEvents(ctx context.Context, req gen.ListAuditEventsReq
 		limit = *pr.Limit
 	}
 	var before int64
+	// The cursor is only base64 of a decimal id, unsigned (unlike the
+	// certificate cursor, which binds sort/status/q into its payload):
+	// authorization is re-derived from the caller's own principal on every
+	// request (auditScope above), and the id alone names a position in the
+	// single id-ordered chain, so there is nothing scope- or filter-specific
+	// a forged cursor could smuggle past that re-check.
 	hasCursor := pr.Cursor != nil && *pr.Cursor != ""
 	if hasCursor {
 		b, err := base64.RawURLEncoding.DecodeString(*pr.Cursor)
@@ -189,11 +203,19 @@ func auditCSVRow(r sqlcgen.ListAuditEventsRow) []string {
 // (ordered newest first), or the first page when !hasCursor.
 type auditRowFetcher func(ctx context.Context, beforeID int64, hasCursor bool, limit int) ([]sqlcgen.ListAuditEventsRow, error)
 
-// writeAuditCSV streams up to cap rows from fetch as CSV, fetching page
-// rows at a time. A fetch error partway through does not truncate the file
-// silently: a final "#error,<message>" row is written instead, so the
-// output is visibly incomplete rather than just short.
-func writeAuditCSV(ctx context.Context, w io.Writer, fetch auditRowFetcher, capRows, page int) {
+// auditCSVErrorMessage is the fixed text of the trailing error row: the
+// underlying error can contain data an export shouldn't leak (a DB error
+// can echo back part of a query), so it never reaches the file itself, only
+// the server log via onError.
+const auditCSVErrorMessage = "export interrupted; see server log"
+
+// writeAuditCSV streams up to capRows rows from fetch as CSV, fetching page
+// rows at a time. Every data row starts with its own numeric id, so a fetch
+// error partway through is made unambiguous rather than truncating the file
+// silently: a final "#error,<message>" row is written (never a valid id),
+// and, when onError is not nil, it is called with the real error so the
+// caller can log it.
+func writeAuditCSV(ctx context.Context, w io.Writer, fetch auditRowFetcher, capRows, page int, onError func(error)) {
 	cw := csv.NewWriter(w)
 	_ = cw.Write(auditCSVHeader)
 	var before int64
@@ -205,7 +227,10 @@ func writeAuditCSV(ctx context.Context, w io.Writer, fetch auditRowFetcher, capR
 		}
 		rows, err := fetch(ctx, before, has, limit)
 		if err != nil {
-			_ = cw.Write([]string{"#error", err.Error()})
+			if onError != nil {
+				onError(err)
+			}
+			_ = cw.Write([]string{"#error", auditCSVErrorMessage})
 			break
 		}
 		for _, r := range rows {
@@ -242,24 +267,27 @@ func (s *Server) ExportAuditEvents(ctx context.Context, req gen.ExportAuditEvent
 	go func() {
 		writeAuditCSV(ctx, pw, func(ctx context.Context, before int64, has bool, limit int) ([]sqlcgen.ListAuditEventsRow, error) {
 			return s.d.Queries.ListAuditEvents(ctx, f.params(before, has, limit))
-		}, maxAuditExportRows, auditExportPage)
+		}, maxAuditExportRows, auditExportPage, func(err error) {
+			s.d.Log.Error("audit export failed mid-stream", "err", err)
+		})
 		_ = pw.Close()
 	}()
 	name := fmt.Sprintf(`attachment; filename="audit-%s.csv"`, time.Now().UTC().Format("2006-01-02"))
-	return gen.ExportAuditEvents200TextcsvResponse{Body: pr2, Headers: gen.ExportAuditEvents200ResponseHeaders{
+	return gen.ExportAuditEvents200TextcsvCharsetUtf8Response{Body: pr2, Headers: gen.ExportAuditEvents200ResponseHeaders{
 		ContentDisposition: name, XAuditTruncated: truncated}}, nil
 }
 
 // VerifyAuditChain walks the chain, caching the result for
-// Deps.AuditVerifyTTL (0 means 60 s). Needs audit:read somewhere (global or
-// in any org): chain status is not org-scoped, so any auditor may ask.
+// Deps.AuditVerifyTTL (0 means 60 s). Needs global audit:read: the chain
+// covers every org (and global events), so an org-scoped auditor may not
+// ask for it, even for their own org's events.
 func (s *Server) VerifyAuditChain(ctx context.Context, _ gen.VerifyAuditChainRequestObject) (gen.VerifyAuditChainResponseObject, error) {
 	p, ok := authn.PrincipalFrom(ctx)
 	if !ok {
 		return nil, errUnauthenticated
 	}
-	if !authz.Can(p, authz.ActionAuditRead, nil) && len(authz.OrgsWith(p, authz.ActionAuditRead)) == 0 {
-		return nil, &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "missing permission audit:read"}
+	if !authz.Can(p, authz.ActionAuditRead, nil) {
+		return nil, &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "missing permission audit:read (global)"}
 	}
 	ttl := s.d.AuditVerifyTTL
 	if ttl == 0 {

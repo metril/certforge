@@ -80,6 +80,9 @@ func TestAuditScope(t *testing.T) {
 	lab, _ := e.deps.Queries.CreateOrg(context.Background(), sqlcgenOrg("lab"))
 	auditor, _, _ := e.userSession("aud", "auditor", &home)
 	p := getAudit(t, e, auditor, "", http.StatusOK)
+	if len(p.Items) == 0 {
+		t.Fatalf("org auditor sees no events")
+	}
 	for _, it := range p.Items {
 		if it.OrgID == nil || *it.OrgID != home.String() {
 			t.Fatalf("org auditor sees %+v", it)
@@ -88,8 +91,10 @@ func TestAuditScope(t *testing.T) {
 	getAudit(t, e, auditor, "orgId="+lab.ID.String(), http.StatusForbidden)
 	viewer, _, _ := e.userSession("vic", "viewer", &home)
 	getAudit(t, e, viewer, "", http.StatusForbidden)
-	if resp, _ := e.doClient(auditor, http.MethodGet, "/api/v1/audit/verify", nil, nil); resp.StatusCode != http.StatusOK { //nolint:bodyclose // doClient closes the body
-		t.Fatalf("org auditor verify %d", resp.StatusCode)
+	// Chain verification needs global audit:read: it covers every org (and
+	// global events), so an org-scoped auditor is 403 even for their own org.
+	if resp, _ := e.doClient(auditor, http.MethodGet, "/api/v1/audit/verify", nil, nil); resp.StatusCode != http.StatusForbidden { //nolint:bodyclose // doClient closes the body
+		t.Fatalf("org auditor verify %d, want 403", resp.StatusCode)
 	}
 }
 
@@ -99,7 +104,7 @@ func TestAuditExportNeutralizesFormulas(t *testing.T) {
 	evil, evilCSRF, _ := e.userSession("=SUM(1+1)", "org-admin", &home)
 	e.doClient(evil, http.MethodPost, "/api/v1/orgs/"+home.String()+"/sites", map[string]string{"name": "x"}, http.Header{"X-Csrf-Token": {evilCSRF}}) //nolint:bodyclose // doClient closes the body
 	resp, body := e.do(http.MethodGet, "/api/v1/audit/export?action=site.create", nil, "")                                                             //nolint:bodyclose // testEnv.doRaw closes the body
-	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/csv") ||
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/csv; charset=utf-8" ||
 		!strings.Contains(resp.Header.Get("Content-Disposition"), "audit-") {
 		t.Fatalf("%d %v", resp.StatusCode, resp.Header)
 	}

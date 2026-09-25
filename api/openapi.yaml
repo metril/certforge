@@ -1292,8 +1292,8 @@ paths:
               description: "true when the 100000-row cap was hit; some events are not included."
               schema: {type: boolean}
           content:
-            text/csv:
-              schema: {type: string, format: binary, description: "CSV: id,ts,actor_type,actor_id,actor_name,action,resource_type,resource_id,org_id,ip,details."}
+            text/csv; charset=utf-8:
+              schema: {type: string, format: binary, description: "CSV: id,ts,actor_type,actor_id,actor_name,action,resource_type,resource_id,org_id,ip,details. No BOM."}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -1303,7 +1303,7 @@ paths:
       operationId: verifyAuditChain
       tags: [audit]
       summary: Audit chain status
-      description: Walks the whole HMAC chain and reports the first broken row. Cached for 60 seconds. Needs audit:read in any org.
+      description: Walks the whole HMAC chain and reports the first broken row. Cached for 60 seconds. Needs global audit:read (the chain covers every org and global events; an org-scoped auditor gets 403).
       responses:
         "200":
           description: Chain status.

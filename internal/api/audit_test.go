@@ -55,14 +55,18 @@ func rowsFetcher(pages [][]sqlcgen.ListAuditEventsRow, errAt int) auditRowFetche
 // TestWriteAuditCSVMidStreamError verifies a fetch failure partway through
 // does not truncate the CSV silently: the rows already written stay, and a
 // final "#error,<message>" row makes the file visibly incomplete instead of
-// just stopping.
+// just stopping. The row carries a fixed, generic message (never the raw
+// error, which could contain query data) and the real error is instead
+// handed to onError for logging.
 func TestWriteAuditCSVMidStreamError(t *testing.T) {
 	page := []sqlcgen.ListAuditEventsRow{{ID: 1, Action: "a"}, {ID: 2, Action: "b"}}
 	var buf strings.Builder
+	var logged error
 	// page (chunk) size == len(page) so the first fetch exactly fills its
 	// requested limit; writeAuditCSV then assumes there may be more and
 	// asks again, which is where rowsFetcher fails.
-	writeAuditCSV(context.Background(), &buf, rowsFetcher([][]sqlcgen.ListAuditEventsRow{page}, 1), 100, len(page))
+	writeAuditCSV(context.Background(), &buf, rowsFetcher([][]sqlcgen.ListAuditEventsRow{page}, 1), 100, len(page),
+		func(err error) { logged = err })
 	r := csv.NewReader(strings.NewReader(buf.String()))
 	r.FieldsPerRecord = -1 // the trailing #error row is shorter than a data row
 	rows, err := r.ReadAll()
@@ -73,8 +77,11 @@ func TestWriteAuditCSVMidStreamError(t *testing.T) {
 		t.Fatalf("rows = %d, want 4: %v", len(rows), rows)
 	}
 	last := rows[len(rows)-1]
-	if last[0] != "#error" || last[1] != "boom" {
-		t.Fatalf("last row = %v, want #error,boom", last)
+	if last[0] != "#error" || last[1] != auditCSVErrorMessage {
+		t.Fatalf("last row = %v, want #error,%q", last, auditCSVErrorMessage)
+	}
+	if logged == nil || logged.Error() != "boom" {
+		t.Fatalf("onError got %v, want boom", logged)
 	}
 }
 
@@ -86,7 +93,7 @@ func TestWriteAuditCSVCap(t *testing.T) {
 		page[i] = sqlcgen.ListAuditEventsRow{ID: int64(i + 1), Action: "a"}
 	}
 	var buf strings.Builder
-	writeAuditCSV(context.Background(), &buf, rowsFetcher([][]sqlcgen.ListAuditEventsRow{page, page, page}, -1), 12, len(page))
+	writeAuditCSV(context.Background(), &buf, rowsFetcher([][]sqlcgen.ListAuditEventsRow{page, page, page}, -1), 12, len(page), nil)
 	rows, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
 	if err != nil {
 		t.Fatalf("csv parse: %v\n%s", err, buf.String())
