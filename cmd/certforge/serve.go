@@ -13,6 +13,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/metril/certforge/internal/agentca"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/audit"
@@ -66,19 +67,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	box := crypto.EnvelopeBox{Env: env}
 	issuanceStore := issuance.NewStore(pool, box, store)
 	certStore := certstore.New(pool, box)
-	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
-	issueWorker.Log = log
-	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log)
+	agentSettings, err := agents.NewSettingsSource(store, sections, cfg.BaseURL)
 	if err != nil {
-		return fmt.Errorf("river client: %w", err)
+		return err
 	}
-	// Started with a context independent of the shutdown signal: cancelling
-	// the context passed to Start aborts running jobs immediately (river's
-	// contract), which would race the graceful drain stopRiver performs below.
-	if err := riverClient.Start(context.Background()); err != nil {
-		return fmt.Errorf("start river: %w", err)
-	}
-	defer stopRiver(riverClient, log)
+	agentCA := agentca.NewStore(pool, box)
 	// A failed canary means the derived key below cannot be trusted to be
 	// the real audit key: constructing a recording Auditor with it would
 	// write rows keyed wrong, which Rechain and Check can never verify
@@ -96,15 +89,33 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 			log.Info("audit chain re-keyed with HMAC-SHA256", "events", n)
 		}
 	}
+	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Auditor: aud, Settings: agentSettings, Log: log}
+	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
+	issueWorker.Log = log
+	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log)
+	if err != nil {
+		return fmt.Errorf("river client: %w", err)
+	}
 	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
+	// Started with a context independent of the shutdown signal: cancelling
+	// the context passed to Start aborts running jobs immediately (river's
+	// contract), which would race the graceful drain stopRiver performs below.
+	// River's RunOnStart scan and issue jobs must not run before agentSvc,
+	// issueWorker.Listeners and the hub are wired, or a version issued in
+	// that window never reaches deployments and the field writes race.
+	if err := riverClient.Start(context.Background()); err != nil {
+		return fmt.Errorf("start river: %w", err)
+	}
+	defer stopRiver(riverClient, log)
 	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
 	oidcClient := authn.NewOIDC(crypto.DeriveKey(cfg.KEK.Key, "certforge-oidc-state"), nil)
 	handler := api.NewRouter(api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, AuthSettings: authSettings, OIDC: oidcClient,
+		Agents: agentSvc, AgentSettings: agentSettings,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenHTTP,

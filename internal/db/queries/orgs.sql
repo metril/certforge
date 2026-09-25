@@ -24,7 +24,11 @@ SELECT
   (SELECT count(*) FROM cas WHERE cas.org_id = sqlc.arg(org_id)) AS cas,
   (SELECT count(*) FROM sites st WHERE st.org_id = sqlc.arg(org_id)) AS sites,
   (SELECT count(*) FROM role_bindings rb WHERE rb.org_id = sqlc.arg(org_id)) AS role_bindings,
-  (SELECT count(*) FROM api_keys k WHERE k.org_id = sqlc.arg(org_id) AND k.revoked_at IS NULL) AS api_keys;
+  (SELECT count(*) FROM api_keys k WHERE k.org_id = sqlc.arg(org_id) AND k.revoked_at IS NULL) AS api_keys,
+  (SELECT count(*) FROM clients cl WHERE cl.org_id = sqlc.arg(org_id)) AS clients,
+  (SELECT count(*) FROM output_specs o WHERE o.org_id = sqlc.arg(org_id)) AS layouts,
+  (SELECT count(*) FROM deploy_targets dt WHERE dt.org_id = sqlc.arg(org_id)) AS deploy_targets,
+  (SELECT count(*) FROM hooks h WHERE h.org_id = sqlc.arg(org_id)) AS hooks;
 
 -- name: DeleteOrg :exec
 DELETE FROM orgs WHERE id = $1;

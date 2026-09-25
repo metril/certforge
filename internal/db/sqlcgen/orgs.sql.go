@@ -19,7 +19,11 @@ SELECT
   (SELECT count(*) FROM cas WHERE cas.org_id = $1) AS cas,
   (SELECT count(*) FROM sites st WHERE st.org_id = $1) AS sites,
   (SELECT count(*) FROM role_bindings rb WHERE rb.org_id = $1) AS role_bindings,
-  (SELECT count(*) FROM api_keys k WHERE k.org_id = $1 AND k.revoked_at IS NULL) AS api_keys
+  (SELECT count(*) FROM api_keys k WHERE k.org_id = $1 AND k.revoked_at IS NULL) AS api_keys,
+  (SELECT count(*) FROM clients cl WHERE cl.org_id = $1) AS clients,
+  (SELECT count(*) FROM output_specs o WHERE o.org_id = $1) AS layouts,
+  (SELECT count(*) FROM deploy_targets dt WHERE dt.org_id = $1) AS deploy_targets,
+  (SELECT count(*) FROM hooks h WHERE h.org_id = $1) AS hooks
 `
 
 type CountOrgDependentsRow struct {
@@ -30,6 +34,10 @@ type CountOrgDependentsRow struct {
 	Sites          int64 `json:"sites"`
 	RoleBindings   int64 `json:"role_bindings"`
 	ApiKeys        int64 `json:"api_keys"`
+	Clients        int64 `json:"clients"`
+	Layouts        int64 `json:"layouts"`
+	DeployTargets  int64 `json:"deploy_targets"`
+	Hooks          int64 `json:"hooks"`
 }
 
 func (q *Queries) CountOrgDependents(ctx context.Context, orgID uuid.UUID) (CountOrgDependentsRow, error) {
@@ -43,6 +51,10 @@ func (q *Queries) CountOrgDependents(ctx context.Context, orgID uuid.UUID) (Coun
 		&i.Sites,
 		&i.RoleBindings,
 		&i.ApiKeys,
+		&i.Clients,
+		&i.Layouts,
+		&i.DeployTargets,
+		&i.Hooks,
 	)
 	return i, err
 }

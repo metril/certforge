@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
@@ -44,6 +45,9 @@ type Deps struct {
 	Issuance     *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
 	Certs        *certstore.Store  // certificate versions (Task 14)
 
+	Agents        *agents.Service        // clients, grants, sync (Phase 3)
+	AgentSettings *agents.SettingsSource // agents settings section; PUT invalidates it
+
 	// DNSTestTimeout bounds POST .../dns-credentials/{id}/test; zero means
 	// the 2-minute default (a test override, since lego's Present/CleanUp
 	// take no context and can't be preempted, only raced against a timer).
@@ -74,4 +78,13 @@ func authorize(ctx context.Context, action authz.Action, orgID *uuid.UUID) (auth
 		return p, &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: fmt.Sprintf("missing permission %s", action)}
 	}
 	return p, nil
+}
+
+// queries returns Deps.Queries, or queries over Deps.Pool when a test
+// fixture left it unset.
+func (s *Server) queries() *sqlcgen.Queries {
+	if s.d.Queries != nil {
+		return s.d.Queries
+	}
+	return sqlcgen.New(s.d.Pool)
 }

@@ -10,6 +10,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"net"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +120,18 @@ func TestParseCSRRejects(t *testing.T) {
 func TestClientIDFromCertRejectsForeign(t *testing.T) {
 	ca := testCA(t)
 	if _, err := ClientIDFromCert(ca.Cert); !errors.Is(err, ErrNotClient) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestClientIDFromCertRejectsNonCanonicalUUID(t *testing.T) {
+	id := uuid.New()
+	u, err := url.Parse(clientURIPrefix + strings.ToUpper(id.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := &x509.Certificate{URIs: []*url.URL{u}}
+	if _, err := ClientIDFromCert(cert); !errors.Is(err, ErrNotClient) {
 		t.Fatalf("err = %v", err)
 	}
 }

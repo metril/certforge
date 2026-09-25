@@ -131,7 +131,7 @@ func ClientIDFromCert(c *x509.Certificate) (uuid.UUID, error) {
 		return uuid.Nil, ErrNotClient
 	}
 	id, err := uuid.Parse(strings.TrimPrefix(c.URIs[0].String(), clientURIPrefix))
-	if err != nil {
+	if err != nil || ClientURI(id).String() != c.URIs[0].String() {
 		return uuid.Nil, ErrNotClient
 	}
 	return id, nil

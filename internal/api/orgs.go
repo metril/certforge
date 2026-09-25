@@ -115,10 +115,11 @@ func (s *Server) UpdateOrg(ctx context.Context, req gen.UpdateOrgRequestObject) 
 }
 
 // DeleteOrg removes an org that has no dependents (certificates, DNS
-// credentials, ACME accounts, CAs, sites, role bindings, or active API
-// keys). The org's own issuance-defaults row and its revoked API keys are
-// removed along with it. The row lock serializes against concurrent
-// inserts, whose foreign-key checks need a key-share lock.
+// credentials, ACME accounts, CAs, sites, role bindings, active API keys,
+// clients, layouts, deploy targets, or hooks). The org's own
+// issuance-defaults row and its revoked API keys are removed along with
+// it. The row lock serializes against concurrent inserts, whose
+// foreign-key checks need a key-share lock.
 func (s *Server) DeleteOrg(ctx context.Context, req gen.DeleteOrgRequestObject) (gen.DeleteOrgResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionOrgsWrite, nil); err != nil {
 		return nil, err
@@ -143,7 +144,8 @@ func (s *Server) DeleteOrg(ctx context.Context, req gen.DeleteOrgRequestObject) 
 		n    int64
 		noun string
 	}{{d.Certificates, "certificate"}, {d.DnsCredentials, "DNS credential"}, {d.AcmeAccounts, "ACME account"},
-		{d.Cas, "CA"}, {d.Sites, "site"}, {d.RoleBindings, "role binding"}, {d.ApiKeys, "API key"}} {
+		{d.Cas, "CA"}, {d.Sites, "site"}, {d.RoleBindings, "role binding"}, {d.ApiKeys, "API key"},
+		{d.Clients, "client"}, {d.Layouts, "layout"}, {d.DeployTargets, "deploy target"}, {d.Hooks, "hook"}} {
 		if c.n == 1 {
 			parts = append(parts, "1 "+c.noun)
 		} else if c.n > 1 {

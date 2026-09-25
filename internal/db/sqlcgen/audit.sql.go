@@ -80,10 +80,11 @@ func (q *Queries) CountLegacyAuditEvents(ctx context.Context) (int64, error) {
 
 const getAuditEvent = `-- name: GetAuditEvent :one
 SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
-       COALESCE(u.display_name, k.name, '')::text AS actor_name
+       COALESCE(u.display_name, k.name, cl.name, '')::text AS actor_name
 FROM audit_events a
 LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
 LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
+LEFT JOIN clients cl ON a.actor_type = 'agent' AND cl.id::text = a.actor_id
 WHERE a.id = $1::bigint
 `
 
@@ -174,10 +175,11 @@ func (q *Queries) LastAuditHash(ctx context.Context) ([]byte, error) {
 
 const listAuditEvents = `-- name: ListAuditEvents :many
 SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
-       COALESCE(u.display_name, k.name, '')::text AS actor_name
+       COALESCE(u.display_name, k.name, cl.name, '')::text AS actor_name
 FROM audit_events a
 LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
 LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
+LEFT JOIN clients cl ON a.actor_type = 'agent' AND cl.id::text = a.actor_id
 WHERE (NOT $1::bool OR a.ts >= $2::timestamptz)
   AND (NOT $3::bool OR a.ts < $4::timestamptz)
   AND ($5::text = '' OR a.actor_id = $5::text)

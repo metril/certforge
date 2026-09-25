@@ -17,7 +17,7 @@ UPDATE agent_cas SET status = 'retiring' WHERE status = 'active';
 UPDATE agent_cas SET status = 'retired' WHERE id = $1 RETURNING *;
 
 -- name: ListTrustedAgentCAs :many
-SELECT * FROM agent_cas WHERE status <> 'retired' ORDER BY created_at, id;
+SELECT id, cert_der, status, not_after FROM agent_cas WHERE status <> 'retired' ORDER BY created_at, id;
 
 -- name: GetOldestTrustedAgentCA :one
 SELECT * FROM agent_cas WHERE status <> 'retired' ORDER BY created_at, id LIMIT 1;

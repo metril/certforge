@@ -154,26 +154,30 @@ func (q *Queries) ListAgentCAs(ctx context.Context) ([]ListAgentCAsRow, error) {
 }
 
 const listTrustedAgentCAs = `-- name: ListTrustedAgentCAs :many
-SELECT id, cert_der, key, status, not_before, not_after, created_at FROM agent_cas WHERE status <> 'retired' ORDER BY created_at, id
+SELECT id, cert_der, status, not_after FROM agent_cas WHERE status <> 'retired' ORDER BY created_at, id
 `
 
-func (q *Queries) ListTrustedAgentCAs(ctx context.Context) ([]AgentCa, error) {
+type ListTrustedAgentCAsRow struct {
+	ID       uuid.UUID `json:"id"`
+	CertDer  []byte    `json:"cert_der"`
+	Status   string    `json:"status"`
+	NotAfter time.Time `json:"not_after"`
+}
+
+func (q *Queries) ListTrustedAgentCAs(ctx context.Context) ([]ListTrustedAgentCAsRow, error) {
 	rows, err := q.db.Query(ctx, listTrustedAgentCAs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []AgentCa{}
+	items := []ListTrustedAgentCAsRow{}
 	for rows.Next() {
-		var i AgentCa
+		var i ListTrustedAgentCAsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CertDer,
-			&i.Key,
 			&i.Status,
-			&i.NotBefore,
 			&i.NotAfter,
-			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

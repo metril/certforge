@@ -14,30 +14,6 @@ import (
 // errNotImplemented answers Phase 3 operations until their task lands.
 var errNotImplemented = &HTTPError{Status: http.StatusNotImplemented, Title: "Not implemented", Detail: "This operation arrives later in Phase 3."}
 
-func (s *Server) ListClients(context.Context, gen.ListClientsRequestObject) (gen.ListClientsResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) CreateClient(context.Context, gen.CreateClientRequestObject) (gen.CreateClientResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) ListAllClients(context.Context, gen.ListAllClientsRequestObject) (gen.ListAllClientsResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) GetClient(context.Context, gen.GetClientRequestObject) (gen.GetClientResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) UpdateClient(context.Context, gen.UpdateClientRequestObject) (gen.UpdateClientResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) DeleteClient(context.Context, gen.DeleteClientRequestObject) (gen.DeleteClientResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) RevokeClient(context.Context, gen.RevokeClientRequestObject) (gen.RevokeClientResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) ReenrollClient(context.Context, gen.ReenrollClientRequestObject) (gen.ReenrollClientResponseObject, error) {
-	return nil, errNotImplemented
-}
 func (s *Server) ListClientGrants(context.Context, gen.ListClientGrantsRequestObject) (gen.ListClientGrantsResponseObject, error) {
 	return nil, errNotImplemented
 }

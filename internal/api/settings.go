@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
@@ -71,6 +72,9 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 		if s.d.OIDC != nil {
 			s.d.OIDC.Forget()
 		}
+	}
+	if sec.Name == agents.SettingsSection && s.d.AgentSettings != nil {
+		s.d.AgentSettings.Invalidate()
 	}
 	after, err := sec.Public(raw)
 	if err != nil {
