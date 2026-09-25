@@ -118,7 +118,6 @@ func (e *agentEnv) post(t *testing.T, hc *http.Client, path string, body, out an
 	return code
 }
 
-//nolint:unused // agent GET routes (heartbeat, sync) arrive in a later task.
 func (e *agentEnv) get(t *testing.T, hc *http.Client, path string, out any) int {
 	t.Helper()
 	code, err := doAgent(hc, http.MethodGet, e.ts.URL+path, nil, out)

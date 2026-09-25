@@ -42,8 +42,8 @@ type Service struct {
 	Log      *slog.Logger
 	Now      func() time.Time
 
-	seenMu sync.Mutex              //nolint:unused // used by a later task's heartbeat handler.
-	seen   map[uuid.UUID]time.Time //nolint:unused // last_seen write coalescing, used by a later task's heartbeat handler.
+	seenMu sync.Mutex
+	seen   map[uuid.UUID]time.Time // last_seen write coalescing; touch writes at most once per touchEvery.
 }
 
 func (s *Service) now() time.Time {

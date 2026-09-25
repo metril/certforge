@@ -14,9 +14,6 @@ import (
 // errNotImplemented answers Phase 3 operations until their task lands.
 var errNotImplemented = &HTTPError{Status: http.StatusNotImplemented, Title: "Not implemented", Detail: "This operation arrives later in Phase 3."}
 
-func (s *Server) ListClientHookRuns(context.Context, gen.ListClientHookRunsRequestObject) (gen.ListClientHookRunsResponseObject, error) {
-	return nil, errNotImplemented
-}
 func (s *Server) ListAgentCAs(context.Context, gen.ListAgentCAsRequestObject) (gen.ListAgentCAsResponseObject, error) {
 	return nil, errNotImplemented
 }

@@ -155,3 +155,46 @@ A grant is a client × certificate assignment with a layout and/or a deploy targ
 A new certificate version is rendered by `agents.Service.OnVersion` (the `issuance.VersionListener`) in its own transaction after the issuance commit, not the issuance transaction itself; a failed or lost `OnVersion` (for example the process stopping between commit and the listener call) is caught by an hourly river job, `SweepDeployments`, that re-renders every live grant whose deployment is behind its certificate's current version. Both re-render one client per transaction, so a render failure for one client (a corrupted deploy target config, say) is logged and does not block or roll back any other client's update. `render` always locks every affected client `FOR UPDATE` before it writes a deployment row, in every caller, so a grant write (which already holds its one client's lock) and a resync (layout/target/hook change, a new version, the sweep, or a certificate rename) can never take the two locks in opposite orders. Renaming a certificate re-renders and path-checks its live grants in the same transaction as the rename, since a Traefik target's paths depend on `SafeName(certificate name)`.
 
 Two grants on one client may never write the same path — including a Traefik target's generated `certs/<SafeName>/*` files, so two certificates whose names share a `SafeName` collide — checked across the client's live grants and any still awaiting removal (their last-rendered `expected` paths count, falling back to their layout/target definition when nothing was ever rendered); a conflicting create, update, layout/target update or certificate rename returns 409. Deleting a grant of a client that has ever actually applied a revision marks it `removed_at` and bumps the revision so the agent can delete its files on its own schedule; the row is only deleted once the agent's next report confirms the files are gone. A grant of a client that is revoked, or is pending and has never applied any revision (no agent ever could have written its files), has no agent to act on it, so the delete removes the row at once — including a client that re-enrolled after deploying, which keeps the soft-delete path since files from before the re-enrolment may still be on disk. Deleting a certificate locks it and counts its live and removal-pending grants (not just live ones, since `cert_id` cascades) in one transaction; creating a grant locks the certificate in a compatible-but-exclusive mode, so the two can never race each other into a dangling grant.
+
+## Agent protocol
+
+The agent listener (`CF_LISTEN_AGENT`, mutual TLS against the internal agent CA — ADR 0009) serves `/agent/v1/*`, a small `net/http` surface separate from the OpenAPI-documented `/api/v1/*`. Every route but `/agent/v1/enroll` runs behind `requireAgent`, which admits only a client certificate the agent CA store still trusts, mapped by its embedded client id to an `active` client whose serial matches the newest one issued to it.
+
+Endpoints:
+- `POST /agent/v1/enroll` — consumes a one-time token and a CSR, returns a signed agent certificate, the trust bundle and the agent URL.
+- `POST /agent/v1/renew` — a certificate for an authenticated agent, near expiry or replaced.
+- `GET /agent/v1/assignments` — the client's current grants and pending removals, keyed to `clients.desired_revision`.
+- `GET /agent/v1/grants/{id}/bundle` — the one grant's rendered files (and, for a deploy target, key material), audited as `grant.bundle_fetched`.
+- `POST /agent/v1/report` — deployment outcomes, hook runs and removal confirmations for one revision.
+- `POST /agent/v1/heartbeat` — installed-file digests, re-checked against drift between reports.
+- `GET /agent/v1/ws` — the WebSocket session an agent holds while connected (push `sync` nudges, arrives in Task 9).
+
+`agentproto.Assignments` (the `GET /agent/v1/assignments` body):
+```
+{revision, grants: [{id, certificateId, certificateName, versionId, fingerprint, delivery, files: [{path, owner, group, mode, sha256}], target: {type, config}|null, hooks: [{id, phase, argv, timeoutSeconds}]}], removed: [{id, files: [path...], target}]}
+```
+A grant appears in `grants` once its certificate has an issued version; a grant marked `removed_at` appears in `removed` instead, listing the paths it last wrote so the agent knows what to delete, until a report for it comes back `ok`.
+
+`agentproto.Report` (the `POST /agent/v1/report` body, also the WebSocket `deploy_result` message):
+```
+{revision, results: [{grantId, versionId, state, installed: [{path, sha256}], error, hookRuns: [{hookId, phase, argv, exitCode, durationMs, stdout, stderr}]}]}
+```
+A result for a grant the client no longer holds, or whose `versionId` is not the deployment's current one, is ignored — a late or foreign report changes nothing. `Report` and `Heartbeat` both lock the client row (`LockClientByID`) before locking its deployment rows (`ClientDeployments ... FOR UPDATE OF d`), the same client-then-deployment order every grant-writing path in this service uses. `clients.applied_revision` only ever advances, capped at `desired_revision`, so a report for a revision older than the last one applied cannot move it backwards.
+
+Drift: a deployment's state is `pending` until the first report, then `ok` or `drift`/`failed` from comparing `deployments.expected` (what the server rendered) against what the agent says it installed — a report's own `installed` digests, or a heartbeat's. `HeartbeatState` only re-checks a deployment already `ok` or `drift`; `pending` and `failed` deployments wait for a report instead. Every state transition is audited exactly once, as `deployment.ok`/`deployment.failed`/`deployment.drift`, not on every report or heartbeat that merely repeats the current state. A grant with `auto_remediate` set bumps `clients.desired_revision` (and nudges over the hub for a push grant) the moment its deployment turns `drift`, so the agent redeploys on its own without an operator's redeploy.
+
+```mermaid
+sequenceDiagram
+  participant A as certforge-agent
+  participant S as Server (agent listener)
+  S-->>A: sync{revision} (socket, push grants)
+  A->>S: GET /agent/v1/assignments
+  S-->>A: {revision, grants[files+sha256, target, hooks], removed[]}
+  A->>S: GET /agent/v1/grants/{id}/bundle (changed grants only)
+  S-->>A: {versionId, files[contentBase64], material?}
+  Note over A: pre_deploy hooks, write temp+fsync+rename, target, post_deploy hooks
+  A->>S: POST /agent/v1/report (or deploy_result on the socket)
+  loop every heartbeatSeconds
+    A->>S: heartbeat{installed[grantId, path, sha256, mtime]}
+  end
+```

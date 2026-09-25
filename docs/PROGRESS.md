@@ -169,8 +169,8 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 | 4 | Clients API | done | d4bf277 |
 | 5 | Agent listener and enrolment | done | 7a9535c |
 | 6 | Layouts, targets and hooks | done | 4d7fe77 |
-| 7 | Grants and revisions | done | pending |
-| 8 | Agent sync over REST | todo | – |
+| 7 | Grants and revisions | done | fbad6f6 |
+| 8 | Agent sync over REST | done | pending |
 | 9 | WebSocket hub | todo | – |
 | 10 | Agent CA API | todo | – |
 | 11 | Agent identity and enrolment | todo | – |

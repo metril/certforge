@@ -59,7 +59,6 @@ func (h *fakeHub) Broadcast(m agentproto.Message) int {
 	return len(h.online)
 }
 
-//nolint:unused // used by a later task's tests that assert what the hub sent.
 func (h *fakeHub) messages(id uuid.UUID) []agentproto.Message {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -1,0 +1,204 @@
+//go:build integration
+
+package api
+
+import (
+	"context"
+	"crypto/tls"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/metril/certforge/internal/agentproto"
+	"github.com/metril/certforge/internal/agents"
+	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/delivery"
+)
+
+// enrolledWithGrant enrols an agent and grants it a current certificate
+// through a one-file layout.
+func (e *agentEnv) enrolledWithGrant(t *testing.T, name string, autoRemediate bool) (tls.Certificate, sqlcgen.Client, uuid.UUID) {
+	t.Helper()
+	en := e.newClient(t, name)
+	cert, _, code := e.enroll(t, en.Token)
+	if code != http.StatusOK {
+		t.Fatalf("enroll %d", code)
+	}
+	certID, _ := e.currentCert(t, name+"-cert")
+	layout := e.layout(t, name+"-layout", "/etc/ssl/"+name+".pem")
+	gid, err := e.svc.CreateGrant(e.as("operator"), e.org, en.Client.ID, agents.GrantInput{CertID: certID, Delivery: "push", LayoutID: &layout, AutoRemediate: autoRemediate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := e.q.GetClientByID(context.Background(), en.Client.ID)
+	return cert, c, gid
+}
+
+func (e *agentEnv) deploymentState(t *testing.T, gid uuid.UUID) string {
+	t.Helper()
+	var s string
+	if err := e.pool.QueryRow(context.Background(), `SELECT state FROM deployments WHERE grant_id = $1`, gid).Scan(&s); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func okReport(as agentproto.Assignments) agentproto.Report {
+	rep := agentproto.Report{Revision: as.Revision}
+	for _, a := range as.Grants {
+		res := agentproto.GrantResult{GrantID: a.ID, VersionID: a.VersionID, State: agentproto.StateOK}
+		for _, f := range a.Files {
+			res.Installed = append(res.Installed, agentproto.FileDigest{Path: f.Path, SHA256: f.SHA256})
+		}
+		rep.Results = append(rep.Results, res)
+	}
+	return rep
+}
+
+func TestAssignmentsBundleReport(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, c, gid := e.enrolledWithGrant(t, "web-1", false)
+	hc := e.httpClient(t, &cert)
+	var as agentproto.Assignments
+	if code := e.get(t, hc, "/agent/v1/assignments", &as); code != http.StatusOK || as.Revision != 1 || len(as.Grants) != 1 || len(as.Removed) != 0 {
+		t.Fatalf("assignments %d %+v", code, as)
+	}
+	a := as.Grants[0]
+	if a.ID != gid || a.CertificateName != "web-1-cert" || a.Fingerprint == "" || a.Target != nil || len(a.Files) != 1 || a.Files[0].Path != "/etc/ssl/web-1.pem" {
+		t.Fatalf("assignment %+v", a)
+	}
+	var b agentproto.Bundle
+	if code := e.get(t, hc, "/agent/v1/grants/"+gid.String()+"/bundle", &b); code != http.StatusOK || b.VersionID != a.VersionID ||
+		len(b.Files) != 1 || delivery.Digest(b.Files[0].Content) != a.Files[0].SHA256 || b.Material != nil {
+		t.Fatalf("bundle %d %+v", code, b)
+	}
+	var actor string
+	_ = e.pool.QueryRow(context.Background(), `SELECT actor_id FROM audit_events WHERE action = 'grant.bundle_fetched'`).Scan(&actor)
+	if actor != c.ID.String() {
+		t.Fatalf("bundle audit actor %q", actor)
+	}
+	for range 2 {
+		if code := e.post(t, hc, "/agent/v1/report", okReport(as), nil); code != http.StatusNoContent {
+			t.Fatalf("report %d", code)
+		}
+	}
+	cl, _ := e.q.GetClientByID(context.Background(), c.ID)
+	if e.deploymentState(t, gid) != "ok" || cl.AppliedRevision != 1 || e.auditCount(t, "deployment.ok") != 1 {
+		t.Fatalf("state %s applied %d audits %d", e.deploymentState(t, gid), cl.AppliedRevision, e.auditCount(t, "deployment.ok"))
+	}
+}
+
+func TestHeartbeatDriftAndRemediate(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, c, gid := e.enrolledWithGrant(t, "web-1", true)
+	hc := e.httpClient(t, &cert)
+	var as agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as)
+	e.post(t, hc, "/agent/v1/report", okReport(as), nil)
+	path := as.Grants[0].Files[0].Path
+	bad := agentproto.Heartbeat{Installed: []agentproto.InstalledFile{{GrantID: gid, Path: path, SHA256: "0000", MTime: time.Now()}}}
+	for range 2 {
+		if code := e.post(t, hc, "/agent/v1/heartbeat", bad, nil); code != http.StatusNoContent {
+			t.Fatalf("heartbeat %d", code)
+		}
+	}
+	cl, _ := e.q.GetClientByID(context.Background(), c.ID)
+	if e.deploymentState(t, gid) != "drift" || e.auditCount(t, "deployment.drift") != 1 || cl.DesiredRevision != 2 {
+		t.Fatalf("drift: state %s audits %d rev %d", e.deploymentState(t, gid), e.auditCount(t, "deployment.drift"), cl.DesiredRevision)
+	}
+	msgs := e.hub.messages(c.ID)
+	if len(msgs) != 2 || msgs[1] != agentproto.Message(agentproto.Sync{Revision: 2}) {
+		t.Fatalf("remediation nudge %v", msgs)
+	}
+	good := agentproto.Heartbeat{Installed: []agentproto.InstalledFile{{GrantID: gid, Path: path, SHA256: as.Grants[0].Files[0].SHA256, MTime: time.Now()}}}
+	e.post(t, hc, "/agent/v1/heartbeat", good, nil)
+	if e.deploymentState(t, gid) != "ok" || e.auditCount(t, "deployment.ok") != 2 {
+		t.Fatalf("recovered: %s", e.deploymentState(t, gid))
+	}
+}
+
+// Review Focus: an agent reaching beyond its own grants.
+func TestBundleOtherClientGrant(t *testing.T) {
+	e := newAgentEnv(t)
+	certA, _, gidA := e.enrolledWithGrant(t, "web-a", false)
+	certB, _, _ := e.enrolledWithGrant(t, "web-b", false)
+	if code := e.get(t, e.httpClient(t, &certB), "/agent/v1/grants/"+gidA.String()+"/bundle", nil); code != http.StatusNotFound {
+		t.Fatalf("other client's grant %d", code)
+	}
+	if code := e.get(t, e.httpClient(t, &certA), "/agent/v1/grants/not-a-uuid/bundle", nil); code != http.StatusNotFound {
+		t.Fatalf("bad id %d", code)
+	}
+	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gidA); err != nil {
+		t.Fatal(err)
+	}
+	if code := e.get(t, e.httpClient(t, &certA), "/agent/v1/grants/"+gidA.String()+"/bundle", nil); code != http.StatusNotFound {
+		t.Fatalf("removed grant %d", code)
+	}
+}
+
+// Review Focus: late or foreign reports change nothing.
+func TestReportStaleVersionIgnored(t *testing.T) {
+	e := newAgentEnv(t)
+	certA, _, gidA := e.enrolledWithGrant(t, "web-a", false)
+	certB, _, _ := e.enrolledWithGrant(t, "web-b", false)
+	stale := agentproto.Report{Revision: 1, Results: []agentproto.GrantResult{{GrantID: gidA, VersionID: uuid.New(), State: "ok"}}}
+	e.post(t, e.httpClient(t, &certA), "/agent/v1/report", stale, nil)
+	var as agentproto.Assignments
+	e.get(t, e.httpClient(t, &certA), "/agent/v1/assignments", &as)
+	e.post(t, e.httpClient(t, &certB), "/agent/v1/report", okReport(as), nil)
+	if s := e.deploymentState(t, gidA); s != "pending" {
+		t.Fatalf("state %s", s)
+	}
+}
+
+func TestRemovedGrantConfirmed(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, _, gid := e.enrolledWithGrant(t, "web-1", false)
+	hc := e.httpClient(t, &cert)
+	var before agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &before)
+	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gid); err != nil {
+		t.Fatal(err)
+	}
+	var as agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as)
+	if len(as.Grants) != 0 || len(as.Removed) != 1 || as.Removed[0].ID != gid || as.Removed[0].Files[0] != before.Grants[0].Files[0].Path {
+		t.Fatalf("assignments %+v", as)
+	}
+	e.post(t, hc, "/agent/v1/report", agentproto.Report{Revision: as.Revision, Results: []agentproto.GrantResult{{GrantID: gid, State: "ok"}}}, nil)
+	var n int
+	_ = e.pool.QueryRow(context.Background(), `SELECT count(*) FROM client_cert_grants WHERE id = $1`, gid).Scan(&n)
+	if n != 0 {
+		t.Fatal("removed grant not deleted after confirmation")
+	}
+}
+
+func TestReportFailedAndHookRuns(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, c, gid := e.enrolledWithGrant(t, "web-1", false)
+	hc := e.httpClient(t, &cert)
+	var as agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as)
+	rep := agentproto.Report{Revision: as.Revision, Results: []agentproto.GrantResult{{GrantID: gid, VersionID: as.Grants[0].VersionID,
+		State: "failed", Error: "pre_deploy hook /bin/false exited 1; files were not written",
+		HookRuns: []agentproto.HookRun{{HookID: uuid.New(), Phase: "pre_deploy", Argv: []string{"/bin/false"}, ExitCode: 1,
+			DurationMS: 3, Stdout: strings.Repeat("x", 9000), Stderr: "bad\x00byte"}}}}}
+	if code := e.post(t, hc, "/agent/v1/report", rep, nil); code != http.StatusNoContent {
+		t.Fatalf("report %d", code)
+	}
+	if e.deploymentState(t, gid) != "failed" || e.auditCount(t, "deployment.failed") != 1 || e.auditCount(t, "hook.run") != 1 {
+		t.Fatal("failed report not recorded")
+	}
+	res, err := e.srv.ListClientHookRuns(e.as("viewer"), gen.ListClientHookRunsRequestObject{OrgId: e.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := res.(gen.ListClientHookRuns200JSONResponse).Items
+	if len(runs) != 1 || runs[0].ExitCode != 1 || len(runs[0].Stdout) != 8192 || runs[0].HookId != nil || runs[0].Stderr != "badbyte" || runs[0].HookName != "" {
+		t.Fatalf("runs %+v", runs)
+	}
+}

@@ -42,6 +42,10 @@ func NewAgentRouter(d Deps) http.Handler {
 		v1.Group(func(g chi.Router) {
 			g.Use(a.requireAgent)
 			g.Post("/renew", a.renew)
+			g.Get("/assignments", a.assignments)
+			g.Get("/grants/{id}/bundle", a.bundle)
+			g.Post("/report", a.report)
+			g.Post("/heartbeat", a.heartbeat)
 		})
 	})
 	return r
