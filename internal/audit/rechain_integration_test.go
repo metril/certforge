@@ -94,11 +94,13 @@ func TestRechainRefusesTamperedLegacyChain(t *testing.T) {
 	}
 }
 
-// TestCheckRejectsLegacyAfterRechain covers controller ruling C1: once
-// Rechain has run and chainKeyedSettingKey is set, Check rejects ANY
-// sha256-algorithm row as broken, even one appended after the chain was
-// re-keyed (a downgrade attempt, whether from a bug or an attacker with
-// direct DB access), not just rows predating the re-chain.
+// TestCheckRejectsLegacyAfterRechain covers the monotonic downgrade gate
+// (controller ruling, fix round 1): once a hmac-sha256 row has been seen in
+// chain order, Check and Rechain both reject ANY later sha256-algorithm row
+// as broken — even one appended after the chain was re-keyed and internally
+// consistent under its own stored algorithm (a downgrade attempt, whether
+// from a bug or an attacker with direct DB access) — and Rechain must never
+// launder such a row into a freshly-rewritten, valid HMAC row.
 func TestCheckRejectsLegacyAfterRechain(t *testing.T) {
 	pool, q := dbtest.New(t)
 	ctx := context.Background()
@@ -131,5 +133,48 @@ func TestCheckRejectsLegacyAfterRechain(t *testing.T) {
 	r, err := a.Check(ctx)
 	if err != nil || r.OK || r.BrokenAtID == 0 {
 		t.Fatalf("check should reject the legacy row: %+v %v", r, err)
+	}
+
+	// Rechain must refuse too, and must not launder the forged row into a
+	// freshly-rewritten valid HMAC row: it stays sha256, unchanged.
+	if _, err := a.Rechain(ctx); !errors.Is(err, audit.ErrChainBroken) {
+		t.Fatalf("rechain should refuse the forged row: err = %v", err)
+	}
+	if n, _ := q.CountLegacyAuditEvents(ctx); n != 1 {
+		t.Fatalf("forged row was laundered: %d legacy rows left, want 1", n)
+	}
+}
+
+// TestTriggerRejectsRelabelToLegacy covers fix round 1, item 2: migration
+// 00006's append-only trigger allows an UPDATE that touches only hash,
+// prev_hash and hash_alg (what Rechain performs), but only when the new
+// hash_alg stays hmac-sha256 — it refuses to relabel a row back to sha256
+// even via that narrow allowance. A same-shaped update that keeps
+// hmac-sha256 is accepted by the trigger (it proves nothing about the hash
+// itself), and Check — verifying with the real key — is what actually
+// catches the wrong hash it wrote.
+func TestTriggerRejectsRelabelToLegacy(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	ctx := context.Background()
+	a := audit.New(pool, testKey)
+	if err := a.Record(ctx, audit.Event{Action: "x", ResourceType: "y"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The trigger rejects a hash-only update that relabels to sha256, even
+	// though it touches only the three allowed columns.
+	_, err := pool.Exec(ctx, `UPDATE audit_events SET hash = hash, prev_hash = prev_hash, hash_alg = 'sha256' WHERE id = 1`)
+	if err == nil {
+		t.Fatal("trigger allowed relabelling a row back to sha256")
+	}
+
+	// The trigger accepts a hash-only update that keeps hmac-sha256, even
+	// with a wrong hash: the trigger is not a proof of integrity by itself.
+	if _, err := pool.Exec(ctx, `UPDATE audit_events SET hash = '\x00', prev_hash = prev_hash, hash_alg = 'hmac-sha256' WHERE id = 1`); err != nil {
+		t.Fatalf("trigger should have accepted a same-algorithm hash update: %v", err)
+	}
+	r, err := a.Check(ctx)
+	if err != nil || r.OK || r.BrokenAtID != 1 {
+		t.Fatalf("check should have caught the wrong hash: %+v %v", r, err)
 	}
 }

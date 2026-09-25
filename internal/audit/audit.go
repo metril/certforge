@@ -23,11 +23,13 @@ import (
 
 const lockKey int64 = 0x43460002
 
-// chainKeyedSettingKey marks (in the settings table) that Rechain has run
-// and no legacy sha256 row remains. Once set, Check rejects any sha256 row
-// outright, including one appended after the chain was re-keyed (controller
-// ruling C1): a downgrade back to the unkeyed algorithm is never valid once
-// the chain has been keyed.
+// chainKeyedSettingKey records, informationally, that Rechain has run and no
+// legacy sha256 row remained at that point. It is never the security gate:
+// a settings-table flag can drift from the chain's actual contents (rolled
+// back, edited by a bug, restored from an older backup), so the real
+// downgrade gate is the monotonic rule enforced in Check and Rechain below
+// (controller ruling, fix round 1) — once any hmac-sha256 row has been seen
+// walking the chain in order, no later row may be sha256, full stop.
 const chainKeyedSettingKey = "audit.chain_keyed"
 
 // ErrChainBroken means a stored event does not match its hash chain.
@@ -143,29 +145,32 @@ type VerifyResult struct {
 	HeadHash   []byte // hash of the last good row
 }
 
-// Check walks the whole chain. A mismatch is a result, not an error. Once
-// the chain has been keyed (chainKeyedSettingKey is set), any row still
-// stored under the legacy algorithm is reported broken outright, even one
-// appended after the chain was re-keyed.
+// Check walks the whole chain. A mismatch is a result, not an error. The
+// downgrade gate is monotonic and depends only on the rows themselves, never
+// on the informational chainKeyedSettingKey flag: once a hmac-sha256 row has
+// been seen (in chain order), any later sha256 row is reported broken
+// outright, even one correctly chained under its own stored algorithm —
+// tampering can forge a legacy-formula hash without the key, so a row's own
+// internal consistency proves nothing once a keyed row has already appeared.
 func (a *Auditor) Check(ctx context.Context) (VerifyResult, error) {
 	const page = 500
 	q := sqlcgen.New(a.pool)
-	keyed, err := a.chainKeyed(ctx, q)
-	if err != nil {
-		return VerifyResult{}, err
-	}
 	res := VerifyResult{OK: true, HeadHash: genesis}
 	prev := genesis
 	var after int64
+	seenHMAC := false
 	for {
 		rows, err := q.ListAuditEventsAsc(ctx, sqlcgen.ListAuditEventsAscParams{ID: after, Limit: page})
 		if err != nil {
 			return res, err
 		}
 		for _, ev := range rows {
-			if keyed && ev.HashAlg != HashAlgHMAC {
+			if seenHMAC && ev.HashAlg != HashAlgHMAC {
 				res.OK, res.BrokenAtID = false, ev.ID
 				return res, nil
+			}
+			if ev.HashAlg == HashAlgHMAC {
+				seenHMAC = true
 			}
 			if !a.rowOK(ev, prev) {
 				res.OK, res.BrokenAtID = false, ev.ID
@@ -202,32 +207,20 @@ func (a *Auditor) rowOK(ev sqlcgen.AuditEvent, prev []byte) bool {
 	return want != nil && bytes.Equal(ev.PrevHash, prev) && bytes.Equal(ev.Hash, want)
 }
 
-// chainKeyed reports whether chainKeyedSettingKey is set.
-func (a *Auditor) chainKeyed(ctx context.Context, q *sqlcgen.Queries) (bool, error) {
-	row, err := q.GetSetting(ctx, chainKeyedSettingKey)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("audit: %s: %w", chainKeyedSettingKey, err)
-	}
-	var v bool
-	if err := json.Unmarshal(row.Value, &v); err != nil {
-		return false, fmt.Errorf("audit: %s: %w", chainKeyedSettingKey, err)
-	}
-	return v, nil
-}
-
 // Rechain converts the chain to HMAC-SHA256 once, under the append advisory
-// lock. Every row is first verified with its stored algorithm; if any fails,
-// nothing is changed and ErrChainBroken is returned, so tampering is never
-// laundered into a valid keyed chain. It does not disable the append-only
-// trigger (that would need table ownership); the trigger itself allows the
-// three-column update Rechain performs (migration 00006, ADR 0008). Once no
+// lock. Every row is first verified with its stored algorithm — subject to
+// the same monotonic downgrade gate as Check, so a sha256 row appended after
+// a hmac-sha256 row is refused rather than laundered into a freshly-rewritten
+// valid HMAC row — and if any check fails, nothing is changed and
+// ErrChainBroken is returned. It does not disable the append-only trigger
+// (that would need table ownership); the trigger itself allows the
+// three-column update Rechain performs (migration 00006, ADR 0008), and only
+// ever to hmac-sha256 — it can never relabel a row back to sha256. Once no
 // legacy row remains — whether because this call converted the last of them
-// or because there never were any — it persists chainKeyedSettingKey in the
-// same transaction as the re-chain commit, so Check starts rejecting any
-// legacy-algorithm row from then on. Returns the number of rows rewritten.
+// or because there never were any — it also writes the informational
+// chainKeyedSettingKey flag in the same transaction as the re-chain commit
+// (never read back as a security gate; see its doc comment). Returns the
+// number of rows rewritten.
 func (a *Auditor) Rechain(ctx context.Context) (int64, error) {
 	const page = 500
 	tx, err := a.pool.Begin(ctx)
@@ -247,12 +240,19 @@ func (a *Auditor) Rechain(ctx context.Context) (int64, error) {
 	if legacy > 0 {
 		oldPrev, newPrev := genesis, genesis
 		var after int64
+		seenHMAC := false
 		for {
 			rows, err := q.ListAuditEventsAsc(ctx, sqlcgen.ListAuditEventsAscParams{ID: after, Limit: page})
 			if err != nil {
 				return 0, err
 			}
 			for _, ev := range rows {
+				if seenHMAC && ev.HashAlg != HashAlgHMAC {
+					return 0, fmt.Errorf("%w at id %d; chain not re-keyed", ErrChainBroken, ev.ID)
+				}
+				if ev.HashAlg == HashAlgHMAC {
+					seenHMAC = true
+				}
 				if !a.rowOK(ev, oldPrev) {
 					return 0, fmt.Errorf("%w at id %d; chain not re-keyed", ErrChainBroken, ev.ID)
 				}
@@ -278,7 +278,13 @@ func (a *Auditor) Rechain(ctx context.Context) (int64, error) {
 }
 
 // sum is the chain link: H(prev, ts, actor, action, resource, org, ip,
-// canonical details) with H = SHA-256 (legacy) or HMAC-SHA256(key).
+// canonical details) with H = SHA-256 (legacy) or HMAC-SHA256(key). For
+// HashAlgHMAC the algorithm label itself is folded into the MAC input first
+// (fix round 1, item 3), so hash_alg cannot be swapped on a row without
+// invalidating its hash: the hash commits to which algorithm produced it,
+// not just to the fields that algorithm happened to cover. Legacy sha256
+// rows keep their original, unprefixed formula unchanged, so Rechain can
+// still verify rows written before this field existed.
 func (a *Auditor) sum(alg string, prev []byte, ts time.Time, actorType, actorID, action, resourceType, resourceID string,
 	orgID *uuid.UUID, ip string, details []byte) []byte {
 	var h hash.Hash
@@ -287,6 +293,8 @@ func (a *Auditor) sum(alg string, prev []byte, ts time.Time, actorType, actorID,
 		h = sha256.New()
 	case HashAlgHMAC:
 		h = hmac.New(sha256.New, a.key)
+		h.Write([]byte(HashAlgHMAC))
+		h.Write([]byte{0})
 	default:
 		return nil
 	}
