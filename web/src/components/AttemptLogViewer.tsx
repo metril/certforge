@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, CircleX, Copy, Loader2, type LucideIcon } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, CircleX, Copy, Loader2, TriangleAlert, type LucideIcon } from 'lucide-react';
 import type { Attempt, AttemptStep } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -28,7 +28,14 @@ const STEP: Record<string, { icon: LucideIcon; cls: string; label: string }> = {
 };
 
 function StepRow({ step, expanded }: { step: AttemptStep; expanded: boolean }) {
-  const [open, setOpen] = useState(expanded);
+  // Fix round 1 (review, Important): `useState(expanded)` only reads `expanded`
+  // on first mount, so a step that turns from running to failed on a later
+  // poll (same StepRow instance — same key) kept its message hidden forever,
+  // with no toggle to open it (the toggle itself is only rendered while
+  // `!expanded`). `override` is the user's explicit choice, if any; absent
+  // one, `open` tracks `expanded` reactively every render.
+  const [override, setOverride] = useState<boolean | null>(null);
+  const open = override ?? expanded;
   const m = STEP[step.status] ?? STEP.pending!;
   const Icon = m.icon;
   const dur = step.finishedAt ? fmtDuration(Date.parse(step.finishedAt) - Date.parse(step.startedAt)) : null;
@@ -40,7 +47,7 @@ function StepRow({ step, expanded }: { step: AttemptStep; expanded: boolean }) {
         <span className={step.status === 'failed' ? 'font-semibold' : undefined}>{step.name}</span>
         {dur && <span className="text-xs text-ink-muted">{dur}</span>}
         {step.message && !expanded && (
-          <Button variant="link" size="sm" className="h-auto px-0" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <Button variant="link" size="sm" className="h-auto px-0" aria-expanded={open} onClick={() => setOverride(!open)}>
             {open ? 'Hide details' : 'Details'}
           </Button>
         )}
@@ -54,6 +61,16 @@ export function AttemptLogViewer({ attempt, defaultOpen = false }: { attempt: At
   const [open, setOpen] = useState(defaultOpen);
   const [logOpen, setLogOpen] = useState(false);
   const [filter, setFilter] = useState('');
+  // Fix round 1 (review, Important): an unguarded navigator.clipboard.writeText
+  // throws outright when the Clipboard API is missing (a plain-http LAN
+  // deployment, or a browser that refuses it) and otherwise leaves a
+  // rejected promise unhandled — same guard/status pattern as CopyField.
+  const [copyLogStatus, setCopyLogStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  useEffect(() => {
+    if (copyLogStatus === 'idle') return;
+    const t = window.setTimeout(() => setCopyLogStatus('idle'), 1500);
+    return () => window.clearTimeout(t);
+  }, [copyLogStatus]);
   const o = OUTCOME[attempt.outcome];
   const start = Date.parse(attempt.startedAt);
   const duration = (attempt.finishedAt ? Date.parse(attempt.finishedAt) : Date.now()) - start;
@@ -102,10 +119,28 @@ export function AttemptLogViewer({ attempt, defaultOpen = false }: { attempt: At
           <CollapsibleContent className="grid gap-2 pt-2">
             <div className="flex items-center gap-2">
               <Input aria-label="Search log" className="h-8 w-64 font-mono text-xs" placeholder="nxdomain" value={filter} onChange={(e) => setFilter(e.target.value)} />
-              <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(attempt.log)}>
-                <Copy className="size-4" aria-hidden />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    if (!navigator.clipboard) throw new Error('Clipboard API unavailable');
+                    await navigator.clipboard.writeText(attempt.log);
+                    setCopyLogStatus('copied');
+                  } catch {
+                    setCopyLogStatus('failed');
+                  }
+                }}
+              >
+                {copyLogStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
+                {copyLogStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
+                {copyLogStatus === 'idle' && <Copy className="size-4" aria-hidden />}
                 Copy log
               </Button>
+              <span aria-live="polite" className="sr-only">
+                {copyLogStatus === 'copied' && 'Copied'}
+                {copyLogStatus === 'failed' && 'Copy failed'}
+              </span>
             </div>
             <pre className="max-h-96 overflow-auto rounded-md border border-border bg-subtle p-3 font-mono text-xs leading-relaxed">
               {shown.map((l) => (

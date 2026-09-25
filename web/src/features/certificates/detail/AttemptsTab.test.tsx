@@ -3,7 +3,7 @@ import { act, screen } from '@testing-library/react';
 import { focusManager } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { makeAttempt, NOW, url } from '@/test/fixtures';
+import { makeAttempt, NOW, problem, url } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { AttemptsTab } from './AttemptsTab';
 
@@ -51,4 +51,15 @@ it('slows to 30 s once no attempt is running', async () => {
   expect(calls).toBe(first);
   await tick(20_100);
   expect(calls).toBe(first + 1);
+});
+
+// Fix round 1 (review, Important #3): a failed fetch (403/500) used to fall
+// through to the "No attempts yet" empty state with a Renew button —
+// indistinguishable from a certificate that genuinely has none.
+it('shows an error state, not the empty state, when the attempts fetch fails', async () => {
+  server.use(http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => problem(500, 'boom')));
+  renderUI(<AttemptsTab orgId="org-1" certId="c-1" onRenew={() => {}} />);
+  expect(await screen.findByText(/Couldn't load attempts\..*boom/)).toBeInTheDocument();
+  expect(screen.queryByText('No attempts yet.')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
 });

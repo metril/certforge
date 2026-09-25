@@ -119,7 +119,7 @@ When an attempt reaches a manual rule, the certificate shows the TXT records to 
 
 If nobody confirms within 1 hour, the attempt fails with `manual-dns: TXT records were not confirmed in time`, the pending records are dropped, and the normal backoff schedules the next attempt, which shows fresh records. Remove old TXT records by hand.
 
-In the web UI, a pending certificate with records waiting shows an amber **Manual DNS** card on its own page (and, from Task 17, at the top of the Overview queue). It lists each record (name, type, value, TTL) with a copy button per field and **Copy all as zone lines** for pasting straight into a zone file. Add the records at your DNS host, then select **I've added them**; the card shows the CA's answer inline if nothing was waiting or the records expired, and the **Attempts** tab shows progress.
+In the web UI, a pending certificate with records waiting shows an amber **Manual DNS** card on its own page and at the top of the Overview queue. It lists each record (name, type, value, TTL) with a copy button per field and **Copy all as zone lines** for pasting straight into a zone file. Add the records at your DNS host, then select **I've added them**; the card shows the CA's answer inline if nothing was waiting or the records expired, and the **Attempts** tab shows progress.
 
 ## Renewal
 

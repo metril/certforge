@@ -67,16 +67,33 @@ function RecordValue({ value, label }: { value: string; label: string }) {
 }
 
 export function ManualDnsCard({ orgId, cert }: { orgId: string; cert: { id: string; name: string } }) {
-  const { data: records = [] } = useQuery(manualDnsQuery(orgId, cert.id));
+  const { data } = useQuery(manualDnsQuery(orgId, cert.id));
+  const records = data ?? [];
   const confirm = useConfirmManualDns(orgId, cert.id);
+  const { copy: copyZoneLines, status: copyZoneStatus } = useCopyStatus();
   const isMdUp = useMediaQuery('(min-width: 768px)');
-  const [copied, setCopied] = useState(false);
+  // Fix round 1 (review, Take now #5): a 409 from confirm (nothing waiting,
+  // or the records expired) must not sit above a *fresh* set of records
+  // once one arrives (confirm's own onSettled refetches this same query).
+  // `data` is undefined until first load and then stable per the query
+  // cache (structural sharing), so this only fires when the fetched value
+  // actually changes, not on every unrelated render.
+  useEffect(() => {
+    confirm.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
   if (records.length === 0) return null;
   const zoneLines = records.map((r) => `${fqdn(r.name)} ${r.ttl} IN TXT "${r.value}"`).join('\n');
   // The schema's expiresAt is optional (a record set from a manual-dns wait
   // that hasn't recorded a deadline, or an older attempt shape); show the
   // deadline line only when at least one record actually carries it.
   const expiresAt = records.find((r) => r.expiresAt)?.expiresAt;
+  // Fix round 1 (review, Take now #4): once the deadline has passed, "Add
+  // these before <a time already gone by>" reads as broken; a fixed line
+  // that switches state (no timer) is enough — manualDnsQuery's own 30s
+  // poll re-renders this every cycle, and the attempt fails and hands back
+  // a fresh record set (with a new expiresAt) shortly after expiry anyway.
+  const expired = expiresAt !== undefined && Date.parse(expiresAt) <= Date.now();
 
   return (
     <section aria-label={`Manual DNS for ${cert.name}`} className="grid gap-3 rounded-md border border-expiring bg-expiring/10 p-4">
@@ -85,7 +102,13 @@ export function ManualDnsCard({ orgId, cert }: { orgId: string; cert: { id: stri
         <h2 className="text-base font-semibold">TXT records for {cert.name}</h2>
         <HelpTip id="manual.records" />
       </div>
-      {expiresAt && (
+      {expiresAt && expired && (
+        <p className="flex items-center gap-1.5 text-xs text-failed">
+          <TriangleAlert className="size-3.5" aria-hidden />
+          These records expired without confirmation; a fresh set will appear shortly.
+        </p>
+      )}
+      {expiresAt && !expired && (
         <p className="flex items-center gap-1.5 text-xs text-ink-muted">
           Add these before {fmtDateTime(expiresAt)}
         </p>
@@ -141,19 +164,10 @@ export function ManualDnsCard({ orgId, cert }: { orgId: string; cert: { id: stri
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          onClick={async () => {
-            try {
-              if (!navigator.clipboard) throw new Error('Clipboard API unavailable');
-              await navigator.clipboard.writeText(zoneLines);
-              setCopied(true);
-            } catch {
-              setCopied(false);
-            }
-          }}
-        >
-          {copied ? <Check className="size-4 text-valid" aria-hidden /> : <Copy className="size-4" aria-hidden />}
+        <Button variant="outline" onClick={() => void copyZoneLines(zoneLines)}>
+          {copyZoneStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
+          {copyZoneStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
+          {copyZoneStatus === 'idle' && <Copy className="size-4" aria-hidden />}
           Copy all as zone lines
         </Button>
         <Button disabled={confirm.isPending} onClick={() => confirm.mutate()}>
