@@ -1,21 +1,23 @@
-import { useState } from 'react';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
 import { CircleAlert, CircleCheck, CircleX, Clock, Hourglass, type LucideIcon } from 'lucide-react';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
+import { errorMessage } from '@/api/errors';
 import { readinessQuery } from '@/api/queries/health';
 import type { Certificate } from '@/api/types';
 import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { PageHeader } from '@/components/PageHeader';
 import { ToneChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { ManualDnsCard } from '@/features/certificates/ManualDnsCard';
+import { renewToastHandlers } from '@/lib/renewToast';
 import { useOrg } from '@/lib/org';
 import type { Tone } from '@/lib/status';
 import { DAY, relDays } from '@/lib/time';
-import { attentionItems, statusCounts, upcomingRenewals, type AttentionKind } from './attention';
+import { attentionItems, statusCounts, upcomingRenewals, usesManualDns, type AttentionKind } from './attention';
 import { ExpiryHorizon } from './ExpiryHorizon';
 import { HealthStrip } from './HealthStrip';
 
@@ -49,11 +51,23 @@ function CertRow({ cert, org, right }: { cert: Certificate; org: string; right: 
 
 export function OverviewPage() {
   const org = useOrg();
-  const { data: certs = [], isPending } = useQuery(allCertificatesQuery(org.id));
+  const { data: certs = [], isPending, isError, error, refetch } = useQuery(allCertificatesQuery(org.id));
   const readiness = useQuery(readinessQuery);
   const renew = useRenewCertificates(org.id);
-  const [range, setRange] = useState<[number, number] | null>(null);
+  const search = useSearch({ from: '/_app/o/$org/overview' });
+  const navigate = useNavigate({ from: '/o/$org/overview' });
+  const range = search.range ?? null;
+  const setRange = (r: [number, number] | null) => void navigate({ search: (prev) => ({ ...prev, range: r ?? undefined }), replace: true });
   const now = Date.now();
+
+  if (isError) {
+    return (
+      <>
+        <PageHeader title="Overview" />
+        <ErrorState message={`Couldn't load certificates. ${errorMessage(error)}`} onRetry={() => void refetch()} />
+      </>
+    );
+  }
 
   if (!isPending && certs.length === 0) {
     return (
@@ -74,15 +88,25 @@ export function OverviewPage() {
   }
 
   const items = attentionItems(certs, now);
-  const manual = items.filter((i) => i.kind === 'manual-dns');
   const others = items.filter((i) => i.kind !== 'manual-dns');
+  // Controller ruling: a card is mounted for every non-revoked,
+  // non-expired certificate whose rules use manual-dns, regardless of
+  // `status` — a renewal of an already-`active` certificate still waiting
+  // on TXT records must show, not just a first-issuance `pending` one.
+  // Whether a given card actually has records to show isn't knowable from
+  // this list (that's `ManualDnsCard`'s own fetch); the `manual-dns`
+  // *attention item* above stays `pending`-only, so the queue's own count
+  // doesn't double-count a cert this section already surfaces its own way.
+  const manualDnsCerts = certs.filter((c) => c.status !== 'revoked' && c.status !== 'expired' && usesManualDns(c));
   const counts = statusCounts(certs);
   const upcoming = upcomingRenewals(certs, now);
   const inRange = range
     ? certs.filter((c) => {
         if (!c.currentVersion) return false;
         const d = (Date.parse(c.currentVersion.notAfter) - now) / DAY;
-        return d >= range[0] && d <= range[1];
+        // Review fix: a range starting at 0 ("from now") also catches an
+        // already-expired certificate (d < 0), not just d === 0 exactly.
+        return (range[0] === 0 ? d <= range[1] : d >= range[0]) && d <= range[1];
       })
     : [];
 
@@ -112,8 +136,8 @@ export function OverviewPage() {
             Needs attention <HelpTip id="overview.attention" />
             <span className="text-sm font-normal text-ink-muted">{items.length}</span>
           </h2>
-          {manual.map((i) => (
-            <ManualDnsCard key={i.cert.id} orgId={org.id} cert={i.cert} />
+          {manualDnsCerts.map((c) => (
+            <ManualDnsCard key={c.id} orgId={org.id} cert={c} />
           ))}
           {others.length > 0 ? (
             <ul className="grid">
@@ -126,7 +150,7 @@ export function OverviewPage() {
                       {i.cert.name}
                     </Link>
                     <span className="truncate text-ink-muted">{i.cause}</span>
-                    <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate([i.cert.id])}>
+                    <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate([i.cert.id], renewToastHandlers(i.cert.name))}>
                       Renew now
                     </Button>
                   </li>
@@ -134,7 +158,7 @@ export function OverviewPage() {
               })}
             </ul>
           ) : (
-            manual.length === 0 && (
+            manualDnsCerts.length === 0 && (
               <p className="flex items-center gap-1.5 text-sm">
                 <CircleCheck className="size-4 text-valid" aria-hidden />
                 Nothing needs attention.

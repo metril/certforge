@@ -24,3 +24,17 @@ it('counts statuses and lists renewals due within 7 days', () => {
   expect(statusCounts(certs)).toEqual({ active: 2, pending: 0, failed: 1, expired: 0 });
   expect(upcomingRenewals(certs, NOW).map((c) => c.id)).toEqual(['a']);
 });
+
+// Review fix: two certificates with no current version both carry
+// `impactAt: +Infinity`; subtracting them (`Infinity - Infinity`) is `NaN`,
+// which makes `Array.prototype.sort`'s result unspecified. A finite
+// comparison plus an id tiebreak keeps this deterministic instead of
+// flipping between runs/engines.
+it('orders two versionless certificates of the same kind deterministically by id', () => {
+  const certs = [
+    makeCert({ id: 'z-cert', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'z.example.com', method: 'manual-dns' }] }),
+    makeCert({ id: 'a-cert', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'a.example.com', method: 'manual-dns' }] }),
+  ];
+  const items = attentionItems(certs, NOW);
+  expect(items.map((i) => i.cert.id)).toEqual(['a-cert', 'z-cert']);
+});

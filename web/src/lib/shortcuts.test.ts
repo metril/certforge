@@ -23,6 +23,29 @@ it('does not fire on the second key alone', () => {
   expect(go).not.toHaveBeenCalled();
 });
 
+// Task 17: the "g"-only chord tracking became generic over any first key
+// present in the map, so `n c` (new certificate) works the same way. A
+// first key that fails to complete a known chord ("g x") is retried as a
+// fresh first key in the same keystroke, so it doesn't swallow the "n"
+// that follows.
+it('runs any two-key chord, not just "g", retrying a broken sequence as a fresh first key', () => {
+  const go = vi.fn();
+  const nc = vi.fn();
+  renderHook(() => useShortcuts({ 'g o': go, 'n c': nc }));
+  act(() => {
+    press('g');
+    press('o');
+  });
+  expect(go).toHaveBeenCalledTimes(1);
+  act(() => {
+    press('g');
+    press('x');
+    press('n');
+    press('c');
+  });
+  expect(nc).toHaveBeenCalledTimes(1);
+});
+
 it('ignores chords while typing in a field', () => {
   const go = vi.fn();
   renderHook(() => useShortcuts({ 'g o': go }));
@@ -92,4 +115,22 @@ it('does not preventDefault on Ctrl/Cmd-K when no palette handler is registered'
   const event = new KeyboardEvent('keydown', { key: 'k', metaKey: true, cancelable: true, bubbles: true });
   act(() => window.dispatchEvent(event));
   expect(event.defaultPrevented).toBe(false);
+});
+
+// Task 17 (review fix): unlike a generic dialog (the test above), the
+// command palette's own dialog must NOT block Ctrl/Cmd-K — its
+// `CommandInput` is an `<input>` inside a `[role="dialog"]`, both matched
+// by the suppress selector, so without this exemption a second Ctrl/Cmd-K
+// pressed while the search input has focus could never close the palette
+// it just opened.
+it('still lets Ctrl/Cmd-K through when focus is inside the palette\'s own dialog', () => {
+  const openPalette = vi.fn();
+  renderHook(() => useShortcuts({}, openPalette));
+  const dialog = document.createElement('div');
+  dialog.setAttribute('role', 'dialog');
+  dialog.className = 'cf-command-palette';
+  document.body.appendChild(dialog);
+  act(() => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true })));
+  expect(openPalette).toHaveBeenCalledTimes(1);
+  dialog.remove();
 });

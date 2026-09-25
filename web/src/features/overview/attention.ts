@@ -15,8 +15,19 @@ export function usesManualDns(c: Certificate): boolean {
 
 const firstLine = (s?: string | null) => (s ? s.split('\n')[0]!.slice(0, 140) : undefined);
 
+// `impactAt` is `+Infinity` for a certificate with no current version (a
+// pending manual-dns cert, most often); `Infinity - Infinity` is `NaN`,
+// which makes `Array.prototype.sort`'s ordering unspecified once two such
+// items land next to each other. Comparing (never subtracting) and
+// tiebreaking on `cert.id` keeps the sort total and deterministic instead.
+function compareNum(a: number, b: number): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
 /** One item per certificate that needs a look, ranked expired, manual-dns,
- * failed, overdue, then soonest impact first within a rank. */
+ * failed, overdue, then soonest impact first within a rank (ties broken by
+ * certificate id, so the order is stable and testable). */
 export function attentionItems(certs: Certificate[], now = Date.now()): AttentionItem[] {
   const out: AttentionItem[] = [];
   for (const c of certs) {
@@ -32,7 +43,7 @@ export function attentionItems(certs: Certificate[], now = Date.now()): Attentio
       out.push({ kind: 'overdue', cert: c, cause: `Renewal due ${relDays(c.nextRenewAt, now)}`, impactAt: end });
     }
   }
-  return out.sort((a, b) => RANK[a.kind] - RANK[b.kind] || a.impactAt - b.impactAt);
+  return out.sort((a, b) => RANK[a.kind] - RANK[b.kind] || compareNum(a.impactAt, b.impactAt) || (a.cert.id < b.cert.id ? -1 : a.cert.id > b.cert.id ? 1 : 0));
 }
 
 export function statusCounts(certs: Certificate[]) {

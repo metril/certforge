@@ -95,6 +95,11 @@ export function ExpiryHorizon({ certs, now, range, onRange }: Props) {
           setDrag(null);
           onRange(b - a >= 1 ? [a, b] : null);
         }}
+        // A pointer that never fires up — captured then interrupted by a
+        // browser gesture, a window/tab switch, or (in tests) an unmount —
+        // must still end the drag; otherwise `drag` stays set and the next
+        // pointerdown's `onPointerMove` jumps from a stale anchor.
+        onPointerCancel={() => setDrag(null)}
       >
         {ticks.map((t) =>
           t.windowFrom === null ? null : (

@@ -5,6 +5,7 @@ import { FileText, Plus, RotateCw, ShieldCheck } from 'lucide-react';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useMe } from '@/lib/org';
+import { renewToastHandlers } from '@/lib/renewToast';
 
 /**
  * Ctrl/Cmd-K palette: jump to a certificate by name, common name, or any
@@ -65,25 +66,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       <CommandInput placeholder="www.example.com" value={search} onValueChange={setSearch} />
       <CommandList>
         <CommandEmpty>No match.</CommandEmpty>
-        {org && (
-          <CommandGroup heading="Actions">
-            <CommandItem
-              value="action:new-certificate"
-              keywords={['new', 'issue', 'create', 'certificate']}
-              onSelect={() => run(() => void navigate({ to: '/o/$org/certificates/new', params: { org: org.slug } }))}
-            >
-              <Plus className="size-4" aria-hidden />
-              New certificate
-            </CommandItem>
-            {search.trim() !== '' &&
-              certs.map((c) => (
-                <CommandItem key={`renew:${c.id}`} value={`renew:${c.id}`} keywords={['renew', c.name, c.commonName, ...c.sans]} onSelect={() => run(() => renew.mutate([c.id]))}>
-                  <RotateCw className="size-4" aria-hidden />
-                  Renew {c.name}
-                </CommandItem>
-              ))}
-          </CommandGroup>
-        )}
+        {/* Certificates before Actions (review fix): cmdk auto-highlights
+            the first matching item in DOM order, so with a matching
+            certificate name typed, Enter must navigate to it — not run a
+            "Renew <name>" action that happened to render first. */}
         {org && (
           <CommandGroup heading="Certificates">
             {certs.map((c) => (
@@ -98,6 +84,30 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                 <span className="ml-auto truncate font-mono text-xs text-ink-muted">{c.commonName}</span>
               </CommandItem>
             ))}
+          </CommandGroup>
+        )}
+        {org && (
+          <CommandGroup heading="Actions">
+            <CommandItem
+              value="action:new-certificate"
+              keywords={['new', 'issue', 'create', 'certificate']}
+              onSelect={() => run(() => void navigate({ to: '/o/$org/certificates/new', params: { org: org.slug } }))}
+            >
+              <Plus className="size-4" aria-hidden />
+              New certificate
+            </CommandItem>
+            {search.trim() !== '' &&
+              certs.map((c) => (
+                <CommandItem
+                  key={`renew:${c.id}`}
+                  value={`renew:${c.id}`}
+                  keywords={['renew', c.name, c.commonName, ...c.sans]}
+                  onSelect={() => run(() => renew.mutate([c.id], renewToastHandlers(c.name)))}
+                >
+                  <RotateCw className="size-4" aria-hidden />
+                  Renew {c.name}
+                </CommandItem>
+              ))}
           </CommandGroup>
         )}
         <CommandGroup heading="Pages">
