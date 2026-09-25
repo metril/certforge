@@ -131,8 +131,8 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | Types, permissions mirror, fixtures | done | pending |
-| 2 | Login with single sign-on | pending | – |
+| 1 | Types, permissions mirror, fixtures | done | 367aa01 |
+| 2 | Login with single sign-on | done | pending |
 | 3 | Settings → Access shell and Users | pending | – |
 | 4 | Role bindings | pending | – |
 | 5 | Settings → Authentication | pending | – |
@@ -158,6 +158,7 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 - 1B: CAs are org-scoped rows in Phase 1 (`shared` reserved for Phase 2 global CAs); only a global admin (`cas:write`) edits them.
 - 1A final-review housekeeping folded into 1B Task 1: `dummyHash` (authn) now builds without the argon2 semaphore so a saturated first call cannot permanently disable `EqualizeTiming`; the semaphore release closure now captures the channel it acquired instead of re-reading the package variable; `settings.EnsureCanary`'s insert-if-absent write is now insert-or-fill, treating a `crypto.canary` row with a NULL secret as absent; docs/architecture.md and the `bootstrap-admin` help summary now say "reset (after setup)" instead of "create or reset".
 - 1B: verification rule `match` follows plan 1C's matcher: `*`, `*.zone` (one label below zone, or `*.zone` itself), `zone` (zone and everything below). There is no separate exact-only syntax; list a name's own rule first.
+- 2B Task 2: `/login`'s `error` search param has no `.max(64)` — an overlong or unrecognised code must still reach `oidcErrorMessage()` so it renders the generic "Single sign-on failed. Try again." line; a length cap paired with `.catch(undefined)` would silently drop it to no message at all. `authMethodsQuery` is prefetched in `beforeLoad` (never throws) so `LoginPage`'s own `useQuery` already has data by first render, avoiding a flash between the password form and the single sign-on button.
 - 1B: DNS propagation checks against configured resolvers use CertForge's own TXT query (`challenge.CheckTXT`) because lego v4's `AddRecursiveNameservers` is process-global.
 - 1B: lego pinned at v4.24.0, the last v4 release whose go.mod allows Go 1.23. lego `exec` and `manual` providers are not offered.
 - 1B: the ACME signer's lego `http.Client` transport is `ctxTransport` (checks the issuance ctx before every request, attaches it to each one) wrapping `retryAfterTransport` (records the largest Retry-After on 429/503, since lego's `ProblemDetails` drops response headers); cancelling the issuance context now fails every in-flight CA call promptly, not just manual-dns waits.

@@ -19,6 +19,13 @@ export const setupStatusQuery = queryOptions({
   retry: false,
 });
 
+export const authMethodsQuery = queryOptions({
+  queryKey: ['auth-methods'],
+  queryFn: () => call(api.GET('/auth/methods')),
+  staleTime: 60_000,
+  retry: false,
+});
+
 export function useLogin() {
   const qc = useQueryClient();
   return useMutation({

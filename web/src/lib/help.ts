@@ -15,6 +15,11 @@ export function firstSentences(text: string, n: number): string {
 // One entry per field id. At most two short sentences. Later tasks add entries here.
 export const help = {
   'login.password': { text: 'The local admin password set during first-run setup.' },
+  'login.sso': {
+    text: 'Signs you in through your organisation’s identity provider.',
+    learnMore: 'configuration.md#authentication',
+  },
+  'login.breakGlass': { text: 'The local admin password, for when single sign-on is unavailable.' },
   'setup.adminPassword': { text: 'Break-glass login for the local admin. Use at least 12 characters.' },
   'setup.baseUrl': { text: 'The address people and agents use to reach CertForge. Links in notifications use it.' },
   'setup.kek': {

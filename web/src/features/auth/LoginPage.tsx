@@ -1,17 +1,32 @@
 import { useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage } from '@/api/errors';
-import { useLogin } from '@/api/queries/auth';
+import { authMethodsQuery, useLogin } from '@/api/queries/auth';
 import { HelpTip } from '@/components/HelpTip';
 import { Wordmark } from '@/components/Wordmark';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { oidcErrorMessage, ssoHref } from './oidcError';
 
-export function LoginPage({ redirectTo }: { redirectTo: string }) {
+function Alert({ id, children }: { id?: string; children: string }) {
+  return (
+    <p id={id} role="alert" className="flex items-center gap-1 text-xs">
+      <CircleAlert className="size-3.5 text-failed" aria-hidden />
+      {children}
+    </p>
+  );
+}
+
+export function LoginPage({ redirectTo, error: oidcError }: { redirectTo: string; error?: string }) {
   const router = useRouter();
   const login = useLogin();
+  const methods = useQuery(authMethodsQuery);
+  const sso = methods.data?.oidcEnabled === true;
+  const [breakGlass, setBreakGlass] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -26,39 +41,61 @@ export function LoginPage({ redirectTo }: { redirectTo: string }) {
     }
   }
 
+  const form = (
+    <form onSubmit={submit} aria-label="Local admin sign in" className="grid gap-6">
+      <div className="grid gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="password">Admin password</Label>
+          <HelpTip id="login.password" />
+        </div>
+        <Input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          autoFocus={!sso}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          aria-invalid={!!error}
+          aria-describedby={error ? 'login-error' : undefined}
+        />
+        {error && <Alert id="login-error">{error}</Alert>}
+      </div>
+      <Button type="submit" variant={sso ? 'outline' : 'default'} disabled={!password || login.isPending}>
+        {login.isPending ? 'Signing in…' : 'Sign in'}
+      </Button>
+    </form>
+  );
+
   return (
     <main className="grid min-h-dvh place-items-center bg-surface px-4">
-      <form onSubmit={submit} aria-labelledby="login-title" className="grid w-full max-w-sm gap-6">
+      <div className="grid w-full max-w-sm gap-6">
         <Wordmark />
-        <h1 id="login-title" className="text-lg font-semibold">
-          Sign in
-        </h1>
-        <div className="grid gap-1.5">
-          <div className="flex items-center gap-1.5">
-            <Label htmlFor="password">Admin password</Label>
-            <HelpTip id="login.password" />
-          </div>
-          <Input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            autoFocus
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={!!error}
-            aria-describedby={error ? 'login-error' : undefined}
-          />
-          {error && (
-            <p id="login-error" role="alert" className="flex items-center gap-1 text-xs">
-              <CircleAlert className="size-3.5 text-failed" aria-hidden />
-              {error}
-            </p>
-          )}
-        </div>
-        <Button type="submit" disabled={!password || login.isPending}>
-          {login.isPending ? 'Signing in…' : 'Sign in'}
-        </Button>
-      </form>
+        <h1 className="text-lg font-semibold">Sign in</h1>
+        {oidcError && <Alert>{oidcErrorMessage(oidcError)}</Alert>}
+        {sso ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              <Button asChild className="flex-1">
+                <a href={ssoHref(redirectTo)}>Sign in with single sign-on</a>
+              </Button>
+              <HelpTip id="login.sso" />
+            </div>
+            <Collapsible open={breakGlass} onOpenChange={setBreakGlass} className="grid gap-4">
+              <div className="flex items-center gap-1.5">
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="w-fit px-0 text-ink-muted">
+                    Break-glass login
+                  </Button>
+                </CollapsibleTrigger>
+                <HelpTip id="login.breakGlass" />
+              </div>
+              <CollapsibleContent>{form}</CollapsibleContent>
+            </Collapsible>
+          </>
+        ) : (
+          form
+        )}
+      </div>
     </main>
   );
 }

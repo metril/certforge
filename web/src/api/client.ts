@@ -5,7 +5,7 @@ import { ApiError } from './errors';
 export const API_BASE = '/api/v1';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // A 401 on these means "not signed in yet"; route guards and forms handle it.
-const QUIET_401 = new Set(['/auth/me', '/auth/login', '/setup/status', '/setup/complete']);
+const QUIET_401 = new Set(['/auth/me', '/auth/login', '/setup/status', '/setup/complete', '/auth/methods']);
 
 let csrfToken: string | null = null;
 let onUnauthorized: () => void = defaultUnauthorized;
@@ -120,7 +120,8 @@ api.use(authMiddleware);
 export async function call<T>(pending: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
   const { data, error, response } = await pending;
   if (error !== undefined || !response.ok) {
-    const retryAfter = response.status === 503 ? parseRetryAfter(response.headers.get('retry-after')) : undefined;
+    const retryAfter =
+      response.status === 503 || response.status === 429 ? parseRetryAfter(response.headers.get('retry-after')) : undefined;
     throw ApiError.from(response.status, error, retryAfter);
   }
   return data as T;

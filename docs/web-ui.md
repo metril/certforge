@@ -2,6 +2,10 @@
 
 The chrome and dashboard shared by every screen: the Overview page and the command palette.
 
+## Sign in
+
+The login page shows **Sign in with single sign-on** when Settings → Authentication has it enabled; the local admin password sits behind **Break-glass login**. Without single sign-on the password form is shown directly. A failed single sign-on returns here with a one-line reason (expired or interrupted sign-in, refused by the identity provider, account disabled, or not configured).
+
 ## Overview
 
 `/o/:org/overview` is the landing page after sign-in. It shows, top to bottom:
