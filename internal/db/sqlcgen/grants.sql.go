@@ -295,7 +295,7 @@ func (q *Queries) CountLiveGrantsByCert(ctx context.Context, ids []uuid.UUID) ([
 
 const createGrant = `-- name: CreateGrant :one
 INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate)
-VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision
 `
 
 type CreateGrantParams struct {
@@ -331,6 +331,7 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (Clien
 		&i.RemovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RemovedRevision,
 	)
 	return i, err
 }
@@ -632,7 +633,7 @@ func (q *Queries) LockCertificateForGrant(ctx context.Context, arg LockCertifica
 }
 
 const lockGrant = `-- name: LockGrant :one
-SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at FROM client_cert_grants
+SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision FROM client_cert_grants
 WHERE client_cert_grants.id = $1 AND removed_at IS NULL AND client_id IN (SELECT c.id FROM clients c WHERE c.org_id = $2)
 FOR UPDATE
 `
@@ -657,6 +658,7 @@ func (q *Queries) LockGrant(ctx context.Context, arg LockGrantParams) (ClientCer
 		&i.RemovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RemovedRevision,
 	)
 	return i, err
 }
@@ -738,11 +740,20 @@ func (q *Queries) LockTargetForGrant(ctx context.Context, arg LockTargetForGrant
 }
 
 const markGrantRemoved = `-- name: MarkGrantRemoved :exec
-UPDATE client_cert_grants SET removed_at = now(), updated_at = now() WHERE id = $1
+UPDATE client_cert_grants SET removed_at = now(), removed_revision = $1, updated_at = now()
+WHERE id = $2
 `
 
-func (q *Queries) MarkGrantRemoved(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, markGrantRemoved, id)
+type MarkGrantRemovedParams struct {
+	RemovedRevision int64     `json:"removed_revision"`
+	ID              uuid.UUID `json:"id"`
+}
+
+// removed_revision is the client's desired_revision after the bump that
+// announces this removal; Report confirms the removal only from a report at
+// or past it.
+func (q *Queries) MarkGrantRemoved(ctx context.Context, arg MarkGrantRemovedParams) error {
+	_, err := q.db.Exec(ctx, markGrantRemoved, arg.RemovedRevision, arg.ID)
 	return err
 }
 
@@ -778,7 +789,7 @@ const updateGrant = `-- name: UpdateGrant :one
 UPDATE client_cert_grants SET delivery = $1, output_spec_id = $2,
        deploy_target_id = $3, hook_ids = $4,
        auto_remediate = $5, updated_at = now()
-WHERE id = $6 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at
+WHERE id = $6 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision
 `
 
 type UpdateGrantParams struct {
@@ -812,6 +823,7 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (Clien
 		&i.RemovedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RemovedRevision,
 	)
 	return i, err
 }

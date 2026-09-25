@@ -132,17 +132,18 @@ type Client struct {
 }
 
 type ClientCertGrant struct {
-	ID             uuid.UUID   `json:"id"`
-	ClientID       uuid.UUID   `json:"client_id"`
-	CertID         uuid.UUID   `json:"cert_id"`
-	Delivery       string      `json:"delivery"`
-	OutputSpecID   *uuid.UUID  `json:"output_spec_id"`
-	DeployTargetID *uuid.UUID  `json:"deploy_target_id"`
-	HookIds        []uuid.UUID `json:"hook_ids"`
-	AutoRemediate  bool        `json:"auto_remediate"`
-	RemovedAt      *time.Time  `json:"removed_at"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
+	ID              uuid.UUID   `json:"id"`
+	ClientID        uuid.UUID   `json:"client_id"`
+	CertID          uuid.UUID   `json:"cert_id"`
+	Delivery        string      `json:"delivery"`
+	OutputSpecID    *uuid.UUID  `json:"output_spec_id"`
+	DeployTargetID  *uuid.UUID  `json:"deploy_target_id"`
+	HookIds         []uuid.UUID `json:"hook_ids"`
+	AutoRemediate   bool        `json:"auto_remediate"`
+	RemovedAt       *time.Time  `json:"removed_at"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	RemovedRevision int64       `json:"removed_revision"`
 }
 
 type DeployTarget struct {

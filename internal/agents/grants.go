@@ -433,8 +433,13 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID) err
 	var revs []sqlcgen.BumpClientRevisionsRow
 	if immediate {
 		err = q.DeleteGrantRow(ctx, grantID)
-	} else if err = q.MarkGrantRemoved(ctx, grantID); err == nil {
-		revs, err = s.bump(ctx, q, []uuid.UUID{g.ClientID})
+	} else if revs, err = s.bump(ctx, q, []uuid.UUID{g.ClientID}); err == nil && len(revs) != 1 {
+		err = errors.New("agents: bump returned no revision for the grant's client")
+	} else if err == nil {
+		// The bumped revision is the first one whose assignments list this
+		// grant under removed[]; Report only confirms the removal from a
+		// report at or past it.
+		err = q.MarkGrantRemoved(ctx, sqlcgen.MarkGrantRemovedParams{ID: grantID, RemovedRevision: revs[0].DesiredRevision})
 	}
 	if err != nil {
 		return err

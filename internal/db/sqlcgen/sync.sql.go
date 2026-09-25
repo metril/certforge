@@ -71,7 +71,7 @@ func (q *Queries) ClientAssignments(ctx context.Context, clientID uuid.UUID) ([]
 }
 
 const clientDeployments = `-- name: ClientDeployments :many
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
 WHERE g.client_id = $1
 ORDER BY g.id
@@ -79,14 +79,15 @@ FOR UPDATE OF d
 `
 
 type ClientDeploymentsRow struct {
-	GrantID       uuid.UUID  `json:"grant_id"`
-	CertID        uuid.UUID  `json:"cert_id"`
-	Delivery      string     `json:"delivery"`
-	AutoRemediate bool       `json:"auto_remediate"`
-	RemovedAt     *time.Time `json:"removed_at"`
-	State         string     `json:"state"`
-	VersionID     *uuid.UUID `json:"version_id"`
-	Expected      []byte     `json:"expected"`
+	GrantID         uuid.UUID  `json:"grant_id"`
+	CertID          uuid.UUID  `json:"cert_id"`
+	Delivery        string     `json:"delivery"`
+	AutoRemediate   bool       `json:"auto_remediate"`
+	RemovedAt       *time.Time `json:"removed_at"`
+	RemovedRevision int64      `json:"removed_revision"`
+	State           string     `json:"state"`
+	VersionID       *uuid.UUID `json:"version_id"`
+	Expected        []byte     `json:"expected"`
 }
 
 func (q *Queries) ClientDeployments(ctx context.Context, clientID uuid.UUID) ([]ClientDeploymentsRow, error) {
@@ -104,6 +105,7 @@ func (q *Queries) ClientDeployments(ctx context.Context, clientID uuid.UUID) ([]
 			&i.Delivery,
 			&i.AutoRemediate,
 			&i.RemovedAt,
+			&i.RemovedRevision,
 			&i.State,
 			&i.VersionID,
 			&i.Expected,
@@ -194,14 +196,18 @@ func (q *Queries) HooksByIDs(ctx context.Context, ids []uuid.UUID) ([]HooksByIDs
 
 const insertHookRun = `-- name: InsertHookRun :exec
 INSERT INTO hook_runs (client_id, grant_id, hook_id, phase, argv, exit_code, duration_ms, stdout, stderr)
-VALUES ($1, $2::uuid, (SELECT h.id FROM hooks h WHERE h.id = $3::uuid),
-        $4, $5::text[], $6, $7, $8, $9)
+VALUES ($1, $2::uuid,
+        (SELECT h.id FROM hooks h
+         WHERE h.id = $3::uuid AND h.org_id = $4
+           AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.id = $2::uuid AND h.id = ANY(g.hook_ids))),
+        $5, $6::text[], $7, $8, $9, $10)
 `
 
 type InsertHookRunParams struct {
 	ClientID   uuid.UUID `json:"client_id"`
 	GrantID    uuid.UUID `json:"grant_id"`
 	HookID     uuid.UUID `json:"hook_id"`
+	OrgID      uuid.UUID `json:"org_id"`
 	Phase      string    `json:"phase"`
 	Argv       []string  `json:"argv"`
 	ExitCode   int32     `json:"exit_code"`
@@ -210,11 +216,15 @@ type InsertHookRunParams struct {
 	Stderr     string    `json:"stderr"`
 }
 
+// hook_id is kept only when the agent-supplied id is one of the grant's own
+// hooks in the client's org; anything else is stored as NULL so a foreign
+// hook's name can never show up in this org's hook run history.
 func (q *Queries) InsertHookRun(ctx context.Context, arg InsertHookRunParams) error {
 	_, err := q.db.Exec(ctx, insertHookRun,
 		arg.ClientID,
 		arg.GrantID,
 		arg.HookID,
+		arg.OrgID,
 		arg.Phase,
 		arg.Argv,
 		arg.ExitCode,

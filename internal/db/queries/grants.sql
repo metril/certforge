@@ -14,7 +14,11 @@ UPDATE client_cert_grants SET delivery = sqlc.arg(delivery), output_spec_id = sq
 WHERE id = sqlc.arg(id) RETURNING *;
 
 -- name: MarkGrantRemoved :exec
-UPDATE client_cert_grants SET removed_at = now(), updated_at = now() WHERE id = $1;
+-- removed_revision is the client's desired_revision after the bump that
+-- announces this removal; Report confirms the removal only from a report at
+-- or past it.
+UPDATE client_cert_grants SET removed_at = now(), removed_revision = sqlc.arg(removed_revision), updated_at = now()
+WHERE id = sqlc.arg(id);
 
 -- name: DeleteGrantRow :exec
 DELETE FROM client_cert_grants WHERE id = $1;

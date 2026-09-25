@@ -22,7 +22,7 @@ LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = sqlc.arg(id) AND g.client_id = sqlc.arg(client_id) AND g.removed_at IS NULL;
 
 -- name: ClientDeployments :many
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
 WHERE g.client_id = $1
 ORDER BY g.id
@@ -34,8 +34,14 @@ UPDATE deployments SET state = sqlc.arg(state), installed = sqlc.arg(installed),
 WHERE grant_id = sqlc.arg(grant_id);
 
 -- name: InsertHookRun :exec
+-- hook_id is kept only when the agent-supplied id is one of the grant's own
+-- hooks in the client's org; anything else is stored as NULL so a foreign
+-- hook's name can never show up in this org's hook run history.
 INSERT INTO hook_runs (client_id, grant_id, hook_id, phase, argv, exit_code, duration_ms, stdout, stderr)
-VALUES (sqlc.arg(client_id), sqlc.arg(grant_id)::uuid, (SELECT h.id FROM hooks h WHERE h.id = sqlc.arg(hook_id)::uuid),
+VALUES (sqlc.arg(client_id), sqlc.arg(grant_id)::uuid,
+        (SELECT h.id FROM hooks h
+         WHERE h.id = sqlc.arg(hook_id)::uuid AND h.org_id = sqlc.arg(org_id)
+           AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.id = sqlc.arg(grant_id)::uuid AND h.id = ANY(g.hook_ids))),
         sqlc.arg(phase), sqlc.arg(argv)::text[], sqlc.arg(exit_code), sqlc.arg(duration_ms), sqlc.arg(stdout), sqlc.arg(stderr));
 
 -- name: SetAppliedRevision :exec

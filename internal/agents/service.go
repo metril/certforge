@@ -42,8 +42,9 @@ type Service struct {
 	Log      *slog.Logger
 	Now      func() time.Time
 
-	seenMu sync.Mutex
-	seen   map[uuid.UUID]time.Time // last_seen write coalescing; touch writes at most once per touchEvery.
+	seenMu     sync.Mutex
+	seen       map[uuid.UUID]time.Time // last_seen write coalescing; touch writes at most once per touchEvery.
+	seenPruned time.Time               // last time markSeen dropped idle entries.
 }
 
 func (s *Service) now() time.Time {

@@ -15,21 +15,40 @@ import (
 	"github.com/metril/certforge/internal/delivery"
 )
 
-const touchEvery = 10 * time.Second
+const (
+	touchEvery = 10 * time.Second
+	seenTTL    = 10 * time.Minute
+)
 
-// touch writes last_seen at most every 10 s per client.
-func (s *Service) touch(ctx context.Context, id uuid.UUID) {
+// markSeen records a sighting of id and reports whether last_seen is due a
+// write (none in the last touchEvery). Entries idle for seenTTL are pruned,
+// at most once per seenTTL, so deleted or revoked clients do not accumulate.
+func (s *Service) markSeen(id uuid.UUID, now time.Time) bool {
 	s.seenMu.Lock()
+	defer s.seenMu.Unlock()
 	if s.seen == nil {
 		s.seen = map[uuid.UUID]time.Time{}
 	}
-	now := s.now()
+	if now.Sub(s.seenPruned) >= seenTTL {
+		for k, t := range s.seen {
+			if now.Sub(t) >= seenTTL {
+				delete(s.seen, k)
+			}
+		}
+		s.seenPruned = now
+	}
 	if now.Sub(s.seen[id]) < touchEvery {
-		s.seenMu.Unlock()
-		return
+		return false
 	}
 	s.seen[id] = now
-	s.seenMu.Unlock()
+	return true
+}
+
+// touch writes last_seen at most every touchEvery per client.
+func (s *Service) touch(ctx context.Context, id uuid.UUID) {
+	if !s.markSeen(id, s.now()) {
+		return
+	}
 	if err := s.Q.TouchClient(ctx, id); err != nil {
 		s.log().Warn("agents: last_seen not written", "client", id, "err", err)
 	}
@@ -191,30 +210,36 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 			continue
 		}
 		if d.RemovedAt != nil {
-			if res.State == agentproto.StateOK {
+			// Only a removal result confirms: no version (a deploy result
+			// always names one) and a revision at or past the one that
+			// announced the removal, so a deploy result for assignments
+			// fetched before the delete cannot delete the row while the
+			// files are still on the host.
+			if res.State == agentproto.StateOK && res.VersionID == uuid.Nil && rep.Revision >= d.RemovedRevision {
 				if err := q.DeleteGrantRow(ctx, d.GrantID); err != nil {
 					return err
 				}
 			}
 			continue
 		}
-		if d.VersionID == nil || res.VersionID != *d.VersionID {
-			continue
-		}
-		expected, err := specsOf(d.Expected)
-		if err != nil {
-			return err
-		}
-		next, errText, missing, mismatched := ReportState(res, expected)
-		installed, _ := json.Marshal(nonNilDigests(res.Installed))
-		if err := q.SetDeploymentState(ctx, sqlcgen.SetDeploymentStateParams{GrantID: d.GrantID, State: next, Installed: installed, Error: errText}); err != nil {
-			return err
-		}
-		if next != d.State {
-			events = append(events, deploymentEvent(c, d, next, errText, missing, mismatched))
-			if next == stateDrift && d.AutoRemediate {
-				remediate = true
-				pushRemediate = pushRemediate || d.Delivery == "push"
+		// A result for an older version changes no deployment state, but
+		// its hook runs still happened and are kept as history below.
+		if d.VersionID != nil && res.VersionID == *d.VersionID {
+			expected, err := specsOf(d.Expected)
+			if err != nil {
+				return err
+			}
+			next, errText, missing, mismatched := ReportState(res, expected)
+			installed, _ := json.Marshal(nonNilDigests(res.Installed))
+			if err := q.SetDeploymentState(ctx, sqlcgen.SetDeploymentStateParams{GrantID: d.GrantID, State: next, Installed: installed, Error: errText}); err != nil {
+				return err
+			}
+			if next != d.State {
+				events = append(events, deploymentEvent(c, d, next, errText, missing, mismatched))
+				if next == stateDrift && d.AutoRemediate {
+					remediate = true
+					pushRemediate = pushRemediate || d.Delivery == "push"
+				}
 			}
 		}
 		for _, hr := range res.HookRuns {
@@ -222,13 +247,14 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 			for _, a := range hr.Argv {
 				argv = append(argv, clip(a, 4096))
 			}
-			if err := q.InsertHookRun(ctx, sqlcgen.InsertHookRunParams{ClientID: c.ID, GrantID: d.GrantID, HookID: hr.HookID,
-				Phase: clip(hr.Phase, 32), Argv: argv, ExitCode: int32(hr.ExitCode), DurationMs: hr.DurationMS,
+			phase := clip(hr.Phase, 32)
+			if err := q.InsertHookRun(ctx, sqlcgen.InsertHookRunParams{ClientID: c.ID, GrantID: d.GrantID, HookID: hr.HookID, OrgID: c.OrgID,
+				Phase: phase, Argv: argv, ExitCode: int32(hr.ExitCode), DurationMs: hr.DurationMS,
 				Stdout: clip(hr.Stdout, 8192), Stderr: clip(hr.Stderr, 8192)}); err != nil {
 				return err
 			}
 			events = append(events, audit.Event{Action: "hook.run", ResourceType: "grant", ResourceID: d.GrantID.String(), OrgID: &c.OrgID,
-				Details: map[string]any{"hookId": hr.HookID, "phase": hr.Phase, "exitCode": hr.ExitCode, "durationMs": hr.DurationMS}})
+				Details: map[string]any{"hookId": hr.HookID, "phase": phase, "exitCode": hr.ExitCode, "durationMs": hr.DurationMS}})
 		}
 	}
 	if err := q.SetAppliedRevision(ctx, sqlcgen.SetAppliedRevisionParams{Revision: rep.Revision, ID: c.ID}); err != nil {

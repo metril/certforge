@@ -145,13 +145,93 @@ func TestReportStaleVersionIgnored(t *testing.T) {
 	e := newAgentEnv(t)
 	certA, _, gidA := e.enrolledWithGrant(t, "web-a", false)
 	certB, _, _ := e.enrolledWithGrant(t, "web-b", false)
-	stale := agentproto.Report{Revision: 1, Results: []agentproto.GrantResult{{GrantID: gidA, VersionID: uuid.New(), State: "ok"}}}
+	stale := agentproto.Report{Revision: 1, Results: []agentproto.GrantResult{{GrantID: gidA, VersionID: uuid.New(), State: "ok",
+		HookRuns: []agentproto.HookRun{{Phase: "post_deploy", Argv: []string{"/bin/true"}}}}}}
 	e.post(t, e.httpClient(t, &certA), "/agent/v1/report", stale, nil)
 	var as agentproto.Assignments
 	e.get(t, e.httpClient(t, &certA), "/agent/v1/assignments", &as)
 	e.post(t, e.httpClient(t, &certB), "/agent/v1/report", okReport(as), nil)
 	if s := e.deploymentState(t, gidA); s != "pending" {
 		t.Fatalf("state %s", s)
+	}
+	// The stale result's hook still ran on the host: it is history.
+	var runs int
+	_ = e.pool.QueryRow(context.Background(), `SELECT count(*) FROM hook_runs WHERE grant_id = $1`, gidA).Scan(&runs)
+	if runs != 1 || e.auditCount(t, "hook.run") != 1 {
+		t.Fatalf("stale result's hook run not kept: rows %d audits %d", runs, e.auditCount(t, "hook.run"))
+	}
+}
+
+// Review Focus: a deploy result from before the delete must not confirm
+// the removal (the files are still on the host).
+func TestRemovalNeedsRemovalResult(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, _, gid := e.enrolledWithGrant(t, "web-1", false)
+	hc := e.httpClient(t, &cert)
+	var before agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &before)
+	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gid); err != nil {
+		t.Fatal(err)
+	}
+	// The deploy result the agent computed from the pre-delete assignments.
+	e.post(t, hc, "/agent/v1/report", okReport(before), nil)
+	var as agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as)
+	if len(as.Removed) != 1 || as.Removed[0].ID != gid {
+		t.Fatalf("grant no longer awaiting removal: %+v", as)
+	}
+	// A removal result from a revision before the delete does not count either.
+	e.post(t, hc, "/agent/v1/report", agentproto.Report{Revision: before.Revision, Results: []agentproto.GrantResult{{GrantID: gid, State: "ok"}}}, nil)
+	var n int
+	_ = e.pool.QueryRow(context.Background(), `SELECT count(*) FROM client_cert_grants WHERE id = $1`, gid).Scan(&n)
+	if n != 1 {
+		t.Fatal("stale removal result confirmed the removal")
+	}
+	e.post(t, hc, "/agent/v1/report", agentproto.Report{Revision: as.Revision, Results: []agentproto.GrantResult{{GrantID: gid, State: "ok"}}}, nil)
+	_ = e.pool.QueryRow(context.Background(), `SELECT count(*) FROM client_cert_grants WHERE id = $1`, gid).Scan(&n)
+	if n != 0 {
+		t.Fatal("removal result at the removal revision did not delete the grant")
+	}
+}
+
+// Review Focus: hook_id is kept only for one of the grant's own hooks.
+func TestHookRunKeepsOnlyGrantHooks(t *testing.T) {
+	e := newAgentEnv(t)
+	ctx := context.Background()
+	cert, c, gid := e.enrolledWithGrant(t, "web-1", false)
+	mine, err := e.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: e.org, Name: "mine", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := e.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: e.org, Name: "not-on-this-grant", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE client_cert_grants SET hook_ids = ARRAY[$2::uuid] WHERE id = $1`, gid, mine.ID); err != nil {
+		t.Fatal(err)
+	}
+	hc := e.httpClient(t, &cert)
+	var as agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as)
+	rep := okReport(as)
+	rep.Results[0].HookRuns = []agentproto.HookRun{
+		{HookID: mine.ID, Phase: "post_deploy", Argv: []string{"/bin/true"}},
+		{HookID: other.ID, Phase: "post_deploy", Argv: []string{"/bin/true"}},
+	}
+	if code := e.post(t, hc, "/agent/v1/report", rep, nil); code != http.StatusNoContent {
+		t.Fatalf("report %d", code)
+	}
+	res, err := e.srv.ListClientHookRuns(e.as("viewer"), gen.ListClientHookRunsRequestObject{OrgId: e.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := res.(gen.ListClientHookRuns200JSONResponse).Items
+	names := map[string]int{}
+	for _, r := range runs {
+		names[r.HookName]++
+	}
+	if len(runs) != 2 || names["mine"] != 1 || names[""] != 1 {
+		t.Fatalf("runs %+v", runs)
 	}
 }
 
