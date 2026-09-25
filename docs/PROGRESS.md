@@ -8,7 +8,7 @@ Single status file. Updated in every commit that completes a task.
 |---|---|---|---|---|---|---|
 | 1 | Core issuance slice | done | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | 2026-09-24 |
 | 2 | Identity and tenancy | done | [design](design.md) | [2A](superpowers/plans/2026-09-25-phase-2a-identity-backend.md) · [2B](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md) | 2026-09-25 | 2026-09-25 |
-| 3 | Agent | planned | [design](design.md) | – | – | – |
+| 3 | Agent | in progress | [design](design.md) | 3A · 3B (planning) | 2026-09-25 | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
 | 5 | Vault and private CA | planned | [design](design.md) | – | – | – |
 | 6 | Ops | planned | [design](design.md) | – | – | – |
@@ -154,6 +154,10 @@ effect, `DetailsDiff`'s unguarded clipboard copy, audit row/filter-bar
 layout, Clear filters buttons on Users/Bindings, `useRefreshMe()` on a
 binding mutation affecting the caller, ToneChip notices on the audit page,
 and the Access docs' API-key binding mention).
+
+### Phase 3: agent — in progress (started 2026-09-25)
+
+Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS listener, WS hub, grants, push/pull, Traefik target, hooks, heartbeat, drift, agent image) and 3B clients web UI (clients, grants editor, deployments, layouts, targets, hooks, Settings → Agents). Plans are being written; task tables land with the plan commit.
 
 ## Decisions made during implementation
 
