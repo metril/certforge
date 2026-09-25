@@ -86,6 +86,18 @@ it('secret: Remove is only offered when the field is stored', () => {
   expect(screen.queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
 });
 
+it('secret: Remove, then clearing the field again keeps the empty string, not the sentinel (fix round 1, Take now #4)', async () => {
+  const { user } = renderUI(<SecretHarness stored />);
+  await user.click(screen.getByRole('button', { name: 'Remove Recovery token' }));
+  expect(screen.getByTestId('value').textContent).toBe('');
+  const input = screen.getByLabelText('Recovery token');
+  await user.type(input, 'x');
+  expect(screen.getByTestId('value')).toHaveTextContent('x');
+  await user.clear(input);
+  expect(screen.getByTestId('value').textContent).toBe('');
+  expect(screen.getByTestId('value')).not.toHaveTextContent(UNCHANGED);
+});
+
 it('secret: new secret is a plain password input; empty is undefined', async () => {
   const { user } = renderUI(<SecretHarness stored={false} />);
   const input = screen.getByLabelText('Recovery token');

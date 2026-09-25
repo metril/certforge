@@ -1,4 +1,4 @@
-import type { RJSFSchema, UiSchema } from '@rjsf/utils';
+import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
 import { UNCHANGED } from '@/api/types';
 
 // Provider JSON Schemas (internal/challenge/schemas/*.json) add two
@@ -95,4 +95,33 @@ export function withSecretSentinels(schema: RJSFSchema, value: Record<string, un
     if (secrets.has(k) && (out[k] === undefined || out[k] === null || out[k] === '')) out[k] = UNCHANGED;
   }
   return out;
+}
+
+/**
+ * Maps a failed save's error message to the schema property it names (fix
+ * round 1, Take now #6) — the plain settings sections (general, backup,
+ * authentication) 422 with `Detail: err.Error()` from their own JSON Schema
+ * checks (internal/authn/settings.go's checkAuthSettings, etc.), which name
+ * their offending field by its exact JSON key (`"trustedProxies: ... is not
+ * an IP address or CIDR"`, `"issuer and clientId are required..."`) but
+ * don't follow the structured "Invalid <field>" title format the richer
+ * issuance-defaults form parses (issuanceFields.ts's fieldFromTitle). This
+ * scans the message for the first property key that appears as a whole
+ * word, longest key first so one field's name can't shadow another's (e.g.
+ * both `issuer` and `issuerCA` present). Returns `null` when no field name
+ * appears, so the caller falls back to a toast alone — the message still
+ * names the field, just not next to it.
+ */
+export function fieldErrorFromMessage(schema: RJSFSchema, message: string): ErrorSchema | null {
+  const keys = Object.keys(schema.properties ?? {}).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    // `ErrorSchema`'s mapped type (`[key in keyof T]?: ErrorSchema<T[key]>`
+    // for the default `T = any`) makes TS see every string key, including
+    // this literal object's own `__errors`, as needing to satisfy that
+    // recursive shape too — an RJSF typing quirk unrelated to the actual
+    // runtime shape (`{ [field]: { __errors: string[] } }`), which is
+    // exactly what Form's own `extraErrors` prop expects.
+    if (new RegExp(`\\b${key}\\b`).test(message)) return { [key]: { __errors: [message] } } as ErrorSchema;
+  }
+  return null;
 }

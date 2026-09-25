@@ -94,12 +94,18 @@ beforeEach(() => {
 });
 
 it('saves the General section from its schema', async () => {
-  const { user } = renderRoute('/settings/general');
+  const { user, queryClient } = renderRoute('/settings/general');
+  // Fix round 1 (Take now #5): baseUrl drives the callback URL Authentication
+  // shows (AuthMethods.oidcCallbackUrl) — seed the auth-methods query into
+  // the cache so invalidateQueries has something to mark stale, then check
+  // it actually did.
+  queryClient.setQueryData(['auth-methods'], { oidcEnabled: false, localEnabled: true, oidcCallbackUrl: 'https://a.example/api/v1/auth/oidc/callback' });
   const input = await screen.findByLabelText('Base URL');
   await user.clear(input);
   await user.type(input, 'https://b.example');
   await user.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(puts.general).toEqual({ baseUrl: 'https://b.example' }));
+  expect(queryClient.getQueryState(['auth-methods'])?.isInvalidated).toBe(true);
 });
 
 it('lists organizations read-only under General', async () => {

@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeBinding, meWith, org, url } from '@/test/fixtures';
+import { authHandlers, makeBinding, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 // The real authentication schema (internal/authn/settings.go's authSchema),
@@ -87,6 +87,40 @@ it('keeps the stored client secret when saving other fields', async () => {
   await screen.findByText('Settings saved');
   expect(put.clientSecret).toBe('__unchanged__');
   expect(put.issuer).toBe('https://login.example.com');
+});
+
+it('a trusted proxy is written at its own field, not over the whole form (fix round 1, Critical)', async () => {
+  // Regression for the array Field's onChange(v, []) bug: an empty RJSF
+  // path means "replace the root", so adding a trusted proxy silently
+  // replaced the whole form's data with just that one-element array —
+  // `issuer`/`clientId` (and every other field) would have gone missing
+  // from the PUT body. `put` (not a toast, which sonner's module-level
+  // queue can still be showing from the previous test) is the signal here.
+  let put: Record<string, unknown> | undefined;
+  server.use(...authHandlers({ authed: true }), ...handlers((b) => (put = b)));
+  const { user } = renderRoute('/settings/authentication');
+  await screen.findByText('Stored');
+  const proxies = screen.getByLabelText('Trusted proxies');
+  await user.type(proxies, '10.0.0.0/8{Enter}');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(put).toBeDefined());
+  expect(put?.trustedProxies).toEqual(['10.0.0.0/8']);
+  expect(put?.issuer).toBe('https://idp.example.com');
+  expect(put?.clientId).toBe('certforge');
+});
+
+it('a 422 naming a field shows an inline error next to it (fix round 1, Take now #6)', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  server.use(
+    http.put(url('/settings/authentication'), () =>
+      problem(422, 'trustedProxies: "not-an-ip" is not an IP address or CIDR', {}, 'Invalid settings')),
+  );
+  const { user } = renderRoute('/settings/authentication');
+  await screen.findByText('Stored');
+  const proxies = screen.getByLabelText('Trusted proxies');
+  await user.type(proxies, 'not-an-ip{Enter}');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('trustedProxies: "not-an-ip" is not an IP address or CIDR');
 });
 
 it('tests the issuer typed in the form', async () => {

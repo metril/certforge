@@ -1,7 +1,7 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
 import type Form from '@rjsf/core';
 import { withTheme } from '@rjsf/core';
-import type { RJSFSchema } from '@rjsf/utils';
+import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { customizeValidator } from '@rjsf/validator-ajv8';
 import Ajv2020 from 'ajv/dist/2020';
 import { shadcnTheme } from './theme';
@@ -36,9 +36,17 @@ type Props = {
    */
   storedSecrets?: string[];
   readonly?: boolean;
+  /**
+   * A server-side error (fix round 1, Take now #6) mapped to the schema
+   * property it names, rendered inline under that field the same way a
+   * client-side validation error would be — the caller (e.g. SchemaSection)
+   * computes this from the failed save's `ApiError` via
+   * `uiSchema.ts`'s `fieldErrorFromMessage`.
+   */
+  extraErrors?: ErrorSchema;
 };
 
-export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false }, ref) {
+export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors }, ref) {
   const formRef = useRef<Form>(null);
   const uiSchema = useMemo(() => buildUiSchema(schema, { storedSecrets }), [schema, storedSecrets]);
   const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
@@ -51,6 +59,7 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
       formData={value}
       validator={validator}
       readonly={readonly}
+      extraErrors={extraErrors}
       showErrorList={false}
       noHtml5Validate
       // C1: every caller (CredentialSheet, SchemaSection) either wraps this

@@ -21,7 +21,7 @@ function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawE
       )}
       {children}
       {rawErrors && rawErrors.length > 0 && (
-        <p className="flex items-center gap-1 text-xs">
+        <p role="alert" className="flex items-center gap-1 text-xs">
           <CircleAlert className="size-3.5 text-failed" aria-hidden />
           {rawErrors[0]}
         </p>

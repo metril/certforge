@@ -29,9 +29,12 @@ export function useSaveSettings(section: SectionId, opts: { silent?: boolean } =
         await qc.invalidateQueries({ queryKey: ['defaults'] });
         await qc.invalidateQueries({ queryKey: ['certs'] });
       }
-      // A saved OIDC change (enabled, issuer, clientId, ...) can flip whether
-      // the login page offers single sign-on.
-      if (section === 'authentication') {
+      // A saved OIDC change (enabled, issuer, clientId, ...) can flip
+      // whether the login page offers single sign-on; a saved General
+      // change can move baseUrl, which drives the callback URL
+      // Authentication shows (fix round 1, Take now #5) — either way
+      // `['auth-methods']` (`AuthMethods.oidcCallbackUrl`) is now stale.
+      if (section === 'authentication' || section === 'general') {
         await qc.invalidateQueries({ queryKey: ['auth-methods'] });
       }
     },

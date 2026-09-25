@@ -28,11 +28,19 @@ type Props = {
  */
 export function SecretInput({ id, label, value, onChange, stored, placeholder, disabled = false }: Props) {
   const [editing, setEditing] = useState(!stored);
+  // Fix round 1 (Take now #4): Replace and Remove both start editing with an
+  // empty-looking input, but clearing back to "" afterward must mean
+  // different things — Replace's "" means "never mind, keep the stored
+  // value" (UNCHANGED); Remove's "" means "actually clear it" ("", sent
+  // every time, not just on the first keystroke). This flag is what tells
+  // the input's own onChange which one the operator asked for.
+  const [removed, setRemoved] = useState(false);
 
   // `stored` flipping (mount, or a parent record reloading with a secret it
   // didn't have before) re-enters stored/"keep it" mode.
   useEffect(() => {
     setEditing(!stored);
+    setRemoved(false);
   }, [stored]);
 
   // Proactively emit the sentinel whenever we're showing "Stored" and
@@ -66,6 +74,7 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
           aria-label={`Replace ${label}`}
           onClick={() => {
             setEditing(true);
+            setRemoved(false);
             onChange(UNCHANGED);
           }}
         >
@@ -80,6 +89,7 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
             // The server clears the stored secret on an explicit "" (unlike
             // UNCHANGED, which keeps it) — never sent unless the caller asks.
             setEditing(true);
+            setRemoved(true);
             onChange('');
           }}
         >
@@ -101,7 +111,13 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
         value={value === UNCHANGED ? '' : (value ?? '')}
         onChange={(e) => {
           const v = e.target.value;
-          onChange(v === '' ? (stored ? UNCHANGED : undefined) : v);
+          if (v !== '') {
+            onChange(v);
+            return;
+          }
+          // Cleared back to empty: Remove's "" sticks; a plain Replace
+          // that's cleared reverts to keeping the stored value.
+          onChange(removed ? '' : stored ? UNCHANGED : undefined);
         }}
       />
       <span id={`${id}-hint`} className="sr-only">
@@ -115,6 +131,7 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
           aria-label={`Keep stored ${label}`}
           onClick={() => {
             setEditing(false);
+            setRemoved(false);
             onChange(UNCHANGED);
           }}
         >
