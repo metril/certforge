@@ -82,6 +82,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Internal agent CA with envelope-encrypted keys, rotation and retirement, and the Phase 3 tables (clients, enrolment tokens, layouts, deploy targets, hooks, grants, deployments, hook runs).
 - Clients API: create with a one-time enrolment token, list with site, status and search filters, rename, revoke, re-enrol and delete.
 - mTLS agent listener on CF_LISTEN_AGENT with token enrolment, certificate renewal and an automatically renewed server certificate.
+- Output layouts, the Traefik file-provider deploy target (schema in /meta/schemas) and agent hooks, with shared rendering and digests for drift.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

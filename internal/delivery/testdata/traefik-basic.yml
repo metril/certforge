@@ -1,0 +1,7 @@
+# Managed by CertForge. Do not edit; changes are overwritten.
+tls:
+  certificates:
+    - certFile: "/etc/traefik/dynamic/certs/web-frontend/fullchain.pem"
+      keyFile: "/etc/traefik/dynamic/certs/web-frontend/privkey.pem"
+      stores:
+        - "default"

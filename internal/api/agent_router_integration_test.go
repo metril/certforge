@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/agentca"
 	"github.com/metril/certforge/internal/agentproto"
@@ -328,6 +329,25 @@ func TestEnrollRateLimited(t *testing.T) {
 // concurrent transaction that locks the CA row and marks it retired before
 // enrol's row lock is granted must make enrol fail instead of activating
 // the client against a CA nothing trusts any more.
+// waitForLockWait polls pg_stat_activity for a backend blocked waiting on a
+// row lock (wait_event_type = 'Lock'), bounded to 5s. It replaces a fixed
+// sleep so the test does not race the goroutine's transaction.
+func waitForLockWait(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for a backend to block on a row lock")
+}
+
 func TestEnrollBlocksOnConcurrentRetire(t *testing.T) {
 	e := newAgentEnv(t)
 	ctx := context.Background()
@@ -344,7 +364,7 @@ func TestEnrollBlocksOnConcurrentRetire(t *testing.T) {
 	if _, err := tx.Exec(ctx, `SELECT * FROM agent_cas WHERE id = $1 FOR UPDATE`, active.ID); err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan struct{ code int })
+	done := make(chan struct{ code int }, 1)
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	csr := csrPEM(t, key)
 	go func() {
@@ -354,7 +374,7 @@ func TestEnrollBlocksOnConcurrentRetire(t *testing.T) {
 		}
 		done <- struct{ code int }{code}
 	}()
-	time.Sleep(200 * time.Millisecond) // let enroll's tx block on the CA row lock
+	waitForLockWait(ctx, t, e.pool) // let enroll's tx block on the CA row lock
 	if _, err := tx.Exec(ctx, `UPDATE agent_cas SET status = 'retired' WHERE id = $1`, active.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +416,7 @@ func TestRenewBlocksOnConcurrentRetire(t *testing.T) {
 	if _, err := tx.Exec(ctx, `SELECT * FROM agent_cas WHERE id = $1 FOR UPDATE`, active.ID); err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan struct{ code int })
+	done := make(chan struct{ code int }, 1)
 	go func() {
 		code, err := doAgent(e.httpClient(t, &cert), http.MethodPost, e.ts.URL+"/agent/v1/renew",
 			agentproto.RenewRequest{CSR: csrPEM(t, cert.PrivateKey.(crypto.Signer))}, nil)
@@ -405,7 +425,7 @@ func TestRenewBlocksOnConcurrentRetire(t *testing.T) {
 		}
 		done <- struct{ code int }{code}
 	}()
-	time.Sleep(200 * time.Millisecond) // let renew's tx block on the CA row lock
+	waitForLockWait(ctx, t, e.pool) // let renew's tx block on the CA row lock
 	if _, err := tx.Exec(ctx, `UPDATE agent_cas SET status = 'retired' WHERE id = $1`, active.ID); err != nil {
 		t.Fatal(err)
 	}

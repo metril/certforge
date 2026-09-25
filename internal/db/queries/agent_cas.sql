@@ -7,6 +7,11 @@ SELECT * FROM agent_cas WHERE id = $1;
 -- name: LockAgentCA :one
 SELECT * FROM agent_cas WHERE id = $1 FOR UPDATE;
 
+-- name: ShareAgentCA :one
+-- A shared lock: concurrent enrolments/renewals against the same CA do not
+-- serialize on each other, but still conflict with Retire's FOR UPDATE.
+SELECT * FROM agent_cas WHERE id = $1 FOR SHARE;
+
 -- name: InsertAgentCA :one
 INSERT INTO agent_cas (cert_der, key, not_before, not_after) VALUES ($1, $2, $3, $4) RETURNING *;
 

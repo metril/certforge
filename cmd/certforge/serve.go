@@ -24,6 +24,7 @@ import (
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
@@ -64,6 +65,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	}
 	metaReg := meta.NewRegistry()
 	challenge.AddToMeta(metaReg)
+	delivery.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
 	issuanceStore := issuance.NewStore(pool, box, store)

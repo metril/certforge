@@ -35,51 +35,6 @@ func (s *Server) ListClientHookRuns(context.Context, gen.ListClientHookRunsReque
 func (s *Server) ListCertificateDeployments(context.Context, gen.ListCertificateDeploymentsRequestObject) (gen.ListCertificateDeploymentsResponseObject, error) {
 	return nil, errNotImplemented
 }
-func (s *Server) ListLayouts(context.Context, gen.ListLayoutsRequestObject) (gen.ListLayoutsResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) CreateLayout(context.Context, gen.CreateLayoutRequestObject) (gen.CreateLayoutResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) GetLayout(context.Context, gen.GetLayoutRequestObject) (gen.GetLayoutResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) UpdateLayout(context.Context, gen.UpdateLayoutRequestObject) (gen.UpdateLayoutResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) DeleteLayout(context.Context, gen.DeleteLayoutRequestObject) (gen.DeleteLayoutResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) ListDeployTargets(context.Context, gen.ListDeployTargetsRequestObject) (gen.ListDeployTargetsResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) CreateDeployTarget(context.Context, gen.CreateDeployTargetRequestObject) (gen.CreateDeployTargetResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) GetDeployTarget(context.Context, gen.GetDeployTargetRequestObject) (gen.GetDeployTargetResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) UpdateDeployTarget(context.Context, gen.UpdateDeployTargetRequestObject) (gen.UpdateDeployTargetResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) DeleteDeployTarget(context.Context, gen.DeleteDeployTargetRequestObject) (gen.DeleteDeployTargetResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) ListHooks(context.Context, gen.ListHooksRequestObject) (gen.ListHooksResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) CreateHook(context.Context, gen.CreateHookRequestObject) (gen.CreateHookResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) GetHook(context.Context, gen.GetHookRequestObject) (gen.GetHookResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) UpdateHook(context.Context, gen.UpdateHookRequestObject) (gen.UpdateHookResponseObject, error) {
-	return nil, errNotImplemented
-}
-func (s *Server) DeleteHook(context.Context, gen.DeleteHookRequestObject) (gen.DeleteHookResponseObject, error) {
-	return nil, errNotImplemented
-}
 func (s *Server) ListAgentCAs(context.Context, gen.ListAgentCAsRequestObject) (gen.ListAgentCAsResponseObject, error) {
 	return nil, errNotImplemented
 }

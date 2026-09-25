@@ -1,0 +1,17 @@
+# Managed by CertForge. Do not edit; changes are overwritten.
+tls:
+  certificates:
+    - certFile: "/etc/traefik/dynamic/certs/api.example.test/fullchain.pem"
+      keyFile: "/etc/traefik/dynamic/certs/api.example.test/privkey.pem"
+      stores:
+        - "default"
+        - "internal"
+  stores:
+    "default":
+      defaultCertificate:
+        certFile: "/etc/traefik/dynamic/certs/api.example.test/fullchain.pem"
+        keyFile: "/etc/traefik/dynamic/certs/api.example.test/privkey.pem"
+    "internal":
+      defaultCertificate:
+        certFile: "/etc/traefik/dynamic/certs/api.example.test/fullchain.pem"
+        keyFile: "/etc/traefik/dynamic/certs/api.example.test/privkey.pem"

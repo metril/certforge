@@ -39,14 +39,17 @@ func clip(s string, n int) string {
 	return s[:n]
 }
 
-// lockSigningCA re-reads a CA's status under a row lock, inside the caller's
-// transaction, and refuses a CA that was retired since it was read outside
-// the transaction. Without this, a concurrent agentca.Store.Retire (which
-// takes the same row lock) could retire the CA after this transaction signed
-// with it but before it committed the client's agent_ca_id, stranding the
-// client on a CA nothing trusts.
+// lockSigningCA re-reads a CA's status under a shared row lock, inside the
+// caller's transaction, and refuses a CA that was retired since it was read
+// outside the transaction. Without this, a concurrent agentca.Store.Retire
+// (which takes an exclusive row lock) could retire the CA after this
+// transaction signed with it but before it committed the client's
+// agent_ca_id, stranding the client on a CA nothing trusts. The lock is
+// shared (FOR SHARE), not exclusive, so concurrent enrolments and renewals
+// against the same CA do not serialize on each other; they still conflict
+// with Retire's FOR UPDATE.
 func lockSigningCA(ctx context.Context, q *sqlcgen.Queries, id uuid.UUID) error {
-	row, err := q.LockAgentCA(ctx, id)
+	row, err := q.ShareAgentCA(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return conflict("The signing agent CA no longer exists; retry enrolment.")
 	}
