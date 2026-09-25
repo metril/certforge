@@ -1,25 +1,33 @@
 import { Link } from '@tanstack/react-router';
 import { PageHeader } from '@/components/PageHeader';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMe } from '@/lib/org';
 import { LATER } from '@/lib/nav';
+import { canAnywhere } from '@/lib/permissions';
+import { AccessPage } from './access/AccessPage';
 import { IssuanceDefaultsSection } from './IssuanceDefaultsSection';
 import { KekStatus } from './KekStatus';
 import { OrgsList } from './OrgsList';
 import { SchemaSection } from './SchemaSection';
 import { SECTIONS, type SectionSlug } from './sections';
 
-const LATER_SECTIONS = ['Access', 'Authentication', 'Agents', 'Integrations'];
+const LATER_SECTIONS = ['Authentication', 'Agents', 'Integrations'];
 
 const item = 'flex h-9 items-center px-3 text-sm text-ink-muted hover:bg-subtle hover:text-ink';
 
 export function SettingsPage({ section }: { section: SectionSlug }) {
+  const me = useMe();
   const current = SECTIONS.find((s) => s.slug === section)!;
+  // Controller ruling (D5): the Access section is visible only to callers
+  // with users:read anywhere; AccessPage itself also guards this, this just
+  // keeps the nav link from being offered at all.
+  const visibleSections = SECTIONS.filter((s) => s.slug !== 'access' || canAnywhere(me, 'users:read'));
   return (
     <>
       <PageHeader title="Settings" />
       <div className="grid gap-8 md:grid-cols-[200px_1fr]">
         <nav aria-label="Settings sections" className="grid content-start gap-0.5">
-          {SECTIONS.map((s) => (
+          {visibleSections.map((s) => (
             <Link
               key={s.slug}
               to="/settings/$section"
@@ -51,6 +59,7 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
               <OrgsList />
             </>
           )}
+          {section === 'access' && <AccessPage />}
           {section === 'issuance-defaults' && <IssuanceDefaultsSection />}
           {section === 'backup' && (
             <>

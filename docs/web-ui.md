@@ -18,6 +18,10 @@ The login page shows **Sign in with single sign-on** when Settings → Authentic
 
 Below `md` width, the needs-attention queue and upcoming renewals render as stacked card rows instead of a table line, and the horizon scales to the screen width.
 
+## Settings → Access
+
+Three tabs, kept in the URL (`?tab=users|bindings|keys`). **Users** lists everyone who has signed in with their source, groups and last sign-in; admins disable a user with the status switch (type the name to confirm). Your own switch is locked. Below `md` width the list renders as stacked card rows instead of a table, and a search box filters the list (also kept in the URL as `?q=`). Settings → Access itself is only offered in the nav to callers who can read users somewhere.
+
 ## Keyboard shortcuts
 
 | Keys | Action |
