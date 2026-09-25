@@ -1,8 +1,24 @@
 import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { server } from './server';
 import { NOW } from './fixtures';
+
+// C1: a `console.error` almost always means a real bug (a React warning about
+// refs, act(), keys, prop types, etc.) that a merely-passing assertion would
+// miss; fail the test outright instead of letting it scroll by unnoticed.
+// No allowlist: every current call site is fixed rather than silenced.
+const rawConsoleError = console.error;
+console.error = (...args: Parameters<typeof console.error>) => {
+  rawConsoleError(...args);
+  throw new Error(`console.error called in test: ${args.map(String).join(' ')}`);
+};
+
+// I4: RJSF/Ajv/tldts cold-load slowly the first time a lazy chunk imports
+// them; give async utilities (waitFor, findBy*) more headroom than the 1000ms
+// default so a slow first import doesn't flake a test that is otherwise
+// correct.
+configure({ asyncUtilTimeout: 3000 });
 
 // jsdom gaps used by Radix, cmdk, and dnd-kit.
 class NoopResizeObserver {

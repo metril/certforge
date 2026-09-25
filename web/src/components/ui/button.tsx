@@ -37,20 +37,28 @@ const buttonVariants = cva(
   }
 )
 
-function Button({
-  className,
-  variant = "default",
-  size = "default",
-  asChild = false,
-  ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) {
+// C1 (React 18.3.1): a plain function component cannot be given a ref, and
+// Radix's `asChild`/Slot cloning always tries to attach one (to measure and
+// position anything anchored to this Button, e.g. a Popover/DropdownMenu
+// trigger). Without forwardRef here, that ref silently drops, React warns
+// "Function components cannot be given refs", and the anchored content
+// renders off-screen (translate(0,-200%)) in a real browser instead of next
+// to the button.
+const Button = React.forwardRef<
+  React.ComponentRef<"button">,
+  React.ComponentProps<"button"> &
+    VariantProps<typeof buttonVariants> & {
+      asChild?: boolean
+    }
+>(function Button(
+  { className, variant = "default", size = "default", asChild = false, ...props },
+  ref
+) {
   const Comp = asChild ? Slot.Root : "button"
 
   return (
     <Comp
+      ref={ref}
       data-slot="button"
       data-variant={variant}
       data-size={size}
@@ -58,6 +66,7 @@ function Button({
       {...props}
     />
   )
-}
+})
+Button.displayName = "Button"
 
 export { Button, buttonVariants }

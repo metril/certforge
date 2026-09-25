@@ -1,8 +1,26 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test, type ConsoleMessage, type Page } from '@playwright/test';
 import { E2E } from './env';
 
 const SURFACE = { light: 'rgb(246, 247, 249)', dark: 'rgb(22, 27, 36)' } as const;
+
+// M5: a nonce/hash mismatch or a disallowed source only ever shows up as a
+// browser console error at request time — Playwright never fails the test on
+// its own, so every CSP violation logged during a test is collected here and
+// asserted empty at the end, on top of whatever the test already checks.
+const cspViolations = new WeakMap<Page, string[]>();
+
+test.beforeEach(({ page }) => {
+  const violations: string[] = [];
+  cspViolations.set(page, violations);
+  page.on('console', (msg: ConsoleMessage) => {
+    if (msg.type() === 'error' && /Content-Security-Policy/i.test(msg.text())) violations.push(msg.text());
+  });
+});
+
+test.afterEach(({ page }) => {
+  expect(cspViolations.get(page)).toEqual([]);
+});
 
 for (const theme of ['light', 'dark'] as const) {
   test(`log in, see the certificate, open it, download PEM (${theme})`, async ({ page }) => {
@@ -58,6 +76,26 @@ for (const theme of ['light', 'dark'] as const) {
     await page.getByRole('button', { name: 'Download', exact: true }).click();
     const sheet = page.getByRole('dialog', { name: 'Download' });
     await expect(sheet.getByRole('button', { name: 'fullchain' })).toHaveAttribute('aria-pressed', 'true');
+
+    // Regression check (C1, Critical): a Combobox's PopoverContent is
+    // anchored to its trigger Button via Radix's `asChild`, which clones the
+    // Button and attaches a ref to measure and position the popper. Without
+    // forwardRef on Button, that ref silently dropped and the popper
+    // rendered at translate(0,-200%) — off-screen — in every real browser,
+    // even though jsdom-based component tests couldn't see it (jsdom doesn't
+    // lay out or position anything). Only a real browser catches this.
+    const versionCombobox = sheet.getByRole('combobox');
+    await versionCombobox.click();
+    const popper = page.locator('[data-slot="popover-content"]').last();
+    await expect(popper).toBeVisible();
+    const viewport = page.viewportSize()!;
+    const pop = (await popper.boundingBox())!;
+    expect(pop.x).toBeGreaterThanOrEqual(0);
+    expect(pop.y).toBeGreaterThanOrEqual(0);
+    expect(pop.x + pop.width).toBeLessThanOrEqual(viewport.width);
+    expect(pop.y + pop.height).toBeLessThanOrEqual(viewport.height);
+    await page.keyboard.press('Escape');
+
     const pending = page.waitForEvent('download');
     await sheet.getByRole('button', { name: 'Download PEM' }).click();
     const download = await pending;

@@ -3,7 +3,6 @@
 /dist/
 web/dist/
 web/node_modules/
-web/src/routeTree.gen.ts
 
 # Local data
 /data/

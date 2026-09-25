@@ -53,6 +53,20 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
       readonly={readonly}
       showErrorList={false}
       noHtml5Validate
+      // C1: every caller (CredentialSheet, SchemaSection) either wraps this
+      // in its own <form> or drives saving from a plain button's onClick,
+      // never from this form's native submit; rendering RJSF's own <form>
+      // tag too produces an invalid nested <form>-in-<form> (React warns via
+      // validateDOMNesting) in the CredentialSheet case. `tagName="div"`
+      // keeps every field's markup identical while dropping the extra tag.
+      tagName="div"
+      // C1: validateForm() (called from the `validate` imperative handle
+      // above) runs the same error path RJSF's onSubmit uses; with no
+      // onError, RJSF's default logs "Form validation failed" via
+      // console.error on every expected, user-visible validation failure.
+      // The field-level errors already render inline (FieldTemplate reads
+      // the form's own error state), so there's nothing more to do here.
+      onError={() => {}}
       onChange={(e) => {
         const data = { ...((e.formData ?? {}) as Record<string, unknown>) };
         // Fix round 1: a serverPath field is server-managed (preflight A10);

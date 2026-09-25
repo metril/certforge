@@ -25,23 +25,25 @@ const badgeVariants = cva(
   }
 )
 
-function Badge({
-  className,
-  variant = "default",
-  asChild = false,
-  ...props
-}: React.ComponentProps<"span"> &
-  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+// C1: same forwardRef requirement as Button — Badge can be an `asChild`
+// target (e.g. wrapped in a Tooltip trigger) and Radix needs a real DOM ref.
+const Badge = React.forwardRef<
+  React.ComponentRef<"span">,
+  React.ComponentProps<"span"> &
+    VariantProps<typeof badgeVariants> & { asChild?: boolean }
+>(function Badge({ className, variant = "default", asChild = false, ...props }, ref) {
   const Comp = asChild ? Slot.Root : "span"
 
   return (
     <Comp
+      ref={ref}
       data-slot="badge"
       data-variant={variant}
       className={cn(badgeVariants({ variant }), className)}
       {...props}
     />
   )
-}
+})
+Badge.displayName = "Badge"
 
 export { Badge, badgeVariants }

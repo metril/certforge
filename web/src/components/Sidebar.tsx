@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { forwardRef, type ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -13,30 +13,31 @@ const rowClass =
   'flex h-9 items-center gap-3 border-l-2 border-transparent px-4 text-sm text-ink-muted hover:bg-subtle hover:text-ink';
 const activeClass = 'border-primary bg-panel font-semibold text-ink';
 
-function TargetLink({
-  target,
-  org,
-  className,
-  label,
-  active,
-  onNavigate,
-  children,
-}: {
-  target: NavTarget;
-  org: string;
-  className: string;
-  label?: string;
-  active: boolean;
-  onNavigate?: () => void;
-  children: ReactNode;
-}) {
+// C1 (Critical): NavRow passes this component's rendered element straight
+// into `<TooltipTrigger asChild>`, which clones it and attaches a ref so
+// Radix can anchor the icon-rail tooltip to the actual `<a>` DOM node.
+// Without forwardRef, that ref dropped (React warned "Function components
+// cannot be given refs") and the tooltip anchored nowhere, so it appeared at
+// (0, -200%) instead of next to the link.
+const TargetLink = forwardRef<
+  HTMLAnchorElement,
+  {
+    target: NavTarget;
+    org: string;
+    className: string;
+    label?: string;
+    active: boolean;
+    onNavigate?: () => void;
+    children: ReactNode;
+  }
+>(function TargetLink({ target, org, className, label, active, onNavigate, children }, ref) {
   // The single source of truth for "is this item active" is `active`
   // (nav.ts's isNavPathActive, a segment-boundary-aware prefix match run
   // against the current pathname), not TanStack Router's own built-in
   // Link active-state: that compares against this Link's own literal
   // resolved href, which can't know that e.g. every /settings/:section
   // should light up the same "Settings" item.
-  const common = { className, 'aria-label': label, 'aria-current': active ? ('page' as const) : undefined, onClick: onNavigate };
+  const common = { ref, className, 'aria-label': label, 'aria-current': active ? ('page' as const) : undefined, onClick: onNavigate };
   switch (target) {
     case 'overview':
       return (
@@ -63,7 +64,8 @@ function TargetLink({
         </Link>
       );
   }
-}
+});
+TargetLink.displayName = 'TargetLink';
 
 function DisabledRow({ item, compact, reason }: { item: NavItem; compact: boolean; reason: string }) {
   const Icon = item.icon;
