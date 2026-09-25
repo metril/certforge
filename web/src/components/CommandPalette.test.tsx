@@ -1,9 +1,33 @@
 import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+import type { Action } from '@/lib/permissions';
 import { server } from '@/test/server';
 import { authHandlers, makeCert, meWith, org, org2, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
+
+// Every real role's read actions come as a fixed VIEWER block (see
+// lib/permissions.ts: any role granting certs:read also grants
+// cas:read/accounts:read/dnscreds:read), so there is no real role that has
+// "only certs:read" to bind a test user to — this overrides `can`/
+// `canAnywhere` directly to isolate the palette's own per-entry gating from
+// the app's actual role compositions. `permissionOverride` unset (the
+// default) passes every call through to the real implementation, so every
+// other test in this file is unaffected.
+let permissionOverride: { can?: (action: Action) => boolean; canAnywhere?: (action: Action) => boolean } | null = null;
+vi.mock('@/lib/permissions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/permissions')>();
+  return {
+    ...actual,
+    can: (me: Parameters<typeof actual.can>[0], action: Action, orgId?: string | null) =>
+      permissionOverride?.can ? permissionOverride.can(action) : actual.can(me, action, orgId),
+    canAnywhere: (me: Parameters<typeof actual.canAnywhere>[0], action: Action) =>
+      permissionOverride?.canAnywhere ? permissionOverride.canAnywhere(action) : actual.canAnywhere(me, action),
+  };
+});
+afterEach(() => {
+  permissionOverride = null;
+});
 
 function certificateHandlers(cert: ReturnType<typeof makeCert>) {
   return [
@@ -115,6 +139,52 @@ it('hides New certificate and Renew for a viewer (no certs:write/certs:issue)', 
   await within(dialog).findByRole('option', { name: /^edge/ });
   expect(within(dialog).queryByText('New certificate')).not.toBeInTheDocument();
   expect(within(dialog).queryByText(/^Renew edge/)).not.toBeInTheDocument();
+});
+
+// Coordinator re-review: a caller with only certs:read in the current org
+// (no cas:read/accounts:read/dnscreds:read/audit:read, no users:read
+// anywhere) sees Certificates but none of the entries or actions gated on
+// those other actions.
+it('shows only certs:read-gated entries for a caller with only certs:read', async () => {
+  permissionOverride = { can: (action) => action === 'certs:read', canAnywhere: () => false };
+  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByPlaceholderText('www.example.com');
+  // The Certificates page entry itself (distinct from the "Certificates"
+  // group heading above the matching certificate below), checked before
+  // typing narrows the list to "edge" and would filter this page entry out.
+  expect(within(dialog).getByRole('option', { name: 'Certificates' })).toBeInTheDocument();
+  expect(within(dialog).queryByText('Audit log')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Issuers: CAs')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Issuers: ACME accounts')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Issuers: DNS credentials')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Settings: Access')).not.toBeInTheDocument();
+  await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'edge');
+  await within(dialog).findByRole('option', { name: /^edge/ });
+  expect(within(dialog).queryByText('New certificate')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText(/^Renew edge/)).not.toBeInTheDocument();
+});
+
+// Coordinator re-review: an org-admin (every org-scoped action, including
+// audit:read/cas:read/accounts:read/dnscreds:read/users:read) sees every
+// org-scoped page entry the viewer-only test above hides.
+it('shows every org-scoped page entry for an org-admin', async () => {
+  permissionOverride = { can: () => true, canAnywhere: () => true };
+  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByPlaceholderText('www.example.com');
+  expect(within(dialog).getByText('Audit log')).toBeInTheDocument();
+  expect(within(dialog).getByText('Issuers: CAs')).toBeInTheDocument();
+  expect(within(dialog).getByText('Issuers: ACME accounts')).toBeInTheDocument();
+  expect(within(dialog).getByText('Issuers: DNS credentials')).toBeInTheDocument();
+  expect(within(dialog).getByText('Settings: Access')).toBeInTheDocument();
+  expect(within(dialog).getByText('New certificate')).toBeInTheDocument();
 });
 
 // Review fix: the palette's own dialog is exempt from the global suppress
