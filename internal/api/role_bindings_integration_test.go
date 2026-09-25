@@ -86,6 +86,58 @@ func TestRoleBindings(t *testing.T) {
 	}
 }
 
+// TestRoleBindingsListFilters covers the list endpoint's ?orgId= and
+// ?subjectType= query filters.
+func TestRoleBindingsListFilters(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	org2, _ := e.deps.Queries.CreateOrg(context.Background(), sqlcgen.CreateOrgParams{Slug: "lab2", Name: "Lab2"})
+	_, _, bobID := e.userSession("bob2", "", nil)
+	post := func(body map[string]any) bindingOut {
+		resp, out := e.doClient(e.client, http.MethodPost, "/api/v1/role-bindings", body, http.Header{"X-Csrf-Token": {csrf}}) //nolint:bodyclose // doClient closes the body
+		var b bindingOut
+		if resp.StatusCode != http.StatusCreated || json.Unmarshal(out, &b) != nil {
+			t.Fatalf("create %d %s", resp.StatusCode, out)
+		}
+		return b
+	}
+	userOrg1 := post(map[string]any{"subjectType": "user", "subject": bobID.String(), "role": "viewer", "orgId": org})
+	group := post(map[string]any{"subjectType": "oidc_group", "subject": "ops-filter", "role": "operator", "orgId": org2.ID})
+
+	list := func(query string) []bindingOut {
+		resp, body := e.doClient(e.client, http.MethodGet, "/api/v1/role-bindings"+query, nil, nil) //nolint:bodyclose // doClient closes the body
+		var l struct{ Items []bindingOut }
+		if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &l) != nil {
+			t.Fatalf("list %s: %d %s", query, resp.StatusCode, body)
+		}
+		return l.Items
+	}
+
+	byOrg := list("?orgId=" + org.String())
+	found := false
+	for _, b := range byOrg {
+		if b.OrgID == nil || *b.OrgID != org.String() {
+			t.Fatalf("?orgId= leaked %+v", b)
+		}
+		found = found || b.ID == userOrg1.ID
+	}
+	if !found {
+		t.Fatalf("?orgId= missing expected binding: %+v", byOrg)
+	}
+
+	byType := list("?subjectType=oidc_group")
+	found = false
+	for _, b := range byType {
+		if b.SubjectType != "oidc_group" {
+			t.Fatalf("?subjectType= leaked %+v", b)
+		}
+		found = found || b.ID == group.ID
+	}
+	if !found {
+		t.Fatalf("?subjectType= missing expected binding: %+v", byType)
+	}
+}
+
 // TestRoleBindingsAPIKeyScope proves C9: apikey bindings are gated by
 // apikeys:write at the key's own scope (global for a global key, the key's
 // org for an org-scoped key), not by bindings:write at the request's orgId.
@@ -155,6 +207,25 @@ func TestDeleteLastGlobalAdminBinding(t *testing.T) {
 	}
 }
 
+// TestDeleteAdminBindingDisabledSecondAdminDoesNotCount is the fix-round-1
+// regression: deleting a global admin binding reuses Task 8's
+// ensureAnotherGlobalAdmin, which counts only enabled admins. A second
+// admin who still holds a binding but is disabled must not count as "another
+// admin", so deleting the last enabled admin's own binding is still refused.
+func TestDeleteAdminBindingDisabledSecondAdminDoesNotCount(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	admin, _ := e.deps.Queries.GetLocalAdmin(context.Background())
+	_, _, second := e.userSession("sam", "admin", nil)
+	if resp, _ := e.do(http.MethodPatch, "/api/v1/users/"+second.String(), map[string]bool{"disabled": true}, csrf); resp.StatusCode != http.StatusOK { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("disable sam: %d", resp.StatusCode)
+	}
+	own := globalAdminBindingOf(t, e, admin.ID.String())
+	if resp, _ := e.do(http.MethodDelete, "/api/v1/role-bindings/"+own, nil, csrf); resp.StatusCode != http.StatusConflict { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("last enabled admin (other admin disabled): %d", resp.StatusCode)
+	}
+}
+
 func TestConcurrentAdminBindingDeletes(t *testing.T) {
 	e := newTestEnv(t)
 	csrf, _ := e.seedAdminSession()
@@ -164,7 +235,7 @@ func TestConcurrentAdminBindingDeletes(t *testing.T) {
 	// deleting the OTHER caller's binding would strip that other session's
 	// own authority mid-test (its principal is reloaded fresh from the DB
 	// on its next request), racing the outcome on request-arrival order
-	// rather than proving the LockGlobalUserAdminBindings serialization
+	// rather than proving ensureAnotherGlobalAdmin's users-row lock, which
 	// this test targets.
 	type call struct {
 		c    *http.Client

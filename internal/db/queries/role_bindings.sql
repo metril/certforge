@@ -39,8 +39,3 @@ SELECT * FROM role_bindings WHERE id = $1;
 
 -- name: DeleteRoleBinding :exec
 DELETE FROM role_bindings WHERE id = $1;
-
--- name: LockGlobalUserAdminBindings :many
-SELECT id FROM role_bindings
-WHERE role = 'admin' AND subject_type = 'user' AND org_id IS NULL AND site_id IS NULL
-FOR UPDATE;

@@ -86,6 +86,20 @@ func (s *Server) CreateRoleBinding(ctx context.Context, req gen.CreateRoleBindin
 	if !slices.Contains(bindingRoles, role) {
 		return nil, unprocessable("role", "role must be one of "+strings.Join(bindingRoles, ", "))
 	}
+	// A cheap bindings:write check up front, before the subject lookup below
+	// discloses (via 422 vs some other outcome) whether a given user or key
+	// id exists: a caller with no bindings:write anywhere near this scope
+	// gets 403 without that leak. The apikey case still needs the scoped
+	// apikeys:write check after the lookup (the key's own org isn't known
+	// yet), so this pre-check only rules out callers who plainly have no
+	// bindings:write at all here.
+	preOrg := in.OrgId
+	if st == "oidc_group" {
+		preOrg = nil
+	}
+	if !authz.Can(p, authz.ActionBindingsWrite, preOrg) {
+		return nil, forbiddenAction(authz.ActionBindingsWrite)
+	}
 	label, authOrg, err := s.checkSubject(ctx, st, subject, in.OrgId)
 	if err != nil {
 		return nil, err
@@ -185,15 +199,26 @@ func (s *Server) DeleteRoleBinding(ctx context.Context, req gen.DeleteRoleBindin
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.d.Queries.WithTx(tx)
 	if rb.Role == authz.RoleAdmin && rb.SubjectType == "user" && rb.OrgID == nil && rb.SiteID == nil {
-		ids, err := q.LockGlobalUserAdminBindings(ctx)
+		subjectID, err := uuid.Parse(rb.Subject)
 		if err != nil {
 			return nil, err
 		}
-		if !slices.Contains(ids, rb.ID) {
-			return nil, notFound("role binding %s", req.Id)
+		// Reuse Task 8's guard: it locks users (not role_bindings) with an
+		// ordered FOR UPDATE and counts only enabled ones, so it serializes
+		// with a concurrent PATCH /users/{id} disable and correctly refuses
+		// when the only other admin is disabled (LockGlobalUserAdminBindings
+		// counted disabled admins too, and didn't serialize with the disable
+		// guard at all).
+		if err := ensureAnotherGlobalAdmin(ctx, q, subjectID); err != nil {
+			return nil, err
 		}
-		if len(ids) <= 1 {
-			return nil, conflict("This is the last global admin binding held by a user; add another admin first.")
+		// ensureAnotherGlobalAdmin locks users, not this row: a concurrent
+		// caller could have already deleted this same binding while we
+		// waited for the lock.
+		if _, err := q.GetRoleBinding(ctx, rb.ID); errors.Is(err, pgx.ErrNoRows) {
+			return nil, notFound("role binding %s", req.Id)
+		} else if err != nil {
+			return nil, err
 		}
 	}
 	if err := q.DeleteRoleBinding(ctx, rb.ID); err != nil {

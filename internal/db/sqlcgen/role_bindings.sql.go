@@ -257,29 +257,3 @@ func (q *Queries) LockGlobalAdminUsers(ctx context.Context) ([]User, error) {
 	}
 	return items, nil
 }
-
-const lockGlobalUserAdminBindings = `-- name: LockGlobalUserAdminBindings :many
-SELECT id FROM role_bindings
-WHERE role = 'admin' AND subject_type = 'user' AND org_id IS NULL AND site_id IS NULL
-FOR UPDATE
-`
-
-func (q *Queries) LockGlobalUserAdminBindings(ctx context.Context) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lockGlobalUserAdminBindings)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []uuid.UUID{}
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
