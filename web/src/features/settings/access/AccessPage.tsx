@@ -5,11 +5,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMe } from '@/lib/org';
 import { canAnywhere, type Action } from '@/lib/permissions';
 import type { AccessTab, SettingsSearch } from '../sections';
+import { BindingsTab } from './BindingsTab';
 import { UsersTab } from './UsersTab';
 
-// Tasks 4 and 6 append the bindings and keys tabs here.
+// Task 6 appends the API keys tab here.
 const TABS: { value: AccessTab; label: string; action: Action; render: () => ReactNode }[] = [
   { value: 'users', label: 'Users', action: 'users:read', render: () => <UsersTab /> },
+  { value: 'bindings', label: 'Role bindings', action: 'bindings:read', render: () => <BindingsTab /> },
 ];
 
 // Controller ruling: `q` is a per-tab filter, so switching tabs drops it

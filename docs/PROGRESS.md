@@ -133,8 +133,8 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 |---|---|---|---|
 | 1 | Types, permissions mirror, fixtures | done | 367aa01 |
 | 2 | Login with single sign-on | done | 339af81 |
-| 3 | Settings → Access shell and Users | done | pending |
-| 4 | Role bindings | pending | – |
+| 3 | Settings → Access shell and Users | done | 9795606 |
+| 4 | Role bindings | done | pending |
 | 5 | Settings → Authentication | pending | – |
 | 6 | API keys | pending | – |
 | 7 | Orgs and sites | pending | – |

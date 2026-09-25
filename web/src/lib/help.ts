@@ -114,6 +114,10 @@ export const help = {
   'user.groups': { text: 'Groups from the user’s last single sign-on. Group bindings match these.' },
   'user.status': { text: 'Disabling signs the user out everywhere and stops their API keys.', learnMore: 'configuration.md#access' },
   'user.self': { text: 'You can’t disable your own account.' },
+  'binding.subjectType': { text: 'Who gets the role: a user, a group from single sign-on, or an API key.' },
+  'binding.group': { text: 'The group name exactly as the identity provider sends it in the groups claim.', learnMore: 'configuration.md#authentication' },
+  'binding.role': { text: 'Viewer reads, auditor also reads the audit log, operator issues and edits certificates. Org admin runs one org; admin runs everything.' },
+  'binding.scope': { text: 'One org, or All orgs for a global role. Changes apply on the next request.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

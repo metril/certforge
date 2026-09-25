@@ -22,6 +22,8 @@ Below `md` width, the needs-attention queue and upcoming renewals render as stac
 
 Three tabs, kept in the URL (`?tab=users|bindings|keys`). **Users** lists everyone who has signed in with their source, groups and last sign-in; admins disable a user with the status switch (type the name to confirm). Your own switch is locked. Below `md` width the list renders as stacked card rows instead of a table, and a search box filters the list (also kept in the URL as `?q=`). Settings → Access itself is only offered in the nav to callers who can read users somewhere.
 
+**Role bindings** lists every grant you can see, filterable by subject type (?type=). **Add binding** picks a user or types a group name, a role, and a scope (one org, or All orgs for global admins). Removing a binding asks you to type the subject's name; the last global admin binding held by a user cannot be removed.
+
 ## Keyboard shortcuts
 
 | Keys | Action |
