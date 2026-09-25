@@ -36,17 +36,29 @@ func NewLimiter(perMinute, burst int) *Limiter {
 	return &Limiter{perMinute: perMinute, burst: burst, buckets: map[string]*bucket{}, now: time.Now}
 }
 
+// maxBuckets caps the limiter's per-key map so an attacker spraying distinct
+// source addresses cannot grow it without bound; once full, Allow evicts the
+// single oldest (least recently seen) entry to make room. A var, not a
+// const, so tests can shrink it to exercise eviction without 100k keys.
+var maxBuckets = 100_000
+
 // Allow takes one token for key, or reports how long until one is free.
 func (l *Limiter) Allow(key string) (bool, time.Duration) {
-	if l == nil || l.perMinute <= 0 {
+	if l == nil {
 		return true, 0
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.perMinute <= 0 {
+		return true, 0
+	}
 	now := l.now()
 	l.sweep(now)
 	b := l.buckets[key]
 	if b == nil {
+		if len(l.buckets) >= maxBuckets {
+			l.evictOldestLocked()
+		}
 		b = &bucket{lim: rate.NewLimiter(rate.Every(time.Minute/time.Duration(l.perMinute)), l.burst)}
 		l.buckets[key] = b
 	}
@@ -57,6 +69,22 @@ func (l *Limiter) Allow(key string) (bool, time.Duration) {
 		return false, d
 	}
 	return true, 0
+}
+
+// evictOldestLocked removes the single least-recently-seen bucket. Callers
+// must hold l.mu.
+func (l *Limiter) evictOldestLocked() {
+	var oldestKey string
+	var oldestSeen time.Time
+	first := true
+	for k, b := range l.buckets {
+		if first || b.seen.Before(oldestSeen) {
+			oldestKey, oldestSeen, first = k, b.seen, false
+		}
+	}
+	if !first {
+		delete(l.buckets, oldestKey)
+	}
 }
 
 // Reconfigure changes the rate and burst applied to new and existing

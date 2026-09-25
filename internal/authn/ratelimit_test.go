@@ -1,6 +1,8 @@
 package authn
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -60,6 +62,67 @@ func TestLimiterReconfigure(t *testing.T) {
 	l.Reconfigure(10, 5)
 	if ok, _ := l.Allow("a"); ok {
 		t.Fatal("bucket not reset to the reconfigured limit")
+	}
+}
+
+// TestLimiterConcurrentAllowReconfigure exercises Allow and Reconfigure from
+// many goroutines together; run with -race to catch the perMinute/burst
+// read outside the lock this test was added to guard against.
+func TestLimiterConcurrentAllowReconfigure(t *testing.T) {
+	l := NewLimiter(1000, 1000)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			key := fmt.Sprintf("k%d", i%3)
+			for j := 0; j < 200; j++ {
+				l.Allow(key)
+			}
+		}(i)
+	}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				l.Reconfigure(1000+i, 1000+i)
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+// TestLimiterBucketCap checks that the per-key map is bounded and that once
+// full, a new key evicts the single oldest (least recently seen) entry
+// rather than growing without bound.
+func TestLimiterBucketCap(t *testing.T) {
+	now := time.Unix(3_000_000, 0)
+	l := NewLimiter(10, 5)
+	l.now = func() time.Time { return now }
+	const cap = 5
+	saved := maxBuckets
+	maxBuckets = cap
+	t.Cleanup(func() { maxBuckets = saved })
+	for i := 0; i < cap; i++ {
+		now = now.Add(time.Second)
+		l.Allow(fmt.Sprintf("k%d", i))
+	}
+	if len(l.buckets) != cap {
+		t.Fatalf("buckets = %d, want %d", len(l.buckets), cap)
+	}
+	// k0 is the oldest (least recently seen); one more distinct key must
+	// evict it rather than growing the map past cap.
+	now = now.Add(time.Second)
+	l.Allow("new")
+	if len(l.buckets) != cap {
+		t.Fatalf("buckets after overflow = %d, want %d", len(l.buckets), cap)
+	}
+	if _, ok := l.buckets["k0"]; ok {
+		t.Fatal("oldest bucket k0 not evicted")
+	}
+	if _, ok := l.buckets["new"]; !ok {
+		t.Fatal("new bucket not admitted")
 	}
 }
 

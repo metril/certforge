@@ -30,6 +30,12 @@ func TestLoginRateLimited(t *testing.T) {
 	if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err != nil || s < 1 {
 		t.Fatalf("Retry-After %q", resp.Header.Get("Retry-After"))
 	}
+	var reason, method string
+	row := e.deps.Pool.QueryRow(context.Background(),
+		`SELECT details->>'reason', details->>'method' FROM audit_events WHERE action = 'session.login_failed' ORDER BY id DESC LIMIT 1`)
+	if err := row.Scan(&reason, &method); err != nil || reason != "rate_limited" || method != "local" {
+		t.Fatalf("session.login_failed audit row: reason=%q method=%q err=%v", reason, method, err)
+	}
 }
 
 func TestLoginWithStaleSessionNeedsNoCSRF(t *testing.T) {
@@ -52,9 +58,21 @@ func TestNewLoginRevokesOldSessions(t *testing.T) {
 			old = c.Value
 		}
 	}
-	e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": hardeningPw}, "")                        //nolint:bodyclose // testEnv.doRaw closes the body
+	resp2, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": hardeningPw}, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	var newCookie string
+	for _, c := range resp2.Cookies() {
+		if c.Name == "cf_session" {
+			newCookie = c.Value
+		}
+	}
+	if newCookie == "" || newCookie == old {
+		t.Fatalf("second login did not set a fresh session cookie: %q vs %q", newCookie, old)
+	}
 	if resp, _ := e.doWithCookie(http.MethodGet, "/api/v1/auth/me", old); resp.StatusCode != http.StatusUnauthorized { //nolint:bodyclose // doWithCookie closes the body
 		t.Fatalf("old session still valid: %d", resp.StatusCode)
+	}
+	if resp, body := e.doWithCookie(http.MethodGet, "/api/v1/auth/me", newCookie); resp.StatusCode != http.StatusOK { //nolint:bodyclose // doWithCookie closes the body
+		t.Fatalf("new session invalid: %d %s", resp.StatusCode, body)
 	}
 	var n int
 	if err := e.deps.Pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_events WHERE action = 'session.revoked'`).Scan(&n); err != nil || n != 1 {
