@@ -70,22 +70,30 @@ func EnqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, er
 // SchedulePeriod is how often due certificates are scanned.
 const SchedulePeriod = 5 * time.Minute
 
-// NewRiver builds the river client with the issuance workers and the 5-minute
-// periodic scan. The caller starts and stops it.
-func NewRiver(pool *pgxpool.Pool, issue *IssueWorker, store *Store, logger *slog.Logger) (*river.Client[pgx.Tx], error) {
+// RiverExtra registers another package's workers and returns its periodic
+// jobs (for example the agent listener certificate renewal).
+type RiverExtra func(workers *river.Workers) []*river.PeriodicJob
+
+// NewRiver builds the river client with the issuance workers, the 5-minute
+// periodic scan, and any extras. The caller starts and stops it.
+func NewRiver(pool *pgxpool.Pool, issue *IssueWorker, store *Store, logger *slog.Logger, extras ...RiverExtra) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, issue)
 	river.AddWorker(workers, &ScheduleWorker{Store: store})
+	periodic := []*river.PeriodicJob{
+		river.NewPeriodicJob(river.PeriodicInterval(SchedulePeriod),
+			func() (river.JobArgs, *river.InsertOpts) { return ScheduleArgs{}, nil },
+			&river.PeriodicJobOpts{RunOnStart: true}),
+	}
+	for _, x := range extras {
+		periodic = append(periodic, x(workers)...)
+	}
 	return river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Logger:  logger,
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 4}},
 		Workers: workers,
 		// IssueWorker may legitimately run 3h (manual-dns); do not rescue it early.
 		RescueStuckJobsAfter: 4 * time.Hour,
-		PeriodicJobs: []*river.PeriodicJob{
-			river.NewPeriodicJob(river.PeriodicInterval(SchedulePeriod),
-				func() (river.JobArgs, *river.InsertOpts) { return ScheduleArgs{}, nil },
-				&river.PeriodicJobOpts{RunOnStart: true}),
-		},
+		PeriodicJobs:         periodic,
 	})
 }

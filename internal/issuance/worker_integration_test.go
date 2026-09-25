@@ -392,3 +392,19 @@ func TestIssueManualConfirm(t *testing.T) {
 		t.Fatalf("cert = %+v", got)
 	}
 }
+
+func TestIssueSuccessNotifiesListeners(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	c := f.cert(t, []string{"notify.example.test"}, []challenge.RuleSpec{{Match: "notify.example.test", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	w := newWorker(f, &fakeSigner{issued: issuedFor(t, c.Names(), now0)})
+	rec := &recordingListener{}
+	w.Listeners = []VersionListener{rec}
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if len(rec.got) != 1 || rec.got[0][0] != c.ID || got.CurrentVersionID == nil || rec.got[0][1] != *got.CurrentVersionID {
+		t.Fatalf("listener got %v, current %v", rec.got, got.CurrentVersionID)
+	}
+}

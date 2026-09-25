@@ -77,6 +77,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - `GET /audit/{id}` fetches one audit event by id; 404 (never 403) whether it's missing or not visible to the caller.
 - Web: Recent activity (last 20 audit events) on the Overview.
 - E2E: Playwright single sign-on through dex and the audit log page.
+- Agent wire protocol package, certificate version listeners, delivery permissions and API key scopes, and the Agents settings section.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

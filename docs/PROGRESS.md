@@ -8,7 +8,7 @@ Single status file. Updated in every commit that completes a task.
 |---|---|---|---|---|---|---|
 | 1 | Core issuance slice | done | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | 2026-09-24 |
 | 2 | Identity and tenancy | done | [design](design.md) | [2A](superpowers/plans/2026-09-25-phase-2a-identity-backend.md) · [2B](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md) | 2026-09-25 | 2026-09-25 |
-| 3 | Agent | in progress | [design](design.md) | 3A · 3B (planning) | 2026-09-25 | – |
+| 3 | Agent | in progress | [design](design.md) | [3A](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) · 3B (planning) | 2026-09-25 | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
 | 5 | Vault and private CA | planned | [design](design.md) | – | – | – |
 | 6 | Ops | planned | [design](design.md) | – | – | – |
@@ -157,7 +157,27 @@ and the Access docs' API-key binding mention).
 
 ### Phase 3: agent — in progress (started 2026-09-25)
 
-Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS listener, WS hub, grants, push/pull, Traefik target, hooks, heartbeat, drift, agent image) and 3B clients web UI (clients, grants editor, deployments, layouts, targets, hooks, Settings → Agents). Plans are being written; task tables land with the plan commit.
+Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS listener, WS hub, grants, push/pull, Traefik target, hooks, heartbeat, drift, agent image) and 3B clients web UI (clients, grants editor, deployments, layouts, targets, hooks, Settings → Agents). Plan 3A: [agent backend](superpowers/plans/2026-09-25-phase-3a-agent-backend.md). Plan 3B (web UI) follows.
+
+#### Phase 3A tasks
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Shared plumbing | done | pending |
+| 2 | OpenAPI contract | todo | – |
+| 3 | Agent CA | todo | – |
+| 4 | Clients API | todo | – |
+| 5 | Agent listener and enrolment | todo | – |
+| 6 | Layouts, targets and hooks | todo | – |
+| 7 | Grants and revisions | todo | – |
+| 8 | Agent sync over REST | todo | – |
+| 9 | WebSocket hub | todo | – |
+| 10 | Agent CA API | todo | – |
+| 11 | Agent identity and enrolment | todo | – |
+| 12 | Agent files, Traefik target, hooks | todo | – |
+| 13 | Agent reconcile, run and pull | todo | – |
+| 14 | Agent image | todo | – |
+| 15 | Agent e2e | todo | – |
 
 ## Decisions made during implementation
 
@@ -311,3 +331,20 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 - 2A Task 15 (dex e2e, ruling C7 plus additional coverage): `test/e2e/oidc_test.go` PUTs `loginRatePerMinute: 0` on the `authentication` settings section right after the first local admin login, before any OIDC attempt — `PutSectionTx` fully replaces the section's stored JSON with exactly what a PUT sends (no per-field default merge; see `internal/settings/store.go`), so the field is also carried explicitly in the later full OIDC-config PUT rather than relying on it being merely absent. dex v2.45.1's builtin local (`staticPasswords`) connector does not emit a `groups` claim (upstream `dexidp/dex#3958` is still open, confirmed against the pinned image), so the real password-form login cannot exercise an `oidc_group` role binding end to end; the test binds the OIDC user's role by its own subject id instead (as the brief's sample does) and exercises `oidc_group` binding create/list/delete structurally with a synthetic group name — group-claim matching itself is already covered by `internal/authn`'s unit/integration tests against the fake `oidctest` provider. The same test also drives users list/disable (and confirms the disabled user's session dies), API key create/bearer-call/revoke, role binding list/delete, org/site CRUD, and audit list/export/verify — beyond the brief's own Step 3 sample — per the dispatch's explicit ruling to exercise that surface. `deploy/compose.test.yaml`'s `dex` service has a `wget`-based healthcheck against `/dex/healthz` (the image has `wget` but no `curl`; verified locally against the pinned tag) so `docker compose up --wait` doesn't return before dex is actually serving.
 - 2A final fix wave (whole-branch review; two Important, five Minor): f879d92 fixed the admin-guard lock gap (`LockGlobalAdminUsers` now also locks `role_bindings`, not just `users`) and the wrong-KEK audit write (`serve` now builds a disabled `Auditor` on a failed canary instead of a recording one); this commit fixes the five Minors (404-not-403 on an unauthorized role-binding delete or API-key revoke, `GET /auth/me` 403 for an API-key principal, `SettingsSource.Get`'s lock-free double-checked reload with a negative error cache, and two doc corrections). As in Phase 1's final-review fix waves, these were separate commits rather than amending Task 15's.
 - 2B Task 11 (ruling C7): `web/e2e/global-setup.ts` now PUTs `loginRatePerMinute: 0` on the `authentication` settings section right after its first admin login (setup-complete or a rerun's login), idempotently — mirrors `test/e2e/oidc_test.go`'s Task 15 fix so repeated logins across both suites, which share the same compose stack, never hit 429. `oidc.spec.ts` binds the dex user by its own subject id (as the Go e2e does; dex's static connector emits no `groups` claim), not by an `oidc_group`, since a group binding could never actually match. Spec order (alphabetical: `audit.spec.ts`, `oidc.spec.ts`, `smoke.spec.ts`) is left as Playwright's default rather than forced, because local admin login stays reachable throughout — the server has no way to disable it yet (2B Task 2's decision above) — so `oidc.spec.ts` enabling and then disabling single sign-on around its one test never affects `signInLocal` in the other two specs.
+- 3A: R5/R6: human endpoints are org-nested (`/orgs/{orgId}/clients/{id}`, `/orgs/{orgId}/grants/{id}`, `/orgs/{orgId}/layouts/{id}`, `/orgs/{orgId}/deploy-targets/{id}`, `/orgs/{orgId}/hooks/{id}`, `/orgs/{orgId}/certificates/{id}/deployments`), like every existing org resource (sites, certificates): `authorize` runs before any lookup, and 3B's `/o/$org/...` routes already hold the org id. `GET /clients` (cross-org) and `/agents/ca*` stay unnested.
+- 3A: R6: `client_cert_grants.output_spec_id` is nullable with `CHECK (output_spec_id IS NOT NULL OR deploy_target_id IS NOT NULL)`: a Traefik-only grant needs no layout; its bundle carries PEM material for the agent-side target.
+- 3A: R6: grants gain `removed_at` (soft delete) and `UNIQUE (client_id, cert_id)` becomes a partial unique index over live rows: a deleted grant stays in `assignments.removed` until its agent reports the files gone, then the row is deleted. A grant on a client that never enrolled or is revoked is deleted at once.
+- 3A: R6: `hook_runs` gains `client_id` (keyset per client) and its `grant_id`/`hook_id` are nullable, so run history outlives a deleted grant or hook.
+- 3A: R7: `GrantResult` carries `versionId`, so a late report for an older version cannot flip the current deployment; assignment `files` include the target's generated files (Traefik YAML and PEMs) with their sha256, so drift covers them too; the per-grant `removed:false` flag is dropped (removals are only in `removed[]`).
+- 3A: R3: the listener's server certificate lives in memory (issued at start, re-issued by the hourly river job when due, when its signing CA changes, or when `agents` settings change); agents trust the CA bundle, not the leaf, so nothing needs storing.
+- 3A: R3/Risks (CA rotation): the listener certificate is signed by the oldest non-retired agent CA, not the active one. Rotate only changes which CA signs new agent certificates; retire switches the listener chain. Enrolment tokens pin that listener CA. `POST /agent/v1/renew` returns `trustBundle`, so pull-mode agents pick up a new bundle when they renew, and agents renew immediately on `trust_bundle_update`. Retire stays blocked while any active client certificate was issued by the CA, so every agent holds the new bundle before the listener switches.
+- 3A: R10: adds `CF_AGENT_TOKEN_FILE` (token read from a file, for example a Docker secret); `run` with neither an identity nor a token waits, polling the token file every 5 s, instead of exiting. The compose e2e hands the token over this way.
+- 3A: R12: `deployment.ok` is audited on state transitions only, the same rule R9 sets for `deployment.drift`; a repeated `ok` report is silent.
+- 3A: R6: grants, deployments and hook runs authorize under the existing `clients:read`/`clients:write`; only layouts, deploy targets and hooks use the new `delivery:read`/`delivery:write`. An API key with `clients:write` covers grants (create, update, redeploy, delete); one with `delivery:write` covers layouts, targets and hooks. 3B gates grant controls on `clients:write`.
+- 3A: R7: a pull grant's changes never nudge. A client gets `sync` only when at least one affected grant is `push` (create, update, redeploy, delete, re-render, auto-remediation); pull grants wait for the agent's schedule.
+- 3A: R7: layout, target and hook updates re-render and bump in their own transaction, but a new certificate version is rendered by `OnVersion` in a separate transaction after the issuance commit. A failed or lost `OnVersion` is retried by an hourly river sweep that re-renders live grants whose deployment version differs from the certificate's current version.
+- 3A: R7: two grants on one client may never write the same path (live or awaiting removal, including Traefik `certs/<SafeName>` files, so certificate names that share a SafeName collide): create, update and layout/target updates return 409. The agent removes files before deploying and never removes a path a live assignment lists.
+- 3A: R12: `deployment.failed` is audited on state transitions only, like `deployment.ok`.
+- 3A: R3: the enrolment rate limit is its own `Deps.EnrollLimiter` (an `authn.Limiter` with the login defaults unless set), not the login limiter instance, so enrolment attempts and logins do not share buckets.
+- 3A: R10: `CF_AGENT_PULL_INTERVAL` ticks in `run` whether or not the WebSocket is up: while connected the session reconciles on it; while the socket is down (for example a proxy that refuses upgrades) `run` pulls over REST, reports and sends a heartbeat.
+- 3A: R13: the e2e agent container runs as the host user (`user: "${CF_E2E_UID}:${CF_E2E_GID}"`) so the host-side test can tamper with and clean up files; the chown-as-root path is covered by a unit test that runs only as root.

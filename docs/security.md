@@ -29,6 +29,8 @@ A key can do at most what its creator can do right now, restricted to its scopes
 
 Roles: `admin` (everything, including CAs, KEK, global settings, key export), `org-admin` (everything within its org except global-only actions), `operator` (certificates, credentials, accounts, clients, issue and renew), `viewer` (read-only, no secrets), `auditor` (viewer plus audit log). Global-only actions: settings:write, orgs:write, cas:write, keys:export, users:write. users:read is readable by any role that holds it in some org (org-admins pick users for bindings). Agents never pass `Can()`; they use their own mTLS listener. Phase 1 seeds only the global `admin` binding for the local admin. See [ADR 0007](adr/0007-rbac-bindings-and-api-keys.md) for how role bindings and API keys fit together.
 
+Phase 3 adds `delivery:read` (viewer and up) and `delivery:write` (operator and up) for layouts, deploy targets and hooks; clients, grants, deployments and hook runs use `clients:read`/`clients:write`. So an API key with `clients:write` can create, change, redeploy and delete grants (choosing among existing layouts, targets and hooks), while one with `delivery:write` can change layouts, deploy targets and hooks, which re-renders every grant using them. API key scopes gain `clients:read`, `delivery:read` and `delivery:write`. Agents authenticate only on the agent listener with their client certificate; their principal (`kind = agent`) is refused by every human API action.
+
 OIDC group bindings (subject_type oidc_group) match the groups recorded at the user's last login.
 
 ## Audit log

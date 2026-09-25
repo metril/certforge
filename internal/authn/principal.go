@@ -31,6 +31,8 @@ type Principal struct {
 	Bindings []Binding   // what authz.Can evaluates
 	OrgIDs   []uuid.UUID // orgs the principal can see
 	APIKey   *APIKeyInfo // set when Kind == KindAPIKey
+	ClientID uuid.UUID   // set when Kind == KindAgent: the enrolled client
+	OrgID    uuid.UUID   // set when Kind == KindAgent: the client's org
 }
 
 // APIKeyInfo limits an API key principal. Bindings are role bindings whose
@@ -43,10 +45,13 @@ type APIKeyInfo struct {
 }
 
 // ActorID is the id recorded as the audit actor: the key id for API keys,
-// otherwise the user id.
+// the client id for agents, otherwise the user id.
 func (p Principal) ActorID() string {
-	if p.Kind == KindAPIKey && p.APIKey != nil {
+	switch {
+	case p.Kind == KindAPIKey && p.APIKey != nil:
 		return p.APIKey.ID.String()
+	case p.Kind == KindAgent:
+		return p.ClientID.String()
 	}
 	return p.UserID.String()
 }

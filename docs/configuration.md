@@ -82,6 +82,19 @@ Two tabs: **Global** and your organization. Each field shows the value in effect
 
 Changing a default takes effect at the next renewal of every certificate that inherits it.
 
+### Agents
+
+Global settings for certforge-agent (Settings → Agents).
+
+| Field | Default | Meaning |
+|---|---|---|
+| Agent URL (`agentUrl`) | `https://<CF_BASE_URL host>:8443` | Where agents connect. It is written into every enrolment token, and its host is always on the listener certificate. Must be `https://host[:port]`. |
+| Listener names (`listenerNames`) | CF_BASE_URL host, `localhost` | Extra DNS names or IPs on the agent listener's certificate. Changing them re-issues the certificate at once. |
+| Enrolment token lifetime (`tokenTtlHours`) | 24 | Hours a new client's one-time token stays usable. |
+| Agent certificate lifetime (`agentCertDays`) | 90 | Days an agent's client certificate is valid; the agent renews at two thirds. |
+| Heartbeat interval (`heartbeatSeconds`) | 60 (min 15) | How often agents report installed files for drift detection. |
+| Offline after (`offlineAfterSeconds`) | 180 | A client not seen for this long shows as offline; must exceed the heartbeat. |
+
 ### Backup and keys
 
 Shows the key-encryption key's status (from `/readyz`'s `kek` check) and the **KEK escrow confirmed** switch, which must be on before scheduled backups run.

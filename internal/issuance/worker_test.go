@@ -1,8 +1,13 @@
 package issuance
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // TestTruncatedStackCap is the Review Focus for the fix-round bound on the
@@ -33,5 +38,25 @@ func TestTruncateBytesCapsAndMarks(t *testing.T) {
 	small := []byte("short")
 	if got := truncateBytes(small, maxPanicStackBytes); string(got) != "short" {
 		t.Fatalf("short input was modified: %q", got)
+	}
+}
+
+type recordingListener struct{ got [][2]uuid.UUID }
+
+func (r *recordingListener) OnVersion(_ context.Context, certID, versionID uuid.UUID) {
+	r.got = append(r.got, [2]uuid.UUID{certID, versionID})
+}
+
+type panicListener struct{}
+
+func (panicListener) OnVersion(context.Context, uuid.UUID, uuid.UUID) { panic("boom") }
+
+func TestNotifyVersionCallsEveryListener(t *testing.T) {
+	rec := &recordingListener{}
+	w := &IssueWorker{Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Listeners: []VersionListener{panicListener{}, rec}}
+	c, v := uuid.New(), uuid.New()
+	w.notifyVersion(context.Background(), c, v)
+	if len(rec.got) != 1 || rec.got[0] != [2]uuid.UUID{c, v} {
+		t.Fatalf("got %v", rec.got)
 	}
 }

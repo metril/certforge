@@ -7,17 +7,18 @@ export const ACTIONS = [
   'cas:read', 'cas:write', 'accounts:read', 'accounts:write', 'dnscreds:read', 'dnscreds:write',
   'certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'audit:read',
   'sites:read', 'sites:write', 'bindings:read', 'bindings:write', 'apikeys:read', 'apikeys:write',
+  'delivery:read', 'delivery:write',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
 const GLOBAL_ONLY = new Set<Action>(['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write']);
 const SHARED_READ = new Set<Action>(['orgs:read', 'settings:read', 'cas:read', 'users:read']);
-const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read'];
+const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read'];
 
 const ROLE_ACTIONS: Record<string, ReadonlySet<Action>> = {
   admin: new Set(ACTIONS),
   'org-admin': new Set(ACTIONS.filter((a) => !GLOBAL_ONLY.has(a))),
-  operator: new Set<Action>([...VIEWER, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write']),
+  operator: new Set<Action>([...VIEWER, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write', 'delivery:write']),
   viewer: new Set(VIEWER),
   auditor: new Set<Action>([...VIEWER, 'audit:read']),
 };
@@ -47,12 +48,13 @@ export function canAnywhere(me: Pick<Me, 'bindings' | 'orgs'>, action: Action): 
   return can(me, action, null) || me.orgs.some((o) => can(me, action, o.id));
 }
 
-export const API_KEY_SCOPES: ApiKeyScope[] = ['certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:write', 'admin'];
+export const API_KEY_SCOPES: ApiKeyScope[] = ['certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'delivery:read', 'delivery:write', 'admin'];
 
 // Mirror of authz.ScopeGrant.
 const SCOPE_GRANT: Record<ApiKeyScope, Action> = {
   'certs:read': 'certs:read', 'certs:write': 'certs:write', 'certs:issue': 'certs:issue',
-  'keys:export': 'keys:export', 'clients:write': 'clients:write', admin: 'settings:write',
+  'keys:export': 'keys:export', 'clients:read': 'clients:read', 'clients:write': 'clients:write',
+  'delivery:read': 'delivery:read', 'delivery:write': 'delivery:write', admin: 'settings:write',
 };
 
 /** Whether the server would keep scope on a key the user creates in orgId. */

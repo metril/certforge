@@ -40,6 +40,8 @@ const (
 	ActionBindingsWrite Action = "bindings:write"
 	ActionAPIKeysRead   Action = "apikeys:read"
 	ActionAPIKeysWrite  Action = "apikeys:write"
+	ActionDeliveryRead  Action = "delivery:read"
+	ActionDeliveryWrite Action = "delivery:write"
 )
 
 // Roles, matching the role_bindings.role check constraint.
@@ -60,6 +62,7 @@ var AllActions = []Action{
 	ActionClientsRead, ActionClientsWrite, ActionAuditRead,
 	ActionSitesRead, ActionSitesWrite, ActionBindingsRead, ActionBindingsWrite,
 	ActionAPIKeysRead, ActionAPIKeysWrite,
+	ActionDeliveryRead, ActionDeliveryWrite,
 }
 
 var globalOnly = map[Action]bool{
@@ -71,32 +74,39 @@ var sharedRead = map[Action]bool{ActionOrgsRead: true, ActionSettingsRead: true,
 var viewerActions = []Action{
 	ActionOrgsRead, ActionSettingsRead, ActionCAsRead, ActionAccountsRead,
 	ActionDNSCredsRead, ActionCertsRead, ActionClientsRead, ActionSitesRead,
+	ActionDeliveryRead,
 }
 
-// APIKeyScopes are the scopes an API key may carry (docs/design.md).
-var APIKeyScopes = []string{"certs:read", "certs:write", "certs:issue", "keys:export", "clients:write", "admin"}
+// APIKeyScopes are the scopes an API key may carry (docs/design.md, plus
+// Phase 3's clients:read and delivery scopes).
+var APIKeyScopes = []string{"certs:read", "certs:write", "certs:issue", "keys:export",
+	"clients:read", "clients:write", "delivery:read", "delivery:write", "admin"}
 
 // ScopeGrant is the action the creator must hold, in the key's org (or
 // globally for an org-less key), to put a scope on a key.
 var ScopeGrant = map[string]Action{
 	"certs:read": ActionCertsRead, "certs:write": ActionCertsWrite, "certs:issue": ActionCertsIssue,
-	"keys:export": ActionKeysExport, "clients:write": ActionClientsWrite, "admin": ActionSettingsWrite,
+	"keys:export": ActionKeysExport, "clients:read": ActionClientsRead, "clients:write": ActionClientsWrite,
+	"delivery:read": ActionDeliveryRead, "delivery:write": ActionDeliveryWrite, "admin": ActionSettingsWrite,
 }
 
 var scopeActions = map[string][]Action{
-	"certs:read":    {ActionCertsRead, ActionOrgsRead, ActionSitesRead, ActionCAsRead, ActionAccountsRead, ActionDNSCredsRead},
-	"certs:write":   {ActionCertsWrite},
-	"certs:issue":   {ActionCertsIssue},
-	"keys:export":   {ActionKeysExport},
-	"clients:write": {ActionClientsRead, ActionClientsWrite},
-	"admin":         AllActions,
+	"certs:read":     {ActionCertsRead, ActionOrgsRead, ActionSitesRead, ActionCAsRead, ActionAccountsRead, ActionDNSCredsRead},
+	"certs:write":    {ActionCertsWrite},
+	"certs:issue":    {ActionCertsIssue},
+	"keys:export":    {ActionKeysExport},
+	"clients:read":   {ActionClientsRead, ActionOrgsRead, ActionSitesRead},
+	"clients:write":  {ActionClientsRead, ActionClientsWrite},
+	"delivery:read":  {ActionDeliveryRead},
+	"delivery:write": {ActionDeliveryRead, ActionDeliveryWrite},
+	"admin":          AllActions,
 }
 
 var roleActions = map[string]map[Action]bool{
 	RoleAdmin:    set(AllActions),
 	RoleOrgAdmin: set(slices.DeleteFunc(slices.Clone(AllActions), func(a Action) bool { return globalOnly[a] })),
 	RoleOperator: set(slices.Concat(viewerActions, []Action{
-		ActionAccountsWrite, ActionDNSCredsWrite, ActionCertsWrite, ActionCertsIssue, ActionClientsWrite,
+		ActionAccountsWrite, ActionDNSCredsWrite, ActionCertsWrite, ActionCertsIssue, ActionClientsWrite, ActionDeliveryWrite,
 	})),
 	RoleViewer:  set(viewerActions),
 	RoleAuditor: set(slices.Concat(viewerActions, []Action{ActionAuditRead})),
@@ -120,6 +130,8 @@ func Can(p authn.Principal, action Action, orgID *uuid.UUID) bool {
 		if !keyAllows(p.APIKey, action, orgID) {
 			return false
 		}
+	case authn.KindAgent:
+		return false // agents use only /agent/v1/* on the agent listener
 	default:
 		return false
 	}

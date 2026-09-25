@@ -64,6 +64,7 @@ describe('full role x action x scope matrix (hand-transcribed from authz.go)', (
     'clients:read', 'clients:write', 'audit:read',
     'sites:read', 'sites:write', 'bindings:read', 'bindings:write',
     'apikeys:read', 'apikeys:write',
+    'delivery:read', 'delivery:write',
   ];
 
   // authz.globalOnly: only ever granted through a global (nil-org) binding.
@@ -74,13 +75,13 @@ describe('full role x action x scope matrix (hand-transcribed from authz.go)', (
   const SHARED_READ: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'users:read'];
 
   // authz.viewerActions.
-  const VIEWER_ACTIONS: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read'];
+  const VIEWER_ACTIONS: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read'];
 
   // authz.roleActions: each role's action set, transcribed independently.
   const ROLE_SETS: Record<string, Action[]> = {
     admin: ALL_ACTIONS,
     'org-admin': ALL_ACTIONS.filter((a) => !GLOBAL_ONLY.includes(a)),
-    operator: [...VIEWER_ACTIONS, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write'],
+    operator: [...VIEWER_ACTIONS, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write', 'delivery:write'],
     viewer: VIEWER_ACTIONS,
     auditor: [...VIEWER_ACTIONS, 'audit:read'],
   };

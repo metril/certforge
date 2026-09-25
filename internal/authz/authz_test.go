@@ -1,6 +1,7 @@
 package authz
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -131,5 +132,49 @@ func TestOrgsWith(t *testing.T) {
 		Bindings: []authn.Binding{{Role: RoleAuditor, OrgID: &org1}, {Role: RoleViewer, OrgID: &org2}}}
 	if got := OrgsWith(p, ActionAuditRead); len(got) != 1 || got[0] != org1 {
 		t.Fatalf("OrgsWith = %v", got)
+	}
+}
+
+func TestDeliveryActions(t *testing.T) {
+	org := uuid.New()
+	viewer, operator := principal(RoleViewer, &org), principal(RoleOperator, &org)
+	if !Can(viewer, ActionDeliveryRead, &org) || Can(viewer, ActionDeliveryWrite, &org) {
+		t.Fatal("viewer: delivery:read only")
+	}
+	if !Can(operator, ActionDeliveryWrite, &org) || !Can(operator, ActionClientsWrite, &org) {
+		t.Fatal("operator: delivery:write and clients:write")
+	}
+}
+
+func TestAgentPrincipalCannotUseHumanAPI(t *testing.T) {
+	org := uuid.New()
+	p := authn.Principal{Kind: authn.KindAgent, ClientID: uuid.New(), OrgID: org,
+		Bindings: []authn.Binding{{Role: RoleAdmin}}}
+	for _, a := range AllActions {
+		if Can(p, a, &org) || Can(p, a, nil) {
+			t.Fatalf("agent allowed %s", a)
+		}
+	}
+}
+
+func TestNewAPIKeyScopes(t *testing.T) {
+	org := uuid.New()
+	key := func(scope string) authn.Principal {
+		return authn.Principal{Kind: authn.KindAPIKey, Bindings: []authn.Binding{{Role: RoleOperator, OrgID: &org}},
+			APIKey: &authn.APIKeyInfo{ID: uuid.New(), Scopes: []string{scope}}}
+	}
+	if p := key("delivery:read"); !Can(p, ActionDeliveryRead, &org) || Can(p, ActionDeliveryWrite, &org) || Can(p, ActionClientsRead, &org) {
+		t.Fatal("delivery:read scope")
+	}
+	if p := key("delivery:write"); !Can(p, ActionDeliveryWrite, &org) || !Can(p, ActionDeliveryRead, &org) {
+		t.Fatal("delivery:write scope")
+	}
+	if p := key("clients:read"); !Can(p, ActionClientsRead, &org) || Can(p, ActionClientsWrite, &org) || !Can(p, ActionSitesRead, &org) {
+		t.Fatal("clients:read scope")
+	}
+	for _, s := range []string{"clients:read", "delivery:read", "delivery:write"} {
+		if !slices.Contains(APIKeyScopes, s) || ScopeGrant[s] == "" {
+			t.Fatalf("scope %s not registered", s)
+		}
 	}
 }

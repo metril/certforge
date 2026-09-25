@@ -13,6 +13,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
@@ -50,6 +51,9 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return err
 	}
 	if err := authn.RegisterSettings(sections); err != nil {
+		return err
+	}
+	if err := agents.RegisterSettings(sections); err != nil {
 		return err
 	}
 	authSettings, err := authn.NewSettingsSource(store, sections)

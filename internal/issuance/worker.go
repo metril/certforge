@@ -43,6 +43,14 @@ func (IssueArgs) InsertOpts() river.InsertOpts {
 	}
 }
 
+// VersionListener hears about each newly stored certificate version after
+// its transaction commits. Phase 3 registers the agent service (deployment
+// digests and sync nudges); Phase 6 notifiers reuse it. OnVersion cannot
+// fail the issuance: errors are the listener's to log.
+type VersionListener interface {
+	OnVersion(ctx context.Context, certID, versionID uuid.UUID)
+}
+
 // IssueWorker runs one issuance attempt. ACME and challenge failures are
 // recorded on the attempt and scheduled via next_renew_at; only
 // infrastructure errors (database) are returned for river to retry.
@@ -57,6 +65,7 @@ type IssueWorker struct {
 	ManualWait time.Duration // 0 = challenge.DefaultManualWait
 	ManualPoll time.Duration // 0 = 2s
 	Log        *slog.Logger
+	Listeners  []VersionListener // called after a version commits
 }
 
 // NewIssueWorker wires production defaults.
@@ -345,7 +354,26 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 	if err := w.Store.FinishAttempt(ctx, tx, attemptID, OutcomeSuccess, "", nil, steps, log); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	w.notifyVersion(ctx, cert.ID, v.ID)
+	return nil
+}
+
+// notifyVersion calls every listener; a panicking listener is logged and
+// never stops the others or the worker.
+func (w *IssueWorker) notifyVersion(ctx context.Context, certID, versionID uuid.UUID) {
+	for _, l := range w.Listeners {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					w.Log.Error("version listener panicked", "cert", certID, "version", versionID, "panic", r)
+				}
+			}()
+			l.OnVersion(ctx, certID, versionID)
+		}()
+	}
 }
 
 func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, cause error) error {
