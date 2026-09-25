@@ -14,6 +14,7 @@ import (
 func newTestSource(load func(ctx context.Context) (AuthSettings, error)) (*SettingsSource, *time.Time) {
 	now := time.Now()
 	s := &SettingsSource{ttl: 30 * time.Second, now: func() time.Time { return now }, load: load}
+	s.cond = sync.NewCond(&s.mu)
 	return s, &now
 }
 
@@ -115,5 +116,79 @@ func TestSettingsSourceNegativeCacheOnError(t *testing.T) {
 	}
 	if n := atomic.LoadInt32(&calls); n != 2 {
 		t.Fatalf("expected a second store call after the negative cache expired, got %d", n)
+	}
+}
+
+// TestSettingsSourceInvalidateDuringReloadDiscardsStaleResult is the
+// regression for the M3 fix-round issue: with the mutex released during the
+// store round trip, a reload that started reading the store just before a
+// settings PUT could finish just after PUT /settings/authentication called
+// Invalidate, and — without the generation check — would cache that
+// pre-PUT read as "fresh" for up to ttl, silently undoing the PUT for
+// every caller until the cache next expired. A goroutine's reload (call 2)
+// is blocked mid-flight; Invalidate runs while it's blocked, representing
+// the concurrent PUT; the reload is then unblocked and returns a value as
+// if it had read the store before the PUT. Get must discard that result
+// (detected via the bumped generation counter) and retry, returning the
+// genuinely-fresh value from the retry's own load instead.
+func TestSettingsSourceInvalidateDuringReloadDiscardsStaleResult(t *testing.T) {
+	var calls int32
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	load := func(context.Context) (AuthSettings, error) {
+		n := atomic.AddInt32(&calls, 1)
+		switch n {
+		case 1:
+			st := AuthSettings{SessionTTLHours: 12}
+			st.normalize()
+			return st, nil
+		case 2:
+			close(entered)
+			<-release
+			// Represents a load that had already read the pre-PUT value
+			// from the store by the time Invalidate ran.
+			st := AuthSettings{SessionTTLHours: 12}
+			st.normalize()
+			return st, nil
+		default:
+			st := AuthSettings{SessionTTLHours: 48}
+			st.normalize()
+			return st, nil
+		}
+	}
+	s, now := newTestSource(load)
+
+	st, err := s.Get(context.Background())
+	if err != nil || st.SessionTTLHours != 12 {
+		t.Fatalf("warm-up: %+v %v", st, err)
+	}
+
+	*now = now.Add(31 * time.Second)
+	done := make(chan AuthSettings, 1)
+	go func() {
+		st, err := s.Get(context.Background())
+		if err != nil {
+			t.Errorf("reload Get: %v", err)
+			return
+		}
+		done <- st
+	}()
+	<-entered
+
+	// A settings PUT completes and invalidates the cache while the reload
+	// above is still in flight, holding data read from before the PUT.
+	s.Invalidate()
+	close(release)
+
+	select {
+	case st := <-done:
+		if st.SessionTTLHours != 48 {
+			t.Fatalf("expected the post-invalidate value (48); got %+v — the in-flight reload's stale pre-PUT result leaked through", st)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Get never returned")
+	}
+	if n := atomic.LoadInt32(&calls); n != 3 {
+		t.Fatalf("expected exactly 3 load calls (warm-up, discarded in-flight reload, retry), got %d", n)
 	}
 }

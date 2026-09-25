@@ -278,6 +278,13 @@ func (a *Auditor) chainKeyed(ctx context.Context, q *sqlcgen.Queries) (bool, err
 // writes chainKeyedSettingKey in the same transaction as the re-chain
 // commit. Returns the number of rows rewritten.
 func (a *Auditor) Rechain(ctx context.Context) (int64, error) {
+	if a.disabled {
+		// Belt and braces: serve already skips this call outright when the
+		// KEK canary failed (its own gate), but a disabled Auditor refuses
+		// here too rather than relying solely on the caller remembering not
+		// to invoke it.
+		return 0, ErrAuditUnavailable
+	}
 	const page = 500
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {

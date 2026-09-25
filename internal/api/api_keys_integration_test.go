@@ -209,3 +209,63 @@ func TestAPIKeyPrecedence(t *testing.T) {
 		t.Fatalf("bearer + cookie, no CSRF header: %d %s", resp2.StatusCode, body2)
 	}
 }
+
+// TestAPIKeyMeIsSessionOnly covers M2: GET /auth/me returns the caller's
+// session CSRF token, which an API key never has, so an authenticated
+// API-key principal gets 403 ("session-only endpoint"), not 401 — 401 is
+// reserved for no principal at all.
+func TestAPIKeyMeIsSessionOnly(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	k := createKey(t, e, e.client, csrf, map[string]any{"name": "me-test", "scopes": []string{"certs:read"}, "orgId": org}, http.StatusCreated)
+
+	resp, body := e.doBearer(k.Token, http.MethodGet, "/api/v1/auth/me", nil) //nolint:bodyclose // doClient closes the body
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("api-key GET /auth/me: %d %s", resp.StatusCode, body)
+	}
+	var p struct{ Detail string }
+	if err := json.Unmarshal(body, &p); err != nil || p.Detail != "session-only endpoint" {
+		t.Fatalf("detail: %v %q", err, p.Detail)
+	}
+}
+
+// TestRevokeApiKeyOutOfScopeIsNotFound covers M1: an org-admin who cannot
+// see another org's API key gets 404 revoking it, worded exactly like a
+// revoke of an id that doesn't exist at all — an unauthorized caller must
+// not be able to distinguish "exists, but not mine" from "doesn't exist".
+func TestRevokeApiKeyOutOfScopeIsNotFound(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, orgA := e.seedAdminSession()
+	orgB, err := e.deps.Queries.CreateOrg(context.Background(), sqlcgen.CreateOrgParams{Slug: "org-b", Name: "Org B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyA := createKey(t, e, e.client, csrf, map[string]any{"name": "a-key", "scopes": []string{"certs:read"}, "orgId": orgA}, http.StatusCreated)
+
+	bClient, bCSRF2, _ := e.userSession("bob-b2", "org-admin", &orgB.ID)
+	resp2, body2 := e.doClient(bClient, http.MethodDelete, "/api/v1/api-keys/"+keyA.APIKey.ID, nil, http.Header{"X-Csrf-Token": {bCSRF2}}) //nolint:bodyclose // doClient closes the body
+	if resp2.StatusCode != http.StatusNotFound {
+		t.Fatalf("org-admin revoking another org's key: %d %s", resp2.StatusCode, body2)
+	}
+	var outOfScope struct{ Detail string }
+	if err := json.Unmarshal(body2, &outOfScope); err != nil {
+		t.Fatal(err)
+	}
+
+	missingID := uuid.New()
+	bClient2, bCSRF3, _ := e.userSession("bob-b3", "org-admin", &orgB.ID)
+	resp3, body3 := e.doClient(bClient2, http.MethodDelete, "/api/v1/api-keys/"+missingID.String(), nil, http.Header{"X-Csrf-Token": {bCSRF3}}) //nolint:bodyclose // doClient closes the body
+	if resp3.StatusCode != http.StatusNotFound {
+		t.Fatalf("revoking a missing key: %d %s", resp3.StatusCode, body3)
+	}
+	var missing struct{ Detail string }
+	if err := json.Unmarshal(body3, &missing); err != nil {
+		t.Fatal(err)
+	}
+
+	wantOutOfScope := "API key " + keyA.APIKey.ID
+	wantMissing := "API key " + missingID.String()
+	if outOfScope.Detail != wantOutOfScope || missing.Detail != wantMissing {
+		t.Fatalf("expected identically-worded 404s (only the id differs): out-of-scope=%q missing=%q", outOfScope.Detail, missing.Detail)
+	}
+}

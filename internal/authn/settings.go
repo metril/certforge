@@ -223,10 +223,18 @@ type SettingsSource struct {
 	load func(ctx context.Context) (AuthSettings, error)
 
 	mu      sync.Mutex
+	cond    *sync.Cond
 	cur     AuthSettings
 	at      time.Time
 	valid   bool
 	loading bool // a reload is already in flight in another goroutine
+	// gen counts Invalidate calls. It is captured before a load starts;
+	// if it has changed by the time the load finishes, Invalidate ran
+	// concurrently and the load's result (success or error) is discarded
+	// instead of being cached — otherwise a load that read the store just
+	// before a settings PUT could finish just after Invalidate and
+	// resurrect the pre-PUT values as "fresh" for up to ttl.
+	gen     uint64
 	lastErr error
 	errAt   time.Time
 }
@@ -238,6 +246,7 @@ func NewSettingsSource(store *settings.Store, reg *settings.Registry) (*Settings
 		return nil, errors.New("authn: authentication settings section not registered")
 	}
 	s := &SettingsSource{sec: sec, ttl: 30 * time.Second, now: time.Now}
+	s.cond = sync.NewCond(&s.mu)
 	s.load = func(ctx context.Context) (AuthSettings, error) {
 		raw, _, err := store.GetSection(ctx, sec)
 		if err != nil {
@@ -259,69 +268,85 @@ func NewSettingsSource(store *settings.Store, reg *settings.Registry) (*Settings
 }
 
 // Get returns the current settings, reloading after the cache expires. The
-// mutex is never held across the store round trip: once the cache is known
-// stale, at most one goroutine actually reloads (double-checked under the
-// loading flag) while any others fall back to the stale cached value rather
-// than blocking on, or duplicating, the same DB call. With no cached value
-// at all yet (cold start, or every reload so far has failed), a reload
-// error is remembered for negativeCacheTTL so repeated callers don't retry
-// a failing store on every request.
+// mutex is never held across the store round trip. Once the cache is known
+// stale (or there is nothing cached yet), at most one goroutine actually
+// reloads; a caller that arrives while a reload is already in flight either
+// gets the still-valid stale value back immediately (if there is one) or
+// waits on that same reload via cond (cold start, so there is nothing
+// better to serve). With no cached value at all yet and every reload so far
+// failing, a reload error is remembered for negativeCacheTTL so repeated
+// callers don't retry a failing store on every request. A generation
+// counter (see gen) stops a load that was already in flight when Invalidate
+// ran from caching its now-stale result.
 func (s *SettingsSource) Get(ctx context.Context) (AuthSettings, error) {
 	s.mu.Lock()
-	if s.valid && s.now().Sub(s.at) < s.ttl {
-		cur := s.cur
-		s.mu.Unlock()
-		return cur, nil
-	}
-	if s.valid {
-		if s.loading {
-			// Someone else is already reloading; the stale value is still
-			// better than blocking on a second concurrent DB round trip.
+	for {
+		if s.valid && s.now().Sub(s.at) < s.ttl {
 			cur := s.cur
 			s.mu.Unlock()
 			return cur, nil
 		}
-		s.loading = true
-		s.mu.Unlock()
-
-		st, err := s.load(ctx)
-
-		s.mu.Lock()
-		s.loading = false
-		if err != nil {
-			s.lastErr, s.errAt = err, s.now()
-			cur := s.cur
-			s.mu.Unlock()
-			return cur, nil // keep serving the last known-good value
+		if s.loading {
+			if s.valid {
+				// Someone else is already reloading; the stale value is
+				// still better than blocking on a second concurrent DB
+				// round trip.
+				cur := s.cur
+				s.mu.Unlock()
+				return cur, nil
+			}
+			// Cold start (or every load so far has failed): there is
+			// nothing useful to serve without waiting, so wait for the
+			// in-flight load instead of racing it with a duplicate.
+			s.cond.Wait()
+			continue
 		}
-		s.lastErr = nil
-		s.cur, s.at, s.valid = st, s.now(), true
-		s.mu.Unlock()
-		return st, nil
+		if !s.valid && s.lastErr != nil && s.now().Sub(s.errAt) < negativeCacheTTL {
+			err := s.lastErr
+			s.mu.Unlock()
+			return AuthSettings{}, err
+		}
+		break
 	}
-	if s.lastErr != nil && s.now().Sub(s.errAt) < negativeCacheTTL {
-		err := s.lastErr
-		s.mu.Unlock()
-		return AuthSettings{}, err
-	}
+	s.loading = true
+	gen := s.gen
 	s.mu.Unlock()
 
 	st, err := s.load(ctx)
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.loading = false
+	s.cond.Broadcast()
+	if gen != s.gen {
+		// Invalidated while this load was in flight: its result (success
+		// or error) is stale/moot either way. Discard it and retry rather
+		// than caching pre-invalidation data as if it were fresh, or a
+		// spurious error past the point the caller asked to drop the cache.
+		s.mu.Unlock()
+		return s.Get(ctx)
+	}
 	if err != nil {
 		s.lastErr, s.errAt = err, s.now()
+		if s.valid {
+			cur := s.cur
+			s.mu.Unlock()
+			return cur, nil // keep serving the last known-good value
+		}
+		s.mu.Unlock()
 		return AuthSettings{}, err
 	}
 	s.lastErr = nil
 	s.cur, s.at, s.valid = st, s.now(), true
+	s.mu.Unlock()
 	return st, nil
 }
 
-// Invalidate drops the cached settings.
+// Invalidate drops the cached settings. A load already in flight when this
+// runs is not allowed to resurrect the value being dropped (see gen).
 func (s *SettingsSource) Invalidate() {
 	s.mu.Lock()
 	s.valid = false
+	s.lastErr = nil
+	s.gen++
 	s.mu.Unlock()
 }

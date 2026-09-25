@@ -22,6 +22,16 @@ func TestDisabledAuditorRecordRefuses(t *testing.T) {
 	}
 }
 
+// TestDisabledAuditorRechainRefuses is belt-and-braces alongside serve's own
+// canaryOK gate around the Rechain call: Rechain on a disabled Auditor must
+// also refuse outright, without touching the database.
+func TestDisabledAuditorRechainRefuses(t *testing.T) {
+	a := audit.NewDisabled(nil, bytes.Repeat([]byte{7}, 32))
+	if _, err := a.Rechain(context.Background()); !errors.Is(err, audit.ErrAuditUnavailable) {
+		t.Fatalf("expected ErrAuditUnavailable, got %v", err)
+	}
+}
+
 // TestNewDisabledPanicsOnEmptyKey mirrors New's own contract: a disabled
 // Auditor still requires a non-empty key argument (used only if Check/Verify
 // are later called against it), so a caller cannot accidentally construct
