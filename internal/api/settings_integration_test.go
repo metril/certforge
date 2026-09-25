@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -21,10 +22,11 @@ func TestSettingsGetPut(t *testing.T) {
 		t.Fatalf("get %d %s", resp.StatusCode, body)
 	}
 	var sec struct {
-		Section string          `json:"section"`
-		Schema  map[string]any  `json:"schema"`
-		Value   map[string]any  `json:"value"`
-		Stored  *map[string]any `json:"stored"`
+		Section       string          `json:"section"`
+		Schema        map[string]any  `json:"schema"`
+		Value         map[string]any  `json:"value"`
+		Stored        *map[string]any `json:"stored"`
+		StoredSecrets []string        `json:"storedSecrets"`
 	}
 	if err := json.Unmarshal(body, &sec); err != nil || sec.Section != "general" || sec.Schema["type"] != "object" || len(sec.Value) != 0 {
 		t.Fatalf("section %s", body)
@@ -34,6 +36,14 @@ func TestSettingsGetPut(t *testing.T) {
 	// concrete (here empty, but for issuance_defaults built-in) display value.
 	if sec.Stored != nil {
 		t.Fatalf("stored should be null before any save, got %v", *sec.Stored)
+	}
+	// storedSecrets is a required array on the schema; general has no secret
+	// properties, so it must serialise as [], never null.
+	if sec.StoredSecrets == nil || len(sec.StoredSecrets) != 0 {
+		t.Fatalf("storedSecrets should be an empty array, got %v", sec.StoredSecrets)
+	}
+	if !strings.Contains(string(body), `"storedSecrets":[]`) {
+		t.Fatalf("storedSecrets should serialise as [] not null: %s", body)
 	}
 
 	resp, body = e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{"baseUrl": "https://certs.example.com"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
@@ -92,6 +102,27 @@ func TestSettingsSecretField(t *testing.T) {
 	}
 	if strings.Contains(details, "s3cret") || !strings.Contains(details, `"secretsChanged": ["clientSecret"]`) {
 		t.Fatalf("audit details %s", details)
+	}
+
+	// Round trip: a separate GET (not just the PUT response) must show the
+	// same storedSecrets, and never the secret value, in either value or stored.
+	resp, body = e.do(http.MethodGet, "/api/v1/settings/test_secret", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get %d %s", resp.StatusCode, body)
+	}
+	var getSec struct {
+		Value         map[string]any `json:"value"`
+		Stored        map[string]any `json:"stored"`
+		StoredSecrets []string       `json:"storedSecrets"`
+	}
+	if err := json.Unmarshal(body, &getSec); err != nil || !slices.Equal(getSec.StoredSecrets, []string{"clientSecret"}) {
+		t.Fatalf("get storedSecrets %s", body)
+	}
+	if _, ok := getSec.Value["clientSecret"]; ok {
+		t.Fatalf("get value holds secret: %s", body)
+	}
+	if _, ok := getSec.Stored["clientSecret"]; ok {
+		t.Fatalf("get stored holds secret: %s", body)
 	}
 }
 

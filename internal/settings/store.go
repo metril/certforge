@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
 
@@ -31,14 +32,23 @@ func (s *Store) SectionSecrets(ctx context.Context, sec *Section) (map[string]st
 }
 
 // StoredSecretKeys lists the secret properties that hold a value, sorted.
+// Always non-nil, so it serialises as [] rather than null when empty (the
+// OpenAPI schema requires an array).
 func (s *Store) StoredSecretKeys(ctx context.Context, sec *Section) ([]string, error) {
 	m, err := s.SectionSecrets(ctx, sec)
 	if err != nil {
 		return nil, err
 	}
-	return slices.Sorted(maps.Keys(m)), nil
+	keys := slices.Sorted(maps.Keys(m))
+	if keys == nil {
+		keys = []string{}
+	}
+	return keys, nil
 }
 
+// sectionSecrets decrypts the section's stored secrets, filtered to the
+// section's current secret keys: a property removed from the schema (or a
+// stray key from a differently-shaped stored blob) never surfaces as held.
 func (s *Store) sectionSecrets(ctx context.Context, q *sqlcgen.Queries, sec *Section) (map[string]string, error) {
 	out := map[string]string{}
 	if len(sec.secrets) == 0 {
@@ -62,8 +72,14 @@ func (s *Store) sectionSecrets(ctx context.Context, q *sqlcgen.Queries, sec *Sec
 	if err != nil {
 		return nil, fmt.Errorf("settings: secret %s: %w", sec.Key(), err)
 	}
-	if err := json.Unmarshal(pt, &out); err != nil {
+	var stored map[string]string
+	if err := json.Unmarshal(pt, &stored); err != nil {
 		return nil, fmt.Errorf("settings: secret %s: %w", sec.Key(), err)
+	}
+	for _, k := range sec.secrets {
+		if v, ok := stored[k]; ok {
+			out[k] = v
+		}
 	}
 	return out, nil
 }
@@ -186,59 +202,66 @@ func (s *Store) PutSection(ctx context.Context, sec *Section, raw json.RawMessag
 
 // PutSectionTx validates raw and stores it inside tx. Secret properties go to
 // the encrypted secret column: absent or Unchanged keeps the stored value,
-// "" clears it, anything else replaces it.
-func (s *Store) PutSectionTx(ctx context.Context, tx pgx.Tx, sec *Section, raw json.RawMessage) error {
+// "" clears it, anything else replaces it. It returns the secret keys that
+// actually changed (set to a new value or cleared), sorted and never nil —
+// "" for a key that was never stored, or a value equal to the one already
+// stored, is not a change.
+func (s *Store) PutSectionTx(ctx context.Context, tx pgx.Tx, sec *Section, raw json.RawMessage) ([]string, error) {
 	if err := sec.Validate(raw); err != nil {
-		return err
+		return nil, err
 	}
 	pub, in, err := sec.split(raw)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	q := s.q.WithTx(tx)
 	b, err := json.Marshal(pub)
 	if err != nil {
-		return fmt.Errorf("settings: encode %s: %w", sec.Key(), err)
+		return nil, fmt.Errorf("settings: encode %s: %w", sec.Key(), err)
 	}
 	if err := q.UpsertSettingValue(ctx, sqlcgen.UpsertSettingValueParams{Key: sec.Key(), Value: b}); err != nil {
-		return err
+		return nil, err
 	}
 	if len(in) == 0 {
-		return nil
+		return []string{}, nil
 	}
 	cur, err := s.sectionSecrets(ctx, q, sec)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	changed := false
+	var changed []string
 	for k, v := range in {
 		switch v {
 		case Unchanged:
 			if _, ok := cur[k]; !ok {
-				return fmt.Errorf("%w: %s", ErrUnchangedWithoutStored, k)
+				return nil, fmt.Errorf("%w: %s", ErrUnchangedWithoutStored, k)
 			}
 		case "":
 			if _, ok := cur[k]; ok {
 				delete(cur, k)
-				changed = true
+				changed = append(changed, k)
 			}
 		default:
 			if cur[k] != v {
 				cur[k] = v
-				changed = true
+				changed = append(changed, k)
 			}
 		}
 	}
-	if !changed {
-		return nil
+	if len(changed) == 0 {
+		return []string{}, nil
 	}
+	sort.Strings(changed)
 	pt, err := json.Marshal(cur)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	blob, err := s.env.Encrypt(ctx, pt)
 	if err != nil {
-		return fmt.Errorf("settings: seal %s: %w", sec.Key(), err)
+		return nil, fmt.Errorf("settings: seal %s: %w", sec.Key(), err)
 	}
-	return q.UpsertSettingSecret(ctx, sqlcgen.UpsertSettingSecretParams{Key: sec.Key(), Secret: blob.Marshal()})
+	if err := q.UpsertSettingSecret(ctx, sqlcgen.UpsertSettingSecretParams{Key: sec.Key(), Secret: blob.Marshal()}); err != nil {
+		return nil, err
+	}
+	return changed, nil
 }

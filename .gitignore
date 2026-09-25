@@ -17,3 +17,6 @@ internal/webui/dist/
 deploy/secrets/
 web/test-results/
 web/playwright-report/
+
+# Agentic workflow scratch space (task briefs, reports); never committed.
+/.superpowers/

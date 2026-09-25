@@ -54,10 +54,11 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	if err != nil {
 		return nil, err
 	}
+	var secretsChanged []string
 	if sec.Name == issuance.SettingsKey {
-		err = s.putGlobalIssuanceDefaults(ctx, sec, raw)
+		secretsChanged, err = s.putGlobalIssuanceDefaults(ctx, sec, raw)
 	} else {
-		err = s.putSection(ctx, sec, raw)
+		secretsChanged, err = s.putSection(ctx, sec, raw)
 	}
 	if err != nil {
 		return nil, err
@@ -67,7 +68,7 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "settings.update", ResourceType: "settings", ResourceID: sec.Name,
-		Details: map[string]any{"section": sec.Name, "before": before, "after": after, "secretsChanged": secretsChanged(sec, *req.Body)}})
+		Details: map[string]any{"section": sec.Name, "before": before, "after": after, "secretsChanged": secretsChanged}})
 	out, err := s.sectionResponse(ctx, sec)
 	if err != nil {
 		return nil, err
@@ -75,31 +76,25 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	return gen.PutSettingsSection200JSONResponse(out), nil
 }
 
-// putSection stores a section value and its secrets in one transaction.
-func (s *Server) putSection(ctx context.Context, sec *settings.Section, raw json.RawMessage) error {
+// putSection stores a section value and its secrets in one transaction and
+// returns the secret keys PutSectionTx actually changed.
+func (s *Server) putSection(ctx context.Context, sec *settings.Section, raw json.RawMessage) ([]string, error) {
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := s.d.Settings.PutSectionTx(ctx, tx, sec, raw); err != nil {
+	changed, err := s.d.Settings.PutSectionTx(ctx, tx, sec, raw)
+	if err != nil {
 		if errors.Is(err, settings.ErrInvalid) || errors.Is(err, settings.ErrUnchangedWithoutStored) {
-			return &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
+			return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
 		}
-		return err
+		return nil, err
 	}
-	return tx.Commit(ctx)
-}
-
-// secretsChanged names the secret properties the request set or cleared.
-func secretsChanged(sec *settings.Section, body gen.SettingsValue) []string {
-	out := []string{}
-	for _, k := range sec.SecretKeys() {
-		if v, ok := body[k]; ok && v != settings.Unchanged {
-			out = append(out, k)
-		}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
 	}
-	return out
+	return changed, nil
 }
 
 // putGlobalIssuanceDefaults validates and stores the issuance_defaults
@@ -109,7 +104,7 @@ func secretsChanged(sec *settings.Section, body gen.SettingsValue) []string {
 // the same row) blocks until this transaction commits or rolls back — the
 // two writers can no longer interleave into a dangling reference. The
 // section is written through the same transaction via PutSectionTx.
-func (s *Server) putGlobalIssuanceDefaults(ctx context.Context, sec *settings.Section, raw json.RawMessage) error {
+func (s *Server) putGlobalIssuanceDefaults(ctx context.Context, sec *settings.Section, raw json.RawMessage) ([]string, error) {
 	var d issuance.Defaults
 	if err := json.Unmarshal(raw, &d); err != nil {
 		// raw already passed JSON-Schema validation above; the schema's
@@ -118,20 +113,24 @@ func (s *Server) putGlobalIssuanceDefaults(ctx context.Context, sec *settings.Se
 		// still invalid input, so 422 like every other validation failure
 		// on this section, not 400 (which would suggest the request body
 		// itself was unparseable JSON).
-		return unprocessable("issuance_defaults", err.Error())
+		return nil, unprocessable("issuance_defaults", err.Error())
 	}
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := s.d.Issuance.Store.ValidateGlobalDefaultsTx(ctx, tx, d); err != nil {
-		return mapErr(err)
+		return nil, mapErr(err)
 	}
-	if err := s.d.Settings.PutSectionTx(ctx, tx, sec, raw); err != nil {
-		return err
+	changed, err := s.d.Settings.PutSectionTx(ctx, tx, sec, raw)
+	if err != nil {
+		return nil, err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return changed, nil
 }
 
 func (s *Server) sectionResponse(ctx context.Context, sec *settings.Section) (gen.SettingsSection, error) {

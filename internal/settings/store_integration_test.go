@@ -193,17 +193,21 @@ func secretSection(t *testing.T) *settings.Section {
 	return sec
 }
 
-func putTx(ctx context.Context, t *testing.T, pool *pgxpool.Pool, st *settings.Store, sec *settings.Section, raw string) error {
+func putTx(ctx context.Context, t *testing.T, pool *pgxpool.Pool, st *settings.Store, sec *settings.Section, raw string) ([]string, error) {
 	t.Helper()
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := st.PutSectionTx(ctx, tx, sec, json.RawMessage(raw)); err != nil {
-		return err
+	changed, err := st.PutSectionTx(ctx, tx, sec, json.RawMessage(raw))
+	if err != nil {
+		return nil, err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return changed, nil
 }
 
 func TestSectionSecrets(t *testing.T) {
@@ -212,11 +216,12 @@ func TestSectionSecrets(t *testing.T) {
 	st := settings.NewStore(q, envelope(1))
 	sec := secretSection(t)
 
-	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"a","clientSecret":"__unchanged__"}`); !errors.Is(err, settings.ErrUnchangedWithoutStored) {
+	if _, err := putTx(ctx, t, pool, st, sec, `{"issuer":"a","clientSecret":"__unchanged__"}`); !errors.Is(err, settings.ErrUnchangedWithoutStored) {
 		t.Fatalf("unchanged with nothing stored: %v", err)
 	}
-	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"a","clientSecret":"s3cret"}`); err != nil {
-		t.Fatal(err)
+	changed, err := putTx(ctx, t, pool, st, sec, `{"issuer":"a","clientSecret":"s3cret"}`)
+	if err != nil || !slices.Equal(changed, []string{"clientSecret"}) {
+		t.Fatalf("first set: changed %v err %v", changed, err)
 	}
 	val, _, err := st.GetSection(ctx, sec)
 	if err != nil || strings.Contains(string(val), "s3cret") || strings.Contains(string(val), "clientSecret") {
@@ -226,22 +231,59 @@ func TestSectionSecrets(t *testing.T) {
 	if bytes.Contains(row.Secret, []byte("s3cret")) {
 		t.Fatal("secret stored in plaintext")
 	}
-	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"b","clientSecret":"__unchanged__"}`); err != nil {
-		t.Fatal(err)
+	if changed, err := putTx(ctx, t, pool, st, sec, `{"issuer":"b","clientSecret":"__unchanged__"}`); err != nil || len(changed) != 0 {
+		t.Fatalf("unchanged: changed %v err %v", changed, err)
 	}
 	if m, _ := st.SectionSecrets(ctx, sec); m["clientSecret"] != "s3cret" {
 		t.Fatalf("unchanged lost the secret: %v", m)
 	}
-	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"b"}`); err != nil {
-		t.Fatal(err)
+	if changed, err := putTx(ctx, t, pool, st, sec, `{"issuer":"b","clientSecret":"s3cret"}`); err != nil || len(changed) != 0 {
+		t.Fatalf("same value again: changed %v err %v", changed, err)
+	}
+	if changed, err := putTx(ctx, t, pool, st, sec, `{"issuer":"b"}`); err != nil || len(changed) != 0 {
+		t.Fatalf("absent field: changed %v err %v", changed, err)
 	}
 	if keys, _ := st.StoredSecretKeys(ctx, sec); !slices.Equal(keys, []string{"clientSecret"}) {
 		t.Fatalf("absent field must keep the secret: %v", keys)
 	}
-	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"b","clientSecret":""}`); err != nil {
+	if changed, err := putTx(ctx, t, pool, st, sec, `{"issuer":"b","clientSecret":""}`); err != nil || !slices.Equal(changed, []string{"clientSecret"}) {
+		t.Fatalf("clear: changed %v err %v", changed, err)
+	}
+	if keys, _ := st.StoredSecretKeys(ctx, sec); len(keys) != 0 || keys == nil {
+		t.Fatalf("empty string must clear, and keys must be an empty slice not nil: %#v", keys)
+	}
+	if changed, err := putTx(ctx, t, pool, st, sec, `{"issuer":"b","clientSecret":""}`); err != nil || len(changed) != 0 {
+		t.Fatalf("clearing an already-clear secret is not a change: changed %v err %v", changed, err)
+	}
+}
+
+// TestSectionSecretsFiltersRemovedSchemaKeys covers a secret property that
+// used to exist on a section's schema, still sits encrypted in the stored
+// blob (nothing deletes it), but was later removed from the schema: it must
+// no longer be reported as held.
+func TestSectionSecretsFiltersRemovedSchemaKeys(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+	st := settings.NewStore(q, envelope(1))
+
+	wide := settings.NewRegistry()
+	wide.MustRegister("s", json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{
+	  "clientSecret":{"type":"string","secret":true},"apiKey":{"type":"string","secret":true}}}`), json.RawMessage(`{}`))
+	wideSec, _ := wide.Section("s")
+	if _, err := putTx(ctx, t, pool, st, wideSec, `{"clientSecret":"c-val","apiKey":"a-val"}`); err != nil {
 		t.Fatal(err)
 	}
-	if keys, _ := st.StoredSecretKeys(ctx, sec); len(keys) != 0 {
-		t.Fatalf("empty string must clear: %v", keys)
+
+	narrow := settings.NewRegistry()
+	narrow.MustRegister("s", json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{
+	  "clientSecret":{"type":"string","secret":true}}}`), json.RawMessage(`{}`))
+	narrowSec, _ := narrow.Section("s")
+
+	m, err := st.SectionSecrets(ctx, narrowSec)
+	if err != nil || len(m) != 1 || m["clientSecret"] != "c-val" {
+		t.Fatalf("SectionSecrets after schema narrowed: %v %v", m, err)
+	}
+	if keys, err := st.StoredSecretKeys(ctx, narrowSec); err != nil || !slices.Equal(keys, []string{"clientSecret"}) {
+		t.Fatalf("StoredSecretKeys after schema narrowed: %v %v", keys, err)
 	}
 }

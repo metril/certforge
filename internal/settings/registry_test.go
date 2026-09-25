@@ -75,6 +75,20 @@ func TestSecretSchemaRules(t *testing.T) {
 			t.Fatalf("%s: registered", name)
 		}
 	}
+	// A secret property that also carries pattern/enum/const/format would echo
+	// the rejected value (which may be the actual secret) into jsonschema's
+	// error text on a validation failure; these annotations are rejected on
+	// the schema itself, regardless of what the (secret-free) default holds.
+	for name, schema := range map[string]string{
+		"pattern": `{"type":"object","properties":{"k":{"type":"string","secret":true,"pattern":"^s3cret$"}}}`,
+		"enum":    `{"type":"object","properties":{"k":{"type":"string","secret":true,"enum":["s3cret"]}}}`,
+		"const":   `{"type":"object","properties":{"k":{"type":"string","secret":true,"const":"s3cret"}}}`,
+		"format":  `{"type":"object","properties":{"k":{"type":"string","secret":true,"format":"email"}}}`,
+	} {
+		if err := NewRegistry().Register("s", json.RawMessage(schema), json.RawMessage(`{}`)); err == nil {
+			t.Errorf("%s: registered", name)
+		}
+	}
 	if err := NewRegistry().Register("s", json.RawMessage(secretSchema), json.RawMessage(`{"clientSecret":"x"}`)); err == nil {
 		t.Fatal("default holding a secret was accepted")
 	}

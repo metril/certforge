@@ -92,8 +92,12 @@ func secretProps(schema json.RawMessage) ([]string, error) {
 	var doc struct {
 		Required   []string `json:"required"`
 		Properties map[string]struct {
-			Secret bool `json:"secret"`
-			Type   any  `json:"type"`
+			Secret  bool            `json:"secret"`
+			Type    any             `json:"type"`
+			Pattern string          `json:"pattern"`
+			Enum    json.RawMessage `json:"enum"`
+			Const   json.RawMessage `json:"const"`
+			Format  string          `json:"format"`
 		} `json:"properties"`
 	}
 	if err := json.Unmarshal(schema, &doc); err != nil {
@@ -109,6 +113,13 @@ func secretProps(schema json.RawMessage) ([]string, error) {
 		}
 		if slices.Contains(doc.Required, k) {
 			return nil, fmt.Errorf("secret property %q cannot be required", k)
+		}
+		// jsonschema v6 echoes the rejected instance value into its error
+		// text for a failed pattern/enum/const/format check, which would
+		// leak the secret itself into a 422 response; disallow all four on
+		// a secret property instead of trying to redact the error later.
+		if p.Pattern != "" || len(p.Enum) > 0 || len(p.Const) > 0 || p.Format != "" {
+			return nil, fmt.Errorf("secret property %q cannot use pattern, enum, const, or format", k)
 		}
 		out = append(out, k)
 	}
