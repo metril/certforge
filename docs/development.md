@@ -25,6 +25,13 @@
 | `internal/meta/` | Registry of pluggable type schemas |
 | `internal/setup/` | First-run wizard and `bootstrap-admin` |
 | `internal/webui/` | Embedded web UI with SPA fallback |
+| `cmd/certforge-agent/` | Agent binary |
+| `internal/agent/` | Agent enrolment, client, reconcile, targets, hooks |
+| `internal/agentproto/` | Wire protocol shared by server and agent |
+| `internal/agentca/` | Agent CA and listener certificate |
+| `internal/agents/` | Server-side agents service |
+| `internal/agenthub/` | Agent WebSocket registry |
+| `internal/delivery/` | Layouts, Traefik rendering, digests |
 | `deploy/` | Dockerfile and compose files |
 | `test/e2e/` | Compose-driven end-to-end tests |
 
