@@ -322,22 +322,17 @@ func TestEnrollRateLimited(t *testing.T) {
 	}
 }
 
-// Review Focus: a CA retired while an enrolment or renewal is in flight must
-// never leave a client anchored to it (Task 3 review carry-forward). Enroll
-// and Renew lock the signing CA row inside their own transaction, so they
-// serialize against agentca.Store.Retire's row lock on the same CA: a
-// concurrent transaction that locks the CA row and marks it retired before
-// enrol's row lock is granted must make enrol fail instead of activating
-// the client against a CA nothing trusts any more.
-// waitForLockWait polls pg_stat_activity for a backend blocked waiting on a
-// row lock (wait_event_type = 'Lock'), bounded to 5s. It replaces a fixed
-// sleep so the test does not race the goroutine's transaction.
+// waitForLockWait polls pg_stat_activity for this database's own backend
+// blocked waiting on the agent_cas row lock (wait_event_type = 'Lock'),
+// bounded to 5s. It replaces a fixed sleep so the test does not race the
+// goroutine's transaction.
 func waitForLockWait(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		var n int
-		if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock'`).Scan(&n); err != nil {
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%agent_cas%'`).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		if n > 0 {
@@ -347,6 +342,14 @@ func waitForLockWait(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	}
 	t.Fatal("timed out waiting for a backend to block on a row lock")
 }
+
+// Review Focus: a CA retired while an enrolment or renewal is in flight must
+// never leave a client anchored to it (Task 3 review carry-forward). Enroll
+// and Renew lock the signing CA row inside their own transaction, so they
+// serialize against agentca.Store.Retire's row lock on the same CA: a
+// concurrent transaction that locks the CA row and marks it retired before
+// enrol's row lock is granted must make enrol fail instead of activating
+// the client against a CA nothing trusts any more.
 
 func TestEnrollBlocksOnConcurrentRetire(t *testing.T) {
 	e := newAgentEnv(t)

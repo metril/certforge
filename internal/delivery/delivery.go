@@ -8,6 +8,7 @@ package delivery
 import (
 	"fmt"
 	"io/fs"
+	"math"
 	"path"
 	"regexp"
 	"slices"
@@ -61,6 +62,40 @@ func CleanPath(field, p string) error {
 	return nil
 }
 
+var numericRe = regexp.MustCompile(`^[0-9]{1,10}$`)
+
+// validateMode checks that s is an octal mode and refuses one that is
+// world-writable: a layout file can hold a private key, and a mode an agent
+// would write as world-writable is always a mistake.
+func validateMode(field, s string) error {
+	if !modeRe.MatchString(s) {
+		return &FieldError{field, "mode must be octal, for example 0640"}
+	}
+	m, err := ParseMode(s)
+	if err != nil {
+		return &FieldError{field, "mode must be octal, for example 0640"}
+	}
+	if m&0o002 != 0 {
+		return &FieldError{field, "mode must not be world-writable"}
+	}
+	return nil
+}
+
+// validateOwner checks that s is a user/group name or a numeric id that
+// fits in a uint32 (the range chown accepts).
+func validateOwner(field, s string) error {
+	if !ownerRe.MatchString(s) {
+		return &FieldError{field, "must be a user/group name or numeric id"}
+	}
+	if numericRe.MatchString(s) {
+		v, err := strconv.ParseUint(s, 10, 64)
+		if err != nil || v > math.MaxUint32 {
+			return &FieldError{field, "numeric id must fit in 32 bits"}
+		}
+	}
+	return nil
+}
+
 // ValidateFiles checks a layout's files.
 func ValidateFiles(files []OutputFile) error {
 	if len(files) == 0 || len(files) > MaxLayoutFiles {
@@ -87,14 +122,14 @@ func ValidateFiles(files []OutputFile) error {
 				return &FieldError{field + ".parts", fmt.Sprintf("unknown part %q", p)}
 			}
 		}
-		if !modeRe.MatchString(f.Mode) {
-			return &FieldError{field + ".mode", "mode must be octal, for example 0640"}
+		if err := validateMode(field+".mode", f.Mode); err != nil {
+			return err
 		}
-		if !ownerRe.MatchString(f.Owner) {
-			return &FieldError{field + ".owner", "owner must be a user name or numeric uid"}
+		if err := validateOwner(field+".owner", f.Owner); err != nil {
+			return err
 		}
-		if !ownerRe.MatchString(f.Group) {
-			return &FieldError{field + ".group", "group must be a group name or numeric gid"}
+		if err := validateOwner(field+".group", f.Group); err != nil {
+			return err
 		}
 	}
 	return nil

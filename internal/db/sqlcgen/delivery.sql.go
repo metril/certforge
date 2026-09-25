@@ -154,9 +154,18 @@ func (q *Queries) DeleteLayout(ctx context.Context, arg DeleteLayoutParams) (int
 
 const deployTargetDependents = `-- name: DeployTargetDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
-FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE g.deploy_target_id = $1 ORDER BY c.name, ce.name LIMIT 6
+FROM client_cert_grants g
+JOIN clients c ON c.id = g.client_id
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.deploy_target_id = $1 AND t.org_id = $2
+ORDER BY c.name, ce.name LIMIT 6
 `
+
+type DeployTargetDependentsParams struct {
+	ID    *uuid.UUID `json:"id"`
+	OrgID uuid.UUID  `json:"org_id"`
+}
 
 type DeployTargetDependentsRow struct {
 	ClientName      string `json:"client_name"`
@@ -164,8 +173,8 @@ type DeployTargetDependentsRow struct {
 	Removing        bool   `json:"removing"`
 }
 
-func (q *Queries) DeployTargetDependents(ctx context.Context, deployTargetID *uuid.UUID) ([]DeployTargetDependentsRow, error) {
-	rows, err := q.db.Query(ctx, deployTargetDependents, deployTargetID)
+func (q *Queries) DeployTargetDependents(ctx context.Context, arg DeployTargetDependentsParams) ([]DeployTargetDependentsRow, error) {
+	rows, err := q.db.Query(ctx, deployTargetDependents, arg.ID, arg.OrgID)
 	if err != nil {
 		return nil, err
 	}
@@ -291,8 +300,15 @@ func (q *Queries) GetLayout(ctx context.Context, arg GetLayoutParams) (OutputSpe
 const hookDependents = `-- name: HookDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE $1::uuid = ANY(g.hook_ids) ORDER BY c.name, ce.name LIMIT 6
+WHERE $1::uuid = ANY(g.hook_ids)
+  AND EXISTS (SELECT 1 FROM hooks h WHERE h.id = $1::uuid AND h.org_id = $2)
+ORDER BY c.name, ce.name LIMIT 6
 `
+
+type HookDependentsParams struct {
+	HookID uuid.UUID `json:"hook_id"`
+	OrgID  uuid.UUID `json:"org_id"`
+}
 
 type HookDependentsRow struct {
 	ClientName      string `json:"client_name"`
@@ -300,8 +316,8 @@ type HookDependentsRow struct {
 	Removing        bool   `json:"removing"`
 }
 
-func (q *Queries) HookDependents(ctx context.Context, hookID uuid.UUID) ([]HookDependentsRow, error) {
-	rows, err := q.db.Query(ctx, hookDependents, hookID)
+func (q *Queries) HookDependents(ctx context.Context, arg HookDependentsParams) ([]HookDependentsRow, error) {
+	rows, err := q.db.Query(ctx, hookDependents, arg.HookID, arg.OrgID)
 	if err != nil {
 		return nil, err
 	}
@@ -353,9 +369,18 @@ func (q *Queries) HookGrantCounts(ctx context.Context, ids []uuid.UUID) ([]HookG
 
 const layoutDependents = `-- name: LayoutDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
-FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE g.output_spec_id = $1 ORDER BY c.name, ce.name LIMIT 6
+FROM client_cert_grants g
+JOIN clients c ON c.id = g.client_id
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN output_specs o ON o.id = g.output_spec_id
+WHERE g.output_spec_id = $1 AND o.org_id = $2
+ORDER BY c.name, ce.name LIMIT 6
 `
+
+type LayoutDependentsParams struct {
+	ID    *uuid.UUID `json:"id"`
+	OrgID uuid.UUID  `json:"org_id"`
+}
 
 type LayoutDependentsRow struct {
 	ClientName      string `json:"client_name"`
@@ -363,8 +388,8 @@ type LayoutDependentsRow struct {
 	Removing        bool   `json:"removing"`
 }
 
-func (q *Queries) LayoutDependents(ctx context.Context, outputSpecID *uuid.UUID) ([]LayoutDependentsRow, error) {
-	rows, err := q.db.Query(ctx, layoutDependents, outputSpecID)
+func (q *Queries) LayoutDependents(ctx context.Context, arg LayoutDependentsParams) ([]LayoutDependentsRow, error) {
+	rows, err := q.db.Query(ctx, layoutDependents, arg.ID, arg.OrgID)
 	if err != nil {
 		return nil, err
 	}

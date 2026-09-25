@@ -238,7 +238,14 @@ func (s *Server) DeleteLayout(ctx context.Context, r gen.DeleteLayoutRequestObje
 		return nil, err
 	}
 	q := s.queries()
-	deps, err := q.LayoutDependents(ctx, &r.Id)
+	cur, err := q.GetLayout(ctx, sqlcgen.GetLayoutParams{ID: r.Id, OrgID: r.OrgId})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("layout %s", r.Id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	deps, err := q.LayoutDependents(ctx, sqlcgen.LayoutDependentsParams{ID: &r.Id, OrgID: r.OrgId})
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +266,8 @@ func (s *Server) DeleteLayout(ctx context.Context, r gen.DeleteLayoutRequestObje
 	if n == 0 {
 		return nil, notFound("layout %s", r.Id)
 	}
-	s.audit(ctx, audit.Event{Action: "layout.delete", ResourceType: "layout", ResourceID: r.Id.String(), OrgID: &r.OrgId})
+	s.audit(ctx, audit.Event{Action: "layout.delete", ResourceType: "layout", ResourceID: r.Id.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"name": cur.Name}})
 	return gen.DeleteLayout204Response{}, nil
 }
 
@@ -421,7 +429,14 @@ func (s *Server) DeleteDeployTarget(ctx context.Context, r gen.DeleteDeployTarge
 		return nil, err
 	}
 	q := s.queries()
-	deps, err := q.DeployTargetDependents(ctx, &r.Id)
+	cur, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: r.Id, OrgID: r.OrgId})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("deploy target %s", r.Id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	deps, err := q.DeployTargetDependents(ctx, sqlcgen.DeployTargetDependentsParams{ID: &r.Id, OrgID: r.OrgId})
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +457,8 @@ func (s *Server) DeleteDeployTarget(ctx context.Context, r gen.DeleteDeployTarge
 	if n == 0 {
 		return nil, notFound("deploy target %s", r.Id)
 	}
-	s.audit(ctx, audit.Event{Action: "deploy_target.delete", ResourceType: "deploy_target", ResourceID: r.Id.String(), OrgID: &r.OrgId})
+	s.audit(ctx, audit.Event{Action: "deploy_target.delete", ResourceType: "deploy_target", ResourceID: r.Id.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"name": cur.Name}})
 	return gen.DeleteDeployTarget204Response{}, nil
 }
 
@@ -588,7 +604,14 @@ func (s *Server) DeleteHook(ctx context.Context, r gen.DeleteHookRequestObject) 
 		return nil, err
 	}
 	q := s.queries()
-	deps, err := q.HookDependents(ctx, r.Id)
+	cur, err := q.GetHook(ctx, sqlcgen.GetHookParams{ID: r.Id, OrgID: r.OrgId})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("hook %s", r.Id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	deps, err := q.HookDependents(ctx, sqlcgen.HookDependentsParams{HookID: r.Id, OrgID: r.OrgId})
 	if err != nil {
 		return nil, err
 	}
@@ -606,6 +629,7 @@ func (s *Server) DeleteHook(ctx context.Context, r gen.DeleteHookRequestObject) 
 	if n == 0 {
 		return nil, notFound("hook %s", r.Id)
 	}
-	s.audit(ctx, audit.Event{Action: "hook.delete", ResourceType: "hook", ResourceID: r.Id.String(), OrgID: &r.OrgId})
+	s.audit(ctx, audit.Event{Action: "hook.delete", ResourceType: "hook", ResourceID: r.Id.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"name": cur.Name}})
 	return gen.DeleteHook204Response{}, nil
 }

@@ -21,8 +21,12 @@ WHERE o.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY o.id;
 
 -- name: LayoutDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
-FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE g.output_spec_id = $1 ORDER BY c.name, ce.name LIMIT 6;
+FROM client_cert_grants g
+JOIN clients c ON c.id = g.client_id
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN output_specs o ON o.id = g.output_spec_id
+WHERE g.output_spec_id = sqlc.arg(id) AND o.org_id = sqlc.arg(org_id)
+ORDER BY c.name, ce.name LIMIT 6;
 
 -- name: ListDeployTargets :many
 SELECT * FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id;
@@ -47,8 +51,12 @@ WHERE t.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY t.id;
 
 -- name: DeployTargetDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
-FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE g.deploy_target_id = $1 ORDER BY c.name, ce.name LIMIT 6;
+FROM client_cert_grants g
+JOIN clients c ON c.id = g.client_id
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.deploy_target_id = sqlc.arg(id) AND t.org_id = sqlc.arg(org_id)
+ORDER BY c.name, ce.name LIMIT 6;
 
 -- name: ListHooks :many
 SELECT * FROM hooks WHERE org_id = $1 ORDER BY lower(name), id;
@@ -75,4 +83,6 @@ WHERE h.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY h.id;
 -- name: HookDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE sqlc.arg(hook_id)::uuid = ANY(g.hook_ids) ORDER BY c.name, ce.name LIMIT 6;
+WHERE sqlc.arg(hook_id)::uuid = ANY(g.hook_ids)
+  AND EXISTS (SELECT 1 FROM hooks h WHERE h.id = sqlc.arg(hook_id)::uuid AND h.org_id = sqlc.arg(org_id))
+ORDER BY c.name, ce.name LIMIT 6;

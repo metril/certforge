@@ -29,20 +29,22 @@ func TestValidateFilesRejectsUnsafePaths(t *testing.T) {
 		many[i] = okFile("/etc/ssl/f" + strings.Repeat("x", i) + ".pem")
 	}
 	for name, files := range map[string][]OutputFile{
-		"none":      nil,
-		"too many":  many,
-		"relative":  {okFile("etc/ssl/x.pem")},
-		"dotdot":    {okFile("/etc/../x.pem")},
-		"dot":       {okFile("/etc/./x.pem")},
-		"trailing":  {okFile("/etc/ssl/")},
-		"root":      {okFile("/")},
-		"nul":       {okFile("/etc/x\x00.pem")},
-		"duplicate": {okFile("/etc/x.pem"), okFile("/etc/x.pem")},
-		"format":    {{Path: "/etc/x.der", Format: "der", Parts: []string{"cert"}, Mode: "0644"}},
-		"no parts":  {{Path: "/etc/x.pem", Format: "pem", Mode: "0644"}},
-		"bad part":  {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"pfx"}, Mode: "0644"}},
-		"bad mode":  {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert"}, Mode: "0999"}},
-		"bad owner": {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert"}, Owner: "a b", Mode: "0644"}},
+		"none":           nil,
+		"too many":       many,
+		"relative":       {okFile("etc/ssl/x.pem")},
+		"dotdot":         {okFile("/etc/../x.pem")},
+		"dot":            {okFile("/etc/./x.pem")},
+		"trailing":       {okFile("/etc/ssl/")},
+		"root":           {okFile("/")},
+		"nul":            {okFile("/etc/x\x00.pem")},
+		"duplicate":      {okFile("/etc/x.pem"), okFile("/etc/x.pem")},
+		"format":         {{Path: "/etc/x.der", Format: "der", Parts: []string{"cert"}, Mode: "0644"}},
+		"no parts":       {{Path: "/etc/x.pem", Format: "pem", Mode: "0644"}},
+		"bad part":       {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"pfx"}, Mode: "0644"}},
+		"bad mode":       {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert"}, Mode: "0999"}},
+		"world-writable": {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert"}, Mode: "0646"}},
+		"bad owner":      {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert"}, Owner: "a b", Mode: "0644"}},
+		"owner too big":  {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert"}, Owner: "4294967296", Mode: "0644"}},
 	} {
 		var fe *FieldError
 		if err := ValidateFiles(files); !errors.As(err, &fe) {
