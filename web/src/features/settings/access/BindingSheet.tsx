@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage } from '@/api/errors';
 import { apiKeysQuery } from '@/api/queries/apiKeys';
+import { useRefreshMe } from '@/api/queries/auth';
 import { useCreateBinding } from '@/api/queries/bindings';
 import { usersQuery } from '@/api/queries/users';
 import type { Role, SubjectType } from '@/api/types';
@@ -27,6 +28,7 @@ type Props = { open: boolean; onOpenChange: (open: boolean) => void; fixedType?:
 export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
   const me = useMe();
   const create = useCreateBinding();
+  const refreshMe = useRefreshMe();
 
   // Server rules mirrored here (2A Task 10 / controller ruling): a user
   // subject needs bindings:write somewhere; an oidc_group subject always
@@ -76,7 +78,13 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
   async function save() {
     setError(null);
     try {
-      await create.mutateAsync({ subjectType: type, subject: subject.trim(), role, orgId: scope === GLOBAL ? null : scope });
+      const trimmed = subject.trim();
+      await create.mutateAsync({ subjectType: type, subject: trimmed, role, orgId: scope === GLOBAL ? null : scope });
+      // M5: a binding that grants the caller's own account a new role
+      // changes what `can`/`canAnywhere` allow right away — refetch /auth/me
+      // and re-run route guards so gating updates immediately, not just on
+      // the query's own next background refetch.
+      if (type === 'user' && trimmed === me.user.id) await refreshMe();
       onOpenChange(false);
     } catch (e) {
       setError(e instanceof ApiError && e.status === 409 ? 'This binding already exists.' : errorMessage(e));

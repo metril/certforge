@@ -5,6 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { KeyRound, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { apiKeysQuery } from '@/api/queries/apiKeys';
+import { useRefreshMe } from '@/api/queries/auth';
 import { bindingsQuery, useDeleteBinding } from '@/api/queries/bindings';
 import type { ApiKey, Me, RoleBinding, SubjectType, UserDetail } from '@/api/types';
 import { usersQuery } from '@/api/queries/users';
@@ -115,6 +116,7 @@ export function BindingsTab() {
   const users = useQuery(usersQuery);
   const keys = useQuery(apiKeysQuery());
   const del = useDeleteBinding();
+  const refreshMe = useRefreshMe();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<RoleBinding | null>(null);
   const isMdUp = useMediaQuery('(min-width: 768px)');
@@ -145,6 +147,14 @@ export function BindingsTab() {
         .filter(({ b, resolved }) => matchesQuery(b, resolved, search.q ?? '')),
     [q.data, users.data, keys.data, search.q],
   );
+
+  // M4: clears every filter (type, org, and the debounced search text, plus
+  // its own local buffer so the debounce doesn't re-push the old value).
+  const clearFilters = () => {
+    setText('');
+    pushedQ.current = '';
+    void navigate({ search: (prev) => ({ ...prev, q: undefined, type: undefined, orgId: undefined }) });
+  };
 
   const columns = useMemo(
     () => [
@@ -225,7 +235,11 @@ export function BindingsTab() {
       ) : q.data && q.data.length === 0 ? (
         <EmptyState message="No role bindings match.">{add}</EmptyState>
       ) : q.data && resolvedRows.length === 0 ? (
-        <EmptyState message="No role bindings match this search." />
+        <EmptyState message="No role bindings match this search.">
+          <Button variant="outline" onClick={clearFilters}>
+            Clear filters
+          </Button>
+        </EmptyState>
       ) : isMdUp ? (
         <DataTable
           ariaLabel="Role bindings"
@@ -255,7 +269,13 @@ export function BindingsTab() {
         consequence={`${removing?.subjectLabel ?? ''} loses the ${removing ? ROLE_LABEL[removing.role] : ''} role in ${removing ? scopeLabel(me, removing.orgId) : ''} on their next request.`}
         confirmText={removing?.subjectLabel ?? ''}
         actionLabel="Remove"
-        onConfirm={() => del.mutateAsync(removing!.id)}
+        onConfirm={async () => {
+          const r = removing!;
+          await del.mutateAsync(r.id);
+          // M5: removing the caller's own binding changes what `can` allows
+          // right away (see BindingSheet's matching case on create).
+          if (r.subjectType === 'user' && r.subject === me.user.id) await refreshMe();
+        }}
       />
     </div>
   );

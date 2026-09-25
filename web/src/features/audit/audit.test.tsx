@@ -195,6 +195,32 @@ it('debounces the search box into the URL', async () => {
   await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'berlin' }));
 });
 
+// M1: a stray `useEffect(() => setText(search.q ?? ''), [search.q])` used to
+// re-run on every render and stomp the debounce's own `pushedQ`-tracked
+// value with whatever `search.q` currently was — mirrors CertificatesPage's
+// own "externally applied q survives" regression test.
+it('keeps an externally applied q (saved view) synced to the input, without the debounce reverting it', async () => {
+  capture();
+  const { router, user } = renderRoute('/o/acme/audit');
+  await screen.findByRole('table', { name: 'Audit events' });
+  await user.type(screen.getByRole('textbox', { name: 'Search audit log' }), 'berlin');
+  await waitFor(() => expect(router.state.location.search).toEqual({ q: 'berlin' }));
+  await user.click(screen.getByRole('button', { name: 'Save view' }));
+  await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Berlin only');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await user.click(screen.getByRole('button', { name: 'Remove filter Search: berlin' }));
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+
+  await user.click(screen.getByRole('button', { name: 'Berlin only' }));
+  await waitFor(() => expect(router.state.location.search).toEqual({ q: 'berlin' }));
+  expect(screen.getByRole('textbox', { name: 'Search audit log' })).toHaveValue('berlin');
+
+  router.history.back();
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+  await new Promise((r) => setTimeout(r, 300));
+  expect(router.state.location.search).toEqual({});
+});
+
 // Take-now #4: a deep link's fetch failing for a reason other than 404
 // (the caller genuinely may not reach the server, say) surfaces a toast
 // instead of silently claiming the event doesn't exist.

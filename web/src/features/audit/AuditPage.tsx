@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Download, Search, TriangleAlert } from 'lucide-react';
+import { Download, Info, Search, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AuditEvent } from '@/api/types';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -75,7 +75,6 @@ export function AuditPage() {
   const [exportNotice, setExportNotice] = useState(false);
   const [exportError, setExportError] = useState(false);
   const [missingNotice, setMissingNotice] = useState(false);
-  useEffect(() => setText(search.q ?? ''), [search.q]);
 
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
   const orgName = useMemo(() => (id: string | null) => (id === null ? 'Global' : (me.orgs.find((o) => o.id === id)?.name ?? id)), [me.orgs]);
@@ -178,14 +177,18 @@ export function AuditPage() {
           </div>
         }
       />
-      {missingNotice && <p className="mb-3 text-xs text-ink-muted">That event doesn't exist or isn't visible to you.</p>}
-      {exportNotice && <p className="mb-3 text-xs text-ink-muted">The export hit the 100,000-row cap; some events aren't included.</p>}
+      {missingNotice && (
+        <ToneChip className="mb-3" tone="neutral" icon={Info} label="That event doesn't exist or isn't visible to you." help="audit.missingEvent" />
+      )}
+      {exportNotice && (
+        <ToneChip className="mb-3" tone="pending" icon={TriangleAlert} label="The export hit the 100,000-row cap" help="audit.exportTruncated" />
+      )}
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="relative w-64">
           <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
           <Input aria-label="Search audit log" className="pl-8" placeholder="certificate.renew" value={text} onChange={(e) => setText(e.target.value)} />
         </div>
-        <div className="w-56">
+        <div className="w-48">
           <Combobox aria-label="Action" value={search.action} onChange={(v) => set({ action: v })} options={actionOptions()} placeholder="Any action" emptyText="No action matches." mono />
         </div>
         <div className="w-48">
@@ -196,8 +199,10 @@ export function AuditPage() {
             <Combobox aria-label="Actor" value={search.actor} onChange={(v) => set({ actor: v })} options={users.data.map((u) => ({ value: u.id, label: u.displayName, hint: u.email ?? undefined }))} placeholder="Any actor" emptyText="No user matches." />
           </div>
         )}
-        <Input aria-label="From date" className="w-40" type="date" value={search.from ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} />
-        <Input aria-label="To date" className="w-40" type="date" value={search.to ?? ''} onChange={(e) => set({ to: e.target.value || undefined })} />
+        {/* M3: same fixed width as the comboboxes above, so From/To sit on
+            the first row at 1440 px instead of wrapping under it. */}
+        <Input aria-label="From date" className="w-48" type="date" value={search.from ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} />
+        <Input aria-label="To date" className="w-48" type="date" value={search.to ?? ''} onChange={(e) => set({ to: e.target.value || undefined })} />
         <SavedViews
           list="audit"
           current={{ from: search.from, to: search.to, actor: search.actor, action: search.action, resourceType: search.resourceType, resourceId: search.resourceId, q: search.q }}

@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { SavedViews } from '@/components/SavedViews';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -159,6 +160,14 @@ export function UsersTab() {
   }, [text, search.q, navigate]);
 
   const rows = useMemo(() => (q.data ?? []).filter((u) => matches(u, search.q ?? '')), [q.data, search.q]);
+  // M4: clears the debounce's own local buffer too, not just the URL's q —
+  // otherwise the debounce effect would just re-push the cleared text's old
+  // value right back a moment later.
+  const clearFilters = () => {
+    setText('');
+    pushedQ.current = '';
+    void navigate({ search: (prev) => ({ ...prev, q: undefined }) });
+  };
 
   const runDisable = useCallback((u: UserDetail) => setConfirm(u), []);
   const runEnable = useCallback(
@@ -235,7 +244,11 @@ export function UsersTab() {
       {(q.data ?? []).length === 0 ? (
         <EmptyState message="No users have signed in yet." />
       ) : rows.length === 0 ? (
-        <EmptyState message="No users match this search." />
+        <EmptyState message="No users match this search.">
+          <Button variant="outline" onClick={clearFilters}>
+            Clear filters
+          </Button>
+        </EmptyState>
       ) : isMdUp ? (
         <DataTable ariaLabel="Users" data={rows} columns={columns} getRowId={(u) => u.id} />
       ) : (

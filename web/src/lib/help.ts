@@ -145,6 +145,8 @@ export const help = {
   'audit.actor': { text: 'The user or API key that acted; system for scheduled work.' },
   'audit.ip': { text: 'Client address, taken from X-Forwarded-For only behind a trusted proxy.' },
   'audit.exportError': { text: 'A query failed partway through the export; the downloaded file is missing events after that point. Try again, or narrow the filters.' },
+  'audit.missingEvent': { text: "The linked event doesn't exist, or your role can't read it." },
+  'audit.exportTruncated': { text: 'The export hit the 100,000-row cap; narrow the filters to get every matching event.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

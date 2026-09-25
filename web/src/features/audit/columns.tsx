@@ -12,10 +12,15 @@ export function auditColumns(orgName?: (id: string | null) => string) {
     col.display({
       id: 'resource',
       header: 'Resource',
+      // M3: type and id on one line (not stacked) so rows stay 36 px; type
+      // is a muted prefix, id is the truncated, font-mono part with the
+      // full value in `title` since it's usually the longer of the two.
       cell: ({ row }) => (
-        <span className="grid min-w-0">
-          <span className="truncate">{row.original.resourceType}</span>
-          <span className="truncate font-mono text-xs text-ink-muted">{row.original.resourceId}</span>
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0 text-ink-muted">{row.original.resourceType}</span>
+          <span className="truncate font-mono text-xs" title={row.original.resourceId}>
+            {row.original.resourceId}
+          </span>
         </span>
       ),
     }),

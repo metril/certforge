@@ -143,6 +143,17 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 | 10 | Overview recent activity | done | bdec67c |
 | 11 | Playwright: dex login and audit | done | 9f32505 |
 
+Phase 2B complete. Task 11's row records 9f32505, the Playwright/dex commit
+that closed out that task; the whole-branch final fix wave (two Important,
+seven Minor) closed out Phase 2B itself: 88f0063 gated every remaining
+Phase 1 write control by `can(me, action, orgId)` and fixed Recent
+activity's actor-name fallback for a caller without `users:read`; this
+commit fixes the seven Minors (the audit page's stray debounce-undoing
+effect, `DetailsDiff`'s unguarded clipboard copy, audit row/filter-bar
+layout, Clear filters buttons on Users/Bindings, `useRefreshMe()` on a
+binding mutation affecting the caller, ToneChip notices on the audit page,
+and the Access docs' API-key binding mention).
+
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.

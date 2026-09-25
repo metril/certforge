@@ -1,6 +1,33 @@
-import { useState } from 'react';
-import { ChevronRight, Copy } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronRight, Copy, Check, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+type CopyStatus = 'idle' | 'copied' | 'failed';
+
+// M2: mirrors CopyField's own guarded clipboard-copy (try/catch around
+// navigator.clipboard.writeText, a 1.5s status reset) instead of an
+// unguarded fire-and-forget write, so a LAN deployment over plain http or a
+// browser that refuses the request surfaces as a visible failure.
+function useCopyStatus() {
+  const [status, setStatus] = useState<CopyStatus>('idle');
+  useEffect(() => {
+    if (status === 'idle') return;
+    const t = window.setTimeout(() => setStatus('idle'), 1500);
+    return () => window.clearTimeout(t);
+  }, [status]);
+  return {
+    status,
+    copy: async (value: string) => {
+      try {
+        if (!navigator.clipboard) throw new Error('Clipboard API unavailable');
+        await navigator.clipboard.writeText(value);
+        setStatus('copied');
+      } catch {
+        setStatus('failed');
+      }
+    },
+  };
+}
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -26,6 +53,7 @@ export function diffDetails(details: Obj): { rows: DiffRow[]; rest: Obj } | null
 
 function Json({ value, label }: { value: Obj; label: string }) {
   const [open, setOpen] = useState(false);
+  const { status, copy } = useCopyStatus();
   const text = JSON.stringify(value, null, 2);
   return (
     <div className="grid gap-1">
@@ -47,10 +75,16 @@ function Json({ value, label }: { value: Obj; label: string }) {
             size="icon-sm"
             className="absolute right-1 top-1"
             aria-label="Copy JSON"
-            onClick={() => void navigator.clipboard.writeText(text)}
+            onClick={() => void copy(text)}
           >
-            <Copy className="size-3.5" aria-hidden />
+            {status === 'copied' && <Check className="size-3.5 text-valid" aria-hidden />}
+            {status === 'failed' && <TriangleAlert className="size-3.5 text-failed" aria-hidden />}
+            {status === 'idle' && <Copy className="size-3.5" aria-hidden />}
           </Button>
+          <span aria-live="polite" className="sr-only">
+            {status === 'copied' && 'Copied'}
+            {status === 'failed' && 'Copy failed'}
+          </span>
         </div>
       )}
     </div>

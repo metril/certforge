@@ -201,6 +201,19 @@ it('filters bindings by a URL-synced search term', async () => {
   expect(within(screen.getByRole('table', { name: 'Role bindings' })).getByText('ops')).toBeInTheDocument();
 });
 
+// M4: a filtered-empty result gets a Clear filters button.
+it('clears the search with a Clear filters button in the filtered-empty state', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  const { user, router } = renderRoute('/settings/access?tab=bindings');
+  await screen.findByRole('table', { name: 'Role bindings' });
+  await user.type(screen.getByRole('textbox', { name: 'Search bindings' }), 'nobody-matches-this');
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'nobody-matches-this' }));
+  await user.click(await screen.findByRole('button', { name: 'Clear filters' }));
+  await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'bindings' }));
+  expect(await screen.findByRole('table', { name: 'Role bindings' })).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Search bindings' })).toHaveValue('');
+});
+
 // Item 1's required test: the server actually receives the subject-type
 // filter, not just the URL.
 it('requests bindings filtered by subject type from the server', async () => {

@@ -163,3 +163,17 @@ it('filters users by a URL-synced search term', async () => {
   await waitFor(() => expect(within(screen.getByRole('table', { name: 'Users' })).queryByText('Ann')).toBeNull());
   expect(within(screen.getByRole('table', { name: 'Users' })).getByText('admin')).toBeInTheDocument();
 });
+
+// M4: a filtered-empty result gets a Clear filters button, not just a
+// dead-end message.
+it('clears the search with a Clear filters button in the filtered-empty state', async () => {
+  server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, annUser] })));
+  const { user, router } = renderRoute('/settings/access');
+  await screen.findByRole('table', { name: 'Users' });
+  await user.type(screen.getByRole('textbox', { name: 'Search users' }), 'nobody-matches-this');
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'nobody-matches-this' }));
+  await user.click(await screen.findByRole('button', { name: 'Clear filters' }));
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+  expect(await screen.findByRole('table', { name: 'Users' })).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Search users' })).toHaveValue('');
+});
