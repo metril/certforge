@@ -7,6 +7,14 @@ import { UNCHANGED } from '@/api/types';
 // the server derives itself and 422s if the client sends it (preflight A10).
 type Prop = RJSFSchema & { secret?: boolean; serverPath?: boolean };
 
+// An array of plain strings (no `items.enum`) maps to the ListInput chip
+// widget (theme/fields.tsx's `listArray` field) instead of RJSF's default
+// per-item add/remove rows.
+function isPlainStringArray(p: Prop): boolean {
+  const items = p.items;
+  return p.type === 'array' && typeof items === 'object' && !Array.isArray(items) && items.type === 'string' && items.enum === undefined;
+}
+
 function props(schema: RJSFSchema): [string, Prop][] {
   return Object.entries(schema.properties ?? {}).filter((e): e is [string, Prop] => typeof e[1] === 'object');
 }
@@ -65,6 +73,8 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
       ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key) } };
     } else if (p.type === 'string' && (p.format === 'textarea' || (p.maxLength ?? 0) > 200)) {
       ui[key] = { ...base, 'ui:widget': 'textarea' };
+    } else if (isPlainStringArray(p)) {
+      ui[key] = { ...base, 'ui:field': 'listArray' };
     } else if (Object.keys(base).length > 0) {
       ui[key] = base;
     }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,8 +106,14 @@ func TestAuthMethods(t *testing.T) {
 	e := newTestEnv(t)
 	seedAdminPassword(t, e, hardeningPw)
 	resp, body := e.do(http.MethodGet, "/api/v1/auth/methods", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
-	var m struct{ OidcEnabled, LocalEnabled bool }
+	var m struct {
+		OidcEnabled, LocalEnabled bool
+		OidcCallbackURL           string
+	}
 	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &m) != nil || m.OidcEnabled || !m.LocalEnabled {
 		t.Fatalf("%d %s", resp.StatusCode, body)
+	}
+	if !strings.HasSuffix(m.OidcCallbackURL, "/api/v1/auth/oidc/callback") {
+		t.Fatalf("oidcCallbackUrl = %q", m.OidcCallbackURL)
 	}
 }

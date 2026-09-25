@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { CircleAlert, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type Props = {
   id?: string;
@@ -8,9 +9,10 @@ type Props = {
   placeholder?: string;
   'aria-label'?: string;
   validate?: (item: string) => string | null;
+  disabled?: boolean;
 };
 
-export function ListInput({ id, value, onChange, placeholder, validate, ...rest }: Props) {
+export function ListInput({ id, value, onChange, placeholder, validate, disabled, ...rest }: Props) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const errorId = `${inputId}-error`;
@@ -36,18 +38,20 @@ export function ListInput({ id, value, onChange, placeholder, validate, ...rest 
 
   return (
     <div className="grid gap-1">
-      <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-input bg-panel px-1.5 py-1 focus-within:ring-2 focus-within:ring-ring">
+      <div className={cn('flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-input bg-panel px-1.5 py-1 focus-within:ring-2 focus-within:ring-ring', disabled && 'opacity-60')}>
         {value.map((v) => (
           <span key={v} className="inline-flex h-6 items-center gap-1 rounded-sm bg-subtle pl-2 pr-1 font-mono text-xs">
             {v}
-            <button
-              type="button"
-              aria-label={`Remove ${v}`}
-              onClick={() => onChange(value.filter((x) => x !== v))}
-              className="rounded-sm p-0.5 hover:bg-border"
-            >
-              <X className="size-3" aria-hidden />
-            </button>
+            {!disabled && (
+              <button
+                type="button"
+                aria-label={`Remove ${v}`}
+                onClick={() => onChange(value.filter((x) => x !== v))}
+                className="rounded-sm p-0.5 hover:bg-border"
+              >
+                <X className="size-3" aria-hidden />
+              </button>
+            )}
           </span>
         ))}
         <input
@@ -56,8 +60,9 @@ export function ListInput({ id, value, onChange, placeholder, validate, ...rest 
           aria-describedby={error ? errorId : undefined}
           aria-invalid={!!error}
           value={draft}
+          disabled={disabled}
           placeholder={value.length ? undefined : placeholder}
-          className="h-6 min-w-24 flex-1 bg-transparent font-mono text-xs outline-none"
+          className="h-6 min-w-24 flex-1 bg-transparent font-mono text-xs outline-none disabled:cursor-not-allowed"
           onChange={(e) => {
             setDraft(e.target.value);
             // A stale error from a previous rejected entry shouldn't keep

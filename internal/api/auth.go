@@ -160,7 +160,8 @@ func (s *Server) GetAuthMethods(ctx context.Context, _ gen.GetAuthMethodsRequest
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	return gen.GetAuthMethods200JSONResponse{OidcEnabled: oidcOn, LocalEnabled: err == nil}, nil
+	callback := strings.TrimRight(s.baseURL(ctx), "/") + "/api/v1/auth/oidc/callback"
+	return gen.GetAuthMethods200JSONResponse{OidcEnabled: oidcOn, LocalEnabled: err == nil, OidcCallbackUrl: callback}, nil
 }
 
 // finishSession builds Me for a just-created session, without touching the cookie.

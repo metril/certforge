@@ -1152,6 +1152,8 @@ export interface components {
             oidcEnabled: boolean;
             /** @description A local (break-glass) admin exists. */
             localEnabled: boolean;
+            /** @description The redirect URI to register for the CertForge client at the identity provider: the effective base URL plus /api/v1/auth/oidc/callback. */
+            oidcCallbackUrl: string;
         };
         /** @description The issuer to test, usually the unsaved value from the form. */
         AuthenticationTestRequest: {

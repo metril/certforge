@@ -71,6 +71,20 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
         >
           Replace
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Remove ${label}`}
+          onClick={() => {
+            // The server clears the stored secret on an explicit "" (unlike
+            // UNCHANGED, which keeps it) — never sent unless the caller asks.
+            setEditing(true);
+            onChange('');
+          }}
+        >
+          Remove
+        </Button>
       </div>
     );
   }

@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, call } from '../client';
 
-export type SectionId = 'general' | 'issuance_defaults' | 'backup';
+export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication';
 
 export const settingsQuery = (section: SectionId) =>
   queryOptions({ queryKey: ['settings', section], queryFn: () => call(api.GET('/settings/{section}', { params: { path: { section } } })) });
@@ -29,6 +29,20 @@ export function useSaveSettings(section: SectionId, opts: { silent?: boolean } =
         await qc.invalidateQueries({ queryKey: ['defaults'] });
         await qc.invalidateQueries({ queryKey: ['certs'] });
       }
+      // A saved OIDC change (enabled, issuer, clientId, ...) can flip whether
+      // the login page offers single sign-on.
+      if (section === 'authentication') {
+        await qc.invalidateQueries({ queryKey: ['auth-methods'] });
+      }
     },
+  });
+}
+
+/** Tests the OIDC issuer currently in the form (admin only), fetching
+ * discovery and JWKS without saving anything. */
+export function useTestAuthentication() {
+  return useMutation({
+    mutationFn: (issuer: string) => call(api.POST('/settings/authentication/test', { body: { issuer } })),
+    meta: { silent: true },
   });
 }

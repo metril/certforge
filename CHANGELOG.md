@@ -68,6 +68,8 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Audit API: filtered keyset list, CSV export with formula neutralization (audited), and cached chain verification.
 - Web: Settings → Access with the users list and disable switch.
 - Web: role bindings list, add sheet and removal.
+- Web: Settings → Authentication with a write-only client secret, connection test, redirect URI, and group mappings.
+- API: `GET /auth/methods` now returns `oidcCallbackUrl`, the redirect URI to register at the identity provider.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

@@ -1585,10 +1585,11 @@ components:
     AuthMethods:
       type: object
       description: Sign-in methods offered on the login page.
-      required: [oidcEnabled, localEnabled]
+      required: [oidcEnabled, localEnabled, oidcCallbackUrl]
       properties:
         oidcEnabled: {type: boolean, description: Single sign-on is enabled and configured.}
         localEnabled: {type: boolean, description: A local (break-glass) admin exists.}
+        oidcCallbackUrl: {type: string, description: "The redirect URI to register for the CertForge client at the identity provider: the effective base URL plus /api/v1/auth/oidc/callback."}
     AuthenticationTestRequest:
       type: object
       description: The issuer to test, usually the unsaved value from the form.

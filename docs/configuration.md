@@ -55,6 +55,7 @@ Rendered from the server's settings schema: base URL and other server-wide value
 | Trusted proxies | Addresses or CIDRs of reverse proxies. `X-Forwarded-For` is believed only from these; the audit log and the login rate limit use the resulting client address. |
 | Login rate limit (per minute) | Login attempts allowed per client address per minute (default 10). 0 disables the limit. |
 | Login rate limit burst | Login attempts a client may make in a single burst before the per-minute rate applies (default 5, minimum 1). |
+| Group mappings | Group-to-role bindings, edited on this page below the form. They are role bindings with subject type oidc_group, also listed under Settings → Access. |
 
 **Test connection** fetches the issuer's discovery document and signing keys without logging in.
 

@@ -24,6 +24,10 @@ Three tabs, kept in the URL (`?tab=users|bindings|keys`). **Users** lists everyo
 
 **Role bindings** lists every grant you can see, filterable by subject type (?type=). **Add binding** picks a user or types a group name, a role, and a scope (one org, or All orgs for global admins). Removing a binding asks you to type the subject's name; the last global admin binding held by a user cannot be removed.
 
+## Settings → Authentication
+
+The redirect URI to register (copy button), the single sign-on form rendered from the section schema (the client secret shows Stored with Replace), **Test connection** for the issuer currently in the form, and **Group mappings**: group-to-role bindings, the same rows as group bindings in Access.
+
 ## Keyboard shortcuts
 
 | Keys | Action |

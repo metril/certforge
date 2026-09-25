@@ -11,6 +11,7 @@ import { z } from 'zod';
 export const SECTIONS = [
   { slug: 'general', label: 'General' },
   { slug: 'access', label: 'Access' },
+  { slug: 'authentication', label: 'Authentication' },
   { slug: 'issuance-defaults', label: 'Issuance defaults' },
   { slug: 'backup', label: 'Backup and keys' },
 ] as const;

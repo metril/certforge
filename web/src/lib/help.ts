@@ -121,6 +121,8 @@ export const help = {
   'binding.userDisabled': { text: 'You need bindings:write to add user bindings.' },
   'binding.groupDisabled': { text: 'Only a global admin can add group mappings.' },
   'binding.apikeyDisabled': { text: 'You need apikeys:write to add API key bindings.' },
+  'auth.redirectUri': { text: 'Register this exact URI for the CertForge client at your identity provider.', learnMore: 'configuration.md#authentication' },
+  'auth.groupMappings': { text: 'Give every member of an identity provider group a role. Same as a group binding in Access.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;
