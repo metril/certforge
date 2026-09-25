@@ -14,6 +14,7 @@ import (
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
@@ -99,13 +100,7 @@ func certIn(b *gen.CertificateInput) (issuance.CertInput, error) {
 	return in, nil
 }
 
-// ListCertificates returns one keyset page of the org's certificates,
-// filtered by status and q and ordered by sort. Pagination resumes strictly
-// after a specific (sort key, id) pair rather than an in-memory row count,
-// so it stays correct while certificates are created or deleted between
-// pages. The effective config (global and org defaults) and every
-// certificate's current version on this page are each loaded once for the
-// whole page, not once per certificate.
+// ListCertificates returns one page of an org's certificates.
 func (s *Server) ListCertificates(ctx context.Context, r gen.ListCertificatesRequestObject) (gen.ListCertificatesResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
 		return nil, err
@@ -114,41 +109,80 @@ func (s *Server) ListCertificates(ctx context.Context, r gen.ListCertificatesReq
 	if r.Params.Status != nil {
 		status = ptr(string(*r.Params.Status))
 	}
-	p, err := parseCertList(status, r.Params.Q, r.Params.Sort, r.Params.Limit, r.Params.Cursor)
+	out, err := s.listCerts(ctx, []uuid.UUID{r.OrgId}, status, r.Params.Q, r.Params.Sort, r.Params.Limit, r.Params.Cursor)
 	if err != nil {
 		return nil, err
 	}
-	q := issuance.ListQuery{Status: p.status, Q: p.q, Sort: issuance.ListSort(p.sort), Desc: p.desc, Limit: p.limit}
-	if p.cursor != nil {
-		q.Cursor = &issuance.ListCursor{Key: p.cursor.LastKey, ID: p.cursor.LastID}
-	}
-	pg, err := s.d.Issuance.Store.ListCertificatesPage(ctx, r.OrgId, q)
-	if err != nil {
-		return nil, mapErr(err)
-	}
+	return gen.ListCertificates200JSONResponse(out), nil
+}
 
+// ListAllCertificates is ListCertificates over every org the caller can read.
+func (s *Server) ListAllCertificates(ctx context.Context, r gen.ListAllCertificatesRequestObject) (gen.ListAllCertificatesResponseObject, error) {
+	p, ok := authn.PrincipalFrom(ctx)
+	if !ok {
+		return nil, errUnauthenticated
+	}
+	orgs := authz.OrgsWith(p, authz.ActionCertsRead)
+	if len(orgs) == 0 {
+		return nil, &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "missing permission certs:read"}
+	}
+	var status *string
+	if r.Params.Status != nil {
+		status = ptr(string(*r.Params.Status))
+	}
+	out, err := s.listCerts(ctx, orgs, status, r.Params.Q, r.Params.Sort, r.Params.Limit, r.Params.Cursor)
+	if err != nil {
+		return nil, err
+	}
+	return gen.ListAllCertificates200JSONResponse(out), nil
+}
+
+// listCerts returns one keyset page of orgIDs' certificates, filtered by
+// status and q and ordered by sort. Pagination resumes strictly after a
+// specific (sort key, id) pair rather than an in-memory row count, so it
+// stays correct while certificates are created or deleted between pages.
+// The effective config (global and per-org defaults) and every
+// certificate's current version on this page are each loaded once for the
+// whole page, not once per certificate; org defaults are cached per org so
+// a cross-org page does not re-fetch them per row.
+func (s *Server) listCerts(ctx context.Context, orgIDs []uuid.UUID, status, q, sort *string, limit *int, cursor *string) (gen.CertificateList, error) {
+	p, err := parseCertList(status, q, sort, limit, cursor)
+	if err != nil {
+		return gen.CertificateList{}, err
+	}
+	lq := issuance.ListQuery{Status: p.status, Q: p.q, Sort: issuance.ListSort(p.sort), Desc: p.desc, Limit: p.limit}
+	if p.cursor != nil {
+		lq.Cursor = &issuance.ListCursor{Key: p.cursor.LastKey, ID: p.cursor.LastID}
+	}
+	pg, err := s.d.Issuance.Store.ListCertificatesPage(ctx, orgIDs, lq)
+	if err != nil {
+		return gen.CertificateList{}, mapErr(err)
+	}
 	global, err := s.d.Issuance.Store.GlobalDefaults(ctx)
 	if err != nil {
-		return nil, err
+		return gen.CertificateList{}, err
 	}
-	org, err := s.d.Issuance.Store.OrgDefaults(ctx, r.OrgId)
-	if err != nil {
-		return nil, err
-	}
+	orgDefaults := map[uuid.UUID]issuance.Defaults{}
 	var versionIDs []uuid.UUID
 	for _, c := range pg.Certificates {
+		if _, ok := orgDefaults[c.OrgID]; !ok {
+			d, err := s.d.Issuance.Store.OrgDefaults(ctx, c.OrgID)
+			if err != nil {
+				return gen.CertificateList{}, err
+			}
+			orgDefaults[c.OrgID] = d
+		}
 		if c.CurrentVersionID != nil {
 			versionIDs = append(versionIDs, *c.CurrentVersionID)
 		}
 	}
 	versions, err := s.d.Certs.Versions(ctx, versionIDs)
 	if err != nil {
-		return nil, err
+		return gen.CertificateList{}, err
 	}
-
 	items := make([]gen.Certificate, 0, len(pg.Certificates))
 	for _, c := range pg.Certificates {
-		eff := issuance.Resolve(global, org, c.Overrides)
+		eff := issuance.Resolve(global, orgDefaults[c.OrgID], c.Overrides)
 		var v *certstore.Version
 		if c.CurrentVersionID != nil {
 			if vv, ok := versions[*c.CurrentVersionID]; ok {
@@ -157,18 +191,17 @@ func (s *Server) ListCertificates(ctx context.Context, r gen.ListCertificatesReq
 		}
 		o, err := s.certRender(c, eff, v)
 		if err != nil {
-			return nil, err
+			return gen.CertificateList{}, err
 		}
 		items = append(items, o)
 	}
-
 	var next *string
 	if pg.NextCursor != nil {
 		n := encodeCertCursor(certCursor{Sort: p.sort, Desc: p.desc, Q: p.q, Status: p.status,
 			LastKey: pg.NextCursor.Key, LastID: pg.NextCursor.ID})
 		next = &n
 	}
-	return gen.ListCertificates200JSONResponse{Items: items, NextCursor: next}, nil
+	return gen.CertificateList{Items: items, NextCursor: next}, nil
 }
 
 // CreateCertificate stores a definition and queues the first issuance. The

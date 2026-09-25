@@ -114,8 +114,8 @@ were Task 18's own commits.
 | 8 | Users API | done | 3a15c6b |
 | 9 | API keys | done | 9f7d72a |
 | 10 | Role bindings API | done | 8a2e246 |
-| 11 | Orgs and sites CRUD | done | pending |
-| 12 | Cross-org certificate list | todo | – |
+| 11 | Orgs and sites CRUD | done | 57bd3b7 |
+| 12 | Cross-org certificate list | done | pending |
 | 13 | Keyed audit chain | todo | – |
 | 14 | Audit API | todo | – |
 | 15 | dex e2e | todo | – |

@@ -44,7 +44,7 @@ SELECT * FROM certificates WHERE id = $1 AND org_id = $2 FOR UPDATE;
 
 -- name: ListCertificatesPageByNameAsc :many
 SELECT c.*, c.name AS sort_key FROM certificates c
-WHERE c.org_id = sqlc.arg(org_id)
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
   AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
   AND (sqlc.arg(q_filter)::text = ''
        OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
@@ -56,7 +56,7 @@ LIMIT sqlc.arg(page_limit)::int;
 
 -- name: ListCertificatesPageByNameDesc :many
 SELECT c.*, c.name AS sort_key FROM certificates c
-WHERE c.org_id = sqlc.arg(org_id)
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
   AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
   AND (sqlc.arg(q_filter)::text = ''
        OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
@@ -68,7 +68,7 @@ LIMIT sqlc.arg(page_limit)::int;
 
 -- name: ListCertificatesPageByStatusAsc :many
 SELECT c.*, c.status AS sort_key FROM certificates c
-WHERE c.org_id = sqlc.arg(org_id)
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
   AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
   AND (sqlc.arg(q_filter)::text = ''
        OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
@@ -80,7 +80,7 @@ LIMIT sqlc.arg(page_limit)::int;
 
 -- name: ListCertificatesPageByStatusDesc :many
 SELECT c.*, c.status AS sort_key FROM certificates c
-WHERE c.org_id = sqlc.arg(org_id)
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
   AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
   AND (sqlc.arg(q_filter)::text = ''
        OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
@@ -92,7 +92,7 @@ LIMIT sqlc.arg(page_limit)::int;
 
 -- name: ListCertificatesPageByNextRenewAtAsc :many
 SELECT c.*, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
-WHERE c.org_id = sqlc.arg(org_id)
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
   AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
   AND (sqlc.arg(q_filter)::text = ''
        OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
@@ -105,7 +105,7 @@ LIMIT sqlc.arg(page_limit)::int;
 
 -- name: ListCertificatesPageByNextRenewAtDesc :many
 SELECT c.*, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
-WHERE c.org_id = sqlc.arg(org_id)
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
   AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
   AND (sqlc.arg(q_filter)::text = ''
        OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
@@ -120,7 +120,7 @@ LIMIT sqlc.arg(page_limit)::int;
 SELECT c.*, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
 FROM certificates c
 LEFT JOIN certificate_versions v ON v.id = c.current_version_id
-WHERE c.org_id = sqlc.arg(org_id)
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
   AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
   AND (sqlc.arg(q_filter)::text = ''
        OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0
@@ -135,7 +135,7 @@ LIMIT sqlc.arg(page_limit)::int;
 SELECT c.*, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
 FROM certificates c
 LEFT JOIN certificate_versions v ON v.id = c.current_version_id
-WHERE c.org_id = sqlc.arg(org_id)
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
   AND (sqlc.arg(status_filter)::text = '' OR c.status = sqlc.arg(status_filter))
   AND (sqlc.arg(q_filter)::text = ''
        OR position(lower(sqlc.arg(q_filter)::text) in lower(c.name)) > 0

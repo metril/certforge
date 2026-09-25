@@ -821,6 +821,29 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /certificates:
+    get:
+      operationId: listAllCertificates
+      tags: [certificates]
+      summary: List certificates across orgs
+      description: Like listCertificates, over every org where the caller has certs:read (the UI's read-only All orgs view). 403 when there is none. Items carry orgId.
+      parameters:
+        - {$ref: "#/components/parameters/ListStatus"}
+        - {$ref: "#/components/parameters/ListQ"}
+        - {$ref: "#/components/parameters/ListSort"}
+        - {$ref: "#/components/parameters/ListLimit"}
+        - {$ref: "#/components/parameters/ListCursor"}
+      responses:
+        "200":
+          description: One page of certificates.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:

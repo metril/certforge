@@ -369,7 +369,7 @@ func (q *Queries) ListCertificateVersionsByIDs(ctx context.Context, dollar_1 []u
 const listCertificatesPageByNameAsc = `-- name: ListCertificatesPageByNameAsc :many
 
 SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.name AS sort_key FROM certificates c
-WHERE c.org_id = $1
+WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
        OR position(lower($3::text) in lower(c.name)) > 0
@@ -381,13 +381,13 @@ LIMIT $7::int
 `
 
 type ListCertificatesPageByNameAscParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	StatusFilter string    `json:"status_filter"`
-	QFilter      string    `json:"q_filter"`
-	HasCursor    bool      `json:"has_cursor"`
-	LastKey      string    `json:"last_key"`
-	LastID       uuid.UUID `json:"last_id"`
-	PageLimit    int32     `json:"page_limit"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	StatusFilter string      `json:"status_filter"`
+	QFilter      string      `json:"q_filter"`
+	HasCursor    bool        `json:"has_cursor"`
+	LastKey      string      `json:"last_key"`
+	LastID       uuid.UUID   `json:"last_id"`
+	PageLimit    int32       `json:"page_limit"`
 }
 
 type ListCertificatesPageByNameAscRow struct {
@@ -430,7 +430,7 @@ type ListCertificatesPageByNameAscRow struct {
 // would otherwise silently exclude every subsequent row.
 func (q *Queries) ListCertificatesPageByNameAsc(ctx context.Context, arg ListCertificatesPageByNameAscParams) ([]ListCertificatesPageByNameAscRow, error) {
 	rows, err := q.db.Query(ctx, listCertificatesPageByNameAsc,
-		arg.OrgID,
+		arg.OrgIds,
 		arg.StatusFilter,
 		arg.QFilter,
 		arg.HasCursor,
@@ -474,7 +474,7 @@ func (q *Queries) ListCertificatesPageByNameAsc(ctx context.Context, arg ListCer
 
 const listCertificatesPageByNameDesc = `-- name: ListCertificatesPageByNameDesc :many
 SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.name AS sort_key FROM certificates c
-WHERE c.org_id = $1
+WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
        OR position(lower($3::text) in lower(c.name)) > 0
@@ -486,13 +486,13 @@ LIMIT $7::int
 `
 
 type ListCertificatesPageByNameDescParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	StatusFilter string    `json:"status_filter"`
-	QFilter      string    `json:"q_filter"`
-	HasCursor    bool      `json:"has_cursor"`
-	LastKey      string    `json:"last_key"`
-	LastID       uuid.UUID `json:"last_id"`
-	PageLimit    int32     `json:"page_limit"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	StatusFilter string      `json:"status_filter"`
+	QFilter      string      `json:"q_filter"`
+	HasCursor    bool        `json:"has_cursor"`
+	LastKey      string      `json:"last_key"`
+	LastID       uuid.UUID   `json:"last_id"`
+	PageLimit    int32       `json:"page_limit"`
 }
 
 type ListCertificatesPageByNameDescRow struct {
@@ -515,7 +515,7 @@ type ListCertificatesPageByNameDescRow struct {
 
 func (q *Queries) ListCertificatesPageByNameDesc(ctx context.Context, arg ListCertificatesPageByNameDescParams) ([]ListCertificatesPageByNameDescRow, error) {
 	rows, err := q.db.Query(ctx, listCertificatesPageByNameDesc,
-		arg.OrgID,
+		arg.OrgIds,
 		arg.StatusFilter,
 		arg.QFilter,
 		arg.HasCursor,
@@ -559,7 +559,7 @@ func (q *Queries) ListCertificatesPageByNameDesc(ctx context.Context, arg ListCe
 
 const listCertificatesPageByNextRenewAtAsc = `-- name: ListCertificatesPageByNextRenewAtAsc :many
 SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
-WHERE c.org_id = $1
+WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
        OR position(lower($3::text) in lower(c.name)) > 0
@@ -572,13 +572,13 @@ LIMIT $7::int
 `
 
 type ListCertificatesPageByNextRenewAtAscParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	StatusFilter string    `json:"status_filter"`
-	QFilter      string    `json:"q_filter"`
-	HasCursor    bool      `json:"has_cursor"`
-	LastKey      time.Time `json:"last_key"`
-	LastID       uuid.UUID `json:"last_id"`
-	PageLimit    int32     `json:"page_limit"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	StatusFilter string      `json:"status_filter"`
+	QFilter      string      `json:"q_filter"`
+	HasCursor    bool        `json:"has_cursor"`
+	LastKey      time.Time   `json:"last_key"`
+	LastID       uuid.UUID   `json:"last_id"`
+	PageLimit    int32       `json:"page_limit"`
 }
 
 type ListCertificatesPageByNextRenewAtAscRow struct {
@@ -601,7 +601,7 @@ type ListCertificatesPageByNextRenewAtAscRow struct {
 
 func (q *Queries) ListCertificatesPageByNextRenewAtAsc(ctx context.Context, arg ListCertificatesPageByNextRenewAtAscParams) ([]ListCertificatesPageByNextRenewAtAscRow, error) {
 	rows, err := q.db.Query(ctx, listCertificatesPageByNextRenewAtAsc,
-		arg.OrgID,
+		arg.OrgIds,
 		arg.StatusFilter,
 		arg.QFilter,
 		arg.HasCursor,
@@ -645,7 +645,7 @@ func (q *Queries) ListCertificatesPageByNextRenewAtAsc(ctx context.Context, arg 
 
 const listCertificatesPageByNextRenewAtDesc = `-- name: ListCertificatesPageByNextRenewAtDesc :many
 SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
-WHERE c.org_id = $1
+WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
        OR position(lower($3::text) in lower(c.name)) > 0
@@ -658,13 +658,13 @@ LIMIT $7::int
 `
 
 type ListCertificatesPageByNextRenewAtDescParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	StatusFilter string    `json:"status_filter"`
-	QFilter      string    `json:"q_filter"`
-	HasCursor    bool      `json:"has_cursor"`
-	LastKey      time.Time `json:"last_key"`
-	LastID       uuid.UUID `json:"last_id"`
-	PageLimit    int32     `json:"page_limit"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	StatusFilter string      `json:"status_filter"`
+	QFilter      string      `json:"q_filter"`
+	HasCursor    bool        `json:"has_cursor"`
+	LastKey      time.Time   `json:"last_key"`
+	LastID       uuid.UUID   `json:"last_id"`
+	PageLimit    int32       `json:"page_limit"`
 }
 
 type ListCertificatesPageByNextRenewAtDescRow struct {
@@ -687,7 +687,7 @@ type ListCertificatesPageByNextRenewAtDescRow struct {
 
 func (q *Queries) ListCertificatesPageByNextRenewAtDesc(ctx context.Context, arg ListCertificatesPageByNextRenewAtDescParams) ([]ListCertificatesPageByNextRenewAtDescRow, error) {
 	rows, err := q.db.Query(ctx, listCertificatesPageByNextRenewAtDesc,
-		arg.OrgID,
+		arg.OrgIds,
 		arg.StatusFilter,
 		arg.QFilter,
 		arg.HasCursor,
@@ -733,7 +733,7 @@ const listCertificatesPageByNotAfterAsc = `-- name: ListCertificatesPageByNotAft
 SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
 FROM certificates c
 LEFT JOIN certificate_versions v ON v.id = c.current_version_id
-WHERE c.org_id = $1
+WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
        OR position(lower($3::text) in lower(c.name)) > 0
@@ -746,13 +746,13 @@ LIMIT $7::int
 `
 
 type ListCertificatesPageByNotAfterAscParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	StatusFilter string    `json:"status_filter"`
-	QFilter      string    `json:"q_filter"`
-	HasCursor    bool      `json:"has_cursor"`
-	LastKey      time.Time `json:"last_key"`
-	LastID       uuid.UUID `json:"last_id"`
-	PageLimit    int32     `json:"page_limit"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	StatusFilter string      `json:"status_filter"`
+	QFilter      string      `json:"q_filter"`
+	HasCursor    bool        `json:"has_cursor"`
+	LastKey      time.Time   `json:"last_key"`
+	LastID       uuid.UUID   `json:"last_id"`
+	PageLimit    int32       `json:"page_limit"`
 }
 
 type ListCertificatesPageByNotAfterAscRow struct {
@@ -775,7 +775,7 @@ type ListCertificatesPageByNotAfterAscRow struct {
 
 func (q *Queries) ListCertificatesPageByNotAfterAsc(ctx context.Context, arg ListCertificatesPageByNotAfterAscParams) ([]ListCertificatesPageByNotAfterAscRow, error) {
 	rows, err := q.db.Query(ctx, listCertificatesPageByNotAfterAsc,
-		arg.OrgID,
+		arg.OrgIds,
 		arg.StatusFilter,
 		arg.QFilter,
 		arg.HasCursor,
@@ -821,7 +821,7 @@ const listCertificatesPageByNotAfterDesc = `-- name: ListCertificatesPageByNotAf
 SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
 FROM certificates c
 LEFT JOIN certificate_versions v ON v.id = c.current_version_id
-WHERE c.org_id = $1
+WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
        OR position(lower($3::text) in lower(c.name)) > 0
@@ -834,13 +834,13 @@ LIMIT $7::int
 `
 
 type ListCertificatesPageByNotAfterDescParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	StatusFilter string    `json:"status_filter"`
-	QFilter      string    `json:"q_filter"`
-	HasCursor    bool      `json:"has_cursor"`
-	LastKey      time.Time `json:"last_key"`
-	LastID       uuid.UUID `json:"last_id"`
-	PageLimit    int32     `json:"page_limit"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	StatusFilter string      `json:"status_filter"`
+	QFilter      string      `json:"q_filter"`
+	HasCursor    bool        `json:"has_cursor"`
+	LastKey      time.Time   `json:"last_key"`
+	LastID       uuid.UUID   `json:"last_id"`
+	PageLimit    int32       `json:"page_limit"`
 }
 
 type ListCertificatesPageByNotAfterDescRow struct {
@@ -863,7 +863,7 @@ type ListCertificatesPageByNotAfterDescRow struct {
 
 func (q *Queries) ListCertificatesPageByNotAfterDesc(ctx context.Context, arg ListCertificatesPageByNotAfterDescParams) ([]ListCertificatesPageByNotAfterDescRow, error) {
 	rows, err := q.db.Query(ctx, listCertificatesPageByNotAfterDesc,
-		arg.OrgID,
+		arg.OrgIds,
 		arg.StatusFilter,
 		arg.QFilter,
 		arg.HasCursor,
@@ -907,7 +907,7 @@ func (q *Queries) ListCertificatesPageByNotAfterDesc(ctx context.Context, arg Li
 
 const listCertificatesPageByStatusAsc = `-- name: ListCertificatesPageByStatusAsc :many
 SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.status AS sort_key FROM certificates c
-WHERE c.org_id = $1
+WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
        OR position(lower($3::text) in lower(c.name)) > 0
@@ -919,13 +919,13 @@ LIMIT $7::int
 `
 
 type ListCertificatesPageByStatusAscParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	StatusFilter string    `json:"status_filter"`
-	QFilter      string    `json:"q_filter"`
-	HasCursor    bool      `json:"has_cursor"`
-	LastKey      string    `json:"last_key"`
-	LastID       uuid.UUID `json:"last_id"`
-	PageLimit    int32     `json:"page_limit"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	StatusFilter string      `json:"status_filter"`
+	QFilter      string      `json:"q_filter"`
+	HasCursor    bool        `json:"has_cursor"`
+	LastKey      string      `json:"last_key"`
+	LastID       uuid.UUID   `json:"last_id"`
+	PageLimit    int32       `json:"page_limit"`
 }
 
 type ListCertificatesPageByStatusAscRow struct {
@@ -948,7 +948,7 @@ type ListCertificatesPageByStatusAscRow struct {
 
 func (q *Queries) ListCertificatesPageByStatusAsc(ctx context.Context, arg ListCertificatesPageByStatusAscParams) ([]ListCertificatesPageByStatusAscRow, error) {
 	rows, err := q.db.Query(ctx, listCertificatesPageByStatusAsc,
-		arg.OrgID,
+		arg.OrgIds,
 		arg.StatusFilter,
 		arg.QFilter,
 		arg.HasCursor,
@@ -992,7 +992,7 @@ func (q *Queries) ListCertificatesPageByStatusAsc(ctx context.Context, arg ListC
 
 const listCertificatesPageByStatusDesc = `-- name: ListCertificatesPageByStatusDesc :many
 SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.status AS sort_key FROM certificates c
-WHERE c.org_id = $1
+WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
        OR position(lower($3::text) in lower(c.name)) > 0
@@ -1004,13 +1004,13 @@ LIMIT $7::int
 `
 
 type ListCertificatesPageByStatusDescParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	StatusFilter string    `json:"status_filter"`
-	QFilter      string    `json:"q_filter"`
-	HasCursor    bool      `json:"has_cursor"`
-	LastKey      string    `json:"last_key"`
-	LastID       uuid.UUID `json:"last_id"`
-	PageLimit    int32     `json:"page_limit"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	StatusFilter string      `json:"status_filter"`
+	QFilter      string      `json:"q_filter"`
+	HasCursor    bool        `json:"has_cursor"`
+	LastKey      string      `json:"last_key"`
+	LastID       uuid.UUID   `json:"last_id"`
+	PageLimit    int32       `json:"page_limit"`
 }
 
 type ListCertificatesPageByStatusDescRow struct {
@@ -1033,7 +1033,7 @@ type ListCertificatesPageByStatusDescRow struct {
 
 func (q *Queries) ListCertificatesPageByStatusDesc(ctx context.Context, arg ListCertificatesPageByStatusDescParams) ([]ListCertificatesPageByStatusDescRow, error) {
 	rows, err := q.db.Query(ctx, listCertificatesPageByStatusDesc,
-		arg.OrgID,
+		arg.OrgIds,
 		arg.StatusFilter,
 		arg.QFilter,
 		arg.HasCursor,

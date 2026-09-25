@@ -28,7 +28,7 @@ Every operation in the served spec lists the problem responses it can return (co
 
 ## Lists
 
-`GET /orgs/{orgId}/certificates` takes `status`, `q` (case-insensitive substring of the name or any certificate name), `sort` (`name`, `notAfter`, `nextRenewAt`, `status`; `-` prefix for descending), `limit` (1–500, default 50) and `cursor`, and returns `{items, nextCursor}`; pass `nextCursor` back unchanged, it is null on the last page. The small collections (CAs, accounts, DNS credentials, versions, attempts, manual-dns records) return plain arrays.
+`GET /orgs/{orgId}/certificates` takes `status`, `q` (case-insensitive substring of the name or any certificate name), `sort` (`name`, `notAfter`, `nextRenewAt`, `status`; `-` prefix for descending), `limit` (1–500, default 50) and `cursor`, and returns `{items, nextCursor}`; pass `nextCursor` back unchanged, it is null on the last page. `GET /certificates` takes the same parameters across every org where you have `certs:read`; items carry `orgId`. The small collections (CAs, accounts, DNS credentials, versions, attempts, manual-dns records) return plain arrays.
 
 ## Write-only secrets
 

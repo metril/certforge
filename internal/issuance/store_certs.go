@@ -627,14 +627,14 @@ func buildListPage(certs []Certificate, keys []string, limit int) ListPage {
 	return p
 }
 
-// ListCertificatesPage returns one keyset page of the org's certificates,
+// ListCertificatesPage returns one page of certificates across orgIDs,
 // filtered by q.Status and q.Q and ordered by q.Sort (q.Desc for
 // descending), every sort breaking ties on id. Unlike an offset cursor over
 // an in-memory sort of the whole org, a keyset cursor stays correct while
 // rows are inserted or deleted between calls: it resumes strictly after the
 // specific row it names, not after a row count that shifts as the
 // underlying set changes.
-func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q ListQuery) (ListPage, error) {
+func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q ListQuery) (ListPage, error) {
 	hasCursor := q.Cursor != nil
 	var lastID uuid.UUID
 	var lastKeyText string
@@ -668,7 +668,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q Lis
 	switch {
 	case q.Sort == SortName && !q.Desc:
 		rows, err := s.q.ListCertificatesPageByNameAsc(ctx, sqlcgen.ListCertificatesPageByNameAscParams{
-			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
+			OrgIds: orgIDs, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -681,7 +681,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q Lis
 		}
 	case q.Sort == SortName && q.Desc:
 		rows, err := s.q.ListCertificatesPageByNameDesc(ctx, sqlcgen.ListCertificatesPageByNameDescParams{
-			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
+			OrgIds: orgIDs, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -694,7 +694,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q Lis
 		}
 	case q.Sort == SortStatus && !q.Desc:
 		rows, err := s.q.ListCertificatesPageByStatusAsc(ctx, sqlcgen.ListCertificatesPageByStatusAscParams{
-			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
+			OrgIds: orgIDs, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -707,7 +707,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q Lis
 		}
 	case q.Sort == SortStatus && q.Desc:
 		rows, err := s.q.ListCertificatesPageByStatusDesc(ctx, sqlcgen.ListCertificatesPageByStatusDescParams{
-			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
+			OrgIds: orgIDs, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyText, LastID: lastID, PageLimit: limit})
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -720,7 +720,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q Lis
 		}
 	case q.Sort == SortNextRenewAt && !q.Desc:
 		rows, err := s.q.ListCertificatesPageByNextRenewAtAsc(ctx, sqlcgen.ListCertificatesPageByNextRenewAtAscParams{
-			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
+			OrgIds: orgIDs, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -737,7 +737,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q Lis
 		}
 	case q.Sort == SortNextRenewAt && q.Desc:
 		rows, err := s.q.ListCertificatesPageByNextRenewAtDesc(ctx, sqlcgen.ListCertificatesPageByNextRenewAtDescParams{
-			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
+			OrgIds: orgIDs, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -754,7 +754,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q Lis
 		}
 	case q.Sort == SortNotAfter && !q.Desc:
 		rows, err := s.q.ListCertificatesPageByNotAfterAsc(ctx, sqlcgen.ListCertificatesPageByNotAfterAscParams{
-			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
+			OrgIds: orgIDs, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -767,7 +767,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgID uuid.UUID, q Lis
 		}
 	case q.Sort == SortNotAfter && q.Desc:
 		rows, err := s.q.ListCertificatesPageByNotAfterDesc(ctx, sqlcgen.ListCertificatesPageByNotAfterDescParams{
-			OrgID: orgID, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
+			OrgIds: orgIDs, StatusFilter: q.Status, QFilter: q.Q, HasCursor: hasCursor, LastKey: lastKeyTime, LastID: lastID, PageLimit: limit})
 		if err != nil {
 			return ListPage{}, err
 		}
