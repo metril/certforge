@@ -1,0 +1,113 @@
+package api
+
+import (
+	"context"
+	"errors"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/authz"
+	"github.com/metril/certforge/internal/db/sqlcgen"
+)
+
+func siteOut(s sqlcgen.Site) gen.Site {
+	return gen.Site{Id: s.ID, OrgId: s.OrgID, Name: s.Name, CreatedAt: s.CreatedAt}
+}
+
+// ListSites returns an org's sites.
+func (s *Server) ListSites(ctx context.Context, req gen.ListSitesRequestObject) (gen.ListSitesResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionSitesRead, &req.OrgId); err != nil {
+		return nil, err
+	}
+	rows, err := s.d.Queries.ListSites(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gen.Site, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, siteOut(r))
+	}
+	return gen.ListSites200JSONResponse(gen.SiteList{Items: out}), nil
+}
+
+// CreateSite adds a site to an org.
+func (s *Server) CreateSite(ctx context.Context, req gen.CreateSiteRequestObject) (gen.CreateSiteResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionSitesWrite, &req.OrgId); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, badRequest("missing body")
+	}
+	name, err := cleanName("name", req.Body.Name)
+	if err != nil {
+		return nil, err
+	}
+	site, err := s.d.Queries.CreateSite(ctx, sqlcgen.CreateSiteParams{OrgID: req.OrgId, Name: name})
+	switch pgCode(err) {
+	case pgUniqueViolation:
+		return nil, conflict("A site named %q exists in this org.", name)
+	case pgForeignKeyViolation:
+		return nil, notFound("org %s", req.OrgId)
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.audit(ctx, audit.Event{Action: "site.create", ResourceType: "site", ResourceID: site.ID.String(), OrgID: &site.OrgID,
+		Details: map[string]any{"name": site.Name}})
+	return gen.CreateSite201JSONResponse(siteOut(site)), nil
+}
+
+// UpdateSite renames a site.
+func (s *Server) UpdateSite(ctx context.Context, req gen.UpdateSiteRequestObject) (gen.UpdateSiteResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionSitesWrite, &req.OrgId); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, badRequest("missing body")
+	}
+	name, err := cleanName("name", req.Body.Name)
+	if err != nil {
+		return nil, err
+	}
+	sites, err := s.d.Queries.ListSites(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	var before string
+	for _, x := range sites {
+		if x.ID == req.Id {
+			before = x.Name
+		}
+	}
+	site, err := s.d.Queries.UpdateSiteName(ctx, sqlcgen.UpdateSiteNameParams{Name: name, ID: req.Id, OrgID: req.OrgId})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("site %s", req.Id)
+	}
+	if pgCode(err) == pgUniqueViolation {
+		return nil, conflict("A site named %q exists in this org.", name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.audit(ctx, audit.Event{Action: "site.update", ResourceType: "site", ResourceID: site.ID.String(), OrgID: &site.OrgID,
+		Details: map[string]any{"before": map[string]any{"name": before}, "after": map[string]any{"name": site.Name}}})
+	return gen.UpdateSite200JSONResponse(siteOut(site)), nil
+}
+
+// DeleteSite removes a site.
+func (s *Server) DeleteSite(ctx context.Context, req gen.DeleteSiteRequestObject) (gen.DeleteSiteResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionSitesWrite, &req.OrgId); err != nil {
+		return nil, err
+	}
+	n, err := s.d.Queries.DeleteSite(ctx, sqlcgen.DeleteSiteParams{ID: req.Id, OrgID: req.OrgId})
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, notFound("site %s", req.Id)
+	}
+	s.audit(ctx, audit.Event{Action: "site.delete", ResourceType: "site", ResourceID: req.Id.String(), OrgID: &req.OrgId})
+	return gen.DeleteSite204Response{}, nil
+}

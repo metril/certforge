@@ -25,6 +25,16 @@ On SIGINT/SIGTERM, `serve` drains in order:
 
 That is up to ~55s end to end, so a deploy's stop timeout must allow at least that: the server's container in `deploy/compose.yaml` sets `stop_grace_period: 60s` (Docker's default is 10s, which would SIGKILL the process mid-drain and abandon whatever issuance attempts were still running instead of letting them fail cleanly and retry). A Kubernetes deployment needs the equivalent `terminationGracePeriodSeconds: 60` on the pod spec.
 
+## Migrations
+
+`serve` and `migrate` apply embedded goose migrations on startup; this is safe to run repeatedly and from several processes at once. Migration `00005` reserves the org slug `all` for the web UI's All orgs route (`/o/all/...`). If an org already has that slug, the migration fails before altering the schema, with:
+
+```
+org <id> has reserved slug "all"; rename it before this migration can run
+```
+
+Rename that org (`UPDATE orgs SET slug = '<new-slug>' WHERE id = '<id>'`) and re-run migrations.
+
 ## Request limits
 
 Public, unauthenticated routes (`/auth/login`, `/setup/complete`) are as exposed to a hostile client as any other, so they carry the same resource-exhaustion limits as the rest of `/api/v1` (see [security.md](security.md#resource-exhaustion-on-public-routes) for the full list and rationale):

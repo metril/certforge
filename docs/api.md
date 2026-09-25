@@ -41,6 +41,10 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | Method and path | Purpose |
 |---|---|
 | `GET /meta/ca-presets` | CA presets with directory URL and `requiresEab` |
+| `GET, POST /orgs` | list visible orgs, create (`orgs:write`, global admin) |
+| `PATCH, DELETE /orgs/{orgId}` | rename (slug immutable), delete (409 while dependents exist) |
+| `GET, POST /orgs/{orgId}/sites` | list, create sites |
+| `PATCH, DELETE /orgs/{orgId}/sites/{id}` | rename, delete a site |
 | `GET, POST /orgs/{orgId}/cas` | list, add CAs |
 | `GET, PUT, DELETE /orgs/{orgId}/cas/{id}` | read, replace, delete a CA |
 | `GET, POST /orgs/{orgId}/acme-accounts` | list, register accounts |

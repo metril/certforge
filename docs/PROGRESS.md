@@ -113,8 +113,8 @@ were Task 18's own commits.
 | 7 | OIDC endpoints | done | dc2a5c6 |
 | 8 | Users API | done | 3a15c6b |
 | 9 | API keys | done | 9f7d72a |
-| 10 | Role bindings API | done | pending |
-| 11 | Orgs and sites CRUD | todo | – |
+| 10 | Role bindings API | done | 8a2e246 |
+| 11 | Orgs and sites CRUD | done | pending |
 | 12 | Cross-org certificate list | todo | – |
 | 13 | Keyed audit chain | todo | – |
 | 14 | Audit API | todo | – |
@@ -202,6 +202,7 @@ were Task 18's own commits.
 - 1C Task 10 (preflight A9): `RenewPolicy.value` in percent mode is the share of the lifetime *remaining* when renewal fires (`internal/issuance/policy.go`'s `NextRenewAt`), not elapsed; the built-in default is 33, not the brief's 66. `ISSUANCE_FIELDS`' `renewPolicy` initial/display/help/mode-switch and `docs/configuration.md` all say "remains"/33.
 - 1C Task 10: a 422 from either issuance-defaults PUT (global or org) is mapped to its field via the problem's `title`, always `"Invalid <field>"` or `"Invalid <field>.<sub>"` (`internal/api/issuance_common.go`'s `mapErr`/`unprocessable` — the same convention Task 9's review already found for DNS credentials), not prose keyword-matching in `detail`; `fieldFromTitle` in `issuanceFields.tsx` does an exact lookup against `ISSUANCE_FIELDS`' own keys. `useSaveOrgDefaults` and the Global-tab `useSaveSettings('issuance_defaults', {silent:true})` call suppress the default toast so the inline error is the only surfacing, matching `useSaveCa`/`useSaveCredential`'s existing pattern; `useSaveSettings` also invalidates the `['defaults']` query family on an `issuance_defaults` save, since a global change can move any org's effective sources.
 - 1C Task 10: docs/design.md's Settings → General row lists "base URL, orgs, sites"; there is no `/sites` endpoint in Phase 1A (see Known gaps), so `OrgsList` shows only the read-only organizations list, from a new `orgsQuery` (`GET /orgs`).
+- 2A Task 11: org slug "all" is reserved for the All orgs route.
 - 1C Task 11 (preflight C8): T4's `AppShell.test.tsx` navigates to `/o/acme/certificates` without mocking `/certificates` or `/cas`; now that the route actually fetches both, `test/server.ts`'s `setupServer(...)` carries empty-list default handlers for `GET /orgs/:orgId/certificates` and `GET /orgs/:orgId/cas`, restored by `resetHandlers()` after every test and shadowed by any test's own more specific `server.use(...)`.
 - 1C Task 11 (preflight D9): the spec's "card lists" below 768 px applies to the certificates list — `CertificatesPage` renders `DataTable` at `md` and up and a card grid (name, status chip, validity bar, next renewal — no grants/CA/names columns, no row selection) below it, gated on `useMediaQuery('(min-width: 768px)')`; `list.test.tsx` mocks `matchMedia` (desktop by default so the table-oriented assertions hold, narrow for a dedicated card-rows test), matching `AppShell.test.tsx`'s existing convention.
 - 1C Task 11 (preflight D15): `useRenewCertificates`/`useDeleteCertificates` run their per-id calls through `Promise.allSettled`, not `Promise.all`, and report `{ok, failed}` as separate success/error toasts, so one failing id in a bulk action no longer swallows the rest.
@@ -257,7 +258,6 @@ were Task 18's own commits.
 - `MaxWorkers=4` is shared by every river job kind, including the periodic scan job and hour-long manual-dns waits; a burst of manual-dns issuances can starve renewals.
 - 1C: Overview "recent activity" needs the audit log (Phase 2).
 - 1C: Revoke action needs a revoke endpoint; Deployments tab is Phase 3.
-- 1C Task 10: Settings → General lists organizations only; there is no `/sites` endpoint yet (sites are a later-phase entity), so the sites list docs/design.md's "Settings" row describes is not shown.
 - 1C Task 11: the certificates list's Grants column always renders "–" (client × certificate assignments are Phase 3, same as Deployments above); the card layout below 768 px has no click-to-select or bulk actions (mobile is triage-only per spec, and the floating bulk bar would have nothing to select).
 - 1C Task 17 (controller ruling): the Overview page has no "Recent activity (last 20)" section; it depends on the audit log, which Phase 2 exposes to the web UI. No stand-in was added.
 - 2A Task 2: `apikeys:write` is held by `admin` and `org-admin` only (operators cannot mint keys), and API keys cannot create API keys — deliberate departures from the design's "intersected with the creator's role" wording; `authz.Can` always finishes by checking `bindingsAllow` against the principal's `Bindings` (the creator's bindings, for an API key principal), after `keyAllows` narrows by scope and key org — so an API key can only ever narrow, never widen, what its creator holds.

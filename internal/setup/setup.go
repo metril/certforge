@@ -259,8 +259,8 @@ func (s *Service) validate(in Input) error {
 	if in.OrgName == "" || len(in.OrgName) > 100 {
 		problems = append(problems, "orgName must be 1 to 100 characters")
 	}
-	if !slugRE.MatchString(in.OrgSlug) {
-		problems = append(problems, "orgSlug must be lowercase letters, digits, and hyphens, starting with a letter or digit")
+	if !slugRE.MatchString(in.OrgSlug) || in.OrgSlug == "all" {
+		problems = append(problems, `orgSlug must be lowercase letters, digits, and hyphens, starting with a letter or digit, and not "all"`)
 	}
 	if err := config.ValidateBaseURL(in.BaseURL); err != nil {
 		problems = append(problems, "baseUrl "+err.Error())

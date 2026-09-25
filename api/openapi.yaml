@@ -110,6 +110,148 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createOrg
+      tags: [orgs]
+      summary: Create an organization
+      description: Needs orgs:write (global admin). The slug is permanent; "all" is reserved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OrgInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Org"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    patch:
+      operationId: updateOrg
+      tags: [orgs]
+      summary: Rename an organization
+      description: Needs orgs:write. The slug is permanent; sending a different one is 422.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OrgUpdate"}
+      responses:
+        "200":
+          description: Updated org.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Org"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteOrg
+      tags: [orgs]
+      summary: Delete an organization
+      description: Needs orgs:write. Blocked (409) while the org has certificates, DNS credentials, ACME accounts, CAs, role bindings, or active API keys; the detail lists them. Sites are deleted with the org.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/sites:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listSites
+      tags: [orgs]
+      summary: List sites
+      description: Needs sites:read in the org.
+      responses:
+        "200":
+          description: Sites sorted by name.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SiteList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createSite
+      tags: [orgs]
+      summary: Create a site
+      description: Needs sites:write in the org. Names are unique per org.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SiteInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Site"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/sites/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    patch:
+      operationId: updateSite
+      tags: [orgs]
+      summary: Rename a site
+      description: Needs sites:write in the org.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SiteInput"}
+      responses:
+        "200":
+          description: Updated site.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Site"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteSite
+      tags: [orgs]
+      summary: Delete a site
+      description: Needs sites:write in the org. Site-scoped role bindings go with it.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /auth/login:
     post:
       operationId: login
@@ -1243,6 +1385,41 @@ components:
           description: Organizations sorted by name.
           items:
             $ref: "#/components/schemas/Org"
+    OrgInput:
+      type: object
+      description: A new organization.
+      required: [slug, name]
+      properties:
+        slug: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$", description: Permanent URL name; lowercase letters, digits, hyphens; not "all".}
+        name: {type: string, minLength: 1, maxLength: 100, description: Display name.}
+    OrgUpdate:
+      type: object
+      description: Changes to an organization. The slug cannot change.
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: New display name.}
+        slug: {type: string, description: Optional; must equal the current slug.}
+    Site:
+      type: object
+      description: A location within an org, used as a filter.
+      required: [id, orgId, name, createdAt]
+      properties:
+        id: {type: string, format: uuid, description: Site id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Name, unique in the org.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+    SiteInput:
+      type: object
+      description: A site's name.
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
+    SiteList:
+      type: object
+      description: Sites of an org.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Site"}, description: Sites sorted by name.}
     SchemaEntry:
       type: object
       description: One registered pluggable type.

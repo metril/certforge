@@ -7,7 +7,42 @@ package sqlcgen
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
+
+const countOrgDependents = `-- name: CountOrgDependents :one
+SELECT
+  (SELECT count(*) FROM certificates c WHERE c.org_id = $1) AS certificates,
+  (SELECT count(*) FROM dns_provider_credentials d WHERE d.org_id = $1) AS dns_credentials,
+  (SELECT count(*) FROM acme_accounts a WHERE a.org_id = $1) AS acme_accounts,
+  (SELECT count(*) FROM cas WHERE cas.org_id = $1) AS cas,
+  (SELECT count(*) FROM role_bindings rb WHERE rb.org_id = $1) AS role_bindings,
+  (SELECT count(*) FROM api_keys k WHERE k.org_id = $1 AND k.revoked_at IS NULL) AS api_keys
+`
+
+type CountOrgDependentsRow struct {
+	Certificates   int64 `json:"certificates"`
+	DnsCredentials int64 `json:"dns_credentials"`
+	AcmeAccounts   int64 `json:"acme_accounts"`
+	Cas            int64 `json:"cas"`
+	RoleBindings   int64 `json:"role_bindings"`
+	ApiKeys        int64 `json:"api_keys"`
+}
+
+func (q *Queries) CountOrgDependents(ctx context.Context, orgID uuid.UUID) (CountOrgDependentsRow, error) {
+	row := q.db.QueryRow(ctx, countOrgDependents, orgID)
+	var i CountOrgDependentsRow
+	err := row.Scan(
+		&i.Certificates,
+		&i.DnsCredentials,
+		&i.AcmeAccounts,
+		&i.Cas,
+		&i.RoleBindings,
+		&i.ApiKeys,
+	)
+	return i, err
+}
 
 const createOrg = `-- name: CreateOrg :one
 INSERT INTO orgs (slug, name) VALUES ($1, $2) RETURNING id, slug, name, created_at
@@ -20,6 +55,31 @@ type CreateOrgParams struct {
 
 func (q *Queries) CreateOrg(ctx context.Context, arg CreateOrgParams) (Org, error) {
 	row := q.db.QueryRow(ctx, createOrg, arg.Slug, arg.Name)
+	var i Org
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteOrg = `-- name: DeleteOrg :exec
+DELETE FROM orgs WHERE id = $1
+`
+
+func (q *Queries) DeleteOrg(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteOrg, id)
+	return err
+}
+
+const getOrg = `-- name: GetOrg :one
+SELECT id, slug, name, created_at FROM orgs WHERE id = $1
+`
+
+func (q *Queries) GetOrg(ctx context.Context, id uuid.UUID) (Org, error) {
+	row := q.db.QueryRow(ctx, getOrg, id)
 	var i Org
 	err := row.Scan(
 		&i.ID,
@@ -73,4 +133,35 @@ func (q *Queries) ListOrgs(ctx context.Context) ([]Org, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockOrg = `-- name: LockOrg :one
+SELECT id FROM orgs WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockOrg(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockOrg, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
+const updateOrgName = `-- name: UpdateOrgName :one
+UPDATE orgs SET name = $1 WHERE id = $2 RETURNING id, slug, name, created_at
+`
+
+type UpdateOrgNameParams struct {
+	Name string    `json:"name"`
+	ID   uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateOrgName(ctx context.Context, arg UpdateOrgNameParams) (Org, error) {
+	row := q.db.QueryRow(ctx, updateOrgName, arg.Name, arg.ID)
+	var i Org
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedAt,
+	)
+	return i, err
 }

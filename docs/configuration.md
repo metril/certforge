@@ -40,7 +40,7 @@ Open **Settings** in the sidebar. Sections that arrive in later phases (Agents, 
 
 ### General
 
-Rendered from the server's settings schema: base URL and other server-wide values. **Save** applies immediately; no restart. Below it, a read-only list of the organizations visible to your account (site management arrives in a later phase).
+Rendered from the server's settings schema: base URL and other server-wide values. **Save** applies immediately; no restart. Below it, **Organizations**: admins create, rename and delete orgs (the slug is permanent; "all" is reserved), and org admins manage each org's **Sites**. An org with certificates, credentials, accounts, CAs, role bindings or active API keys cannot be deleted; the dialog lists them.
 
 ### Authentication
 
