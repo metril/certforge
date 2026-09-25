@@ -3,9 +3,11 @@ package api
 import (
 	"errors"
 	"log/slog"
+	"math"
 	"mime"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -20,6 +22,14 @@ import (
 func NewRouter(d Deps) http.Handler {
 	if d.Log == nil {
 		d.Log = slog.Default()
+	}
+	// loginLimiterSettings drives Reconfigure from the authentication
+	// section's loginRatePerMinute/loginBurst, but only for the limiter
+	// built here: a caller-supplied LoginLimiter is used exactly as given.
+	var loginLimiterSettings *authn.SettingsSource
+	if d.LoginLimiter == nil {
+		d.LoginLimiter = authn.NewLimiter(authn.DefaultLoginPerMinute, authn.DefaultLoginBurst)
+		loginLimiterSettings = d.AuthSettings
 	}
 	s := &Server{d: d}
 	r := chi.NewRouter()
@@ -45,7 +55,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/healthz", s.healthz)
 	r.Get("/readyz", s.readyz)
 	r.Route("/api/v1", func(v1 chi.Router) {
-		v1.Use(withClientIP(d.AuthSettings), requireJSON, authn.Middleware(authn.MiddlewareOptions{
+		v1.Use(withClientIP(d.AuthSettings), limitLogins(d.LoginLimiter, loginLimiterSettings), requireJSON, authn.Middleware(authn.MiddlewareOptions{
 			Sessions: d.Sessions, Queries: d.Queries, Public: isPublic, Fail: Write, Log: d.Log,
 		}))
 		v1.NotFound(func(w http.ResponseWriter, _ *http.Request) { Write(w, http.StatusNotFound, "Not found", "") })
@@ -67,10 +77,35 @@ func isPublic(r *http.Request) bool {
 	case "GET /api/v1/openapi.json",
 		"GET /api/v1/setup/status",
 		"POST /api/v1/setup/complete",
-		"POST /api/v1/auth/login":
+		"POST /api/v1/auth/login",
+		"GET /api/v1/auth/methods":
 		return true
 	}
 	return false
+}
+
+// limitLogins applies the per-client login rate limit to the password login
+// and the OIDC callback. When src is non-nil, l is reconfigured from the
+// authentication section's loginRatePerMinute/loginBurst before every check.
+func limitLogins(l *authn.Limiter, src *authn.SettingsSource) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method + " " + r.URL.Path {
+			case "POST /api/v1/auth/login", "GET /api/v1/auth/oidc/callback":
+				if src != nil {
+					if st, err := src.Get(r.Context()); err == nil {
+						l.Reconfigure(st.LoginRatePerMinute, st.LoginBurst)
+					}
+				}
+				if ok, wait := l.Allow(authn.LimitKey(audit.IPFrom(r.Context()))); !ok {
+					w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+					Write(w, http.StatusTooManyRequests, "Too many login attempts", "Wait before trying again.")
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // contentSecurityPolicy is served on every response. script-src 'self' holds

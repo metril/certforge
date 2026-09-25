@@ -25,8 +25,8 @@ type MiddlewareOptions struct {
 }
 
 // Middleware resolves the session cookie into a Principal. Session-authenticated
-// mutating requests must carry a matching X-CSRF-Token. Requests without a
-// valid session get 401 unless Public(r) is true.
+// mutating requests to non-public routes must carry a matching X-CSRF-Token.
+// Requests without a valid session get 401 unless Public(r) is true.
 func Middleware(o MiddlewareOptions) func(http.Handler) http.Handler {
 	if o.Log == nil {
 		o.Log = slog.Default()
@@ -42,7 +42,8 @@ func Middleware(o MiddlewareOptions) func(http.Handler) http.Handler {
 			}
 			switch {
 			case p != nil:
-				if isMutating(r.Method) && !csrfOK(r, sess.Csrf) {
+				public := o.Public != nil && o.Public(r)
+				if isMutating(r.Method) && !public && !csrfOK(r, sess.Csrf) {
 					o.Fail(w, http.StatusForbidden, "CSRF token missing or invalid",
 						"Send the csrfToken from GET /api/v1/auth/me in the "+CSRFHeader+" header.")
 					return

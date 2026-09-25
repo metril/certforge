@@ -116,7 +116,7 @@ func (s *Service) Complete(ctx context.Context, in Input) (Result, error) {
 			// attempt (or a restored database); Complete is about to
 			// overwrite its password, so any session against the old one
 			// must not remain valid.
-			if err := q.DeleteUserSessions(ctx, adminID); err != nil {
+			if _, err := q.DeleteUserSessions(ctx, adminID); err != nil {
 				return err
 			}
 		}
@@ -189,7 +189,8 @@ func (s *Service) SetAdminPassword(ctx context.Context, password string) (uuid.U
 		if id, _, err = upsertLocalAdmin(ctx, q, hash); err != nil {
 			return err
 		}
-		return q.DeleteUserSessions(ctx, id)
+		_, err = q.DeleteUserSessions(ctx, id)
+		return err
 	})
 	if err != nil {
 		return uuid.Nil, err

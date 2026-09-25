@@ -172,6 +172,11 @@ func TestMiddleware(t *testing.T) {
 			}
 		})
 	}
+	t.Run("public route with session skips CSRF", func(t *testing.T) {
+		if code, body := call(http.MethodPost, "/public", token, ""); code != 200 || body != "user" {
+			t.Fatalf("got %d %q, want 200 %q", code, body, "user")
+		}
+	})
 	t.Run("expired session", func(t *testing.T) {
 		saved := current
 		current = current.Add(time.Hour + time.Second)

@@ -59,8 +59,10 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Site, role binding and API key permissions; OIDC group role bindings; /auth/me lists bindings with their scope.
 - OpenAPI spec documents problem+json error responses on every operation, enforced by a test.
 - Settings → Authentication section (OIDC issuer, client, scopes, groups claim, session lifetime, trusted proxies); audit IPs honour X-Forwarded-For only from trusted proxies.
+- Per-client login rate limit, revocation of a user's other sessions on login, configurable session lifetime, GET /auth/methods.
 
 ### Changed
+- Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.
 - Web UI settings: `SettingsPage.tsx`'s `SECTIONS`/`SectionSlug` moved to a small `sections.ts` so the settings route's `beforeLoad` no longer drags the whole Issuance defaults section (and `tldts`) into the app's main chunk; the build's largest chunk drops from 977 kB to under 400 kB, with no chunk over the 500 kB warning threshold, and `npm run build` now fails if `tldts` reappears in an eagerly-loaded chunk (`web/scripts/check-chunks.mjs`).
 
 ### Fixed

@@ -41,9 +41,14 @@ func NewSessions(q *sqlcgen.Queries, ttl time.Duration) *Sessions {
 // SetClock replaces the clock (tests only).
 func (s *Sessions) SetClock(now func() time.Time) { s.now = now }
 
-// Create starts a session. The returned token goes in the cookie; only its
-// SHA-256 is stored.
+// Create starts a session with the default lifetime.
 func (s *Sessions) Create(ctx context.Context, userID uuid.UUID) (string, sqlcgen.Session, error) {
+	return s.CreateTTL(ctx, userID, s.ttl)
+}
+
+// CreateTTL starts a session that lasts ttl. The returned token goes in the
+// cookie; only its SHA-256 is stored.
+func (s *Sessions) CreateTTL(ctx context.Context, userID uuid.UUID, ttl time.Duration) (string, sqlcgen.Session, error) {
 	token, err := randomToken()
 	if err != nil {
 		return "", sqlcgen.Session{}, err
@@ -53,7 +58,7 @@ func (s *Sessions) Create(ctx context.Context, userID uuid.UUID) (string, sqlcge
 		return "", sqlcgen.Session{}, err
 	}
 	sess, err := s.q.CreateSession(ctx, sqlcgen.CreateSessionParams{
-		ID: hashToken(token), UserID: userID, Csrf: csrf, ExpiresAt: s.now().Add(s.ttl),
+		ID: hashToken(token), UserID: userID, Csrf: csrf, ExpiresAt: s.now().Add(ttl),
 	})
 	if err != nil {
 		return "", sqlcgen.Session{}, err

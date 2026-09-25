@@ -10,10 +10,12 @@
 ## Local admin, sessions, and CSRF
 
 - The local admin is break-glass access. There is at most one, enforced by a partial unique index. Its password (12 to 1024 characters) is stored as argon2id (64 MiB, t=3, p=2, 16-byte salt). Logins for a missing user spend the same time as a real check.
-- Sessions are server-side rows. The `cf_session` cookie holds a random 256-bit token. The database stores only its SHA-256. The cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` when the base URL is https or the request came over TLS. Lifetime is 12 hours. Expired sessions are rejected and purged hourly.
-- Every session has its own CSRF token, returned by `GET /api/v1/auth/me`. POST, PUT, PATCH, and DELETE with a session must send it in `X-CSRF-Token`, or they get 403. Request bodies must be `application/json` (415 otherwise), so a cross-site form cannot reach even public endpoints such as login and setup.
+- Sessions are server-side rows. The `cf_session` cookie holds a random 256-bit token. The database stores only its SHA-256. The cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` when the base URL is https or the request came over TLS. Lifetime is Settings → Authentication → Session lifetime (default 12 hours). Expired sessions are rejected and purged hourly.
+- Every session has its own CSRF token, returned by `GET /api/v1/auth/me`. POST, PUT, PATCH, and DELETE with a session must send the session's CSRF token in X-CSRF-Token, except on public routes (login, setup), which accept a stale session cookie without it. Request bodies must be `application/json` (415 otherwise), so a cross-site form cannot reach even public endpoints such as login and setup.
+- A new login (password or OIDC) revokes the user's other sessions (audited as session.revoked).
+- Password logins and the OIDC callback are limited to 10 a minute per client address (burst 5, IPv6 grouped by /64), in memory; beyond that the API returns 429 with Retry-After.
 - Disabled users and deleted users lose access on their next request.
-- Site scope is not modelled yet: role bindings with a non-NULL `site_id` are ignored when a principal is loaded, until site scope lands in Phase 3.
+- Site scope is not modelled yet: role bindings with a non-NULL `site_id` are ignored when a principal is loaded.
 
 ## Authorization
 

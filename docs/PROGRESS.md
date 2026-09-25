@@ -107,8 +107,8 @@ were Task 18's own commits.
 | 1 | Settings secret fields | done | 8cf3c5f |
 | 2 | Principal, actions, group bindings | done | 3fb00fe |
 | 3 | OpenAPI problem responses | done | 0ca5e72 |
-| 4 | Authentication section and trusted proxies | done | pending |
-| 5 | Login hardening | todo | – |
+| 4 | Authentication section and trusted proxies | done | 00a6e59 |
+| 5 | Login hardening | done | pending |
 | 6 | OIDC client and fake provider | todo | – |
 | 7 | OIDC endpoints | todo | – |
 | 8 | Users API | todo | – |
@@ -238,14 +238,11 @@ were Task 18's own commits.
 - 1B: revocation is implemented in `signer.Signer` but not exposed in the API (the Revoke action lands with its screen).
 - Pebble and challtestsrv images are pinned to tag 2.10.1, not a digest; the issuance e2e (1B Task 15) kept the tag pin rather than switching to a digest. Pin digests in a later task.
 - Audit log tamper-evidence hardening not yet done: keyed HMAC instead of a plain hash, anchoring the head hash outside the table, and running the app under a role that does not own `audit_events`.
-- Login attempts are not rate limited yet (argon2id cost only); add per-IP throttling with the Phase 2 auth work.
 - Base images are unpinned or ageing: the server image's `golang:1.23-alpine` build stage is already out of upstream support; bump the Go builder image (and pin image tags to digests) before cutting a release tag.
 - HEAD requests to `/healthz` and `/readyz` return 405 (only GET is registered for them).
 - The SPA fallback (root NotFound) answers non-GET methods with `index.html` instead of 404/405, since it does not check the request method.
-- A new login does not revoke the caller's existing sessions, so an old session survives a new login; only bootstrap-admin revokes sessions today.
 - The viewer role's "read-only, no secrets" guarantee has nothing to enforce yet in Phase 1A (no secret-bearing read endpoint exists); it depends on plan 1B's read handlers redacting secret fields correctly.
 - Encrypted blobs are not bound to their row: the AAD is the KEK id only, not a per-row identifier, so per-row AAD binding is deferred.
-- A valid session on a public route (for example `POST /api/v1/auth/login` while already logged in) still requires the CSRF header, since `authn.Middleware` checks CSRF whenever a session resolves, regardless of the route's public status.
 - `CF_KEK_FILE` accepts a raw 32-byte key file as-is, before trying base64 decoding; only `CF_KEK` (the env var) requires base64.
 - 1B: lego v4 is not context-aware on its own; the ACME signer wraps its HTTP transport to check the issuance context before every request and attach it to each one, so cancellation now aborts an in-flight CA call (not just manual-dns waits). lego's internal nonce-retry backoff sleeps (bounded at 20s, only on nonce invalidation) are not ctx-aware.
 - 1B: lego's log output is process-global and is not copied into attempt logs; attempts log CertForge's own steps and errors.

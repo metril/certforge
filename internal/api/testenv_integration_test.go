@@ -37,7 +37,9 @@ type testEnv struct {
 	client *http.Client
 }
 
-func newTestEnv(t *testing.T) *testEnv {
+func newTestEnv(t *testing.T) *testEnv { return newTestEnvOpts(t) }
+
+func newTestEnvOpts(t *testing.T, opts ...func(*api.Deps)) *testEnv {
 	t.Helper()
 	pool, q := dbtest.New(t)
 	key := bytes.Repeat([]byte{7}, 32)
@@ -64,6 +66,10 @@ func newTestEnv(t *testing.T) *testEnv {
 		Auditor:      aud,
 		Setup:        setup.New(pool, aud, sections),
 		AuthSettings: authSrc,
+		LoginLimiter: authn.NewLimiter(0, 0),
+	}
+	for _, o := range opts {
+		o(&d)
 	}
 	srv := httptest.NewServer(api.NewRouter(d))
 	t.Cleanup(srv.Close)

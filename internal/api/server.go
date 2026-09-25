@@ -37,6 +37,7 @@ type Deps struct {
 	Sessions     *authn.Sessions
 	Auditor      *audit.Auditor
 	AuthSettings *authn.SettingsSource // authentication section; nil falls back to RemoteAddr
+	LoginLimiter *authn.Limiter        // nil: authn.DefaultLoginPerMinute/DefaultLoginBurst
 	Setup        *setup.Service
 	Issuance     *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
 	Certs        *certstore.Store  // certificate versions (Task 14)

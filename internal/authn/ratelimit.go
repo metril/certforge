@@ -1,0 +1,111 @@
+package authn
+
+import (
+	"net/netip"
+	"sync"
+	"time"
+
+	"golang.org/x/time/rate"
+)
+
+// Login rate limit defaults: 10 attempts a minute per client, burst 5.
+const (
+	DefaultLoginPerMinute = 10
+	DefaultLoginBurst     = 5
+)
+
+// Limiter is an in-memory per-key token bucket. It assumes a single server
+// replica (ADR 0006).
+type Limiter struct {
+	mu        sync.Mutex
+	perMinute int
+	burst     int
+	buckets   map[string]*bucket
+	lastSweep time.Time
+	now       func() time.Time
+}
+
+type bucket struct {
+	lim  *rate.Limiter
+	seen time.Time
+}
+
+// NewLimiter allows perMinute events per key with the given burst;
+// perMinute <= 0 disables limiting.
+func NewLimiter(perMinute, burst int) *Limiter {
+	return &Limiter{perMinute: perMinute, burst: burst, buckets: map[string]*bucket{}, now: time.Now}
+}
+
+// Allow takes one token for key, or reports how long until one is free.
+func (l *Limiter) Allow(key string) (bool, time.Duration) {
+	if l == nil || l.perMinute <= 0 {
+		return true, 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	l.sweep(now)
+	b := l.buckets[key]
+	if b == nil {
+		b = &bucket{lim: rate.NewLimiter(rate.Every(time.Minute/time.Duration(l.perMinute)), l.burst)}
+		l.buckets[key] = b
+	}
+	b.seen = now
+	r := b.lim.ReserveN(now, 1)
+	if d := r.DelayFrom(now); d > 0 {
+		r.CancelAt(now)
+		return false, d
+	}
+	return true, 0
+}
+
+// Reconfigure changes the rate and burst applied to new and existing
+// per-key buckets; perMinute <= 0 disables limiting. Used to follow the
+// authentication section's loginRatePerMinute/loginBurst settings live.
+func (l *Limiter) Reconfigure(perMinute, burst int) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.perMinute == perMinute && l.burst == burst {
+		return
+	}
+	l.perMinute, l.burst = perMinute, burst
+	if perMinute <= 0 {
+		return
+	}
+	now := l.now()
+	lim := rate.Every(time.Minute / time.Duration(perMinute))
+	for _, b := range l.buckets {
+		b.lim.SetLimitAt(now, lim)
+		b.lim.SetBurstAt(now, burst)
+	}
+}
+
+func (l *Limiter) sweep(now time.Time) {
+	if now.Sub(l.lastSweep) < time.Minute {
+		return
+	}
+	l.lastSweep = now
+	for k, b := range l.buckets {
+		if now.Sub(b.seen) > 10*time.Minute {
+			delete(l.buckets, k)
+		}
+	}
+}
+
+// LimitKey groups IPv6 clients by /64 so one host cannot rotate addresses
+// to dodge the limit.
+func LimitKey(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	a = a.Unmap()
+	if a.Is6() {
+		p, _ := a.Prefix(64)
+		return p.String()
+	}
+	return a.String()
+}

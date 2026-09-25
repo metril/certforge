@@ -95,7 +95,7 @@ export interface paths {
         put?: never;
         /**
          * Log in as the local admin
-         * @description Break-glass local admin login. Sets the cf_session cookie. OIDC login arrives in Phase 2.
+         * @description Break-glass local admin login. Sets the cf_session cookie and revokes the user's other sessions. Rate limited per client address (429 with Retry-After).
          */
         post: operations["login"];
         delete?: never;
@@ -136,6 +136,26 @@ export interface paths {
          * @description The signed-in user, roles, visible orgs, and the CSRF token for mutating requests.
          */
         get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Available sign-in methods
+         * @description Which sign-in methods the login page offers. Public.
+         */
+        get: operations["getAuthMethods"];
         put?: never;
         post?: never;
         delete?: never;
@@ -717,6 +737,13 @@ export interface components {
              * @description Local admin password.
              */
             password: string;
+        };
+        /** @description Sign-in methods offered on the login page. */
+        AuthMethods: {
+            /** @description Single sign-on is enabled and configured. */
+            oidcEnabled: boolean;
+            /** @description A local (break-glass) admin exists. */
+            localEnabled: boolean;
         };
         /** @description A CertForge user. */
         User: {
@@ -1646,6 +1673,27 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAuthMethods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sign-in methods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthMethods"];
+                };
+            };
             500: components["responses"]["InternalError"];
         };
     };

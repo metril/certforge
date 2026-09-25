@@ -42,8 +42,11 @@ func TestAuditIPHonoursTrustedProxies(t *testing.T) {
 	if ip := lastIP(); ip != "127.0.0.1" {
 		t.Fatalf("untrusted proxy: ip %q", ip)
 	}
-	e.do(http.MethodPut, "/api/v1/settings/authentication", map[string]any{"trustedProxies": []string{"127.0.0.1"}}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
-	e.doClient(e.client, http.MethodPut, "/api/v1/settings/general", map[string]string{}, hdr)                             //nolint:bodyclose // doClient closes the body
+	resp, out := e.do(http.MethodPut, "/api/v1/settings/authentication", map[string]any{"trustedProxies": []string{"127.0.0.1"}}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("put trustedProxies: %d %s", resp.StatusCode, out)
+	}
+	e.doClient(e.client, http.MethodPut, "/api/v1/settings/general", map[string]string{}, hdr) //nolint:bodyclose // doClient closes the body
 	if ip := lastIP(); ip != "198.51.100.7" {
 		t.Fatalf("trusted proxy: ip %q", ip)
 	}

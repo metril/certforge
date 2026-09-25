@@ -10,5 +10,5 @@ DELETE FROM sessions WHERE id = $1;
 -- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions WHERE expires_at <= sqlc.arg(now)::timestamptz;
 
--- name: DeleteUserSessions :exec
+-- name: DeleteUserSessions :execrows
 DELETE FROM sessions WHERE user_id = $1;

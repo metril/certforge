@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -30,11 +31,13 @@ const authSchema = `{
     "scopes": {"type": "array", "title": "Scopes", "description": "Requested scopes; must include openid.", "items": {"type": "string"}, "default": ["openid", "profile", "email", "groups"]},
     "groupsClaim": {"type": "string", "title": "Groups claim", "description": "ID token claim listing the user's groups; group role bindings match these.", "default": "groups", "maxLength": 128},
     "sessionTtlHours": {"type": "integer", "title": "Session lifetime (hours)", "description": "How long a sign-in lasts. Applies to new sessions.", "minimum": 1, "maximum": 720, "default": 12},
-    "trustedProxies": {"type": "array", "title": "Trusted proxies", "description": "Addresses or CIDRs of reverse proxies whose X-Forwarded-For is believed.", "items": {"type": "string"}, "default": [], "examples": [["10.0.0.0/8"]]}
+    "trustedProxies": {"type": "array", "title": "Trusted proxies", "description": "Addresses or CIDRs of reverse proxies whose X-Forwarded-For is believed.", "items": {"type": "string"}, "default": [], "examples": [["10.0.0.0/8"]]},
+    "loginRatePerMinute": {"type": "integer", "title": "Login rate limit (per minute)", "description": "Login attempts allowed per client address per minute. 0 disables the limit.", "minimum": 0, "default": 10},
+    "loginBurst": {"type": "integer", "title": "Login rate limit burst", "description": "Login attempts a client may make in a single burst before the per-minute rate applies.", "minimum": 1, "default": 5}
   }
 }`
 
-const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","sessionTtlHours":12,"trustedProxies":[]}`
+const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5}`
 
 // AuthSettings is the decoded authentication section plus its secret.
 type AuthSettings struct {
@@ -45,8 +48,30 @@ type AuthSettings struct {
 	GroupsClaim     string   `json:"groupsClaim"`
 	SessionTTLHours int      `json:"sessionTtlHours"`
 	TrustedProxies  []string `json:"trustedProxies"`
-	ClientSecret    string   `json:"-"`
-	proxies         []netip.Prefix
+	// LoginRatePerMinute is the per-client login attempt limit; <= 0 disables
+	// the limit (matches Limiter's own semantics).
+	LoginRatePerMinute int    `json:"loginRatePerMinute"`
+	LoginBurst         int    `json:"loginBurst"`
+	ClientSecret       string `json:"-"`
+	proxies            []netip.Prefix
+}
+
+// LogValue redacts ClientSecret so AuthSettings is safe to log.
+func (s AuthSettings) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Bool("enabled", s.Enabled),
+		slog.String("issuer", s.Issuer),
+		slog.String("clientId", s.ClientID),
+		slog.Int("sessionTtlHours", s.SessionTTLHours),
+		slog.Int("loginRatePerMinute", s.LoginRatePerMinute),
+		slog.Int("loginBurst", s.LoginBurst),
+	)
+}
+
+// String redacts ClientSecret so AuthSettings is safe to print or interpolate.
+func (s AuthSettings) String() string {
+	return fmt.Sprintf("AuthSettings{Enabled:%v Issuer:%q ClientID:%q ClientSecret:REDACTED SessionTTLHours:%d LoginRatePerMinute:%d LoginBurst:%d}",
+		s.Enabled, s.Issuer, s.ClientID, s.SessionTTLHours, s.LoginRatePerMinute, s.LoginBurst)
 }
 
 // RegisterSettings adds the authentication section and its extra checks.
@@ -98,8 +123,16 @@ func (s *AuthSettings) normalize() {
 	if s.GroupsClaim == "" {
 		s.GroupsClaim = "groups"
 	}
-	if s.SessionTTLHours <= 0 {
+	switch {
+	case s.SessionTTLHours <= 0:
 		s.SessionTTLHours = int(DefaultSessionTTL / time.Hour)
+	case s.SessionTTLHours > 720:
+		s.SessionTTLHours = 720
+	}
+	if s.LoginBurst <= 0 {
+		// A zero burst would reject every login outright; only the rate
+		// itself (LoginRatePerMinute) is allowed to mean "unlimited".
+		s.LoginBurst = DefaultLoginBurst
 	}
 	s.proxies, _ = parseProxies(s.TrustedProxies)
 }
@@ -124,10 +157,13 @@ func RemoteIP(r *http.Request) string {
 func (s AuthSettings) ClientIP(r *http.Request) string {
 	remote := RemoteIP(r)
 	addr, err := netip.ParseAddr(remote)
-	if err != nil || !s.trusted(addr) {
+	if err != nil {
 		return remote
 	}
 	addr = addr.Unmap()
+	if !s.trusted(addr) {
+		return addr.String()
+	}
 	var hops []string
 	for _, v := range r.Header.Values("X-Forwarded-For") {
 		for _, h := range strings.Split(v, ",") {

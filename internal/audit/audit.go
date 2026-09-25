@@ -44,7 +44,8 @@ func WithIP(ctx context.Context, ip string) context.Context {
 	return context.WithValue(ctx, ipKey{}, ip)
 }
 
-func ipFrom(ctx context.Context) string {
+// IPFrom returns the client IP set by WithIP.
+func IPFrom(ctx context.Context) string {
 	ip, _ := ctx.Value(ipKey{}).(string)
 	return ip
 }
@@ -82,7 +83,7 @@ func (a *Auditor) Record(ctx context.Context, e Event) error {
 	row := sqlcgen.InsertAuditEventParams{
 		ActorType: actorType, ActorID: actorID,
 		Action: e.Action, ResourceType: e.ResourceType, ResourceID: e.ResourceID,
-		OrgID: e.OrgID, Ip: ipFrom(ctx), Details: canon,
+		OrgID: e.OrgID, Ip: IPFrom(ctx), Details: canon,
 	}
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {

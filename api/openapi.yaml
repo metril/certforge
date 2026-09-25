@@ -112,7 +112,7 @@ paths:
       operationId: login
       tags: [auth]
       summary: Log in as the local admin
-      description: Break-glass local admin login. Sets the cf_session cookie. OIDC login arrives in Phase 2.
+      description: Break-glass local admin login. Sets the cf_session cookie and revokes the user's other sessions. Rate limited per client address (429 with Retry-After).
       security: []
       requestBody:
         required: true
@@ -161,6 +161,20 @@ paths:
                 $ref: "#/components/schemas/Me"
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /auth/methods:
+    get:
+      operationId: getAuthMethods
+      tags: [auth]
+      summary: Available sign-in methods
+      description: Which sign-in methods the login page offers. Public.
+      security: []
+      responses:
+        "200":
+          description: Sign-in methods.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuthMethods"}
         "500": {$ref: "#/components/responses/InternalError"}
   /settings/{section}:
     parameters:
@@ -1055,6 +1069,13 @@ components:
           type: string
           format: password
           description: Local admin password.
+    AuthMethods:
+      type: object
+      description: Sign-in methods offered on the login page.
+      required: [oidcEnabled, localEnabled]
+      properties:
+        oidcEnabled: {type: boolean, description: Single sign-on is enabled and configured.}
+        localEnabled: {type: boolean, description: A local (break-glass) admin exists.}
     User:
       type: object
       description: A CertForge user.

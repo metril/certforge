@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -49,15 +50,16 @@ func (s *Server) Login(ctx context.Context, req gen.LoginRequestObject) (gen.Log
 		return nil, err
 	}
 	if !ok || admin.Disabled {
-		s.audit(ctx, audit.Event{Action: "auth.login_failed", ResourceType: "user", ResourceID: admin.ID.String(), ActorType: "anonymous"})
+		s.audit(ctx, audit.Event{Action: "session.login_failed", ResourceType: "user", ResourceID: admin.ID.String(),
+			ActorType: "anonymous", Details: map[string]any{"method": "local"}})
 		return nil, errInvalidCredentials
 	}
 	me, err := s.startSession(ctx, admin.ID)
 	if err != nil {
 		return nil, err
 	}
-	s.audit(ctx, audit.Event{Action: "auth.login", ResourceType: "user", ResourceID: admin.ID.String(),
-		ActorType: authn.KindUser, ActorID: admin.ID.String()})
+	s.audit(ctx, audit.Event{Action: "session.login", ResourceType: "user", ResourceID: admin.ID.String(),
+		ActorType: authn.KindUser, ActorID: admin.ID.String(), Details: map[string]any{"method": "local"}})
 	return gen.Login200JSONResponse(me), nil
 }
 
@@ -72,7 +74,7 @@ func (s *Server) Logout(ctx context.Context, _ gen.LogoutRequestObject) (gen.Log
 	}
 	w, r := httpFrom(ctx)
 	http.SetCookie(w, s.d.Sessions.ClearCookie(s.secureCookie(ctx, r)))
-	s.audit(ctx, audit.Event{Action: "auth.logout", ResourceType: "user", ResourceID: sess.UserID.String()})
+	s.audit(ctx, audit.Event{Action: "session.logout", ResourceType: "user", ResourceID: sess.UserID.String()})
 	return gen.Logout204Response{}, nil
 }
 
@@ -99,7 +101,15 @@ func (s *Server) GetMe(ctx context.Context, _ gen.GetMeRequestObject) (gen.GetMe
 // session is deleted (best effort) so a failed login never leaves a valid
 // cookie or session behind.
 func (s *Server) startSession(ctx context.Context, userID uuid.UUID) (gen.Me, error) {
-	token, sess, err := s.d.Sessions.Create(ctx, userID)
+	n, err := s.d.Queries.DeleteUserSessions(ctx, userID)
+	if err != nil {
+		return gen.Me{}, err
+	}
+	if n > 0 {
+		s.audit(ctx, audit.Event{Action: "session.revoked", ResourceType: "user", ResourceID: userID.String(),
+			ActorType: authn.KindUser, ActorID: userID.String(), Details: map[string]any{"count": n, "reason": "new_login"}})
+	}
+	token, sess, err := s.d.Sessions.CreateTTL(ctx, userID, s.sessionTTL(ctx))
 	if err != nil {
 		return gen.Me{}, err
 	}
@@ -113,6 +123,33 @@ func (s *Server) startSession(ctx context.Context, userID uuid.UUID) (gen.Me, er
 	w, r := httpFrom(ctx)
 	http.SetCookie(w, s.d.Sessions.Cookie(token, sess.ExpiresAt, s.secureCookie(ctx, r)))
 	return me, nil
+}
+
+// sessionTTL is the configured session lifetime, or the default.
+func (s *Server) sessionTTL(ctx context.Context) time.Duration {
+	if s.d.AuthSettings != nil {
+		if st, err := s.d.AuthSettings.Get(ctx); err == nil {
+			return st.SessionTTL()
+		}
+	}
+	return authn.DefaultSessionTTL
+}
+
+// GetAuthMethods tells the login page which sign-in methods exist. Public.
+func (s *Server) GetAuthMethods(ctx context.Context, _ gen.GetAuthMethodsRequestObject) (gen.GetAuthMethodsResponseObject, error) {
+	oidcOn := false
+	if s.d.AuthSettings != nil {
+		st, err := s.d.AuthSettings.Get(ctx)
+		if err != nil {
+			return nil, err
+		}
+		oidcOn = st.OIDCReady()
+	}
+	_, err := s.d.Queries.GetLocalAdmin(ctx)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	return gen.GetAuthMethods200JSONResponse{OidcEnabled: oidcOn, LocalEnabled: err == nil}, nil
 }
 
 // finishSession builds Me for a just-created session, without touching the cookie.
