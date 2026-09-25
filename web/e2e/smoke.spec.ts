@@ -1,45 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test, type ConsoleMessage, type Page } from '@playwright/test';
-import { signInLocal } from './auth';
+import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
 
 const SURFACE = { light: 'rgb(246, 247, 249)', dark: 'rgb(22, 27, 36)' } as const;
-
-// M5: a nonce/hash mismatch or a disallowed source only ever shows up as a
-// browser console error at request time — Playwright never fails the test on
-// its own, so every CSP violation logged during a test is collected here and
-// asserted empty at the end, on top of whatever the test already checks.
-//
-// Re-review fix: two gaps in the original version. First, the console-message
-// regex was an exact literal ("Content-Security-Policy"), but Chromium's
-// actual wording is "...violates the following Content Security Policy
-// directive..." — no hyphens, so the literal never matched anything and this
-// check was silently a no-op. Second, a console message is one way a
-// violation surfaces, but the browser's own `securitypolicyviolation` event
-// fires for every blocked request regardless of whether anything is ever
-// logged to the console — collecting both closes that gap.
-const cspConsoleViolations = new WeakMap<Page, string[]>();
-const CSP_MESSAGE = /content[- ]security[- ]policy/i;
-
-test.beforeEach(async ({ page }) => {
-  const violations: string[] = [];
-  cspConsoleViolations.set(page, violations);
-  page.on('console', (msg: ConsoleMessage) => {
-    if (msg.type() === 'error' && CSP_MESSAGE.test(msg.text())) violations.push(msg.text());
-  });
-  await page.addInitScript(() => {
-    const w = window as unknown as { __cspViolations: string[] };
-    w.__cspViolations = [];
-    document.addEventListener('securitypolicyviolation', (e) => {
-      w.__cspViolations.push(`${e.violatedDirective}: ${e.blockedURI}`);
-    });
-  });
-});
-
-test.afterEach(async ({ page }) => {
-  expect(cspConsoleViolations.get(page)).toEqual([]);
-  expect(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)).toEqual([]);
-});
 
 for (const theme of ['light', 'dark'] as const) {
   test(`log in, see the certificate, open it, download PEM (${theme})`, async ({ page }) => {

@@ -11,7 +11,6 @@ import { Combobox } from '@/components/Combobox';
 import { DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { Field } from '@/components/Field';
 import { FilterChips } from '@/components/FilterChips';
 import { PageHeader } from '@/components/PageHeader';
 import { SavedViews } from '@/components/SavedViews';
@@ -181,10 +180,10 @@ export function AuditPage() {
       />
       {missingNotice && <p className="mb-3 text-xs text-ink-muted">That event doesn't exist or isn't visible to you.</p>}
       {exportNotice && <p className="mb-3 text-xs text-ink-muted">The export hit the 100,000-row cap; some events aren't included.</p>}
-      <div className="mb-3 flex flex-wrap items-end gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="relative w-64">
           <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
-          <Input aria-label="Search audit log" className="pl-8" placeholder="www.example.com" value={text} onChange={(e) => setText(e.target.value)} />
+          <Input aria-label="Search audit log" className="pl-8" placeholder="certificate.renew" value={text} onChange={(e) => setText(e.target.value)} />
         </div>
         <div className="w-56">
           <Combobox aria-label="Action" value={search.action} onChange={(v) => set({ action: v })} options={actionOptions()} placeholder="Any action" emptyText="No action matches." mono />
@@ -197,12 +196,8 @@ export function AuditPage() {
             <Combobox aria-label="Actor" value={search.actor} onChange={(v) => set({ actor: v })} options={users.data.map((u) => ({ value: u.id, label: u.displayName, hint: u.email ?? undefined }))} placeholder="Any actor" emptyText="No user matches." />
           </div>
         )}
-        <Field id="audit-from" label="From" className="w-40">
-          <Input id="audit-from" type="date" value={search.from ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} />
-        </Field>
-        <Field id="audit-to" label="To" className="w-40">
-          <Input id="audit-to" type="date" value={search.to ?? ''} onChange={(e) => set({ to: e.target.value || undefined })} />
-        </Field>
+        <Input aria-label="From date" className="w-40" type="date" value={search.from ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} />
+        <Input aria-label="To date" className="w-40" type="date" value={search.to ?? ''} onChange={(e) => set({ to: e.target.value || undefined })} />
         <SavedViews
           list="audit"
           current={{ from: search.from, to: search.to, actor: search.actor, action: search.action, resourceType: search.resourceType, resourceId: search.resourceId, q: search.q }}
