@@ -4,7 +4,7 @@ import { beforeEach, expect, it } from 'vitest';
 import type { DnsCredential } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, problem, providers, url } from '@/test/fixtures';
+import { authHandlers, meWith, problem, providers, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 // preflight A12: every real provider config property (and DNSCredential.config)
@@ -275,4 +275,17 @@ it('disables Edit with a tooltip for a credential whose provider is unknown', as
   expect(edit).toBeDisabled();
   await user.hover(edit);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Unknown provider "not-a-real-provider"');
+});
+
+// Fix round 2 (Important #1): a viewer has dnscreds:read but not
+// dnscreds:write — Add credential, Test, Edit and Delete stay visible but
+// disabled, independent of the credential's own usedBy-based Delete gate.
+it('disables Add/Test/Edit/Delete for a viewer', async () => {
+  creds = [{ ...cred, usedBy: 0 }];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
+  renderRoute('/o/acme/issuers/dns');
+  expect(await screen.findByRole('button', { name: 'Add credential' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: `Test ${cred.name}` })).toBeDisabled();
+  expect(screen.getByRole('button', { name: `Edit ${cred.name}` })).toBeDisabled();
+  expect(screen.getByRole('button', { name: `Delete ${cred.name}` })).toBeDisabled();
 });

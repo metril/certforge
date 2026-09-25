@@ -9,10 +9,12 @@ import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
+import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useOrg } from '@/lib/org';
+import { useMe, useOrg } from '@/lib/org';
+import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { CaSheet } from './CaSheet';
 
@@ -23,6 +25,10 @@ const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 export function CasPage() {
   const org = useOrg();
+  const me = useMe();
+  // cas:write is global-only (internal/authz/authz.go): only a global
+  // binding grants it, so orgId here is purely documentation of that.
+  const canWrite = can(me, 'cas:write', org.id);
   const { edit } = useSearch({ from: '/_app/o/$org/issuers/cas' });
   const navigate = useNavigate({ from: '/o/$org/issuers/cas' });
   const { data: cas = [], isPending, isError, error, refetch } = useQuery(casQuery(org.id));
@@ -42,15 +48,21 @@ export function CasPage() {
         <ErrorState message={`Couldn't load certificate authorities. ${errorMessage(error)}`} onRetry={() => void refetch()} />
       ) : cas.length === 0 ? (
         <EmptyState message="No certificate authorities yet.">
-          <Button onClick={() => openSheet('new')}>Add CA</Button>
+          <PermissionTip allowed={canWrite} action="cas:write">
+            <Button disabled={!canWrite} onClick={() => openSheet('new')}>
+              Add CA
+            </Button>
+          </PermissionTip>
         </EmptyState>
       ) : (
         <>
           <div className="flex justify-end">
-            <Button onClick={() => openSheet('new')}>
-              <Plus className="size-4" aria-hidden />
-              Add CA
-            </Button>
+            <PermissionTip allowed={canWrite} action="cas:write">
+              <Button disabled={!canWrite} onClick={() => openSheet('new')}>
+                <Plus className="size-4" aria-hidden />
+                Add CA
+              </Button>
+            </PermissionTip>
           </div>
           <Table className="table-fixed">
             <TableHeader>
@@ -87,12 +99,16 @@ export function CasPage() {
                     )}
                   </TableCell>
                   <TableCell className="py-1 text-right">
-                    <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Edit ${c.name}`} onClick={() => openSheet(c.id)}>
-                      <Pencil className="size-3.5" aria-hidden />
-                    </Button>
-                    <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
-                      <Trash2 className="size-3.5" aria-hidden />
-                    </Button>
+                    <PermissionTip allowed={canWrite} action="cas:write" side="left">
+                      <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} aria-label={`Edit ${c.name}`} onClick={() => openSheet(c.id)}>
+                        <Pencil className="size-3.5" aria-hidden />
+                      </Button>
+                    </PermissionTip>
+                    <PermissionTip allowed={canWrite} action="cas:write" side="left">
+                      <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
+                        <Trash2 className="size-3.5" aria-hidden />
+                      </Button>
+                    </PermissionTip>
                   </TableCell>
                 </TableRow>
               ))}

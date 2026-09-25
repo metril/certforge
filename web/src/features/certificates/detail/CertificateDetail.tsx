@@ -90,7 +90,7 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
           records and renders nothing when none are waiting, so there's no
           separate "is this a pending manual-dns cert" check to keep in sync
           with the attempt/rule state. */}
-      <ManualDnsCard orgId={org.id} cert={cert} />
+      <ManualDnsCard orgId={org.id} cert={cert} canConfirm={can(me, 'certs:issue', org.id)} />
       <Tabs value={tab} onValueChange={(v) => goTab(v as Tab)}>
         <TabsList className="max-w-full overflow-x-auto">
           {TABS.map((t) => (

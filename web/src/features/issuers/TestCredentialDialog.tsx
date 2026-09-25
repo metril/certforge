@@ -4,14 +4,19 @@ import { useTestCredential } from '@/api/queries/dns';
 import { errorMessage } from '@/api/errors';
 import type { DnsCredential } from '@/api/types';
 import { Field } from '@/components/Field';
+import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useMe } from '@/lib/org';
+import { can } from '@/lib/permissions';
 import { normalizeZone } from '@/lib/zone';
 
 type Props = { orgId: string; credential: DnsCredential; onOpenChange: (open: boolean) => void };
 
 export function TestCredentialDialog({ orgId, credential, onOpenChange }: Props) {
+  const me = useMe();
+  const canWrite = can(me, 'dnscreds:write', orgId);
   const test = useTestCredential(orgId);
   const [zone, setZone] = useState('');
   // Fix round 1: accept a pasted URL, but reject spaces/empty labels rather
@@ -30,11 +35,11 @@ export function TestCredentialDialog({ orgId, credential, onOpenChange }: Props)
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (normalized) test.mutate({ id: credential.id, zone: normalized });
+            if (normalized && canWrite) test.mutate({ id: credential.id, zone: normalized });
           }}
         >
           <Field id="test-zone" label="Zone" help="dns.test" error={zoneError}>
-            <Input id="test-zone" className="font-mono text-xs" value={zone} onChange={(e) => setZone(e.target.value)} placeholder="example.com" disabled={test.isPending} />
+            <Input id="test-zone" className="font-mono text-xs" value={zone} onChange={(e) => setZone(e.target.value)} placeholder="example.com" disabled={test.isPending || !canWrite} />
           </Field>
           <div aria-live="polite" className="min-h-5">
             {/* preflight A15 (Critical): a 200 with ok:false is still a
@@ -61,9 +66,11 @@ export function TestCredentialDialog({ orgId, credential, onOpenChange }: Props)
             )}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={!normalized || test.isPending}>
-              {test.isPending ? 'Testing…' : 'Run test'}
-            </Button>
+            <PermissionTip allowed={canWrite} action="dnscreds:write">
+              <Button type="submit" disabled={!normalized || test.isPending || !canWrite}>
+                {test.isPending ? 'Testing…' : 'Run test'}
+              </Button>
+            </PermissionTip>
           </DialogFooter>
         </form>
       </DialogContent>

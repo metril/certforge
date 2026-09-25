@@ -5,6 +5,7 @@ import { FileText, Plus, RotateCw, ShieldCheck } from 'lucide-react';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ALL_ORGS_SLUG, useMe } from '@/lib/org';
+import { can, canAnywhere } from '@/lib/permissions';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { keywordFilter } from '@/lib/utils';
 
@@ -38,7 +39,19 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const org = allOrgs ? undefined : (me.orgs.find((o) => o.slug === params.org) ?? me.orgs[0]);
   const navigate = useNavigate();
   const renew = useRenewCertificates(org?.id ?? '');
-  const { data: certs = [] } = useQuery({ ...allCertificatesQuery(org?.id ?? ''), enabled: open && !!org });
+  // Fix round 2 (Important #1): entries the caller can't act on or read are
+  // left out, mirroring Sidebar's own per-item gating (audit) and
+  // SettingsPage's own section filter (access), rather than relying on the
+  // API to 403 after the fact.
+  const canCreate = !!org && can(me, 'certs:write', org.id);
+  const canIssue = !!org && can(me, 'certs:issue', org.id);
+  const canReadCerts = !!org && can(me, 'certs:read', org.id);
+  const canReadCas = !!org && can(me, 'cas:read', org.id);
+  const canReadAccounts = !!org && can(me, 'accounts:read', org.id);
+  const canReadDnsCreds = !!org && can(me, 'dnscreds:read', org.id);
+  const canReadAudit = allOrgs ? canAnywhere(me, 'audit:read') : !!org && can(me, 'audit:read', org.id);
+  const canReadUsers = canAnywhere(me, 'users:read');
+  const { data: certs = [] } = useQuery({ ...allCertificatesQuery(org?.id ?? ''), enabled: open && !!org && (canReadCerts || canIssue) });
   const [search, setSearch] = useState('');
 
   const run = (fn: () => void) => {
@@ -51,20 +64,34 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       ? [
           { label: 'Overview', keywords: ['dashboard', 'triage'], go: () => void navigate({ to: '/o/$org/overview', params: { org: ALL_ORGS_SLUG } }) },
           { label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: ALL_ORGS_SLUG } }) },
-          { label: 'Audit log', keywords: ['events', 'history', 'who', 'changes'], go: () => void navigate({ to: '/o/$org/audit', params: { org: ALL_ORGS_SLUG } }) },
+          ...(canReadAudit
+            ? [{ label: 'Audit log', keywords: ['events', 'history', 'who', 'changes'], go: () => void navigate({ to: '/o/$org/audit', params: { org: ALL_ORGS_SLUG } }) }]
+            : []),
         ]
       : org
         ? [
             { label: 'Overview', keywords: ['dashboard', 'triage'], go: () => void navigate({ to: '/o/$org/overview', params: { org: org.slug } }) },
-            { label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: org.slug } }) },
-            { label: 'Issuers: CAs', keywords: ['ca', 'acme', 'directory'], go: () => void navigate({ to: '/o/$org/issuers/cas', params: { org: org.slug } }) },
-            { label: 'Issuers: ACME accounts', keywords: ['account'], go: () => void navigate({ to: '/o/$org/issuers/accounts', params: { org: org.slug } }) },
-            { label: 'Issuers: DNS credentials', keywords: ['dns', 'provider', 'credential'], go: () => void navigate({ to: '/o/$org/issuers/dns', params: { org: org.slug } }) },
-            { label: 'Audit log', keywords: ['events', 'history', 'who', 'changes'], go: () => void navigate({ to: '/o/$org/audit', params: { org: org.slug } }) },
+            ...(canReadCerts
+              ? [{ label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: org.slug } }) }]
+              : []),
+            ...(canReadCas
+              ? [{ label: 'Issuers: CAs', keywords: ['ca', 'acme', 'directory'], go: () => void navigate({ to: '/o/$org/issuers/cas', params: { org: org.slug } }) }]
+              : []),
+            ...(canReadAccounts
+              ? [{ label: 'Issuers: ACME accounts', keywords: ['account'], go: () => void navigate({ to: '/o/$org/issuers/accounts', params: { org: org.slug } }) }]
+              : []),
+            ...(canReadDnsCreds
+              ? [{ label: 'Issuers: DNS credentials', keywords: ['dns', 'provider', 'credential'], go: () => void navigate({ to: '/o/$org/issuers/dns', params: { org: org.slug } }) }]
+              : []),
+            ...(canReadAudit
+              ? [{ label: 'Audit log', keywords: ['events', 'history', 'who', 'changes'], go: () => void navigate({ to: '/o/$org/audit', params: { org: org.slug } }) }]
+              : []),
           ]
         : []),
     { label: 'Settings: General', keywords: ['base url'], go: () => void navigate({ to: '/settings/$section', params: { section: 'general' } }) },
-    { label: 'Settings: Access', keywords: ['users', 'roles', 'bindings', 'api keys'], go: () => void navigate({ to: '/settings/$section', params: { section: 'access' } }) },
+    ...(canReadUsers
+      ? [{ label: 'Settings: Access', keywords: ['users', 'roles', 'bindings', 'api keys'], go: () => void navigate({ to: '/settings/$section', params: { section: 'access' } }) }]
+      : []),
     { label: 'Settings: Authentication', keywords: ['oidc', 'sso', 'single sign-on', 'groups'], go: () => void navigate({ to: '/settings/$section', params: { section: 'authentication' } }) },
     { label: 'Settings: Issuance defaults', keywords: ['defaults', 'renewal', 'key type'], go: () => void navigate({ to: '/settings/$section', params: { section: 'issuance-defaults' } }) },
     { label: 'Settings: Backup and keys', keywords: ['kek', 'backup'], go: () => void navigate({ to: '/settings/$section', params: { section: 'backup' } }) },
@@ -91,7 +118,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             the first matching item in DOM order, so with a matching
             certificate name typed, Enter must navigate to it — not run a
             "Renew <name>" action that happened to render first. */}
-        {org && (
+        {org && canReadCerts && (
           <CommandGroup heading="Certificates">
             {certs.map((c) => (
               <CommandItem
@@ -107,17 +134,20 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             ))}
           </CommandGroup>
         )}
-        {org && (
+        {org && (canCreate || (canIssue && search.trim() !== '')) && (
           <CommandGroup heading="Actions">
-            <CommandItem
-              value="action:new-certificate"
-              keywords={['new', 'issue', 'create', 'certificate']}
-              onSelect={() => run(() => void navigate({ to: '/o/$org/certificates/new', params: { org: org.slug } }))}
-            >
-              <Plus className="size-4" aria-hidden />
-              New certificate
-            </CommandItem>
-            {search.trim() !== '' &&
+            {canCreate && (
+              <CommandItem
+                value="action:new-certificate"
+                keywords={['new', 'issue', 'create', 'certificate']}
+                onSelect={() => run(() => void navigate({ to: '/o/$org/certificates/new', params: { org: org.slug } }))}
+              >
+                <Plus className="size-4" aria-hidden />
+                New certificate
+              </CommandItem>
+            )}
+            {canIssue &&
+              search.trim() !== '' &&
               certs.map((c) => (
                 <CommandItem
                   key={`renew:${c.id}`}

@@ -20,7 +20,7 @@ it('lists TXT records with copy buttons, copies zone lines, and confirms', async
       return new HttpResponse(null, { status: 202 });
     }),
   );
-  const { user } = renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} />);
+  const { user } = renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} canConfirm />);
   expect(await screen.findByRole('region', { name: 'Manual DNS for lab' })).toBeInTheDocument();
   expect(screen.getAllByRole('button', { name: /^Copy value for / })).toHaveLength(2);
   await user.click(screen.getByRole('button', { name: 'Copy all as zone lines' }));
@@ -31,10 +31,24 @@ it('lists TXT records with copy buttons, copies zone lines, and confirms', async
   await waitFor(() => expect(confirmed).toBe(true));
 });
 
+// Fix round 2 (Important #1): certs:issue is gated by the caller
+// (OverviewPage/CertificateDetail pass `canConfirm`, mirroring
+// CertificateHeader's own canRenew/canDelete props) — with it false the
+// confirm button stays visible but disabled, with a tooltip.
+it('disables the confirm button when canConfirm is false', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates/c-1/manual-dns'), () =>
+      HttpResponse.json([{ name: '_acme-challenge.lab.local', type: 'TXT', value: 'abc123', ttl: 60 }]),
+    ),
+  );
+  renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} canConfirm={false} />);
+  expect(await screen.findByRole('button', { name: "I've added them" })).toBeDisabled();
+});
+
 it('renders nothing when there are no records', async () => {
   let asked = false;
   server.use(http.get(url('/orgs/org-1/certificates/c-1/manual-dns'), () => ((asked = true), HttpResponse.json([]))));
-  renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} />);
+  renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} canConfirm />);
   await waitFor(() => expect(asked).toBe(true));
   expect(screen.queryByRole('region', { name: /Manual DNS/ })).toBeNull();
 });
@@ -48,7 +62,7 @@ it('shows an expired message once the deadline has passed, not a stale "add befo
       HttpResponse.json([{ name: '_acme-challenge.lab.local', type: 'TXT', value: 'abc123', ttl: 60, expiresAt: iso(-0.001) }]),
     ),
   );
-  renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} />);
+  renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} canConfirm />);
   expect(await screen.findByText(/expired without confirmation/)).toBeInTheDocument();
   expect(screen.queryByText(/^Add these before/)).toBeNull();
 });
@@ -72,7 +86,7 @@ it('clears a 409 error once a fresh set of records arrives', async () => {
     }),
     http.post(url('/orgs/org-1/certificates/c-1/manual-dns/confirm'), () => problem(409, 'no manual-dns records are waiting, or they expired', {}, 'Nothing to confirm')),
   );
-  const { user } = renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} />);
+  const { user } = renderUI(<ManualDnsCard orgId="org-1" cert={{ id: 'c-1', name: 'lab' }} canConfirm />);
   await screen.findByText('abc123');
   await user.click(screen.getByRole('button', { name: "I've added them" }));
   expect(await screen.findByRole('alert')).toHaveTextContent(/no manual-dns records are waiting/i);

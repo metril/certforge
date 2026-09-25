@@ -141,7 +141,7 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 | 8 | All orgs | done | fc314b8 |
 | 9 | Audit log page | done | e5494c9 |
 | 10 | Overview recent activity | done | bdec67c |
-| 11 | Playwright: dex login and audit | done | pending |
+| 11 | Playwright: dex login and audit | done | 9f32505 |
 
 ## Decisions made during implementation
 

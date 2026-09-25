@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, iso, makeCert, problem, url } from '@/test/fixtures';
+import { authHandlers, iso, makeCert, meWith, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let ready = true;
@@ -98,4 +98,15 @@ it('keeps the brushed expiry range in the URL, and clears it there too', async (
   await user.click(screen.getByRole('button', { name: 'Clear range' }));
   await waitFor(() => expect(router.state.location.search).toEqual({}));
   expect(screen.queryByText(/^Expiring in /)).toBeNull();
+});
+
+// Fix round 2 (Important #1): a viewer lacks certs:write, so the empty
+// state's New certificate button must stay visible but disabled.
+it('disables New certificate in the empty state for a viewer', async () => {
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))),
+    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  );
+  renderRoute('/o/acme/overview');
+  expect(await screen.findByRole('button', { name: 'New certificate' })).toBeDisabled();
 });

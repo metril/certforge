@@ -8,11 +8,13 @@ import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
+import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ProviderPicker } from '@/forms/ProviderPicker';
-import { useOrg } from '@/lib/org';
+import { useMe, useOrg } from '@/lib/org';
+import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { CredentialSheet } from './CredentialSheet';
 import { TestCredentialDialog } from './TestCredentialDialog';
@@ -49,6 +51,8 @@ function Header() {
 
 export function CredentialsPage() {
   const org = useOrg();
+  const me = useMe();
+  const canWrite = can(me, 'dnscreds:write', org.id);
   const { data: creds = [], isPending, isError, error, refetch } = useQuery(dnsCredentialsQuery(org.id));
   const { data: meta, isPending: metaPending } = useQuery(metaSchemasQuery);
   const del = useDeleteCredential(org.id);
@@ -78,15 +82,21 @@ export function CredentialsPage() {
         <ErrorState message={`Couldn't load DNS credentials. ${errorMessage(error)}`} onRetry={() => void refetch()} />
       ) : creds.length === 0 ? (
         <EmptyState message="No DNS credentials yet.">
-          <Button onClick={() => setPicker(true)}>Add credential</Button>
+          <PermissionTip allowed={canWrite} action="dnscreds:write">
+            <Button disabled={!canWrite} onClick={() => setPicker(true)}>
+              Add credential
+            </Button>
+          </PermissionTip>
         </EmptyState>
       ) : (
         <>
           <div className="flex justify-end">
-            <Button onClick={() => setPicker(true)}>
-              <Plus className="size-4" aria-hidden />
-              Add credential
-            </Button>
+            <PermissionTip allowed={canWrite} action="dnscreds:write">
+              <Button disabled={!canWrite} onClick={() => setPicker(true)}>
+                <Plus className="size-4" aria-hidden />
+                Add credential
+              </Button>
+            </PermissionTip>
           </div>
           <Table className="table-fixed">
             <Header />
@@ -106,10 +116,18 @@ export function CredentialsPage() {
                     <TableCell className="truncate py-1">{provider?.name ?? <span className="font-mono text-xs">{c.providerCode}</span>}</TableCell>
                     <TableCell className="py-1">{`Used by ${usedBy}`}</TableCell>
                     <TableCell className="py-1 text-right whitespace-nowrap">
-                      <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Test ${c.name}`} onClick={() => setTesting(c)}>
-                        <FlaskConical className="size-3.5" aria-hidden />
-                      </Button>
-                      {provider ? (
+                      <PermissionTip allowed={canWrite} action="dnscreds:write" side="left">
+                        <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} aria-label={`Test ${c.name}`} onClick={() => setTesting(c)}>
+                          <FlaskConical className="size-3.5" aria-hidden />
+                        </Button>
+                      </PermissionTip>
+                      {!canWrite ? (
+                        <PermissionTip allowed={false} action="dnscreds:write" side="left">
+                          <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Edit ${c.name}`} disabled>
+                            <Pencil className="size-3.5" aria-hidden />
+                          </Button>
+                        </PermissionTip>
+                      ) : provider ? (
                         <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Edit ${c.name}`} onClick={() => setSheet({ provider, credential: c })}>
                           <Pencil className="size-3.5" aria-hidden />
                         </Button>
@@ -129,7 +147,13 @@ export function CredentialsPage() {
                           409 after the operator types the confirmation text —
                           the 409 path (ConfirmDestructive's inline alert)
                           still covers a usedBy that went stale after load. */}
-                      {usedBy > 0 ? (
+                      {!canWrite ? (
+                        <PermissionTip allowed={false} action="dnscreds:write" side="left">
+                          <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Delete ${c.name}`} disabled>
+                            <Trash2 className="size-3.5" aria-hidden />
+                          </Button>
+                        </PermissionTip>
+                      ) : usedBy > 0 ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span tabIndex={0} className="inline-flex">

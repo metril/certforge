@@ -23,6 +23,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { FilterChips } from '@/components/FilterChips';
 import { PageHeader } from '@/components/PageHeader';
+import { PermissionTip } from '@/components/PermissionTip';
 import { SavedViews } from '@/components/SavedViews';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { StatusChip } from '@/components/StatusChip';
@@ -32,6 +33,7 @@ import { CertValidity } from '@/components/ValidityBar';
 import type { Certificate } from '@/api/types';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
+import { can } from '@/lib/permissions';
 import { useRowSelection } from '@/lib/selection';
 import { STATUS_META } from '@/lib/status';
 import { relDays } from '@/lib/time';
@@ -187,13 +189,23 @@ export function CertificatesPage() {
   ];
   const clearAll = () => void navigate({ search: {} });
   const emptyUnfiltered = !list.isPending && !list.isError && rows.length === 0 && chips.length === 0;
-  const newLink = (
+  const canCreate = can(me, 'certs:write', org.id);
+  const canIssue = can(me, 'certs:issue', org.id);
+  const canDelete = can(me, 'certs:write', org.id);
+  const newLink = canCreate ? (
     <Button asChild>
       <Link to="/o/$org/certificates/new" params={{ org: org.slug }}>
         <Plus className="size-4" aria-hidden />
         New certificate
       </Link>
     </Button>
+  ) : (
+    <PermissionTip allowed={false} action="certs:write">
+      <Button disabled>
+        <Plus className="size-4" aria-hidden />
+        New certificate
+      </Button>
+    </PermissionTip>
   );
 
   // Adaptation (controller ruling, not covered by a literal test in the
@@ -298,29 +310,33 @@ export function CertificatesPage() {
       )}
       {isMdUp && !allOrgs && (
         <BulkBar count={sel.selected.size} onClear={sel.clear}>
-          <Button
-            size="sm"
-            disabled={renew.isPending}
-            onClick={() => {
-              const targets = [...sel.selected];
-              renew.mutate(targets, {
-                onSuccess: (r) => reportBulk(r, 'Renewal queued for'),
-                onError: (err) => {
-                  if (err instanceof BulkActionError) {
-                    toast.error(bulkFailureMessage(err.failed, nameOf));
-                    sel.replace(err.failed);
-                  }
-                },
-              });
-            }}
-          >
-            <RotateCw className="size-4" aria-hidden />
-            Renew
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setConfirmDelete(true)}>
-            <Trash2 className="size-4" aria-hidden />
-            Delete
-          </Button>
+          <PermissionTip allowed={canIssue} action="certs:issue">
+            <Button
+              size="sm"
+              disabled={renew.isPending || !canIssue}
+              onClick={() => {
+                const targets = [...sel.selected];
+                renew.mutate(targets, {
+                  onSuccess: (r) => reportBulk(r, 'Renewal queued for'),
+                  onError: (err) => {
+                    if (err instanceof BulkActionError) {
+                      toast.error(bulkFailureMessage(err.failed, nameOf));
+                      sel.replace(err.failed);
+                    }
+                  },
+                });
+              }}
+            >
+              <RotateCw className="size-4" aria-hidden />
+              Renew
+            </Button>
+          </PermissionTip>
+          <PermissionTip allowed={canDelete} action="certs:write">
+            <Button size="sm" variant="outline" disabled={!canDelete} onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="size-4" aria-hidden />
+              Delete
+            </Button>
+          </PermissionTip>
         </BulkBar>
       )}
       <ConfirmDestructive

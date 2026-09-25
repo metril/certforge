@@ -94,6 +94,29 @@ it('drops org-bound actions and pages under All orgs, and never requests the fir
   expect(calledOrgCerts).toBe(false);
 });
 
+// Fix round 2 (Important #1): a viewer can read certificates but has
+// neither certs:write nor certs:issue — the Actions group's New
+// certificate and Renew <name> entries must not appear, even with a
+// matching search term.
+it('hides New certificate and Renew for a viewer (no certs:write/certs:issue)', async () => {
+  server.use(
+    // First match wins within one server.use call, so this /auth/me
+    // override must be listed before certificateHandlers' own (via
+    // authHandlers).
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))),
+    ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByPlaceholderText('www.example.com');
+  await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'edge');
+  await within(dialog).findByRole('option', { name: /^edge/ });
+  expect(within(dialog).queryByText('New certificate')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText(/^Renew edge/)).not.toBeInTheDocument();
+});
+
 // Review fix: the palette's own dialog is exempt from the global suppress
 // selector for Ctrl/Cmd-K specifically, so a second press — even with the
 // search input focused — closes it instead of being swallowed the same way

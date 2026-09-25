@@ -12,12 +12,14 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
+import { PermissionTip } from '@/components/PermissionTip';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useOrg } from '@/lib/org';
+import { useMe, useOrg } from '@/lib/org';
+import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
 // Fix round 1 (#3/#4): sticky first column; see CasPage.tsx.
@@ -83,6 +85,8 @@ function RegisterDialog({ orgId, open, onOpenChange }: { orgId: string; open: bo
 
 export function AccountsPage() {
   const org = useOrg();
+  const me = useMe();
+  const canWrite = can(me, 'accounts:write', org.id);
   const { data: accounts = [], isPending, isError, error, refetch } = useQuery(accountsQuery(org.id));
   const { data: cas = [] } = useQuery(casQuery(org.id));
   const del = useDeleteAccount(org.id);
@@ -98,15 +102,21 @@ export function AccountsPage() {
         <ErrorState message={`Couldn't load ACME accounts. ${errorMessage(error)}`} onRetry={() => void refetch()} />
       ) : accounts.length === 0 ? (
         <EmptyState message="No ACME accounts yet.">
-          <Button onClick={() => setRegistering(true)}>Register account</Button>
+          <PermissionTip allowed={canWrite} action="accounts:write">
+            <Button disabled={!canWrite} onClick={() => setRegistering(true)}>
+              Register account
+            </Button>
+          </PermissionTip>
         </EmptyState>
       ) : (
         <>
           <div className="flex justify-end">
-            <Button onClick={() => setRegistering(true)}>
-              <Plus className="size-4" aria-hidden />
-              Register account
-            </Button>
+            <PermissionTip allowed={canWrite} action="accounts:write">
+              <Button disabled={!canWrite} onClick={() => setRegistering(true)}>
+                <Plus className="size-4" aria-hidden />
+                Register account
+              </Button>
+            </PermissionTip>
           </div>
           <Table className="table-fixed">
             <TableHeader>
@@ -138,9 +148,11 @@ export function AccountsPage() {
                   </TableCell>
                   <TableCell className="min-w-0 py-1">{a.registrationUri && <CopyField value={a.registrationUri} label="registration URI" className="min-w-0" />}</TableCell>
                   <TableCell className="py-1 text-right">
-                    <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Delete ${a.email}`} onClick={() => setDeleting(a)}>
-                      <Trash2 className="size-3.5" aria-hidden />
-                    </Button>
+                    <PermissionTip allowed={canWrite} action="accounts:write" side="left">
+                      <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} aria-label={`Delete ${a.email}`} onClick={() => setDeleting(a)}>
+                        <Trash2 className="size-3.5" aria-hidden />
+                      </Button>
+                    </PermissionTip>
                   </TableCell>
                 </TableRow>
               ))}

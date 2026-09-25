@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { PageHeader } from '@/components/PageHeader';
+import { PermissionTip } from '@/components/PermissionTip';
 import { ToneChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
@@ -82,13 +83,18 @@ export function OverviewPage() {
         <div className="grid gap-6">
           <HealthStrip readiness={readiness.data} />
           <EmptyState message="No certificates yet.">
-            {!allOrgs && (
-              <Button asChild>
-                <Link to="/o/$org/certificates/new" params={{ org: org.slug }}>
-                  New certificate
-                </Link>
-              </Button>
-            )}
+            {!allOrgs &&
+              (can(me, 'certs:write', org.id) ? (
+                <Button asChild>
+                  <Link to="/o/$org/certificates/new" params={{ org: org.slug }}>
+                    New certificate
+                  </Link>
+                </Button>
+              ) : (
+                <PermissionTip allowed={false} action="certs:write">
+                  <Button disabled>New certificate</Button>
+                </PermissionTip>
+              ))}
           </EmptyState>
         </div>
       </>
@@ -145,7 +151,7 @@ export function OverviewPage() {
             <span className="text-sm font-normal text-ink-muted">{items.length}</span>
           </h2>
           {!allOrgs &&
-            manualDnsCerts.map((c) => <ManualDnsCard key={c.id} orgId={org.id} cert={c} />)}
+            manualDnsCerts.map((c) => <ManualDnsCard key={c.id} orgId={org.id} cert={c} canConfirm={can(me, 'certs:issue', org.id)} />)}
           {others.length > 0 ? (
             <ul className="grid">
               {others.map((i) => {

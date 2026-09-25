@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, ca, url } from '@/test/fixtures';
+import { authHandlers, ca, meWith, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 // I4 (flaky "saves the General section from its schema"): SettingsPage
@@ -321,4 +321,17 @@ it('keeps the tab header wrapping at phone width', async () => {
   renderRoute('/settings/issuance-defaults');
   const tablist = await screen.findByRole('tablist');
   expect(tablist.parentElement?.className).toContain('flex-wrap');
+});
+
+// Fix round 2 (Important #1): the Global tab needs settings:write (global-
+// only); the Org tab needs certs:write in that org. A viewer has neither,
+// so both Save buttons stay disabled even once dirty.
+it('disables Save global/org defaults for a viewer, even once dirty', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
+  const { user } = renderRoute('/settings/issuance-defaults');
+  await user.click(await screen.findByRole('switch', { name: 'Override Key type' }));
+  expect(screen.getByRole('button', { name: 'Save org defaults' })).toBeDisabled();
+  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
+  expect(screen.getByRole('button', { name: 'Save global defaults' })).toBeDisabled();
 });

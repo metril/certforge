@@ -4,7 +4,7 @@ import { beforeEach, expect, it } from 'vitest';
 import type { CA, CAInput } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, presets, problem, url } from '@/test/fixtures';
+import { authHandlers, ca, meWith, presets, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let cas: CA[];
@@ -201,4 +201,16 @@ it('closing the CA editor does not let Back reopen it', async () => {
   router.history.back();
   await waitFor(() => expect(router.state.location.search).toEqual({}));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+// Fix round 2 (Important #1): cas:write is global-only — an org-admin (who
+// has every other org-scoped write action) still lacks it, so Add/Edit/
+// Delete CA stay visible but disabled.
+it('disables Add/Edit/Delete CA for an org-admin (cas:write is global-only)', async () => {
+  cas = [ca];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }]))));
+  renderRoute('/o/acme/issuers/cas');
+  expect(await screen.findByRole('button', { name: 'Add CA' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: "Edit Let's Encrypt" })).toBeDisabled();
+  expect(screen.getByRole('button', { name: "Delete Let's Encrypt" })).toBeDisabled();
 });

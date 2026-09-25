@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { Me } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, iso, makeAttempt, makeCert, me, org, problem, providers, url } from '@/test/fixtures';
+import { authHandlers, ca, iso, makeAttempt, makeCert, me, meWith, org, problem, providers, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const cert = makeCert();
@@ -186,6 +186,15 @@ it('links the Settings tab to the edit route', async () => {
   renderRoute('/o/acme/certificates/c-1/settings');
   const link = await screen.findByRole('link', { name: 'Edit' });
   expect(link).toHaveAttribute('href', '/o/acme/certificates/c-1/edit');
+});
+
+// Fix round 2 (Important #1): a viewer has certs:read but not certs:write —
+// the Settings tab's Edit link becomes a disabled button instead.
+it('disables the Settings tab Edit link for a viewer', async () => {
+  server.use(...base(meWith([{ role: 'viewer', orgId: org.id }])));
+  renderRoute('/o/acme/certificates/c-1/settings');
+  expect(await screen.findByRole('button', { name: 'Edit' })).toBeDisabled();
+  expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
 });
 
 it('sends an unknown tab to overview', async () => {

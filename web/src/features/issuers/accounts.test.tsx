@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { account, authHandlers, ca, problem, url } from '@/test/fixtures';
+import { account, authHandlers, ca, meWith, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 it('lists accounts and registers a new one', async () => {
@@ -82,4 +82,18 @@ it('shows why an account cannot be deleted', async () => {
   await user.type(within(dialog).getByRole('textbox'), 'ops@example.com');
   await user.click(within(dialog).getByRole('button', { name: 'Delete account' }));
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('Account is used by 1 certificate');
+});
+
+// Fix round 2 (Important #1): a viewer has accounts:read but not
+// accounts:write — Register account and Delete stay visible but disabled.
+it('disables Register account and Delete for a viewer', async () => {
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))),
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca])),
+    http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([account])),
+  );
+  renderRoute('/o/acme/issuers/accounts');
+  expect(await screen.findByRole('button', { name: 'Register account' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: `Delete ${account.email}` })).toBeDisabled();
 });

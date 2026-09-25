@@ -5,6 +5,7 @@ import { manualDnsQuery, useConfirmManualDns } from '@/api/queries/certificates'
 import { errorMessage } from '@/api/errors';
 import { CopyField } from '@/components/CopyField';
 import { HelpTip } from '@/components/HelpTip';
+import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -66,7 +67,12 @@ function RecordValue({ value, label }: { value: string; label: string }) {
   );
 }
 
-export function ManualDnsCard({ orgId, cert }: { orgId: string; cert: { id: string; name: string } }) {
+// canConfirm is a prop, not computed with useMe() here (CertificateHeader's
+// own convention for canRenew/canDelete): this card is a plain, router-free
+// unit under test (ManualDnsCard.test.tsx renders it standalone), and
+// useMe()/useRouteContext needs a router context that only exists when it's
+// mounted under a real route (OverviewPage, which passes this prop).
+export function ManualDnsCard({ orgId, cert, canConfirm }: { orgId: string; cert: { id: string; name: string }; canConfirm: boolean }) {
   const { data } = useQuery(manualDnsQuery(orgId, cert.id));
   const records = data ?? [];
   const confirm = useConfirmManualDns(orgId, cert.id);
@@ -170,9 +176,11 @@ export function ManualDnsCard({ orgId, cert }: { orgId: string; cert: { id: stri
           {copyZoneStatus === 'idle' && <Copy className="size-4" aria-hidden />}
           Copy all as zone lines
         </Button>
-        <Button disabled={confirm.isPending} onClick={() => confirm.mutate()}>
-          I've added them
-        </Button>
+        <PermissionTip allowed={canConfirm} action="certs:issue">
+          <Button disabled={confirm.isPending || !canConfirm} onClick={() => confirm.mutate()}>
+            I've added them
+          </Button>
+        </PermissionTip>
       </div>
     </section>
   );

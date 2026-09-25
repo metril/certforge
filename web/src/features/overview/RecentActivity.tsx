@@ -23,12 +23,15 @@ export function RecentActivity({ orgId }: { orgId?: string }) {
   const users = useQuery({ ...usersQuery, enabled: canUsers });
   if (!allowed) return null;
 
+  // Never a raw id when a name is available: resolve to the user's current
+  // display name only when users:read is allowed, otherwise fall back to
+  // the audit event's own recorded name, and only then its actor type
+  // (fix round 2, Important #2 — this used to show the raw actorId whenever
+  // canUsers was false, even though every AuditEvent already carries a
+  // human-readable actorName).
   const actor = (e: { actorId: string; actorName: string; actorType: string }) => {
-    if (canUsers) {
-      const name = users.data?.find((u) => u.id === e.actorId)?.displayName || e.actorName || e.actorType;
-      return <span className="truncate">{name}</span>;
-    }
-    return <span className="truncate font-mono text-xs">{e.actorId}</span>;
+    const name = (canUsers && users.data?.find((u) => u.id === e.actorId)?.displayName) || e.actorName || e.actorType;
+    return <span className="truncate">{name}</span>;
   };
 
   return (

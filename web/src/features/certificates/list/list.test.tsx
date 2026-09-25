@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Certificate } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, makeCert, problem, url } from '@/test/fixtures';
+import { authHandlers, ca, makeCert, meWith, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let all: Certificate[];
@@ -314,4 +314,18 @@ it('tints the sticky Name cell to match the row when selected', async () => {
   expect(nameCell.className).not.toContain('bg-primary/10');
   await user.click(row);
   expect(nameCell.className).toContain('bg-primary/10');
+});
+
+// Fix round 2 (Important #1): a viewer has certs:read but not certs:write
+// or certs:issue — New certificate and the bulk Renew/Delete controls must
+// stay visible but disabled (with a tooltip explaining why), not hidden or
+// clickable.
+it('disables New certificate and bulk Renew/Delete for a viewer', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
+  const { user } = renderRoute('/o/acme/certificates');
+  expect(await screen.findByRole('button', { name: 'New certificate' })).toBeDisabled();
+  await user.click(await rowOf('www'));
+  const bar = screen.getByRole('region', { name: 'Bulk actions' });
+  expect(within(bar).getByRole('button', { name: 'Renew' })).toBeDisabled();
+  expect(within(bar).getByRole('button', { name: 'Delete' })).toBeDisabled();
 });

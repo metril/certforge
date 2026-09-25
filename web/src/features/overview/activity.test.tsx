@@ -36,10 +36,11 @@ it('is hidden without audit:read', async () => {
   expect(screen.queryByRole('region', { name: 'Recent activity' })).not.toBeInTheDocument();
 });
 
-// Fix round 1 (review #2a): an auditor has audit:read but not users:read —
+// Fix round 2 (Important #2): an auditor has audit:read but not users:read —
 // the panel must never fetch /users for such a caller, and falls back to
-// the raw actor id in mono instead of a resolved display name.
-it('shows the raw actor id in mono for a caller without users:read, and never fetches /users', async () => {
+// the audit event's own actorName (never the raw actor id, which is never
+// shown when a name is available).
+it('falls back to actorName for a caller without users:read, and never fetches /users', async () => {
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'auditor', orgId: org.id }]))),
@@ -51,8 +52,26 @@ it('shows the raw actor id in mono for a caller without users:read, and never fe
   );
   renderRoute('/o/acme/overview');
   const region = await screen.findByRole('region', { name: 'Recent activity' });
-  expect(await within(region).findByText('u-9')).toBeInTheDocument();
-  expect(within(region).queryByText('Someone')).not.toBeInTheDocument();
+  expect(await within(region).findByText('Someone')).toBeInTheDocument();
+  expect(within(region).queryByText('u-9')).not.toBeInTheDocument();
+});
+
+// Fix round 2 (Important #2): with no actorName either (a blank string, as
+// the API sends for some system actions), the actor type is the last
+// resort — still never the raw id.
+it('falls back to actorType when actorName is blank too', async () => {
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'auditor', orgId: org.id }]))),
+    http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/audit'), () =>
+      HttpResponse.json({ items: [makeAuditEvent({ id: 4, actorId: 'u-9', actorName: '', actorType: 'system' })], nextCursor: null }),
+    ),
+  );
+  renderRoute('/o/acme/overview');
+  const region = await screen.findByRole('region', { name: 'Recent activity' });
+  expect(await within(region).findByText('system')).toBeInTheDocument();
+  expect(within(region).queryByText('u-9')).not.toBeInTheDocument();
 });
 
 // Fix round 1 (review #2b): under All orgs the panel still renders (a

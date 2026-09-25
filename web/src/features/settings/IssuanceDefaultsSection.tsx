@@ -5,15 +5,35 @@ import { settingsQuery, useSaveSettings } from '@/api/queries/settings';
 import { ApiError, errorMessage } from '@/api/errors';
 import type { IssuanceDefaults } from '@/api/types';
 import { HelpTip } from '@/components/HelpTip';
+import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NO_ORG } from '@/lib/nav';
 import { useMe } from '@/lib/org';
+import { can, type Action } from '@/lib/permissions';
 import { chainFor, fieldFromTitle, fromBuiltin, fromEffective, fullPayload, IssuanceDefaultsForm, useFieldCtx, type FieldKey } from './issuanceFields';
 
 type ServerError = { field: FieldKey | null; message: string } | null;
 
-function SaveRow({ label, dirty, busy, onSave, onDiscard, banner }: { label: string; dirty: boolean; busy: boolean; onSave: () => void; onDiscard: () => void; banner?: string | null }) {
+function SaveRow({
+  label,
+  dirty,
+  busy,
+  onSave,
+  onDiscard,
+  banner,
+  canWrite,
+  permAction,
+}: {
+  label: string;
+  dirty: boolean;
+  busy: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+  banner?: string | null;
+  canWrite: boolean;
+  permAction: Action;
+}) {
   return (
     <div className="grid gap-2 pt-4">
       {banner && (
@@ -22,9 +42,11 @@ function SaveRow({ label, dirty, busy, onSave, onDiscard, banner }: { label: str
         </p>
       )}
       <div className="flex gap-2">
-        <Button disabled={!dirty || busy} onClick={onSave}>
-          {label}
-        </Button>
+        <PermissionTip allowed={canWrite} action={permAction}>
+          <Button disabled={!dirty || busy || !canWrite} onClick={onSave}>
+            {label}
+          </Button>
+        </PermissionTip>
         {dirty && (
           <Button variant="ghost" onClick={onDiscard}>
             Discard changes
@@ -57,7 +79,10 @@ function bannerFor(error: ServerError, value: IssuanceDefaults): string | null {
 }
 
 export function IssuanceDefaultsSection() {
-  const org = useMe().orgs[0];
+  const me = useMe();
+  const org = me.orgs[0];
+  const canWriteGlobal = can(me, 'settings:write', null);
+  const canWriteOrg = can(me, 'certs:write', org?.id ?? null);
   const ctx = useFieldCtx(org?.id ?? '');
   const globalQ = useQuery(settingsQuery('issuance_defaults'));
   const orgQ = useQuery({ ...orgDefaultsQuery(org?.id ?? ''), enabled: !!org });
@@ -109,6 +134,8 @@ export function IssuanceDefaultsSection() {
           label="Save global defaults"
           dirty={!!globalDraft}
           busy={saveGlobal.isPending}
+          canWrite={canWriteGlobal}
+          permAction="settings:write"
           banner={bannerFor(globalError, globalDraft ?? globalStored ?? {})}
           onSave={async () => {
             setGlobalError(null);
@@ -146,6 +173,8 @@ export function IssuanceDefaultsSection() {
           label="Save org defaults"
           dirty={!!orgDraft}
           busy={saveOrg.isPending}
+          canWrite={canWriteOrg}
+          permAction="certs:write"
           banner={bannerFor(orgError, orgValue)}
           onSave={async () => {
             setOrgError(null);
