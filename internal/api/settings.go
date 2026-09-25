@@ -73,8 +73,15 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 			s.d.OIDC.Forget()
 		}
 	}
-	if sec.Name == agents.SettingsSection && s.d.AgentSettings != nil {
-		s.d.AgentSettings.Invalidate()
+	if sec.Name == agents.SettingsSection {
+		if s.d.AgentSettings != nil {
+			s.d.AgentSettings.Invalidate()
+		}
+		if s.d.Agents != nil {
+			if err := s.d.Agents.ReloadListener(ctx); err != nil {
+				s.d.Log.Error("agent listener not reloaded after a settings change", "err", err)
+			}
+		}
 	}
 	after, err := sec.Public(raw)
 	if err != nil {

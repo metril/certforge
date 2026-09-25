@@ -95,6 +95,8 @@ Global settings for certforge-agent (Settings → Agents).
 | Heartbeat interval (`heartbeatSeconds`) | 60 (min 15) | How often agents report installed files for drift detection. |
 | Offline after (`offlineAfterSeconds`) | 180 | A client not seen for this long shows as offline; must exceed the heartbeat. |
 
+The same page lists the agent CAs with rotate and retire (see operations.md → Agent CA rotation) and the listener certificate's names and expiry.
+
 ### Backup and keys
 
 Shows the key-encryption key's status (from `/readyz`'s `kek` check) and the **KEK escrow confirmed** switch, which must be on before scheduled backups run.

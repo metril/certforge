@@ -49,3 +49,11 @@ Public, unauthenticated routes (`/auth/login`, `/setup/complete`) are as exposed
 ## Agent listener
 
 `CF_LISTEN_AGENT` (port 8443 by default) is a second `http.Server`, entirely separate from the UI/API listener: mutual TLS, serving only `/agent/v1/*`. Its certificate is issued by the internal agent CA for Settings → Agents → listener names plus the Agent URL host, signed by the oldest non-retired agent CA so a rotation never strands an agent that has not yet picked up a new trust bundle. It is renewed automatically: an hourly river job re-checks it and re-issues once two thirds of its one-year lifetime has passed, or immediately when the signing CA or the configured names change. HTTP/2 is disabled on this listener (`TLSNextProto` cleared and `http/1.1` is the only negotiated protocol), since the WebSocket upgrade agents use needs HTTP/1.1. If the listener certificate cannot be issued at startup, the agent listener is not started, and the server must be restarted after fixing the cause.
+
+## Agent CA rotation
+
+1. Settings → Agents → Rotate CA (or `POST /api/v1/agents/ca/rotate`). A new CA becomes active and signs every new agent certificate; the old one is marked retiring, stays trusted, and keeps signing the listener certificate, so every agent can still connect. Connected agents receive the new trust bundle, renew at once (their new certificate comes from the new CA) and reconnect.
+2. Pull-mode agents (`certforge-agent pull` from cron) and agents that were offline move when their certificate comes due for renewal (two thirds of its lifetime, 60 days by default): the renew response carries the new trust bundle. To move one sooner, re-enrol it. Watch each client's agent CA (`agentCaId` in `GET /api/v1/clients`); the CA list shows how many live agent certificates each CA still anchors.
+3. When the old CA shows 0, retire it. Retiring is refused while any active client still holds an unexpired certificate from it. Retire switches the listener certificate to the new CA; by then every active agent holds a bundle that trusts it.
+
+Enrolment tokens pin the CA that signs the listener certificate, so tokens created before or after a rotation work until the old CA is retired; after that, a token pinned to it is refused (409) and the client needs re-enrolling for a new one.

@@ -128,7 +128,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, AuthSettings: authSettings, OIDC: oidcClient,
-		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub,
+		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

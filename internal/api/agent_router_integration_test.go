@@ -51,6 +51,7 @@ func newAgentEnv(t *testing.T, opts ...func(*Deps)) *agentEnv {
 		t.Fatal(err)
 	}
 	f.svc.Listener = l
+	f.srv.d.AgentListener = l
 	d := f.srv.d
 	d.EnrollLimiter = authn.NewLimiter(0, 0)
 	for _, o := range opts {

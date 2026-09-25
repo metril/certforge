@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/metril/certforge/internal/agentca"
 	"github.com/metril/certforge/internal/agenthub"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
@@ -50,6 +51,7 @@ type Deps struct {
 	Agents        *agents.Service        // clients, grants, sync (Phase 3)
 	AgentSettings *agents.SettingsSource // agents settings section; PUT invalidates it
 	Hub           *agenthub.Hub          // agent WebSockets (nil: /agent/v1/ws answers 503)
+	AgentListener *agentca.Listener      // agent listener certificate (nil when not running)
 
 	// DNSTestTimeout bounds POST .../dns-credentials/{id}/test; zero means
 	// the 2-minute default (a test override, since lego's Present/CleanUp
