@@ -40,10 +40,19 @@ for (const theme of ['light', 'dark'] as const) {
     await row.getByRole('link', { name: E2E.certName, exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: E2E.certName })).toBeVisible();
     await expect(page.getByRole('img', { name: /^Valid .* to / })).toBeVisible();
+    // Regression check (controller review, Critical #0): a real browser's
+    // WHATWG URL percent-encodes a bare "*" (%2A), which used to make the
+    // catch-all "*" rule created by global-setup unmatchable — the Coverage
+    // panel would show "No matching rule" for an issued certificate instead
+    // of the rule that actually issued it.
+    const coveragePanel = page.getByRole('region', { name: 'Coverage' });
+    await expect(coveragePanel).toContainText('challtestsrv');
+    await expect(coveragePanel).not.toContainText('No matching rule');
     await page.screenshot({ path: `test-results/screens/${theme}-detail.png`, fullPage: true });
 
     await page.getByRole('tab', { name: 'Attempts' }).click();
     await page.getByRole('button', { name: 'Raw log' }).first().click();
+    await expect(page.locator('pre').filter({ hasText: /order|presenting/ }).first()).toBeVisible();
     await page.screenshot({ path: `test-results/screens/${theme}-attempts.png`, fullPage: true });
 
     await page.getByRole('button', { name: 'Download', exact: true }).click();

@@ -92,6 +92,13 @@ func TestBodyTooLarge(t *testing.T) {
 	}
 }
 
+// wantCSP is a literal, independent copy of the expected policy (not a
+// reference to router.go's contentSecurityPolicy constant), so a change
+// that weakens the real policy fails this test instead of trivially
+// matching itself.
+const wantCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+
 func TestSecurityHeaders(t *testing.T) {
 	rec := serve(t, http.MethodGet, "/api/v1/orgs", "", "")
 	if rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("X-Frame-Options") != "DENY" {
@@ -100,15 +107,8 @@ func TestSecurityHeaders(t *testing.T) {
 	if rec.Header().Get("Referrer-Policy") != "same-origin" {
 		t.Fatalf("referrer-policy %v", rec.Header())
 	}
-	csp := rec.Header().Get("Content-Security-Policy")
-	for _, want := range []string{
-		"default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
-		"img-src 'self' data:", "font-src 'self'", "connect-src 'self'",
-		"frame-ancestors 'none'", "base-uri 'self'",
-	} {
-		if !strings.Contains(csp, want) {
-			t.Fatalf("csp %q missing %q", csp, want)
-		}
+	if got := rec.Header().Get("Content-Security-Policy"); got != wantCSP {
+		t.Fatalf("csp %q", got)
 	}
 	if rec.Header().Get("Strict-Transport-Security") != "" {
 		t.Fatalf("HSTS should not be set over plain HTTP: %v", rec.Header())
@@ -138,8 +138,8 @@ func TestSecurityHeadersHSTS(t *testing.T) {
 func TestSecurityHeadersOnDocsAndSPA(t *testing.T) {
 	for _, p := range []string{"/api/docs/", "/o/home/overview"} {
 		rec := serve(t, http.MethodGet, p, "", "")
-		if rec.Header().Get("Content-Security-Policy") == "" {
-			t.Fatalf("%s: missing CSP", p)
+		if got := rec.Header().Get("Content-Security-Policy"); got != wantCSP {
+			t.Fatalf("%s: csp %q", p, got)
 		}
 	}
 }

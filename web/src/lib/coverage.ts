@@ -17,18 +17,34 @@ export type Coverage = {
 // lowercases and IDNA-normalises both the certificate name and the rule
 // pattern to A-labels before comparing. `new URL('http://'+s+'/').hostname`
 // runs the same WHATWG host-parsing algorithm (IDNA + lowercasing) that
-// jsdom (tr46, in tests) and every real browser already ship, and leaves
-// `*` and `_` untouched (neither is a forbidden host code point), so it
-// doubles as a zero-dependency punycode/IDNA-to-ASCII helper. Falls back to
-// a plain lowercase/trim for anything URL can't parse (empty string, ...).
-export function toAscii(s: string): string {
-  const v = s.trim();
-  if (!v) return '';
+// jsdom (tr46, in tests) already ships, so it doubles as a zero-dependency
+// punycode/IDNA-to-ASCII helper. Falls back to a plain lowercase/trim for
+// anything URL can't parse (empty string, ...).
+//
+// Fix (controller review, Critical #0): jsdom's URL leaves a bare `*`
+// untouched, but every real browser's URL/host-parsing (WHATWG-conformant,
+// verified against real Chromium) percent-encodes it: `new
+// URL('http://*/').hostname === '%2A'`. Run in a real browser (as the
+// smoke test does), the old code turned every `*` and `*.zone` rule into
+// `%2A`/`%2A.zone`, so no wildcard or catch-all rule ever matched — a
+// jsdom-only pass, not a real one. `*` and a leading `*.` are therefore
+// stripped before URL-normalising and re-attached after; nothing else
+// about a pattern or name legitimately starts with `*` (matchError already
+// rejects a `*` anywhere else).
+function normaliseAscii(v: string): string {
   try {
     return new URL(`http://${v}/`).hostname.replace(/\.$/, '');
   } catch {
     return v.toLowerCase().replace(/\.$/, '');
   }
+}
+
+export function toAscii(s: string): string {
+  const v = s.trim();
+  if (!v) return '';
+  if (v === '*') return '*';
+  if (v.startsWith('*.')) return `*.${normaliseAscii(v.slice(2))}`;
+  return normaliseAscii(v);
 }
 
 /** Mirrors the server's matcher (challenge/match.go): first match wins, a

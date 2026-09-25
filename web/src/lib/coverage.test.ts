@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { coverage, matchError, matchRule, prefillRules, verificationReady } from './coverage';
+import { coverage, matchError, matchRule, prefillRules, toAscii, verificationReady } from './coverage';
 
 it.each([
   ['www.example.com', 'example.com', true],
@@ -32,6 +32,34 @@ it.each([
   // trailing-dot zone name is just that zone.
   ['*.', true],
 ])('matchError(%s) valid = %s', (pattern, valid) => expect(matchError(pattern) === null).toBe(valid));
+
+// Controller review, Critical #0: jsdom's URL leaves a bare `*` alone, but
+// every real browser's WHATWG host parser percent-encodes it (verified
+// against real Chromium: `new URL('http://*/').hostname === '%2A'`), which
+// used to turn every `*`/`*.zone` rule into an unmatchable `%2A`/`%2A.zone`
+// — a jsdom-only pass, not a real one. This stubs a Chromium-parity URL
+// (lowercases the host and percent-encodes `*`, like a real browser) so the
+// test fails the same way a real browser would if the `*`/`*.` special
+// case in toAscii() were ever removed.
+it('toAscii and matchRule still treat "*" as a wildcard under a Chromium-parity URL (percent-encodes *)', () => {
+  const OriginalURL = globalThis.URL;
+  class ChromiumLikeURL {
+    hostname: string;
+    constructor(input: string) {
+      const host = input.slice('http://'.length, -1);
+      this.hostname = host.toLowerCase().replace(/\*/g, '%2A');
+    }
+  }
+  // @ts-expect-error -- minimal stub of the WHATWG URL constructor for this test only
+  globalThis.URL = ChromiumLikeURL;
+  try {
+    expect(toAscii('*')).toBe('*');
+    expect(toAscii('*.Example.test')).toBe('*.example.test');
+    expect(matchRule('smoke.example.test', '*')).toBe(true);
+  } finally {
+    globalThis.URL = OriginalURL;
+  }
+});
 
 const names = ['www.example.com', '*.example.com', 'api.other.net', '10.0.0.1'];
 
