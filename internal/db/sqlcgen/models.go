@@ -21,6 +21,16 @@ type AcmeAccount struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type AgentCa struct {
+	ID        uuid.UUID `json:"id"`
+	CertDer   []byte    `json:"cert_der"`
+	Key       []byte    `json:"key"`
+	Status    string    `json:"status"`
+	NotBefore time.Time `json:"not_before"`
+	NotAfter  time.Time `json:"not_after"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type ApiKey struct {
 	ID         uuid.UUID  `json:"id"`
 	Name       string     `json:"name"`
@@ -101,6 +111,63 @@ type CertificateVersion struct {
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
+type Client struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	SiteID            *uuid.UUID `json:"site_id"`
+	Name              string     `json:"name"`
+	Status            string     `json:"status"`
+	AgentCertSerial   string     `json:"agent_cert_serial"`
+	AgentCertNotAfter *time.Time `json:"agent_cert_not_after"`
+	AgentCaID         *uuid.UUID `json:"agent_ca_id"`
+	Hostname          string     `json:"hostname"`
+	Os                string     `json:"os"`
+	Arch              string     `json:"arch"`
+	AgentVersion      string     `json:"agent_version"`
+	Capabilities      []string   `json:"capabilities"`
+	LastSeen          *time.Time `json:"last_seen"`
+	DesiredRevision   int64      `json:"desired_revision"`
+	AppliedRevision   int64      `json:"applied_revision"`
+	CreatedAt         time.Time  `json:"created_at"`
+}
+
+type ClientCertGrant struct {
+	ID             uuid.UUID   `json:"id"`
+	ClientID       uuid.UUID   `json:"client_id"`
+	CertID         uuid.UUID   `json:"cert_id"`
+	Delivery       string      `json:"delivery"`
+	OutputSpecID   *uuid.UUID  `json:"output_spec_id"`
+	DeployTargetID *uuid.UUID  `json:"deploy_target_id"`
+	HookIds        []uuid.UUID `json:"hook_ids"`
+	AutoRemediate  bool        `json:"auto_remediate"`
+	RemovedAt      *time.Time  `json:"removed_at"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+}
+
+type DeployTarget struct {
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	RunsOn    string    `json:"runs_on"`
+	Config    []byte    `json:"config"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Deployment struct {
+	ID         uuid.UUID  `json:"id"`
+	GrantID    uuid.UUID  `json:"grant_id"`
+	VersionID  *uuid.UUID `json:"version_id"`
+	State      string     `json:"state"`
+	Expected   []byte     `json:"expected"`
+	Installed  []byte     `json:"installed"`
+	Error      string     `json:"error"`
+	ReportedAt *time.Time `json:"reported_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
 type DnsProviderCredential struct {
 	ID           uuid.UUID `json:"id"`
 	OrgID        uuid.UUID `json:"org_id"`
@@ -110,6 +177,41 @@ type DnsProviderCredential struct {
 	SecretCfg    []byte    `json:"secret_cfg"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type EnrollmentToken struct {
+	ID        uuid.UUID  `json:"id"`
+	ClientID  uuid.UUID  `json:"client_id"`
+	TokenHash []byte     `json:"token_hash"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at"`
+	CreatedBy string     `json:"created_by"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+type Hook struct {
+	ID             uuid.UUID `json:"id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	Name           string    `json:"name"`
+	Phase          string    `json:"phase"`
+	Argv           []string  `json:"argv"`
+	TimeoutSeconds int32     `json:"timeout_seconds"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type HookRun struct {
+	ID         uuid.UUID  `json:"id"`
+	ClientID   uuid.UUID  `json:"client_id"`
+	GrantID    *uuid.UUID `json:"grant_id"`
+	HookID     *uuid.UUID `json:"hook_id"`
+	Phase      string     `json:"phase"`
+	Argv       []string   `json:"argv"`
+	ExitCode   int32      `json:"exit_code"`
+	DurationMs int64      `json:"duration_ms"`
+	Stdout     string     `json:"stdout"`
+	Stderr     string     `json:"stderr"`
+	RanAt      time.Time  `json:"ran_at"`
 }
 
 type IssuanceAttempt struct {
@@ -148,6 +250,15 @@ type Org struct {
 	Slug      string    `json:"slug"`
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type OutputSpec struct {
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	Name      string    `json:"name"`
+	Files     []byte    `json:"files"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type RoleBinding struct {

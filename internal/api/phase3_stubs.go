@@ -10,7 +10,7 @@ import (
 // This file answers the Phase 3 operations with 501 until their own task
 // lands. Every later task deletes the stubs it implements; Task 10 deletes
 // this file.
-//
+
 // errNotImplemented answers Phase 3 operations until their task lands.
 var errNotImplemented = &HTTPError{Status: http.StatusNotImplemented, Title: "Not implemented", Detail: "This operation arrives later in Phase 3."}
 

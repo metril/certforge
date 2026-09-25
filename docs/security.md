@@ -43,6 +43,10 @@ OIDC group bindings (subject_type oidc_group) match the groups recorded at the u
 
 **Readers:** global auditors and admins see every event; org auditors and org-admins see their orgs' events, never global ones. `GET /audit/verify` needs global `audit:read`: the chain it walks covers every org and every global event, so an org-scoped auditor cannot call it even for their own org. `GET /audit/export` neutralizes formula-like cells (a leading `=`, `+`, `-`, `@`, tab, or CR gets a leading apostrophe) so a malicious display name or details value cannot execute as a spreadsheet formula when the export is opened.
 
+## Agent identity
+
+Agents authenticate with mutual TLS to a separate listener, not with sessions or API keys: CertForge runs its own ECDSA P-256 agent CA (`agent_cas`, key envelope-encrypted like certificate keys) that issues each agent a `clientAuth` certificate carrying only the URI SAN `urn:certforge:client:<uuid>`, and signs the listener's own `serverAuth` certificate. Several CAs stay trusted at once so rotating the signing CA never strands an already-enrolled agent, and retiring a CA is blocked while any live agent certificate still depends on it. See ADR 0009 for the full design, including why no separate application-layer handshake is layered on top of mTLS.
+
 ## Headers
 
 Every response, API and web UI alike, carries (`internal/api/router.go`'s `securityHeaders`):

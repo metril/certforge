@@ -164,8 +164,8 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Shared plumbing | done | af72b21 |
-| 2 | OpenAPI contract | done | pending |
-| 3 | Agent CA | todo | – |
+| 2 | OpenAPI contract | done | 39c473f |
+| 3 | Agent CA | done | pending |
 | 4 | Clients API | todo | – |
 | 5 | Agent listener and enrolment | todo | – |
 | 6 | Layouts, targets and hooks | todo | – |
