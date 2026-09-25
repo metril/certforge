@@ -24,7 +24,16 @@ type Token struct {
 }
 
 // NewToken returns a fresh token string for agentURL pinned to caFingerprint.
+// It validates both inputs so the result always round-trips through
+// ParseToken.
 func NewToken(agentURL, caFingerprint string) (string, error) {
+	u, err := url.Parse(agentURL)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return "", fmt.Errorf("%w: agent URL must be https://host[:port]", ErrBadToken)
+	}
+	if !fpRe.MatchString(caFingerprint) {
+		return "", fmt.Errorf("%w: CA fingerprint must be 64 lowercase hex digits", ErrBadToken)
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err

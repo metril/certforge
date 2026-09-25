@@ -33,6 +33,26 @@ func TestTokenRoundTrip(t *testing.T) {
 	}
 }
 
+func TestNewTokenValidatesInputs(t *testing.T) {
+	if _, err := NewToken("http://cf.example.test:8443", fp); !errors.Is(err, ErrBadToken) {
+		t.Fatalf("http URL: err = %v", err)
+	}
+	if _, err := NewToken("https://cf.example.test:8443", "XYZ"); !errors.Is(err, ErrBadToken) {
+		t.Fatalf("bad fingerprint: err = %v", err)
+	}
+	if _, err := NewToken("not a url", fp); !errors.Is(err, ErrBadToken) {
+		t.Fatalf("garbage URL: err = %v", err)
+	}
+	// A token NewToken accepts must always round-trip through ParseToken.
+	s, err := NewToken("https://cf.example.test:8443", fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseToken(s); err != nil {
+		t.Fatalf("ParseToken(NewToken(...)) = %v", err)
+	}
+}
+
 func TestParseTokenRejects(t *testing.T) {
 	good, _ := NewToken("https://cf.example.test:8443", fp)
 	parts := strings.Split(good, ".")

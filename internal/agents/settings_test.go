@@ -45,12 +45,13 @@ func TestSettingsSectionValidates(t *testing.T) {
 		t.Fatalf("default invalid: %v", err)
 	}
 	for name, raw := range map[string]string{
-		"http url":      `{"agentUrl":"http://cf.example.com:8443"}`,
-		"url path":      `{"agentUrl":"https://cf.example.com:8443/agent"}`,
-		"bad name":      `{"listenerNames":["not a name"]}`,
-		"heartbeat low": `{"heartbeatSeconds":10}`,
-		"offline <= hb": `{"heartbeatSeconds":60,"offlineAfterSeconds":60}`,
-		"unknown":       `{"nope":1}`,
+		"http url":               `{"agentUrl":"http://cf.example.com:8443"}`,
+		"url path":               `{"agentUrl":"https://cf.example.com:8443/agent"}`,
+		"bad name":               `{"listenerNames":["not a name"]}`,
+		"heartbeat low":          `{"heartbeatSeconds":10}`,
+		"offline <= hb":          `{"heartbeatSeconds":60,"offlineAfterSeconds":60}`,
+		"offline defaults <= hb": `{"heartbeatSeconds":600}`, // offlineAfterSeconds is absent, so it resolves to 180 (< 600)
+		"unknown":                `{"nope":1}`,
 	} {
 		if err := sec.Validate([]byte(raw)); !errors.Is(err, settings.ErrInvalid) {
 			t.Errorf("%s: err = %v", name, err)
@@ -82,5 +83,26 @@ func TestSettingsSourceCachesAndInvalidates(t *testing.T) {
 	var js map[string]any
 	if err := json.Unmarshal([]byte(settingsSchema), &js); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSettingsSourceNegativeCache(t *testing.T) {
+	calls := 0
+	now := time.Now()
+	loadErr := errors.New("store unreachable")
+	src := &SettingsSource{baseURL: "https://cf.example.com", ttl: time.Minute, now: func() time.Time { return now },
+		load: func(context.Context) (Settings, error) {
+			calls++
+			return Settings{}, loadErr
+		}}
+	if _, err := src.Get(context.Background()); !errors.Is(err, loadErr) {
+		t.Fatalf("first Get err = %v", err)
+	}
+	if _, err := src.Get(context.Background()); calls != 1 || !errors.Is(err, loadErr) {
+		t.Fatalf("calls %d err %v, want the cached error with no second load", calls, err)
+	}
+	now = now.Add(negativeCacheTTL)
+	if _, err := src.Get(context.Background()); calls != 2 || !errors.Is(err, loadErr) {
+		t.Fatalf("after negativeCacheTTL: calls %d err %v", calls, err)
 	}
 }

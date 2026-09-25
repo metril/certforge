@@ -74,18 +74,21 @@ func checkSettings(raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return err
 	}
-	if s.AgentURL != "" {
-		u, err := url.Parse(s.AgentURL)
-		if err != nil || u.Scheme != "https" || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" {
-			return errors.New("agentUrl must be https://host[:port] with no path")
-		}
+	// A PUT replaces the whole section, so an unset field (heartbeatSeconds
+	// alone, say) must be checked against the default it resolves to, not
+	// its raw zero value: {"heartbeatSeconds":600} must fail even though
+	// offlineAfterSeconds is absent from raw, because Resolve fills it with
+	// 180 (< 600).
+	r := Resolve(s, "")
+	if u, err := url.Parse(r.AgentURL); err != nil || u.Scheme != "https" || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" {
+		return errors.New("agentUrl must be https://host[:port] with no path")
 	}
-	for _, n := range s.ListenerNames {
+	for _, n := range r.ListenerNames {
 		if net.ParseIP(n) == nil && !validDNSName(n) {
 			return fmt.Errorf("listenerNames: %q is not a DNS name or IP address", n)
 		}
 	}
-	if s.HeartbeatSeconds > 0 && s.OfflineAfterSeconds > 0 && s.OfflineAfterSeconds <= s.HeartbeatSeconds {
+	if r.OfflineAfterSeconds <= r.HeartbeatSeconds {
 		return errors.New("offlineAfterSeconds must be longer than heartbeatSeconds")
 	}
 	return nil
@@ -157,12 +160,18 @@ type SettingsSource struct {
 	now     func() time.Time
 	load    func(ctx context.Context) (Settings, error)
 
-	mu    sync.Mutex
-	cur   Settings
-	at    time.Time
-	valid bool
-	gen   uint64
+	mu      sync.Mutex
+	cur     Settings
+	at      time.Time
+	valid   bool
+	gen     uint64
+	lastErr error
+	errAt   time.Time
 }
+
+// negativeCacheTTL bounds how long Get keeps returning a reload error
+// before it tries the store again, mirroring authn.SettingsSource.
+const negativeCacheTTL = 5 * time.Second
 
 // NewSettingsSource reads the registered agents section from store.
 func NewSettingsSource(store *settings.Store, reg *settings.Registry, baseURL string) (*SettingsSource, error) {
@@ -194,7 +203,9 @@ func StaticSettings(st Settings, baseURL string) *SettingsSource {
 func (s *SettingsSource) BaseURL() string { return s.baseURL }
 
 // Get returns the resolved settings; on a load error it keeps serving the
-// last good value, or returns the error when there is none.
+// last good value, or, with nothing cached yet, remembers the error for
+// negativeCacheTTL so repeated callers don't retry a failing store on every
+// request.
 func (s *SettingsSource) Get(ctx context.Context) (Settings, error) {
 	s.mu.Lock()
 	if s.valid && s.now().Sub(s.at) < s.ttl {
@@ -202,12 +213,20 @@ func (s *SettingsSource) Get(ctx context.Context) (Settings, error) {
 		s.mu.Unlock()
 		return cur, nil
 	}
+	if !s.valid && s.lastErr != nil && s.now().Sub(s.errAt) < negativeCacheTTL {
+		err := s.lastErr
+		s.mu.Unlock()
+		return Settings{}, err
+	}
 	gen := s.gen
 	s.mu.Unlock()
 	raw, err := s.load(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
+		if gen == s.gen {
+			s.lastErr, s.errAt = err, s.now()
+		}
 		if s.valid {
 			return s.cur, nil
 		}
@@ -216,6 +235,7 @@ func (s *SettingsSource) Get(ctx context.Context) (Settings, error) {
 	r := Resolve(raw, s.baseURL)
 	if gen == s.gen {
 		s.cur, s.at, s.valid = r, s.now(), true
+		s.lastErr = nil
 	}
 	return r, nil
 }
@@ -224,6 +244,7 @@ func (s *SettingsSource) Get(ctx context.Context) (Settings, error) {
 func (s *SettingsSource) Invalidate() {
 	s.mu.Lock()
 	s.valid = false
+	s.lastErr = nil
 	s.gen++
 	s.mu.Unlock()
 }
