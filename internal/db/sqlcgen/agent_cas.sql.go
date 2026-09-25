@@ -208,13 +208,31 @@ func (q *Queries) LockAgentCA(ctx context.Context, id uuid.UUID) (AgentCa, error
 	return i, err
 }
 
-const markActiveAgentCARetiring = `-- name: MarkActiveAgentCARetiring :exec
-UPDATE agent_cas SET status = 'retiring' WHERE status = 'active'
+const markActiveAgentCARetiring = `-- name: MarkActiveAgentCARetiring :many
+UPDATE agent_cas SET status = 'retiring' WHERE status = 'active' RETURNING id
 `
 
-func (q *Queries) MarkActiveAgentCARetiring(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, markActiveAgentCARetiring)
-	return err
+// Returns the previously active CA's id (zero rows when none was active),
+// read atomically in the same transaction that marks it retiring, so a
+// concurrent Rotate can never race this one for the "previous" CA.
+func (q *Queries) MarkActiveAgentCARetiring(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, markActiveAgentCARetiring)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setAgentCARetired = `-- name: SetAgentCARetired :one

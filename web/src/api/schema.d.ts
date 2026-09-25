@@ -2605,6 +2605,11 @@ export interface components {
              */
             agentCertNotAfter: string | null;
             /**
+             * Format: uuid
+             * @description Agent CA that signed the client's current certificate; null until enrolled.
+             */
+            agentCaId: string | null;
+            /**
              * Format: int64
              * @description Bumped by every grant
              */

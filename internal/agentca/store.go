@@ -158,27 +158,34 @@ func (s *Store) EnsureActive(ctx context.Context) (*CA, error) {
 }
 
 // Rotate creates a new active CA and marks the previous one retiring.
-func (s *Store) Rotate(ctx context.Context) (*CA, error) {
+// Previous is the CA that was active before this call, nil if none was
+// (read in the same transaction, so a concurrent Rotate never races it).
+func (s *Store) Rotate(ctx context.Context) (ca *CA, previous *uuid.UUID, err error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	q := s.q.WithTx(tx)
-	if err := q.MarkActiveAgentCARetiring(ctx); err != nil {
-		return nil, err
+	retired, err := q.MarkActiveAgentCARetiring(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(retired) > 0 {
+		previous = &retired[0]
 	}
 	row, err := s.insert(ctx, q)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return s.decode(ctx, row)
+	ca, err = s.decode(ctx, row)
+	return ca, previous, err
 }
 
 // Retire stops trusting a CA that is not active and anchors no live agent

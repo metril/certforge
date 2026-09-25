@@ -84,7 +84,7 @@ func (s *Server) clientsOut(ctx context.Context, rows []sqlcgen.Client) ([]gen.C
 		g := gen.Client{Id: c.ID, OrgId: c.OrgID, SiteId: c.SiteID, Name: c.Name, Status: gen.ClientStatus(c.Status),
 			Connected: connected, Online: online, Hostname: c.Hostname, Os: c.Os, Arch: c.Arch,
 			AgentVersion: c.AgentVersion, Capabilities: c.Capabilities, LastSeen: c.LastSeen,
-			AgentCertNotAfter: c.AgentCertNotAfter, DesiredRevision: c.DesiredRevision, AppliedRevision: c.AppliedRevision,
+			AgentCertNotAfter: c.AgentCertNotAfter, AgentCaId: c.AgentCaID, DesiredRevision: c.DesiredRevision, AppliedRevision: c.AppliedRevision,
 			GrantCount: int(n.Grants), DriftCount: int(n.Drift), FailedCount: int(n.Failed), CreatedAt: c.CreatedAt}
 		if exp, ok := em[c.ID]; ok && c.Status == "pending" {
 			g.TokenExpiresAt = &exp

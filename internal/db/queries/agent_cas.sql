@@ -15,8 +15,11 @@ SELECT * FROM agent_cas WHERE id = $1 FOR SHARE;
 -- name: InsertAgentCA :one
 INSERT INTO agent_cas (cert_der, key, not_before, not_after) VALUES ($1, $2, $3, $4) RETURNING *;
 
--- name: MarkActiveAgentCARetiring :exec
-UPDATE agent_cas SET status = 'retiring' WHERE status = 'active';
+-- name: MarkActiveAgentCARetiring :many
+-- Returns the previously active CA's id (zero rows when none was active),
+-- read atomically in the same transaction that marks it retiring, so a
+-- concurrent Rotate can never race this one for the "previous" CA.
+UPDATE agent_cas SET status = 'retiring' WHERE status = 'active' RETURNING id;
 
 -- name: SetAgentCARetired :one
 UPDATE agent_cas SET status = 'retired' WHERE id = $1 RETURNING *;

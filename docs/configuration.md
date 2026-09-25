@@ -89,7 +89,7 @@ Global settings for certforge-agent (Settings → Agents).
 | Field | Default | Meaning |
 |---|---|---|
 | Agent URL (`agentUrl`) | `https://<CF_BASE_URL host>:8443` | Where agents connect. It is written into every enrolment token, and its host is always on the listener certificate. Must be `https://host[:port]`. |
-| Listener names (`listenerNames`) | CF_BASE_URL host, `localhost` | Extra DNS names or IPs on the agent listener's certificate. Changing them takes effect when the listener certificate is next issued. |
+| Listener names (`listenerNames`) | CF_BASE_URL host, `localhost` | Extra DNS names or IPs on the agent listener's certificate. Saving this section re-issues the listener certificate at once. |
 | Enrolment token lifetime (`tokenTtlHours`) | 24 | Hours a new client's one-time token stays usable. |
 | Agent certificate lifetime (`agentCertDays`) | 90 | Days an agent's client certificate is valid; the agent renews at two thirds. |
 | Heartbeat interval (`heartbeatSeconds`) | 60 (min 15) | How often agents report installed files for drift detection. |

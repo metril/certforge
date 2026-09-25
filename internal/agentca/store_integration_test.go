@@ -52,9 +52,9 @@ func TestRotateAndRetire(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	next, err := s.Rotate(ctx)
-	if err != nil || next.ID == old.ID || next.Status != "active" {
-		t.Fatalf("rotate %+v %v", next, err)
+	next, prev, err := s.Rotate(ctx)
+	if err != nil || next.ID == old.ID || next.Status != "active" || prev == nil || *prev != old.ID {
+		t.Fatalf("rotate %+v %v %v", next, prev, err)
 	}
 	trusted, _ := s.Trusted(ctx)
 	if len(trusted) != 2 {

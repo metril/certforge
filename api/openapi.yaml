@@ -2930,7 +2930,7 @@ components:
     Client:
       type: object
       description: A host running certforge-agent, enrolled into one org.
-      required: [id, orgId, siteId, name, status, connected, online, hostname, os, arch, agentVersion, capabilities, lastSeen, agentCertNotAfter, desiredRevision, appliedRevision, grantCount, driftCount, failedCount, createdAt]
+      required: [id, orgId, siteId, name, status, connected, online, hostname, os, arch, agentVersion, capabilities, lastSeen, agentCertNotAfter, agentCaId, desiredRevision, appliedRevision, grantCount, driftCount, failedCount, createdAt]
       properties:
         id: {type: string, format: uuid, description: Client id; the audit actor id of its agent.}
         orgId: {type: string, format: uuid, description: Owning org.}
@@ -2946,6 +2946,7 @@ components:
         capabilities: {type: array, items: {type: string}, description: Features the agent advertised, for example traefik and hooks.}
         lastSeen: {type: string, format: date-time, nullable: true, description: Last hello, heartbeat or report (written at most every 10 seconds).}
         agentCertNotAfter: {type: string, format: date-time, nullable: true, description: Expiry of the agent's client certificate; the agent renews at two thirds of its lifetime.}
+        agentCaId: {type: string, format: uuid, nullable: true, description: Agent CA that signed the client's current certificate; null until enrolled.}
         desiredRevision: {type: integer, format: int64, description: Bumped by every grant, layout, target, hook or certificate version change affecting this client.}
         appliedRevision: {type: integer, format: int64, description: Highest revision the agent has reported applying.}
         grantCount: {type: integer, description: Live grants.}

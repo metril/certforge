@@ -38,13 +38,11 @@ func (s *Service) pushTrust(ctx context.Context) {
 
 // RotateCA creates a new active agent CA that signs new agent certificates;
 // the previous one stays trusted (retiring) and keeps signing the listener
-// certificate until it is retired.
+// certificate until it is retired. A reload failure only logs (the listener
+// still serves the unchanged, still-trusted previous CA), so the broadcast
+// still goes: it is harmless since the listener certificate is unchanged.
 func (s *Service) RotateCA(ctx context.Context) (*agentca.CA, error) {
-	var prev *uuid.UUID
-	if cur, err := s.CA.Active(ctx); err == nil {
-		prev = &cur.ID
-	}
-	ca, err := s.CA.Rotate(ctx)
+	ca, prev, err := s.CA.Rotate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -55,6 +53,12 @@ func (s *Service) RotateCA(ctx context.Context) (*agentca.CA, error) {
 }
 
 // RetireCA stops trusting a retiring CA no live agent certificate depends on.
+// Unlike RotateCA, a reload failure here is not swallowed: the listener must
+// be re-signed by the new oldest CA before agents that only trust the CAs in
+// their current bundle stop reaching it, so the caller sees the failure
+// (500) and no trust bundle is broadcast against a listener that isn't
+// actually reachable under it yet. The retire itself already committed, so
+// the audit event is still recorded, with reloadFailed noting the gap.
 func (s *Service) RetireCA(ctx context.Context, id uuid.UUID) error {
 	err := s.CA.Retire(ctx, id)
 	var inUse *agentca.InUseError
@@ -68,7 +72,16 @@ func (s *Service) RetireCA(ctx context.Context, id uuid.UUID) error {
 	case err != nil:
 		return err
 	}
-	s.pushTrust(ctx)
+	if reloadErr := s.ReloadListener(ctx); reloadErr != nil {
+		s.audit(ctx, audit.Event{Action: "agent_ca.retire", ResourceType: "agent_ca", ResourceID: id.String(),
+			Details: map[string]any{"reloadFailed": true}})
+		return reloadErr
+	}
+	if trusted, err := s.CA.Trusted(ctx); err != nil {
+		s.log().Error("agent trust bundle not read", "err", err)
+	} else if s.Hub != nil {
+		s.Hub.Broadcast(agentproto.TrustBundleUpdate{Bundle: string(agentca.BundlePEM(trusted))})
+	}
 	s.audit(ctx, audit.Event{Action: "agent_ca.retire", ResourceType: "agent_ca", ResourceID: id.String()})
 	return nil
 }

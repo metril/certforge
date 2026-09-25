@@ -225,7 +225,7 @@ func TestEnrollTokenSingleUse(t *testing.T) {
 		t.Fatalf("garbage token %d", code)
 	}
 	en3 := e.newClient(t, "web-3")
-	next, err := e.ca.Rotate(ctx)
+	next, _, err := e.ca.Rotate(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
