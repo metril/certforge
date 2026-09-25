@@ -120,7 +120,7 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
           orgId={org.id}
           cert={cert}
           initialVersionId={download.versionId}
-          canExportKey={can(me, 'keys:export')}
+          canExportKey={can(me, 'keys:export', org.id)}
           onOpenChange={(o) => !o && setDownload({ open: false })}
         />
       )}

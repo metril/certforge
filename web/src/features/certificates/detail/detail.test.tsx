@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { Me } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, iso, makeAttempt, makeCert, me, problem, providers, url } from '@/test/fixtures';
+import { authHandlers, ca, iso, makeAttempt, makeCert, me, org, problem, providers, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const cert = makeCert();
@@ -131,7 +131,7 @@ it(
 );
 
 it('downloads chosen PEM parts as a zip; the key needs keys:export', async () => {
-  server.use(...base({ ...me, roles: ['operator'] }));
+  server.use(...base({ ...me, roles: ['operator'], bindings: [{ role: 'operator', orgId: org.id }] }));
   const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   const { user } = renderRoute('/o/acme/certificates/c-1/overview');
   await user.click(await screen.findByRole('button', { name: 'Download' }));

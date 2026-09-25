@@ -32,4 +32,10 @@ export const server = setupServer(
   http.get(url('/orgs/:orgId/certificates/:id/manual-dns'), () => HttpResponse.json([])),
   http.get(url('/orgs/:orgId/certificates/:id/attempts'), () => HttpResponse.json([])),
   http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })),
+  http.get(url('/auth/methods'), () => HttpResponse.json({ oidcEnabled: false, localEnabled: true })),
+  http.get(url('/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get(url('/audit'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get(url('/audit/verify'), () =>
+    HttpResponse.json({ ok: true, count: 0, brokenAtId: null, checkedAt: '2026-09-24T12:00:00Z', headHash: '' }),
+  ),
 );

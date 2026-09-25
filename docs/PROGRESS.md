@@ -127,6 +127,22 @@ too, and the auditor refuses to record under a wrong KEK; 0d6b931:
 lock-free settings reload; 14c1eed: generation-checked settings reload,
 audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 
+### Phase 2B: tenancy web UI — in progress (started 2026-09-25) ([plan](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md))
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Types, permissions mirror, fixtures | done | pending |
+| 2 | Login with single sign-on | pending | – |
+| 3 | Settings → Access shell and Users | pending | – |
+| 4 | Role bindings | pending | – |
+| 5 | Settings → Authentication | pending | – |
+| 6 | API keys | pending | – |
+| 7 | Orgs and sites | pending | – |
+| 8 | All orgs | pending | – |
+| 9 | Audit log page | pending | – |
+| 10 | Overview recent activity | pending | – |
+| 11 | Playwright: dex login and audit | pending | – |
+
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.

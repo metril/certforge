@@ -45,3 +45,20 @@ export type EffectiveValue = NonNullable<EffectiveIssuanceDefaults[keyof Effecti
 
 /** Sent in place of a secret to keep the stored value. */
 export const UNCHANGED = '__unchanged__';
+
+export type AuthMethods = S['AuthMethods'];
+export type MeBinding = S['MeBinding'];
+export type Role = S['Role'];
+export type UserDetail = S['UserDetail'];
+export type RoleBinding = S['RoleBinding'];
+export type RoleBindingInput = S['RoleBindingInput'];
+export type SubjectType = S['SubjectType'];
+export type ApiKey = S['ApiKey'];
+export type ApiKeyInput = S['ApiKeyInput'];
+export type ApiKeyCreated = S['ApiKeyCreated'];
+export type ApiKeyScope = S['ApiKeyScope'];
+export type Site = S['Site'];
+export type AuditEvent = S['AuditEvent'];
+export type AuditEventList = S['AuditEventList'];
+export type AuditChainStatus = S['AuditChainStatus'];
+export type AuthenticationTestResult = S['AuthenticationTestResult'];

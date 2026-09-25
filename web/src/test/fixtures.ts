@@ -1,5 +1,19 @@
 import { http, HttpResponse } from 'msw';
-import type { AcmeAccount, Attempt, CA, CAPreset, Certificate, Me, Org, ProviderSchema } from '@/api/types';
+import type {
+  AcmeAccount,
+  ApiKey,
+  Attempt,
+  AuditEvent,
+  CA,
+  CAPreset,
+  Certificate,
+  Me,
+  MeBinding,
+  Org,
+  ProviderSchema,
+  RoleBinding,
+  UserDetail,
+} from '@/api/types';
 
 export const url = (path: string) => `*/api/v1${path}`;
 export const DAY = 86_400_000;
@@ -8,6 +22,7 @@ export const iso = (days: number) => new Date(NOW + days * DAY).toISOString();
 export const PASSWORD = 'correct horse battery';
 
 export const org: Org = { id: 'org-1', slug: 'acme', name: 'Acme' };
+export const org2: Org = { id: 'org-2', slug: 'lab', name: 'Lab' };
 export const me: Me = {
   user: { id: 'u-1', displayName: 'admin', localAdmin: true },
   roles: ['admin'],
@@ -15,6 +30,37 @@ export const me: Me = {
   orgs: [org],
   csrfToken: 'csrf-1',
 };
+
+export function meWith(bindings: MeBinding[], orgs: Org[] = [org]): Me {
+  return { ...me, roles: [...new Set(bindings.map((b) => b.role))], bindings, orgs };
+}
+
+export const adminUser: UserDetail = {
+  id: 'u-1', displayName: 'admin', email: null, localAdmin: true, oidcIssuer: null, oidcSubject: null,
+  groups: [], disabled: false, lastLogin: iso(0), createdAt: iso(-30),
+};
+export const annUser: UserDetail = {
+  id: 'u-2', displayName: 'Ann', email: 'ann@example.com', localAdmin: false, oidcIssuer: 'https://login.example.com',
+  oidcSubject: 'ann', groups: ['ops', 'dev'], disabled: false, lastLogin: iso(-1), createdAt: iso(-10),
+};
+
+export function makeBinding(p: Partial<RoleBinding> = {}): RoleBinding {
+  return { id: 'rb-1', subjectType: 'user', subject: 'u-2', subjectLabel: 'Ann', role: 'viewer', orgId: org.id, createdAt: iso(-1), ...p };
+}
+
+export function makeApiKey(p: Partial<ApiKey> = {}): ApiKey {
+  return {
+    id: 'k-1', name: 'ci', prefix: '0123456789ab', scopes: ['certs:read'], orgId: org.id, createdBy: 'u-1',
+    createdByName: 'admin', expiresAt: iso(90), lastUsedAt: null, revokedAt: null, createdAt: iso(-1), ...p,
+  };
+}
+
+export function makeAuditEvent(p: Partial<AuditEvent> = {}): AuditEvent {
+  return {
+    id: 1, ts: iso(0), actorType: 'user', actorId: 'u-1', actorName: 'admin', action: 'certificate.renew',
+    resourceType: 'certificate', resourceId: 'c-1', orgId: org.id, ip: '192.0.2.10', details: {}, ...p,
+  };
+}
 
 export function makeCert(p: Partial<Certificate> = {}): Certificate {
   return {
