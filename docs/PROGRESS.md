@@ -108,8 +108,8 @@ were Task 18's own commits.
 | 2 | Principal, actions, group bindings | done | 3fb00fe |
 | 3 | OpenAPI problem responses | done | 0ca5e72 |
 | 4 | Authentication section and trusted proxies | done | 00a6e59 |
-| 5 | Login hardening | done | pending |
-| 6 | OIDC client and fake provider | todo | – |
+| 5 | Login hardening | done | ba24442 |
+| 6 | OIDC client and fake provider | done | pending |
 | 7 | OIDC endpoints | todo | – |
 | 8 | Users API | todo | – |
 | 9 | API keys | todo | – |

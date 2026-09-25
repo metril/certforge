@@ -60,6 +60,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - OpenAPI spec documents problem+json error responses on every operation, enforced by a test.
 - Settings → Authentication section (OIDC issuer, client, scopes, groups claim, session lifetime, trusted proxies); audit IPs honour X-Forwarded-For only from trusted proxies.
 - Per-client login rate limit, revocation of a user's other sessions on login, configurable session lifetime, GET /auth/methods.
+- OIDC auth-code flow with PKCE, nonce, and an HMAC-signed state cookie; in-process fake OIDC provider for tests.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.
