@@ -58,3 +58,34 @@ func TestListAllCertificates(t *testing.T) {
 	_, err = f.srv.ListAllCertificates(none, gen.ListAllCertificatesRequestObject{})
 	wantStatus(t, err, http.StatusForbidden)
 }
+
+// TestListAllCertificatesAPIKeyScoped is a Task 12 fold-in: an org-scoped
+// API key principal sees only its own org's certificates on GET
+// /certificates, never another org's, even when its wider OrgIDs (from the
+// creator's own memberships) include one.
+func TestListAllCertificatesAPIKeyScoped(t *testing.T) {
+	f := newAPIFixture(t)
+	org2 := dbtest.Org(t, f.pool)
+	ctx := context.Background()
+	for _, c := range []struct {
+		org  uuid.UUID
+		name string
+	}{{f.org, "alpha"}, {org2, "beta"}} {
+		if _, err := f.store.CreateCertificate(ctx, c.org, issuance.CertInput{Name: c.name, CommonName: c.name + ".example.test"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scoped := authn.WithPrincipal(ctx, authn.Principal{
+		Kind: authn.KindAPIKey, UserID: uuid.New(), OrgIDs: []uuid.UUID{f.org, org2},
+		Bindings: []authn.Binding{{Role: authz.RoleViewer, OrgID: &f.org}},
+		APIKey:   &authn.APIKeyInfo{ID: uuid.New(), Scopes: []string{"certs:read"}, OrgID: &f.org},
+	})
+	res, err := f.srv.ListAllCertificates(scoped, gen.ListAllCertificatesRequestObject{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := res.(gen.ListAllCertificates200JSONResponse).Items
+	if len(items) != 1 || items[0].Name != "alpha" {
+		t.Fatalf("org-scoped API key sees %+v, want only its own org's certificate", items)
+	}
+}

@@ -3,6 +3,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -155,7 +156,7 @@ func TestConcurrentDisableLastTwoAdmins(t *testing.T) {
 	a := mkGlobalAdmin(ctx, t, q, "race-a")
 	b := mkGlobalAdmin(ctx, t, q, "race-b")
 
-	s := &Server{d: Deps{Pool: pool, Queries: q, Auditor: audit.New(pool), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}}
+	s := &Server{d: Deps{Pool: pool, Queries: q, Auditor: audit.New(pool, bytes.Repeat([]byte{5}, 32)), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}}
 
 	disable := func(start <-chan struct{}, actor, target sqlcgen.User) error {
 		<-start

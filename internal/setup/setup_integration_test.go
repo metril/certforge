@@ -3,6 +3,7 @@
 package setup_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -23,7 +24,7 @@ var good = setup.Input{AdminPassword: "correct horse battery", OrgName: "Home", 
 func TestComplete(t *testing.T) {
 	ctx := context.Background()
 	pool, q := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
+	svc := setup.New(pool, audit.New(pool, bytes.Repeat([]byte{5}, 32)), settings.DefaultRegistry())
 	if needs, err := svc.NeedsSetup(ctx); err != nil || !needs {
 		t.Fatalf("needs %v err %v", needs, err)
 	}
@@ -78,7 +79,7 @@ func TestCompleteRevokesPreexistingAdminSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
+	svc := setup.New(pool, audit.New(pool, bytes.Repeat([]byte{5}, 32)), settings.DefaultRegistry())
 	res, err := svc.Complete(ctx, good)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +102,7 @@ func TestCompleteRevokesPreexistingAdminSessions(t *testing.T) {
 func TestCompleteConcurrent(t *testing.T) {
 	ctx := context.Background()
 	pool, _ := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
+	svc := setup.New(pool, audit.New(pool, bytes.Repeat([]byte{5}, 32)), settings.DefaultRegistry())
 	var wg sync.WaitGroup
 	errs := make(chan error, 3)
 	for i := 0; i < 3; i++ {
@@ -133,7 +134,7 @@ func TestCompleteConcurrent(t *testing.T) {
 func TestCompleteInvalid(t *testing.T) {
 	ctx := context.Background()
 	pool, _ := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
+	svc := setup.New(pool, audit.New(pool, bytes.Repeat([]byte{5}, 32)), settings.DefaultRegistry())
 	bad := []setup.Input{
 		{AdminPassword: "short", OrgName: "Home", OrgSlug: "home", BaseURL: "https://x.example"},
 		{AdminPassword: good.AdminPassword, OrgName: " ", OrgSlug: "home", BaseURL: "https://x.example"},
@@ -158,7 +159,7 @@ func TestCompleteInvalid(t *testing.T) {
 func TestSetAdminPassword(t *testing.T) {
 	ctx := context.Background()
 	pool, q := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
+	svc := setup.New(pool, audit.New(pool, bytes.Repeat([]byte{5}, 32)), settings.DefaultRegistry())
 	if _, err := svc.Complete(ctx, good); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestSetAdminPassword(t *testing.T) {
 func TestSetAdminPasswordBeforeSetup(t *testing.T) {
 	ctx := context.Background()
 	pool, q := dbtest.New(t)
-	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
+	svc := setup.New(pool, audit.New(pool, bytes.Repeat([]byte{5}, 32)), settings.DefaultRegistry())
 	if _, err := svc.SetAdminPassword(ctx, "first password 1"); !errors.Is(err, setup.ErrSetupPending) {
 		t.Fatalf("err = %v, want ErrSetupPending", err)
 	}

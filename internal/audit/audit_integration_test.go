@@ -20,7 +20,7 @@ import (
 
 func TestRecordAndVerify(t *testing.T) {
 	pool, q := dbtest.New(t)
-	a := audit.New(pool)
+	a := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	uid := uuid.New()
 	ctx := audit.WithIP(context.Background(), "192.0.2.1")
 	ctx = authn.WithPrincipal(ctx, authn.Principal{Kind: authn.KindUser, UserID: uid})
@@ -52,7 +52,7 @@ func TestRecordAndVerify(t *testing.T) {
 func TestSystemActor(t *testing.T) {
 	pool, q := dbtest.New(t)
 	ctx := context.Background()
-	if err := audit.New(pool).Record(ctx, audit.Event{Action: "x", ResourceType: "y"}); err != nil {
+	if err := audit.New(pool, bytes.Repeat([]byte{5}, 32)).Record(ctx, audit.Event{Action: "x", ResourceType: "y"}); err != nil {
 		t.Fatal(err)
 	}
 	evs, _ := q.ListAuditEventsAsc(ctx, sqlcgen.ListAuditEventsAscParams{ID: 0, Limit: 1})
@@ -64,7 +64,7 @@ func TestSystemActor(t *testing.T) {
 func TestAppendOnly(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()
-	if err := audit.New(pool).Record(ctx, audit.Event{Action: "x", ResourceType: "y"}); err != nil {
+	if err := audit.New(pool, bytes.Repeat([]byte{5}, 32)).Record(ctx, audit.Event{Action: "x", ResourceType: "y"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{"UPDATE audit_events SET action = 'z'", "DELETE FROM audit_events", "TRUNCATE audit_events"} {
@@ -78,7 +78,7 @@ func TestAppendOnly(t *testing.T) {
 func TestVerifyDetectsTamper(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()
-	a := audit.New(pool)
+	a := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	for i := 0; i < 2; i++ {
 		if err := a.Record(ctx, audit.Event{Action: "x", ResourceType: "y", Details: map[string]any{"i": i}}); err != nil {
 			t.Fatal(err)
@@ -100,7 +100,7 @@ func TestVerifyDetectsTamper(t *testing.T) {
 func TestVerifyDetectsDeletedRow(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()
-	a := audit.New(pool)
+	a := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	for i := 0; i < 3; i++ {
 		if err := a.Record(ctx, audit.Event{Action: "x", ResourceType: "y", Details: map[string]any{"i": i}}); err != nil {
 			t.Fatal(err)
@@ -122,7 +122,7 @@ func TestVerifyDetectsDeletedRow(t *testing.T) {
 func TestConcurrentRecords(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()
-	a := audit.New(pool)
+	a := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	var wg sync.WaitGroup
 	errs := make(chan error, 20)
 	for i := 0; i < 20; i++ {

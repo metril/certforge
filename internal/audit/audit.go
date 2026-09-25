@@ -1,13 +1,16 @@
-// Package audit records append-only, hash-chained audit events.
+// Package audit records append-only audit events in a hash chain keyed with
+// HMAC-SHA256 (ADR 0008).
 package audit
 
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,10 +23,23 @@ import (
 
 const lockKey int64 = 0x43460002
 
+// chainKeyedSettingKey marks (in the settings table) that Rechain has run
+// and no legacy sha256 row remains. Once set, Check rejects any sha256 row
+// outright, including one appended after the chain was re-keyed (controller
+// ruling C1): a downgrade back to the unkeyed algorithm is never valid once
+// the chain has been keyed.
+const chainKeyedSettingKey = "audit.chain_keyed"
+
 // ErrChainBroken means a stored event does not match its hash chain.
 var ErrChainBroken = errors.New("audit: hash chain broken")
 
 var genesis = make([]byte, sha256.Size)
+
+// Chain hash algorithms, stored per row in audit_events.hash_alg.
+const (
+	HashAlgLegacy = "sha256"      // Phase 1 rows until Rechain converts them
+	HashAlgHMAC   = "hmac-sha256" // keyed with crypto.DeriveKey(kek, "certforge-audit")
+)
 
 // Event is one auditable action. Empty actor fields are filled from the
 // request principal, or "system".
@@ -53,11 +69,19 @@ func IPFrom(ctx context.Context) string {
 // Auditor writes and verifies the audit chain.
 type Auditor struct {
 	pool *pgxpool.Pool
+	key  []byte
 	now  func() time.Time
 }
 
-// New returns an Auditor.
-func New(pool *pgxpool.Pool) *Auditor { return &Auditor{pool: pool, now: time.Now} }
+// New returns an Auditor keyed with key. key must be a non-empty HMAC key
+// (crypto.DeriveKey(kek, "certforge-audit")); a nil or empty key is a
+// programming error, not a silent fallback to the unkeyed algorithm.
+func New(pool *pgxpool.Pool, key []byte) *Auditor {
+	if len(key) == 0 {
+		panic("audit: New called with a nil or empty key")
+	}
+	return &Auditor{pool: pool, key: key, now: time.Now}
+}
 
 // Record appends e to the chain. Appends are serialized by an advisory lock.
 func (a *Auditor) Record(ctx context.Context, e Event) error {
@@ -83,7 +107,7 @@ func (a *Auditor) Record(ctx context.Context, e Event) error {
 	row := sqlcgen.InsertAuditEventParams{
 		ActorType: actorType, ActorID: actorID,
 		Action: e.Action, ResourceType: e.ResourceType, ResourceID: e.ResourceID,
-		OrgID: e.OrgID, Ip: IPFrom(ctx), Details: canon,
+		OrgID: e.OrgID, Ip: IPFrom(ctx), Details: canon, HashAlg: HashAlgHMAC,
 	}
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {
@@ -104,48 +128,172 @@ func (a *Auditor) Record(ctx context.Context, e Event) error {
 		return fmt.Errorf("audit: last hash: %w", err)
 	}
 	row.PrevHash = prev
-	row.Hash = chainHash(prev, row.Ts, row.ActorType, row.ActorID, row.Action, row.ResourceType, row.ResourceID, row.OrgID, row.Ip, canon)
+	row.Hash = a.sum(HashAlgHMAC, prev, row.Ts, row.ActorType, row.ActorID, row.Action, row.ResourceType, row.ResourceID, row.OrgID, row.Ip, canon)
 	if _, err := q.InsertAuditEvent(ctx, row); err != nil {
 		return fmt.Errorf("audit: insert: %w", err)
 	}
 	return tx.Commit(ctx)
 }
 
-// Verify walks the whole chain and returns the number of events checked.
-func (a *Auditor) Verify(ctx context.Context) (int64, error) {
+// VerifyResult is the outcome of walking the chain.
+type VerifyResult struct {
+	OK         bool
+	Count      int64  // rows that verified
+	BrokenAtID int64  // first bad row when !OK
+	HeadHash   []byte // hash of the last good row
+}
+
+// Check walks the whole chain. A mismatch is a result, not an error. Once
+// the chain has been keyed (chainKeyedSettingKey is set), any row still
+// stored under the legacy algorithm is reported broken outright, even one
+// appended after the chain was re-keyed.
+func (a *Auditor) Check(ctx context.Context) (VerifyResult, error) {
 	const page = 500
 	q := sqlcgen.New(a.pool)
+	keyed, err := a.chainKeyed(ctx, q)
+	if err != nil {
+		return VerifyResult{}, err
+	}
+	res := VerifyResult{OK: true, HeadHash: genesis}
 	prev := genesis
-	var after, n int64
+	var after int64
 	for {
 		rows, err := q.ListAuditEventsAsc(ctx, sqlcgen.ListAuditEventsAscParams{ID: after, Limit: page})
 		if err != nil {
-			return n, err
+			return res, err
 		}
 		for _, ev := range rows {
-			canon, err := canonicalJSON(json.RawMessage(ev.Details))
-			if err != nil {
-				return n, fmt.Errorf("%w at id %d: %w", ErrChainBroken, ev.ID, err)
+			if keyed && ev.HashAlg != HashAlgHMAC {
+				res.OK, res.BrokenAtID = false, ev.ID
+				return res, nil
 			}
-			want := chainHash(prev, ev.Ts, ev.ActorType, ev.ActorID, ev.Action, ev.ResourceType, ev.ResourceID, ev.OrgID, ev.Ip, canon)
-			if !bytes.Equal(ev.PrevHash, prev) || !bytes.Equal(ev.Hash, want) {
-				return n, fmt.Errorf("%w at id %d", ErrChainBroken, ev.ID)
+			if !a.rowOK(ev, prev) {
+				res.OK, res.BrokenAtID = false, ev.ID
+				return res, nil
 			}
-			prev, after = ev.Hash, ev.ID
-			n++
+			prev, after, res.HeadHash = ev.Hash, ev.ID, ev.Hash
+			res.Count++
 		}
 		if len(rows) < page {
-			return n, nil
+			return res, nil
 		}
 	}
 }
 
-func chainHash(prev []byte, ts time.Time, actorType, actorID, action, resourceType, resourceID string, orgID *uuid.UUID, ip string, details []byte) []byte {
+// Verify walks the chain and returns the number of events checked, or an
+// error wrapping ErrChainBroken.
+func (a *Auditor) Verify(ctx context.Context) (int64, error) {
+	r, err := a.Check(ctx)
+	if err != nil {
+		return r.Count, err
+	}
+	if !r.OK {
+		return r.Count, fmt.Errorf("%w at id %d", ErrChainBroken, r.BrokenAtID)
+	}
+	return r.Count, nil
+}
+
+func (a *Auditor) rowOK(ev sqlcgen.AuditEvent, prev []byte) bool {
+	canon, err := canonicalJSON(json.RawMessage(ev.Details))
+	if err != nil {
+		return false
+	}
+	want := a.sum(ev.HashAlg, prev, ev.Ts, ev.ActorType, ev.ActorID, ev.Action, ev.ResourceType, ev.ResourceID, ev.OrgID, ev.Ip, canon)
+	return want != nil && bytes.Equal(ev.PrevHash, prev) && bytes.Equal(ev.Hash, want)
+}
+
+// chainKeyed reports whether chainKeyedSettingKey is set.
+func (a *Auditor) chainKeyed(ctx context.Context, q *sqlcgen.Queries) (bool, error) {
+	row, err := q.GetSetting(ctx, chainKeyedSettingKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("audit: %s: %w", chainKeyedSettingKey, err)
+	}
+	var v bool
+	if err := json.Unmarshal(row.Value, &v); err != nil {
+		return false, fmt.Errorf("audit: %s: %w", chainKeyedSettingKey, err)
+	}
+	return v, nil
+}
+
+// Rechain converts the chain to HMAC-SHA256 once, under the append advisory
+// lock. Every row is first verified with its stored algorithm; if any fails,
+// nothing is changed and ErrChainBroken is returned, so tampering is never
+// laundered into a valid keyed chain. It does not disable the append-only
+// trigger (that would need table ownership); the trigger itself allows the
+// three-column update Rechain performs (migration 00006, ADR 0008). Once no
+// legacy row remains — whether because this call converted the last of them
+// or because there never were any — it persists chainKeyedSettingKey in the
+// same transaction as the re-chain commit, so Check starts rejecting any
+// legacy-algorithm row from then on. Returns the number of rows rewritten.
+func (a *Auditor) Rechain(ctx context.Context) (int64, error) {
+	const page = 500
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("audit: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
+		return 0, fmt.Errorf("audit: lock: %w", err)
+	}
+	q := sqlcgen.New(tx)
+	legacy, err := q.CountLegacyAuditEvents(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var changed int64
+	if legacy > 0 {
+		oldPrev, newPrev := genesis, genesis
+		var after int64
+		for {
+			rows, err := q.ListAuditEventsAsc(ctx, sqlcgen.ListAuditEventsAscParams{ID: after, Limit: page})
+			if err != nil {
+				return 0, err
+			}
+			for _, ev := range rows {
+				if !a.rowOK(ev, oldPrev) {
+					return 0, fmt.Errorf("%w at id %d; chain not re-keyed", ErrChainBroken, ev.ID)
+				}
+				canon, _ := canonicalJSON(json.RawMessage(ev.Details))
+				h := a.sum(HashAlgHMAC, newPrev, ev.Ts, ev.ActorType, ev.ActorID, ev.Action, ev.ResourceType, ev.ResourceID, ev.OrgID, ev.Ip, canon)
+				if ev.HashAlg != HashAlgHMAC || !bytes.Equal(ev.PrevHash, newPrev) || !bytes.Equal(ev.Hash, h) {
+					if err := q.UpdateAuditChain(ctx, sqlcgen.UpdateAuditChainParams{ID: ev.ID, PrevHash: newPrev, Hash: h}); err != nil {
+						return 0, fmt.Errorf("audit: rechain id %d: %w", ev.ID, err)
+					}
+					changed++
+				}
+				oldPrev, newPrev, after = ev.Hash, h, ev.ID
+			}
+			if len(rows) < page {
+				break
+			}
+		}
+	}
+	if err := q.UpsertSettingValue(ctx, sqlcgen.UpsertSettingValueParams{Key: chainKeyedSettingKey, Value: []byte("true")}); err != nil {
+		return 0, fmt.Errorf("audit: mark %s: %w", chainKeyedSettingKey, err)
+	}
+	return changed, tx.Commit(ctx)
+}
+
+// sum is the chain link: H(prev, ts, actor, action, resource, org, ip,
+// canonical details) with H = SHA-256 (legacy) or HMAC-SHA256(key).
+func (a *Auditor) sum(alg string, prev []byte, ts time.Time, actorType, actorID, action, resourceType, resourceID string,
+	orgID *uuid.UUID, ip string, details []byte) []byte {
+	var h hash.Hash
+	switch alg {
+	case HashAlgLegacy:
+		h = sha256.New()
+	case HashAlgHMAC:
+		h = hmac.New(sha256.New, a.key)
+	default:
+		return nil
+	}
 	org := ""
 	if orgID != nil {
 		org = orgID.String()
 	}
-	h := sha256.New()
 	h.Write(prev)
 	for _, f := range []string{ts.UTC().Format(time.RFC3339Nano), actorType, actorID, action, resourceType, resourceID, org, ip} {
 		h.Write([]byte(f))

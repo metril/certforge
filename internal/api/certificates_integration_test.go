@@ -68,7 +68,7 @@ func TestDownloadKeyAuditedForAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	broken.Close() // every audit write now fails
-	f.srv.d.Auditor = audit.New(broken)
+	f.srv.d.Auditor = audit.New(broken, bytes.Repeat([]byte{5}, 32))
 	if _, err := f.download(f.as("admin"), c.ID, v.ID, "key"); err == nil || problemStatus(err) != 0 {
 		t.Fatalf("key must not be released when auditing fails: %v", err)
 	}

@@ -67,6 +67,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.
 - Web UI settings: `SettingsPage.tsx`'s `SECTIONS`/`SectionSlug` moved to a small `sections.ts` so the settings route's `beforeLoad` no longer drags the whole Issuance defaults section (and `tldts`) into the app's main chunk; the build's largest chunk drops from 977 kB to under 400 kB, with no chunk over the 500 kB warning threshold, and `npm run build` now fails if `tldts` reappears in an eagerly-loaded chunk (`web/scripts/check-chunks.mjs`).
+- Audit chain is HMAC-SHA256 keyed from the KEK; existing events are re-chained once at startup (ADR 0008).
 
 ### Fixed
 - `authn.Limiter.Allow` read its rate/burst config before taking its lock, racing `Reconfigure`; the check now happens under the lock. Rate-limited login attempts are now audited as `session.login_failed` (`reason: rate_limited`) instead of leaving no record. The limiter's per-key map is now capped at 100k entries, evicting the least-recently-seen key once full, so distinct source addresses cannot grow it without bound.

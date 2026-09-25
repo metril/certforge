@@ -11,7 +11,9 @@ import (
 	"strings"
 
 	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
 )
@@ -40,7 +42,7 @@ func runBootstrapAdmin(ctx context.Context, args []string, stdout io.Writer) err
 	if password == "" {
 		return errors.New("set CF_ADMIN_PASSWORD or pass --password-stdin")
 	}
-	_, _, pool, err := openDeps(ctx)
+	cfg, _, pool, err := openDeps(ctx)
 	if err != nil {
 		return err
 	}
@@ -48,7 +50,16 @@ func runBootstrapAdmin(ctx context.Context, args []string, stdout io.Writer) err
 	if err := db.Migrate(ctx, pool); err != nil {
 		return err
 	}
-	id, err := setup.New(pool, audit.New(pool), settings.DefaultRegistry()).SetAdminPassword(ctx, password)
+	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(cfg.KEK.Key), cfg.KEK.Key))
+	store := settings.NewStore(sqlcgen.New(pool), env)
+	// Run the KEK canary before constructing the auditor: with the wrong
+	// KEK, events written here would be keyed wrong and never verify under
+	// the right one (controller ruling C6).
+	if err := store.EnsureCanary(ctx); err != nil {
+		return fmt.Errorf("KEK canary check failed; refusing to write audit events under the wrong KEK: %w", err)
+	}
+	aud := audit.New(pool, crypto.DeriveKey(cfg.KEK.Key, "certforge-audit"))
+	id, err := setup.New(pool, aud, settings.DefaultRegistry()).SetAdminPassword(ctx, password)
 	if err != nil {
 		return err
 	}

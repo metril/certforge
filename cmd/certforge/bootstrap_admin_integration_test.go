@@ -54,7 +54,7 @@ func TestBootstrapAdmin(t *testing.T) {
 		t.Fatalf("admin row created before setup completed: err = %v", err)
 	}
 
-	svc := setup.New(pool, audit.New(pool), settings.DefaultRegistry())
+	svc := setup.New(pool, audit.New(pool, bytes.Repeat([]byte{5}, 32)), settings.DefaultRegistry())
 	in := setup.Input{AdminPassword: "initial password ok", OrgName: "Home", OrgSlug: "home", BaseURL: "https://certs.example.com"}
 	if _, err := svc.Complete(ctx, in); err != nil {
 		t.Fatal(err)

@@ -12,9 +12,20 @@ import (
 	"github.com/google/uuid"
 )
 
+const countLegacyAuditEvents = `-- name: CountLegacyAuditEvents :one
+SELECT count(*) FROM audit_events WHERE hash_alg = 'sha256'
+`
+
+func (q *Queries) CountLegacyAuditEvents(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countLegacyAuditEvents)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertAuditEvent = `-- name: InsertAuditEvent :one
-INSERT INTO audit_events (ts, actor_type, actor_id, action, resource_type, resource_id, org_id, ip, details, prev_hash, hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO audit_events (ts, actor_type, actor_id, action, resource_type, resource_id, org_id, ip, details, prev_hash, hash, hash_alg)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING id
 `
 
@@ -30,6 +41,7 @@ type InsertAuditEventParams struct {
 	Details      []byte     `json:"details"`
 	PrevHash     []byte     `json:"prev_hash"`
 	Hash         []byte     `json:"hash"`
+	HashAlg      string     `json:"hash_alg"`
 }
 
 func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) (int64, error) {
@@ -45,6 +57,7 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		arg.Details,
 		arg.PrevHash,
 		arg.Hash,
+		arg.HashAlg,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -63,7 +76,7 @@ func (q *Queries) LastAuditHash(ctx context.Context) ([]byte, error) {
 }
 
 const listAuditEventsAsc = `-- name: ListAuditEventsAsc :many
-SELECT id, ts, actor_type, actor_id, action, resource_type, resource_id, org_id, ip, details, prev_hash, hash FROM audit_events WHERE id > $1 ORDER BY id LIMIT $2
+SELECT id, ts, actor_type, actor_id, action, resource_type, resource_id, org_id, ip, details, prev_hash, hash, hash_alg FROM audit_events WHERE id > $1 ORDER BY id LIMIT $2
 `
 
 type ListAuditEventsAscParams struct {
@@ -93,6 +106,7 @@ func (q *Queries) ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAsc
 			&i.Details,
 			&i.PrevHash,
 			&i.Hash,
+			&i.HashAlg,
 		); err != nil {
 			return nil, err
 		}
@@ -102,4 +116,19 @@ func (q *Queries) ListAuditEventsAsc(ctx context.Context, arg ListAuditEventsAsc
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateAuditChain = `-- name: UpdateAuditChain :exec
+UPDATE audit_events SET prev_hash = $2, hash = $3, hash_alg = 'hmac-sha256' WHERE id = $1
+`
+
+type UpdateAuditChainParams struct {
+	ID       int64  `json:"id"`
+	PrevHash []byte `json:"prev_hash"`
+	Hash     []byte `json:"hash"`
+}
+
+func (q *Queries) UpdateAuditChain(ctx context.Context, arg UpdateAuditChainParams) error {
+	_, err := q.db.Exec(ctx, updateAuditChain, arg.ID, arg.PrevHash, arg.Hash)
+	return err
 }

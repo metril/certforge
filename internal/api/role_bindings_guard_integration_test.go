@@ -3,6 +3,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -45,7 +46,7 @@ func TestConcurrentDisableAndDeleteOwnAdminBinding(t *testing.T) {
 	}
 	aBindingID := rbs[0].ID
 
-	s := &Server{d: Deps{Pool: pool, Queries: q, Auditor: audit.New(pool), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}}
+	s := &Server{d: Deps{Pool: pool, Queries: q, Auditor: audit.New(pool, bytes.Repeat([]byte{5}, 32)), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}}
 	principalFor := func(u sqlcgen.User) authn.Principal {
 		return authn.Principal{Kind: authn.KindUser, UserID: u.ID, Roles: []string{"admin"},
 			Bindings: []authn.Binding{{Role: "admin"}}, OrgIDs: []uuid.UUID{}}

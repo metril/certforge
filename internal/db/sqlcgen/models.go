@@ -48,6 +48,7 @@ type AuditEvent struct {
 	Details      []byte     `json:"details"`
 	PrevHash     []byte     `json:"prev_hash"`
 	Hash         []byte     `json:"hash"`
+	HashAlg      string     `json:"hash_alg"`
 }
 
 type Ca struct {

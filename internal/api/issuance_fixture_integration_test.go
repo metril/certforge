@@ -69,7 +69,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	}
 	store := issuance.NewStore(pool, box, settingsStore)
 	certs := certstore.New(pool, box)
-	aud := audit.New(pool)
+	aud := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	svc := issuance.NewService(store, certs, &fakeJobs{queued: map[uuid.UUID]bool{}})
 	svc.NewRegistrar = func(issuance.CA) issuance.Registrar { return &fakeRegistrar{} }
 	svc.Auditor = aud

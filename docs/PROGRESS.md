@@ -115,8 +115,8 @@ were Task 18's own commits.
 | 9 | API keys | done | 9f7d72a |
 | 10 | Role bindings API | done | 8a2e246 |
 | 11 | Orgs and sites CRUD | done | 57bd3b7 |
-| 12 | Cross-org certificate list | done | pending |
-| 13 | Keyed audit chain | todo | – |
+| 12 | Cross-org certificate list | done | d289146 |
+| 13 | Keyed audit chain | done | pending |
 | 14 | Audit API | todo | – |
 | 15 | dex e2e | todo | – |
 
@@ -238,7 +238,7 @@ were Task 18's own commits.
 - 1C: `npm run e2e` (Playwright) and `make e2e` (Go, against Pebble) both run locally only; neither is wired into `.github/workflows/ci.yml`.
 - 1B: revocation is implemented in `signer.Signer` but not exposed in the API (the Revoke action lands with its screen).
 - Pebble and challtestsrv images are pinned to tag 2.10.1, not a digest; the issuance e2e (1B Task 15) kept the tag pin rather than switching to a digest. Pin digests in a later task.
-- Audit log tamper-evidence hardening not yet done: keyed HMAC instead of a plain hash, anchoring the head hash outside the table, and running the app under a role that does not own `audit_events`.
+- Audit log: the head hash is not anchored outside the table, and the app still owns `audit_events`. Events written under a wrong KEK fail verification; KEK rotation (Phase 5) must carry the derived audit key.
 - Base images are unpinned or ageing: the server image's `golang:1.23-alpine` build stage is already out of upstream support; bump the Go builder image (and pin image tags to digests) before cutting a release tag.
 - HEAD requests to `/healthz` and `/readyz` return 405 (only GET is registered for them).
 - The SPA fallback (root NotFound) answers non-GET methods with `index.html` instead of 404/405, since it does not check the request method.

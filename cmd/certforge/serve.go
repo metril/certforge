@@ -39,7 +39,9 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	q := sqlcgen.New(pool)
 	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(cfg.KEK.Key), cfg.KEK.Key))
 	store := settings.NewStore(q, env)
+	canaryOK := true
 	if err := store.EnsureCanary(ctx); err != nil {
+		canaryOK = false
 		log.Error("KEK canary check failed; /readyz reports unavailable until the correct KEK is configured",
 			"kek_id", env.KEKID(), "kek_source", cfg.KEK.Source, "err", err)
 	}
@@ -73,7 +75,14 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return fmt.Errorf("start river: %w", err)
 	}
 	defer stopRiver(riverClient, log)
-	aud := audit.New(pool)
+	aud := audit.New(pool, crypto.DeriveKey(cfg.KEK.Key, "certforge-audit"))
+	if canaryOK {
+		if n, err := aud.Rechain(ctx); err != nil {
+			log.Error("audit chain not re-keyed; GET /api/v1/audit/verify reports where it breaks", "err", err)
+		} else if n > 0 {
+			log.Info("audit chain re-keyed with HMAC-SHA256", "events", n)
+		}
+	}
 	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
