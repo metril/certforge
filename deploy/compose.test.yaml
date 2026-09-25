@@ -15,6 +15,12 @@ services:
     # compiled in, and a later plain `docker compose up` (dev) would then run
     # that e2e image instead of rebuilding a production one.
     image: certforge:e2e
+    # Merges with compose.yaml's own certforge.depends_on.postgres (long-form
+    # map keys merge across -f files) so the server also waits on dex's own
+    # healthcheck below, not just Postgres.
+    depends_on:
+      dex:
+        condition: service_healthy
   pebble:
     image: ghcr.io/letsencrypt/pebble:2.10.1
     command: -config test/config/pebble-config.json -strict -dnsserver challtestsrv:8053

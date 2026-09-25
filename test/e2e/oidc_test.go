@@ -120,8 +120,11 @@ func follow(ctx context.Context, t *testing.T, b *http.Client, u string) (body s
 	t.Helper()
 	for i := 0; i < 10; i++ {
 		resp := httpGet(ctx, t, b, u)
-		raw, _ := io.ReadAll(resp.Body)
+		raw, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 		at = resp.Request.URL
 		loc := resp.Header.Get("Location")
 		if loc == "" {
@@ -196,8 +199,15 @@ func TestOIDCLoginThroughDex(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp = httpPostForm(ctx, t, b, action.String(), url.Values{"login": {"oidc-user@example.test"}, "password": {"password"}})
+	loginBody, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	next, _ := action.Parse(resp.Header.Get("Location"))
+	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("login form post: %d %.200s", resp.StatusCode, loginBody)
+	}
+	next, err := action.Parse(resp.Header.Get("Location"))
+	if err != nil {
+		t.Fatalf("login form post: parse Location %q: %v", resp.Header.Get("Location"), err)
+	}
 	callback := next.String()
 	if next.Host == "dex:5556" {
 		_, _, callback = follow(ctx, t, b, next.String())
@@ -255,7 +265,18 @@ func TestOIDCLoginThroughDex(t *testing.T) {
 			Details map[string]any `json:"details"`
 		} `json:"items"`
 	}
-	admin.call(ctx, t, http.MethodGet, "/api/v1/audit?action=session.login&actor="+first.User.ID, nil, &events)
+	listResp := admin.doRaw(ctx, t, http.MethodGet, "/api/v1/audit?action=session.login&actor="+first.User.ID)
+	if err := json.NewDecoder(listResp.Body).Decode(&events); err != nil {
+		listResp.Body.Close()
+		t.Fatalf("audit list: decode: %v", err)
+	}
+	listResp.Body.Close()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("audit list: %d", listResp.StatusCode)
+	}
+	if v := listResp.Header.Get("X-Audit-Truncated"); v != "" {
+		t.Fatalf("audit list: unexpected X-Audit-Truncated: %q (only the export sets it)", v)
+	}
 	if len(events.Items) == 0 || events.Items[0].Details["method"] != "oidc" {
 		t.Fatalf("session.login not audited: %+v", events)
 	}
@@ -286,6 +307,13 @@ func TestOIDCLoginThroughDex(t *testing.T) {
 	if _, code := getMe(); code != http.StatusUnauthorized {
 		t.Fatalf("disabled user's session still works: status %d", code)
 	}
+	// Re-enable: the Phase 2B Playwright suite reuses this same compose
+	// stack and this same oidc-user, so leaving it disabled here would
+	// break that later sign-in.
+	admin.call(ctx, t, http.MethodPatch, "/api/v1/users/"+first.User.ID, map[string]any{"disabled": false}, &disabled)
+	if disabled.Disabled {
+		t.Fatalf("user still disabled: %+v", disabled)
+	}
 
 	// API keys: create, call with the bearer token, revoke, confirm it stops
 	// working.
@@ -302,8 +330,8 @@ func TestOIDCLoginThroughDex(t *testing.T) {
 		t.Fatalf("bearer call: %d %s", code, body)
 	}
 	admin.call(ctx, t, http.MethodDelete, "/api/v1/api-keys/"+created.APIKey.ID, nil, nil)
-	if code, body := bearerGet(ctx, t, created.Token, "/api/v1/orgs/"+orgID+"/certificates"); code == http.StatusOK {
-		t.Fatalf("revoked key still works: %d %s", code, body)
+	if code, body := bearerGet(ctx, t, created.Token, "/api/v1/orgs/"+orgID+"/certificates"); code != http.StatusUnauthorized {
+		t.Fatalf("revoked key: got %d, want 401: %s", code, body)
 	}
 
 	// Role bindings: list finds the viewer binding, delete it; a synthetic
@@ -364,6 +392,15 @@ func TestOIDCLoginThroughDex(t *testing.T) {
 	if expResp.StatusCode != http.StatusOK || !strings.HasPrefix(expResp.Header.Get("Content-Type"), "text/csv") ||
 		!strings.HasPrefix(string(expBody), "id,ts,actor_type,") {
 		t.Fatalf("audit export: %d %q %.100s", expResp.StatusCode, expResp.Header.Get("Content-Type"), expBody)
+	}
+	// The handler always sets X-Audit-Truncated (never omits it; see
+	// internal/api/audit.go and internal/api/audit_integration_test.go's
+	// own TestAuditExportNeutralizesFormulas, which checks the same
+	// "false"), so a literal absence check would always fail here — this
+	// e2e run is well under the 100000-row cap, so the header must read
+	// "false".
+	if v := expResp.Header.Get("X-Audit-Truncated"); v != "false" {
+		t.Fatalf("audit export: X-Audit-Truncated = %q, want %q (this run is nowhere near the 100000-row cap)", v, "false")
 	}
 
 	var chain struct {
