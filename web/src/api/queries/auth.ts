@@ -24,6 +24,14 @@ export const authMethodsQuery = queryOptions({
   queryFn: () => call(api.GET('/auth/methods')),
   staleTime: 60_000,
   retry: false,
+  // Fix round 1 (review): `beforeLoad` prefetches this before LoginPage
+  // mounts. If that prefetch fails, a fresh observer mounting for the same
+  // errored query would otherwise retry once by default (`retryOnMount`'s
+  // default is true, independent of `retry: false` above, which only caps
+  // the *original* attempt's own retries) — a network hiccup could then
+  // flip the layout mid-render instead of just falling back to the
+  // password form for this visit.
+  retryOnMount: false,
 });
 
 export function useLogin() {

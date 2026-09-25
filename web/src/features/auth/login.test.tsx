@@ -57,3 +57,10 @@ it('shows the retry time on a rate-limited password login', async () => {
 it('keeps the known codes in one table', () => {
   expect(oidcErrorMessage('oidc_failed')).toBe('Single sign-on failed. Try again.');
 });
+
+it('sanitises an unsafe ?next= before it reaches the single sign-on link', async () => {
+  server.use(...authHandlers({ authed: false }), oidcOn());
+  renderRoute('/login?next=%2F%2Fevil');
+  const sso = await screen.findByRole('link', { name: 'Sign in with single sign-on' });
+  expect(sso).toHaveAttribute('href', '/api/v1/auth/oidc/start?next=%2F');
+});

@@ -20,11 +20,14 @@ export const Route = createFileRoute('/login')({
   beforeLoad: async ({ context, search }) => {
     const status = await context.queryClient.ensureQueryData(setupStatusQuery);
     if (status.needsSetup) throw redirect({ to: '/setup' });
-    // Adaptation (controller ruling; preflight A28): a valid session cookie
-    // still 403s the next mutating call without a fresh CSRF token, even on
-    // a public route. Probing /auth/me here both sends an already-signed-in
-    // visitor straight to their target and caches Me's csrfToken before the
-    // sign-in form's own POST.
+    // Adaptation (controller ruling; preflight A28): an anonymous POST to
+    // /auth/login itself carries no session, so internal/authn/middleware.go
+    // never CSRF-checks it — this probe isn't for that. It's for a visitor
+    // who already has a valid, still-live session cookie (stale tab, back
+    // button, and so on): their *next* mutating call would 403 without a
+    // fresh CSRF token, even on this public route. Probing /auth/me here
+    // both sends that visitor straight to their target and caches Me's
+    // csrfToken for whatever they do once there.
     try {
       await context.queryClient.ensureQueryData(meQuery);
     } catch (e) {
