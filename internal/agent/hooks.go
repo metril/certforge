@@ -8,10 +8,33 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/metril/certforge/internal/agentproto"
 )
+
+// passthroughEnv are the system environment variables a hook inherits
+// unchanged; everything else (in particular CF_AGENT_* and CF_HOOK_ALLOW,
+// which a hook has no business seeing) is left out.
+var passthroughEnv = []string{"PATH", "HOME", "LANG", "TZ"}
+
+// minimalEnv builds a hook's base environment: a short passthrough list plus
+// any LC_* locale variables, never the agent's own process environment.
+func minimalEnv() []string {
+	var out []string
+	for _, k := range passthroughEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			out = append(out, k+"="+v)
+		}
+	}
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "LC_") {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
 
 // OutputCap bounds each of a hook's stdout and stderr.
 const OutputCap = 8 << 10
@@ -67,7 +90,7 @@ func (h *HookRunner) Run(ctx context.Context, spec agentproto.HookSpec, env []st
 	}
 	var stdout, stderr capped
 	cmd := exec.Command(spec.Argv[0], spec.Argv[1:]...) //nolint:gosec // argv[0] is allowlisted; no shell
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(minimalEnv(), env...)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	// A descendant that left the process group (setsid) can hold the output
 	// pipes after the hook exits or is killed; Wait gives up on them after

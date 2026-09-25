@@ -97,6 +97,8 @@ Global settings for certforge-agent (Settings → Agents).
 
 The same page lists the agent CAs with rotate and retire (see operations.md → Agent CA rotation) and the listener certificate's names and expiry.
 
+certforge-agent itself (the binary running alongside Traefik or another target) is configured by its own environment variables on the client host, not this page — in particular `CF_WRITE_ALLOW` and `CF_HOOK_ALLOW`, the directories and executables it is allowed to touch; both are empty (nothing allowed) by default. See [agent.md → Environment](agent.md#environment).
+
 ### Backup and keys
 
 Shows the key-encryption key's status (from `/readyz`'s `kek` check) and the **KEK escrow confirmed** switch, which must be on before scheduled backups run.

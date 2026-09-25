@@ -18,6 +18,7 @@ The agent renews its certificate at two thirds of its lifetime (90 days by defau
 | `CF_AGENT_TOKEN` | – | Enrolment token. |
 | `CF_AGENT_TOKEN_FILE` | – | File holding the token, for example a Docker secret. Used when `CF_AGENT_TOKEN` is empty; `run` waits for it to appear. |
 | `CF_HOOK_ALLOW` | empty (hooks off) | Colon-separated absolute paths of executables hooks may run. See [Hooks and the allowlist](#hooks-and-the-allowlist). |
+| `CF_WRITE_ALLOW` | empty (every deploy fails) | Colon-separated absolute directory prefixes the agent may write or remove files under. See [File layouts](#file-layouts). |
 | `CF_AGENT_PULL_INTERVAL` | `0` | Also reconcile on this schedule (for example `15m`, at least `1m`), whether or not the WebSocket is up; while it is down, `run` pulls over REST. `0` means only on server nudges and at connect. Set it when any grant for this client uses `pull` delivery. |
 
 ## Commands
@@ -33,6 +34,10 @@ The agent renews its certificate at two thirds of its lifetime (90 days by defau
 ## File layouts
 
 A layout (Delivery → Layouts) lists files by absolute path on the agent host. Each file concatenates PEM parts in order: `cert`, `chain`, `fullchain`, `key`, `combined` (fullchain + key). Files are written atomically (temp file in the same directory, fsync, chmod, rename). `owner` and `group` accept names or numeric ids and apply only when the agent runs as root; otherwise the agent logs one warning and applies the mode only. In the distroless image only `root`, `nonroot` (65532) and `nobody` resolve by name, so prefer numeric ids. Paths must be absolute and clean; mount the target directories into the agent container.
+
+### Write allowlist
+
+The agent only writes or removes files under a directory listed in `CF_WRITE_ALLOW` (colon-separated absolute prefixes). A compromised or misconfigured server could otherwise push a layout or target pointing anywhere on the host; with `CF_WRITE_ALLOW` empty every deploy fails at once, per grant, with a clear error, and the agent logs a startup warning. Set it to the same directories you mount into the container — for example `CF_WRITE_ALLOW=/etc/ssl:/etc/traefik/dynamic`. Each write is checked against the allowlist after resolving symlinks on the deepest existing parent directory, so a symlink cannot be used to point an allowed path outside the allowed directory.
 
 ## Traefik integration
 
@@ -50,6 +55,7 @@ Share Traefik's file-provider directory with the agent and grant the certificate
         image: ghcr.io/metril/certforge-agent:latest
         environment:
           CF_AGENT_TOKEN_FILE: /run/secrets/cf_agent_token
+          CF_WRITE_ALLOW: /etc/traefik/dynamic
         secrets: [cf_agent_token]
         volumes:
           - certforge-agent:/data

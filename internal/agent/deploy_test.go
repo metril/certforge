@@ -17,14 +17,15 @@ import (
 	"github.com/metril/certforge/internal/delivery"
 )
 
-func testDeployer(allow ...string) *Deployer {
-	return &Deployer{Files: &FileWriter{Log: discard, EUID: 1000, Lookup: lookupIDs}, Hooks: &HookRunner{Allow: allow}, Log: discard}
+func testDeployer(writeAllow []string, hookAllow ...string) *Deployer {
+	return &Deployer{Files: &FileWriter{Log: discard, EUID: 1000, Lookup: lookupIDs}, Hooks: &HookRunner{Allow: hookAllow}, Log: discard, WriteAllow: writeAllow}
 }
 
 func traefikGrant(dir string) (agentproto.Assignment, agentproto.Bundle) {
 	cfg, _ := json.Marshal(map[string]string{"dir": filepath.Join(dir, "traefik")})
-	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: uuid.New(), Target: &agentproto.Target{Type: "traefik", Config: cfg}}
-	b := agentproto.Bundle{VersionID: a.VersionID,
+	versionID := uuid.New()
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
+	b := agentproto.Bundle{VersionID: versionID,
 		Files:    []agentproto.BundleFile{{Path: filepath.Join(dir, "ssl", "web.pem"), Mode: "0644", Content: []byte("PEM")}},
 		Material: &agentproto.Material{Fullchain: []byte("FULL"), Key: []byte("KEY")}}
 	return a, b
@@ -32,9 +33,9 @@ func traefikGrant(dir string) (agentproto.Assignment, agentproto.Bundle) {
 
 func TestDeployerLayoutTraefikAndRemove(t *testing.T) {
 	dir := t.TempDir()
-	d := testDeployer()
+	d := testDeployer([]string{dir})
 	a, b := traefikGrant(dir)
-	res, written := d.Deploy(context.Background(), a, b)
+	res, written, certsDir := d.Deploy(context.Background(), a, b)
 	if res.State != agentproto.StateOK || len(written) != 4 || len(res.Installed) != 4 || res.VersionID != a.VersionID {
 		t.Fatalf("res %+v written %d", res, len(written))
 	}
@@ -47,7 +48,10 @@ func TestDeployerLayoutTraefikAndRemove(t *testing.T) {
 	if written[0].SHA256 != delivery.Digest([]byte("PEM")) || written[3].Path != yml {
 		t.Fatalf("written %+v", written)
 	}
-	removed, err := d.Remove(written)
+	if certsDir != filepath.Join(dir, "traefik", "certs", "web") {
+		t.Fatalf("certsDir %q", certsDir)
+	}
+	removed, err := d.Remove(written, certsDir)
 	if err != nil || removed[0] != yml {
 		t.Fatalf("removal order %v %v", removed, err)
 	}
@@ -56,7 +60,7 @@ func TestDeployerLayoutTraefikAndRemove(t *testing.T) {
 			t.Fatalf("%s not removed", f.Path)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "traefik", "certs", "web")); !os.IsNotExist(err) {
+	if _, err := os.Stat(certsDir); !os.IsNotExist(err) {
 		t.Fatal("empty certs/<name> directory left behind")
 	}
 }
@@ -65,7 +69,7 @@ func TestDeployerPreHookFailureWritesNothing(t *testing.T) {
 	dir := t.TempDir()
 	a, b := traefikGrant(dir)
 	a.Hooks = []agentproto.HookSpec{{ID: uuid.New(), Phase: "pre_deploy", Argv: []string{"/bin/sh", "-c", "exit 2"}, TimeoutSeconds: 5}}
-	res, written := testDeployer("/bin/sh").Deploy(context.Background(), a, b)
+	res, written, _ := testDeployer([]string{dir}, "/bin/sh").Deploy(context.Background(), a, b)
 	if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "pre_deploy") || len(written) != 0 || len(res.HookRuns) != 1 || res.HookRuns[0].ExitCode != 2 {
 		t.Fatalf("res %+v", res)
 	}
@@ -78,16 +82,100 @@ func TestDeployerPostHookFailureKeepsFiles(t *testing.T) {
 	dir := t.TempDir()
 	a, b := traefikGrant(dir)
 	a.Hooks = []agentproto.HookSpec{{ID: uuid.New(), Phase: "post_deploy", Argv: []string{"/bin/sh", "-c", "exit 1"}, TimeoutSeconds: 5}}
-	res, written := testDeployer("/bin/sh").Deploy(context.Background(), a, b)
+	res, written, _ := testDeployer([]string{dir}, "/bin/sh").Deploy(context.Background(), a, b)
 	if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "post_deploy") || len(written) != 4 {
 		t.Fatalf("res %+v", res)
 	}
 }
 
 func TestDeployerTargetWithoutMaterialFails(t *testing.T) {
-	a, b := traefikGrant(t.TempDir())
+	dir := t.TempDir()
+	a, b := traefikGrant(dir)
 	b.Material = nil
-	if res, _ := testDeployer().Deploy(context.Background(), a, b); res.State != agentproto.StateFailed {
+	if res, _, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b); res.State != agentproto.StateFailed {
 		t.Fatalf("res %+v", res)
 	}
+}
+
+// Review Focus: a mismatched bundle version is never installed.
+func TestDeployerVersionMismatchFails(t *testing.T) {
+	dir := t.TempDir()
+	a, b := traefikGrant(dir)
+	b.VersionID = uuid.New()
+	res, written, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
+	if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "version") || len(written) != 0 {
+		t.Fatalf("res %+v", res)
+	}
+}
+
+// Review Focus: a world-writable mode is refused even if the server sent it.
+func TestDeployerWorldWritableModeFails(t *testing.T) {
+	dir := t.TempDir()
+	a, b := traefikGrant(dir)
+	b.Files[0].Mode = "0646"
+	res, written, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
+	if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "world-writable") || len(written) != 0 {
+		t.Fatalf("res %+v", res)
+	}
+}
+
+// Review Focus: writes and removes are confined to CF_WRITE_ALLOW.
+func TestDeployerWriteAllowConfinement(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("empty allowlist refuses", func(t *testing.T) {
+		a, b := traefikGrant(dir)
+		res, written, _ := testDeployer(nil).Deploy(context.Background(), a, b)
+		if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "CF_WRITE_ALLOW") || len(written) != 0 {
+			t.Fatalf("res %+v", res)
+		}
+	})
+
+	t.Run("path outside allowlist refused on deploy", func(t *testing.T) {
+		a, b := traefikGrant(dir)
+		res, written, _ := testDeployer([]string{filepath.Join(dir, "traefik")}).Deploy(context.Background(), a, b)
+		if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "CF_WRITE_ALLOW") || len(written) != 0 {
+			t.Fatalf("res %+v (layout file outside the allowlist should be refused)", res)
+		}
+	})
+
+	t.Run("allowed path works", func(t *testing.T) {
+		a, b := traefikGrant(dir)
+		res, written, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
+		if res.State != agentproto.StateOK || len(written) != 4 {
+			t.Fatalf("res %+v", res)
+		}
+	})
+
+	t.Run("path outside allowlist refused on remove", func(t *testing.T) {
+		a, b := traefikGrant(dir)
+		d := testDeployer([]string{dir})
+		res, written, certsDir := d.Deploy(context.Background(), a, b)
+		if res.State != agentproto.StateOK {
+			t.Fatalf("setup deploy: %+v", res)
+		}
+		d.WriteAllow = []string{filepath.Join(dir, "traefik")} // no longer covers dir/ssl/web.pem
+		if _, err := d.Remove(written, certsDir); err == nil || !strings.Contains(err.Error(), "CF_WRITE_ALLOW") {
+			t.Fatalf("remove outside allowlist: err = %v", err)
+		}
+	})
+
+	t.Run("symlinked parent pointing outside refused", func(t *testing.T) {
+		root := t.TempDir()
+		safe := filepath.Join(root, "safe")
+		escape := filepath.Join(root, "escape")
+		if err := os.Mkdir(safe, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(escape, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(escape, filepath.Join(safe, "link")); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(safe, "link", "evil.pem")
+		if _, err := confine([]string{safe}, p); err == nil || !strings.Contains(err.Error(), "CF_WRITE_ALLOW") {
+			t.Fatalf("confine via symlinked parent: err = %v", err)
+		}
+	})
 }

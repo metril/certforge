@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/metril/certforge/internal/agentproto"
@@ -13,11 +13,23 @@ import (
 )
 
 // Deployer installs one grant: pre_deploy hooks, layout files, target
-// files, post_deploy hooks.
+// files, post_deploy hooks. Every write and remove is confined to
+// WriteAllow (see confine.go); an empty WriteAllow refuses everything.
 type Deployer struct {
-	Files *FileWriter
-	Hooks *HookRunner
-	Log   *slog.Logger
+	Files      *FileWriter
+	Hooks      *HookRunner
+	Log        *slog.Logger
+	WriteAllow []string
+}
+
+// NewDeployer constructs a Deployer. An empty writeAllow disables every
+// write and remove (each grant then fails with a clear per-grant error), so
+// this logs a warning once, immediately, rather than only on the first grant.
+func NewDeployer(log *slog.Logger, files *FileWriter, hooks *HookRunner, writeAllow []string) *Deployer {
+	if len(writeAllow) == 0 {
+		log.Warn("CF_WRITE_ALLOW is empty: certforge-agent will refuse to write or remove any file until it is set")
+	}
+	return &Deployer{Files: files, Hooks: hooks, Log: log, WriteAllow: writeAllow}
 }
 
 func hookEnv(a agentproto.Assignment, files []delivery.File) []string {
@@ -29,18 +41,39 @@ func hookEnv(a agentproto.Assignment, files []delivery.File) []string {
 		"CF_VERSION_ID=" + a.VersionID.String(), "CF_FINGERPRINT=" + a.Fingerprint, "CF_FILES=" + strings.Join(paths, ":")}
 }
 
-// Deploy returns the result to report and the files written, in write order.
-func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentproto.Bundle) (agentproto.GrantResult, []agentproto.FileSpec) {
+// parseMode parses an octal mode and refuses one that is world-writable,
+// independently of any check the server already made: a compromised or
+// buggy server should not be able to make the agent install a
+// world-writable file, in particular a private key.
+func parseMode(s string) (os.FileMode, error) {
+	m, err := delivery.ParseMode(s)
+	if err != nil {
+		return 0, err
+	}
+	if m&0o002 != 0 {
+		return 0, fmt.Errorf("mode %s must not be world-writable", s)
+	}
+	return m, nil
+}
+
+// Deploy returns the result to report, the files written in write order,
+// and (only when the grant has a Traefik target) the certs/<name>
+// directory the target created, for Remove to prune once empty.
+func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentproto.Bundle) (agentproto.GrantResult, []agentproto.FileSpec, string) {
 	res := agentproto.GrantResult{GrantID: a.ID, VersionID: b.VersionID, State: agentproto.StateOK, Installed: []agentproto.FileDigest{}}
 	var written []agentproto.FileSpec
-	fail := func(format string, args ...any) (agentproto.GrantResult, []agentproto.FileSpec) {
+	fail := func(format string, args ...any) (agentproto.GrantResult, []agentproto.FileSpec, string) {
 		res.State, res.Error = agentproto.StateFailed, fmt.Sprintf(format, args...)
-		return res, written
+		return res, written, ""
+	}
+	if b.VersionID != a.VersionID {
+		return fail("bundle version %s does not match assignment version %s", b.VersionID, a.VersionID)
 	}
 	files := make([]delivery.File, 0, len(b.Files)+3)
 	for _, f := range b.Files {
 		files = append(files, delivery.File{Path: f.Path, Owner: f.Owner, Group: f.Group, Mode: f.Mode, Data: f.Content})
 	}
+	var certsDir string
 	if a.Target != nil {
 		cfg, err := delivery.ParseTarget(a.Target.Type, a.Target.Config)
 		if err != nil {
@@ -50,11 +83,18 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			return fail("the bundle has no key material for the %s target", a.Target.Type)
 		}
 		files = append(files, delivery.RenderTraefik(a.CertificateName, cfg, b.Material.Fullchain, b.Material.Key)...)
+		certsDir = path.Join(cfg.Dir, "certs", delivery.SafeName(a.CertificateName))
 	}
-	for _, f := range files {
+	resolved := make([]string, len(files))
+	for i, f := range files {
 		if err := delivery.CleanPath("path", f.Path); err != nil {
 			return fail("refusing to write %q: %v", f.Path, err)
 		}
+		real, err := confine(d.WriteAllow, f.Path)
+		if err != nil {
+			return fail("%v", err)
+		}
+		resolved[i] = real
 	}
 	env := hookEnv(a, files)
 	for _, h := range a.Hooks {
@@ -67,12 +107,12 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			return fail("pre_deploy hook %s exited %d; files were not written", h.Argv[0], run.ExitCode)
 		}
 	}
-	for _, f := range files {
-		mode, err := delivery.ParseMode(f.Mode)
+	for i, f := range files {
+		mode, err := parseMode(f.Mode)
 		if err != nil {
 			return fail("%s: %v", f.Path, err)
 		}
-		if err := d.Files.Write(f.Path, f.Data, mode, f.Owner, f.Group); err != nil {
+		if err := d.Files.Write(resolved[i], f.Data, mode, f.Owner, f.Group); err != nil {
 			return fail("write %s: %v", f.Path, err)
 		}
 		sum := delivery.Digest(f.Data)
@@ -89,21 +129,29 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			res.State, res.Error = agentproto.StateFailed, fmt.Sprintf("post_deploy hook %s exited %d; the files are installed", h.Argv[0], run.ExitCode)
 		}
 	}
-	return res, written
+	return res, written, certsDir
 }
 
 // Remove deletes files in reverse write order, so a Traefik YAML goes
-// before the certificates it references, and prunes empty certs/<name>/.
-func (d *Deployer) Remove(files []agentproto.FileSpec) ([]string, error) {
+// before the certificates it references, and prunes certsDir once empty:
+// the exact certs/<name> directory Deploy's Traefik target created for
+// this grant, or "" when the grant had no target.
+func (d *Deployer) Remove(files []agentproto.FileSpec, certsDir string) ([]string, error) {
 	removed := make([]string, 0, len(files))
 	for i := len(files) - 1; i >= 0; i-- {
 		p := files[i].Path
-		if err := d.Files.Remove(p); err != nil {
+		real, err := confine(d.WriteAllow, p)
+		if err != nil {
+			return removed, err
+		}
+		if err := d.Files.Remove(real); err != nil {
 			return removed, err
 		}
 		removed = append(removed, p)
-		if dir := filepath.Dir(p); filepath.Base(filepath.Dir(dir)) == "certs" {
-			_ = os.Remove(dir) // only succeeds once empty
+	}
+	if certsDir != "" {
+		if real, err := confine(d.WriteAllow, certsDir); err == nil {
+			_ = os.Remove(real) // only succeeds once empty
 		}
 	}
 	return removed, nil

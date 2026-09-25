@@ -49,6 +49,18 @@ func TestHookRunnerTimeoutKillsGroup(t *testing.T) {
 	}
 }
 
+// Review Focus: a hook never sees the agent's own process environment.
+func TestHookRunnerMinimalEnv(t *testing.T) {
+	t.Setenv("CF_AGENT_TOKEN", "top-secret")
+	t.Setenv("CF_HOOK_ALLOW", "/bin/sh")
+	t.Setenv("CF_WRITE_ALLOW", "/etc/ssl")
+	run := (&HookRunner{Allow: []string{"/bin/sh"}}).Run(context.Background(),
+		agentproto.HookSpec{Argv: []string{"/bin/sh", "-c", "echo \"$CF_AGENT_TOKEN|$CF_HOOK_ALLOW|$CF_WRITE_ALLOW|$PATH\""}, TimeoutSeconds: 5}, nil)
+	if want := "|||" + os.Getenv("PATH") + "\n"; run.ExitCode != 0 || run.Stdout != want {
+		t.Fatalf("run %+v, want stdout %q (empty CF_* vars, real PATH)", run, want)
+	}
+}
+
 func TestHookRunnerCapsOutput(t *testing.T) {
 	run := (&HookRunner{Allow: []string{"/bin/sh"}}).Run(context.Background(), agentproto.HookSpec{
 		Argv: []string{"/bin/sh", "-c", "i=0; while [ $i -lt 2000 ]; do echo aaaaaaaaaaaaaaaaaaaa; i=$((i+1)); done"}, TimeoutSeconds: 10}, nil)
