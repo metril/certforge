@@ -15,6 +15,7 @@ import (
 	"github.com/riverqueue/river/rivertype"
 
 	"github.com/metril/certforge/internal/agentca"
+	"github.com/metril/certforge/internal/agenthub"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/audit"
@@ -115,6 +116,8 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// issueWorker.Listeners and the hub are wired, or a version issued in
 	// that window never reaches deployments and the field writes race.
 	agentSvc.Listener = agentListener
+	hub := agenthub.New(log)
+	agentSvc.Hub = hub
 	if err := riverClient.Start(context.Background()); err != nil {
 		return fmt.Errorf("start river: %w", err)
 	}
@@ -125,7 +128,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, AuthSettings: authSettings, OIDC: oidcClient,
-		Agents: agentSvc, AgentSettings: agentSettings,
+		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{
@@ -173,6 +176,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	log.Info("shutting down")
+	hub.Shutdown()
 	if agentSrv != nil {
 		if err := agentSrv.Shutdown(shutdownCtx); err != nil {
 			log.Warn("agent listener shutdown", "err", err)

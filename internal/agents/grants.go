@@ -227,6 +227,11 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 // concurrent CreateGrant/UpdateGrant on the same client blocks until this
 // transaction commits or rolls back, instead of both computing checkPaths
 // against a stale, pre-conflict view.
+//
+// Full lock order across this package: the grant row itself FOR UPDATE
+// first (when the path starts from a grant), then referenced rows (hooks,
+// layout/target, certificate), then client rows in id order (here), then
+// deployments.
 func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uuid.UUID) ([]uuid.UUID, map[uuid.UUID]bool, error) {
 	rows, err := q.GrantSources(ctx, grantIDs)
 	if err != nil {

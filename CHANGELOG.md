@@ -85,6 +85,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Output layouts, the Traefik file-provider deploy target (schema in /meta/schemas) and agent hooks, with shared rendering and digests for drift.
 - Grants with deployments, desired revisions and sync nudges; certificate versions, layout, target and hook changes re-render every affected grant; certificate list grant counts.
 - Agent sync endpoints (assignments, audited bundles, reports, heartbeat) with drift detection, auto-remediation and hook run history.
+- Agent WebSocket hub: hello with agent facts, sync nudges, revocation close, keepalive and eviction; clients report whether their agent is connected.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

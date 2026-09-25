@@ -167,7 +167,7 @@ Endpoints:
 - `GET /agent/v1/grants/{id}/bundle` — the one grant's rendered files (and, for a deploy target, key material), audited as `grant.bundle_fetched`.
 - `POST /agent/v1/report` — deployment outcomes, hook runs and removal confirmations for one revision.
 - `POST /agent/v1/heartbeat` — installed-file digests, re-checked against drift between reports.
-- `GET /agent/v1/ws` — the WebSocket session an agent holds while connected (push `sync` nudges, arrives in Task 9).
+- `GET /agent/v1/ws` — the WebSocket session an agent holds while connected (push `sync` nudges; see Socket below).
 
 `agentproto.Assignments` (the `GET /agent/v1/assignments` body):
 ```
@@ -198,3 +198,7 @@ sequenceDiagram
     A->>S: heartbeat{installed[grantId, path, sha256, mtime]}
   end
 ```
+
+### Socket
+
+`internal/agenthub` keeps one WebSocket per client (ADR 0010): the newest connection for a client evicts the old one, the server pings every 25 s and closes a socket after 75 s without a message or pong, and the registry is in-memory and single-replica — `Client.connected` means connected to this process. Messages: server-sent `hello_ack` (reply to `hello`, carries the heartbeat interval and desired revision), `sync{revision}` (a nudge; the agent still fetches full assignments), `trust_bundle_update` (after a CA rotation) and `revoked` (immediately followed by a close); agent-sent `hello`, `heartbeat` and `deploy_result` (a `Report`), handled by the same `agents.Service` methods the REST endpoints use. Close codes: `4000` replaced by a newer connection, `4001` revoked or re-enrolled, `4002` idle timeout.

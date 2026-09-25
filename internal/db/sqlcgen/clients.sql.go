@@ -645,3 +645,49 @@ func (q *Queries) UpdateClient(ctx context.Context, arg UpdateClientParams) (Cli
 	)
 	return i, err
 }
+
+const updateClientFacts = `-- name: UpdateClientFacts :one
+UPDATE clients SET hostname = $2, os = $3, arch = $4, agent_version = $5, capabilities = $6, last_seen = now()
+WHERE id = $1 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at
+`
+
+type UpdateClientFactsParams struct {
+	ID           uuid.UUID `json:"id"`
+	Hostname     string    `json:"hostname"`
+	Os           string    `json:"os"`
+	Arch         string    `json:"arch"`
+	AgentVersion string    `json:"agent_version"`
+	Capabilities []string  `json:"capabilities"`
+}
+
+func (q *Queries) UpdateClientFacts(ctx context.Context, arg UpdateClientFactsParams) (Client, error) {
+	row := q.db.QueryRow(ctx, updateClientFacts,
+		arg.ID,
+		arg.Hostname,
+		arg.Os,
+		arg.Arch,
+		arg.AgentVersion,
+		arg.Capabilities,
+	)
+	var i Client
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.Name,
+		&i.Status,
+		&i.AgentCertSerial,
+		&i.AgentCertNotAfter,
+		&i.AgentCaID,
+		&i.Hostname,
+		&i.Os,
+		&i.Arch,
+		&i.AgentVersion,
+		&i.Capabilities,
+		&i.LastSeen,
+		&i.DesiredRevision,
+		&i.AppliedRevision,
+		&i.CreatedAt,
+	)
+	return i, err
+}

@@ -46,6 +46,7 @@ func NewAgentRouter(d Deps) http.Handler {
 			g.Get("/grants/{id}/bundle", a.bundle)
 			g.Post("/report", a.report)
 			g.Post("/heartbeat", a.heartbeat)
+			g.Get("/ws", a.ws)
 		})
 	})
 	return r

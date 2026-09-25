@@ -170,8 +170,8 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 | 5 | Agent listener and enrolment | done | 7a9535c |
 | 6 | Layouts, targets and hooks | done | 4d7fe77 |
 | 7 | Grants and revisions | done | fbad6f6 |
-| 8 | Agent sync over REST | done | pending |
-| 9 | WebSocket hub | todo | – |
+| 8 | Agent sync over REST | done | 5882aae |
+| 9 | WebSocket hub | done | pending |
 | 10 | Agent CA API | todo | – |
 | 11 | Agent identity and enrolment | todo | – |
 | 12 | Agent files, Traefik target, hooks | todo | – |
@@ -320,6 +320,7 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 - DNS provider secrets sit in the process environment during a lego provider's `Build` (lego's own env-var-based construction); no isolation beyond that yet.
 - 3A Task 5: the agent listener always uses a certificate from the internal agent CA; uploading or picking a CertForge-managed certificate for it is not supported yet.
 - River's own health (queue depth, stuck jobs) is not part of `/readyz`; only the database and KEK canary are checked.
+- 3A Task 9: the agent hub is in memory and single-replica (ADR 0010); multi-replica fan-out via LISTEN/NOTIFY is not implemented.
 - Providers with ambient cloud credentials (`route53`, `gcloud`, `azuredns`, …) fall back to the server's own identity (instance role, ADC, …) when no keys are set on the stored credential; nothing here gates that off from a CertForge deployment's own cloud identity. Gate this in Phase 2.
 - A database error inside `IssueWorker.succeed` (after the CA has already issued) makes river retry the whole issuance from scratch, including a fresh CA order — against Let's Encrypt this risks the duplicate-certificate rate limit on a flaky database.
 - `MaxWorkers=4` is shared by every river job kind, including the periodic scan job and hour-long manual-dns waits; a burst of manual-dns issuances can starve renewals.
