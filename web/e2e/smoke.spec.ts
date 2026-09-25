@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type ConsoleMessage, type Page } from '@playwright/test';
+import { signInLocal } from './auth';
 import { E2E } from './env';
 
 const SURFACE = { light: 'rgb(246, 247, 249)', dark: 'rgb(22, 27, 36)' } as const;
@@ -63,8 +64,7 @@ for (const theme of ['light', 'dark'] as const) {
     expect(new Set(themes)).toEqual(new Set([theme]));
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(SURFACE[theme]);
 
-    await page.getByLabel('Admin password').fill(E2E.password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await signInLocal(page);
     await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Certificates' }).click();
@@ -125,8 +125,7 @@ for (const theme of ['light', 'dark'] as const) {
 
 test('names step wraps chips at 375px and supports a pointer drag to change the CN', async ({ page }) => {
   await page.goto('/login');
-  await page.getByLabel('Admin password').fill(E2E.password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await signInLocal(page);
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
   await page.setViewportSize({ width: 375, height: 812 });

@@ -8,4 +8,7 @@ export const E2E = {
   dnsProvider: process.env.CF_E2E_DNS_PROVIDER ?? 'e2e-challtestsrv',
   certName: 'smoke',
   commonName: 'smoke.example.test',
+  dexIssuer: process.env.CF_E2E_DEX_ISSUER ?? 'http://dex:5556/dex',
+  oidcUser: process.env.CF_E2E_OIDC_USER ?? 'oidc-user@example.test',
+  oidcPassword: process.env.CF_E2E_OIDC_PASSWORD ?? 'password',
 };

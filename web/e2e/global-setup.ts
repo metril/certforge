@@ -37,6 +37,15 @@ export default async function globalSetup(): Promise<void> {
     }
 
     const headers = { 'X-CSRF-Token': me.csrfToken };
+
+    // Ruling C7: disable the login rate limit right after the first local
+    // admin login, before any OIDC attempts, so repeated logins across the
+    // Go e2e suite and this Playwright suite (same compose stack) never hit
+    // 429. Idempotent: the section may already be 0 from a prior run.
+    // PutSectionTx fully replaces the section's stored JSON with exactly
+    // what's sent, so this alone fully (re)defines it here.
+    await body(api.put('/api/v1/settings/authentication', { headers, data: { loginRatePerMinute: 0 } }));
+
     const org = me.orgs.find((o) => o.slug === E2E.orgSlug);
     if (!org) throw new Error(`org slug ${E2E.orgSlug} not found among ${me.orgs.map((o) => o.slug).join(', ') || '(none)'}`);
     const base = `/api/v1/orgs/${org.id}`;

@@ -7,7 +7,7 @@ Single status file. Updated in every commit that completes a task.
 | # | Phase | Status | Spec | Plan | Started | Finished |
 |---|---|---|---|---|---|---|
 | 1 | Core issuance slice | done | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | 2026-09-24 |
-| 2 | Identity and tenancy | in progress | [design](design.md) | [2A](superpowers/plans/2026-09-25-phase-2a-identity-backend.md) · [2B](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md) | 2026-09-25 | – |
+| 2 | Identity and tenancy | done | [design](design.md) | [2A](superpowers/plans/2026-09-25-phase-2a-identity-backend.md) · [2B](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md) | 2026-09-25 | 2026-09-25 |
 | 3 | Agent | planned | [design](design.md) | – | – | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
 | 5 | Vault and private CA | planned | [design](design.md) | – | – | – |
@@ -127,7 +127,7 @@ too, and the auditor refuses to record under a wrong KEK; 0d6b931:
 lock-free settings reload; 14c1eed: generation-checked settings reload,
 audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 
-### Phase 2B: tenancy web UI — in progress (started 2026-09-25) ([plan](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md))
+### Phase 2B: tenancy web UI — done (started 2026-09-25, finished 2026-09-25) ([plan](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md))
 
 | # | Task | Status | Commit |
 |---|---|---|---|
@@ -140,8 +140,8 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 | 7 | Orgs and sites | done | e3a1721 |
 | 8 | All orgs | done | fc314b8 |
 | 9 | Audit log page | done | e5494c9 |
-| 10 | Overview recent activity | done | pending |
-| 11 | Playwright: dex login and audit | pending | – |
+| 10 | Overview recent activity | done | bdec67c |
+| 11 | Playwright: dex login and audit | done | pending |
 
 ## Decisions made during implementation
 
@@ -294,3 +294,4 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 - 2B Task 2: `LoginPage` never reads `AuthMethods.localEnabled` — the local admin form is always reachable (directly, or behind Break-glass login when single sign-on is on). The server cannot emit `localEnabled: false` yet (Phase 2B has no setting to disable the local admin), so there is nothing to gate against; wire it once that setting exists.
 - 2A Task 15 (dex e2e, ruling C7 plus additional coverage): `test/e2e/oidc_test.go` PUTs `loginRatePerMinute: 0` on the `authentication` settings section right after the first local admin login, before any OIDC attempt — `PutSectionTx` fully replaces the section's stored JSON with exactly what a PUT sends (no per-field default merge; see `internal/settings/store.go`), so the field is also carried explicitly in the later full OIDC-config PUT rather than relying on it being merely absent. dex v2.45.1's builtin local (`staticPasswords`) connector does not emit a `groups` claim (upstream `dexidp/dex#3958` is still open, confirmed against the pinned image), so the real password-form login cannot exercise an `oidc_group` role binding end to end; the test binds the OIDC user's role by its own subject id instead (as the brief's sample does) and exercises `oidc_group` binding create/list/delete structurally with a synthetic group name — group-claim matching itself is already covered by `internal/authn`'s unit/integration tests against the fake `oidctest` provider. The same test also drives users list/disable (and confirms the disabled user's session dies), API key create/bearer-call/revoke, role binding list/delete, org/site CRUD, and audit list/export/verify — beyond the brief's own Step 3 sample — per the dispatch's explicit ruling to exercise that surface. `deploy/compose.test.yaml`'s `dex` service has a `wget`-based healthcheck against `/dex/healthz` (the image has `wget` but no `curl`; verified locally against the pinned tag) so `docker compose up --wait` doesn't return before dex is actually serving.
 - 2A final fix wave (whole-branch review; two Important, five Minor): f879d92 fixed the admin-guard lock gap (`LockGlobalAdminUsers` now also locks `role_bindings`, not just `users`) and the wrong-KEK audit write (`serve` now builds a disabled `Auditor` on a failed canary instead of a recording one); this commit fixes the five Minors (404-not-403 on an unauthorized role-binding delete or API-key revoke, `GET /auth/me` 403 for an API-key principal, `SettingsSource.Get`'s lock-free double-checked reload with a negative error cache, and two doc corrections). As in Phase 1's final-review fix waves, these were separate commits rather than amending Task 15's.
+- 2B Task 11 (ruling C7): `web/e2e/global-setup.ts` now PUTs `loginRatePerMinute: 0` on the `authentication` settings section right after its first admin login (setup-complete or a rerun's login), idempotently — mirrors `test/e2e/oidc_test.go`'s Task 15 fix so repeated logins across both suites, which share the same compose stack, never hit 429. `oidc.spec.ts` binds the dex user by its own subject id (as the Go e2e does; dex's static connector emits no `groups` claim), not by an `oidc_group`, since a group binding could never actually match. Spec order (alphabetical: `audit.spec.ts`, `oidc.spec.ts`, `smoke.spec.ts`) is left as Playwright's default rather than forced, because local admin login stays reachable throughout — the server has no way to disable it yet (2B Task 2's decision above) — so `oidc.spec.ts` enabling and then disabling single sign-on around its one test never affects `signInLocal` in the other two specs.
