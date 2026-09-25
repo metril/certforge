@@ -35,14 +35,17 @@ type User struct {
 
 // Provider is a running fake OIDC provider.
 type Provider struct {
-	srv    *httptest.Server
-	key    *rsa.PrivateKey
-	mu     sync.Mutex
-	user   User
-	denied bool
-	nonce  string
-	codes  map[string]grant
-	tokens map[string]User
+	srv          *httptest.Server
+	key          *rsa.PrivateKey
+	mu           sync.Mutex
+	user         User
+	denied       bool
+	nonce        string
+	audience     string
+	publicClient bool
+	closeOnce    sync.Once
+	codes        map[string]grant
+	tokens       map[string]User
 }
 
 type grant struct {
@@ -66,7 +69,7 @@ func New(t testing.TB) *Provider {
 	mux.HandleFunc("POST /token", p.token)
 	mux.HandleFunc("GET /userinfo", p.userinfo)
 	p.srv = httptest.NewServer(mux)
-	t.Cleanup(p.srv.Close)
+	t.Cleanup(p.Stop)
 	return p
 }
 
@@ -81,6 +84,21 @@ func (p *Provider) SetDenied(d bool) { p.mu.Lock(); p.denied = d; p.mu.Unlock() 
 
 // SetNonce forces the nonce claim of later ID tokens (replay tests).
 func (p *Provider) SetNonce(n string) { p.mu.Lock(); p.nonce = n; p.mu.Unlock() }
+
+// SetAudience forces the aud claim of later ID tokens to a value other than
+// ClientID, for testing that the relying party refuses a token minted for a
+// different client. Empty restores the default (ClientID).
+func (p *Provider) SetAudience(aud string) { p.mu.Lock(); p.audience = aud; p.mu.Unlock() }
+
+// SetPublicClient makes the token endpoint accept ClientID with an empty
+// client secret (a public client using PKCE alone), in addition to the
+// normal confidential-client credentials.
+func (p *Provider) SetPublicClient(v bool) { p.mu.Lock(); p.publicClient = v; p.mu.Unlock() }
+
+// Stop shuts the provider down before the test ends, for tests that need to
+// simulate the identity provider becoming unreachable mid-flow. Safe to call
+// more than once (including via the automatic t.Cleanup).
+func (p *Provider) Stop() { p.closeOnce.Do(p.srv.Close) }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -145,7 +163,10 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		id, secret = r.PostForm.Get("client_id"), r.PostForm.Get("client_secret")
 	}
-	if id != ClientID || secret != ClientSecret {
+	p.mu.Lock()
+	publicOK := p.publicClient && secret == ""
+	p.mu.Unlock()
+	if id != ClientID || (secret != ClientSecret && !publicOK) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client"})
 		return
 	}
@@ -189,7 +210,13 @@ func (p *Provider) userinfo(w http.ResponseWriter, r *http.Request) {
 
 func (p *Provider) sign(g grant) (string, error) {
 	now := time.Now()
-	claims := map[string]any{"iss": p.srv.URL, "sub": g.user.Subject, "aud": ClientID,
+	p.mu.Lock()
+	aud := p.audience
+	p.mu.Unlock()
+	if aud == "" {
+		aud = ClientID
+	}
+	claims := map[string]any{"iss": p.srv.URL, "sub": g.user.Subject, "aud": aud,
 		"iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "nonce": g.nonce,
 		"email": g.user.Email, "name": g.user.Name}
 	if g.user.Groups != nil {

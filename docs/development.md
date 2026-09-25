@@ -7,6 +7,8 @@
 - A C compiler (gcc or clang): `make generate` builds sqlc, which needs cgo
 - GNU make and curl
 
+`make` targets set `GOTOOLCHAIN=local` (CI does too) so a pinned dependency never triggers an automatic toolchain download; run `go` commands with it set the same way when working outside `make`.
+
 ## Repository layout
 
 | Path | Contents |

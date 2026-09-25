@@ -64,8 +64,13 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	if err != nil {
 		return nil, err
 	}
-	if sec.Name == authn.SettingsSection && s.d.AuthSettings != nil {
-		s.d.AuthSettings.Invalidate()
+	if sec.Name == authn.SettingsSection {
+		if s.d.AuthSettings != nil {
+			s.d.AuthSettings.Invalidate()
+		}
+		if s.d.OIDC != nil {
+			s.d.OIDC.Forget()
+		}
 	}
 	after, err := sec.Public(raw)
 	if err != nil {

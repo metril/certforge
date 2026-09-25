@@ -133,6 +133,27 @@ func TestOIDCRefusals(t *testing.T) {
 	})
 }
 
+func TestOIDCWrongAudienceRefused(t *testing.T) {
+	o, p, cfg := oidcSetup(t)
+	p.SetAudience("someone-elses-client")
+	if _, _, err := o.Finish(context.Background(), cfg, testRedirect, runFlow(t, o, cfg, "/")); err == nil {
+		t.Fatal("id token minted for a different audience was accepted")
+	}
+}
+
+func TestOIDCPublicClient(t *testing.T) {
+	p := oidctest.New(t)
+	p.SetPublicClient(true)
+	cfg := AuthSettings{Enabled: true, Issuer: p.URL(), ClientID: oidctest.ClientID, ClientSecret: ""}
+	cfg.normalize()
+	o := NewOIDC(bytes.Repeat([]byte{3}, 32), nil)
+	p.SetUser(oidctest.User{Subject: "pub", Email: "pub@example.test", Name: "Pub"})
+	id, _, err := o.Finish(context.Background(), cfg, testRedirect, runFlow(t, o, cfg, "/"))
+	if err != nil || id.Subject != "pub" {
+		t.Fatalf("id %+v err %v", id, err)
+	}
+}
+
 func TestOIDCTest(t *testing.T) {
 	o, p, _ := oidcSetup(t)
 	res, err := o.Test(context.Background(), p.URL())

@@ -17,6 +17,10 @@
 - Disabled users and deleted users lose access on their next request.
 - Site scope is not modelled yet: role bindings with a non-NULL `site_id` are ignored when a principal is loaded.
 
+## Single sign-on
+
+Login is auth code with PKCE and a nonce; accounts are matched by (issuer, subject) only, never by email, and `email_verified` is never consulted. Flow state (state, nonce, PKCE verifier, return path) rides in the `cf_oidc` cookie, HMAC-SHA256 signed with a key derived from the KEK (`HKDF(KEK, "certforge-oidc-state")`), not in server-side storage. Every callback failure — rate limited, disabled, denied, or any other error — redirects the browser to `/login?error=<code>`, never problem+json. See [ADR 0006](adr/0006-oidc-sessions.md).
+
 ## Authorization
 
 Roles: `admin` (everything, including CAs, KEK, global settings, key export), `org-admin` (everything within its org except global-only actions), `operator` (certificates, credentials, accounts, clients, issue and renew), `viewer` (read-only, no secrets), `auditor` (viewer plus audit log). Global-only actions: settings:write, orgs:write, cas:write, keys:export, users:write. users:read is readable by any role that holds it in some org (org-admins pick users for bindings). Agents never pass `Can()`; they use their own mTLS listener. Phase 1 seeds only the global `admin` binding for the local admin.

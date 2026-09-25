@@ -67,6 +67,7 @@ func newTestEnvOpts(t *testing.T, opts ...func(*api.Deps)) *testEnv {
 		Setup:        setup.New(pool, aud, sections),
 		AuthSettings: authSrc,
 		LoginLimiter: authn.NewLimiter(0, 0),
+		OIDC:         authn.NewOIDC(bytes.Repeat([]byte{9}, 32), nil),
 	}
 	for _, o := range opts {
 		o(&d)

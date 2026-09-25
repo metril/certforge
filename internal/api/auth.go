@@ -186,16 +186,21 @@ func (s *Server) buildMe(ctx context.Context, u sqlcgen.User, p authn.Principal,
 	}, nil
 }
 
+// baseURL is the General section's base URL, else CF_BASE_URL.
+func (s *Server) baseURL(ctx context.Context) string {
+	var g struct {
+		BaseURL string `json:"baseUrl"`
+	}
+	if err := s.d.Settings.Get(ctx, settings.SectionKey("general"), &g); err == nil && g.BaseURL != "" {
+		return g.BaseURL
+	}
+	return s.d.Config.BaseURL
+}
+
 // secureCookie is true over TLS or when the effective base URL is https.
 func (s *Server) secureCookie(ctx context.Context, r *http.Request) bool {
 	if r != nil && r.TLS != nil {
 		return true
 	}
-	var g struct {
-		BaseURL string `json:"baseUrl"`
-	}
-	if err := s.d.Settings.Get(ctx, settings.SectionKey("general"), &g); err == nil && g.BaseURL != "" {
-		return strings.HasPrefix(g.BaseURL, "https://")
-	}
-	return strings.HasPrefix(s.d.Config.BaseURL, "https://")
+	return strings.HasPrefix(s.baseURL(ctx), "https://")
 }

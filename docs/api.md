@@ -4,7 +4,7 @@ Base path `/api/v1`. The OpenAPI document is `api/openapi.yaml`, served at `/api
 
 ## Authentication and permissions
 
-Session cookie plus `X-CSRF-Token` on writes (API keys arrive in Phase 2). `GET /auth/methods` (public) tells a client whether single sign-on and the local admin are available. Each operation checks one permission for `{orgId}`:
+Browser sign-in: GET /auth/oidc/start (single sign-on) or POST /auth/login (local admin); both set the cf_session cookie. Session writes send X-CSRF-Token. API keys: see below. `GET /auth/methods` (public) tells a client whether single sign-on and the local admin are available. Each operation checks one permission for `{orgId}`:
 
 | Permission | Operations | Roles |
 |---|---|---|

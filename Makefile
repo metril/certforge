@@ -1,5 +1,6 @@
 SHELL := /bin/bash
 GO ?= go
+export GOTOOLCHAIN := local
 SQLC_VERSION := v1.27.0
 OAPI_CODEGEN_VERSION := v2.4.1
 GOLANGCI_LINT_VERSION := v1.61.0

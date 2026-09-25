@@ -164,6 +164,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/oidc/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start single sign-on
+         * @description Redirects the browser to the identity provider (auth code with PKCE) and sets a short-lived signed state cookie. Redirects to /login?error=oidc_disabled when single sign-on is off. Public.
+         */
+        get: operations["startOidcLogin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/oidc/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Single sign-on callback
+         * @description The identity provider returns here. On success creates or updates the user by (issuer, subject), records groups, starts a session (revoking the user's others), and redirects to next. On failure redirects to /login?error= one of oidc_state, oidc_denied, oidc_failed, oidc_disabled, user_disabled. Public; rate limited per client address.
+         */
+        get: operations["oidcCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/authentication/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test an OIDC issuer
+         * @description Fetches the issuer's discovery document and JWKS without logging in. Needs settings:write. Always 200; ok false carries the reason.
+         */
+        post: operations["testAuthentication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/{section}": {
         parameters: {
             query?: never;
@@ -744,6 +804,24 @@ export interface components {
             oidcEnabled: boolean;
             /** @description A local (break-glass) admin exists. */
             localEnabled: boolean;
+        };
+        /** @description The issuer to test, usually the unsaved value from the form. */
+        AuthenticationTestRequest: {
+            /** @description OIDC issuer URL. */
+            issuer: string;
+        };
+        /** @description Result of fetching discovery and JWKS. */
+        AuthenticationTestResult: {
+            /** @description Discovery and JWKS were fetched and the JWKS has at least one key. */
+            ok: boolean;
+            /** @description Why the test failed. */
+            detail?: string;
+            /** @description Authorization endpoint from discovery. */
+            authorizationEndpoint?: string;
+            /** @description Token endpoint from discovery. */
+            tokenEndpoint?: string;
+            /** @description Number of signing keys in the JWKS. */
+            keys?: number;
         };
         /** @description A CertForge user. */
         User: {
@@ -1694,6 +1772,94 @@ export interface operations {
                     "application/json": components["schemas"]["AuthMethods"];
                 };
             };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    startOidcLogin: {
+        parameters: {
+            query?: {
+                /** @description Same-origin path to open after sign-in; anything else becomes /. */
+                next?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the identity provider or back to /login. */
+            302: {
+                headers: {
+                    /** @description Redirect target. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    oidcCallback: {
+        parameters: {
+            query?: {
+                /** @description Authorization code. */
+                code?: string;
+                /** @description State echoed by the provider. */
+                state?: string;
+                /** @description Error code from the provider. */
+                error?: string;
+                /** @description Provider error text; logged only. */
+                error_description?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to next or to /login?error=. */
+            302: {
+                headers: {
+                    /** @description Redirect target. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    testAuthentication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthenticationTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Test result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthenticationTestResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
         };
     };

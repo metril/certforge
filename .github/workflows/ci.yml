@@ -5,6 +5,8 @@ on:
   pull_request:
 permissions:
   contents: read
+env:
+  GOTOOLCHAIN: local
 jobs:
   lint:
     runs-on: ubuntu-latest

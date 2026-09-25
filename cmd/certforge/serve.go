@@ -78,10 +78,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
 	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
+	oidcClient := authn.NewOIDC(crypto.DeriveKey(cfg.KEK.Key, "certforge-oidc-state"), nil)
 	handler := api.NewRouter(api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
-		Issuance: issuanceSvc, Certs: certStore, AuthSettings: authSettings,
+		Issuance: issuanceSvc, Certs: certStore, AuthSettings: authSettings, OIDC: oidcClient,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenHTTP,

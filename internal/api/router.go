@@ -78,7 +78,9 @@ func isPublic(r *http.Request) bool {
 		"GET /api/v1/setup/status",
 		"POST /api/v1/setup/complete",
 		"POST /api/v1/auth/login",
-		"GET /api/v1/auth/methods":
+		"GET /api/v1/auth/methods",
+		"GET /api/v1/auth/oidc/start",
+		"GET /api/v1/auth/oidc/callback":
 		return true
 	}
 	return false
@@ -116,6 +118,13 @@ func limitLogins(l *authn.Limiter, src *authn.SettingsSource, aud *audit.Auditor
 					}); err != nil && log != nil {
 						log.Error("audit record failed", "action", "session.login_failed", "err", err)
 					}
+				}
+				// The OIDC callback is a browser navigation, not an API
+				// call: a rate-limited attempt still redirects to /login
+				// (B2), never problem+json.
+				if method == "oidc" {
+					http.Redirect(w, r, "/login?error=rate_limited", http.StatusFound)
+					return
 				}
 				Write(w, http.StatusTooManyRequests, "Too many login attempts", "Wait before trying again.")
 				return
