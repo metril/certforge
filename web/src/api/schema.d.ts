@@ -734,6 +734,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List users
+         * @description Every user, local and OIDC. Needs users:read (admin, or org-admin in any org).
+         */
+        get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Enable or disable a user
+         * @description Needs users:write (global admin). Disabling revokes every session of the user at once and stops API keys they created. You cannot disable yourself (409). Users are never deleted.
+         */
+        patch: operations["updateUser"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1441,6 +1484,48 @@ export interface components {
         RenewResult: {
             /** @description False when an issuance was already queued or running. */
             enqueued: boolean;
+        };
+        /** @description A user as shown in Settings → Access. */
+        UserDetail: {
+            /**
+             * Format: uuid
+             * @description User id.
+             */
+            id: string;
+            /** @description Name from the identity provider */
+            displayName: string;
+            /** @description Email from the identity provider. */
+            email: string | null;
+            /** @description True for the break-glass local admin. */
+            localAdmin: boolean;
+            /** @description Issuer that authenticated the user; null for the local admin. */
+            oidcIssuer: string | null;
+            /** @description Subject at the issuer. */
+            oidcSubject: string | null;
+            /** @description Groups from the user's last OIDC login. */
+            groups: string[];
+            /** @description Disabled users cannot sign in and their API keys stop working. */
+            disabled: boolean;
+            /**
+             * Format: date-time
+             * @description Last successful sign-in.
+             */
+            lastLogin: string | null;
+            /**
+             * Format: date-time
+             * @description First sign-in or creation time.
+             */
+            createdAt: string;
+        };
+        /** @description All users. */
+        UserList: {
+            /** @description Users sorted by display name. */
+            items: components["schemas"]["UserDetail"][];
+        };
+        /** @description Changes to a user. */
+        UserUpdate: {
+            /** @description true disables the user and revokes their sessions. */
+            disabled: boolean;
         };
     };
     responses: {
@@ -2865,6 +2950,65 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Users sorted by display name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
         };
     };

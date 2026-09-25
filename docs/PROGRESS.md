@@ -110,8 +110,8 @@ were Task 18's own commits.
 | 4 | Authentication section and trusted proxies | done | 00a6e59 |
 | 5 | Login hardening | done | ba24442 |
 | 6 | OIDC client and fake provider | done | f4ce6d8 |
-| 7 | OIDC endpoints | done | pending |
-| 8 | Users API | todo | – |
+| 7 | OIDC endpoints | done | dc2a5c6 |
+| 8 | Users API | done | pending |
 | 9 | API keys | todo | – |
 | 10 | Role bindings API | todo | – |
 | 11 | Orgs and sites CRUD | todo | – |

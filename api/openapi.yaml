@@ -32,6 +32,8 @@ tags:
     description: CAs, ACME accounts and DNS credentials.
   - name: certificates
     description: Certificates and issuance defaults.
+  - name: access
+    description: Users, role bindings, and API keys.
 paths:
   /setup/status:
     get:
@@ -914,6 +916,48 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /users:
+    get:
+      operationId: listUsers
+      tags: [access]
+      summary: List users
+      description: Every user, local and OIDC. Needs users:read (admin, or org-admin in any org).
+      responses:
+        "200":
+          description: Users sorted by display name.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/UserList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /users/{id}:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    patch:
+      operationId: updateUser
+      tags: [access]
+      summary: Enable or disable a user
+      description: Needs users:write (global admin). Disabling revokes every session of the user at once and stops API keys they created. You cannot disable yourself (409). Users are never deleted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UserUpdate"}
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/UserDetail"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
 components:
   securitySchemes:
     sessionCookie:
@@ -1671,3 +1715,30 @@ components:
       required: [enqueued]
       properties:
         enqueued: {type: boolean, description: False when an issuance was already queued or running.}
+    UserDetail:
+      type: object
+      description: A user as shown in Settings → Access.
+      required: [id, displayName, email, localAdmin, oidcIssuer, oidcSubject, groups, disabled, lastLogin, createdAt]
+      properties:
+        id: {type: string, format: uuid, description: User id.}
+        displayName: {type: string, description: Name from the identity provider, or "Local admin".}
+        email: {type: string, nullable: true, description: Email from the identity provider.}
+        localAdmin: {type: boolean, description: True for the break-glass local admin.}
+        oidcIssuer: {type: string, nullable: true, description: Issuer that authenticated the user; null for the local admin.}
+        oidcSubject: {type: string, nullable: true, description: Subject at the issuer.}
+        groups: {type: array, items: {type: string}, description: Groups from the user's last OIDC login.}
+        disabled: {type: boolean, description: Disabled users cannot sign in and their API keys stop working.}
+        lastLogin: {type: string, format: date-time, nullable: true, description: Last successful sign-in.}
+        createdAt: {type: string, format: date-time, description: First sign-in or creation time.}
+    UserList:
+      type: object
+      description: All users.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/UserDetail"}, description: Users sorted by display name.}
+    UserUpdate:
+      type: object
+      description: Changes to a user.
+      required: [disabled]
+      properties:
+        disabled: {type: boolean, description: true disables the user and revokes their sessions.}

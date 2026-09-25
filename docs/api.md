@@ -55,3 +55,5 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET /orgs/{orgId}/certificates/{id}/attempts` | attempts with step timeline and log |
 | `GET /orgs/{orgId}/certificates/{id}/manual-dns` | TXT records waiting for an operator |
 | `POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm` | resume the waiting attempt |
+| `GET /users` | list users |
+| `PATCH /users/{id}` | disable or re-enable a user, revoking sessions |

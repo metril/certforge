@@ -107,6 +107,31 @@ func (e *testEnv) seedAdminSession() (string, uuid.UUID) {
 	return sess.Csrf, org.ID
 }
 
+// userSession creates an OIDC-style user bound to role (globally when org
+// is nil) and returns a client holding its session, its CSRF token and id.
+func (e *testEnv) userSession(name, role string, org *uuid.UUID) (*http.Client, string, uuid.UUID) {
+	e.t.Helper()
+	ctx := context.Background()
+	u, err := e.deps.Queries.UpsertOIDCUser(ctx, sqlcgen.UpsertOIDCUserParams{Issuer: "https://idp.test", Subject: name,
+		DisplayName: name, Groups: []string{}})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if role != "" {
+		if err := e.deps.Queries.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{SubjectType: "user", Subject: u.ID.String(), Role: role, OrgID: org}); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+	token, sess, err := e.deps.Sessions.Create(ctx, u.ID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	jar, _ := cookiejar.New(nil)
+	base, _ := url.Parse(e.srv.URL)
+	jar.SetCookies(base, []*http.Cookie{{Name: authn.CookieName, Value: token, Path: "/"}})
+	return &http.Client{Jar: jar}, sess.Csrf, u.ID
+}
+
 func (e *testEnv) do(method, path string, body any, csrf string) (*http.Response, []byte) {
 	e.t.Helper()
 	if body == nil {

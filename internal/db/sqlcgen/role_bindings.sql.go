@@ -107,3 +107,45 @@ func (q *Queries) ListRoleBindingsForUser(ctx context.Context, subject string) (
 	}
 	return items, nil
 }
+
+const lockGlobalAdminUsers = `-- name: LockGlobalAdminUsers :many
+SELECT u.id, u.oidc_issuer, u.oidc_sub, u.email, u.display_name, u.local_password_hash, u.disabled, u.last_login, u.created_at, u.oidc_groups FROM users u
+JOIN role_bindings rb ON rb.subject_type = 'user' AND rb.subject = u.id::text
+WHERE rb.role = 'admin' AND rb.org_id IS NULL
+ORDER BY u.id
+FOR UPDATE OF u
+`
+
+// Users holding a global (org-less) admin role binding, locked in a stable
+// order so concurrent callers serialize instead of both reading a stale
+// "another admin exists" answer.
+func (q *Queries) LockGlobalAdminUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, lockGlobalAdminUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.OidcIssuer,
+			&i.OidcSub,
+			&i.Email,
+			&i.DisplayName,
+			&i.LocalPasswordHash,
+			&i.Disabled,
+			&i.LastLogin,
+			&i.CreatedAt,
+			&i.OidcGroups,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

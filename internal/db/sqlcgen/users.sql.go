@@ -79,6 +79,41 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups FROM users ORDER BY lower(display_name), id
+`
+
+func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.OidcIssuer,
+			&i.OidcSub,
+			&i.Email,
+			&i.DisplayName,
+			&i.LocalPasswordHash,
+			&i.Disabled,
+			&i.LastLogin,
+			&i.CreatedAt,
+			&i.OidcGroups,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setLocalPasswordHash = `-- name: SetLocalPasswordHash :exec
 UPDATE users SET local_password_hash = $1::text WHERE id = $2
 `

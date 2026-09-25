@@ -18,6 +18,9 @@ UPDATE users SET last_login = now() WHERE id = $1;
 -- name: SetUserDisabled :exec
 UPDATE users SET disabled = $2 WHERE id = $1;
 
+-- name: ListUsers :many
+SELECT * FROM users ORDER BY lower(display_name), id;
+
 -- name: UpsertOIDCUser :one
 INSERT INTO users (oidc_issuer, oidc_sub, email, display_name, oidc_groups)
 VALUES (sqlc.arg(issuer)::text, sqlc.arg(subject)::text, sqlc.narg(email), sqlc.arg(display_name)::text, sqlc.arg(groups)::text[])
