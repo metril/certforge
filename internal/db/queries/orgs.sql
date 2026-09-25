@@ -22,6 +22,7 @@ SELECT
   (SELECT count(*) FROM dns_provider_credentials d WHERE d.org_id = sqlc.arg(org_id)) AS dns_credentials,
   (SELECT count(*) FROM acme_accounts a WHERE a.org_id = sqlc.arg(org_id)) AS acme_accounts,
   (SELECT count(*) FROM cas WHERE cas.org_id = sqlc.arg(org_id)) AS cas,
+  (SELECT count(*) FROM sites st WHERE st.org_id = sqlc.arg(org_id)) AS sites,
   (SELECT count(*) FROM role_bindings rb WHERE rb.org_id = sqlc.arg(org_id)) AS role_bindings,
   (SELECT count(*) FROM api_keys k WHERE k.org_id = sqlc.arg(org_id) AND k.revoked_at IS NULL) AS api_keys;
 

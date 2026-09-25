@@ -49,6 +49,27 @@ func (q *Queries) DeleteSite(ctx context.Context, arg DeleteSiteParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const getSite = `-- name: GetSite :one
+SELECT id, org_id, name, created_at FROM sites WHERE id = $1 AND org_id = $2
+`
+
+type GetSiteParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) GetSite(ctx context.Context, arg GetSiteParams) (Site, error) {
+	row := q.db.QueryRow(ctx, getSite, arg.ID, arg.OrgID)
+	var i Site
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listSites = `-- name: ListSites :many
 SELECT id, org_id, name, created_at FROM sites WHERE org_id = $1 ORDER BY lower(name), id
 `

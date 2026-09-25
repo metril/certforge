@@ -17,6 +17,7 @@ SELECT
   (SELECT count(*) FROM dns_provider_credentials d WHERE d.org_id = $1) AS dns_credentials,
   (SELECT count(*) FROM acme_accounts a WHERE a.org_id = $1) AS acme_accounts,
   (SELECT count(*) FROM cas WHERE cas.org_id = $1) AS cas,
+  (SELECT count(*) FROM sites st WHERE st.org_id = $1) AS sites,
   (SELECT count(*) FROM role_bindings rb WHERE rb.org_id = $1) AS role_bindings,
   (SELECT count(*) FROM api_keys k WHERE k.org_id = $1 AND k.revoked_at IS NULL) AS api_keys
 `
@@ -26,6 +27,7 @@ type CountOrgDependentsRow struct {
 	DnsCredentials int64 `json:"dns_credentials"`
 	AcmeAccounts   int64 `json:"acme_accounts"`
 	Cas            int64 `json:"cas"`
+	Sites          int64 `json:"sites"`
 	RoleBindings   int64 `json:"role_bindings"`
 	ApiKeys        int64 `json:"api_keys"`
 }
@@ -38,6 +40,7 @@ func (q *Queries) CountOrgDependents(ctx context.Context, orgID uuid.UUID) (Coun
 		&i.DnsCredentials,
 		&i.AcmeAccounts,
 		&i.Cas,
+		&i.Sites,
 		&i.RoleBindings,
 		&i.ApiKeys,
 	)

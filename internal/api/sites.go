@@ -71,15 +71,12 @@ func (s *Server) UpdateSite(ctx context.Context, req gen.UpdateSiteRequestObject
 	if err != nil {
 		return nil, err
 	}
-	sites, err := s.d.Queries.ListSites(ctx, req.OrgId)
+	cur, err := s.d.Queries.GetSite(ctx, sqlcgen.GetSiteParams{ID: req.Id, OrgID: req.OrgId})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("site %s", req.Id)
+	}
 	if err != nil {
 		return nil, err
-	}
-	var before string
-	for _, x := range sites {
-		if x.ID == req.Id {
-			before = x.Name
-		}
 	}
 	site, err := s.d.Queries.UpdateSiteName(ctx, sqlcgen.UpdateSiteNameParams{Name: name, ID: req.Id, OrgID: req.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -92,7 +89,7 @@ func (s *Server) UpdateSite(ctx context.Context, req gen.UpdateSiteRequestObject
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "site.update", ResourceType: "site", ResourceID: site.ID.String(), OrgID: &site.OrgID,
-		Details: map[string]any{"before": map[string]any{"name": before}, "after": map[string]any{"name": site.Name}}})
+		Details: map[string]any{"before": map[string]any{"name": cur.Name}, "after": map[string]any{"name": site.Name}}})
 	return gen.UpdateSite200JSONResponse(siteOut(site)), nil
 }
 

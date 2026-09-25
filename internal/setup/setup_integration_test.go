@@ -138,6 +138,7 @@ func TestCompleteInvalid(t *testing.T) {
 		{AdminPassword: "short", OrgName: "Home", OrgSlug: "home", BaseURL: "https://x.example"},
 		{AdminPassword: good.AdminPassword, OrgName: " ", OrgSlug: "home", BaseURL: "https://x.example"},
 		{AdminPassword: good.AdminPassword, OrgName: "Home", OrgSlug: "Bad Slug", BaseURL: "https://x.example"},
+		{AdminPassword: good.AdminPassword, OrgName: "Home", OrgSlug: "all", BaseURL: "https://x.example"},
 		{AdminPassword: good.AdminPassword, OrgName: "Home", OrgSlug: "home", BaseURL: "ftp://x"},
 		// Passes config.ValidateBaseURL (absolute http(s) URL with a host)
 		// but fails the general section schema's "^https?://" pattern,

@@ -1,6 +1,9 @@
 -- name: ListSites :many
 SELECT * FROM sites WHERE org_id = $1 ORDER BY lower(name), id;
 
+-- name: GetSite :one
+SELECT * FROM sites WHERE id = $1 AND org_id = $2;
+
 -- name: CreateSite :one
 INSERT INTO sites (org_id, name) VALUES ($1, $2) RETURNING *;
 

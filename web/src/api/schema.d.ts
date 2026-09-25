@@ -103,7 +103,7 @@ export interface paths {
         post?: never;
         /**
          * Delete an organization
-         * @description Needs orgs:write. Blocked (409) while the org has certificates, DNS credentials, ACME accounts, CAs, role bindings, or active API keys; the detail lists them. Sites are deleted with the org.
+         * @description Needs orgs:write. Blocked (409) while the org has certificates, DNS credentials, ACME accounts, CAs, sites, role bindings, or active API keys; the detail lists them. Its issuance defaults and revoked API keys are removed with the org.
          */
         delete: operations["deleteOrg"];
         options?: never;

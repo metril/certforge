@@ -27,6 +27,10 @@ func TestSetupHTTP(t *testing.T) {
 	if resp, _ = e.do(http.MethodPost, "/api/v1/setup/complete", bad, ""); resp.StatusCode != http.StatusUnprocessableEntity { //nolint:bodyclose // testEnv.doRaw closes the body
 		t.Fatalf("invalid %d", resp.StatusCode)
 	}
+	reserved := map[string]string{"adminPassword": "correct horse battery", "orgName": "Home", "orgSlug": "all", "baseUrl": "http://example.test"}
+	if resp, _ = e.do(http.MethodPost, "/api/v1/setup/complete", reserved, ""); resp.StatusCode != http.StatusUnprocessableEntity { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("reserved slug %d", resp.StatusCode)
+	}
 
 	resp, body = e.do(http.MethodPost, "/api/v1/setup/complete", in, "") //nolint:bodyclose // testEnv.doRaw closes the body
 	if resp.StatusCode != http.StatusOK {

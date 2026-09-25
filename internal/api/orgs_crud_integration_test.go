@@ -55,6 +55,54 @@ func TestOrgCRUD(t *testing.T) {
 	if resp, _ := e.doClient(oa, http.MethodPost, "/api/v1/orgs", map[string]string{"slug": "x", "name": "X"}, http.Header{"X-Csrf-Token": {oaCSRF}}); resp.StatusCode != http.StatusForbidden { //nolint:bodyclose // doClient closes the body
 		t.Fatalf("org-admin create org %d", resp.StatusCode)
 	}
+
+	// A site also blocks the delete (controller ruling: sites count as a
+	// user-created dependent, unlike issuance defaults and revoked keys).
+	withSite, err := e.deps.Queries.CreateOrg(ctx, sqlcgenOrg("with-site"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.deps.Queries.CreateSite(ctx, sqlcgen.CreateSiteParams{OrgID: withSite.ID, Name: "Berlin"}); err != nil {
+		t.Fatal(err)
+	}
+	if resp, out := e.do(http.MethodDelete, "/api/v1/orgs/"+withSite.ID.String(), nil, csrf); resp.StatusCode != http.StatusConflict || !strings.Contains(string(out), "1 site") { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("delete with site %d %s", resp.StatusCode, out)
+	}
+
+	// An org whose only rows are its own issuance defaults and a revoked API
+	// key deletes cleanly; both cascade off the org row.
+	cleanup, err := e.deps.Queries.CreateOrg(ctx, sqlcgenOrg("cleanup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.deps.Pool.Exec(ctx, `INSERT INTO issuance_defaults (org_id, config) VALUES ($1, '{}')`, cleanup.ID); err != nil {
+		t.Fatal(err)
+	}
+	var adminID string
+	if err := e.deps.Pool.QueryRow(ctx, `SELECT id FROM users LIMIT 1`).Scan(&adminID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.deps.Pool.Exec(ctx,
+		`INSERT INTO api_keys (name, prefix, secret_hash, scopes, org_id, created_by, revoked_at) VALUES ('k', 'abcdef012345', '\x00', '{admin}', $1, $2, now())`,
+		cleanup.ID, adminID); err != nil {
+		t.Fatal(err)
+	}
+	if resp, out := e.do(http.MethodDelete, "/api/v1/orgs/"+cleanup.ID.String(), nil, csrf); resp.StatusCode != http.StatusNoContent { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("delete with only cascading rows %d %s", resp.StatusCode, out)
+	}
+	var remaining int
+	if err := e.deps.Pool.QueryRow(ctx, `SELECT count(*) FROM issuance_defaults WHERE org_id = $1`, cleanup.ID).Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("issuance_defaults row survived org delete")
+	}
+	if err := e.deps.Pool.QueryRow(ctx, `SELECT count(*) FROM api_keys WHERE org_id = $1`, cleanup.ID).Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("api_keys row survived org delete")
+	}
 }
 
 func TestSites(t *testing.T) {
@@ -87,6 +135,12 @@ func TestSites(t *testing.T) {
 	}
 	if resp, _ := e.doClient(oa, http.MethodDelete, base+"/"+site.ID, nil, h); resp.StatusCode != http.StatusNoContent { //nolint:bodyclose // doClient closes the body
 		t.Fatalf("delete %d", resp.StatusCode)
+	}
+
+	// olga is org-admin in home only; writing to lab's sites is forbidden.
+	labBase := "/api/v1/orgs/" + lab.ID.String() + "/sites"
+	if resp, _ := e.doClient(oa, http.MethodPost, labBase, map[string]string{"name": "Paris"}, h); resp.StatusCode != http.StatusForbidden { //nolint:bodyclose // doClient closes the body
+		t.Fatalf("org-admin cross-org create %d", resp.StatusCode)
 	}
 }
 
