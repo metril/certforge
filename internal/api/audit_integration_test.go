@@ -137,12 +137,8 @@ func TestAuditGetEvent(t *testing.T) {
 	if status, _ := get(auditor, siteEventID); status != http.StatusOK {
 		t.Fatalf("org auditor get own-org event: %d", status)
 	}
-	auditorBody, statusBody := "", 0
-	if status, body := get(auditor, globalEventID); true {
-		auditorBody, statusBody = string(body), status
-	}
-	if statusBody != http.StatusNotFound {
-		t.Fatalf("org auditor get global event: %d %s", statusBody, auditorBody)
+	if status, body := get(auditor, globalEventID); status != http.StatusNotFound {
+		t.Fatalf("org auditor get global event: %d %s", status, body)
 	}
 
 	labAuditor, _, _ := e.userSession("labaud", "auditor", &lab.ID)
@@ -169,7 +165,7 @@ func TestAuditGetEvent(t *testing.T) {
 	if status, _ := get(viewer, siteEventID); status != http.StatusNotFound {
 		t.Fatalf("viewer (no audit:read) get event: %d", status)
 	}
-	if status, _ := get(e.client, siteEventID); status != http.StatusOK { //nolint:bodyclose,staticcheck // sanity re-check, doClient closes body
+	if status, _ := get(e.client, siteEventID); status != http.StatusOK {
 		t.Fatalf("admin still gets event after other assertions: %d", status)
 	}
 }

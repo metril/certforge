@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import type { AuditFilter } from '@/api/queries/audit';
-import { DAY } from '@/lib/time';
 
 const day = z
   .string()
@@ -20,12 +19,19 @@ export const auditSearch = z.object({
 });
 export type AuditSearch = z.infer<typeof auditSearch>;
 
-/** Local calendar days; "to" includes that whole day. */
+/** Local calendar days; "to" includes that whole day. `setDate(d + 1)` (not
+ * `+ DAY` in milliseconds) so a "to" date across a DST transition still
+ * lands at the next date's local midnight, not one hour off. */
 export function toApiFilter(s: AuditSearch, orgId: string | undefined): AuditFilter {
   const start = (d: string) => new Date(`${d}T00:00:00`);
+  const nextDay = (d: Date) => {
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    return next;
+  };
   return {
     from: s.from ? start(s.from).toISOString() : undefined,
-    to: s.to ? new Date(start(s.to).getTime() + DAY).toISOString() : undefined,
+    to: s.to ? nextDay(start(s.to)).toISOString() : undefined,
     actor: s.actor,
     action: s.action,
     resourceType: s.resourceType,

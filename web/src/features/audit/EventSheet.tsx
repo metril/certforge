@@ -7,23 +7,19 @@ export function EventSheet({
   event,
   orgName,
   onClose,
-  notice,
 }: {
   event: AuditEvent | undefined;
   orgName: (id: string | null) => string;
   onClose: () => void;
-  /** A one-line inline notice shown instead of the event (a deep link's ?event didn't resolve). */
-  notice?: string;
 }) {
   return (
-    <Sheet open={event !== undefined || !!notice} onOpenChange={(o) => !o && onClose()}>
+    <Sheet open={event !== undefined} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="grid content-start gap-4 overflow-y-auto sm:max-w-xl">
-        <SheetHeader>
-          <SheetTitle className="font-mono">{event?.action ?? 'Event not found'}</SheetTitle>
-        </SheetHeader>
-        {notice && <p className="text-sm text-ink-muted">{notice}</p>}
         {event && (
           <>
+            <SheetHeader>
+              <SheetTitle className="font-mono">{event.action}</SheetTitle>
+            </SheetHeader>
             <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
               <dt className="text-ink-muted">Event</dt>
               <dd className="font-mono">#{event.id}</dd>

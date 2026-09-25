@@ -143,6 +143,7 @@ export const help = {
   'audit.chainBroken': { text: 'An event no longer matches its hash: the log was altered outside CertForge.', learnMore: 'security.md#audit-log' },
   'audit.actor': { text: 'The user or API key that acted; system for scheduled work.' },
   'audit.ip': { text: 'Client address, taken from X-Forwarded-For only behind a trusted proxy.' },
+  'audit.exportError': { text: 'A query failed partway through the export; the downloaded file is missing events after that point. Try again, or narrow the filters.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

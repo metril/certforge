@@ -93,6 +93,27 @@ it('shows a broken chain', async () => {
   expect(await screen.findByText('Chain broken at #42')).toBeInTheDocument();
 });
 
+// Fix round 1, Important #1: VerifyAuditChain needs GLOBAL audit:read (an
+// org-scoped auditor gets 403 even for their own org), so the chip - and
+// its request - is only shown to a caller who actually has it.
+it('hides the chain status chip and never requests /audit/verify for an org-scoped auditor', async () => {
+  let verifyCalled = false;
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'auditor', orgId: org.id }]))),
+    http.get(url('/audit'), () => HttpResponse.json({ items: [], nextCursor: null })),
+    http.get(url('/audit/verify'), () => {
+      verifyCalled = true;
+      return HttpResponse.json({ ok: true, count: 0, brokenAtId: null, checkedAt: '2026-09-24T12:00:00Z', headHash: '' });
+    }),
+  );
+  renderRoute('/o/acme/audit');
+  await screen.findByRole('heading', { name: 'Audit log' });
+  expect(screen.queryByText('Chain verified')).toBeNull();
+  expect(screen.queryByText('Checking chain')).toBeNull();
+  expect(verifyCalled).toBe(false);
+});
+
 it('exports the filtered events as CSV', async () => {
   capture();
   let exported: URLSearchParams | undefined;
@@ -115,6 +136,20 @@ it('shows a one-line notice when the export was truncated', async () => {
   const { user } = renderRoute('/o/acme/audit');
   await user.click(await screen.findByRole('button', { name: 'Export CSV' }));
   expect(await screen.findByText(/100,000-row cap/)).toBeInTheDocument();
+});
+
+// Fix round 1, Important #2: a mid-stream export failure appends a
+// "#error,..." row instead of truncating the file silently (internal/api's
+// writeAuditCSV); the page must surface that, not just save an incomplete
+// file quietly.
+it('shows a notice chip when the export body ends in an #error row', async () => {
+  capture();
+  server.use(http.get(url('/audit/export'), () =>
+    new HttpResponse('id,ts\n1,2026-01-01\n#error,export interrupted; see server log\n',
+      { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="audit-2026-09-24.csv"', 'X-Audit-Truncated': 'false' } })));
+  const { user } = renderRoute('/o/acme/audit');
+  await user.click(await screen.findByRole('button', { name: 'Export CSV' }));
+  expect(await screen.findByText('Export incomplete')).toBeInTheDocument();
 });
 
 it('tells a viewer the log is out of reach', async () => {
@@ -147,6 +182,29 @@ it('shows an inline notice and clears the param for a deep link that 404s', asyn
   await screen.findByRole('table', { name: 'Audit events' });
   expect(await screen.findByText("That event doesn't exist or isn't visible to you.")).toBeInTheDocument();
   await waitFor(() => expect(router.state.location.search).not.toHaveProperty('event'));
+});
+
+// Take-now #3: the search box is debounced (250ms) and URL-synced, same
+// pattern as BindingsTab's own `q` filter.
+it('debounces the search box into the URL', async () => {
+  const seen = capture();
+  const { user, router } = renderRoute('/o/acme/audit');
+  await screen.findByRole('table', { name: 'Audit events' });
+  await user.type(screen.getByRole('textbox', { name: 'Search audit log' }), 'berlin');
+  expect(seen[seen.length - 1]!.has('q')).toBe(false);
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'berlin' }));
+});
+
+// Take-now #4: a deep link's fetch failing for a reason other than 404
+// (the caller genuinely may not reach the server, say) surfaces a toast
+// instead of silently claiming the event doesn't exist.
+it('toasts instead of claiming a deep link is missing on a non-404 error', async () => {
+  capture();
+  server.use(http.get(url('/audit/500'), () => new HttpResponse(null, { status: 500 })));
+  renderRoute('/o/acme/audit?event=500');
+  await screen.findByRole('table', { name: 'Audit events' });
+  expect(await screen.findByText(/request failed/i)).toBeInTheDocument();
+  expect(screen.queryByText("That event doesn't exist or isn't visible to you.")).toBeNull();
 });
 
 // D5: card rows below 768px, no horizontal overflow at 375px.

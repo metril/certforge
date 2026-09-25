@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Download, Search } from 'lucide-react';
+import { Download, Search, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AuditEvent } from '@/api/types';
-import { errorMessage } from '@/api/errors';
+import { ApiError, errorMessage } from '@/api/errors';
 import { auditEventQuery, auditInfinite, exportAudit } from '@/api/queries/audit';
 import { usersQuery } from '@/api/queries/users';
 import { Combobox } from '@/components/Combobox';
@@ -15,6 +15,7 @@ import { Field } from '@/components/Field';
 import { FilterChips } from '@/components/FilterChips';
 import { PageHeader } from '@/components/PageHeader';
 import { SavedViews } from '@/components/SavedViews';
+import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAllOrgs, useMe, useOrg } from '@/lib/org';
@@ -63,12 +64,17 @@ export function AuditPage() {
   const search = useSearch({ from: '/_app/o/$org/audit' });
   const navigate = useNavigate({ from: '/o/$org/audit' });
   const allowed = allOrgs ? canAnywhere(me, 'audit:read') : can(me, 'audit:read', org.id);
+  // VerifyAuditChain needs global audit:read: an org-scoped auditor gets
+  // 403 even for their own org, so the chip (and its request) is only
+  // shown to a caller who actually has it.
+  const canVerifyChain = can(me, 'audit:read', null);
   const filter = useMemo(() => toApiFilter(search, allOrgs ? undefined : org.id), [search, allOrgs, org.id]);
   const list = useInfiniteQuery({ ...auditInfinite(filter), enabled: allowed });
   const users = useQuery({ ...usersQuery, enabled: allowed && canAnywhere(me, 'users:read') });
   const [text, setText] = useState(search.q ?? '');
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState(false);
+  const [exportError, setExportError] = useState(false);
   const [missingNotice, setMissingNotice] = useState(false);
   useEffect(() => setText(search.q ?? ''), [search.q]);
 
@@ -78,6 +84,27 @@ export function AuditPage() {
   const set = (patch: Partial<AuditSearch>) => void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
   const clear = () => void navigate({ search: {} });
 
+  // Debounced, URL-synced text filter (controller ruling D5), mirroring
+  // BindingsTab's own `q` debounce: `pushedQ` tracks the last value *this*
+  // effect itself pushed to the URL, so an external change (saved view,
+  // browser back/forward, a filter chip removal) is told apart from the
+  // user still typing and syncs `text` instead of re-triggering a navigate.
+  const pushedQ = useRef(search.q ?? '');
+  useEffect(() => {
+    const urlQ = search.q ?? '';
+    if (urlQ !== pushedQ.current) {
+      pushedQ.current = urlQ;
+      if (urlQ !== text) setText(urlQ);
+      return;
+    }
+    if (text === urlQ) return;
+    const t = window.setTimeout(() => {
+      pushedQ.current = text;
+      void navigate({ search: (prev) => ({ ...prev, q: text || undefined }), replace: true });
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [text, search.q, navigate]);
+
   // C10: `?event=<id>` opens the sheet even when the event isn't in a
   // currently loaded page. Only fetch it directly once the list itself has
   // settled and doesn't already have it, so a normal row click (the event
@@ -85,13 +112,23 @@ export function AuditPage() {
   const rowEvent = search.event !== undefined ? rows.find((e) => e.id === search.event) : undefined;
   const needsFetch = allowed && search.event !== undefined && !rowEvent && !list.isPending;
   const eventFetch = useQuery({ ...auditEventQuery(search.event ?? 0), enabled: needsFetch });
+  // A new deep link (a fresh `?event=<id>`) starts clean; the notice from a
+  // previous attempt must not vanish the instant this same 404 clears its
+  // own `event` param below, so this only resets on a newly *set* id.
   useEffect(() => {
-    if (needsFetch && eventFetch.isError) {
+    if (search.event !== undefined) setMissingNotice(false);
+  }, [search.event]);
+  useEffect(() => {
+    if (!needsFetch || !eventFetch.isError) return;
+    const err = eventFetch.error;
+    if (err instanceof ApiError && err.status === 404) {
       setMissingNotice(true);
       set({ event: undefined });
+    } else {
+      toast.error(errorMessage(err));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsFetch, eventFetch.isError]);
+  }, [needsFetch, eventFetch.isError, eventFetch.error]);
   const sheetEvent = rowEvent ?? (needsFetch ? eventFetch.data : undefined);
 
   if (!allowed) {
@@ -117,8 +154,9 @@ export function AuditPage() {
   async function exportCsv() {
     setExporting(true);
     try {
-      const truncated = await exportAudit(filter);
+      const { truncated, incomplete } = await exportAudit(filter);
       setExportNotice(truncated);
+      setExportError(incomplete);
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -132,7 +170,8 @@ export function AuditPage() {
         title="Audit log"
         actions={
           <div className="flex flex-wrap items-center gap-3">
-            <ChainStatus />
+            {canVerifyChain && <ChainStatus />}
+            {exportError && <ToneChip tone="failed" icon={TriangleAlert} label="Export incomplete" help="audit.exportError" />}
             <Button disabled={exporting} onClick={() => void exportCsv()}>
               <Download className="size-4" aria-hidden />
               Export CSV
@@ -143,16 +182,10 @@ export function AuditPage() {
       {missingNotice && <p className="mb-3 text-xs text-ink-muted">That event doesn't exist or isn't visible to you.</p>}
       {exportNotice && <p className="mb-3 text-xs text-ink-muted">The export hit the 100,000-row cap; some events aren't included.</p>}
       <div className="mb-3 flex flex-wrap items-end gap-3">
-        <form
-          className="relative w-64"
-          onSubmit={(e) => {
-            e.preventDefault();
-            set({ q: text.trim() || undefined });
-          }}
-        >
+        <div className="relative w-64">
           <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
-          <Input aria-label="Search audit log" className="pl-8" placeholder="www.example.com" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => set({ q: text.trim() || undefined })} />
-        </form>
+          <Input aria-label="Search audit log" className="pl-8" placeholder="www.example.com" value={text} onChange={(e) => setText(e.target.value)} />
+        </div>
         <div className="w-56">
           <Combobox aria-label="Action" value={search.action} onChange={(v) => set({ action: v })} options={actionOptions()} placeholder="Any action" emptyText="No action matches." mono />
         </div>

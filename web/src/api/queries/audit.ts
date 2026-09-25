@@ -47,12 +47,26 @@ export const auditEventQuery = (id: number) =>
     retry: false,
   });
 
-/** Downloads the filtered events as CSV (the server audits the export).
- * Returns whether the export cap truncated the result, from the server's
- * X-Audit-Truncated header. */
-export async function exportAudit(f: AuditFilter): Promise<boolean> {
+export type ExportResult = {
+  /** X-Audit-Truncated: the 100,000-row cap was hit; some events are missing. */
+  truncated: boolean;
+  /** The file's last line is a `#error,...` row: a query failed partway
+   * through the stream, so the file is incomplete (internal/api's
+   * writeAuditCSV never truncates silently). */
+  incomplete: boolean;
+};
+
+/** Downloads the filtered events as CSV (the server audits the export). */
+export async function exportAudit(f: AuditFilter): Promise<ExportResult> {
   const { data, error, response } = await api.GET('/audit/export', { params: { query: f }, parseAs: 'blob' });
   if (error !== undefined || !response.ok || !data) throw ApiError.from(response.status, error);
-  saveBlob(data as Blob, filenameFrom(response, 'audit.csv'));
-  return response.headers.get('X-Audit-Truncated') === 'true';
+  const blob = data as Blob;
+  saveBlob(blob, filenameFrom(response, 'audit.csv'));
+  const text = await blob.text();
+  const lines = text.split('\n').filter((l) => l.trim() !== '');
+  const lastLine = lines[lines.length - 1] ?? '';
+  return {
+    truncated: response.headers.get('X-Audit-Truncated') === 'true',
+    incomplete: lastLine.startsWith('#error,'),
+  };
 }
