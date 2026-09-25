@@ -27,6 +27,15 @@ func TestCan(t *testing.T) {
 	unknownRole := principal("nobody", &org1)
 	apiKeyAdmin := principal(RoleAdmin, nil)
 	apiKeyAdmin.Kind = authn.KindAPIKey
+	apiKeyAdmin.APIKey = &authn.APIKeyInfo{Scopes: []string{"admin"}}
+	readKey := principal(RoleAdmin, nil)
+	readKey.Kind = authn.KindAPIKey
+	readKey.APIKey = &authn.APIKeyInfo{Scopes: []string{"certs:read"}, OrgID: &org1}
+	boundKey := principal(RoleAdmin, nil)
+	boundKey.Kind = authn.KindAPIKey
+	boundKey.APIKey = &authn.APIKeyInfo{Scopes: []string{"certs:read", "certs:write"}, Bindings: []authn.Binding{{Role: RoleViewer, OrgID: &org1}}}
+	bareKey := principal(RoleAdmin, nil)
+	bareKey.Kind = authn.KindAPIKey
 	multiBinding := authn.Principal{Kind: authn.KindUser, Bindings: []authn.Binding{
 		{Role: RoleViewer, OrgID: &org1},
 		{Role: RoleOperator, OrgID: &org2},
@@ -64,6 +73,21 @@ func TestCan(t *testing.T) {
 		{"api key global admin certs read", apiKeyAdmin, ActionCertsRead, &org1, true},
 		{"multi binding certs write own org", multiBinding, ActionCertsWrite, &org1, false},
 		{"multi binding certs write other org", multiBinding, ActionCertsWrite, &org2, true},
+		{"org-admin sites write own", orgAdmin, ActionSitesWrite, &org1, true},
+		{"org-admin bindings write own", orgAdmin, ActionBindingsWrite, &org1, true},
+		{"org-admin bindings write global", orgAdmin, ActionBindingsWrite, nil, false},
+		{"org-admin users read shared", orgAdmin, ActionUsersRead, nil, true},
+		{"org-admin users write", orgAdmin, ActionUsersWrite, nil, false},
+		{"viewer sites read", viewer, ActionSitesRead, &org1, true},
+		{"viewer users read", viewer, ActionUsersRead, nil, false},
+		{"operator apikeys write", operator, ActionAPIKeysWrite, &org1, false},
+		{"read key certs read own org", readKey, ActionCertsRead, &org1, true},
+		{"read key certs read other org", readKey, ActionCertsRead, &org2, false},
+		{"read key certs write", readKey, ActionCertsWrite, &org1, false},
+		{"read key orgs read shared", readKey, ActionOrgsRead, nil, true},
+		{"bound key limited by its binding", boundKey, ActionCertsWrite, &org1, false},
+		{"bound key read via binding", boundKey, ActionCertsRead, &org1, true},
+		{"key without info denied", bareKey, ActionCertsRead, &org1, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,5 +111,25 @@ func TestEveryRoleDefined(t *testing.T) {
 		if _, ok := roleActions[r]; !ok {
 			t.Fatalf("role %s has no action set", r)
 		}
+	}
+}
+
+func TestScopeTables(t *testing.T) {
+	for _, s := range APIKeyScopes {
+		if _, ok := ScopeGrant[s]; !ok {
+			t.Fatalf("scope %s has no grant action", s)
+		}
+		if len(scopeActions[s]) == 0 {
+			t.Fatalf("scope %s grants nothing", s)
+		}
+	}
+}
+
+func TestOrgsWith(t *testing.T) {
+	org1, org2 := uuid.New(), uuid.New()
+	p := authn.Principal{Kind: authn.KindUser, OrgIDs: []uuid.UUID{org1, org2},
+		Bindings: []authn.Binding{{Role: RoleAuditor, OrgID: &org1}, {Role: RoleViewer, OrgID: &org2}}}
+	if got := OrgsWith(p, ActionAuditRead); len(got) != 1 || got[0] != org1 {
+		t.Fatalf("OrgsWith = %v", got)
 	}
 }

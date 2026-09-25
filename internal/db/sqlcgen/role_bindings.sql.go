@@ -36,6 +36,46 @@ func (q *Queries) CreateRoleBinding(ctx context.Context, arg CreateRoleBindingPa
 	return err
 }
 
+const listRoleBindingsForPrincipal = `-- name: ListRoleBindingsForPrincipal :many
+SELECT id, subject_type, subject, role, org_id, site_id, created_at FROM role_bindings
+WHERE (subject_type = 'user' AND subject = $1::text)
+   OR (subject_type = 'oidc_group' AND subject = ANY($2::text[]))
+ORDER BY created_at, id
+`
+
+type ListRoleBindingsForPrincipalParams struct {
+	UserID string   `json:"user_id"`
+	Groups []string `json:"groups"`
+}
+
+func (q *Queries) ListRoleBindingsForPrincipal(ctx context.Context, arg ListRoleBindingsForPrincipalParams) ([]RoleBinding, error) {
+	rows, err := q.db.Query(ctx, listRoleBindingsForPrincipal, arg.UserID, arg.Groups)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RoleBinding{}
+	for rows.Next() {
+		var i RoleBinding
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubjectType,
+			&i.Subject,
+			&i.Role,
+			&i.OrgID,
+			&i.SiteID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRoleBindingsForUser = `-- name: ListRoleBindingsForUser :many
 SELECT id, subject_type, subject, role, org_id, site_id, created_at FROM role_bindings WHERE subject_type = 'user' AND subject = $1 ORDER BY created_at, id
 `

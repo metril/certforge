@@ -30,6 +30,25 @@ type Principal struct {
 	Roles    []string    // distinct role names
 	Bindings []Binding   // what authz.Can evaluates
 	OrgIDs   []uuid.UUID // orgs the principal can see
+	APIKey   *APIKeyInfo // set when Kind == KindAPIKey
+}
+
+// APIKeyInfo limits an API key principal. Bindings are role bindings whose
+// subject is the key itself; when present they further restrict it.
+type APIKeyInfo struct {
+	ID       uuid.UUID
+	Scopes   []string
+	OrgID    *uuid.UUID
+	Bindings []Binding
+}
+
+// ActorID is the id recorded as the audit actor: the key id for API keys,
+// otherwise the user id.
+func (p Principal) ActorID() string {
+	if p.Kind == KindAPIKey && p.APIKey != nil {
+		return p.APIKey.ID.String()
+	}
+	return p.UserID.String()
 }
 
 type ctxKey int
@@ -58,7 +77,9 @@ func SessionFrom(ctx context.Context) (sqlcgen.Session, bool) {
 
 // LoadPrincipal builds a user principal from its role bindings.
 func LoadPrincipal(ctx context.Context, q *sqlcgen.Queries, u sqlcgen.User) (Principal, error) {
-	rbs, err := q.ListRoleBindingsForUser(ctx, u.ID.String())
+	rbs, err := q.ListRoleBindingsForPrincipal(ctx, sqlcgen.ListRoleBindingsForPrincipalParams{
+		UserID: u.ID.String(), Groups: u.OidcGroups,
+	})
 	if err != nil {
 		return Principal{}, err
 	}
@@ -68,8 +89,8 @@ func LoadPrincipal(ctx context.Context, q *sqlcgen.Queries, u sqlcgen.User) (Pri
 	global := false
 	for _, rb := range rbs {
 		if rb.SiteID != nil {
-			// Site scope is not modelled in Phase 1; a site-scoped binding
-			// contributes nothing until site scope lands in Phase 2.
+			// Site scope is not modelled (Phase 3 wires sites to clients); a
+			// site-scoped binding contributes nothing.
 			continue
 		}
 		p.Bindings = append(p.Bindings, Binding{Role: rb.Role, OrgID: rb.OrgID})

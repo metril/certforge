@@ -789,10 +789,26 @@ components:
         localAdmin:
           type: boolean
           description: True for the break-glass local admin.
+    Role:
+      type: string
+      enum: [admin, org-admin, operator, viewer, auditor]
+      description: A role. admin is everything; org-admin everything in its org except global-only actions; operator certificates, credentials, accounts, clients, issue and renew; viewer read-only; auditor viewer plus the audit log.
+    MeBinding:
+      type: object
+      description: One role held by the signed-in principal.
+      required: [role, orgId]
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        orgId:
+          type: string
+          format: uuid
+          nullable: true
+          description: The org the role applies to; null for a global binding.
     Me:
       type: object
       description: The signed-in principal.
-      required: [user, roles, orgs, csrfToken]
+      required: [user, roles, bindings, orgs, csrfToken]
       properties:
         user:
           description: The signed-in user.
@@ -803,6 +819,10 @@ components:
           description: Distinct role names bound to the user.
           items:
             type: string
+        bindings:
+          type: array
+          description: The roles behind `roles`, with their scope. The UI mirrors authz.Can from these.
+          items: {$ref: "#/components/schemas/MeBinding"}
         orgs:
           type: array
           description: Orgs the user can see.

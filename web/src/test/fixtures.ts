@@ -8,7 +8,13 @@ export const iso = (days: number) => new Date(NOW + days * DAY).toISOString();
 export const PASSWORD = 'correct horse battery';
 
 export const org: Org = { id: 'org-1', slug: 'acme', name: 'Acme' };
-export const me: Me = { user: { id: 'u-1', displayName: 'admin', localAdmin: true }, roles: ['admin'], orgs: [org], csrfToken: 'csrf-1' };
+export const me: Me = {
+  user: { id: 'u-1', displayName: 'admin', localAdmin: true },
+  roles: ['admin'],
+  bindings: [{ role: 'admin', orgId: null }],
+  orgs: [org],
+  csrfToken: 'csrf-1',
+};
 
 export function makeCert(p: Partial<Certificate> = {}): Certificate {
   return {

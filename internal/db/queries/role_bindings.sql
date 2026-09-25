@@ -5,3 +5,9 @@ ON CONFLICT DO NOTHING;
 
 -- name: ListRoleBindingsForUser :many
 SELECT * FROM role_bindings WHERE subject_type = 'user' AND subject = $1 ORDER BY created_at, id;
+
+-- name: ListRoleBindingsForPrincipal :many
+SELECT * FROM role_bindings
+WHERE (subject_type = 'user' AND subject = sqlc.arg(user_id)::text)
+   OR (subject_type = 'oidc_group' AND subject = ANY(sqlc.arg(groups)::text[]))
+ORDER BY created_at, id;

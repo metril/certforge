@@ -191,3 +191,25 @@ func TestMiddleware(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadPrincipalGroupBindings(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	u, err := q.UpsertOIDCUser(ctx, sqlcgen.UpsertOIDCUserParams{Issuer: "https://idp.test", Subject: "s1", DisplayName: "Ann", Groups: []string{"ops"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range []string{"ops", "other"} {
+		if err := q.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{SubjectType: "oidc_group", Subject: g, Role: "operator", OrgID: &org}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := authn.LoadPrincipal(ctx, q, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Bindings) != 1 || p.Bindings[0].Role != "operator" || len(p.OrgIDs) != 1 || p.OrgIDs[0] != org {
+		t.Fatalf("principal %+v", p)
+	}
+}

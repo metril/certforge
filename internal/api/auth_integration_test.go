@@ -124,3 +124,19 @@ func TestLoginArgonBusy(t *testing.T) {
 		t.Fatalf("retry-after %q", ra)
 	}
 }
+
+func TestMeBindings(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedAdminSession()
+	resp, body := e.do(http.MethodGet, "/api/v1/auth/me", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	var me struct {
+		Bindings []struct {
+			Role  string  `json:"role"`
+			OrgID *string `json:"orgId"`
+		} `json:"bindings"`
+	}
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &me) != nil || len(me.Bindings) != 1 ||
+		me.Bindings[0].Role != "admin" || me.Bindings[0].OrgID != nil || !strings.Contains(string(body), `"orgId":null`) {
+		t.Fatalf("me %d %s", resp.StatusCode, body)
+	}
+}

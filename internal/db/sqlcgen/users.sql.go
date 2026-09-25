@@ -14,7 +14,7 @@ import (
 const createLocalAdmin = `-- name: CreateLocalAdmin :one
 INSERT INTO users (display_name, local_password_hash)
 VALUES ('Local admin', $1::text)
-RETURNING id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at
+RETURNING id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups
 `
 
 func (q *Queries) CreateLocalAdmin(ctx context.Context, hash string) (User, error) {
@@ -30,12 +30,13 @@ func (q *Queries) CreateLocalAdmin(ctx context.Context, hash string) (User, erro
 		&i.Disabled,
 		&i.LastLogin,
 		&i.CreatedAt,
+		&i.OidcGroups,
 	)
 	return i, err
 }
 
 const getLocalAdmin = `-- name: GetLocalAdmin :one
-SELECT id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at FROM users WHERE local_password_hash IS NOT NULL LIMIT 1
+SELECT id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups FROM users WHERE local_password_hash IS NOT NULL LIMIT 1
 `
 
 func (q *Queries) GetLocalAdmin(ctx context.Context) (User, error) {
@@ -51,12 +52,13 @@ func (q *Queries) GetLocalAdmin(ctx context.Context) (User, error) {
 		&i.Disabled,
 		&i.LastLogin,
 		&i.CreatedAt,
+		&i.OidcGroups,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at FROM users WHERE id = $1
+SELECT id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
@@ -72,6 +74,7 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Disabled,
 		&i.LastLogin,
 		&i.CreatedAt,
+		&i.OidcGroups,
 	)
 	return i, err
 }
@@ -111,4 +114,44 @@ UPDATE users SET last_login = now() WHERE id = $1
 func (q *Queries) TouchUserLogin(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, touchUserLogin, id)
 	return err
+}
+
+const upsertOIDCUser = `-- name: UpsertOIDCUser :one
+INSERT INTO users (oidc_issuer, oidc_sub, email, display_name, oidc_groups)
+VALUES ($1::text, $2::text, $3, $4::text, $5::text[])
+ON CONFLICT (oidc_issuer, oidc_sub) DO UPDATE
+SET email = EXCLUDED.email, display_name = EXCLUDED.display_name, oidc_groups = EXCLUDED.oidc_groups
+RETURNING id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups
+`
+
+type UpsertOIDCUserParams struct {
+	Issuer      string   `json:"issuer"`
+	Subject     string   `json:"subject"`
+	Email       *string  `json:"email"`
+	DisplayName string   `json:"display_name"`
+	Groups      []string `json:"groups"`
+}
+
+func (q *Queries) UpsertOIDCUser(ctx context.Context, arg UpsertOIDCUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, upsertOIDCUser,
+		arg.Issuer,
+		arg.Subject,
+		arg.Email,
+		arg.DisplayName,
+		arg.Groups,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.OidcIssuer,
+		&i.OidcSub,
+		&i.Email,
+		&i.DisplayName,
+		&i.LocalPasswordHash,
+		&i.Disabled,
+		&i.LastLogin,
+		&i.CreatedAt,
+		&i.OidcGroups,
+	)
+	return i, err
 }

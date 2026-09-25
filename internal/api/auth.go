@@ -136,9 +136,14 @@ func (s *Server) buildMe(ctx context.Context, u sqlcgen.User, p authn.Principal,
 	if err != nil {
 		return gen.Me{}, err
 	}
+	bindings := make([]gen.MeBinding, 0, len(p.Bindings))
+	for _, b := range p.Bindings {
+		bindings = append(bindings, gen.MeBinding{Role: gen.Role(b.Role), OrgId: b.OrgID})
+	}
 	return gen.Me{
 		User:      gen.User{Id: u.ID, DisplayName: u.DisplayName, LocalAdmin: u.LocalPasswordHash != nil},
 		Roles:     append([]string{}, p.Roles...),
+		Bindings:  bindings,
 		Orgs:      visibleOrgs(p, orgs),
 		CsrfToken: csrf,
 	}, nil

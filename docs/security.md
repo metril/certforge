@@ -17,7 +17,9 @@
 
 ## Authorization
 
-Roles: `admin` (everything, including CAs, KEK, global settings, key export), `org-admin` (everything within its org except global-only actions), `operator` (certificates, credentials, accounts, clients, issue and renew), `viewer` (read-only, no secrets), `auditor` (viewer plus audit log). Global-only actions: `settings:write`, `orgs:write`, `cas:write`, `keys:export`. Agents never pass `Can()`; they use their own mTLS listener. Phase 1 seeds only the global `admin` binding for the local admin.
+Roles: `admin` (everything, including CAs, KEK, global settings, key export), `org-admin` (everything within its org except global-only actions), `operator` (certificates, credentials, accounts, clients, issue and renew), `viewer` (read-only, no secrets), `auditor` (viewer plus audit log). Global-only actions: settings:write, orgs:write, cas:write, keys:export, users:write. users:read is readable by any role that holds it in some org (org-admins pick users for bindings). Agents never pass `Can()`; they use their own mTLS listener. Phase 1 seeds only the global `admin` binding for the local admin.
+
+OIDC group bindings (subject_type oidc_group) match the groups recorded at the user's last login.
 
 ## Audit log
 

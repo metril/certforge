@@ -730,12 +730,28 @@ export interface components {
             /** @description True for the break-glass local admin. */
             localAdmin: boolean;
         };
+        /**
+         * @description A role. admin is everything; org-admin everything in its org except global-only actions; operator certificates, credentials, accounts, clients, issue and renew; viewer read-only; auditor viewer plus the audit log.
+         * @enum {string}
+         */
+        Role: "admin" | "org-admin" | "operator" | "viewer" | "auditor";
+        /** @description One role held by the signed-in principal. */
+        MeBinding: {
+            role: components["schemas"]["Role"];
+            /**
+             * Format: uuid
+             * @description The org the role applies to; null for a global binding.
+             */
+            orgId: string | null;
+        };
         /** @description The signed-in principal. */
         Me: {
             /** @description The signed-in user. */
             user: components["schemas"]["User"];
             /** @description Distinct role names bound to the user. */
             roles: string[];
+            /** @description The roles behind `roles`, with their scope. The UI mirrors authz.Can from these. */
+            bindings: components["schemas"]["MeBinding"][];
             /** @description Orgs the user can see. */
             orgs: components["schemas"]["Org"][];
             /** @description Send in the X-CSRF-Token header on every POST, PUT, PATCH, and DELETE. */

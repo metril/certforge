@@ -177,4 +177,5 @@ type User struct {
 	Disabled          bool       `json:"disabled"`
 	LastLogin         *time.Time `json:"last_login"`
 	CreatedAt         time.Time  `json:"created_at"`
+	OidcGroups        []string   `json:"oidc_groups"`
 }

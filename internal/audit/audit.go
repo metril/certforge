@@ -66,7 +66,7 @@ func (a *Auditor) Record(ctx context.Context, e Event) error {
 	actorType, actorID := e.ActorType, e.ActorID
 	if actorType == "" {
 		if p, ok := authn.PrincipalFrom(ctx); ok {
-			actorType, actorID = p.Kind, p.UserID.String()
+			actorType, actorID = p.Kind, p.ActorID()
 		} else {
 			actorType = "system"
 		}
