@@ -31,8 +31,11 @@ export function denyAllOrgs(ctx: { allOrgs: boolean }): void {
   if (ctx.allOrgs) throw redirect({ to: '/o/$org/overview', params: { org: ALL_ORGS_SLUG } });
 }
 
-/** Slug of the org a cross-org item belongs to. */
+/** Slug of the org a cross-org item belongs to. Falls back to the raw org
+ * id (fix round 1), not `ALL_ORGS_SLUG`, when the org isn't in `me.orgs` —
+ * silently routing an unresolvable org to the All orgs view would hide the
+ * mismatch instead of surfacing it (a 404 on the real, if unknown, slug). */
 export function useOrgSlugOf(): (orgId?: string) => string {
   const me = useMe();
-  return (orgId) => me.orgs.find((o) => o.id === orgId)?.slug ?? ALL_ORGS_SLUG;
+  return (orgId) => me.orgs.find((o) => o.id === orgId)?.slug ?? orgId ?? ALL_ORGS_SLUG;
 }

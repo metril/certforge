@@ -64,7 +64,7 @@ function bulkFailureMessage(ids: string[], nameOf: (id: string) => string): stri
 // Card rows below `md` (controller ruling / preflight D9: the spec calls for
 // "card lists" under 768 px; a fixed-width table would scroll horizontally
 // on a phone instead).
-function CertCard({ cert, org }: { cert: Certificate; org: string }) {
+function CertCard({ cert, org, orgName }: { cert: Certificate; org: string; orgName?: string }) {
   return (
     <Link
       to="/o/$org/certificates/$id/$tab"
@@ -75,6 +75,7 @@ function CertCard({ cert, org }: { cert: Certificate; org: string }) {
         <span className="truncate font-semibold">{cert.name}</span>
         <StatusChip status={cert.status} />
       </div>
+      {orgName && <span className="truncate text-xs text-ink-muted">{orgName}</span>}
       <CertValidity cert={cert} />
       <div className="flex items-center justify-between text-xs text-ink-muted">
         <span>Next renewal</span>
@@ -120,16 +121,19 @@ export function CertificatesPage() {
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
   const ids = useMemo(() => rows.map((r) => r.id), [rows]);
   const sel = useRowSelection(ids);
+  // Falls back to the raw org id (not '–') when a cert's org isn't in
+  // `me.orgs` — an unresolvable name should still be visibly the org id,
+  // not silently blank (fix round 1).
+  const orgNameOf = useMemo(
+    () => (c: Certificate) => me.orgs.find((o) => o.id === c.orgId)?.name ?? c.orgId ?? '–',
+    [me.orgs],
+  );
   const columns = useMemo(
     () =>
       allOrgs
-        ? certColumns(
-            (c) => slugOf(c.orgId),
-            () => undefined,
-            (c) => me.orgs.find((o) => o.id === c.orgId)?.name ?? '–',
-          )
+        ? certColumns((c) => slugOf(c.orgId), () => undefined, orgNameOf)
         : certColumns(org.slug, (id) => cas.find((c) => c.id === id)?.name),
-    [allOrgs, org.slug, cas, me.orgs, slugOf],
+    [allOrgs, org.slug, cas, orgNameOf, slugOf],
   );
   const nameOf = useMemo(() => {
     const byId = new Map(rows.map((r) => [r.id, r.name]));
@@ -281,7 +285,7 @@ export function CertificatesPage() {
           ) : (
             <div className="grid gap-2">
               {rows.map((c) => (
-                <CertCard key={c.id} cert={c} org={allOrgs ? slugOf(c.orgId) : org.slug} />
+                <CertCard key={c.id} cert={c} org={allOrgs ? slugOf(c.orgId) : org.slug} orgName={allOrgs ? orgNameOf(c) : undefined} />
               ))}
             </div>
           )}

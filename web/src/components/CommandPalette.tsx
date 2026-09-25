@@ -4,7 +4,7 @@ import { useNavigate, useParams } from '@tanstack/react-router';
 import { FileText, Plus, RotateCw, ShieldCheck } from 'lucide-react';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { useMe } from '@/lib/org';
+import { ALL_ORGS_SLUG, useMe } from '@/lib/org';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { keywordFilter } from '@/lib/utils';
 
@@ -27,10 +27,15 @@ import { keywordFilter } from '@/lib/utils';
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const me = useMe();
   const params = useParams({ strict: false }) as { org?: string };
-  // No org (a fresh account with none yet, or /settings/*): certificate
-  // search and the org-scoped pages below are left out, matching Sidebar's
-  // own "disabled without an org" treatment (lib/nav.ts's NO_ORG).
-  const org = me.orgs.find((o) => o.slug === params.org) ?? me.orgs[0];
+  const allOrgs = params.org === ALL_ORGS_SLUG;
+  // No org (a fresh account with none yet, or /settings/*), and All orgs
+  // (ruling A3): certificate search, New certificate, Renew, and the
+  // org-scoped pages below (Issuers…) are left out, matching Sidebar's own
+  // "disabled without an org"/"All orgs restricted" treatment (lib/nav.ts's
+  // NO_ORG/ALL_ORGS_TARGETS). Under All orgs `org` is `undefined` rather
+  // than falling back to `me.orgs[0]` — a global admin who never picked an
+  // org must not be able to renew or create in one they didn't choose.
+  const org = allOrgs ? undefined : (me.orgs.find((o) => o.slug === params.org) ?? me.orgs[0]);
   const navigate = useNavigate();
   const renew = useRenewCertificates(org?.id ?? '');
   const { data: certs = [] } = useQuery({ ...allCertificatesQuery(org?.id ?? ''), enabled: open && !!org });
@@ -41,16 +46,24 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     setSearch('');
     fn();
   };
+  // Task 9 seam: an "Audit log" page entry (pointing at `/o/all/audit`
+  // under All orgs, `/o/$org/audit` otherwise) belongs alongside Overview
+  // and Certificates here once the audit route ships.
   const pages: { label: string; keywords: string[]; go: () => void }[] = [
-    ...(org
+    ...(allOrgs
       ? [
-          { label: 'Overview', keywords: ['dashboard', 'triage'], go: () => void navigate({ to: '/o/$org/overview', params: { org: org.slug } }) },
-          { label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: org.slug } }) },
-          { label: 'Issuers: CAs', keywords: ['ca', 'acme', 'directory'], go: () => void navigate({ to: '/o/$org/issuers/cas', params: { org: org.slug } }) },
-          { label: 'Issuers: ACME accounts', keywords: ['account'], go: () => void navigate({ to: '/o/$org/issuers/accounts', params: { org: org.slug } }) },
-          { label: 'Issuers: DNS credentials', keywords: ['dns', 'provider', 'credential'], go: () => void navigate({ to: '/o/$org/issuers/dns', params: { org: org.slug } }) },
+          { label: 'Overview', keywords: ['dashboard', 'triage'], go: () => void navigate({ to: '/o/$org/overview', params: { org: ALL_ORGS_SLUG } }) },
+          { label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: ALL_ORGS_SLUG } }) },
         ]
-      : []),
+      : org
+        ? [
+            { label: 'Overview', keywords: ['dashboard', 'triage'], go: () => void navigate({ to: '/o/$org/overview', params: { org: org.slug } }) },
+            { label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: org.slug } }) },
+            { label: 'Issuers: CAs', keywords: ['ca', 'acme', 'directory'], go: () => void navigate({ to: '/o/$org/issuers/cas', params: { org: org.slug } }) },
+            { label: 'Issuers: ACME accounts', keywords: ['account'], go: () => void navigate({ to: '/o/$org/issuers/accounts', params: { org: org.slug } }) },
+            { label: 'Issuers: DNS credentials', keywords: ['dns', 'provider', 'credential'], go: () => void navigate({ to: '/o/$org/issuers/dns', params: { org: org.slug } }) },
+          ]
+        : []),
     { label: 'Settings: General', keywords: ['base url'], go: () => void navigate({ to: '/settings/$section', params: { section: 'general' } }) },
     { label: 'Settings: Access', keywords: ['users', 'roles', 'bindings', 'api keys'], go: () => void navigate({ to: '/settings/$section', params: { section: 'access' } }) },
     { label: 'Settings: Authentication', keywords: ['oidc', 'sso', 'single sign-on', 'groups'], go: () => void navigate({ to: '/settings/$section', params: { section: 'authentication' } }) },

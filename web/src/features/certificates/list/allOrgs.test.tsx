@@ -45,14 +45,17 @@ it('hides writes on the All orgs overview even for admins', async () => {
   expect(screen.queryByRole('button', { name: 'Renew now' })).not.toBeInTheDocument();
 });
 
-it.each(['/o/all/certificates/new', '/o/all/issuers/cas', '/o/all/certificates/c-1/overview', '/o/all/certificates/c-1/edit'])(
-  'sends %s to the All orgs overview',
-  async (path) => {
-    as([{ role: 'admin', orgId: null }]);
-    const { router } = renderRoute(path);
-    await waitFor(() => expect(router.state.location.pathname).toBe('/o/all/overview'));
-  },
-);
+it.each([
+  '/o/all/certificates/new',
+  '/o/all/issuers/cas',
+  '/o/all/certificates/c-1',
+  '/o/all/certificates/c-1/overview',
+  '/o/all/certificates/c-1/edit',
+])('sends %s to the All orgs overview', async (path) => {
+  as([{ role: 'admin', orgId: null }]);
+  const { router } = renderRoute(path);
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/all/overview'));
+});
 
 it('is not found without a global binding', async () => {
   as([{ role: 'org-admin', orgId: org.id }]);
@@ -65,4 +68,17 @@ it('disables Issuers in the sidebar', async () => {
   renderRoute('/o/all/overview');
   const nav = await screen.findByRole('navigation', { name: 'Main' });
   expect(within(nav).getByText('Issuers').closest('[aria-disabled="true"]')).not.toBeNull();
+});
+
+it('shows the org name on card rows below md', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  as([{ role: 'admin', orgId: null }]);
+  renderRoute('/o/all/certificates');
+  const link = await screen.findByRole('link', { name: /db/ });
+  expect(within(link).getByText('Lab')).toBeInTheDocument();
 });

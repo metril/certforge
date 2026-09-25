@@ -60,3 +60,7 @@ export function isNavPathActive(pathname: string, prefix: string): boolean {
 // ALL_ORGS_ONLY_ONE instead of navigating.
 export const ALL_ORGS_TARGETS: ReadonlySet<NavTarget> = new Set(['overview', 'certificates', 'settings']);
 export const ALL_ORGS_ONLY_ONE = 'Pick one organization';
+
+// Visible label of the read-only banner shown on every /o/all/... page
+// (components/ReadOnlyBanner.tsx).
+export const ALL_ORGS_BANNER = 'All orgs · read-only';

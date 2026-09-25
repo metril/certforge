@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeCert, url } from '@/test/fixtures';
+import { authHandlers, makeCert, meWith, org, org2, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 function certificateHandlers(cert: ReturnType<typeof makeCert>) {
@@ -63,6 +63,35 @@ it('never matches on an internal cert:/page:/action: value, only on visible keyw
   await user.type(await screen.findByPlaceholderText('www.example.com'), 'cert:c-7');
   expect(screen.queryByRole('option', { name: /^edge/ })).not.toBeInTheDocument();
   expect(screen.getByText('No match.')).toBeInTheDocument();
+});
+
+// Ruling A3 (fix round 1): under All orgs the palette must not fall back
+// to `me.orgs[0]` for its org-bound queries/actions — a global admin who
+// never picked an org must not be able to renew or create in one they
+// didn't choose, and the org-scoped page entries (Issuers…) don't apply
+// to a cross-org view either.
+it('drops org-bound actions and pages under All orgs, and never requests the first org', async () => {
+  let calledOrgCerts = false;
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'admin', orgId: null }], [org, org2]))),
+    http.get(url('/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
+    http.get(url('/orgs/:orgId/certificates'), () => {
+      calledOrgCerts = true;
+      return HttpResponse.json({ items: [], nextCursor: null });
+    }),
+  );
+  const { user } = renderRoute('/o/all/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByPlaceholderText('www.example.com');
+  expect(within(dialog).queryByText('New certificate')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText(/^Renew /)).not.toBeInTheDocument();
+  expect(within(dialog).queryByText(/^Issuers:/)).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('option', { name: 'Overview' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('option', { name: 'Certificates' })).toBeInTheDocument();
+  expect(calledOrgCerts).toBe(false);
 });
 
 // Review fix: the palette's own dialog is exempt from the global suppress
