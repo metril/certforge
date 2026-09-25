@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
+import { Search } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { isNavPathActive, LATER, NAV, navPrefix, NO_ORG, targetNeedsOrg, type NavItem, type NavTarget } from '@/lib/nav';
 import { useActiveOrgSlug } from '@/lib/org';
@@ -135,7 +136,7 @@ function NavRow({
   );
 }
 
-export function Sidebar({ compact, onNavigate }: { compact: boolean; onNavigate?: () => void }) {
+export function Sidebar({ compact, onNavigate, onSearch }: { compact: boolean; onNavigate?: () => void; onSearch?: () => void }) {
   const org = useActiveOrgSlug() ?? '';
   const pathname = useLocation({ select: (l) => l.pathname });
   return (
@@ -145,6 +146,27 @@ export function Sidebar({ compact, onNavigate }: { compact: boolean; onNavigate?
           <Wordmark compact={compact} />
         </div>
         <OrgSwitcher activeOrg={org} compact={compact} />
+        {onSearch && (
+          <div className={cn('px-3', compact && 'flex justify-center px-0')}>
+            <button
+              type="button"
+              onClick={onSearch}
+              aria-label="Search (Ctrl K)"
+              className={cn(
+                'flex h-8 w-full items-center gap-2 rounded-md border border-border bg-panel px-2 text-sm text-ink-muted hover:text-ink',
+                compact && 'w-9 justify-center px-0',
+              )}
+            >
+              <Search className="size-4" aria-hidden />
+              {!compact && (
+                <>
+                  <span>Search</span>
+                  <kbd className="ml-auto font-sans text-xs">Ctrl K</kbd>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
       <div className="grid flex-1 content-start gap-4 overflow-y-auto">
         {NAV.map((g) => (

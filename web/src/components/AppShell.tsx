@@ -1,12 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from '@tanstack/react-router';
-import { Menu } from 'lucide-react';
+import { Menu, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useActiveOrgSlug } from '@/lib/org';
 import { useShortcuts } from '@/lib/shortcuts';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
+import { CommandPalette } from './CommandPalette';
 import { Sidebar } from './Sidebar';
 import { Wordmark } from './Wordmark';
 
@@ -14,9 +15,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const wide = useMediaQuery('(min-width: 1280px)');
   const isMdUp = useMediaQuery('(min-width: 768px)');
   const [drawer, setDrawer] = useState(false);
+  const [palette, setPalette] = useState(false);
   const navigate = useNavigate();
   const org = useActiveOrgSlug();
   const pathname = useLocation({ select: (l) => l.pathname });
+  const openPalette = useCallback(() => setPalette((o) => !o), []);
 
   // Fix round 1 (review): the drawer previously only closed through
   // `Sidebar`'s `onNavigate` callback, wired to `TargetLink`'s own
@@ -29,16 +32,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (isMdUp) setDrawer(false);
   }, [isMdUp]);
 
-  // Reserves the `g o` / `g c` shortcut registry (spec: Cross-cutting
-  // patterns) and the Ctrl/Cmd-K binding for Task 17's command palette;
-  // `g l` (Clients) is left unregistered until that page ships.
+  // `g o` / `g c` (spec: Cross-cutting patterns), Task 17's `n c` (new
+  // certificate), and the Ctrl/Cmd-K binding, which toggles the palette so
+  // a second Ctrl/Cmd-K closes it again. `g l` (Clients) is left
+  // unregistered until that page ships.
   useShortcuts(
     org
       ? {
           'g o': () => void navigate({ to: '/o/$org/overview', params: { org } }),
           'g c': () => void navigate({ to: '/o/$org/certificates', params: { org } }),
+          'n c': () => void navigate({ to: '/o/$org/certificates/new', params: { org } }),
         }
       : {},
+    openPalette,
   );
 
   return (
@@ -50,7 +56,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <aside className={cn('sticky top-0 hidden h-dvh shrink-0 md:block', wide ? 'w-58' : 'w-14')}>
-        <Sidebar compact={!wide} />
+        <Sidebar compact={!wide} onSearch={openPalette} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col border-border bg-panel md:border-l">
         <header className="flex h-12 items-center gap-2 border-b border-border px-4 md:hidden">
@@ -62,15 +68,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             </SheetTrigger>
             <SheetContent side="left" className="w-64 bg-surface p-0">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
-              <Sidebar compact={false} onNavigate={() => setDrawer(false)} />
+              <Sidebar compact={false} onNavigate={() => setDrawer(false)} onSearch={openPalette} />
             </SheetContent>
           </Sheet>
           <Wordmark />
+          <Button variant="ghost" size="icon" className="ml-auto" aria-label="Search" onClick={openPalette}>
+            <Search className="size-5" aria-hidden />
+          </Button>
         </header>
         <main id="content" className="flex-1 px-4 py-6 md:px-8">
           {children}
         </main>
       </div>
+      <CommandPalette open={palette} onOpenChange={setPalette} />
     </div>
   );
 }

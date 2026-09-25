@@ -96,6 +96,11 @@ export const help = {
   'download.parts': { text: 'fullchain is the certificate plus intermediates, which most servers want.' },
   'download.key': { text: 'Private key downloads are recorded in the audit log.' },
   'cert.versions': { text: 'Every certificate issued for this entry. The dashed segment is the successor.' },
+  'overview.horizon': {
+    text: 'One tick per certificate at its expiry, coloured by state. Drag across the strip to list a range.',
+    learnMore: 'web-ui.md#overview',
+  },
+  'overview.attention': { text: 'Expired, waiting on you, failing, or overdue, most urgent first.', learnMore: 'web-ui.md#overview' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

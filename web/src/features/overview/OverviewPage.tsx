@@ -1,0 +1,178 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import { CircleAlert, CircleCheck, CircleX, Clock, Hourglass, type LucideIcon } from 'lucide-react';
+import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
+import { readinessQuery } from '@/api/queries/health';
+import type { Certificate } from '@/api/types';
+import { EmptyState } from '@/components/EmptyState';
+import { HelpTip } from '@/components/HelpTip';
+import { PageHeader } from '@/components/PageHeader';
+import { ToneChip } from '@/components/StatusChip';
+import { CertValidity } from '@/components/ValidityBar';
+import { Button } from '@/components/ui/button';
+import { ManualDnsCard } from '@/features/certificates/ManualDnsCard';
+import { useOrg } from '@/lib/org';
+import type { Tone } from '@/lib/status';
+import { DAY, relDays } from '@/lib/time';
+import { attentionItems, statusCounts, upcomingRenewals, type AttentionKind } from './attention';
+import { ExpiryHorizon } from './ExpiryHorizon';
+import { HealthStrip } from './HealthStrip';
+
+const KIND: Record<AttentionKind, { tone: Tone; icon: LucideIcon; label: string }> = {
+  expired: { tone: 'expired', icon: CircleX, label: 'Expired' },
+  'manual-dns': { tone: 'pending', icon: Hourglass, label: 'Manual DNS' },
+  failed: { tone: 'failed', icon: CircleAlert, label: 'Failed' },
+  overdue: { tone: 'expiring', icon: Clock, label: 'Overdue' },
+};
+const TILES = [
+  { status: 'active', label: 'Active', icon: CircleCheck, cls: 'text-valid' },
+  { status: 'pending', label: 'Pending', icon: Hourglass, cls: 'text-pending' },
+  { status: 'failed', label: 'Failed', icon: CircleAlert, cls: 'text-failed' },
+  { status: 'expired', label: 'Expired', icon: CircleX, cls: 'text-expired' },
+] as const;
+
+// Below `md` this is a card row (name, then validity and the right-hand
+// note stacked); at `md` and up it's a three-column line, per the phone
+// layout carry-in (queue and renewals render as card rows below md).
+function CertRow({ cert, org, right }: { cert: Certificate; org: string; right: React.ReactNode }) {
+  return (
+    <li className="grid gap-1 border-b border-border py-2 text-sm md:h-9 md:grid-cols-[minmax(0,1fr)_128px_auto] md:items-center md:gap-4 md:py-0">
+      <Link to="/o/$org/certificates/$id/$tab" params={{ org, id: cert.id, tab: 'overview' }} className="truncate font-semibold hover:underline">
+        {cert.name}
+      </Link>
+      <CertValidity cert={cert} />
+      <span className="whitespace-nowrap text-ink-muted">{right}</span>
+    </li>
+  );
+}
+
+export function OverviewPage() {
+  const org = useOrg();
+  const { data: certs = [], isPending } = useQuery(allCertificatesQuery(org.id));
+  const readiness = useQuery(readinessQuery);
+  const renew = useRenewCertificates(org.id);
+  const [range, setRange] = useState<[number, number] | null>(null);
+  const now = Date.now();
+
+  if (!isPending && certs.length === 0) {
+    return (
+      <>
+        <PageHeader title="Overview" />
+        <div className="grid gap-6">
+          <HealthStrip readiness={readiness.data} />
+          <EmptyState message="No certificates yet.">
+            <Button asChild>
+              <Link to="/o/$org/certificates/new" params={{ org: org.slug }}>
+                New certificate
+              </Link>
+            </Button>
+          </EmptyState>
+        </div>
+      </>
+    );
+  }
+
+  const items = attentionItems(certs, now);
+  const manual = items.filter((i) => i.kind === 'manual-dns');
+  const others = items.filter((i) => i.kind !== 'manual-dns');
+  const counts = statusCounts(certs);
+  const upcoming = upcomingRenewals(certs, now);
+  const inRange = range
+    ? certs.filter((c) => {
+        if (!c.currentVersion) return false;
+        const d = (Date.parse(c.currentVersion.notAfter) - now) / DAY;
+        return d >= range[0] && d <= range[1];
+      })
+    : [];
+
+  return (
+    <>
+      <PageHeader title="Overview" />
+      <div className="grid gap-8">
+        <HealthStrip readiness={readiness.data} />
+        <nav aria-label="Filter certificates by status" className="flex flex-wrap gap-2">
+          {TILES.map((t) => (
+            <Link
+              key={t.status}
+              to="/o/$org/certificates"
+              params={{ org: org.slug }}
+              search={{ status: t.status }}
+              aria-label={`${counts[t.status]} ${t.label}`}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-subtle"
+            >
+              <t.icon className={`size-4 ${t.cls}`} aria-hidden />
+              <span className="font-semibold tabular-nums">{counts[t.status]}</span>
+              {t.label}
+            </Link>
+          ))}
+        </nav>
+        <section aria-label="Needs attention" className="grid gap-3">
+          <h2 className="flex items-center gap-1.5 text-base font-semibold">
+            Needs attention <HelpTip id="overview.attention" />
+            <span className="text-sm font-normal text-ink-muted">{items.length}</span>
+          </h2>
+          {manual.map((i) => (
+            <ManualDnsCard key={i.cert.id} orgId={org.id} cert={i.cert} />
+          ))}
+          {others.length > 0 ? (
+            <ul className="grid">
+              {others.map((i) => {
+                const k = KIND[i.kind];
+                return (
+                  <li key={i.cert.id} className="grid min-h-9 grid-cols-1 items-center gap-2 border-b border-border py-2 text-sm md:grid-cols-[auto_minmax(0,160px)_minmax(0,1fr)_auto] md:gap-4 md:py-1">
+                    <ToneChip tone={k.tone} icon={k.icon} label={k.label} />
+                    <Link to="/o/$org/certificates/$id/$tab" params={{ org: org.slug, id: i.cert.id, tab: 'attempts' }} className="truncate font-semibold hover:underline">
+                      {i.cert.name}
+                    </Link>
+                    <span className="truncate text-ink-muted">{i.cause}</span>
+                    <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate([i.cert.id])}>
+                      Renew now
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            manual.length === 0 && (
+              <p className="flex items-center gap-1.5 text-sm">
+                <CircleCheck className="size-4 text-valid" aria-hidden />
+                Nothing needs attention.
+              </p>
+            )
+          )}
+        </section>
+        <ExpiryHorizon certs={certs} now={now} range={range} onRange={setRange} />
+        {range && (
+          <section aria-label="Expiring in range" className="grid gap-2">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold">
+                Expiring in {range[0]} to {range[1]} days
+              </h2>
+              <Button variant="link" size="sm" onClick={() => setRange(null)}>
+                Clear range
+              </Button>
+            </div>
+            <ul className="grid">
+              {inRange.map((c) => (
+                <CertRow key={c.id} cert={c} org={org.slug} right={relDays(c.currentVersion!.notAfter, now)} />
+              ))}
+            </ul>
+          </section>
+        )}
+        <section aria-label="Upcoming renewals" className="grid gap-2">
+          <h2 className="text-base font-semibold">Upcoming renewals</h2>
+          {upcoming.length ? (
+            <ul className="grid">
+              {upcoming.map((c) => (
+                <CertRow key={c.id} cert={c} org={org.slug} right={relDays(c.nextRenewAt!, now)} />
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-ink-muted">No renewals in the next 7 days.</p>
+          )}
+        </section>
+      </div>
+    </>
+  );
+}

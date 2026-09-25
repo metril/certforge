@@ -20,6 +20,7 @@ Open http://localhost:8080 and complete the setup wizard (or `POST /api/v1/setup
 
 - [Architecture](docs/architecture.md)
 - [Configuration](docs/configuration.md)
+- [Web UI](docs/web-ui.md)
 - [Security](docs/security.md)
 - [Development](docs/development.md)
 - [Architecture decision records](docs/adr/)

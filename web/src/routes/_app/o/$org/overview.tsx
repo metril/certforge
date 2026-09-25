@@ -1,4 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageHeader } from '@/components/PageHeader';
+import { OverviewPage } from '@/features/overview/OverviewPage';
 
-export const Route = createFileRoute('/_app/o/$org/overview')({ component: () => <PageHeader title="Overview" /> });
+export const Route = createFileRoute('/_app/o/$org/overview')({ component: OverviewPage });

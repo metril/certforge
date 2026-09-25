@@ -20,9 +20,16 @@ import { url } from './fixtures';
 // user is looking at another tab). Existing tests that merely navigate into
 // a certificate's detail route (e.g. the wizard, after issuing) don't mock
 // `.../manual-dns` or `.../attempts` themselves.
+//
+// Task 17: the `/o/$org/overview` route's stub is replaced by
+// `OverviewPage`, which fetches every certificate and `/readyz` on every
+// render — earlier tests (Tasks 3 and 4) that merely navigate through this
+// route don't mock either. `server.use()` in a given test still wins over
+// these defaults (msw tries handlers most-recently-added first).
 export const server = setupServer(
-  http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [] })),
+  http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get(url('/orgs/:orgId/cas'), () => HttpResponse.json([])),
   http.get(url('/orgs/:orgId/certificates/:id/manual-dns'), () => HttpResponse.json([])),
   http.get(url('/orgs/:orgId/certificates/:id/attempts'), () => HttpResponse.json([])),
+  http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })),
 );
