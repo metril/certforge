@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { DAY, daysUntil, fmtDuration, relDays } from './time';
+import { DAY, HOUR, daysUntil, fmtDuration, relDays, relTime } from './time';
 
 const now = Date.parse('2026-09-24T12:00:00Z');
 
@@ -21,3 +21,18 @@ it.each([
   [4_200, '4.2 s'],
   [125_000, '2 min 5 s'],
 ])('fmtDuration(%s) = %s', (ms, s) => expect(fmtDuration(ms)).toBe(s));
+
+it('formats recent times', () => {
+  const now = Date.parse('2026-09-24T12:00:00Z');
+  expect(relTime('2026-09-24T11:59:40Z', now)).toBe('just now');
+  expect(relTime('2026-09-24T11:55:00Z', now)).toBe('5 min ago');
+  expect(relTime('2026-09-24T09:00:00Z', now)).toBe('3 h ago');
+  expect(relTime('2026-09-21T12:00:00Z', now)).toBe('3 d ago');
+});
+
+it('handles the just-now / minute and hour / day boundaries', () => {
+  const now = Date.parse('2026-09-24T12:00:00Z');
+  expect(relTime(new Date(now - 59_000).toISOString(), now)).toBe('just now');
+  expect(relTime(new Date(now - 60_000).toISOString(), now)).toBe('1 min ago');
+  expect(relTime(new Date(now - 24 * HOUR).toISOString(), now)).toBe('1 d ago');
+});

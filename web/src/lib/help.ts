@@ -115,6 +115,7 @@ export const help = {
     learnMore: 'web-ui.md#overview',
   },
   'overview.attention': { text: 'Expired, waiting on you, failing, or overdue, most urgent first.', learnMore: 'web-ui.md#overview' },
+  'overview.activity': { text: 'The last 20 audit events here. Open one to see what changed.', learnMore: 'web-ui.md#audit-log' },
   'user.source': { text: 'The identity provider that signed the user in, or Local for the break-glass admin.' },
   'user.groups': { text: 'Groups from the user’s last single sign-on. Group bindings match these.' },
   'user.status': { text: 'Disabling signs the user out everywhere and stops their API keys.', learnMore: 'configuration.md#access' },

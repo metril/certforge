@@ -14,7 +14,7 @@ The login page shows **Sign in with single sign-on** when Settings → Authentic
 - **Status tiles** — a count per certificate status (Active, Pending, Failed, Expired). Each tile is a filter: it links to the certificates list with that status pre-selected, not a modal or a drill-down page.
 - **Needs attention** — one row per certificate that wants a look, most urgent first: expired, then waiting on manual DNS, then failed, then overdue for renewal. A certificate waiting on manual DNS is pinned at the top as its own card with the TXT records to add; the rest list the cause (the failure's first line, or how overdue) with an inline **Renew now**.
 - **Expiry horizon** — one tick per certificate at its expiry, over the next 90 days, coloured by state, with the renewal window shaded behind it. Drag across the strip to list every certificate expiring in that range.
-- **Upcoming renewals** — certificates due to renew in the next 7 days.
+- **Upcoming renewals** and **Recent activity** side by side: certificates due in the next 7 days, and the last 20 audit events (shown to roles that can read the audit log; each links to the event on the Audit log page).
 
 Below `md` width, the needs-attention queue and upcoming renewals render as stacked card rows instead of a table line, and the horizon scales to the screen width.
 

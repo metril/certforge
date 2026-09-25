@@ -21,6 +21,7 @@ import { DAY, relDays } from '@/lib/time';
 import { attentionItems, statusCounts, upcomingRenewals, usesManualDns, type AttentionKind } from './attention';
 import { ExpiryHorizon } from './ExpiryHorizon';
 import { HealthStrip } from './HealthStrip';
+import { RecentActivity } from './RecentActivity';
 
 const KIND: Record<AttentionKind, { tone: Tone; icon: LucideIcon; label: string }> = {
   expired: { tone: 'expired', icon: CircleX, label: 'Expired' },
@@ -192,18 +193,21 @@ export function OverviewPage() {
             </ul>
           </section>
         )}
-        <section aria-label="Upcoming renewals" className="grid gap-2">
-          <h2 className="text-base font-semibold">Upcoming renewals</h2>
-          {upcoming.length ? (
-            <ul className="grid">
-              {upcoming.map((c) => (
-                <CertRow key={c.id} cert={c} org={slug(c)} right={relDays(c.nextRenewAt!, now)} />
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-ink-muted">No renewals in the next 7 days.</p>
-          )}
-        </section>
+        <div className="grid gap-8 lg:grid-cols-2">
+          <section aria-label="Upcoming renewals" className="grid content-start gap-2">
+            <h2 className="text-base font-semibold">Upcoming renewals</h2>
+            {upcoming.length ? (
+              <ul className="grid">
+                {upcoming.map((c) => (
+                  <CertRow key={c.id} cert={c} org={slug(c)} right={relDays(c.nextRenewAt!, now)} />
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-ink-muted">No renewals in the next 7 days.</p>
+            )}
+          </section>
+          <RecentActivity orgId={allOrgs ? undefined : org.id} />
+        </div>
       </div>
     </>
   );

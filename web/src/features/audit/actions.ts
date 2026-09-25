@@ -1,4 +1,6 @@
+import { CircleCheck, CirclePlus, Pencil, Trash2, TriangleAlert, type LucideIcon } from 'lucide-react';
 import type { ComboOption } from '@/components/Combobox';
+import type { Tone } from '@/lib/status';
 
 // Actions the server records (internal/api, internal/issuance, internal/setup,
 // internal/authn). B5: includes the legacy auth.* actions alongside session.*.
@@ -18,6 +20,16 @@ export const AUDIT_RESOURCE_TYPES = [
 ] as const;
 
 export const actionLabel = (a: string) => (a.endsWith('.') ? `${a}*` : a);
+
+/** Tone/icon for the Overview's Recent activity chip: a quick visual cue by
+ * verb family, not a full per-action taxonomy. */
+export function actionTone(action: string): { tone: Tone; icon: LucideIcon } {
+  if (action.endsWith('_failed')) return { tone: 'failed', icon: TriangleAlert };
+  if (action.includes('delete') || action.includes('revoke')) return { tone: 'failed', icon: Trash2 };
+  if (action.includes('create')) return { tone: 'valid', icon: CirclePlus };
+  if (action.includes('login') || action.includes('renew') || action.includes('complete') || action.includes('confirmed')) return { tone: 'valid', icon: CircleCheck };
+  return { tone: 'neutral', icon: Pencil };
+}
 
 /** Every "group." prefix first, then each action. */
 export function actionOptions(): ComboOption[] {

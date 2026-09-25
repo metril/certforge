@@ -139,8 +139,8 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 | 6 | API keys | done | 2337e18 |
 | 7 | Orgs and sites | done | e3a1721 |
 | 8 | All orgs | done | fc314b8 |
-| 9 | Audit log page | done | pending |
-| 10 | Overview recent activity | pending | – |
+| 9 | Audit log page | done | e5494c9 |
+| 10 | Overview recent activity | done | pending |
 | 11 | Playwright: dex login and audit | pending | – |
 
 ## Decisions made during implementation
@@ -284,10 +284,8 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 - Providers with ambient cloud credentials (`route53`, `gcloud`, `azuredns`, …) fall back to the server's own identity (instance role, ADC, …) when no keys are set on the stored credential; nothing here gates that off from a CertForge deployment's own cloud identity. Gate this in Phase 2.
 - A database error inside `IssueWorker.succeed` (after the CA has already issued) makes river retry the whole issuance from scratch, including a fresh CA order — against Let's Encrypt this risks the duplicate-certificate rate limit on a flaky database.
 - `MaxWorkers=4` is shared by every river job kind, including the periodic scan job and hour-long manual-dns waits; a burst of manual-dns issuances can starve renewals.
-- 1C: Overview "recent activity" needs the audit log (Phase 2).
 - 1C: Revoke action needs a revoke endpoint; Deployments tab is Phase 3.
 - 1C Task 11: the certificates list's Grants column always renders "–" (client × certificate assignments are Phase 3, same as Deployments above); the card layout below 768 px has no click-to-select or bulk actions (mobile is triage-only per spec, and the floating bulk bar would have nothing to select).
-- 1C Task 17 (controller ruling): the Overview page has no "Recent activity (last 20)" section; it depends on the audit log, which Phase 2 exposes to the web UI. No stand-in was added.
 - 2A Task 2: `apikeys:write` is held by `admin` and `org-admin` only (operators cannot mint keys), and API keys cannot create API keys — deliberate departures from the design's "intersected with the creator's role" wording; `authz.Can` always finishes by checking `bindingsAllow` against the principal's `Bindings` (the creator's bindings, for an API key principal), after `keyAllows` narrows by scope and key org — so an API key can only ever narrow, never widen, what its creator holds.
 - 2A Task 9: `api_keys` has a `name` column (not in the domain model) for the Access screen; API keys cannot mint API keys. Controller ruling: the middleware takes the API-key path only for `Authorization: Bearer cf_…` (an invalid one is a hard 401); any other scheme or bearer shape (`Basic …`, `Bearer <jwt>`) is ignored and falls through to the cookie session, and a valid bearer takes precedence over a cookie present on the same request.
 - 2A Task 10 (controller rulings C9/D1): creating or deleting a role binding is authorized per subject type, not uniformly by `bindings:write` at the request's `orgId`. A `user` subject still needs `bindings:write` in the binding's org (org-admins limited to their own org). An `oidc_group` subject always needs `bindings:write` globally, whatever org the binding targets — group mappings are admin-only, so an org-admin cannot create or delete one even in its own org. An `apikey` subject needs `apikeys:write` at the key's own scope (global for a global key, the key's org for an org-scoped one) instead of `bindings:write`. See ADR 0007.

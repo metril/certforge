@@ -24,6 +24,15 @@ export function fmtDateTime(t: string): string {
   return new Date(t).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+/** Short relative time for activity lists (`just now`, `N min ago`, `N h ago`, `N d ago`). */
+export function relTime(t: string, now = Date.now()): string {
+  const s = Math.max(0, (now - Date.parse(t)) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86_400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86_400)} d ago`;
+}
+
 export function fmtDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
   const s = ms / 1000;
