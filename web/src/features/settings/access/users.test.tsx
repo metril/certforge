@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
 import { adminUser, annUser, authHandlers, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
+import { onTabChange } from './AccessPage';
 
 // A controllable `matchMedia` mock, matching CertificatesPage's own
 // list.test.tsx convention: only the `(min-width: 768px)` query (the one
@@ -17,6 +18,8 @@ function stubViewport(isMdUp: boolean) {
   }));
 }
 
+const ORIGINAL_INNER_WIDTH = window.innerWidth;
+
 // Desktop by default so the table-oriented assertions below hold; the
 // card-rows test overrides this with stubViewport(false).
 beforeEach(() => {
@@ -25,6 +28,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.innerWidth = ORIGINAL_INNER_WIDTH;
 });
 
 it('lists users and disables one after typing their name', async () => {
@@ -58,6 +62,24 @@ it('keeps the tab in the URL', async () => {
   const { router } = renderRoute('/settings/access?tab=users');
   await screen.findByRole('tab', { name: 'Users', selected: true });
   expect(router.state.location.search).toEqual({ tab: 'users' });
+});
+
+it('falls back to the Users tab for an unrecognized ?tab value', async () => {
+  server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser] })));
+  renderRoute('/settings/access?tab=bogus');
+  await screen.findByRole('tab', { name: 'Users', selected: true });
+});
+
+// D5/controller ruling: `q` is a per-tab filter, so switching tabs drops it.
+// Only one tab exists yet (Tasks 4/6 add Role bindings and API keys) and
+// Radix Tabs' controlled `onValueChange` only fires when the clicked trigger
+// differs from the current value (@radix-ui/react-use-controllable-state
+// bails out with `value2 !== prop`), so this can't be driven by clicking the
+// sole existing tab. `onTabChange` is exported from AccessPage specifically
+// so this merge logic is unit-testable without that constraint.
+it('drops the search term when switching tabs', () => {
+  expect(onTabChange({ tab: 'users', q: 'ann' }, 'users')).toEqual({ tab: 'users', q: undefined });
+  expect(onTabChange({ q: 'ann', type: 'user' }, 'bindings')).toEqual({ q: undefined, type: 'user', tab: 'bindings' });
 });
 
 it('shows switches read-only without users:write', async () => {
@@ -121,6 +143,9 @@ it('shows card rows instead of a table below 768px with no horizontal overflow',
   const { container } = renderRoute('/settings/access');
   await screen.findByText('Ann');
   expect(screen.queryByRole('table')).toBeNull();
+  // Important (review fix round 1): the card row shows the user's email too,
+  // not just name/source/groups.
+  expect(screen.getByText('ann@example.com')).toBeInTheDocument();
   const list = screen.getByText('Ann').closest('.grid.gap-2')!.parentElement!;
   expect(list.className).not.toMatch(/min-w-\[/);
   expect(container.querySelector('[class*="min-w-["]')).toBeNull();

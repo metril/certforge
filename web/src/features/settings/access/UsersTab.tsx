@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -11,12 +11,12 @@ import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { HelpTip } from '@/components/HelpTip';
 import { SavedViews } from '@/components/SavedViews';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { fmtDateTime } from '@/lib/time';
@@ -77,13 +77,12 @@ function StatusControl({
           <TooltipTrigger asChild>
             <span>{control}</span>
           </TooltipTrigger>
-          <TooltipContent side="top">You can’t disable your own account.</TooltipContent>
+          <TooltipContent side="top">{help['user.self'].text}</TooltipContent>
         </Tooltip>
       ) : (
         control
       )}
       <span className="text-sm">{u.disabled ? 'Disabled' : 'Active'}</span>
-      {isSelf && <HelpTip id="user.self" />}
     </span>
   );
 }
@@ -112,6 +111,7 @@ function UserCard({
         </span>
         <StatusControl u={u} canWrite={canWrite} isSelf={isSelf} pending={pending} onDisable={onDisable} onEnable={onEnable} />
       </div>
+      <span className="font-mono text-xs text-ink-muted">{u.email ?? '–'}</span>
       <div className="flex items-center justify-between text-xs text-ink-muted">
         <span className="font-mono">{issuerHost(u)}</span>
         <span>{u.lastLogin ? fmtDateTime(u.lastLogin) : 'Never signed in'}</span>
@@ -160,8 +160,11 @@ export function UsersTab() {
 
   const rows = useMemo(() => (q.data ?? []).filter((u) => matches(u, search.q ?? '')), [q.data, search.q]);
 
-  const runDisable = (u: UserDetail) => setConfirm(u);
-  const runEnable = (u: UserDetail) => update.mutate({ id: u.id, disabled: false }, { onError: (err) => toast.error(errorMessage(err)) });
+  const runDisable = useCallback((u: UserDetail) => setConfirm(u), []);
+  const runEnable = useCallback(
+    (u: UserDetail) => update.mutate({ id: u.id, disabled: false }, { onError: (err) => toast.error(errorMessage(err)) }),
+    [update],
+  );
 
   const columns = useMemo(
     () => [
@@ -214,8 +217,7 @@ export function UsersTab() {
         },
       }),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [me.user.id, canWrite, update.isPending],
+    [me.user.id, canWrite, update.isPending, runDisable, runEnable],
   );
 
   if (q.isPending) return <p className="text-sm text-ink-muted">Loading…</p>;
