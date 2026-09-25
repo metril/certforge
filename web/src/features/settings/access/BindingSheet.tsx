@@ -12,6 +12,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
 
@@ -57,6 +58,16 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
   const [error, setError] = useState<string | null>(null);
   const users = useQuery({ ...usersQuery, enabled: open && type === 'user' });
   const keys = useQuery({ ...apiKeysQuery(), enabled: open && type === 'apikey' });
+  // Only keys the caller may actually bind (apikeys:write at the key's own
+  // scope), excluding revoked and expired ones (controller ruling, fix
+  // round 1).
+  const bindableKeys = useMemo(
+    () =>
+      (keys.data ?? []).filter(
+        (k) => !k.revokedAt && (!k.expiresAt || new Date(k.expiresAt) > new Date()) && can(me, 'apikeys:write', k.orgId),
+      ),
+    [keys.data, me],
+  );
 
   useEffect(() => {
     if (!open) {
@@ -67,8 +78,7 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
       setScope(t === 'apikey' ? undefined : initialScope);
       setError(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, fixedType]);
+  }, [open, fixedType, defaultType, initialScope]);
 
   async function save() {
     setError(null);
@@ -97,9 +107,9 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
                 setScope(v === 'apikey' ? undefined : initialScope);
               }}
               options={[
-                { value: 'user', label: 'User', disabled: !canUser, hint: canUser ? undefined : 'You need bindings:write to add user bindings.' },
-                { value: 'oidc_group', label: 'Group', disabled: !canGroup, hint: canGroup ? undefined : 'Only a global admin can add group mappings.' },
-                { value: 'apikey', label: 'API key', disabled: !canApiKey, hint: canApiKey ? undefined : 'You need apikeys:write to add API key bindings.' },
+                { value: 'user', label: 'User', disabled: !canUser, hint: canUser ? undefined : help['binding.userDisabled'].text },
+                { value: 'oidc_group', label: 'Group', disabled: !canGroup, hint: canGroup ? undefined : help['binding.groupDisabled'].text },
+                { value: 'apikey', label: 'API key', disabled: !canApiKey, hint: canApiKey ? undefined : help['binding.apikeyDisabled'].text },
               ]}
             />
           </Field>
@@ -131,12 +141,10 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
               value={subject || undefined}
               onChange={(v) => {
                 setSubject(v ?? '');
-                const key = (keys.data ?? []).find((k) => k.id === v);
+                const key = bindableKeys.find((k) => k.id === v);
                 setScope(key ? (key.orgId ?? GLOBAL) : undefined);
               }}
-              options={(keys.data ?? [])
-                .filter((k) => !k.revokedAt)
-                .map((k) => ({ value: k.id, label: k.name, hint: k.prefix, keywords: [k.prefix] }))}
+              options={bindableKeys.map((k) => ({ value: k.id, label: k.name, hint: k.prefix, keywords: [k.prefix] }))}
               placeholder="Pick a key"
               emptyText="No API key matches."
             />

@@ -25,6 +25,9 @@ export type AccessTab = (typeof ACCESS_TABS)[number];
 export const settingsSearch = z.object({
   tab: z.enum(ACCESS_TABS).optional().catch(undefined),
   type: z.enum(['user', 'oidc_group', 'apikey']).optional().catch(undefined),
+  // orgId (D5 ruling, Task 4 fix round 1): URL-synced org filter for the
+  // Role bindings tab.
+  orgId: z.string().optional().catch(undefined),
   q: z.string().optional().catch(undefined),
 });
 export type SettingsSearch = z.infer<typeof settingsSearch>;

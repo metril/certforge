@@ -2,16 +2,21 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { adminUser, annUser, authHandlers, makeBinding, meWith, org, problem, url } from '@/test/fixtures';
+import { adminUser, annUser, authHandlers, iso, makeApiKey, makeBinding, meWith, org, org2, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
-const list = [makeBinding(), makeBinding({ id: 'rb-2', subjectType: 'oidc_group', subject: 'ops', subjectLabel: 'ops', role: 'operator', orgId: null })];
+const apiKey = makeApiKey();
+const list = [
+  makeBinding(),
+  makeBinding({ id: 'rb-2', subjectType: 'oidc_group', subject: 'ops', subjectLabel: 'ops', role: 'operator', orgId: null }),
+  makeBinding({ id: 'rb-9', subjectType: 'apikey', subject: apiKey.id, subjectLabel: apiKey.name, role: 'admin', orgId: org.id }),
+];
 
 function handlers(onPost?: (b: unknown) => Response | undefined) {
   return [
     http.get(url('/role-bindings'), () => HttpResponse.json({ items: list })),
     http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, annUser] })),
-    http.get(url('/api-keys'), () => HttpResponse.json({ items: [] })),
+    http.get(url('/api-keys'), () => HttpResponse.json({ items: [apiKey] })),
     http.post(url('/role-bindings'), async ({ request }) => {
       const body = await request.json();
       return onPost?.(body) ?? HttpResponse.json(makeBinding({ id: 'rb-3' }), { status: 201 });
@@ -43,9 +48,30 @@ it('lists bindings with subject, role and scope', async () => {
   renderRoute('/settings/access?tab=bindings');
   const table = await screen.findByRole('table', { name: 'Role bindings' });
   expect(await within(table).findByText('Ann')).toBeInTheDocument();
-  expect(within(table).getByText('Acme')).toBeInTheDocument();
+  // Fix round 1 (review): the user subject shows its looked-up email too.
+  expect(within(table).getByText('ann@example.com')).toBeInTheDocument();
+  expect(within(table).getAllByText('Acme').length).toBeGreaterThan(0);
   expect(within(table).getByText('ops')).toBeInTheDocument();
   expect(within(table).getByText('All orgs')).toBeInTheDocument();
+  // The apikey subject shows the key's name plus its raw id in mono.
+  expect(within(table).getByText(apiKey.name)).toBeInTheDocument();
+  expect(within(table).getByText(apiKey.id)).toBeInTheDocument();
+});
+
+// Fix round 1 (review): a subject id that doesn't resolve (user/key not in
+// the looked-up list) falls back to the raw id in mono instead of crashing
+// or showing nothing.
+it('falls back to the raw subject id when it cannot be resolved', async () => {
+  const orphan = makeBinding({ id: 'rb-orphan', subject: 'u-missing', subjectLabel: 'u-missing' });
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/role-bindings'), () => HttpResponse.json({ items: [orphan] })),
+    http.get(url('/users'), () => HttpResponse.json({ items: [adminUser] })),
+    http.get(url('/api-keys'), () => HttpResponse.json({ items: [] })),
+  );
+  renderRoute('/settings/access?tab=bindings');
+  const table = await screen.findByRole('table', { name: 'Role bindings' });
+  expect(await within(table).findByText('u-missing')).toBeInTheDocument();
 });
 
 it('adds a group binding', async () => {
@@ -143,16 +169,77 @@ it('shows card rows instead of a table below 768px with no horizontal overflow',
   await screen.findByText('Ann');
   expect(screen.queryByRole('table')).toBeNull();
   expect(screen.getByText('ops')).toBeInTheDocument();
+  expect(screen.getByText('ann@example.com')).toBeInTheDocument();
   const cardsRoot = screen.getByText('Ann').closest('.grid.gap-2')!.parentElement!;
   expect(cardsRoot.className).not.toMatch(/min-w-\[/);
   expect(container.querySelector('[class*="min-w-["]')).toBeNull();
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
 });
 
-it('filters bindings by subject type, synced to the URL', async () => {
+// D5: type and org filters are both URL-synced, independently and together.
+it('filters bindings by subject type and org, synced to the URL', async () => {
   server.use(...authHandlers({ authed: true }), ...handlers());
   const { user, router } = renderRoute('/settings/access?tab=bindings');
   await screen.findByRole('table', { name: 'Role bindings' });
   await user.click(screen.getByRole('radio', { name: 'Groups' }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ type: 'oidc_group' }));
+  await user.click(screen.getByRole('combobox', { name: 'Org' }));
+  await user.click(await screen.findByRole('option', { name: 'Acme' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ type: 'oidc_group', orgId: org.id }));
+});
+
+// D5: `q` filters client-side and is synced to the URL, same contract as
+// UsersTab's own search box.
+it('filters bindings by a URL-synced search term', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  const { user, router } = renderRoute('/settings/access?tab=bindings');
+  const table = await screen.findByRole('table', { name: 'Role bindings' });
+  await within(table).findByText('Ann');
+  await user.type(screen.getByRole('textbox', { name: 'Search bindings' }), 'ops');
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'ops' }));
+  await waitFor(() => expect(within(screen.getByRole('table', { name: 'Role bindings' })).queryByText('Ann')).toBeNull());
+  expect(within(screen.getByRole('table', { name: 'Role bindings' })).getByText('ops')).toBeInTheDocument();
+});
+
+// Item 1's required test: the server actually receives the subject-type
+// filter, not just the URL.
+it('requests bindings filtered by subject type from the server', async () => {
+  let lastQuery: URLSearchParams | undefined;
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/role-bindings'), ({ request }) => {
+      lastQuery = new URL(request.url).searchParams;
+      return HttpResponse.json({ items: list });
+    }),
+    http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, annUser] })),
+    http.get(url('/api-keys'), () => HttpResponse.json({ items: [apiKey] })),
+  );
+  renderRoute('/settings/access?tab=bindings&type=oidc_group');
+  await waitFor(() => expect(lastQuery?.get('subjectType')).toBe('oidc_group'));
+});
+
+// Controller ruling (item 3, fix round 1): the API key picker only offers
+// keys the caller may actually bind — apikeys:write at the key's own scope —
+// and excludes expired and revoked keys.
+it('filters the API key picker to keys the caller may bind, excluding expired and revoked ones', async () => {
+  const bindable = makeApiKey({ id: 'k-ok', name: 'ok-key', orgId: org.id });
+  const otherOrg = makeApiKey({ id: 'k-other', name: 'other-org-key', orgId: org2.id });
+  const expired = makeApiKey({ id: 'k-expired', name: 'expired-key', orgId: org.id, expiresAt: iso(-1) });
+  const revoked = makeApiKey({ id: 'k-revoked', name: 'revoked-key', orgId: org.id, revokedAt: iso(-1) });
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: org.id }]))),
+    http.get(url('/role-bindings'), () => HttpResponse.json({ items: list })),
+    http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, annUser] })),
+    http.get(url('/api-keys'), () => HttpResponse.json({ items: [bindable, otherOrg, expired, revoked] })),
+  );
+  const { user } = renderRoute('/settings/access?tab=bindings');
+  await user.click(await screen.findByRole('button', { name: 'Add binding' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Add binding' });
+  await user.click(within(sheet).getByRole('radio', { name: 'API key' }));
+  await user.click(within(sheet).getByRole('combobox', { name: 'API key' }));
+  expect(await screen.findByRole('option', { name: /ok-key/ })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /other-org-key/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /expired-key/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /revoked-key/ })).not.toBeInTheDocument();
 });

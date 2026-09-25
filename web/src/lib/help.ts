@@ -118,6 +118,9 @@ export const help = {
   'binding.group': { text: 'The group name exactly as the identity provider sends it in the groups claim.', learnMore: 'configuration.md#authentication' },
   'binding.role': { text: 'Viewer reads, auditor also reads the audit log, operator issues and edits certificates. Org admin runs one org; admin runs everything.' },
   'binding.scope': { text: 'One org, or All orgs for a global role. Changes apply on the next request.' },
+  'binding.userDisabled': { text: 'You need bindings:write to add user bindings.' },
+  'binding.groupDisabled': { text: 'Only a global admin can add group mappings.' },
+  'binding.apikeyDisabled': { text: 'You need apikeys:write to add API key bindings.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;
