@@ -16,20 +16,13 @@ import { ToneChip } from '@/components/StatusChip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { keyState, scopeLabel } from '@/lib/apiKeys';
 import { useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
 import { fmtDate, fmtDateTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { cn } from '@/lib/utils';
 import { ApiKeySheet } from './ApiKeySheet';
-import { scopeLabel } from './BindingSheet';
 import { OneTimeSecretDialog } from './OneTimeSecretDialog';
-
-export function keyState(k: ApiKey, now = Date.now()): 'active' | 'expired' | 'revoked' {
-  if (k.revokedAt) return 'revoked';
-  if (k.expiresAt && Date.parse(k.expiresAt) <= now) return 'expired';
-  return 'active';
-}
 
 const STATE = {
   active: { tone: 'valid', icon: CircleCheck, label: 'Active' },
@@ -63,11 +56,22 @@ function KeyCard({ k, canWrite, onRevoke }: { k: ApiKey; canWrite: boolean; onRe
         <span>{k.createdByName}</span>
         <span>{k.expiresAt ? fmtDate(k.expiresAt) : 'Never'}</span>
       </div>
+      <span className="text-xs text-ink-muted">Last used {k.lastUsedAt ? fmtDateTime(k.lastUsedAt) : 'never'}</span>
       {keyState(k) === 'active' && canWrite && (
         <Button variant="ghost" size="sm" aria-label={`Revoke ${k.name}`} className="justify-self-end" onClick={onRevoke}>
           Revoke
         </Button>
       )}
+    </div>
+  );
+}
+
+function KeyCardSkeleton() {
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
+      <div className="h-4 w-1/2 animate-pulse rounded-sm bg-subtle" />
+      <div className="h-3 w-1/3 animate-pulse rounded-sm bg-subtle" />
+      <div className="h-3 w-1/4 animate-pulse rounded-sm bg-subtle" />
     </div>
   );
 }
@@ -196,11 +200,25 @@ export function ApiKeysTab() {
       ) : q.data && q.data.length === 0 ? (
         <EmptyState message="No API keys yet.">{add}</EmptyState>
       ) : q.data && rows.length === 0 ? (
-        <EmptyState message="No API keys match this filter." />
+        <EmptyState message="No API keys match this filter.">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setText('');
+              void navigate({ search: (prev) => ({ ...prev, q: undefined, state: undefined }), replace: true });
+            }}
+          >
+            Clear filters
+          </Button>
+        </EmptyState>
       ) : isMdUp ? (
         <DataTable ariaLabel="API keys" data={rows} columns={columns} getRowId={(k) => k.id} skeletonRows={q.isPending ? 3 : undefined} />
       ) : q.isPending ? (
-        <div className={cn('grid gap-2')} aria-hidden />
+        <div className="grid gap-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <KeyCardSkeleton key={i} />
+          ))}
+        </div>
       ) : (
         <div className="grid gap-2">
           {rows.map((k) => (

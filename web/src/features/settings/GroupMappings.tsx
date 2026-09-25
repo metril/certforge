@@ -7,10 +7,11 @@ import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { scopeLabel } from '@/lib/apiKeys';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
-import { BindingSheet, ROLE_LABEL, scopeLabel } from './access/BindingSheet';
+import { BindingSheet, ROLE_LABEL } from './access/BindingSheet';
 
 // D1 ruling: group mappings are oidc_group role bindings, reusing Task 4's
 // binding sheet/mutations with fixedType so this stays the single source of

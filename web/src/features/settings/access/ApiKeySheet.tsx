@@ -10,13 +10,25 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { GLOBAL } from '@/lib/apiKeys';
 import { useMe } from '@/lib/org';
 import { API_KEY_SCOPES, can, canGrantScope } from '@/lib/permissions';
 import { DAY } from '@/lib/time';
-import { GLOBAL } from './BindingSheet';
 
-type Expiry = '30d' | '90d' | '1y' | 'never';
-const EXPIRY_DAYS: Record<Expiry, number | null> = { '30d': 30, '90d': 90, '1y': 365, never: null };
+type Expiry = '30d' | '90d' | '1y' | 'never' | 'custom';
+const EXPIRY_DAYS: Partial<Record<Expiry, number | null>> = { '30d': 30, '90d': 90, '1y': 365, never: null };
+
+/** `date` is a `<input type="date">` value ("YYYY-MM-DD"), read as local time
+ * (never UTC — a date field means the day where the caller is). Returns the
+ * end of that local day as an ISO instant, or null for an empty/unparsable
+ * value. */
+function endOfDayLocalISO(date: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  const dt = new Date(Number(y), Number(mo) - 1, Number(d), 23, 59, 59, 999);
+  return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
+}
 
 export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; onCreated: (c: ApiKeyCreated) => void }) {
   const me = useMe();
@@ -33,9 +45,13 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
   const [scope, setScope] = useState<string | undefined>(initialScope);
   const [picked, setPicked] = useState<ApiKeyScope[]>(['certs:read']);
   const [expiry, setExpiry] = useState<Expiry>('90d');
+  const [customDate, setCustomDate] = useState('');
   const [error, setError] = useState<string | null>(null);
   const orgId = scope === GLOBAL ? null : (scope ?? null);
   const grantable = (s: ApiKeyScope) => canGrantScope(me, s, orgId);
+  const customExpiresAt = expiry === 'custom' ? endOfDayLocalISO(customDate) : undefined;
+  const customPast = expiry === 'custom' && customExpiresAt !== null && customExpiresAt !== undefined && Date.parse(customExpiresAt) < Date.now();
+  const customInvalid = expiry === 'custom' && (customExpiresAt === null || customPast);
 
   useEffect(() => {
     if (!open) {
@@ -43,19 +59,27 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
       setScope(initialScope);
       setPicked(['certs:read']);
       setExpiry('90d');
+      setCustomDate('');
       setError(null);
     }
   }, [open, initialScope]);
 
   async function submit() {
     setError(null);
-    const days = EXPIRY_DAYS[expiry];
+    if (customInvalid) return;
+    let expiresAt: string | null;
+    if (expiry === 'custom') {
+      expiresAt = customExpiresAt ?? null;
+    } else {
+      const days = EXPIRY_DAYS[expiry] ?? null;
+      expiresAt = days === null ? null : new Date(Date.now() + days * DAY).toISOString();
+    }
     try {
       const created = await create.mutateAsync({
         name: name.trim(),
         scopes: picked.filter(grantable),
         orgId,
-        expiresAt: days === null ? null : new Date(Date.now() + days * DAY).toISOString(),
+        expiresAt,
       });
       // Detach the observer so the gcTime-0 mutation (and its token) leaves the cache.
       create.reset();
@@ -97,9 +121,15 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
               { value: '90d', label: '90 days' },
               { value: '1y', label: '1 year' },
               { value: 'never', label: 'Never' },
+              { value: 'custom', label: 'Custom' },
             ]}
           />
         </Field>
+        {expiry === 'custom' && (
+          <Field id="key-expiry-date" label="Expiry date" error={customPast ? "Pick a date that hasn't passed." : null}>
+            <Input id="key-expiry-date" type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+          </Field>
+        )}
         {error && (
           <p role="alert" className="flex items-center gap-1 text-xs">
             <CircleAlert className="size-3.5 text-failed" aria-hidden />
@@ -107,7 +137,7 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
           </p>
         )}
         <SheetFooter>
-          <Button disabled={!name.trim() || !scope || picked.filter(grantable).length === 0 || create.isPending} onClick={() => void submit()}>
+          <Button disabled={!name.trim() || !scope || picked.filter(grantable).length === 0 || customInvalid || create.isPending} onClick={() => void submit()}>
             Create
           </Button>
         </SheetFooter>

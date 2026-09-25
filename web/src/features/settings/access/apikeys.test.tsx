@@ -2,9 +2,9 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, iso, makeApiKey, meWith, org, url } from '@/test/fixtures';
+import { authHandlers, DAY, iso, makeApiKey, meWith, NOW, org, url } from '@/test/fixtures';
+import { keyState } from '@/lib/apiKeys';
 import { renderRoute } from '@/test/render';
-import { keyState } from './ApiKeysTab';
 
 const TOKEN = 'cf_0123456789ab_' + 'x'.repeat(43);
 
@@ -44,6 +44,10 @@ it('computes key state', () => {
 });
 
 it('creates a key and shows the secret dialog until acknowledged', async () => {
+  // Pin the clock (no auto-advance) so the 30-day preset's ISO instant can
+  // be asserted exactly, not just "is a string" (fix round 1 item 2).
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
   let body: Record<string, unknown> = {};
   server.use(...authHandlers({ authed: true }), ...handlers((b) => (body = b)));
   const { user, queryClient } = renderRoute('/settings/access?tab=keys');
@@ -58,7 +62,7 @@ it('creates a key and shows the secret dialog until acknowledged', async () => {
   await waitFor(() => expect(body.name).toBe('deploy'));
   expect(body.scopes).toEqual(['certs:read', 'certs:issue']);
   expect(body.orgId).toBe(org.id);
-  expect(typeof body.expiresAt).toBe('string');
+  expect(body.expiresAt).toBe(new Date(NOW + 30 * DAY).toISOString());
 
   const dialog = await screen.findByRole('dialog', { name: 'API key deploy' });
   expect(within(dialog).getByText(TOKEN)).toBeInTheDocument();
@@ -71,6 +75,35 @@ it('creates a key and shows the secret dialog until acknowledged', async () => {
   expect(screen.queryByText(TOKEN)).not.toBeInTheDocument();
   const cached = queryClient.getMutationCache().getAll().map((m) => JSON.stringify(m.state.data ?? null));
   expect(cached.some((s) => s.includes(TOKEN))).toBe(false);
+});
+
+// Fix round 1 item 1: a custom expiry reveals a date field, sends the end
+// of that local day as an ISO instant, and rejects a past date inline.
+it('sends a custom expiry as end-of-day local time and rejects a past date', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+  let body: Record<string, unknown> = {};
+  server.use(...authHandlers({ authed: true }), ...handlers((b) => (body = b)));
+  const { user } = renderRoute('/settings/access?tab=keys');
+  await user.click(await screen.findByRole('button', { name: 'New API key' }));
+  const sheet = await screen.findByRole('dialog', { name: 'New API key' });
+  await user.type(within(sheet).getByLabelText('Name'), 'deploy');
+  await user.click(within(sheet).getByRole('radio', { name: 'Custom' }));
+  const date = within(sheet).getByLabelText('Expiry date');
+  const create = within(sheet).getByRole('button', { name: 'Create' });
+
+  // A past date is rejected inline and blocks submission.
+  await user.type(date, '2020-01-01');
+  expect(within(sheet).getByRole('alert')).toHaveTextContent(/hasn't passed/);
+  expect(create).toBeDisabled();
+
+  // A future date sends the end of that local day as an ISO instant.
+  await user.clear(date);
+  await user.type(date, '2026-12-31');
+  expect(create).toBeEnabled();
+  await user.click(create);
+  await waitFor(() => expect(body.name).toBe('deploy'));
+  expect(body.expiresAt).toBe(new Date(2026, 11, 31, 23, 59, 59, 999).toISOString());
 });
 
 it('disables scopes the role cannot grant', async () => {
@@ -114,9 +147,37 @@ it('hides the Revoke action for a revoked key', async () => {
   const table = await screen.findByRole('table', { name: 'API keys' });
   await within(table).findByText('old');
   expect(within(table).queryByRole('button', { name: 'Revoke old' })).not.toBeInTheDocument();
-  // MSW's captured request data races the click (C3); assert after settling.
   await user.click(await within(table).findByRole('button', { name: 'Revoke ci' }));
   expect(await screen.findByRole('dialog', { name: 'Revoke ci' })).toBeInTheDocument();
+});
+
+// An expired (not revoked) key also shows a status chip and no Revoke
+// action (fix round 1 item 4).
+it('shows the Expired chip and hides Revoke for an expired key', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/api-keys'), () => HttpResponse.json({ items: [makeApiKey({ id: 'k-4', name: 'stale', expiresAt: iso(-1) })] })),
+  );
+  renderRoute('/settings/access?tab=keys');
+  const table = await screen.findByRole('table', { name: 'API keys' });
+  await within(table).findByText('stale');
+  expect(within(table).getByText('Expired')).toBeInTheDocument();
+  expect(within(table).queryByRole('button', { name: 'Revoke stale' })).not.toBeInTheDocument();
+});
+
+// D4/D5: the mobile card view renders the same expired state.
+it('shows the Expired chip and hides Revoke in the mobile card view', async () => {
+  stubViewport(false);
+  window.innerWidth = 375;
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/api-keys'), () => HttpResponse.json({ items: [makeApiKey({ id: 'k-4', name: 'stale', expiresAt: iso(-1) })] })),
+  );
+  renderRoute('/settings/access?tab=keys');
+  const name = await screen.findByText('stale');
+  const card = name.closest<HTMLElement>('.grid.gap-2')!;
+  expect(within(card).getByText('Expired')).toBeInTheDocument();
+  expect(within(card).queryByRole('button', { name: 'Revoke stale' })).not.toBeInTheDocument();
 });
 
 // 404/403 on revoke shows the problem detail inline instead of throwing.
@@ -148,6 +209,16 @@ it('filters keys by state, synced to the URL', async () => {
   await waitFor(() => expect(router.state.location.search).toMatchObject({ state: 'revoked' }));
   await waitFor(() => expect(within(screen.getByRole('table', { name: 'API keys' })).queryByText('ci')).toBeNull());
   expect(within(screen.getByRole('table', { name: 'API keys' })).getByText('old')).toBeInTheDocument();
+});
+
+// D5: a filtered-to-empty result offers a way back instead of a dead end.
+it('clears filters from the empty state', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  const { user, router } = renderRoute('/settings/access?tab=keys&q=nope');
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'nope' }));
+  await user.click(await screen.findByRole('button', { name: 'Clear filters' }));
+  await waitFor(() => expect(router.state.location.search.q).toBeUndefined());
+  expect(await screen.findByRole('table', { name: 'API keys' })).toBeInTheDocument();
 });
 
 // D5: saved views for the API keys tab.

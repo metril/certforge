@@ -17,12 +17,13 @@ import { SavedViews } from '@/components/SavedViews';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { scopeLabel } from '@/lib/apiKeys';
 import { useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
 import { fmtDate } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
-import { BindingSheet, ROLE_LABEL, scopeLabel } from './BindingSheet';
+import { BindingSheet, ROLE_LABEL } from './BindingSheet';
 
 const col = createColumnHelper<RoleBinding>();
 const TYPE_ICON = { user: User, oidc_group: Users, apikey: KeyRound } as const;

@@ -5,27 +5,22 @@ import { ApiError, errorMessage } from '@/api/errors';
 import { apiKeysQuery } from '@/api/queries/apiKeys';
 import { useCreateBinding } from '@/api/queries/bindings';
 import { usersQuery } from '@/api/queries/users';
-import type { Me, Role, SubjectType } from '@/api/types';
+import type { Role, SubjectType } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { GLOBAL, keyState, scopeLabel } from '@/lib/apiKeys';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
-import { keyState } from './ApiKeysTab';
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Admin', 'org-admin': 'Org admin', operator: 'Operator', viewer: 'Viewer', auditor: 'Auditor',
 };
 const ROLES: Role[] = ['viewer', 'auditor', 'operator', 'org-admin', 'admin'];
-export const GLOBAL = 'global';
-
-export function scopeLabel(me: Pick<Me, 'orgs'>, orgId: string | null): string {
-  return orgId === null ? 'All orgs' : (me.orgs.find((o) => o.id === orgId)?.name ?? orgId);
-}
 
 type Props = { open: boolean; onOpenChange: (open: boolean) => void; fixedType?: SubjectType };
 
