@@ -35,6 +35,8 @@ tags:
     description: Certificates and issuance defaults.
   - name: access
     description: Users, role bindings, and API keys.
+  - name: audit
+    description: The audit log.
 paths:
   /setup/status:
     get:
@@ -1236,6 +1238,81 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /audit:
+    get:
+      operationId: listAuditEvents
+      tags: [audit]
+      summary: List audit events
+      description: Newest first, keyset paginated. Needs audit:read.
+      parameters:
+        - {$ref: "#/components/parameters/AuditFrom"}
+        - {$ref: "#/components/parameters/AuditTo"}
+        - {$ref: "#/components/parameters/AuditActor"}
+        - {$ref: "#/components/parameters/AuditAction"}
+        - {$ref: "#/components/parameters/AuditResourceType"}
+        - {$ref: "#/components/parameters/AuditResourceId"}
+        - {$ref: "#/components/parameters/AuditOrgId"}
+        - {$ref: "#/components/parameters/AuditQ"}
+        - {$ref: "#/components/parameters/ListLimit"}
+        - {$ref: "#/components/parameters/ListCursor"}
+      responses:
+        "200":
+          description: One page of events.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuditEventList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /audit/export:
+    get:
+      operationId: exportAuditEvents
+      tags: [audit]
+      summary: Export audit events as CSV
+      description: Same filters as listAuditEvents, newest first, at most 100000 rows. Cells that a spreadsheet would treat as a formula are prefixed with an apostrophe. The X-Audit-Truncated response header is true when the cap was hit; a query error partway through is written as a final "#error,<message>" row instead of truncating the file silently. The export itself is recorded as audit.export. Needs audit:read.
+      parameters:
+        - {$ref: "#/components/parameters/AuditFrom"}
+        - {$ref: "#/components/parameters/AuditTo"}
+        - {$ref: "#/components/parameters/AuditActor"}
+        - {$ref: "#/components/parameters/AuditAction"}
+        - {$ref: "#/components/parameters/AuditResourceType"}
+        - {$ref: "#/components/parameters/AuditResourceId"}
+        - {$ref: "#/components/parameters/AuditOrgId"}
+        - {$ref: "#/components/parameters/AuditQ"}
+      responses:
+        "200":
+          description: CSV with a header row.
+          headers:
+            Content-Disposition:
+              description: Attachment file name.
+              schema: {type: string}
+            X-Audit-Truncated:
+              description: "true when the 100000-row cap was hit; some events are not included."
+              schema: {type: boolean}
+          content:
+            text/csv:
+              schema: {type: string, format: binary, description: "CSV: id,ts,actor_type,actor_id,actor_name,action,resource_type,resource_id,org_id,ip,details."}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /audit/verify:
+    get:
+      operationId: verifyAuditChain
+      tags: [audit]
+      summary: Audit chain status
+      description: Walks the whole HMAC chain and reports the first broken row. Cached for 60 seconds. Needs audit:read in any org.
+      responses:
+        "200":
+          description: Chain status.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuditChainStatus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
 components:
   securitySchemes:
     sessionCookie:
@@ -1296,6 +1373,14 @@ components:
       required: false
       description: nextCursor from the previous page.
       schema: {type: string}
+    AuditFrom: {name: from, in: query, required: false, description: Events at or after this time., schema: {type: string, format: date-time}}
+    AuditTo: {name: to, in: query, required: false, description: Events before this time., schema: {type: string, format: date-time}}
+    AuditActor: {name: actor, in: query, required: false, description: Actor id (user or API key id)., schema: {type: string}}
+    AuditAction: {name: action, in: query, required: false, description: "Exact action, or a prefix ending in a dot (session.).", schema: {type: string}}
+    AuditResourceType: {name: resourceType, in: query, required: false, description: Resource type, for example certificate., schema: {type: string}}
+    AuditResourceId: {name: resourceId, in: query, required: false, description: Resource id., schema: {type: string}}
+    AuditOrgId: {name: orgId, in: query, required: false, description: Only this org's events; omit for every org you can audit (global events need global audit:read)., schema: {type: string, format: uuid}}
+    AuditQ: {name: q, in: query, required: false, description: Case-insensitive substring of action, resource, actor, IP or details., schema: {type: string}}
   responses:
     BadRequest:
       description: Malformed request, query parameter, or JSON body.
@@ -2132,3 +2217,39 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/RoleBinding"}, description: Bindings, oldest first.}
+    AuditEvent:
+      type: object
+      description: One audit log entry.
+      required: [id, ts, actorType, actorId, actorName, action, resourceType, resourceId, orgId, ip, details]
+      properties:
+        id: {type: integer, format: int64, description: Position in the chain.}
+        ts: {type: string, format: date-time, description: When it happened.}
+        actorType: {type: string, description: "user, apikey, system, or anonymous."}
+        actorId: {type: string, description: User or API key id; empty for system.}
+        actorName: {type: string, description: User display name or API key name; empty when unknown.}
+        action: {type: string, description: "What happened, for example certificate.renew or session.login."}
+        resourceType: {type: string, description: Kind of object acted on.}
+        resourceId: {type: string, description: Id of the object acted on.}
+        orgId: {type: string, format: uuid, nullable: true, description: Org of the object; null for global events.}
+        ip: {type: string, description: Client address (trusted-proxy aware).}
+        details:
+          type: object
+          additionalProperties: true
+          description: Event specifics. Update events carry before and after objects.
+    AuditEventList:
+      type: object
+      description: One page of audit events.
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/AuditEvent"}, description: Events, newest first.}
+        nextCursor: {type: string, nullable: true, description: Cursor for the next (older) page; null on the last page.}
+    AuditChainStatus:
+      type: object
+      description: Result of verifying the audit chain.
+      required: [ok, count, brokenAtId, checkedAt, headHash]
+      properties:
+        ok: {type: boolean, description: Every row links and verifies.}
+        count: {type: integer, format: int64, description: Rows that verified.}
+        brokenAtId: {type: integer, format: int64, nullable: true, description: First row that failed; null when ok.}
+        checkedAt: {type: string, format: date-time, description: When the walk ran (results are cached 60 s).}
+        headHash: {type: string, description: Hex hash of the last verified row.}

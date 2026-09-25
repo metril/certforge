@@ -12,6 +12,61 @@ import (
 	"github.com/google/uuid"
 )
 
+const countAuditEventsCapped = `-- name: CountAuditEventsCapped :one
+SELECT count(*) FROM (
+  SELECT a.id
+  FROM audit_events a
+  WHERE (NOT $1::bool OR a.ts >= $2::timestamptz)
+    AND (NOT $3::bool OR a.ts < $4::timestamptz)
+    AND ($5::text = '' OR a.actor_id = $5::text)
+    AND ($6::text = '' OR a.action = $6::text
+         OR (right($6::text, 1) = '.' AND starts_with(a.action, $6::text)))
+    AND ($7::text = '' OR a.resource_type = $7::text)
+    AND ($8::text = '' OR a.resource_id = $8::text)
+    AND ($9::bool OR a.org_id = ANY($10::uuid[]))
+    AND ($11::text = '' OR position(lower($11::text) IN lower(
+          a.action || ' ' || a.resource_type || ' ' || a.resource_id || ' ' || a.actor_id || ' ' || a.ip || ' ' || a.details::text)) > 0)
+  LIMIT $12::int
+) t
+`
+
+type CountAuditEventsCappedParams struct {
+	HasFrom      bool        `json:"has_from"`
+	FromTs       time.Time   `json:"from_ts"`
+	HasTo        bool        `json:"has_to"`
+	ToTs         time.Time   `json:"to_ts"`
+	Actor        string      `json:"actor"`
+	Action       string      `json:"action"`
+	ResourceType string      `json:"resource_type"`
+	ResourceID   string      `json:"resource_id"`
+	AnyOrg       bool        `json:"any_org"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	Q            string      `json:"q"`
+	PageLimit    int32       `json:"page_limit"`
+}
+
+// Counts matching rows up to page_limit, so the caller can tell whether the
+// export cap will truncate the result without scanning past it.
+func (q *Queries) CountAuditEventsCapped(ctx context.Context, arg CountAuditEventsCappedParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAuditEventsCapped,
+		arg.HasFrom,
+		arg.FromTs,
+		arg.HasTo,
+		arg.ToTs,
+		arg.Actor,
+		arg.Action,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.AnyOrg,
+		arg.OrgIds,
+		arg.Q,
+		arg.PageLimit,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countLegacyAuditEvents = `-- name: CountLegacyAuditEvents :one
 SELECT count(*) FROM audit_events WHERE hash_alg = 'sha256'
 `
@@ -73,6 +128,105 @@ func (q *Queries) LastAuditHash(ctx context.Context) ([]byte, error) {
 	var hash []byte
 	err := row.Scan(&hash)
 	return hash, err
+}
+
+const listAuditEvents = `-- name: ListAuditEvents :many
+SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
+       COALESCE(u.display_name, k.name, '')::text AS actor_name
+FROM audit_events a
+LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
+LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
+WHERE (NOT $1::bool OR a.ts >= $2::timestamptz)
+  AND (NOT $3::bool OR a.ts < $4::timestamptz)
+  AND ($5::text = '' OR a.actor_id = $5::text)
+  AND ($6::text = '' OR a.action = $6::text
+       OR (right($6::text, 1) = '.' AND starts_with(a.action, $6::text)))
+  AND ($7::text = '' OR a.resource_type = $7::text)
+  AND ($8::text = '' OR a.resource_id = $8::text)
+  AND ($9::bool OR a.org_id = ANY($10::uuid[]))
+  AND ($11::text = '' OR position(lower($11::text) IN lower(
+        a.action || ' ' || a.resource_type || ' ' || a.resource_id || ' ' || a.actor_id || ' ' || a.ip || ' ' || a.details::text)) > 0)
+  AND (NOT $12::bool OR a.id < $13::bigint)
+ORDER BY a.id DESC
+LIMIT $14::int
+`
+
+type ListAuditEventsParams struct {
+	HasFrom      bool        `json:"has_from"`
+	FromTs       time.Time   `json:"from_ts"`
+	HasTo        bool        `json:"has_to"`
+	ToTs         time.Time   `json:"to_ts"`
+	Actor        string      `json:"actor"`
+	Action       string      `json:"action"`
+	ResourceType string      `json:"resource_type"`
+	ResourceID   string      `json:"resource_id"`
+	AnyOrg       bool        `json:"any_org"`
+	OrgIds       []uuid.UUID `json:"org_ids"`
+	Q            string      `json:"q"`
+	HasCursor    bool        `json:"has_cursor"`
+	BeforeID     int64       `json:"before_id"`
+	PageLimit    int32       `json:"page_limit"`
+}
+
+type ListAuditEventsRow struct {
+	ID           int64      `json:"id"`
+	Ts           time.Time  `json:"ts"`
+	ActorType    string     `json:"actor_type"`
+	ActorID      string     `json:"actor_id"`
+	Action       string     `json:"action"`
+	ResourceType string     `json:"resource_type"`
+	ResourceID   string     `json:"resource_id"`
+	OrgID        *uuid.UUID `json:"org_id"`
+	Ip           string     `json:"ip"`
+	Details      []byte     `json:"details"`
+	ActorName    string     `json:"actor_name"`
+}
+
+func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error) {
+	rows, err := q.db.Query(ctx, listAuditEvents,
+		arg.HasFrom,
+		arg.FromTs,
+		arg.HasTo,
+		arg.ToTs,
+		arg.Actor,
+		arg.Action,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.AnyOrg,
+		arg.OrgIds,
+		arg.Q,
+		arg.HasCursor,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAuditEventsRow{}
+	for rows.Next() {
+		var i ListAuditEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ts,
+			&i.ActorType,
+			&i.ActorID,
+			&i.Action,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.OrgID,
+			&i.Ip,
+			&i.Details,
+			&i.ActorName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAuditEventsAsc = `-- name: ListAuditEventsAsc :many

@@ -39,6 +39,8 @@ OIDC group bindings (subject_type oidc_group) match the groups recorded at the u
 
 **Audit-write failure policy:** an audit write never fails the action it is recording. `setup.Complete` and `SetAdminPassword` (bootstrap-admin) commit their transaction first; if the follow-up `Auditor.Record` call then fails, the error is logged and the action still reports success, since undoing an already-committed setup or password reset would be worse than a missing audit row. The same log-and-continue pattern is used wherever audit recording follows a request that already succeeded (see `Server.audit` in `internal/api`).
 
+**Readers:** global auditors and admins see every event; org auditors and org-admins see their orgs' events, never global ones. `GET /audit/export` neutralizes formula-like cells (a leading `=`, `+`, `-`, `@`, tab, or CR gets a leading apostrophe) so a malicious display name or details value cannot execute as a spreadsheet formula when the export is opened.
+
 ## Headers
 
 Every response, API and web UI alike, carries (`internal/api/router.go`'s `securityHeaders`):

@@ -14,3 +14,42 @@ UPDATE audit_events SET prev_hash = $2, hash = $3, hash_alg = 'hmac-sha256' WHER
 
 -- name: CountLegacyAuditEvents :one
 SELECT count(*) FROM audit_events WHERE hash_alg = 'sha256';
+
+-- name: ListAuditEvents :many
+SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
+       COALESCE(u.display_name, k.name, '')::text AS actor_name
+FROM audit_events a
+LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
+LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
+WHERE (NOT sqlc.arg(has_from)::bool OR a.ts >= sqlc.arg(from_ts)::timestamptz)
+  AND (NOT sqlc.arg(has_to)::bool OR a.ts < sqlc.arg(to_ts)::timestamptz)
+  AND (sqlc.arg(actor)::text = '' OR a.actor_id = sqlc.arg(actor)::text)
+  AND (sqlc.arg(action)::text = '' OR a.action = sqlc.arg(action)::text
+       OR (right(sqlc.arg(action)::text, 1) = '.' AND starts_with(a.action, sqlc.arg(action)::text)))
+  AND (sqlc.arg(resource_type)::text = '' OR a.resource_type = sqlc.arg(resource_type)::text)
+  AND (sqlc.arg(resource_id)::text = '' OR a.resource_id = sqlc.arg(resource_id)::text)
+  AND (sqlc.arg(any_org)::bool OR a.org_id = ANY(sqlc.arg(org_ids)::uuid[]))
+  AND (sqlc.arg(q)::text = '' OR position(lower(sqlc.arg(q)::text) IN lower(
+        a.action || ' ' || a.resource_type || ' ' || a.resource_id || ' ' || a.actor_id || ' ' || a.ip || ' ' || a.details::text)) > 0)
+  AND (NOT sqlc.arg(has_cursor)::bool OR a.id < sqlc.arg(before_id)::bigint)
+ORDER BY a.id DESC
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: CountAuditEventsCapped :one
+-- Counts matching rows up to page_limit, so the caller can tell whether the
+-- export cap will truncate the result without scanning past it.
+SELECT count(*) FROM (
+  SELECT a.id
+  FROM audit_events a
+  WHERE (NOT sqlc.arg(has_from)::bool OR a.ts >= sqlc.arg(from_ts)::timestamptz)
+    AND (NOT sqlc.arg(has_to)::bool OR a.ts < sqlc.arg(to_ts)::timestamptz)
+    AND (sqlc.arg(actor)::text = '' OR a.actor_id = sqlc.arg(actor)::text)
+    AND (sqlc.arg(action)::text = '' OR a.action = sqlc.arg(action)::text
+         OR (right(sqlc.arg(action)::text, 1) = '.' AND starts_with(a.action, sqlc.arg(action)::text)))
+    AND (sqlc.arg(resource_type)::text = '' OR a.resource_type = sqlc.arg(resource_type)::text)
+    AND (sqlc.arg(resource_id)::text = '' OR a.resource_id = sqlc.arg(resource_id)::text)
+    AND (sqlc.arg(any_org)::bool OR a.org_id = ANY(sqlc.arg(org_ids)::uuid[]))
+    AND (sqlc.arg(q)::text = '' OR position(lower(sqlc.arg(q)::text) IN lower(
+          a.action || ' ' || a.resource_type || ' ' || a.resource_id || ' ' || a.actor_id || ' ' || a.ip || ' ' || a.details::text)) > 0)
+  LIMIT sqlc.arg(page_limit)::int
+) t;

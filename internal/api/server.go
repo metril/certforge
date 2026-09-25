@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,11 +48,18 @@ type Deps struct {
 	// the 2-minute default (a test override, since lego's Present/CleanUp
 	// take no context and can't be preempted, only raced against a timer).
 	DNSTestTimeout time.Duration
+
+	// AuditVerifyTTL caches GET /audit/verify's result; zero means 60 s.
+	AuditVerifyTTL time.Duration
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.
 type Server struct {
 	d Deps
+
+	verifyMu  sync.Mutex
+	verifyAt  time.Time
+	verifyRes gen.AuditChainStatus
 }
 
 var _ gen.StrictServerInterface = (*Server)(nil)

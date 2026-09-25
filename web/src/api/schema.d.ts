@@ -978,6 +978,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audit events
+         * @description Newest first, keyset paginated. Needs audit:read.
+         */
+        get: operations["listAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export audit events as CSV
+         * @description Same filters as listAuditEvents, newest first, at most 100000 rows. Cells that a spreadsheet would treat as a formula are prefixed with an apostrophe. The X-Audit-Truncated response header is true when the cap was hit; a query error partway through is written as a final "#error,<message>" row instead of truncating the file silently. The export itself is recorded as audit.export. Needs audit:read.
+         */
+        get: operations["exportAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit chain status
+         * @description Walks the whole HMAC chain and reports the first broken row. Cached for 60 seconds. Needs audit:read in any org.
+         */
+        get: operations["verifyAuditChain"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1897,6 +1957,71 @@ export interface components {
             /** @description Bindings */
             items: components["schemas"]["RoleBinding"][];
         };
+        /** @description One audit log entry. */
+        AuditEvent: {
+            /**
+             * Format: int64
+             * @description Position in the chain.
+             */
+            id: number;
+            /**
+             * Format: date-time
+             * @description When it happened.
+             */
+            ts: string;
+            /** @description user, apikey, system, or anonymous. */
+            actorType: string;
+            /** @description User or API key id; empty for system. */
+            actorId: string;
+            /** @description User display name or API key name; empty when unknown. */
+            actorName: string;
+            /** @description What happened, for example certificate.renew or session.login. */
+            action: string;
+            /** @description Kind of object acted on. */
+            resourceType: string;
+            /** @description Id of the object acted on. */
+            resourceId: string;
+            /**
+             * Format: uuid
+             * @description Org of the object; null for global events.
+             */
+            orgId: string | null;
+            /** @description Client address (trusted-proxy aware). */
+            ip: string;
+            /** @description Event specifics. Update events carry before and after objects. */
+            details: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description One page of audit events. */
+        AuditEventList: {
+            /** @description Events */
+            items: components["schemas"]["AuditEvent"][];
+            /** @description Cursor for the next (older) page; null on the last page. */
+            nextCursor: string | null;
+        };
+        /** @description Result of verifying the audit chain. */
+        AuditChainStatus: {
+            /** @description Every row links and verifies. */
+            ok: boolean;
+            /**
+             * Format: int64
+             * @description Rows that verified.
+             */
+            count: number;
+            /**
+             * Format: int64
+             * @description First row that failed; null when ok.
+             */
+            brokenAtId: number | null;
+            /**
+             * Format: date-time
+             * @description When the walk ran (results are cached 60 s).
+             */
+            checkedAt: string;
+            /** @description Hex hash of the last verified row. */
+            headHash: string;
+        };
     };
     responses: {
         /** @description Malformed request, query parameter, or JSON body. */
@@ -2029,6 +2154,22 @@ export interface components {
         ListLimit: number;
         /** @description nextCursor from the previous page. */
         ListCursor: string;
+        /** @description Events at or after this time. */
+        AuditFrom: string;
+        /** @description Events before this time. */
+        AuditTo: string;
+        /** @description Actor id (user or API key id). */
+        AuditActor: string;
+        /** @description Exact action, or a prefix ending in a dot (session.). */
+        AuditAction: string;
+        /** @description Resource type */
+        AuditResourceType: string;
+        /** @description Resource id. */
+        AuditResourceId: string;
+        /** @description Only this org's events; omit for every org you can audit (global events need global audit:read). */
+        AuditOrgId: string;
+        /** @description Case-insensitive substring of action */
+        AuditQ: string;
     };
     requestBodies: never;
     headers: never;
@@ -3807,6 +3948,120 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description Events at or after this time. */
+                from?: components["parameters"]["AuditFrom"];
+                /** @description Events before this time. */
+                to?: components["parameters"]["AuditTo"];
+                /** @description Actor id (user or API key id). */
+                actor?: components["parameters"]["AuditActor"];
+                /** @description Exact action, or a prefix ending in a dot (session.). */
+                action?: components["parameters"]["AuditAction"];
+                /** @description Resource type */
+                resourceType?: components["parameters"]["AuditResourceType"];
+                /** @description Resource id. */
+                resourceId?: components["parameters"]["AuditResourceId"];
+                /** @description Only this org's events; omit for every org you can audit (global events need global audit:read). */
+                orgId?: components["parameters"]["AuditOrgId"];
+                /** @description Case-insensitive substring of action */
+                q?: components["parameters"]["AuditQ"];
+                /** @description Page size, 1 to 500. */
+                limit?: components["parameters"]["ListLimit"];
+                /** @description nextCursor from the previous page. */
+                cursor?: components["parameters"]["ListCursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    exportAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description Events at or after this time. */
+                from?: components["parameters"]["AuditFrom"];
+                /** @description Events before this time. */
+                to?: components["parameters"]["AuditTo"];
+                /** @description Actor id (user or API key id). */
+                actor?: components["parameters"]["AuditActor"];
+                /** @description Exact action, or a prefix ending in a dot (session.). */
+                action?: components["parameters"]["AuditAction"];
+                /** @description Resource type */
+                resourceType?: components["parameters"]["AuditResourceType"];
+                /** @description Resource id. */
+                resourceId?: components["parameters"]["AuditResourceId"];
+                /** @description Only this org's events; omit for every org you can audit (global events need global audit:read). */
+                orgId?: components["parameters"]["AuditOrgId"];
+                /** @description Case-insensitive substring of action */
+                q?: components["parameters"]["AuditQ"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV with a header row. */
+            200: {
+                headers: {
+                    /** @description Attachment file name. */
+                    "Content-Disposition"?: string;
+                    /** @description true when the 100000-row cap was hit; some events are not included. */
+                    "X-Audit-Truncated"?: boolean;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    verifyAuditChain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Chain status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditChainStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
         };
     };

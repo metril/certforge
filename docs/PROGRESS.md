@@ -116,8 +116,8 @@ were Task 18's own commits.
 | 10 | Role bindings API | done | 8a2e246 |
 | 11 | Orgs and sites CRUD | done | 57bd3b7 |
 | 12 | Cross-org certificate list | done | d289146 |
-| 13 | Keyed audit chain | done | pending |
-| 14 | Audit API | todo | – |
+| 13 | Keyed audit chain | done | abe21b8 |
+| 14 | Audit API | done | pending |
 | 15 | dex e2e | todo | – |
 
 ## Decisions made during implementation
