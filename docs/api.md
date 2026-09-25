@@ -20,6 +20,8 @@ Session cookie plus `X-CSRF-Token` on writes (API keys arrive in Phase 2). Each 
 
 Errors are `application/problem+json` (RFC 9457) with `title` and `detail`. 401 unauthenticated, 403 missing permission, 404 not found in this org, 409 in use or nothing to confirm, 422 invalid input (the title names the field), 502 the CA rejected the request (detail carries the ACME problem type).
 
+Every operation in the served spec lists the problem responses it can return (components.responses). 429 comes with Retry-After.
+
 ## Lists
 
 `GET /orgs/{orgId}/certificates` takes `status`, `q` (case-insensitive substring of the name or any certificate name), `sort` (`name`, `notAfter`, `nextRenewAt`, `status`; `-` prefix for descending), `limit` (1–500, default 50) and `cursor`, and returns `{items, nextCursor}`; pass `nextCursor` back unchanged, it is null on the last page. The small collections (CAs, accounts, DNS credentials, versions, attempts, manual-dns records) return plain arrays.

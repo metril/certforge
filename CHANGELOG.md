@@ -57,6 +57,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Server image builds and embeds the web UI; Playwright smoke test covers sign-in, the certificate list and detail, attempts, and PEM download in light and dark themes.
 - Write-only secret fields in settings sections, encrypted at rest and reported as storedSecrets.
 - Site, role binding and API key permissions; OIDC group role bindings; /auth/me lists bindings with their scope.
+- OpenAPI spec documents problem+json error responses on every operation, enforced by a test.
 
 ### Changed
 - Web UI settings: `SettingsPage.tsx`'s `SECTIONS`/`SectionSlug` moved to a small `sections.ts` so the settings route's `beforeLoad` no longer drags the whole Issuance defaults section (and `tldts`) into the app's main chunk; the build's largest chunk drops from 977 kB to under 400 kB, with no chunk over the 500 kB warning threshold, and `npm run build` now fails if `tldts` reappears in an eagerly-loaded chunk (`web/scripts/check-chunks.mjs`).

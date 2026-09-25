@@ -105,8 +105,8 @@ were Task 18's own commits.
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Settings secret fields | done | 8cf3c5f |
-| 2 | Principal, actions, group bindings | done | pending |
-| 3 | OpenAPI problem responses | todo | – |
+| 2 | Principal, actions, group bindings | done | 3fb00fe |
+| 3 | OpenAPI problem responses | done | pending |
 | 4 | Authentication section and trusted proxies | todo | – |
 | 5 | Login hardening | todo | – |
 | 6 | OIDC client and fake provider | todo | – |
@@ -230,6 +230,7 @@ were Task 18's own commits.
 - 2A: stored secret state is `SettingsSection.storedSecrets: string[]`, not a per-field `stored: true` (R2). `stored` already names the raw saved document on `SettingsSection`, and `storedSecrets` matches `DNSCredential.storedSecrets`, which the web `SchemaForm` already consumes.
 - 2A: "All orgs" reads are `GET /certificates` (cross-org, filtered by `certs:read`) and `GET /audit` without `orgId`, not a magic `orgId=all` path value (R6). `{orgId}` is `format: uuid` in every path, so a sentinel would break the generated types.
 - 2A: CI already fails on untracked generated files (ci.yml runs test -z "$(git status --porcelain)" after make generate); R8's drift requirement needed no change.
+- 2A Task 3: every operation's problem responses (`components.responses`, applied per the rules table) are enforced by `TestSpecDocumentsProblems`, which reads the compiled spec via `gen.GetSwagger()`; `npm --prefix web run typecheck` and the vitest suite needed no call-site changes since openapi-fetch's narrowed error types already matched existing usage.
 
 ## Known gaps
 
@@ -244,7 +245,6 @@ were Task 18's own commits.
 - A new login does not revoke the caller's existing sessions, so an old session survives a new login; only bootstrap-admin revokes sessions today.
 - The viewer role's "read-only, no secrets" guarantee has nothing to enforce yet in Phase 1A (no secret-bearing read endpoint exists); it depends on plan 1B's read handlers redacting secret fields correctly.
 - Encrypted blobs are not bound to their row: the AAD is the KEK id only, not a per-row identifier, so per-row AAD binding is deferred.
-- The OpenAPI spec lists only 2xx responses; it does not document the 4xx/5xx problem+json responses handlers actually return.
 - A valid session on a public route (for example `POST /api/v1/auth/login` while already logged in) still requires the CSRF header, since `authn.Middleware` checks CSRF whenever a session resolves, regardless of the route's public status.
 - Audit event IPs are whatever `r.RemoteAddr` reports; behind a reverse proxy that is the proxy's address, not the client's. Add a trusted-proxy setting in Phase 2.
 - `CF_KEK_FILE` accepts a raw 32-byte key file as-is, before trying base64 decoding; only `CF_KEK` (the env var) requires base64.
@@ -264,4 +264,4 @@ were Task 18's own commits.
 - 1C Task 10: Settings → General lists organizations only; there is no `/sites` endpoint yet (sites are a later-phase entity), so the sites list docs/design.md's "Settings" row describes is not shown.
 - 1C Task 11: the certificates list's Grants column always renders "–" (client × certificate assignments are Phase 3, same as Deployments above); the card layout below 768 px has no click-to-select or bulk actions (mobile is triage-only per spec, and the floating bulk bar would have nothing to select).
 - 1C Task 17 (controller ruling): the Overview page has no "Recent activity (last 20)" section; it depends on the audit log, which Phase 2 exposes to the web UI. No stand-in was added.
-- 2A Task 2: `apikeys:write` is held by `admin` and `org-admin` only (operators cannot mint keys), and API keys cannot create API keys — deliberate departures from the design's "intersected with the creator's role" wording; `authz.Can`'s `keyAllows` never grants an action an API key principal's own bindings don't cover, so an API key can only ever narrow, never widen, what its creator holds.
+- 2A Task 2: `apikeys:write` is held by `admin` and `org-admin` only (operators cannot mint keys), and API keys cannot create API keys — deliberate departures from the design's "intersected with the creator's role" wording; `authz.Can` always finishes by checking `bindingsAllow` against the principal's `Bindings` (the creator's bindings, for an API key principal), after `keyAllows` narrows by scope and key org — so an API key can only ever narrow, never widen, what its creator holds.

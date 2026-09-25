@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -211,5 +212,22 @@ func TestLoadPrincipalGroupBindings(t *testing.T) {
 	}
 	if len(p.Bindings) != 1 || p.Bindings[0].Role != "operator" || len(p.OrgIDs) != 1 || p.OrgIDs[0] != org {
 		t.Fatalf("principal %+v", p)
+	}
+
+	if err := q.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{SubjectType: "oidc_group", Subject: "OPS", Role: "viewer", OrgID: &org}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{SubjectType: "oidc_group", Subject: "ops", Role: "auditor"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err = authn.LoadPrincipal(ctx, q, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(p.Bindings, func(b authn.Binding) bool { return b.Role == "viewer" }) {
+		t.Fatalf("group binding matched case-insensitively: %+v", p.Bindings)
+	}
+	if !slices.ContainsFunc(p.Bindings, func(b authn.Binding) bool { return b.Role == "auditor" && b.OrgID == nil }) {
+		t.Fatalf("missing global (org-less) group binding: %+v", p.Bindings)
 	}
 }

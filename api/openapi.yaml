@@ -9,9 +9,10 @@ info:
     POST, PUT, PATCH, and DELETE with a session must send the `X-CSRF-Token` header with
     `csrfToken` from GET /auth/me. Request bodies must be `application/json`.
 
-    Errors are RFC 9457 `application/problem+json` documents (see the Problem schema):
-    400 bad request, 401 not authenticated, 403 forbidden or CSRF failure, 404 not found,
-    409 conflict, 415 wrong content type, 422 validation failure, 500 server error.
+    Errors are RFC 9457 application/problem+json documents (see the Problem schema and
+    components.responses): 400, 401, 403 (missing permission or CSRF failure), 404, 409,
+    413, 415, 422, 429 (login rate limit, with Retry-After), 500, 502 (upstream CA or
+    identity provider), 503 (busy, with Retry-After).
 servers:
   - url: /api/v1
 security:
@@ -46,6 +47,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SetupStatus"
+        "500": {$ref: "#/components/responses/InternalError"}
   /setup/complete:
     post:
       operationId: completeSetup
@@ -66,6 +68,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Me"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
   /meta/schemas:
     get:
       operationId: getMetaSchemas
@@ -79,6 +88,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MetaSchemas"
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs:
     get:
       operationId: listOrgs
@@ -92,6 +104,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrgList"
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /auth/login:
     post:
       operationId: login
@@ -112,6 +127,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Me"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
   /auth/logout:
     post:
       operationId: logout
@@ -121,6 +143,9 @@ paths:
       responses:
         "204":
           description: Logged out.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /auth/me:
     get:
       operationId: getMe
@@ -134,6 +159,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Me"
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /settings/{section}:
     parameters:
       - name: section
@@ -154,6 +182,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SettingsSection"
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     put:
       operationId: putSettingsSection
       tags: [settings]
@@ -176,6 +208,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SettingsSection"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /meta/ca-presets:
     get:
       operationId: listCaPresets
@@ -191,6 +231,9 @@ paths:
                 type: array
                 description: Presets.
                 items: {$ref: "#/components/schemas/CAPreset"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/cas:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -207,6 +250,10 @@ paths:
                 type: array
                 description: CAs.
                 items: {$ref: "#/components/schemas/CA"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     post:
       operationId: createCa
       tags: [issuers]
@@ -223,6 +270,15 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CA"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/cas/{id}:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -236,6 +292,10 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CA"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     put:
       operationId: updateCa
       tags: [issuers]
@@ -252,6 +312,15 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CA"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
     delete:
       operationId: deleteCa
       tags: [issuers]
@@ -260,6 +329,11 @@ paths:
       responses:
         "204":
           description: Deleted.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/acme-accounts:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -276,6 +350,10 @@ paths:
                 type: array
                 description: Accounts.
                 items: {$ref: "#/components/schemas/AcmeAccount"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     post:
       operationId: createAcmeAccount
       tags: [issuers]
@@ -292,6 +370,16 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/AcmeAccount"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "502": {$ref: "#/components/responses/BadGateway"}
   /orgs/{orgId}/acme-accounts/{id}:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -305,6 +393,10 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/AcmeAccount"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     delete:
       operationId: deleteAcmeAccount
       tags: [issuers]
@@ -313,6 +405,11 @@ paths:
       responses:
         "204":
           description: Deleted.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/dns-credentials:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -329,6 +426,10 @@ paths:
                 type: array
                 description: Credentials.
                 items: {$ref: "#/components/schemas/DNSCredential"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     post:
       operationId: createDNSCredential
       tags: [issuers]
@@ -345,6 +446,15 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/DNSCredential"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/dns-credentials/{id}:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -358,6 +468,10 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/DNSCredential"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     put:
       operationId: updateDNSCredential
       tags: [issuers]
@@ -374,6 +488,15 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/DNSCredential"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
     delete:
       operationId: deleteDNSCredential
       tags: [issuers]
@@ -382,6 +505,11 @@ paths:
       responses:
         "204":
           description: Deleted.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/dns-credentials/{id}/test:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     post:
@@ -400,6 +528,15 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/DNSCredentialTestResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
   /orgs/{orgId}/issuance-defaults:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -413,6 +550,10 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/IssuanceDefaults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     put:
       operationId: putOrgIssuanceDefaults
       tags: [certificates]
@@ -429,6 +570,14 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/IssuanceDefaults"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/issuance-defaults/effective:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -442,6 +591,10 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/EffectiveIssuanceDefaults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -461,6 +614,11 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CertificateList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     post:
       operationId: createCertificate
       tags: [certificates]
@@ -477,6 +635,15 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Certificate"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -490,6 +657,10 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Certificate"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
     put:
       operationId: updateCertificate
       tags: [certificates]
@@ -506,6 +677,15 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Certificate"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
     delete:
       operationId: deleteCertificate
       tags: [certificates]
@@ -514,6 +694,11 @@ paths:
       responses:
         "204":
           description: Deleted.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}/renew:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     post:
@@ -527,6 +712,11 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/RenewResult"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "502": {$ref: "#/components/responses/BadGateway"}
   /orgs/{orgId}/certificates/{id}/versions:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -543,6 +733,10 @@ paths:
                 type: array
                 description: Versions.
                 items: {$ref: "#/components/schemas/CertificateVersion"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}/attempts:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -559,6 +753,10 @@ paths:
                 type: array
                 description: Attempts.
                 items: {$ref: "#/components/schemas/IssuanceAttempt"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}/versions/{vid}/download:
     parameters:
       - {$ref: "#/components/parameters/OrgId"}
@@ -592,6 +790,11 @@ paths:
               schema: {type: string, format: binary, description: PEM file.}
             application/zip:
               schema: {type: string, format: binary, description: Zip of PEM files.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}/manual-dns:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -608,6 +811,10 @@ paths:
                 type: array
                 description: Records.
                 items: {$ref: "#/components/schemas/ManualDNSRecord"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}/manual-dns/confirm:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     post:
@@ -621,6 +828,11 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/ManualDNSConfirmResult"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
 components:
   securitySchemes:
     sessionCookie:
@@ -677,6 +889,75 @@ components:
       required: false
       description: nextCursor from the previous page.
       schema: {type: string}
+  responses:
+    BadRequest:
+      description: Malformed request, query parameter, or JSON body.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    Unauthorized:
+      description: Not signed in, or the session or API key is invalid, expired, or revoked.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    Forbidden:
+      description: Missing permission, or a session request without a valid X-CSRF-Token.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    NotFound:
+      description: No such resource visible to the caller.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    Conflict:
+      description: Conflicts with current state, for example a duplicate name, existing dependents, or nothing to confirm.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    PayloadTooLarge:
+      description: Request body exceeds 1 MiB.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    UnsupportedMediaType:
+      description: Request body is not application/json.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    UnprocessableEntity:
+      description: The body parsed but failed validation; the title or detail names the field.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    TooManyRequests:
+      description: Too many login attempts from this address.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema: {type: integer}
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    BadGateway:
+      description: An upstream CA or identity provider rejected the request; detail carries its error.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    InternalError:
+      description: Unexpected server error; details are in the server log.
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    ServiceUnavailable:
+      description: Temporarily at capacity.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema: {type: integer}
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
   schemas:
     Problem:
       type: object
