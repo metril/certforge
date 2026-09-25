@@ -1,11 +1,31 @@
-import { queryOptions } from '@tanstack/react-query';
+import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { POLL } from '@/lib/polling';
 import { api, call } from '../client';
+import type { ApiKeyInput } from '../types';
 
-// Minimal read query for Task 4's BindingSheet (apikey subject picker).
-// Task 6 owns the API keys tab proper and extends this file with
-// useCreateApiKey/useRevokeApiKey mutations per the 2A spec.
 export const apiKeysQuery = (orgId?: string) =>
   queryOptions({
     queryKey: ['api-keys', orgId ?? 'all'],
     queryFn: async () => (await call(api.GET('/api-keys', { params: { query: orgId ? { orgId } : {} } }))).items,
+    refetchInterval: POLL.list,
   });
+
+export function useCreateApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApiKeyInput) => call(api.POST('/api-keys', { body })),
+    meta: { silent: true },
+    // The response carries the one-time token; never keep it after the dialog.
+    gcTime: 0,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+}
+
+export function useRevokeApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(api.DELETE('/api-keys/{id}', { params: { path: { id } } })),
+    meta: { silent: true, success: 'API key revoked' },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+}

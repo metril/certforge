@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/com
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
+import { keyState } from './ApiKeysTab';
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Admin', 'org-admin': 'Org admin', operator: 'Operator', viewer: 'Viewer', auditor: 'Auditor',
@@ -62,10 +63,7 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
   // scope), excluding revoked and expired ones (controller ruling, fix
   // round 1).
   const bindableKeys = useMemo(
-    () =>
-      (keys.data ?? []).filter(
-        (k) => !k.revokedAt && (!k.expiresAt || new Date(k.expiresAt) > new Date()) && can(me, 'apikeys:write', k.orgId),
-      ),
+    () => (keys.data ?? []).filter((k) => keyState(k) === 'active' && can(me, 'apikeys:write', k.orgId)),
     [keys.data, me],
   );
 
@@ -133,7 +131,7 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
           </Field>
         )}
         {type === 'apikey' && (
-          <Field id="binding-apikey" label="API key">
+          <Field id="binding-apikey" label="API key" help="binding.apikey">
             <Combobox
               id="binding-apikey"
               aria-label="API key"

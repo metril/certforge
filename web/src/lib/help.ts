@@ -121,8 +121,18 @@ export const help = {
   'binding.userDisabled': { text: 'You need bindings:write to add user bindings.' },
   'binding.groupDisabled': { text: 'Only a global admin can add group mappings.' },
   'binding.apikeyDisabled': { text: 'You need apikeys:write to add API key bindings.' },
+  'binding.apikey': { text: 'Narrows what the key can do; it never goes beyond its creator.' },
   'auth.redirectUri': { text: 'Register this exact URI for the CertForge client at your identity provider.', learnMore: 'configuration.md#authentication' },
   'auth.groupMappings': { text: 'Give every member of an identity provider group a role. Same as a group binding in Access.' },
+  'apikey.scopes': {
+    text: 'What the key may do; never more than you can do in its scope. Greyed-out permissions are outside your role.',
+    learnMore: 'security.md#api-keys',
+  },
+  'apikey.org': { text: 'Limit the key to one org, or All orgs for a key that follows your global role.' },
+  'apikey.expiry': { text: 'The key stops working after this. Revoke it any time.' },
+  'apikey.prefix': { text: 'The public part of the token. Match it against logs and scripts.' },
+  'apikey.status': { text: 'Keys also stop working when their creator is disabled.' },
+  'apikey.secretOnce': { text: 'Copy it now; it is never shown again. Only its hash is kept, so a lost key needs a new one.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

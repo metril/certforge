@@ -24,6 +24,8 @@ Three tabs, kept in the URL (`?tab=users|bindings|keys`). **Users** lists everyo
 
 **Role bindings** lists every grant you can see, filterable by subject type (?type=). **Add binding** picks a user or types a group name, a role, and a scope (one org, or All orgs for global admins). Removing a binding asks you to type the subject's name; the last global admin binding held by a user cannot be removed.
 
+**API keys**: name, key prefix, permissions, scope, creator, expiry, last use and status. **New API key** takes a name, a scope, permission chips (greyed out where your role does not reach) and an expiry (30 days, 90 days, 1 year, never). The token appears once in a dialog that stays open until you switch on Stored safely. Revoke asks for the key's name.
+
 ## Settings → Authentication
 
 The redirect URI to register (copy button), the single sign-on form rendered from the section schema (the client secret shows Stored with Replace), **Test connection** for the issuer currently in the form, and **Group mappings**: group-to-role bindings, the same rows as group bindings in Access.
