@@ -15,10 +15,14 @@ Browser sign-in: GET /auth/oidc/start (single sign-on) or POST /auth/login (loca
 | `certs:write` | org defaults, create, edit, delete certificates | admin, org-admin, operator |
 | `certs:issue` | renew now, confirm manual-dns | admin, org-admin, operator |
 | `keys:export` | download `key` or `combined` (audited) | global admin |
+| `clients:read` / `clients:write` | clients, grants, deployments, hook runs | all / admin, org-admin, operator |
+| `delivery:read` / `delivery:write` | layouts, deploy targets, hooks | viewer and up / admin, org-admin, operator |
+
+certforge-agent does not call this API. It talks to `/agent/v1/*` on the agent listener (CF_LISTEN_AGENT) with its client certificate; see architecture.md → Agent protocol.
 
 ### API keys
 
-Send `Authorization: Bearer cf_<prefix>_<secret>`. Keys need no CSRF header. A key can do at most what its creator can do right now, restricted to its scopes (`certs:read` also covers orgs, sites, CAs, accounts, DNS credentials; `clients:write` covers clients read and write; `admin` is everything) and to its org when it has one. Keys stop working when revoked, expired, or when the creator is disabled. The token is returned once by `POST /api-keys`; only its SHA-256 is stored.
+Send `Authorization: Bearer cf_<prefix>_<secret>`. Keys need no CSRF header. A key can do at most what its creator can do right now, restricted to its scopes (`certs:read` also covers orgs, sites, CAs, accounts, DNS credentials; `clients:read` also covers orgs and sites; `clients:write` covers clients read and write; `delivery:read`/`delivery:write` cover layouts, deploy targets and hooks; `admin` is everything) and to its org when it has one. Keys stop working when revoked, expired, or when the creator is disabled. The token is returned once by `POST /api-keys`; only its SHA-256 is stored.
 
 ## Errors
 
@@ -76,3 +80,37 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET /audit/{id}` | one audit event; 404 (not 403) if missing or not visible to the caller |
 | `GET /audit/export` | same filters, CSV, capped at 100 000 rows |
 | `GET /audit/verify` | audit chain status, cached 60 s |
+| `GET /clients`, `GET, POST /orgs/{orgId}/clients` | list across orgs, list, create a client (returns a one-time enrolment token) |
+| `GET, PATCH, DELETE /orgs/{orgId}/clients/{id}` | read, rename/re-site, delete a client |
+| `POST /orgs/{orgId}/clients/{id}/revoke` | revoke a client's agent certificate |
+| `POST /orgs/{orgId}/clients/{id}/reenroll` | return a client to pending with a fresh token |
+| `GET, POST /orgs/{orgId}/clients/{id}/grants` | list, create a grant |
+| `GET /orgs/{orgId}/clients/{id}/hook-runs` | a client's hook runs |
+| `PATCH, DELETE /orgs/{orgId}/grants/{id}` | change, delete a grant |
+| `POST /orgs/{orgId}/grants/{id}/redeploy` | force reinstall and report |
+| `GET /orgs/{orgId}/certificates/{id}/deployments` | a certificate's deployments across clients |
+| `GET, POST /orgs/{orgId}/layouts` | list, create output layouts |
+| `GET, PATCH, DELETE /orgs/{orgId}/layouts/{id}` | read, replace, delete a layout |
+| `GET, POST /orgs/{orgId}/deploy-targets` | list, create deploy targets |
+| `GET, PATCH, DELETE /orgs/{orgId}/deploy-targets/{id}` | read, replace, delete a deploy target |
+| `GET, POST /orgs/{orgId}/hooks` | list, create hooks |
+| `GET, PATCH, DELETE /orgs/{orgId}/hooks/{id}` | read, replace, delete a hook |
+| `GET /agents/ca` | list agent CAs and the listener certificate |
+| `POST /agents/ca/rotate` | rotate the agent CA |
+| `POST /agents/ca/{id}/retire` | retire an agent CA |
+
+### Clients
+
+`GET /orgs/{orgId}/clients` (and the cross-org `GET /clients`, like `GET /certificates`) list hosts running certforge-agent, filtered by `site`, `status` and `q` (case-insensitive substring of the client name or reported hostname), sorted by `name`, `lastSeen` or `status` (`-` prefix for descending), with `limit`/`cursor` like certificates — a `cursor` only continues the request it came from (422 otherwise). `POST /orgs/{orgId}/clients` creates a pending client and returns `ClientCreated`: the client, a one-time enrolment token shown once (`cf1.<agent URL>.<CA fingerprint>.<secret>`; only its hash is stored), its expiry, and the agent listener URL. `PATCH` renames a client or moves it between sites (`siteId` null clears the site); `DELETE` only works on a pending or revoked client (409 otherwise) and removes its grants, deployments and hook runs with it. `POST .../revoke` refuses the agent's current certificate, deletes unused enrolment tokens, and closes its WebSocket (close code 4001); revoking twice is a no-op. `POST .../reenroll` returns a revoked-eligible client to `pending` with a fresh token, refusing its old certificate and closing its socket (409 for an already-revoked client).
+
+### Grants and deployments
+
+A grant assigns one certificate to one client with a delivery mode (`push` nudges the agent over its socket on every relevant change; `pull` waits for the agent's own schedule), an optional output layout, an optional deploy target, hooks in run order, and `autoRemediate`. `POST /orgs/{orgId}/clients/{id}/grants` requires the certificate, layout, deploy target and hooks to be in the client's org (422 otherwise) and at least one of layout or deploy target; one grant per client and certificate (409), and two grants on one client can never write the same path — counting live Traefik `certs/<SafeName>` files and grants still awaiting agent removal (409). `PATCH /orgs/{orgId}/grants/{id}` replaces delivery, layout, deploy target, hooks and auto-remediation (the certificate itself cannot change), re-renders the deployment and bumps the client's revision in the same transaction. `DELETE` queues the agent to remove the grant's files (Traefik YAML first) and the grant disappears once the agent reports; for a client that never enrolled or is revoked it is deleted immediately. `POST .../redeploy` marks the deployment `pending` and bumps the revision so the agent reinstalls and reports again. `GET /orgs/{orgId}/certificates/{id}/deployments` lists one row per live grant of a certificate, each with its client's status, connectivity and the deployment's state, expected/installed file digests and any error. `GET /orgs/{orgId}/clients/{id}/hook-runs` paginates a client's hook executions (newest first, `stdout`/`stderr` capped at 8 KiB) the same way certificate lists do.
+
+### Delivery
+
+Layouts, deploy targets and hooks are how a grant reaches the agent host. `GET, POST, PATCH, DELETE /orgs/{orgId}/layouts[/{id}]` manage output layouts (`OutputFile` path, format, PEM parts, owner/group/mode); `GET, POST, PATCH, DELETE /orgs/{orgId}/deploy-targets[/{id}]` manage deploy targets, whose `config` is validated against the type's JSON Schema from `GET /meta/schemas` under `deployTargets` (currently `traefik`, config `dir`, `pathPrefix`, `defaultCert`, `stores`); `GET, POST, PATCH, DELETE /orgs/{orgId}/hooks[/{id}]` manage hooks (`argv[0]` an absolute executable path, never run through a shell; an agent only runs a hook whose `argv[0]` is in its own `CF_HOOK_ALLOW`). A layout's or deploy target's `PATCH` re-renders every grant using it and bumps the affected clients' revisions in the same transaction (409 if that would make two of a client's grants write the same path); deleting any of the three is blocked (409) while a grant (including one awaiting agent removal) still uses it, naming up to five `client/certificate` pairs.
+
+### Agent CA
+
+`GET /agents/ca` (global `settings:read`) lists every internal agent CA — status (`active`, `retiring`, `retired`), fingerprint, subject, validity, and the count of unexpired active-client certificates it issued — plus the agent listener's own current certificate. `POST /agents/ca/rotate` (global `settings:write`) creates a new active CA and marks the previous one `retiring`; both stay trusted while online agents receive the new trust bundle and move over as they renew. `POST /agents/ca/{id}/retire` stops trusting a `retiring` CA; it 409s for the active CA or while it has issued any active, unexpired agent certificate.

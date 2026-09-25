@@ -13,6 +13,9 @@ info:
     components.responses): 400, 401, 403 (missing permission or CSRF failure), 404, 409,
     413, 415, 422, 429 (login rate limit, with Retry-After), 500, 502 (upstream CA or
     identity provider), 503 (busy, with Retry-After).
+
+    Agents do not use this API: certforge-agent talks to /agent/v1/* on the separate
+    mTLS agent listener (CF_LISTEN_AGENT), described in docs/architecture.md.
 servers:
   - url: /api/v1
 security:
@@ -37,6 +40,12 @@ tags:
     description: Users, role bindings, and API keys.
   - name: audit
     description: The audit log.
+  - name: clients
+    description: Enrolled agents, their grants, deployments and hook runs.
+  - name: delivery
+    description: Output layouts, deploy targets and hooks that grants use.
+  - name: agents
+    description: The internal agent CA and the agent listener.
 paths:
   /setup/status:
     get:
@@ -1084,6 +1093,642 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/{id}/deployments:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: listCertificateDeployments
+      tags: [clients]
+      summary: List a certificate's deployments
+      description: Needs clients:read in the org. One row per live grant of this certificate, with the client and its deployment state.
+      responses:
+        "200":
+          description: Deployments sorted by client name.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateDeploymentList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /clients:
+    get:
+      operationId: listAllClients
+      tags: [clients]
+      summary: List clients across orgs
+      description: Like listClients, over every org where the caller has clients:read (the UI's read-only All orgs view). 403 when there is none. Items carry orgId.
+      parameters:
+        - {$ref: "#/components/parameters/ClientSite"}
+        - {$ref: "#/components/parameters/ClientStatusFilter"}
+        - {$ref: "#/components/parameters/ClientQ"}
+        - {$ref: "#/components/parameters/ClientSort"}
+        - {$ref: "#/components/parameters/ListLimit"}
+        - {$ref: "#/components/parameters/ListCursor"}
+      responses:
+        "200":
+          description: One page of clients.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/clients:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listClients
+      tags: [clients]
+      summary: List clients
+      description: Needs clients:read. site, status and q filter; sort is name, lastSeen or status with a leading - for descending. A cursor only continues the request it came from (422 otherwise).
+      parameters:
+        - {$ref: "#/components/parameters/ClientSite"}
+        - {$ref: "#/components/parameters/ClientStatusFilter"}
+        - {$ref: "#/components/parameters/ClientQ"}
+        - {$ref: "#/components/parameters/ClientSort"}
+        - {$ref: "#/components/parameters/ListLimit"}
+        - {$ref: "#/components/parameters/ListCursor"}
+      responses:
+        "200":
+          description: One page of clients.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createClient
+      tags: [clients]
+      summary: Create a client
+      description: Needs clients:write. Creates a pending client and returns its one-time enrolment token, shown once; only its hash is stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ClientInput"}
+      responses:
+        "201":
+          description: Created; token shown once.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientCreated"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/clients/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getClient
+      tags: [clients]
+      summary: Get a client
+      description: Needs clients:read.
+      responses:
+        "200":
+          description: The client.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Client"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    patch:
+      operationId: updateClient
+      tags: [clients]
+      summary: Rename a client or change its site
+      description: Needs clients:write. Both fields are sent; siteId null clears the site.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ClientUpdate"}
+      responses:
+        "200":
+          description: Updated client.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Client"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteClient
+      tags: [clients]
+      summary: Delete a client
+      description: Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and hook runs go with them.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/clients/{id}/revoke:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: revokeClient
+      tags: [clients]
+      summary: Revoke a client
+      description: Needs clients:write. Refuses the agent's certificate from now on, deletes unused tokens and closes its socket (code 4001). Revoking twice is a no-op.
+      responses:
+        "200":
+          description: The revoked client.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Client"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/clients/{id}/reenroll:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: reenrollClient
+      tags: [clients]
+      summary: Issue a new enrolment token
+      description: Needs clients:write. Returns the client to pending with a fresh one-time token, refuses its current agent certificate and closes its socket. 409 for a revoked client.
+      responses:
+        "200":
+          description: The pending client and its new token, shown once.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientCreated"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/clients/{id}/grants:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: listClientGrants
+      tags: [clients]
+      summary: List a client's grants
+      description: Needs clients:read. Live grants with their deployment, sorted by certificate name.
+      responses:
+        "200":
+          description: Grants.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GrantList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createGrant
+      tags: [clients]
+      summary: Grant a certificate to a client
+      description: Needs clients:write. The certificate, layout, deploy target and hooks must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409). Bumps the client's desired revision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/GrantInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Grant"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/clients/{id}/hook-runs:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: listClientHookRuns
+      tags: [clients]
+      summary: List a client's hook runs
+      description: Needs clients:read. Newest first; stdout and stderr are capped at 8 KiB each.
+      parameters:
+        - {$ref: "#/components/parameters/ListLimit"}
+        - {$ref: "#/components/parameters/ListCursor"}
+      responses:
+        "200":
+          description: One page of hook runs.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HookRunList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/grants/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    patch:
+      operationId: updateGrant
+      tags: [clients]
+      summary: Change a grant
+      description: Needs clients:write. Replaces delivery, layout, deploy target, hooks and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/GrantUpdate"}
+      responses:
+        "200":
+          description: Updated grant.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Grant"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteGrant
+      tags: [clients]
+      summary: Delete a grant
+      description: Needs clients:write. The agent removes the files (Traefik YAML first) on its next sync and the grant disappears once it reports; for a client that never enrolled or is revoked it is deleted at once.
+      responses:
+        "204": {description: Deleted or queued for removal.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/grants/{id}/redeploy:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: redeployGrant
+      tags: [clients]
+      summary: Redeploy a grant
+      description: Needs clients:write. Marks the deployment pending and bumps the client's revision so the agent reinstalls and reports.
+      responses:
+        "200":
+          description: The grant.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Grant"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/layouts:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listLayouts
+      tags: [delivery]
+      summary: List output layouts
+      description: Needs delivery:read.
+      responses:
+        "200":
+          description: Layouts sorted by name.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LayoutList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createLayout
+      tags: [delivery]
+      summary: Create an output layout
+      description: Needs delivery:write. Paths are absolute and clean on the agent host; names are unique per org.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LayoutInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Layout"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/layouts/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getLayout
+      tags: [delivery]
+      summary: Get an output layout
+      description: Needs delivery:read.
+      responses:
+        "200":
+          description: The layout.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Layout"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    patch:
+      operationId: updateLayout
+      tags: [delivery]
+      summary: Replace an output layout
+      description: Needs delivery:write. Every grant using it is re-rendered and its client's revision bumped in the same transaction; 409 when that would make two of a client's grants write one path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LayoutInput"}
+      responses:
+        "200":
+          description: Updated layout.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Layout"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteLayout
+      tags: [delivery]
+      summary: Delete an output layout
+      description: Needs delivery:write. 409 while any grant (including one awaiting agent removal) uses it; the detail names up to five client/certificate pairs.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/deploy-targets:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listDeployTargets
+      tags: [delivery]
+      summary: List deploy targets
+      description: Needs delivery:read.
+      responses:
+        "200":
+          description: Targets sorted by name.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeployTargetList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createDeployTarget
+      tags: [delivery]
+      summary: Create a deploy target
+      description: Needs delivery:write. config is validated against the type's schema from GET /meta/schemas (deployTargets).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeployTargetInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeployTarget"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/deploy-targets/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getDeployTarget
+      tags: [delivery]
+      summary: Get a deploy target
+      description: Needs delivery:read.
+      responses:
+        "200":
+          description: The target.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeployTarget"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    patch:
+      operationId: updateDeployTarget
+      tags: [delivery]
+      summary: Replace a deploy target
+      description: Needs delivery:write. The type cannot change (422). Every grant using it is re-rendered and its client's revision bumped in the same transaction; 409 when that would make two of a client's grants write one path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeployTargetInput"}
+      responses:
+        "200":
+          description: Updated target.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeployTarget"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteDeployTarget
+      tags: [delivery]
+      summary: Delete a deploy target
+      description: Needs delivery:write. 409 while any grant uses it; the detail names up to five client/certificate pairs.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/hooks:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listHooks
+      tags: [delivery]
+      summary: List hooks
+      description: Needs delivery:read.
+      responses:
+        "200":
+          description: Hooks sorted by name.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HookList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createHook
+      tags: [delivery]
+      summary: Create a hook
+      description: Needs delivery:write. argv[0] is an absolute executable path; hooks never run through a shell, and an agent runs a hook only when argv[0] is in its CF_HOOK_ALLOW list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HookInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Hook"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/hooks/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getHook
+      tags: [delivery]
+      summary: Get a hook
+      description: Needs delivery:read.
+      responses:
+        "200":
+          description: The hook.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Hook"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    patch:
+      operationId: updateHook
+      tags: [delivery]
+      summary: Replace a hook
+      description: Needs delivery:write. Clients whose grants use it get a revision bump.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HookInput"}
+      responses:
+        "200":
+          description: Updated hook.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Hook"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteHook
+      tags: [delivery]
+      summary: Delete a hook
+      description: Needs delivery:write. 409 while any grant uses it; the detail names up to five client/certificate pairs.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /agents/ca:
+    get:
+      operationId: listAgentCAs
+      tags: [agents]
+      summary: List agent CAs
+      description: Needs global settings:read. Every agent CA with its fingerprint and the number of unexpired active agent certificates it issued, plus the listener certificate.
+      responses:
+        "200":
+          description: CAs, newest first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentCAList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /agents/ca/rotate:
+    post:
+      operationId: rotateAgentCA
+      tags: [agents]
+      summary: Rotate the agent CA
+      description: Needs global settings:write. Creates a new active CA and marks the previous one retiring; both stay trusted. Online agents receive the new trust bundle; agents move to the new CA as they renew.
+      responses:
+        "201":
+          description: The new active CA.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentCA"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /agents/ca/{id}/retire:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: retireAgentCA
+      tags: [agents]
+      summary: Retire an agent CA
+      description: Needs global settings:write. Stops trusting a retiring CA. 409 for the active CA or while any active, unexpired agent certificate was issued by it.
+      responses:
+        "200":
+          description: The retired CA.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentCA"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /users:
     get:
       operationId: listUsers
@@ -1400,6 +2045,10 @@ components:
     AuditOrgId: {name: orgId, in: query, required: false, description: Only this org's events; omit for every org you can audit (global events need global audit:read)., schema: {type: string, format: uuid}}
     AuditQ: {name: q, in: query, required: false, description: Case-insensitive substring of action, resource, actor, IP or details., schema: {type: string}}
     AuditEventId: {name: id, in: path, required: true, description: Audit event id., schema: {type: integer, format: int64}}
+    ClientSite: {name: site, in: query, required: false, description: Only clients at this site., schema: {type: string, format: uuid}}
+    ClientStatusFilter: {name: status, in: query, required: false, description: Only clients with this status., schema: {$ref: "#/components/schemas/ClientStatus"}}
+    ClientQ: {name: q, in: query, required: false, description: Case-insensitive substring of the client name or reported hostname., schema: {type: string}}
+    ClientSort: {name: sort, in: query, required: false, description: "name, lastSeen or status; prefix - for descending. Default name.", schema: {type: string}}
   responses:
     BadRequest:
       description: Malformed request, query parameter, or JSON body.
@@ -2063,6 +2712,7 @@ components:
             - $ref: "#/components/schemas/EffectiveIssuanceDefaults"
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
+        grantCount: {type: integer, description: Live grants of this certificate to clients; set on list responses.}
     CertificateInput:
       type: object
       description: Fields to create or replace a certificate.
@@ -2273,3 +2923,327 @@ components:
         brokenAtId: {type: integer, format: int64, nullable: true, description: First row that failed; null when ok.}
         checkedAt: {type: string, format: date-time, description: When the walk ran (results are cached 60 s).}
         headHash: {type: string, description: Hex hash of the last verified row.}
+    ClientStatus:
+      type: string
+      enum: [pending, active, revoked]
+      description: pending until the agent enrols with its token; revoked clients are refused.
+    Client:
+      type: object
+      description: A host running certforge-agent, enrolled into one org.
+      required: [id, orgId, siteId, name, status, connected, online, hostname, os, arch, agentVersion, capabilities, lastSeen, agentCertNotAfter, desiredRevision, appliedRevision, grantCount, driftCount, failedCount, createdAt]
+      properties:
+        id: {type: string, format: uuid, description: Client id; the audit actor id of its agent.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        siteId: {type: string, format: uuid, nullable: true, description: Site the client sits at; a filter only.}
+        name: {type: string, description: Name, unique in the org.}
+        status: {$ref: "#/components/schemas/ClientStatus"}
+        connected: {type: boolean, description: The agent holds an open WebSocket to this server now.}
+        online: {type: boolean, description: "connected, or lastSeen within Settings → Agents → offlineAfterSeconds; a pull-only agent is online while it keeps pulling."}
+        hostname: {type: string, description: Hostname the agent reported; empty until enrolled.}
+        os: {type: string, description: Operating system the agent reported, for example linux.}
+        arch: {type: string, description: CPU architecture the agent reported, for example amd64.}
+        agentVersion: {type: string, description: certforge-agent version.}
+        capabilities: {type: array, items: {type: string}, description: Features the agent advertised, for example traefik and hooks.}
+        lastSeen: {type: string, format: date-time, nullable: true, description: Last hello, heartbeat or report (written at most every 10 seconds).}
+        agentCertNotAfter: {type: string, format: date-time, nullable: true, description: Expiry of the agent's client certificate; the agent renews at two thirds of its lifetime.}
+        desiredRevision: {type: integer, format: int64, description: Bumped by every grant, layout, target, hook or certificate version change affecting this client.}
+        appliedRevision: {type: integer, format: int64, description: Highest revision the agent has reported applying.}
+        grantCount: {type: integer, description: Live grants.}
+        driftCount: {type: integer, description: Grants whose deployment is in drift.}
+        failedCount: {type: integer, description: Grants whose last deployment failed.}
+        tokenExpiresAt: {type: string, format: date-time, nullable: true, description: Expiry of the unused enrolment token while pending.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+    ClientInput:
+      type: object
+      description: A new client.
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
+        siteId: {type: string, format: uuid, nullable: true, description: Optional site in the same org.}
+    ClientUpdate:
+      type: object
+      description: A client's editable fields; both are always sent.
+      required: [name, siteId]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
+        siteId: {type: string, format: uuid, nullable: true, description: Site in the same org; null clears it.}
+    ClientCreated:
+      type: object
+      description: A pending client and its one-time enrolment token.
+      required: [client, token, expiresAt, agentUrl]
+      properties:
+        client: {$ref: "#/components/schemas/Client"}
+        token: {type: string, description: "Enrolment token cf1.<agent URL>.<CA fingerprint>.<secret>. Shown once; only its hash is stored."}
+        expiresAt: {type: string, format: date-time, description: When the token stops working.}
+        agentUrl: {type: string, description: Agent listener URL the token points at.}
+    ClientList:
+      type: object
+      description: One page of clients.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Client"}, description: Clients.}
+        nextCursor: {type: string, nullable: true, description: Cursor for the next page; null on the last page.}
+    AgentCAStatus:
+      type: string
+      enum: [active, retiring, retired]
+      description: active signs new agent certificates; retiring is still trusted; retired is not.
+    AgentCA:
+      type: object
+      description: One internal agent CA.
+      required: [id, status, fingerprint, subject, notBefore, notAfter, activeClientCerts, createdAt]
+      properties:
+        id: {type: string, format: uuid, description: CA id.}
+        status: {$ref: "#/components/schemas/AgentCAStatus"}
+        fingerprint: {type: string, description: Lowercase hex SHA-256 of the CA certificate; enrolment tokens pin it.}
+        subject: {type: string, description: Certificate subject common name.}
+        notBefore: {type: string, format: date-time, description: Start of validity.}
+        notAfter: {type: string, format: date-time, description: End of validity.}
+        activeClientCerts: {type: integer, description: Unexpired certificates of active clients issued by this CA.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+    AgentListener:
+      type: object
+      description: The agent listener's current server certificate.
+      required: [caId, names, notAfter]
+      properties:
+        caId: {type: string, format: uuid, nullable: true, description: CA that issued it; null while the listener is not running.}
+        names: {type: array, items: {type: string}, description: DNS names and IPs it covers.}
+        notAfter: {type: string, format: date-time, nullable: true, description: Expiry; re-issued automatically at two thirds.}
+    AgentCAList:
+      type: object
+      description: Agent CAs and the listener certificate.
+      required: [items, listener]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/AgentCA"}, description: CAs, newest first.}
+        listener: {$ref: "#/components/schemas/AgentListener"}
+    OutputFormat:
+      type: string
+      enum: [pem]
+      description: File format; Phase 4 adds der, p12 and jks.
+    OutputPart:
+      type: string
+      enum: [cert, chain, fullchain, key, combined]
+      description: PEM part; a file concatenates its parts in order.
+    OutputFile:
+      type: object
+      description: One file of a layout, written on the agent host.
+      required: [path, format, parts, owner, group, mode]
+      properties:
+        path: {type: string, description: Absolute clean path on the agent host.}
+        format: {$ref: "#/components/schemas/OutputFormat"}
+        parts: {type: array, minItems: 1, items: {$ref: "#/components/schemas/OutputPart"}, description: Parts concatenated into the file.}
+        owner: {type: string, description: User name or numeric uid; empty keeps the agent's user. Applied only when the agent runs as root.}
+        group: {type: string, description: Group name or numeric gid; empty keeps the agent's group.}
+        mode: {type: string, pattern: "^0?[0-7]{3}$", description: Octal permissions, for example 0640.}
+    Layout:
+      type: object
+      description: An output layout (files built from PEM parts).
+      required: [id, orgId, name, files, grantCount, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid, description: Layout id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Name, unique in the org.}
+        files: {type: array, items: {$ref: "#/components/schemas/OutputFile"}, description: Files in write order.}
+        grantCount: {type: integer, description: Live grants using it.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    LayoutInput:
+      type: object
+      description: A layout's name and files.
+      required: [name, files]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
+        files: {type: array, minItems: 1, maxItems: 20, items: {$ref: "#/components/schemas/OutputFile"}, description: Files in write order; paths are unique.}
+    LayoutList:
+      type: object
+      description: An org's layouts.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Layout"}, description: Layouts sorted by name.}
+    DeployTargetType:
+      type: string
+      enum: [traefik]
+      description: Deploy target type; its config schema is in GET /meta/schemas under deployTargets.
+    RunsOn:
+      type: string
+      enum: [agent]
+      description: Where the target runs; server-side targets arrive in later phases.
+    DeployTarget:
+      type: object
+      description: A deploy target the agent drives after writing a grant's files.
+      required: [id, orgId, name, type, runsOn, config, grantCount, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid, description: Target id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Name, unique in the org.}
+        type: {$ref: "#/components/schemas/DeployTargetType"}
+        runsOn: {$ref: "#/components/schemas/RunsOn"}
+        config: {type: object, additionalProperties: true, description: Type-specific configuration, valid against the type's schema.}
+        grantCount: {type: integer, description: Live grants using it.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    DeployTargetInput:
+      type: object
+      description: A target's name, type and configuration.
+      required: [name, type, config]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
+        type: {$ref: "#/components/schemas/DeployTargetType"}
+        config: {type: object, additionalProperties: true, description: Configuration valid against the type's schema.}
+    DeployTargetList:
+      type: object
+      description: An org's deploy targets.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/DeployTarget"}, description: Targets sorted by name.}
+    HookPhase:
+      type: string
+      enum: [pre_deploy, post_deploy]
+      description: pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
+    Hook:
+      type: object
+      description: A command an agent runs around a deploy, only if its argv[0] is in the agent's CF_HOOK_ALLOW.
+      required: [id, orgId, name, phase, argv, timeoutSeconds, grantCount, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid, description: Hook id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Name, unique in the org.}
+        phase: {$ref: "#/components/schemas/HookPhase"}
+        argv: {type: array, items: {type: string}, description: Executable path and arguments; never run through a shell.}
+        timeoutSeconds: {type: integer, description: The process group is killed after this long.}
+        grantCount: {type: integer, description: Live grants using it.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    HookInput:
+      type: object
+      description: A hook's definition.
+      required: [name, phase, argv]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
+        phase: {$ref: "#/components/schemas/HookPhase"}
+        argv: {type: array, minItems: 1, maxItems: 64, items: {type: string}, description: Absolute executable path, then arguments.}
+        timeoutSeconds: {type: integer, minimum: 1, maximum: 3600, default: 60, description: Seconds before the hook is killed.}
+    HookList:
+      type: object
+      description: An org's hooks.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Hook"}, description: Hooks sorted by name.}
+    GrantDelivery:
+      type: string
+      enum: [push, pull]
+      description: push nudges the agent over its socket on every change; pull waits for the agent's own schedule or a manual certforge-agent pull.
+    DeploymentState:
+      type: string
+      enum: [pending, ok, failed, drift]
+      description: pending until the agent reports the current version; drift when installed files differ from what was deployed.
+    FileDigest:
+      type: object
+      description: A path and the SHA-256 of its content.
+      required: [path, sha256]
+      properties:
+        path: {type: string, description: Absolute path on the agent host.}
+        sha256: {type: string, description: Lowercase hex SHA-256; empty for a missing file.}
+    Deployment:
+      type: object
+      description: What a grant should have installed and what the agent last reported.
+      required: [state, versionId, expected, installed, error, reportedAt, updatedAt]
+      properties:
+        state: {$ref: "#/components/schemas/DeploymentState"}
+        versionId: {type: string, format: uuid, nullable: true, description: Certificate version being deployed; null until the certificate is first issued.}
+        expected: {type: array, items: {$ref: "#/components/schemas/FileDigest"}, description: Files and digests the server rendered for this version.}
+        installed: {type: array, items: {$ref: "#/components/schemas/FileDigest"}, description: Files and digests the agent last reported.}
+        error: {type: string, description: The agent's error for a failed deployment; empty otherwise.}
+        reportedAt: {type: string, format: date-time, nullable: true, description: Last report or heartbeat that changed the state.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    Grant:
+      type: object
+      description: A certificate granted to one client, with how it is delivered.
+      required: [id, clientId, clientName, certificateId, certificateName, delivery, layoutId, deployTargetId, hookIds, autoRemediate, deployment, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid, description: Grant id.}
+        clientId: {type: string, format: uuid, description: Client.}
+        clientName: {type: string, description: Client name.}
+        certificateId: {type: string, format: uuid, description: Certificate.}
+        certificateName: {type: string, description: Certificate name.}
+        delivery: {$ref: "#/components/schemas/GrantDelivery"}
+        layoutId: {type: string, format: uuid, nullable: true, description: Output layout; null for a target-only grant.}
+        deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target; null for files only.}
+        hookIds: {type: array, items: {type: string, format: uuid}, description: Hooks in run order.}
+        autoRemediate: {type: boolean, description: On drift, bump the revision so the agent reinstalls.}
+        deployment: {$ref: "#/components/schemas/Deployment"}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    GrantInput:
+      type: object
+      description: A new grant; a layout or a deploy target is required.
+      required: [certificateId, delivery]
+      properties:
+        certificateId: {type: string, format: uuid, description: Certificate in the client's org.}
+        delivery: {$ref: "#/components/schemas/GrantDelivery"}
+        layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org.}
+        deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target in the same org.}
+        hookIds: {type: array, maxItems: 16, items: {type: string, format: uuid}, description: Hooks in the same org, in run order.}
+        autoRemediate: {type: boolean, default: false, description: Reinstall automatically on drift.}
+    GrantUpdate:
+      type: object
+      description: A grant's replaceable fields; all are sent.
+      required: [delivery, layoutId, deployTargetId, hookIds, autoRemediate]
+      properties:
+        delivery: {$ref: "#/components/schemas/GrantDelivery"}
+        layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org.}
+        deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target in the same org.}
+        hookIds: {type: array, maxItems: 16, items: {type: string, format: uuid}, description: Hooks in run order.}
+        autoRemediate: {type: boolean, description: Reinstall automatically on drift.}
+    GrantList:
+      type: object
+      description: A client's live grants.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Grant"}, description: Grants sorted by certificate name.}
+    CertificateDeployment:
+      type: object
+      description: One client's deployment of a certificate.
+      required: [grantId, clientId, clientName, clientStatus, clientConnected, clientOnline, siteId, delivery, layoutId, layoutName, deployTargetId, deployTargetName, deployment]
+      properties:
+        grantId: {type: string, format: uuid, description: Grant.}
+        clientId: {type: string, format: uuid, description: Client.}
+        clientName: {type: string, description: Client name.}
+        clientStatus: {$ref: "#/components/schemas/ClientStatus"}
+        clientConnected: {type: boolean, description: The client's agent is connected now.}
+        clientOnline: {type: boolean, description: The client is online (Client.online).}
+        siteId: {type: string, format: uuid, nullable: true, description: The client's site.}
+        delivery: {$ref: "#/components/schemas/GrantDelivery"}
+        layoutId: {type: string, format: uuid, nullable: true, description: The grant's file layout; null for a Traefik-only grant.}
+        layoutName: {type: string, nullable: true, description: The layout's name.}
+        deployTargetId: {type: string, format: uuid, nullable: true, description: The grant's deploy target, if any.}
+        deployTargetName: {type: string, nullable: true, description: The deploy target's name.}
+        deployment: {$ref: "#/components/schemas/Deployment"}
+    CertificateDeploymentList:
+      type: object
+      description: A certificate's deployments.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/CertificateDeployment"}, description: Deployments sorted by client name.}
+    HookRun:
+      type: object
+      description: One hook execution an agent reported.
+      required: [id, grantId, hookId, hookName, phase, argv, exitCode, durationMs, stdout, stderr, ranAt]
+      properties:
+        id: {type: string, format: uuid, description: Run id.}
+        grantId: {type: string, format: uuid, nullable: true, description: Grant; null once the grant is gone.}
+        hookId: {type: string, format: uuid, nullable: true, description: Hook; null once the hook is gone.}
+        hookName: {type: string, description: Hook name; empty once the hook is gone.}
+        phase: {$ref: "#/components/schemas/HookPhase"}
+        argv: {type: array, items: {type: string}, description: Command that ran.}
+        exitCode: {type: integer, description: Exit status; -1 when it was not allowed, failed to start or timed out.}
+        durationMs: {type: integer, format: int64, description: Wall time in milliseconds.}
+        stdout: {type: string, description: Standard output, capped at 8 KiB.}
+        stderr: {type: string, description: Standard error, capped at 8 KiB.}
+        ranAt: {type: string, format: date-time, description: When the server recorded it.}
+    HookRunList:
+      type: object
+      description: One page of hook runs.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/HookRun"}, description: Runs, newest first.}
+        nextCursor: {type: string, nullable: true, description: Cursor for the next page; null on the last page.}

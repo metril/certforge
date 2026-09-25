@@ -61,3 +61,41 @@ func TestSpecDescribesEveryField(t *testing.T) {
 		}
 	}
 }
+
+func TestPhase3OperationsDeclared(t *testing.T) {
+	sw, err := gen.GetSwagger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, id := range []string{"listClients", "createClient", "listAllClients", "getClient", "updateClient", "deleteClient",
+		"revokeClient", "reenrollClient", "listClientGrants", "createGrant", "updateGrant", "deleteGrant", "redeployGrant",
+		"listClientHookRuns", "listCertificateDeployments", "listLayouts", "createLayout", "getLayout", "updateLayout",
+		"deleteLayout", "listDeployTargets", "createDeployTarget", "getDeployTarget", "updateDeployTarget",
+		"deleteDeployTarget", "listHooks", "createHook", "getHook", "updateHook", "deleteHook", "listAgentCAs",
+		"rotateAgentCA", "retireAgentCA"} {
+		want[id] = false
+	}
+	// oapi-codegen's embedded spec normalizes operationId to its generated Go
+	// method name (initial letter upper-cased); lower-case it back to compare
+	// against the operationId as written in api/openapi.yaml.
+	for _, item := range sw.Paths.Map() {
+		for _, op := range item.Operations() {
+			id := op.OperationID
+			if id != "" {
+				id = strings.ToLower(id[:1]) + id[1:]
+			}
+			if _, ok := want[id]; ok {
+				want[id] = true
+			}
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Errorf("operation %s missing", id)
+		}
+	}
+	if sw.Components.Schemas["Certificate"].Value.Properties["grantCount"] == nil {
+		t.Error("Certificate.grantCount missing")
+	}
+}

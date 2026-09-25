@@ -78,6 +78,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web: Recent activity (last 20 audit events) on the Overview.
 - E2E: Playwright single sign-on through dex and the audit log page.
 - Agent wire protocol package, certificate version listeners, delivery permissions and API key scopes, and the Agents settings section.
+- OpenAPI contract for clients, grants, deployments, hook runs, output layouts, deploy targets, hooks and the agent CA.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

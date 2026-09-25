@@ -841,6 +841,512 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/certificates/{id}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a certificate's deployments
+         * @description Needs clients:read in the org. One row per live grant of this certificate, with the client and its deployment state.
+         */
+        get: operations["listCertificateDeployments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List clients across orgs
+         * @description Like listClients, over every org where the caller has clients:read (the UI's read-only All orgs view). 403 when there is none. Items carry orgId.
+         */
+        get: operations["listAllClients"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List clients
+         * @description Needs clients:read. site, status and q filter; sort is name, lastSeen or status with a leading - for descending. A cursor only continues the request it came from (422 otherwise).
+         */
+        get: operations["listClients"];
+        put?: never;
+        /**
+         * Create a client
+         * @description Needs clients:write. Creates a pending client and returns its one-time enrolment token, shown once; only its hash is stored.
+         */
+        post: operations["createClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/clients/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a client
+         * @description Needs clients:read.
+         */
+        get: operations["getClient"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a client
+         * @description Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and hook runs go with them.
+         */
+        delete: operations["deleteClient"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a client or change its site
+         * @description Needs clients:write. Both fields are sent; siteId null clears the site.
+         */
+        patch: operations["updateClient"];
+        trace?: never;
+    };
+    "/orgs/{orgId}/clients/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a client
+         * @description Needs clients:write. Refuses the agent's certificate from now on, deletes unused tokens and closes its socket (code 4001). Revoking twice is a no-op.
+         */
+        post: operations["revokeClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/clients/{id}/reenroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a new enrolment token
+         * @description Needs clients:write. Returns the client to pending with a fresh one-time token, refuses its current agent certificate and closes its socket. 409 for a revoked client.
+         */
+        post: operations["reenrollClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/clients/{id}/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a client's grants
+         * @description Needs clients:read. Live grants with their deployment, sorted by certificate name.
+         */
+        get: operations["listClientGrants"];
+        put?: never;
+        /**
+         * Grant a certificate to a client
+         * @description Needs clients:write. The certificate, layout, deploy target and hooks must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409). Bumps the client's desired revision.
+         */
+        post: operations["createGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/clients/{id}/hook-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a client's hook runs
+         * @description Needs clients:read. Newest first; stdout and stderr are capped at 8 KiB each.
+         */
+        get: operations["listClientHookRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/grants/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a grant
+         * @description Needs clients:write. The agent removes the files (Traefik YAML first) on its next sync and the grant disappears once it reports; for a client that never enrolled or is revoked it is deleted at once.
+         */
+        delete: operations["deleteGrant"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a grant
+         * @description Needs clients:write. Replaces delivery, layout, deploy target, hooks and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths.
+         */
+        patch: operations["updateGrant"];
+        trace?: never;
+    };
+    "/orgs/{orgId}/grants/{id}/redeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeploy a grant
+         * @description Needs clients:write. Marks the deployment pending and bumps the client's revision so the agent reinstalls and reports.
+         */
+        post: operations["redeployGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/layouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List output layouts
+         * @description Needs delivery:read.
+         */
+        get: operations["listLayouts"];
+        put?: never;
+        /**
+         * Create an output layout
+         * @description Needs delivery:write. Paths are absolute and clean on the agent host; names are unique per org.
+         */
+        post: operations["createLayout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/layouts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get an output layout
+         * @description Needs delivery:read.
+         */
+        get: operations["getLayout"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an output layout
+         * @description Needs delivery:write. 409 while any grant (including one awaiting agent removal) uses it; the detail names up to five client/certificate pairs.
+         */
+        delete: operations["deleteLayout"];
+        options?: never;
+        head?: never;
+        /**
+         * Replace an output layout
+         * @description Needs delivery:write. Every grant using it is re-rendered and its client's revision bumped in the same transaction; 409 when that would make two of a client's grants write one path.
+         */
+        patch: operations["updateLayout"];
+        trace?: never;
+    };
+    "/orgs/{orgId}/deploy-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List deploy targets
+         * @description Needs delivery:read.
+         */
+        get: operations["listDeployTargets"];
+        put?: never;
+        /**
+         * Create a deploy target
+         * @description Needs delivery:write. config is validated against the type's schema from GET /meta/schemas (deployTargets).
+         */
+        post: operations["createDeployTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/deploy-targets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a deploy target
+         * @description Needs delivery:read.
+         */
+        get: operations["getDeployTarget"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a deploy target
+         * @description Needs delivery:write. 409 while any grant uses it; the detail names up to five client/certificate pairs.
+         */
+        delete: operations["deleteDeployTarget"];
+        options?: never;
+        head?: never;
+        /**
+         * Replace a deploy target
+         * @description Needs delivery:write. The type cannot change (422). Every grant using it is re-rendered and its client's revision bumped in the same transaction; 409 when that would make two of a client's grants write one path.
+         */
+        patch: operations["updateDeployTarget"];
+        trace?: never;
+    };
+    "/orgs/{orgId}/hooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List hooks
+         * @description Needs delivery:read.
+         */
+        get: operations["listHooks"];
+        put?: never;
+        /**
+         * Create a hook
+         * @description Needs delivery:write. argv[0] is an absolute executable path; hooks never run through a shell, and an agent runs a hook only when argv[0] is in its CF_HOOK_ALLOW list.
+         */
+        post: operations["createHook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/hooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a hook
+         * @description Needs delivery:read.
+         */
+        get: operations["getHook"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a hook
+         * @description Needs delivery:write. 409 while any grant uses it; the detail names up to five client/certificate pairs.
+         */
+        delete: operations["deleteHook"];
+        options?: never;
+        head?: never;
+        /**
+         * Replace a hook
+         * @description Needs delivery:write. Clients whose grants use it get a revision bump.
+         */
+        patch: operations["updateHook"];
+        trace?: never;
+    };
+    "/agents/ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List agent CAs
+         * @description Needs global settings:read. Every agent CA with its fingerprint and the number of unexpired active agent certificates it issued, plus the listener certificate.
+         */
+        get: operations["listAgentCAs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/ca/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the agent CA
+         * @description Needs global settings:write. Creates a new active CA and marks the previous one retiring; both stay trusted. Online agents receive the new trust bundle; agents move to the new CA as they renew.
+         */
+        post: operations["rotateAgentCA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/ca/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire an agent CA
+         * @description Needs global settings:write. Stops trusting a retiring CA. 409 for the active CA or while any active, unexpired agent certificate was issued by it.
+         */
+        post: operations["retireAgentCA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -1700,6 +2206,8 @@ export interface components {
              * @description Last change.
              */
             updatedAt?: string;
+            /** @description Live grants of this certificate to clients; set on list responses. */
+            grantCount?: number;
         };
         /** @description Fields to create or replace a certificate. */
         CertificateInput: {
@@ -2047,6 +2555,587 @@ export interface components {
             /** @description Hex hash of the last verified row. */
             headHash: string;
         };
+        /**
+         * @description pending until the agent enrols with its token; revoked clients are refused.
+         * @enum {string}
+         */
+        ClientStatus: "pending" | "active" | "revoked";
+        /** @description A host running certforge-agent, enrolled into one org. */
+        Client: {
+            /**
+             * Format: uuid
+             * @description Client id; the audit actor id of its agent.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /**
+             * Format: uuid
+             * @description Site the client sits at; a filter only.
+             */
+            siteId: string | null;
+            /** @description Name */
+            name: string;
+            status: components["schemas"]["ClientStatus"];
+            /** @description The agent holds an open WebSocket to this server now. */
+            connected: boolean;
+            /** @description connected, or lastSeen within Settings → Agents → offlineAfterSeconds; a pull-only agent is online while it keeps pulling. */
+            online: boolean;
+            /** @description Hostname the agent reported; empty until enrolled. */
+            hostname: string;
+            /** @description Operating system the agent reported */
+            os: string;
+            /** @description CPU architecture the agent reported */
+            arch: string;
+            /** @description certforge-agent version. */
+            agentVersion: string;
+            /** @description Features the agent advertised */
+            capabilities: string[];
+            /**
+             * Format: date-time
+             * @description Last hello
+             */
+            lastSeen: string | null;
+            /**
+             * Format: date-time
+             * @description Expiry of the agent's client certificate; the agent renews at two thirds of its lifetime.
+             */
+            agentCertNotAfter: string | null;
+            /**
+             * Format: int64
+             * @description Bumped by every grant
+             */
+            desiredRevision: number;
+            /**
+             * Format: int64
+             * @description Highest revision the agent has reported applying.
+             */
+            appliedRevision: number;
+            /** @description Live grants. */
+            grantCount: number;
+            /** @description Grants whose deployment is in drift. */
+            driftCount: number;
+            /** @description Grants whose last deployment failed. */
+            failedCount: number;
+            /**
+             * Format: date-time
+             * @description Expiry of the unused enrolment token while pending.
+             */
+            tokenExpiresAt?: string | null;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+        };
+        /** @description A new client. */
+        ClientInput: {
+            /** @description Name */
+            name: string;
+            /**
+             * Format: uuid
+             * @description Optional site in the same org.
+             */
+            siteId?: string | null;
+        };
+        /** @description A client's editable fields; both are always sent. */
+        ClientUpdate: {
+            /** @description Name */
+            name: string;
+            /**
+             * Format: uuid
+             * @description Site in the same org; null clears it.
+             */
+            siteId: string | null;
+        };
+        /** @description A pending client and its one-time enrolment token. */
+        ClientCreated: {
+            client: components["schemas"]["Client"];
+            /** @description Enrolment token cf1.<agent URL>.<CA fingerprint>.<secret>. Shown once; only its hash is stored. */
+            token: string;
+            /**
+             * Format: date-time
+             * @description When the token stops working.
+             */
+            expiresAt: string;
+            /** @description Agent listener URL the token points at. */
+            agentUrl: string;
+        };
+        /** @description One page of clients. */
+        ClientList: {
+            /** @description Clients. */
+            items: components["schemas"]["Client"][];
+            /** @description Cursor for the next page; null on the last page. */
+            nextCursor?: string | null;
+        };
+        /**
+         * @description active signs new agent certificates; retiring is still trusted; retired is not.
+         * @enum {string}
+         */
+        AgentCAStatus: "active" | "retiring" | "retired";
+        /** @description One internal agent CA. */
+        AgentCA: {
+            /**
+             * Format: uuid
+             * @description CA id.
+             */
+            id: string;
+            status: components["schemas"]["AgentCAStatus"];
+            /** @description Lowercase hex SHA-256 of the CA certificate; enrolment tokens pin it. */
+            fingerprint: string;
+            /** @description Certificate subject common name. */
+            subject: string;
+            /**
+             * Format: date-time
+             * @description Start of validity.
+             */
+            notBefore: string;
+            /**
+             * Format: date-time
+             * @description End of validity.
+             */
+            notAfter: string;
+            /** @description Unexpired certificates of active clients issued by this CA. */
+            activeClientCerts: number;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+        };
+        /** @description The agent listener's current server certificate. */
+        AgentListener: {
+            /**
+             * Format: uuid
+             * @description CA that issued it; null while the listener is not running.
+             */
+            caId: string | null;
+            /** @description DNS names and IPs it covers. */
+            names: string[];
+            /**
+             * Format: date-time
+             * @description Expiry; re-issued automatically at two thirds.
+             */
+            notAfter: string | null;
+        };
+        /** @description Agent CAs and the listener certificate. */
+        AgentCAList: {
+            /** @description CAs */
+            items: components["schemas"]["AgentCA"][];
+            listener: components["schemas"]["AgentListener"];
+        };
+        /**
+         * @description File format; Phase 4 adds der, p12 and jks.
+         * @enum {string}
+         */
+        OutputFormat: "pem";
+        /**
+         * @description PEM part; a file concatenates its parts in order.
+         * @enum {string}
+         */
+        OutputPart: "cert" | "chain" | "fullchain" | "key" | "combined";
+        /** @description One file of a layout, written on the agent host. */
+        OutputFile: {
+            /** @description Absolute clean path on the agent host. */
+            path: string;
+            format: components["schemas"]["OutputFormat"];
+            /** @description Parts concatenated into the file. */
+            parts: components["schemas"]["OutputPart"][];
+            /** @description User name or numeric uid; empty keeps the agent's user. Applied only when the agent runs as root. */
+            owner: string;
+            /** @description Group name or numeric gid; empty keeps the agent's group. */
+            group: string;
+            /** @description Octal permissions */
+            mode: string;
+        };
+        /** @description An output layout (files built from PEM parts). */
+        Layout: {
+            /**
+             * Format: uuid
+             * @description Layout id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /** @description Name */
+            name: string;
+            /** @description Files in write order. */
+            files: components["schemas"]["OutputFile"][];
+            /** @description Live grants using it. */
+            grantCount: number;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
+        };
+        /** @description A layout's name and files. */
+        LayoutInput: {
+            /** @description Name */
+            name: string;
+            /** @description Files in write order; paths are unique. */
+            files: components["schemas"]["OutputFile"][];
+        };
+        /** @description An org's layouts. */
+        LayoutList: {
+            /** @description Layouts sorted by name. */
+            items: components["schemas"]["Layout"][];
+        };
+        /**
+         * @description Deploy target type; its config schema is in GET /meta/schemas under deployTargets.
+         * @enum {string}
+         */
+        DeployTargetType: "traefik";
+        /**
+         * @description Where the target runs; server-side targets arrive in later phases.
+         * @enum {string}
+         */
+        RunsOn: "agent";
+        /** @description A deploy target the agent drives after writing a grant's files. */
+        DeployTarget: {
+            /**
+             * Format: uuid
+             * @description Target id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /** @description Name */
+            name: string;
+            type: components["schemas"]["DeployTargetType"];
+            runsOn: components["schemas"]["RunsOn"];
+            /** @description Type-specific configuration */
+            config: {
+                [key: string]: unknown;
+            };
+            /** @description Live grants using it. */
+            grantCount: number;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
+        };
+        /** @description A target's name, type and configuration. */
+        DeployTargetInput: {
+            /** @description Name */
+            name: string;
+            type: components["schemas"]["DeployTargetType"];
+            /** @description Configuration valid against the type's schema. */
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description An org's deploy targets. */
+        DeployTargetList: {
+            /** @description Targets sorted by name. */
+            items: components["schemas"]["DeployTarget"][];
+        };
+        /**
+         * @description pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
+         * @enum {string}
+         */
+        HookPhase: "pre_deploy" | "post_deploy";
+        /** @description A command an agent runs around a deploy, only if its argv[0] is in the agent's CF_HOOK_ALLOW. */
+        Hook: {
+            /**
+             * Format: uuid
+             * @description Hook id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /** @description Name */
+            name: string;
+            phase: components["schemas"]["HookPhase"];
+            /** @description Executable path and arguments; never run through a shell. */
+            argv: string[];
+            /** @description The process group is killed after this long. */
+            timeoutSeconds: number;
+            /** @description Live grants using it. */
+            grantCount: number;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
+        };
+        /** @description A hook's definition. */
+        HookInput: {
+            /** @description Name */
+            name: string;
+            phase: components["schemas"]["HookPhase"];
+            /** @description Absolute executable path */
+            argv: string[];
+            /**
+             * @description Seconds before the hook is killed.
+             * @default 60
+             */
+            timeoutSeconds: number;
+        };
+        /** @description An org's hooks. */
+        HookList: {
+            /** @description Hooks sorted by name. */
+            items: components["schemas"]["Hook"][];
+        };
+        /**
+         * @description push nudges the agent over its socket on every change; pull waits for the agent's own schedule or a manual certforge-agent pull.
+         * @enum {string}
+         */
+        GrantDelivery: "push" | "pull";
+        /**
+         * @description pending until the agent reports the current version; drift when installed files differ from what was deployed.
+         * @enum {string}
+         */
+        DeploymentState: "pending" | "ok" | "failed" | "drift";
+        /** @description A path and the SHA-256 of its content. */
+        FileDigest: {
+            /** @description Absolute path on the agent host. */
+            path: string;
+            /** @description Lowercase hex SHA-256; empty for a missing file. */
+            sha256: string;
+        };
+        /** @description What a grant should have installed and what the agent last reported. */
+        Deployment: {
+            state: components["schemas"]["DeploymentState"];
+            /**
+             * Format: uuid
+             * @description Certificate version being deployed; null until the certificate is first issued.
+             */
+            versionId: string | null;
+            /** @description Files and digests the server rendered for this version. */
+            expected: components["schemas"]["FileDigest"][];
+            /** @description Files and digests the agent last reported. */
+            installed: components["schemas"]["FileDigest"][];
+            /** @description The agent's error for a failed deployment; empty otherwise. */
+            error: string;
+            /**
+             * Format: date-time
+             * @description Last report or heartbeat that changed the state.
+             */
+            reportedAt: string | null;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
+        };
+        /** @description A certificate granted to one client, with how it is delivered. */
+        Grant: {
+            /**
+             * Format: uuid
+             * @description Grant id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Client.
+             */
+            clientId: string;
+            /** @description Client name. */
+            clientName: string;
+            /**
+             * Format: uuid
+             * @description Certificate.
+             */
+            certificateId: string;
+            /** @description Certificate name. */
+            certificateName: string;
+            delivery: components["schemas"]["GrantDelivery"];
+            /**
+             * Format: uuid
+             * @description Output layout; null for a target-only grant.
+             */
+            layoutId: string | null;
+            /**
+             * Format: uuid
+             * @description Deploy target; null for files only.
+             */
+            deployTargetId: string | null;
+            /** @description Hooks in run order. */
+            hookIds: string[];
+            /** @description On drift */
+            autoRemediate: boolean;
+            deployment: components["schemas"]["Deployment"];
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
+        };
+        /** @description A new grant; a layout or a deploy target is required. */
+        GrantInput: {
+            /**
+             * Format: uuid
+             * @description Certificate in the client's org.
+             */
+            certificateId: string;
+            delivery: components["schemas"]["GrantDelivery"];
+            /**
+             * Format: uuid
+             * @description Output layout in the same org.
+             */
+            layoutId?: string | null;
+            /**
+             * Format: uuid
+             * @description Deploy target in the same org.
+             */
+            deployTargetId?: string | null;
+            /** @description Hooks in the same org */
+            hookIds?: string[];
+            /**
+             * @description Reinstall automatically on drift.
+             * @default false
+             */
+            autoRemediate: boolean;
+        };
+        /** @description A grant's replaceable fields; all are sent. */
+        GrantUpdate: {
+            delivery: components["schemas"]["GrantDelivery"];
+            /**
+             * Format: uuid
+             * @description Output layout in the same org.
+             */
+            layoutId: string | null;
+            /**
+             * Format: uuid
+             * @description Deploy target in the same org.
+             */
+            deployTargetId: string | null;
+            /** @description Hooks in run order. */
+            hookIds: string[];
+            /** @description Reinstall automatically on drift. */
+            autoRemediate: boolean;
+        };
+        /** @description A client's live grants. */
+        GrantList: {
+            /** @description Grants sorted by certificate name. */
+            items: components["schemas"]["Grant"][];
+        };
+        /** @description One client's deployment of a certificate. */
+        CertificateDeployment: {
+            /**
+             * Format: uuid
+             * @description Grant.
+             */
+            grantId: string;
+            /**
+             * Format: uuid
+             * @description Client.
+             */
+            clientId: string;
+            /** @description Client name. */
+            clientName: string;
+            clientStatus: components["schemas"]["ClientStatus"];
+            /** @description The client's agent is connected now. */
+            clientConnected: boolean;
+            /** @description The client is online (Client.online). */
+            clientOnline: boolean;
+            /**
+             * Format: uuid
+             * @description The client's site.
+             */
+            siteId: string | null;
+            delivery: components["schemas"]["GrantDelivery"];
+            /**
+             * Format: uuid
+             * @description The grant's file layout; null for a Traefik-only grant.
+             */
+            layoutId: string | null;
+            /** @description The layout's name. */
+            layoutName: string | null;
+            /**
+             * Format: uuid
+             * @description The grant's deploy target
+             */
+            deployTargetId: string | null;
+            /** @description The deploy target's name. */
+            deployTargetName: string | null;
+            deployment: components["schemas"]["Deployment"];
+        };
+        /** @description A certificate's deployments. */
+        CertificateDeploymentList: {
+            /** @description Deployments sorted by client name. */
+            items: components["schemas"]["CertificateDeployment"][];
+        };
+        /** @description One hook execution an agent reported. */
+        HookRun: {
+            /**
+             * Format: uuid
+             * @description Run id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Grant; null once the grant is gone.
+             */
+            grantId: string | null;
+            /**
+             * Format: uuid
+             * @description Hook; null once the hook is gone.
+             */
+            hookId: string | null;
+            /** @description Hook name; empty once the hook is gone. */
+            hookName: string;
+            phase: components["schemas"]["HookPhase"];
+            /** @description Command that ran. */
+            argv: string[];
+            /** @description Exit status; -1 when it was not allowed */
+            exitCode: number;
+            /**
+             * Format: int64
+             * @description Wall time in milliseconds.
+             */
+            durationMs: number;
+            /** @description Standard output */
+            stdout: string;
+            /** @description Standard error */
+            stderr: string;
+            /**
+             * Format: date-time
+             * @description When the server recorded it.
+             */
+            ranAt: string;
+        };
+        /** @description One page of hook runs. */
+        HookRunList: {
+            /** @description Runs */
+            items: components["schemas"]["HookRun"][];
+            /** @description Cursor for the next page; null on the last page. */
+            nextCursor?: string | null;
+        };
     };
     responses: {
         /** @description Malformed request, query parameter, or JSON body. */
@@ -2197,6 +3286,14 @@ export interface components {
         AuditQ: string;
         /** @description Audit event id. */
         AuditEventId: number;
+        /** @description Only clients at this site. */
+        ClientSite: string;
+        /** @description Only clients with this status. */
+        ClientStatusFilter: components["schemas"]["ClientStatus"];
+        /** @description Case-insensitive substring of the client name or reported hostname. */
+        ClientQ: string;
+        /** @description name, lastSeen or status; prefix - for descending. Default name. */
+        ClientSort: string;
     };
     requestBodies: never;
     headers: never;
@@ -3739,6 +4836,1050 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManualDNSConfirmResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listCertificateDeployments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployments sorted by client name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateDeploymentList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAllClients: {
+        parameters: {
+            query?: {
+                /** @description Only clients at this site. */
+                site?: components["parameters"]["ClientSite"];
+                /** @description Only clients with this status. */
+                status?: components["parameters"]["ClientStatusFilter"];
+                /** @description Case-insensitive substring of the client name or reported hostname. */
+                q?: components["parameters"]["ClientQ"];
+                /** @description name, lastSeen or status; prefix - for descending. Default name. */
+                sort?: components["parameters"]["ClientSort"];
+                /** @description Page size, 1 to 500. */
+                limit?: components["parameters"]["ListLimit"];
+                /** @description nextCursor from the previous page. */
+                cursor?: components["parameters"]["ListCursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of clients. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listClients: {
+        parameters: {
+            query?: {
+                /** @description Only clients at this site. */
+                site?: components["parameters"]["ClientSite"];
+                /** @description Only clients with this status. */
+                status?: components["parameters"]["ClientStatusFilter"];
+                /** @description Case-insensitive substring of the client name or reported hostname. */
+                q?: components["parameters"]["ClientQ"];
+                /** @description name, lastSeen or status; prefix - for descending. Default name. */
+                sort?: components["parameters"]["ClientSort"];
+                /** @description Page size, 1 to 500. */
+                limit?: components["parameters"]["ListLimit"];
+                /** @description nextCursor from the previous page. */
+                cursor?: components["parameters"]["ListCursor"];
+            };
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of clients. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientInput"];
+            };
+        };
+        responses: {
+            /** @description Created; token shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientCreated"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The client. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Client"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated client. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Client"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    revokeClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The revoked client. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Client"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    reenrollClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pending client and its new token, shown once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientCreated"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listClientGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listClientHookRuns: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1 to 500. */
+                limit?: components["parameters"]["ListLimit"];
+                /** @description nextCursor from the previous page. */
+                cursor?: components["parameters"]["ListCursor"];
+            };
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of hook runs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HookRunList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted or queued for removal. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated grant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    redeployGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The grant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listLayouts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Layouts sorted by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LayoutInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Layout"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The layout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Layout"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LayoutInput"];
+            };
+        };
+        responses: {
+            /** @description Updated layout. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Layout"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listDeployTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Targets sorted by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployTargetList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createDeployTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployTargetInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployTarget"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getDeployTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The target. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployTarget"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteDeployTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateDeployTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployTargetInput"];
+            };
+        };
+        responses: {
+            /** @description Updated target. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployTarget"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listHooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Hooks sorted by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HookList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createHook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HookInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hook"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getHook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The hook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hook"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteHook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateHook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HookInput"];
+            };
+        };
+        responses: {
+            /** @description Updated hook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hook"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAgentCAs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CAs, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCAList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    rotateAgentCA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new active CA. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCA"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    retireAgentCA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The retired CA. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCA"];
                 };
             };
             401: components["responses"]["Unauthorized"];
