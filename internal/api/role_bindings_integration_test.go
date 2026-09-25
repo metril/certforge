@@ -86,6 +86,29 @@ func TestRoleBindings(t *testing.T) {
 	}
 }
 
+// TestCreateRoleBindingViewerForbiddenBeforeLookup covers fix-round-1's
+// "take now 2": a caller with no bindings:write anywhere near the requested
+// scope must be refused (403) before checkSubject's DB lookup runs, so the
+// response never discloses (via 422 vs some other outcome) whether a given
+// user id exists. A viewer has bindings:write nowhere, so both a user
+// subject naming a nonexistent id and an oidc_group subject must come back
+// 403, not 422.
+func TestCreateRoleBindingViewerForbiddenBeforeLookup(t *testing.T) {
+	e := newTestEnv(t)
+	_, org := e.seedAdminSession()
+	viewer, viewerCSRF, _ := e.userSession("val", "viewer", &org)
+	post := func(body map[string]any) int {
+		resp, _ := e.doClient(viewer, http.MethodPost, "/api/v1/role-bindings", body, http.Header{"X-Csrf-Token": {viewerCSRF}}) //nolint:bodyclose // doClient closes the body
+		return resp.StatusCode
+	}
+	if code := post(map[string]any{"subjectType": "user", "subject": uuid.NewString(), "role": "viewer", "orgId": org}); code != http.StatusForbidden {
+		t.Fatalf("viewer, nonexistent user subject: %d, want %d", code, http.StatusForbidden)
+	}
+	if code := post(map[string]any{"subjectType": "oidc_group", "subject": "ops-viewer-test", "role": "viewer"}); code != http.StatusForbidden {
+		t.Fatalf("viewer, oidc_group subject: %d, want %d", code, http.StatusForbidden)
+	}
+}
+
 // TestRoleBindingsListFilters covers the list endpoint's ?orgId= and
 // ?subjectType= query filters.
 func TestRoleBindingsListFilters(t *testing.T) {
