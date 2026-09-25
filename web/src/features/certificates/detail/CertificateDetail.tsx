@@ -3,11 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { errorMessage } from '@/api/errors';
 import { attemptsQuery, certificateQuery, useRenewCertificates } from '@/api/queries/certificates';
+import type { Certificate } from '@/api/types';
 import { ManualDnsCard } from '@/features/certificates/ManualDnsCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { livePoll } from '@/lib/polling';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
+import { renewToastHandlers } from '@/lib/renewToast';
 import { AttemptsTab } from './AttemptsTab';
 import { CertificateHeader } from './CertificateHeader';
 import { DownloadSheet } from './DownloadSheet';
@@ -18,24 +20,52 @@ import { VersionsTab } from './VersionsTab';
 
 const LABEL: Record<Tab, string> = { overview: 'Overview', versions: 'Versions', attempts: 'Attempts', settings: 'Settings' };
 
+const LIVE_WINDOW_MS = 60_000;
+
 export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
   const org = useOrg();
   const me = useMe();
   const navigate = useNavigate();
   const renew = useRenewCertificates(org.id);
+  // I1 (Important): a renew/create just queued from this page (the header's
+  // Renew now, either tab's empty-state Renew, or the wizard landing here
+  // with a fresh issuance) has no `running` attempt yet for up to a couple
+  // of seconds — the worker hasn't picked the job up — so `running` alone
+  // misses that window and the new attempt wouldn't appear for up to 30s
+  // (the list-pace interval). `liveUntil` covers it: initialised already-hot
+  // when the wizard hands off here with something in flight (its `tab`
+  // param is only ever 'attempts' when it just queued an issuance), and
+  // reset by every renew handler on this page.
+  const [liveUntil, setLiveUntil] = useState<number | null>(() => (tab === 'attempts' ? Date.now() + LIVE_WINDOW_MS : null));
+  const markLive = () => setLiveUntil(Date.now() + LIVE_WINDOW_MS);
   // Polling (ruling): the certificate itself only needs to refresh quickly
   // while an attempt is actually running (a new current version can land at
   // any moment); attemptsQuery already tracks that at its own 2s/30s pace, so
   // this reuses its cached data instead of re-deriving it from cert.status.
   const { data: attempts } = useQuery(attemptsQuery(org.id, id));
   const running = !!attempts?.some((a) => a.outcome === 'running');
-  const { data: cert, isPending, error } = useQuery({ ...certificateQuery(org.id, id), refetchInterval: () => livePoll(running) });
+  const { data: cert, isPending, error } = useQuery({
+    ...certificateQuery(org.id, id),
+    refetchInterval: (query) => {
+      const status = (query.state.data as Certificate | undefined)?.status;
+      const live = running || status === 'pending' || (liveUntil !== null && Date.now() < liveUntil);
+      return livePoll(live);
+    },
+  });
   const [download, setDownload] = useState<{ open: boolean; versionId?: string }>({ open: false });
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (error) return <p role="alert">{errorMessage(error)}</p>;
 
   const goTab = (t: Tab) => void navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id, tab: t } });
+  // I1 + I2: shared by both tabs' empty-state Renew button — same 60s live
+  // window as the header's, and the same failure toast (renew.mutate's own
+  // hook is `meta: { silent: true }`; without this, a renew failure here
+  // had no toast and no error surfaced anywhere on the page).
+  const renewNow = () => {
+    markLive();
+    renew.mutate([cert.id], renewToastHandlers(cert.name));
+  };
 
   return (
     <div className="grid gap-6">
@@ -44,7 +74,16 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
           Certificates
         </Link>
       </nav>
-      <CertificateHeader cert={cert} orgId={org.id} orgSlug={org.slug} onDownload={() => setDownload({ open: true })} onRenewed={() => goTab('attempts')} />
+      <CertificateHeader
+        cert={cert}
+        orgId={org.id}
+        orgSlug={org.slug}
+        onDownload={() => setDownload({ open: true })}
+        onRenewed={() => {
+          markLive();
+          goTab('attempts');
+        }}
+      />
       {/* Always mounted (controller ruling): it fetches its own manual-dns
           records and renders nothing when none are waiting, so there's no
           separate "is this a pending manual-dns cert" check to keep in sync
@@ -66,11 +105,11 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
             cert={cert}
             orgId={org.id}
             onDownload={(versionId) => setDownload({ open: true, versionId })}
-            onRenew={() => renew.mutate([cert.id])}
+            onRenew={renewNow}
           />
         </TabsContent>
         <TabsContent value="attempts" className="pt-4">
-          <AttemptsTab orgId={org.id} certId={cert.id} onRenew={() => renew.mutate([cert.id])} />
+          <AttemptsTab orgId={org.id} certId={cert.id} onRenew={renewNow} />
         </TabsContent>
         <TabsContent value="settings">
           <SettingsTab cert={cert} orgId={org.id} orgSlug={org.slug} />

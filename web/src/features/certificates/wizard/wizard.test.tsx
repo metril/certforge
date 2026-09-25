@@ -90,6 +90,30 @@ it('reviews effective options with their source before issuing', async () => {
   expect(within(options).getAllByRole('button', { name: 'Org' }).length).toBeGreaterThan(0);
 });
 
+// I3 (Important, Task 10 ruling): OptionsStep must build the Global level of
+// each field's inheritance chain from the settings section's `stored` (the
+// raw saved document), not its `value` (built-in-filled for display) —
+// otherwise a field whose badge reads "Default" (nothing overrides it
+// anywhere) would still claim, in its tooltip, an inherited "Global: EC
+// P-256" that Global never actually set.
+it("a field with source 'default' never claims a Global value the section's stored document doesn't have", async () => {
+  server.use(
+    http.get(url('/settings/issuance_defaults'), () => HttpResponse.json({ schema: {}, value: { keyType: 'ec256' }, stored: {} })),
+  );
+  const { user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.paste('www.example.com');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  const keyType = screen.getByRole('group', { name: 'Key type' });
+  expect(within(keyType).getByRole('button', { name: 'Default' })).toBeInTheDocument();
+  await user.hover(within(keyType).getByRole('button', { name: 'Default' }));
+  const tooltip = await screen.findByRole('tooltip');
+  expect(tooltip).toHaveTextContent('Global: server default');
+  expect(tooltip).not.toHaveTextContent('EC P-256');
+});
+
 it('disables Next on the Names step until a valid name and common name exist', async () => {
   const { user } = renderRoute('/o/acme/certificates/new');
   await screen.findByLabelText('Names');
@@ -140,7 +164,9 @@ it('shows a banner on Review for an error that maps to no field, and never remem
 });
 
 it('edit mode: a common-name-only change (same set of names) still shows the reissue notice', async () => {
-  server.use(http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ sans: ['www.example.com', 'api.example.com'] }))));
+  // M1: a GET response's sans is `names[1:]` — it never repeats the common
+  // name — so this certificate's one additional SAN is 'api.example.com'.
+  server.use(http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ sans: ['api.example.com'] }))));
   const { user } = renderRoute('/o/acme/certificates/c-1/edit');
   await user.click(await screen.findByLabelText('Names'));
   expect(screen.queryByText(/will issue a new certificate/i)).not.toBeInTheDocument();
@@ -210,7 +236,8 @@ it('edit mode: a name change reissues, PUTs, and lands on Attempts', async () =>
     http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert())),
     http.put(url('/orgs/org-1/certificates/c-1'), async ({ request }) => {
       updated = await request.json();
-      return HttpResponse.json(makeCert({ sans: ['www.example.com', 'api.example.com'] }));
+      // M1: the PUT response's sans is also `names[1:]`, same as any GET.
+      return HttpResponse.json(makeCert({ sans: ['api.example.com'] }));
     }),
   );
   const { router, user } = renderRoute('/o/acme/certificates/c-1/edit');

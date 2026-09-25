@@ -15,7 +15,10 @@ export function makeCert(p: Partial<Certificate> = {}): Certificate {
     id: 'c-1',
     name: 'www',
     commonName: 'www.example.com',
-    sans: ['www.example.com'],
+    // M1: the API returns `names[1:]` here (`names[0]` is always the common
+    // name) — a certificate with no additional SANs has an empty `sans`,
+    // not `[commonName]`.
+    sans: [],
     verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }],
     overrides: {},
     status: 'active',

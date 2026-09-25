@@ -6,6 +6,7 @@ import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certif
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { useMe } from '@/lib/org';
 import { renewToastHandlers } from '@/lib/renewToast';
+import { keywordFilter } from '@/lib/utils';
 
 /**
  * Ctrl/Cmd-K palette: jump to a certificate by name, common name, or any
@@ -62,6 +63,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       title="Command palette"
       description="Jump to a certificate or page, or run an action"
       className="cf-command-palette"
+      // M3: cmdk's default filter also matches against `value` (this palette's
+      // internal `cert:<uuid>`/`page:<label>`/`action:*`/`renew:<uuid>` ids),
+      // so typing a stray "cert" or part of a uuid could match every row —
+      // keywordFilter (as every other picker in the app) matches only against
+      // each item's own `keywords`, never its internal value.
+      commandProps={{ filter: keywordFilter }}
     >
       <CommandInput placeholder="www.example.com" value={search} onValueChange={setSearch} />
       <CommandList>

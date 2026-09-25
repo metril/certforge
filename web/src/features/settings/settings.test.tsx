@@ -1,9 +1,22 @@
 import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
 import { authHandlers, ca, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
+
+// I4 (flaky "saves the General section from its schema"): SettingsPage
+// (via $section.tsx's route-level code splitting) is the first thing in
+// this file to pull in RJSF, Ajv and tldts's public suffix list — a large,
+// one-time synchronous parse — the *first* time any test in this worker
+// renders it. That cold load can by itself eat into a `waitFor`'s default
+// budget before the section's own network round trip even starts. Pre-
+// importing the module (not rendering it — no router/providers exist yet
+// here) in `beforeAll` pays that cost once, up front, outside any test's own
+// timing budget.
+beforeAll(async () => {
+  await import('./SettingsPage');
+});
 
 // The full set of ISSUANCE_FIELDS keys, all-null (the "nothing overridden"
 // PUT payload review fix round 1's #1/#3 requires — every save sends every
@@ -243,7 +256,12 @@ it('resets an org override: PUT sends null and keeps its sibling, badge settles 
 it('Global tab: unsaved fields show Default (not already Overridden), with the one-sentence copy and built-in effective value', async () => {
   const { user } = renderRoute('/settings/issuance-defaults');
   await user.click(await screen.findByRole('tab', { name: 'Global' }));
-  expect(screen.getByText("Fields left as Default follow the server's built-in values.")).toBeInTheDocument();
+  // M2: the "Fields left as Default..." copy is a help tooltip now, not an
+  // inline paragraph — hover its info icon (scoped past the many other
+  // per-field Help buttons on this tab) to read it.
+  const globalHeader = screen.getByText('Built-in defaults').closest('div')!;
+  await user.hover(within(globalHeader).getByRole('button', { name: 'Help' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent("Fields left as Default follow the server's built-in values.");
   const keyTypeField = within(screen.getByRole('group', { name: 'Key type' }));
   expect(keyTypeField.getByRole('button', { name: 'Default' })).toBeInTheDocument();
   expect(keyTypeField.getByRole('switch', { name: 'Override Key type' })).not.toBeChecked();

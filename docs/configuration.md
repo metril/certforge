@@ -30,7 +30,7 @@ For `CF_KEK_FILE` in the container, the file must be readable by uid 65532: `cho
 
 Live configuration is stored in the `settings` table (`key`, JSON `value`, encrypted `secret`) and edited from the UI without a restart.
 
-- Each Settings page is a **section** with a JSON Schema. `GET /api/v1/settings/{section}` returns `{section, schema, value}`. `PUT` takes the value object, validates it against the schema (422 on failure), and stores it under the key `section.<name>`. An unset section returns its default.
+- Each Settings page is a **section** with a JSON Schema. `GET /api/v1/settings/{section}` returns `{section, schema, value, stored}` (`stored` is the raw persisted document, before global-default merging, so a field showing "Default" in the UI doesn't claim a global value it never actually inherited). `PUT` takes the value object, validates it against the schema (422 on failure), and stores it under the key `section.<name>`. An unset section returns its default.
 - Phase 1 sections: `general` (`baseUrl`), `backup` (`kekEscrowConfirmed`), and `issuance_defaults` (from the issuance plan).
 - Secrets are stored with envelope encryption in the `secret` column and are never returned by the API.
 

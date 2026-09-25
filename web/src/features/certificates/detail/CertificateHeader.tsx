@@ -11,6 +11,7 @@ import { StatusChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { renewToastHandlers } from '@/lib/renewToast';
 import { relDays } from '@/lib/time';
 
 type Props = { cert: Certificate; orgId: string; orgSlug: string; onDownload: () => void; onRenewed: () => void };
@@ -42,7 +43,19 @@ export function CertificateHeader({ cert, orgId, orgSlug, onDownload, onRenewed 
           <span className="truncate font-mono text-xs text-ink-muted">{cert.commonName}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={renew.isPending} onClick={() => renew.mutate([cert.id], { onSuccess: onRenewed })}>
+          <Button
+            disabled={renew.isPending}
+            onClick={() => {
+              const toasts = renewToastHandlers(cert.name);
+              renew.mutate([cert.id], {
+                ...toasts,
+                onSuccess: () => {
+                  toasts.onSuccess();
+                  onRenewed();
+                },
+              });
+            }}
+          >
             <RotateCw className="size-4" aria-hidden />
             Renew now
           </Button>

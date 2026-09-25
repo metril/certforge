@@ -18,7 +18,9 @@ function certificateHandlers(cert: ReturnType<typeof makeCert>) {
 }
 
 it('opens with Ctrl-K and jumps to a certificate by any of its names', async () => {
-  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com', sans: ['edge.example.com', 'cdn.example.net'] })));
+  // M1: sans is `names[1:]` (the API never repeats the common name in it) —
+  // 'cdn.example.net' is the one additional SAN this certificate has.
+  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com', sans: ['cdn.example.net'] })));
   const { router, user } = renderRoute('/o/acme/overview');
   await screen.findByRole('heading', { name: 'Overview' });
   await user.keyboard('{Control>}k{/Control}');
@@ -33,7 +35,8 @@ it('opens with Ctrl-K and jumps to a certificate by any of its names', async () 
 it('selects the matching certificate on Enter instead of the Renew action below it', async () => {
   const renewed: string[] = [];
   server.use(
-    ...certificateHandlers(makeCert({ id: 'c-9', name: 'edge', commonName: 'edge.example.com', sans: ['edge.example.com'] })),
+    // M1: no additional SANs here, so sans is empty (never [commonName]).
+    ...certificateHandlers(makeCert({ id: 'c-9', name: 'edge', commonName: 'edge.example.com' })),
     http.post(url('/orgs/org-1/certificates/:id/renew'), ({ params }) => (renewed.push(params.id as string), new HttpResponse(null, { status: 202 }))),
   );
   const { router, user } = renderRoute('/o/acme/overview');
@@ -44,6 +47,22 @@ it('selects the matching certificate on Enter instead of the Renew action below 
   await user.keyboard('{Enter}');
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-9/overview'));
   expect(renewed).toEqual([]);
+});
+
+// M3: cmdk's default filter also matches a CommandItem's own `value`
+// (`cert:<id>`, `page:<label>`, `action:*`, `renew:<id>` — kept distinct so
+// two entries never collide on cmdk's own value-based selection, per this
+// file's header comment) — without `keywordFilter`, typing a fragment of
+// that internal id, which a real certificate id/uuid could easily contain,
+// would surface a match no visible label or keyword ever mentions.
+it('never matches on an internal cert:/page:/action: value, only on visible keywords', async () => {
+  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  await user.type(await screen.findByPlaceholderText('www.example.com'), 'cert:c-7');
+  expect(screen.queryByRole('option', { name: /^edge/ })).not.toBeInTheDocument();
+  expect(screen.getByText('No match.')).toBeInTheDocument();
 });
 
 // Review fix: the palette's own dialog is exempt from the global suppress

@@ -6,7 +6,7 @@ Single status file. Updated in every commit that completes a task.
 
 | # | Phase | Status | Spec | Plan | Started | Finished |
 |---|---|---|---|---|---|---|
-| 1 | Core issuance slice | in progress | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) | 2026-09-24 | – |
+| 1 | Core issuance slice | in progress | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | – |
 | 2 | Identity and tenancy | planned | [design](design.md) | – | – | – |
 | 3 | Agent | planned | [design](design.md) | – | – | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
@@ -89,7 +89,7 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 | 15 | Attempts and manual DNS | done | 63209bc |
 | 16 | Certificate detail | done | f2dd66b |
 | 17 | Overview and command palette | done | 93c3015 |
-| 18 | Docker build, Playwright smoke, docs | done | pending |
+| 18 | Docker build, Playwright smoke, docs | done | 55d4f42 |
 
 ## Decisions made during implementation
 
@@ -138,8 +138,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 - 1C: tooltip "Learn more" links resolve against `VITE_DOCS_BASE` (default `https://github.com/metril/certforge/blob/main/docs/`).
 - 1C: the CA edit sheet is addressed by `?edit=<id>` on `/issuers/cas` rather than a `/:id` segment.
 - 1C: certificate create sends `sans` including the common name.
-- 1C Task 3: `/login`'s `beforeLoad` also tries `ensureQueryData(meQuery)` (preflight A28) — an already-signed-in visitor is sent straight to `safeRedirect(search.redirect)` instead of seeing the form, and the probe caches `Me.csrfToken` before the sign-in form's own `POST /auth/login`; a 401 falls through to render the form as usual.
-- 1C Task 3: `createAppRouter`'s `setUnauthorizedHandler` replaces Task 2's default `window.location` 401 redirect with an SPA `router.navigate({ to: '/login', search: { redirect } })`, keeping the return URL without a full page reload.
+- 1C Task 3: `/login`'s `beforeLoad` also tries `ensureQueryData(meQuery)` (preflight A28) — an already-signed-in visitor is sent straight to `safeRedirect(search.next)` instead of seeing the form, and the probe caches `Me.csrfToken` before the sign-in form's own `POST /auth/login`; a 401 falls through to render the form as usual.
+- 1C Task 3: `createAppRouter`'s `setUnauthorizedHandler` replaces Task 2's default `window.location` 401 redirect with an SPA `router.navigate({ to: '/login', search: { next } })`, keeping the return URL without a full page reload.
 - 1C Task 3 (preflight D7): `docs/configuration.md` already has a "## First-run setup wizard" heading; the wizard's step table was appended under it instead of adding a near-duplicate "## First-run setup" heading (which GitHub would slug `-1`, breaking anchors). `help.ts`'s `setup.kek` entry links to `configuration.md#first-run-setup-wizard` accordingly.
 - 1C Task 3: fixed a bug in the plan's `toSlug` — `.replace(/[^a-z0-9]+/g, '-')` turned characters NFKD doesn't decompose (for example "ß", which has no decomposition) into a spurious hyphen instead of dropping them ("Straße" → "stra-e", not "strae"). `toSlug` now collapses an explicit ASCII whitespace/punctuation class (including "-") to one hyphen, then strips any character that still isn't `[a-z0-9-]` outright.
 - Login return URL uses the `next` search param; the setup wizard uses a step indicator (no summary rail); routeTree.gen.ts is generated at build time and not committed.

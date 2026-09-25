@@ -94,7 +94,10 @@ export function IssuanceDefaultsSection() {
         <HelpTip id="defaults.inherit" />
       </div>
       <TabsContent value="global">
-        <p className="mb-3 text-sm text-ink-muted">Fields left as Default follow the server's built-in values.</p>
+        <div className="mb-3 flex items-center gap-1.5">
+          <span className="text-sm font-medium">Built-in defaults</span>
+          <HelpTip id="defaults.globalBuiltin" />
+        </div>
         <IssuanceDefaultsForm
           value={globalDraft ?? globalStored ?? {}}
           onChange={setGlobalDraft}

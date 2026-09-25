@@ -64,6 +64,10 @@ export const help = {
     text: 'Unset fields inherit from the level above. Changes apply at each certificate’s next renewal.',
     learnMore: 'configuration.md#issuance-defaults',
   },
+  'defaults.globalBuiltin': {
+    text: "Fields left as Default follow the server's built-in values.",
+    learnMore: 'configuration.md#issuance-defaults',
+  },
   'cert.names': {
     text: 'Paste names separated by commas, spaces, semicolons, or new lines. Wildcards need DNS verification.',
     learnMore: 'certificates.md#names',

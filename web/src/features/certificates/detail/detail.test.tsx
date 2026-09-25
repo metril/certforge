@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { Me } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, iso, makeAttempt, makeCert, me, providers, url } from '@/test/fixtures';
+import { authHandlers, ca, iso, makeAttempt, makeCert, me, problem, providers, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const cert = makeCert();
@@ -54,6 +54,64 @@ it('shows the header with a large validity bar and renews into the Attempts tab'
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/attempts'));
   expect(await screen.findByText('Succeeded')).toBeInTheDocument();
 });
+
+// I2 (Important): the header's Renew now used `renew.mutate([cert.id])` with
+// no options at all — `useRenewCertificates` is `meta: { silent: true }`
+// (Task 11: bulk renew shows its own toast), so a failure here previously
+// surfaced nowhere on the page.
+it('shows a toast when Renew now fails', async () => {
+  server.use(http.post(url('/orgs/org-1/certificates/c-1/renew'), () => problem(500, 'boom')), ...base());
+  const { user } = renderRoute('/o/acme/certificates/c-1/overview');
+  await user.click(await screen.findByRole('button', { name: 'Renew now' }));
+  expect(await screen.findByText('Renewal failed for www.')).toBeInTheDocument();
+});
+
+// I1 (Important): a certificate can be `pending` (its very first issuance
+// just queued) before the worker has created an attempt row at all — a
+// fetch with `outcome: 'running'` doesn't exist yet, so `running` alone
+// missed this window and the page polled at the 30s list pace instead of 2s.
+it(
+  'polls the certificate every 2 s while its own status is pending, even with no running attempt yet',
+  async () => {
+    let calls = 0;
+    server.use(
+      http.get(url('/orgs/org-1/certificates/c-1'), () => ((calls++), HttpResponse.json(makeCert({ status: 'pending' })))),
+      http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => HttpResponse.json([])),
+      ...base(),
+    );
+    renderRoute('/o/acme/certificates/c-1/overview');
+    await screen.findByRole('heading', { level: 1, name: 'www' });
+    const first = calls;
+    await waitFor(() => expect(calls).toBeGreaterThan(first), { timeout: 3_000 });
+  },
+  10_000,
+);
+
+// I1: a renew queued from a tab's own empty-state button (no attempt exists
+// yet to flip `running`, and this certificate's own `status` is already
+// `active` from a previous issuance, so neither of the other two live
+// conditions apply) must still start the 2s pace immediately, via the
+// `liveUntil` window `renewNow` sets — not wait for the 30s list pace to
+// happen to notice the new attempt. Landing straight on the Versions tab
+// (not Attempts) also rules out "arriving on the attempts tab already
+// starts the window" as an alternate explanation.
+it(
+  "polls every 2 s for a while after Renew now from the Versions tab's empty state",
+  async () => {
+    let calls = 0;
+    server.use(
+      http.get(url('/orgs/org-1/certificates/c-1'), () => ((calls++), HttpResponse.json(cert))),
+      http.get(url('/orgs/org-1/certificates/c-1/versions'), () => HttpResponse.json([])),
+      ...base(),
+    );
+    const { user } = renderRoute('/o/acme/certificates/c-1/versions');
+    await user.click(await screen.findByRole('button', { name: 'Renew now' }));
+    await waitFor(() => expect(renewed).toBe(true));
+    const first = calls;
+    await waitFor(() => expect(calls).toBeGreaterThan(first), { timeout: 3_000 });
+  },
+  10_000,
+);
 
 it('downloads chosen PEM parts as a zip; the key needs keys:export', async () => {
   server.use(...base({ ...me, roles: ['operator'] }));
