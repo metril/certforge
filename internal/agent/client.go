@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,12 +58,33 @@ type Client struct {
 }
 
 // NewClient trusts id's CA bundle and presents id's current certificate.
+// Both are read fresh from id on every handshake (VerifyConnection,
+// GetClientCertificate), not captured once at construction, so a renewal
+// (Renew) or a trust-bundle update (SaveBundle) applies to the next
+// connection without rebuilding the client.
 func NewClient(id *Identity) *Client {
-	tr := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: id.CAs,
+	tr := &http.Transport{TLSClientConfig: &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		// Standard verification is replaced, not skipped: VerifyConnection
+		// below checks the peer against id's live CA pool.
+		InsecureSkipVerify: true, //nolint:gosec // verified in VerifyConnection
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return errors.New("agent: server sent no certificate")
+			}
+			_, pool := id.current()
+			opts := x509.VerifyOptions{Roots: pool, DNSName: cs.ServerName, Intermediates: x509.NewCertPool()}
+			for _, ic := range cs.PeerCertificates[1:] {
+				opts.Intermediates.AddCert(ic)
+			}
+			_, err := cs.PeerCertificates[0].Verify(opts)
+			return err
+		},
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			c := id.TLSCertificate()
 			return &c, nil
-		}}, IdleConnTimeout: 90 * time.Second}
+		},
+	}, IdleConnTimeout: 90 * time.Second}
 	return &Client{id: id, tr: tr, hc: &http.Client{Transport: tr, Timeout: 60 * time.Second},
 		ws: &http.Client{Transport: tr}, base: strings.TrimRight(id.State.AgentURL, "/")}
 }
@@ -138,6 +160,9 @@ func (c *Client) Renew(ctx context.Context) error {
 
 // Dial opens the agent WebSocket.
 func (c *Client) Dial(ctx context.Context) (*websocket.Conn, error) {
+	if !strings.HasPrefix(c.base, "https://") {
+		return nil, fmt.Errorf("agent: agent URL %q is not https", c.base)
+	}
 	u := "wss" + strings.TrimPrefix(c.base, "https") + "/agent/v1/ws"
 	conn, resp, err := websocket.Dial(ctx, u, &websocket.DialOptions{HTTPClient: c.ws, CompressionMode: websocket.CompressionDisabled}) //nolint:bodyclose // coder/websocket owns resp.Body
 	if err != nil {

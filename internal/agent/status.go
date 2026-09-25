@@ -19,12 +19,13 @@ func Status(w io.Writer, dir string, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	cert, _ := id.current()
 	renew := "at two thirds of its lifetime"
-	if agentproto.RenewDue(id.Cert.NotBefore, id.Cert.NotAfter, now) {
+	if agentproto.RenewDue(cert.NotBefore, cert.NotAfter, now) {
 		renew = "due now"
 	}
 	_, err = fmt.Fprintf(w, "Client:        %s\nAgent URL:     %s\nCertificate:   serial %s, expires %s (renewal %s)\nRevision:      %d\nGrants:        %d\n",
-		id.State.ClientID, id.State.AgentURL, id.Cert.SerialNumber.Text(16), id.Cert.NotAfter.UTC().Format(time.RFC3339),
+		id.State.ClientID, id.State.AgentURL, cert.SerialNumber.Text(16), cert.NotAfter.UTC().Format(time.RFC3339),
 		renew, id.State.Revision, len(id.State.Grants))
 	return err
 }

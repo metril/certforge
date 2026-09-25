@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -99,22 +100,45 @@ func Enroll(ctx context.Context, dir, token string, facts agentproto.Facts) (*Id
 	if err := json.NewDecoder(resp.Body).Decode(&er); err != nil {
 		return nil, fmt.Errorf("enrol: %w", err)
 	}
+	// Validate the certificate and derive its client id before writing
+	// anything: a bad response must leave the data directory untouched.
+	cert, err := parseCert([]byte(er.Certificate), key)
+	if err != nil {
+		return nil, err
+	}
+	clientID, err := clientIDFromCert(cert)
+	if err != nil {
+		return nil, err
+	}
 	id := &Identity{Dir: dir, Key: key, State: State{Grants: map[uuid.UUID]GrantState{}}}
-	if prev, err := os.ReadFile(filepath.Join(dir, stateFile)); err == nil {
-		_ = json.Unmarshal(prev, &id.State)
+	switch prev, err := os.ReadFile(filepath.Join(dir, stateFile)); {
+	case err == nil:
+		if err := json.Unmarshal(prev, &id.State); err != nil {
+			return nil, fmt.Errorf("agent: state.json: %w", err)
+		}
 		if id.State.Grants == nil {
 			id.State.Grants = map[uuid.UUID]GrantState{}
 		}
+	case errors.Is(err, fs.ErrNotExist):
+		// fresh enrolment: no prior grants to keep
+	default:
+		return nil, err
 	}
-	if err := id.saveCert([]byte(er.Certificate), []byte(er.TrustBundle)); err != nil {
+	// Write order matters: ca.pem and state.json first, agent.crt last, so a
+	// crash mid-enrolment leaves ErrNotEnrolled rather than a half-written
+	// identity that LoadIdentity would otherwise accept.
+	if err := id.commitBundle([]byte(er.TrustBundle)); err != nil {
 		return nil, err
 	}
 	id.State.AgentURL = strings.TrimRight(er.AgentURL, "/")
 	if id.State.AgentURL == "" {
 		id.State.AgentURL = tok.AgentURL
 	}
-	id.State.ClientID, id.State.TokenHash, id.State.Revision = er.ClientID, TokenHashHex(token), 0
+	id.State.ClientID, id.State.TokenHash, id.State.Revision = clientID, TokenHashHex(token), 0
 	if err := id.SaveState(); err != nil {
+		return nil, err
+	}
+	if err := id.commitCert([]byte(er.Certificate)); err != nil {
 		return nil, err
 	}
 	return id, nil

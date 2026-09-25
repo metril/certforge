@@ -15,6 +15,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -48,13 +50,35 @@ type State struct {
 	Grants    map[uuid.UUID]GrantState `json:"grants"`
 }
 
-// Identity is the agent's key, certificate, trusted CAs and state.
+// Identity is the agent's key, certificate, trusted CAs and state. Cert and
+// CAs (and the derived State.ClientID) can change under a concurrent renewal
+// or trust-bundle update while a TLS handshake reads them, so every access
+// to those fields outside of construction goes through mu.
 type Identity struct {
 	Dir   string
 	Key   *ecdsa.PrivateKey
 	Cert  *x509.Certificate
 	CAs   *x509.CertPool
 	State State
+
+	mu sync.Mutex
+}
+
+// clientURIPrefix matches agentca.ClientURI's scheme. The client id is
+// derived from the certificate's own URI SAN, never trusted from state.json,
+// so a stale or hand-edited state file can never claim to be a different
+// client than the certificate actually proves.
+const clientURIPrefix = "urn:certforge:client:"
+
+func clientIDFromCert(c *x509.Certificate) (uuid.UUID, error) {
+	if len(c.URIs) != 1 || !strings.HasPrefix(c.URIs[0].String(), clientURIPrefix) {
+		return uuid.Nil, errors.New("agent: certificate has no client id URI SAN")
+	}
+	id, err := uuid.Parse(strings.TrimPrefix(c.URIs[0].String(), clientURIPrefix))
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("agent: certificate client id: %w", err)
+	}
+	return id, nil
 }
 
 // TokenHashHex is how state.json records the enrolment token.
@@ -99,11 +123,15 @@ func writeAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) e
 		return err
 	}
 	done = true
-	if d, err := os.Open(dir); err == nil {
-		_ = d.Sync()
-		_ = d.Close()
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
 	}
-	return nil
+	if err := d.Sync(); err != nil {
+		_ = d.Close()
+		return err
+	}
+	return d.Close()
 }
 
 func loadOrCreateKey(dir string) (*ecdsa.PrivateKey, error) {
@@ -200,6 +228,10 @@ func LoadIdentity(dir string) (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
+	clientID, err := clientIDFromCert(cert)
+	if err != nil {
+		return nil, err
+	}
 	id := &Identity{Dir: dir, Key: key, Cert: cert, CAs: pool}
 	b, err := os.ReadFile(filepath.Join(dir, stateFile))
 	if err != nil {
@@ -208,15 +240,26 @@ func LoadIdentity(dir string) (*Identity, error) {
 	if err := json.Unmarshal(b, &id.State); err != nil {
 		return nil, fmt.Errorf("agent: state.json: %w", err)
 	}
+	id.State.ClientID = clientID // the certificate's URI SAN is authoritative, not the stored value
 	if id.State.Grants == nil {
 		id.State.Grants = map[uuid.UUID]GrantState{}
 	}
 	return id, nil
 }
 
+// current returns the live certificate and CA pool under the identity's
+// lock, safe to call concurrently with a renewal or bundle update running
+// in another goroutine.
+func (id *Identity) current() (*x509.Certificate, *x509.CertPool) {
+	id.mu.Lock()
+	defer id.mu.Unlock()
+	return id.Cert, id.CAs
+}
+
 // TLSCertificate is the client certificate presented to the server.
 func (id *Identity) TLSCertificate() tls.Certificate {
-	return tls.Certificate{Certificate: [][]byte{id.Cert.Raw}, PrivateKey: id.Key, Leaf: id.Cert}
+	cert, _ := id.current()
+	return tls.Certificate{Certificate: [][]byte{cert.Raw}, PrivateKey: id.Key, Leaf: cert}
 }
 
 // SaveState writes state.json (0600).
@@ -228,35 +271,64 @@ func (id *Identity) SaveState() error {
 	return writeAtomic(filepath.Join(id.Dir, stateFile), b, 0o600, nil)
 }
 
-// saveCert installs a new certificate and trust bundle.
-func (id *Identity) saveCert(certPEM, bundle []byte) error {
+// commitBundle validates and writes ca.pem, then swaps in the new pool
+// under the identity's lock so a handshake in another goroutine never sees
+// a half-updated pool.
+func (id *Identity) commitBundle(bundle []byte) error {
+	pool, err := parseBundle(bundle)
+	if err != nil {
+		return err
+	}
+	if err := writeAtomic(filepath.Join(id.Dir, caFile), bundle, 0o644, nil); err != nil {
+		return err
+	}
+	id.mu.Lock()
+	id.CAs = pool
+	id.mu.Unlock()
+	return nil
+}
+
+// commitCert validates certPEM against id.Key, writes agent.crt (the
+// identity's "enrolled" marker: LoadIdentity treats its absence as
+// ErrNotEnrolled whatever else is present) and swaps in the new certificate
+// and its derived client id under the identity's lock.
+func (id *Identity) commitCert(certPEM []byte) error {
 	cert, err := parseCert(certPEM, id.Key)
 	if err != nil {
 		return err
 	}
-	pool, err := parseBundle(bundle)
+	clientID, err := clientIDFromCert(cert)
 	if err != nil {
 		return err
 	}
 	if err := writeAtomic(filepath.Join(id.Dir, certFile), certPEM, 0o644, nil); err != nil {
 		return err
 	}
-	if err := writeAtomic(filepath.Join(id.Dir, caFile), bundle, 0o644, nil); err != nil {
+	id.mu.Lock()
+	id.Cert, id.State.ClientID = cert, clientID
+	id.mu.Unlock()
+	return nil
+}
+
+// saveCert installs a new certificate and trust bundle. Both are validated
+// before anything is written, and the write order after that is bundle then
+// cert, so a crash mid-renewal never leaves a certificate on disk that the
+// current trust bundle can't vouch for, and never swaps the two the other
+// way round.
+func (id *Identity) saveCert(certPEM, bundle []byte) error {
+	if _, err := parseCert(certPEM, id.Key); err != nil {
 		return err
 	}
-	id.Cert, id.CAs = cert, pool
-	return nil
+	if _, err := parseBundle(bundle); err != nil {
+		return err
+	}
+	if err := id.commitBundle(bundle); err != nil {
+		return err
+	}
+	return id.commitCert(certPEM)
 }
 
 // SaveBundle replaces ca.pem after a trust_bundle_update.
 func (id *Identity) SaveBundle(bundle []byte) error {
-	pool, err := parseBundle(bundle)
-	if err != nil {
-		return err
-	}
-	if err := writeAtomic(filepath.Join(id.Dir, caFile), bundle, 0o644, nil); err != nil {
-		return err
-	}
-	id.CAs = pool
-	return nil
+	return id.commitBundle(bundle)
 }
