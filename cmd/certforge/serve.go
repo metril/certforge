@@ -75,7 +75,16 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return fmt.Errorf("start river: %w", err)
 	}
 	defer stopRiver(riverClient, log)
-	aud := audit.New(pool, crypto.DeriveKey(cfg.KEK.Key, "certforge-audit"))
+	// A failed canary means the derived key below cannot be trusted to be
+	// the real audit key: constructing a recording Auditor with it would
+	// write rows keyed wrong, which Rechain and Check can never verify
+	// (ADR 0008). NewDisabled refuses every Record call instead; readiness
+	// already reports the KEK failure separately.
+	auditKey := crypto.DeriveKey(cfg.KEK.Key, "certforge-audit")
+	aud := audit.New(pool, auditKey)
+	if !canaryOK {
+		aud = audit.NewDisabled(pool, auditKey)
+	}
 	if canaryOK {
 		if n, err := aud.Rechain(ctx); err != nil {
 			log.Error("audit chain not re-keyed; GET /api/v1/audit/verify reports where it breaks", "err", err)

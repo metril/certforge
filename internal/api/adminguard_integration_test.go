@@ -217,3 +217,141 @@ func TestConcurrentDisableLastTwoAdmins(t *testing.T) {
 		t.Fatalf("expected exactly one admin still enabled, got a.disabled=%v b.disabled=%v", fa.Disabled, fb.Disabled)
 	}
 }
+
+// bindingIDFor returns the id of user u's sole global admin binding.
+func bindingIDFor(ctx context.Context, t *testing.T, q *sqlcgen.Queries, u sqlcgen.User) uuid.UUID {
+	t.Helper()
+	rbs, err := q.ListRoleBindingsForUser(ctx, u.ID.String())
+	if err != nil || len(rbs) != 1 {
+		t.Fatalf("binding for %s: %v %v", u.DisplayName, rbs, err)
+	}
+	return rbs[0].ID
+}
+
+// TestConcurrentDeleteBindingBlocksConcurrentGuard is the direct proof for
+// I1: LockGlobalAdminUsers must lock role_bindings rows too (`FOR UPDATE OF
+// u, rb`), not just users, or a concurrent binding DELETE is invisible to a
+// second guarded caller under READ COMMITTED (only the locked table's rows
+// are re-checked against fresh data when a blocked caller unblocks; the
+// other joined table is still read from the original snapshot). tx1 holds
+// the guard locks and deletes A's binding; tx2's guard call is started only
+// once tx1's own guard call has already returned (so it is genuinely
+// contending for the same locked rows, not just racing to start), must
+// still be blocked, and must only see the effect of A's deletion (and
+// return 409, since B is now the only admin and excluded) once tx1 commits.
+// With `FOR UPDATE OF u` alone this test fails: tx2 unblocks having read
+// stale role_bindings data that still shows A as an admin, and wrongly
+// succeeds instead of returning 409.
+func TestConcurrentDeleteBindingBlocksConcurrentGuard(t *testing.T) {
+	pool, q := dbtest.New(t)
+	ctx := context.Background()
+	a := mkGlobalAdmin(ctx, t, q, "guardI1-del-a")
+	b := mkGlobalAdmin(ctx, t, q, "guardI1-del-b")
+	aBindingID := bindingIDFor(ctx, t, q, a)
+
+	tx1, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx1.Rollback(ctx) }()
+	q1 := q.WithTx(tx1)
+	if err := ensureAnotherGlobalAdmin(ctx, q1, a.ID); err != nil {
+		t.Fatalf("tx1 guard (excluding a, b still enabled): %v", err)
+	}
+	if err := q1.DeleteRoleBinding(ctx, aBindingID); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		tx2, err := pool.Begin(ctx)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer func() { _ = tx2.Rollback(ctx) }()
+		done <- ensureAnotherGlobalAdmin(ctx, q.WithTx(tx2), b.ID)
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("tx2 guard returned (err=%v) before tx1 committed A's binding delete; the guard is not locking role_bindings rows", err)
+	case <-time.After(300 * time.Millisecond):
+		// Still blocked, as expected.
+	}
+
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-done:
+		var he *HTTPError
+		if !errors.As(err, &he) || he.Status != 409 {
+			t.Fatalf("expected 409 excluding b once a's binding was deleted (b is now the sole admin), got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("tx2 never unblocked after tx1 committed")
+	}
+}
+
+// TestConcurrentDisableBlocksConcurrentDeleteGuard covers the delete-vs-disable
+// pairing (I1) and confirms there is no lock-order inversion between the two
+// guarded paths: both DeleteRoleBinding and UpdateUser's disable path call
+// ensureAnotherGlobalAdmin (locking every global admin's user and binding
+// row, ORDER BY u.id, rb.id) before performing their own write, so they
+// always contend for the guard locks in the same order and never deadlock.
+// tx1 holds the guard locks and disables B; tx2's guard (excluding a, i.e.
+// a deleting its own binding) must block until tx1 commits, and must then
+// see B disabled and return 409.
+func TestConcurrentDisableBlocksConcurrentDeleteGuard(t *testing.T) {
+	pool, q := dbtest.New(t)
+	ctx := context.Background()
+	a := mkGlobalAdmin(ctx, t, q, "guardI1-dis-a")
+	b := mkGlobalAdmin(ctx, t, q, "guardI1-dis-b")
+
+	tx1, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx1.Rollback(ctx) }()
+	q1 := q.WithTx(tx1)
+	if err := ensureAnotherGlobalAdmin(ctx, q1, b.ID); err != nil {
+		t.Fatalf("tx1 guard (excluding b, a still enabled): %v", err)
+	}
+	if err := q1.SetUserDisabled(ctx, sqlcgen.SetUserDisabledParams{ID: b.ID, Disabled: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		tx2, err := pool.Begin(ctx)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer func() { _ = tx2.Rollback(ctx) }()
+		done <- ensureAnotherGlobalAdmin(ctx, q.WithTx(tx2), a.ID)
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("tx2 guard returned (err=%v) before tx1 committed B's disable", err)
+	case <-time.After(300 * time.Millisecond):
+		// Still blocked, as expected.
+	}
+
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-done:
+		var he *HTTPError
+		if !errors.As(err, &he) || he.Status != 409 {
+			t.Fatalf("expected 409 excluding a once b was disabled (b no longer counts as enabled), got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("tx2 never unblocked after tx1 committed")
+	}
+}

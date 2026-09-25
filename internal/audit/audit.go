@@ -38,6 +38,14 @@ const chainKeyedSettingKey = "audit.chain_keyed"
 // ErrChainBroken means a stored event does not match its hash chain.
 var ErrChainBroken = errors.New("audit: hash chain broken")
 
+// ErrAuditUnavailable is returned by Record on an Auditor constructed with
+// NewDisabled: the KEK canary failed at startup, so the derived audit key
+// cannot be trusted. Writing rows under a wrong key would key them so
+// neither Rechain nor Check can ever verify them (ADR 0008), so Record
+// refuses outright instead. Check and Verify still run (best-effort
+// diagnostics over whatever is already in the table).
+var ErrAuditUnavailable = errors.New("audit: unavailable (KEK canary failed; recording refused)")
+
 var genesis = make([]byte, sha256.Size)
 
 // Chain hash algorithms, stored per row in audit_events.hash_alg.
@@ -73,9 +81,10 @@ func IPFrom(ctx context.Context) string {
 
 // Auditor writes and verifies the audit chain.
 type Auditor struct {
-	pool *pgxpool.Pool
-	key  []byte
-	now  func() time.Time
+	pool     *pgxpool.Pool
+	key      []byte
+	now      func() time.Time
+	disabled bool
 }
 
 // New returns an Auditor keyed with key. key must be a non-empty HMAC key
@@ -88,8 +97,23 @@ func New(pool *pgxpool.Pool, key []byte) *Auditor {
 	return &Auditor{pool: pool, key: key, now: time.Now}
 }
 
+// NewDisabled returns an Auditor whose Record always fails with
+// ErrAuditUnavailable, for a KEK canary failure at startup: key is still
+// required (Check/Verify keep working as a best-effort diagnostic over
+// whatever is already in the table) but Record refuses to write anything
+// under it, since key cannot be trusted to be the real derived audit key.
+func NewDisabled(pool *pgxpool.Pool, key []byte) *Auditor {
+	if len(key) == 0 {
+		panic("audit: NewDisabled called with a nil or empty key")
+	}
+	return &Auditor{pool: pool, key: key, now: time.Now, disabled: true}
+}
+
 // Record appends e to the chain. Appends are serialized by an advisory lock.
 func (a *Auditor) Record(ctx context.Context, e Event) error {
+	if a.disabled {
+		return ErrAuditUnavailable
+	}
 	if e.Action == "" || e.ResourceType == "" {
 		return errors.New("audit: action and resource type are required")
 	}

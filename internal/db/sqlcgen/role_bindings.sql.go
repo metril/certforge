@@ -220,13 +220,17 @@ const lockGlobalAdminUsers = `-- name: LockGlobalAdminUsers :many
 SELECT u.id, u.oidc_issuer, u.oidc_sub, u.email, u.display_name, u.local_password_hash, u.disabled, u.last_login, u.created_at, u.oidc_groups FROM users u
 JOIN role_bindings rb ON rb.subject_type = 'user' AND rb.subject = u.id::text
 WHERE rb.role = 'admin' AND rb.org_id IS NULL
-ORDER BY u.id
-FOR UPDATE OF u
+ORDER BY u.id, rb.id
+FOR UPDATE OF u, rb
 `
 
 // Users holding a global (org-less) admin role binding, locked in a stable
 // order so concurrent callers serialize instead of both reading a stale
-// "another admin exists" answer.
+// "another admin exists" answer. Locks both the user row and its binding
+// row: under READ COMMITTED, only a row an UPDATE actually touches is
+// re-checked by a concurrent locker, so locking `u` alone never blocks a
+// concurrent DELETE of `rb` (the binding row itself) -- two guarded
+// operations could both pass and leave zero enabled global admins.
 func (q *Queries) LockGlobalAdminUsers(ctx context.Context) ([]User, error) {
 	rows, err := q.db.Query(ctx, lockGlobalAdminUsers)
 	if err != nil {

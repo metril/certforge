@@ -7,6 +7,8 @@
   - `200 {"status":"ready","checks":{"database":"ok","kek":"ok"}}` when both checks pass.
   - `503 {"status":"unavailable","checks":{...}}` when either fails. Each entry in `checks` is `"ok"` or `"failed"` (`kek` is `"unknown"` if the database ping itself failed, since the canary could not be checked). Failure details are logged server-side, not returned, because the endpoint is unauthenticated.
 
+With a failed KEK canary, `serve` still starts and answers HTTP (so `/readyz` itself, and the container orchestrator's restart/alerting on it, keep working), but it never re-chains or writes to the audit log under that boot's derived key: doing so would key rows wrong, which can never later verify under the correct key (ADR 0008). Every audit-writing request still succeeds at the API level (the write is best-effort; handlers log the failure and move on) but produces no audit row — `GET /api/v1/audit/verify` and the server log both show `audit: unavailable (KEK canary failed; recording refused)` for the duration. Fix the KEK (`CF_KEK`/`CF_KEK_FILE`) and restart the process; on the next boot, once the canary passes, `Rechain` runs as usual and normal recording resumes. No audit data from the misconfigured window can be recovered — those actions were simply never recorded.
+
 `certforge healthcheck` probes `/readyz` on `CF_LISTEN_HTTP` and exits 1 if it does not return 200; use it as a container `HEALTHCHECK`.
 
 ## Running

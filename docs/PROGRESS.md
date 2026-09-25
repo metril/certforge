@@ -118,7 +118,7 @@ were Task 18's own commits.
 | 12 | Cross-org certificate list | done | d289146 |
 | 13 | Keyed audit chain | done | abe21b8 |
 | 14 | Audit API | done | 5eef30e |
-| 15 | dex e2e | done | pending |
+| 15 | dex e2e | done | 2bfa5f3 |
 
 ## Decisions made during implementation
 
