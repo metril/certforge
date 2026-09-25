@@ -35,6 +35,14 @@ WHERE (NOT sqlc.arg(has_from)::bool OR a.ts >= sqlc.arg(from_ts)::timestamptz)
 ORDER BY a.id DESC
 LIMIT sqlc.arg(page_limit)::int;
 
+-- name: GetAuditEvent :one
+SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
+       COALESCE(u.display_name, k.name, '')::text AS actor_name
+FROM audit_events a
+LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
+LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
+WHERE a.id = sqlc.arg(id)::bigint;
+
 -- name: CountAuditEventsCapped :one
 -- Counts matching rows up to page_limit, so the caller can tell whether the
 -- export cap will truncate the result without scanning past it.

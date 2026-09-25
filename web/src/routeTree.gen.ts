@@ -18,6 +18,7 @@ import { Route as AppOOrgRouteRouteImport } from './routes/_app/o/$org/route'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsSectionRouteImport } from './routes/_app/settings/$section'
 import { Route as AppOOrgIndexRouteImport } from './routes/_app/o/$org/index'
+import { Route as AppOOrgAuditRouteImport } from './routes/_app/o/$org/audit'
 import { Route as AppOOrgIssuersRouteRouteImport } from './routes/_app/o/$org/issuers/route'
 import { Route as AppOOrgOverviewRouteImport } from './routes/_app/o/$org/overview'
 import { Route as AppOOrgCertificatesIndexRouteImport } from './routes/_app/o/$org/certificates/index'
@@ -72,6 +73,11 @@ const AppSettingsSectionRoute = AppSettingsSectionRouteImport.update({
 const AppOOrgIndexRoute = AppOOrgIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppOOrgRouteRoute,
+} as any)
+const AppOOrgAuditRoute = AppOOrgAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => AppOOrgRouteRoute,
 } as any)
 const AppOOrgIssuersRouteRoute = AppOOrgIssuersRouteRouteImport.update({
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/settings/$section': typeof AppSettingsSectionRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/o/$org/issuers': typeof AppOOrgIssuersRouteRouteWithChildren
+  '/o/$org/audit': typeof AppOOrgAuditRoute
   '/o/$org/overview': typeof AppOOrgOverviewRoute
   '/o/$org/': typeof AppOOrgIndexRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
@@ -162,6 +169,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/settings/$section': typeof AppSettingsSectionRoute
   '/settings': typeof AppSettingsIndexRoute
+  '/o/$org/audit': typeof AppOOrgAuditRoute
   '/o/$org/overview': typeof AppOOrgOverviewRoute
   '/o/$org': typeof AppOOrgIndexRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
@@ -185,6 +193,7 @@ export interface FileRoutesById {
   '/_app/settings/$section': typeof AppSettingsSectionRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/o/$org/issuers': typeof AppOOrgIssuersRouteRouteWithChildren
+  '/_app/o/$org/audit': typeof AppOOrgAuditRoute
   '/_app/o/$org/overview': typeof AppOOrgOverviewRoute
   '/_app/o/$org/': typeof AppOOrgIndexRoute
   '/_app/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
@@ -208,6 +217,7 @@ export interface FileRouteTypes {
     | '/settings/$section'
     | '/settings/'
     | '/o/$org/issuers'
+    | '/o/$org/audit'
     | '/o/$org/overview'
     | '/o/$org/'
     | '/o/$org/certificates/new'
@@ -227,6 +237,7 @@ export interface FileRouteTypes {
     | '/'
     | '/settings/$section'
     | '/settings'
+    | '/o/$org/audit'
     | '/o/$org/overview'
     | '/o/$org'
     | '/o/$org/certificates/new'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/_app/settings/$section'
     | '/_app/settings/'
     | '/_app/o/$org/issuers'
+    | '/_app/o/$org/audit'
     | '/_app/o/$org/overview'
     | '/_app/o/$org/'
     | '/_app/o/$org/certificates/new'
@@ -331,6 +343,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/o/$org/'
       preLoaderRoute: typeof AppOOrgIndexRouteImport
+      parentRoute: typeof AppOOrgRouteRoute
+    }
+    '/_app/o/$org/audit': {
+      id: '/_app/o/$org/audit'
+      path: '/audit'
+      fullPath: '/o/$org/audit'
+      preLoaderRoute: typeof AppOOrgAuditRouteImport
       parentRoute: typeof AppOOrgRouteRoute
     }
     '/_app/o/$org/issuers': {
@@ -432,6 +451,7 @@ const AppOOrgIssuersRouteRouteWithChildren =
 
 interface AppOOrgRouteRouteChildren {
   AppOOrgIssuersRouteRoute: typeof AppOOrgIssuersRouteRouteWithChildren
+  AppOOrgAuditRoute: typeof AppOOrgAuditRoute
   AppOOrgOverviewRoute: typeof AppOOrgOverviewRoute
   AppOOrgIndexRoute: typeof AppOOrgIndexRoute
   AppOOrgCertificatesNewRoute: typeof AppOOrgCertificatesNewRoute
@@ -443,6 +463,7 @@ interface AppOOrgRouteRouteChildren {
 
 const AppOOrgRouteRouteChildren: AppOOrgRouteRouteChildren = {
   AppOOrgIssuersRouteRoute: AppOOrgIssuersRouteRouteWithChildren,
+  AppOOrgAuditRoute: AppOOrgAuditRoute,
   AppOOrgOverviewRoute: AppOOrgOverviewRoute,
   AppOOrgIndexRoute: AppOOrgIndexRoute,
   AppOOrgCertificatesNewRoute: AppOOrgCertificatesNewRoute,

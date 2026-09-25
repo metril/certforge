@@ -138,8 +138,8 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 | 5 | Settings → Authentication | done | cd189a8 |
 | 6 | API keys | done | 2337e18 |
 | 7 | Orgs and sites | done | e3a1721 |
-| 8 | All orgs | done | pending |
-| 9 | Audit log page | pending | – |
+| 8 | All orgs | done | fc314b8 |
+| 9 | Audit log page | done | pending |
 | 10 | Overview recent activity | pending | – |
 | 11 | Playwright: dex login and audit | pending | – |
 

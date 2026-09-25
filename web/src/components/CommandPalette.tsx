@@ -46,14 +46,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     setSearch('');
     fn();
   };
-  // Task 9 seam: an "Audit log" page entry (pointing at `/o/all/audit`
-  // under All orgs, `/o/$org/audit` otherwise) belongs alongside Overview
-  // and Certificates here once the audit route ships.
   const pages: { label: string; keywords: string[]; go: () => void }[] = [
     ...(allOrgs
       ? [
           { label: 'Overview', keywords: ['dashboard', 'triage'], go: () => void navigate({ to: '/o/$org/overview', params: { org: ALL_ORGS_SLUG } }) },
           { label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: ALL_ORGS_SLUG } }) },
+          { label: 'Audit log', keywords: ['events', 'history', 'who', 'changes'], go: () => void navigate({ to: '/o/$org/audit', params: { org: ALL_ORGS_SLUG } }) },
         ]
       : org
         ? [
@@ -62,6 +60,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             { label: 'Issuers: CAs', keywords: ['ca', 'acme', 'directory'], go: () => void navigate({ to: '/o/$org/issuers/cas', params: { org: org.slug } }) },
             { label: 'Issuers: ACME accounts', keywords: ['account'], go: () => void navigate({ to: '/o/$org/issuers/accounts', params: { org: org.slug } }) },
             { label: 'Issuers: DNS credentials', keywords: ['dns', 'provider', 'credential'], go: () => void navigate({ to: '/o/$org/issuers/dns', params: { org: org.slug } }) },
+            { label: 'Audit log', keywords: ['events', 'history', 'who', 'changes'], go: () => void navigate({ to: '/o/$org/audit', params: { org: org.slug } }) },
           ]
         : []),
     { label: 'Settings: General', keywords: ['base url'], go: () => void navigate({ to: '/settings/$section', params: { section: 'general' } }) },

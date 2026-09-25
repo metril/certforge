@@ -1,10 +1,11 @@
 import { Bell, Gauge, Landmark, ScrollText, Server, Settings, ShieldCheck, Truck, type LucideIcon } from 'lucide-react';
 
-export type NavTarget = 'overview' | 'certificates' | 'issuers' | 'settings';
+export type NavTarget = 'overview' | 'certificates' | 'issuers' | 'audit' | 'settings';
 export type NavItem = { label: string; icon: LucideIcon; target?: NavTarget };
 
 export const LATER = 'Available in a later phase';
 export const NO_ORG = 'No organization exists yet.';
+export const NO_AUDIT = 'Needs the auditor or an admin role.';
 
 // Targets that resolve under /o/$org/...; Settings does not need an org.
 export function targetNeedsOrg(target: NavTarget): boolean {
@@ -12,8 +13,9 @@ export function targetNeedsOrg(target: NavTarget): boolean {
 }
 
 // Spec "Web UI design" navigation table: three groups, eight items. Phase 1
-// enables Overview, Certificates, Issuers, and Settings (`target` set);
-// the rest render disabled with the LATER tooltip, never hidden.
+// enabled Overview, Certificates, Issuers, and Settings; Phase 2B adds
+// Audit log (`target` set on each). Clients, Delivery and Alerts remain
+// disabled with the LATER tooltip, never hidden.
 export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Operate',
@@ -34,7 +36,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Govern',
     items: [
-      { label: 'Audit log', icon: ScrollText },
+      { label: 'Audit log', icon: ScrollText, target: 'audit' },
       { label: 'Settings', icon: Settings, target: 'settings' },
     ],
   },
@@ -58,7 +60,7 @@ export function isNavPathActive(pathname: string, prefix: string): boolean {
 // view); the rest (Issuers, and later Clients/Delivery/Alerts) redirect on
 // navigation (lib/org.ts's denyAllOrgs) and are shown disabled here with
 // ALL_ORGS_ONLY_ONE instead of navigating.
-export const ALL_ORGS_TARGETS: ReadonlySet<NavTarget> = new Set(['overview', 'certificates', 'settings']);
+export const ALL_ORGS_TARGETS: ReadonlySet<NavTarget> = new Set(['overview', 'certificates', 'audit', 'settings']);
 export const ALL_ORGS_ONLY_ONE = 'Pick one organization';
 
 // Visible label of the read-only banner shown on every /o/all/... page

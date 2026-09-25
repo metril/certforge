@@ -1266,6 +1266,24 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /audit/{id}:
+    parameters:
+      - {$ref: "#/components/parameters/AuditEventId"}
+    get:
+      operationId: getAuditEvent
+      tags: [audit]
+      summary: Get an audit event
+      description: Needs audit:read for the event's org, or global audit:read for a null-org event. Answers 404, not 403, when the caller may not see it (same message as a missing id).
+      responses:
+        "200":
+          description: The audit event.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuditEvent"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /audit/export:
     get:
       operationId: exportAuditEvents
@@ -1381,6 +1399,7 @@ components:
     AuditResourceId: {name: resourceId, in: query, required: false, description: Resource id., schema: {type: string}}
     AuditOrgId: {name: orgId, in: query, required: false, description: Only this org's events; omit for every org you can audit (global events need global audit:read)., schema: {type: string, format: uuid}}
     AuditQ: {name: q, in: query, required: false, description: Case-insensitive substring of action, resource, actor, IP or details., schema: {type: string}}
+    AuditEventId: {name: id, in: path, required: true, description: Audit event id., schema: {type: integer, format: int64}}
   responses:
     BadRequest:
       description: Malformed request, query parameter, or JSON body.

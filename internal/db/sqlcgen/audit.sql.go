@@ -78,6 +78,48 @@ func (q *Queries) CountLegacyAuditEvents(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const getAuditEvent = `-- name: GetAuditEvent :one
+SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
+       COALESCE(u.display_name, k.name, '')::text AS actor_name
+FROM audit_events a
+LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
+LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
+WHERE a.id = $1::bigint
+`
+
+type GetAuditEventRow struct {
+	ID           int64      `json:"id"`
+	Ts           time.Time  `json:"ts"`
+	ActorType    string     `json:"actor_type"`
+	ActorID      string     `json:"actor_id"`
+	Action       string     `json:"action"`
+	ResourceType string     `json:"resource_type"`
+	ResourceID   string     `json:"resource_id"`
+	OrgID        *uuid.UUID `json:"org_id"`
+	Ip           string     `json:"ip"`
+	Details      []byte     `json:"details"`
+	ActorName    string     `json:"actor_name"`
+}
+
+func (q *Queries) GetAuditEvent(ctx context.Context, id int64) (GetAuditEventRow, error) {
+	row := q.db.QueryRow(ctx, getAuditEvent, id)
+	var i GetAuditEventRow
+	err := row.Scan(
+		&i.ID,
+		&i.Ts,
+		&i.ActorType,
+		&i.ActorID,
+		&i.Action,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.OrgID,
+		&i.Ip,
+		&i.Details,
+		&i.ActorName,
+	)
+	return i, err
+}
+
 const insertAuditEvent = `-- name: InsertAuditEvent :one
 INSERT INTO audit_events (ts, actor_type, actor_id, action, resource_type, resource_id, org_id, ip, details, prev_hash, hash, hash_alg)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)

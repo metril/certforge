@@ -139,6 +139,10 @@ export const help = {
   'apikey.status': { text: 'Keys also stop working when their creator is disabled.' },
   'apikey.secretOnce': { text: 'Copy it now; it is never shown again. Only its hash is kept, so a lost key needs a new one.' },
   'orgs.allOrgs': { text: 'Every org you can read, in one view. Switch to one org to make changes.' },
+  'audit.chain': { text: 'Every event is linked to the previous one with a keyed hash. Verified means nothing was edited or removed.', learnMore: 'security.md#audit-log' },
+  'audit.chainBroken': { text: 'An event no longer matches its hash: the log was altered outside CertForge.', learnMore: 'security.md#audit-log' },
+  'audit.actor': { text: 'The user or API key that acted; system for scheduled work.' },
+  'audit.ip': { text: 'Client address, taken from X-Forwarded-For only behind a trusted proxy.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

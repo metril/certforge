@@ -73,6 +73,8 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web: API keys tab with scoped creation, a copy-then-acknowledge secret dialog, and revocation.
 - Web: org create, rename and delete, and per-org sites, in Settings → General.
 - Web: All orgs switcher entry with read-only cross-org Overview and Certificates.
+- Web: audit log page with URL-synced filters, a before/after event diff, hash-chain status, CSV export, and deep links; Audit log enabled in the sidebar and command palette.
+- `GET /audit/{id}` fetches one audit event by id; 404 (never 403) whether it's missing or not visible to the caller.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

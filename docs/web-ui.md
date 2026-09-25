@@ -34,6 +34,10 @@ Three tabs, kept in the URL (`?tab=users|bindings|keys`). **Users** lists everyo
 
 The redirect URI to register (copy button), the single sign-on form rendered from the section schema (the client secret shows Stored with Replace), **Test connection** for the issuer currently in the form, and **Group mappings**: group-to-role bindings, the same rows as group bindings in Access.
 
+## Audit log
+
+`/o/:org/audit` lists events newest first: time, actor, action, resource, IP (and org in All orgs). Filters live in the URL as removable chips: search, action (or a whole group such as `session.*`), resource type, actor, and a date range. Clicking a row opens the event with a before/after diff for changes; a link with `?event=<id>` opens that event directly, even if it isn't on the currently loaded page. The chip in the header shows whether the hash chain verifies (checked at most once a minute) and is only shown to callers with a global role, since verifying the chain covers every org. **Export CSV** downloads the filtered events; the export itself is audited, and a one-line notice appears if the 100,000-row cap was hit. An org's view shows that org's events; global events (sign-ins, settings) appear under All orgs. Below `md` width the list renders as stacked card rows.
+
 ## All orgs
 
 Users with a global role get **All orgs** at the top of the org switcher (/o/all/…). Overview, Certificates and the Audit log then span every org you can read and are read-only: no create, renew, delete or bulk actions, and pages that need one org (Issuers, the certificate wizard and detail) redirect to the All orgs overview. Opening a certificate switches to its org.

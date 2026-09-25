@@ -26,6 +26,11 @@ import { url } from './fixtures';
 // render — earlier tests (Tasks 3 and 4) that merely navigate through this
 // route don't mock either. `server.use()` in a given test still wins over
 // these defaults (msw tries handlers most-recently-added first).
+//
+// Task 9: `AuditPage` fetches `/users` unconditionally (for the Actor
+// filter and to resolve actor names) whenever the caller can read them,
+// which every default `me` fixture (admin) can — most audit tests don't
+// care about actor names and don't mock it themselves.
 export const server = setupServer(
   http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get(url('/orgs/:orgId/cas'), () => HttpResponse.json([])),
@@ -35,6 +40,7 @@ export const server = setupServer(
   http.get(url('/auth/methods'), () => HttpResponse.json({ oidcEnabled: false, localEnabled: true })),
   http.get(url('/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get(url('/audit'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get(url('/users'), () => HttpResponse.json({ items: [] })),
   http.get(url('/audit/verify'), () =>
     HttpResponse.json({ ok: true, count: 0, brokenAtId: null, checkedAt: '2026-09-24T12:00:00Z', headHash: '' }),
   ),

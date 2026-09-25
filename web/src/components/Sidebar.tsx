@@ -9,12 +9,14 @@ import {
   LATER,
   NAV,
   navPrefix,
+  NO_AUDIT,
   NO_ORG,
   targetNeedsOrg,
   type NavItem,
   type NavTarget,
 } from '@/lib/nav';
-import { ALL_ORGS_SLUG, useActiveOrgSlug } from '@/lib/org';
+import { ALL_ORGS_SLUG, useActiveOrgSlug, useMe } from '@/lib/org';
+import { canAnywhere } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { OrgSwitcher } from './OrgSwitcher';
 import { UserMenu } from './UserMenu';
@@ -90,6 +92,12 @@ const TargetLink = forwardRef<
           {children}
         </Link>
       );
+    case 'audit':
+      return (
+        <Link to="/o/$org/audit" params={{ org }} {...common}>
+          {children}
+        </Link>
+      );
     case 'settings':
       return (
         <Link to="/settings/$section" params={{ section: 'general' }} {...common}>
@@ -138,11 +146,13 @@ function NavRow({
   compact: boolean;
   onNavigate?: () => void;
 }) {
+  const me = useMe();
   if (!item.target) return <DisabledRow item={item} compact={compact} reason={LATER} />;
   if (targetNeedsOrg(item.target) && !org) return <DisabledRow item={item} compact={compact} reason={NO_ORG} />;
   if (item.target && org === ALL_ORGS_SLUG && !ALL_ORGS_TARGETS.has(item.target)) {
     return <DisabledRow item={item} compact={compact} reason={ALL_ORGS_ONLY_ONE} />;
   }
+  if (item.target === 'audit' && !canAnywhere(me, 'audit:read')) return <DisabledRow item={item} compact={compact} reason={NO_AUDIT} />;
 
   const Icon = item.icon;
   const body = (

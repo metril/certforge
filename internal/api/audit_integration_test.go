@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -95,6 +97,80 @@ func TestAuditScope(t *testing.T) {
 	// global events), so an org-scoped auditor is 403 even for their own org.
 	if resp, _ := e.doClient(auditor, http.MethodGet, "/api/v1/audit/verify", nil, nil); resp.StatusCode != http.StatusForbidden { //nolint:bodyclose // doClient closes the body
 		t.Fatalf("org auditor verify %d, want 403", resp.StatusCode)
+	}
+}
+
+// TestAuditGetEvent covers GET /audit/{id}: an org auditor can fetch an
+// event in their own org, a null-org (global) event needs global
+// audit:read, and both a missing id and one the caller may not see answer
+// the same 404 (controller ruling C10 — no distinguishable 403).
+func TestAuditGetEvent(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, home := e.seedAdminSession()
+	e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{}, csrf)                              //nolint:bodyclose // testEnv.doRaw closes the body
+	e.do(http.MethodPost, "/api/v1/orgs/"+home.String()+"/sites", map[string]string{"name": "Berlin"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	lab, _ := e.deps.Queries.CreateOrg(context.Background(), sqlcgenOrg("lab"))
+
+	p := getAudit(t, e, e.client, "action=site.create&limit=1", http.StatusOK)
+	if len(p.Items) != 1 {
+		t.Fatalf("seed site.create %+v", p)
+	}
+	siteEventID := p.Items[0].ID
+	pGlobal := getAudit(t, e, e.client, "action=settings.update&limit=1", http.StatusOK)
+	if len(pGlobal.Items) != 1 || pGlobal.Items[0].OrgID != nil {
+		t.Fatalf("seed settings.update (global) %+v", pGlobal)
+	}
+	globalEventID := pGlobal.Items[0].ID
+
+	get := func(c *http.Client, id int64) (int, []byte) {
+		resp, body := e.doClient(c, http.MethodGet, fmt.Sprintf("/api/v1/audit/%d", id), nil, nil) //nolint:bodyclose // doClient closes the body
+		return resp.StatusCode, body
+	}
+	if status, body := get(e.client, siteEventID); status != http.StatusOK {
+		t.Fatalf("admin get org event: %d %s", status, body)
+	}
+	if status, body := get(e.client, globalEventID); status != http.StatusOK {
+		t.Fatalf("admin get global event: %d %s", status, body)
+	}
+
+	auditor, _, _ := e.userSession("aud", "auditor", &home)
+	if status, _ := get(auditor, siteEventID); status != http.StatusOK {
+		t.Fatalf("org auditor get own-org event: %d", status)
+	}
+	auditorBody, statusBody := "", 0
+	if status, body := get(auditor, globalEventID); true {
+		auditorBody, statusBody = string(body), status
+	}
+	if statusBody != http.StatusNotFound {
+		t.Fatalf("org auditor get global event: %d %s", statusBody, auditorBody)
+	}
+
+	labAuditor, _, _ := e.userSession("labaud", "auditor", &lab.ID)
+	labStatus, labBody := get(labAuditor, siteEventID)
+	if labStatus != http.StatusNotFound {
+		t.Fatalf("other-org auditor get event: %d %s", labStatus, labBody)
+	}
+	missingStatus, missingBody := get(e.client, 999_999_999)
+	if missingStatus != http.StatusNotFound {
+		t.Fatalf("missing id: %d %s", missingStatus, missingBody)
+	}
+	// Same detail message whether the id doesn't exist or the caller may
+	// not see it: a probe can't tell the two apart.
+	var wrongOrg, missing struct {
+		Detail string `json:"detail"`
+	}
+	_ = json.Unmarshal(labBody, &wrongOrg)
+	_ = json.Unmarshal(missingBody, &missing)
+	if wrongOrg.Detail == "" || wrongOrg.Detail != strings.Replace(missing.Detail, "999999999", strconv.FormatInt(siteEventID, 10), 1) {
+		t.Fatalf("detail mismatch: wrongOrg=%q missing=%q", wrongOrg.Detail, missing.Detail)
+	}
+
+	viewer, _, _ := e.userSession("vic", "viewer", &home)
+	if status, _ := get(viewer, siteEventID); status != http.StatusNotFound {
+		t.Fatalf("viewer (no audit:read) get event: %d", status)
+	}
+	if status, _ := get(e.client, siteEventID); status != http.StatusOK { //nolint:bodyclose,staticcheck // sanity re-check, doClient closes body
+		t.Fatalf("admin still gets event after other assertions: %d", status)
 	}
 }
 

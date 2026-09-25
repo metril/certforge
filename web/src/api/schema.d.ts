@@ -998,6 +998,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audit/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Audit event id. */
+                id: components["parameters"]["AuditEventId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get an audit event
+         * @description Needs audit:read for the event's org, or global audit:read for a null-org event. Answers 404, not 403, when the caller may not see it (same message as a missing id).
+         */
+        get: operations["getAuditEvent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit/export": {
         parameters: {
             query?: never;
@@ -2172,6 +2195,8 @@ export interface components {
         AuditOrgId: string;
         /** @description Case-insensitive substring of action */
         AuditQ: string;
+        /** @description Audit event id. */
+        AuditEventId: number;
     };
     requestBodies: never;
     headers: never;
@@ -3996,6 +4021,33 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAuditEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Audit event id. */
+                id: components["parameters"]["AuditEventId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The audit event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEvent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };

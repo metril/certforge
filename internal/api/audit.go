@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
@@ -102,11 +104,21 @@ func (f auditFilter) countParams(limit int) sqlcgen.CountAuditEventsCappedParams
 	return p
 }
 
+// auditRow is the common shape ListAuditEvents and GetAuditEvent both
+// return (same columns, different sqlc-generated row types).
+type auditRow struct {
+	ID                                                                  int64
+	Ts                                                                  time.Time
+	ActorType, ActorID, ActorName, Action, ResourceType, ResourceID, IP string
+	OrgID                                                               *uuid.UUID
+	Details                                                             []byte
+}
+
 // auditOut renders one queried row. Every event this package records has an
 // object for details, but a legacy or hand-inserted row could in principle
 // carry null or a non-object JSON value; rather than 500 the whole page for
 // one such row, it degrades to an empty details object.
-func auditOut(r sqlcgen.ListAuditEventsRow) (gen.AuditEvent, error) {
+func auditOut(r auditRow) (gen.AuditEvent, error) {
 	var raw any
 	if err := json.Unmarshal(r.Details, &raw); err != nil {
 		return gen.AuditEvent{}, err
@@ -116,7 +128,12 @@ func auditOut(r sqlcgen.ListAuditEventsRow) (gen.AuditEvent, error) {
 		details = map[string]interface{}{}
 	}
 	return gen.AuditEvent{Id: r.ID, Ts: r.Ts, ActorType: r.ActorType, ActorId: r.ActorID, ActorName: r.ActorName, Action: r.Action,
-		ResourceType: r.ResourceType, ResourceId: r.ResourceID, OrgId: r.OrgID, Ip: r.Ip, Details: details}, nil
+		ResourceType: r.ResourceType, ResourceId: r.ResourceID, OrgId: r.OrgID, Ip: r.IP, Details: details}, nil
+}
+
+func listRowOut(r sqlcgen.ListAuditEventsRow) (gen.AuditEvent, error) {
+	return auditOut(auditRow{ID: r.ID, Ts: r.Ts, ActorType: r.ActorType, ActorID: r.ActorID, ActorName: r.ActorName, Action: r.Action,
+		ResourceType: r.ResourceType, ResourceID: r.ResourceID, OrgID: r.OrgID, IP: r.Ip, Details: r.Details})
 }
 
 // ListAuditEvents returns one page of events, newest first.
@@ -162,7 +179,7 @@ func (s *Server) ListAuditEvents(ctx context.Context, req gen.ListAuditEventsReq
 	}
 	items := make([]gen.AuditEvent, 0, len(rows))
 	for _, r := range rows {
-		ev, err := auditOut(r)
+		ev, err := listRowOut(r)
 		if err != nil {
 			return nil, err
 		}
@@ -275,6 +292,33 @@ func (s *Server) ExportAuditEvents(ctx context.Context, req gen.ExportAuditEvent
 	name := fmt.Sprintf(`attachment; filename="audit-%s.csv"`, time.Now().UTC().Format("2006-01-02"))
 	return gen.ExportAuditEvents200TextcsvCharsetUtf8Response{Body: pr2, Headers: gen.ExportAuditEvents200ResponseHeaders{
 		ContentDisposition: name, XAuditTruncated: truncated}}, nil
+}
+
+// GetAuditEvent returns one event by id. A missing id and one the caller
+// may not read look identical: both are 404 with the same message, so a
+// probe can't distinguish "doesn't exist" from "exists, not yours"
+// (controller ruling C10).
+func (s *Server) GetAuditEvent(ctx context.Context, req gen.GetAuditEventRequestObject) (gen.GetAuditEventResponseObject, error) {
+	p, ok := authn.PrincipalFrom(ctx)
+	if !ok {
+		return nil, errUnauthenticated
+	}
+	row, err := s.d.Queries.GetAuditEvent(ctx, req.Id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, notFound("audit event %d", req.Id)
+		}
+		return nil, err
+	}
+	if !authz.Can(p, authz.ActionAuditRead, row.OrgID) {
+		return nil, notFound("audit event %d", req.Id)
+	}
+	ev, err := auditOut(auditRow{ID: row.ID, Ts: row.Ts, ActorType: row.ActorType, ActorID: row.ActorID, ActorName: row.ActorName,
+		Action: row.Action, ResourceType: row.ResourceType, ResourceID: row.ResourceID, OrgID: row.OrgID, IP: row.Ip, Details: row.Details})
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetAuditEvent200JSONResponse(ev), nil
 }
 
 // VerifyAuditChain walks the chain, caching the result for

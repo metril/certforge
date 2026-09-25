@@ -51,11 +51,12 @@ it('shows eight items; Phase 1 items link, the rest are disabled with a tooltip'
     ['Overview', '/o/acme/overview'],
     ['Certificates', '/o/acme/certificates'],
     ['Issuers', '/o/acme/issuers'],
+    ['Audit log', '/o/acme/audit'],
     ['Settings', '/settings/general'],
   ];
   for (const [name, href] of links) expect(within(nav).getByRole('link', { name })).toHaveAttribute('href', href);
   expect(within(nav).getByRole('link', { name: 'Certificates' })).toHaveAttribute('aria-current', 'page');
-  for (const name of ['Clients', 'Delivery', 'Alerts', 'Audit log']) {
+  for (const name of ['Clients', 'Delivery', 'Alerts']) {
     expect(within(nav).getByText(name).closest('[aria-disabled="true"]')).not.toBeNull();
   }
   expect(within(nav).getByText('Operate')).toBeInTheDocument();
