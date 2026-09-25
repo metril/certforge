@@ -27,6 +27,16 @@ Roles: `admin` (everything, including CAs, KEK, global settings, key export), `o
 
 **Audit-write failure policy:** an audit write never fails the action it is recording. `setup.Complete` and `SetAdminPassword` (bootstrap-admin) commit their transaction first; if the follow-up `Auditor.Record` call then fails, the error is logged and the action still reports success, since undoing an already-committed setup or password reset would be worse than a missing audit row. The same log-and-continue pattern is used wherever audit recording follows a request that already succeeded (see `Server.audit` in `internal/api`).
 
+## Headers
+
+Every response, API and web UI alike, carries (`internal/api/router.go`'s `securityHeaders`):
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: same-origin`
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'`. `script-src 'self'` holds because the SPA has no inline scripts — the pre-paint theme script is the external `/theme-init.js` — and the vendored Swagger UI at `/api/docs` loads only its own same-origin bundle, fetching `/api/v1/openapi.json` (`validatorUrl: null`, so no third-party call). `style-src` allows `'unsafe-inline'` for Radix's inline style attributes and Swagger UI's injected `<style>` tags.
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains`, only on a request that arrived over TLS or with `X-Forwarded-Proto: https` (a plain-HTTP deployment, or one behind a proxy that doesn't set that header, never gets an HSTS header telling browsers to require HTTPS).
+
 ## Resource exhaustion on public routes
 
 - Request bodies on `POST`/`PUT`/`PATCH` under `/api/v1` are capped at 1 MiB (`http.MaxBytesReader`); an oversized body gets `413 Payload too large` as `problem+json` before it reaches a handler.

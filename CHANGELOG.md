@@ -53,6 +53,8 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web UI attempt viewer (step timeline, ACME error explanations, searchable raw log) with 2-second polling while an attempt runs, and the manual-dns records card.
 - Web UI certificate page: header with validity bar and Renew now, Overview, Versions, Attempts, and Settings tabs, and PEM download with part chips.
 - Web UI overview: health strip, needs-attention queue with pinned manual-dns cards and inline Renew now, status filters, 90-day expiry horizon with brushing, upcoming renewals; command palette (Ctrl or Cmd K) and g o, g c, n c shortcuts.
+- Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and Strict-Transport-Security (over TLS or behind X-Forwarded-Proto: https) on every response.
+- Server image builds and embeds the web UI; Playwright smoke test covers sign-in, the certificate list and detail, attempts, and PEM download in light and dark themes.
 
 ### Changed
 - Web UI settings: `SettingsPage.tsx`'s `SECTIONS`/`SectionSlug` moved to a small `sections.ts` so the settings route's `beforeLoad` no longer drags the whole Issuance defaults section (and `tldts`) into the app's main chunk; the build's largest chunk drops from 977 kB to under 400 kB, with no chunk over the 500 kB warning threshold, and `npm run build` now fails if `tldts` reappears in an eagerly-loaded chunk (`web/scripts/check-chunks.mjs`).

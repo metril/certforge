@@ -16,3 +16,5 @@ web/src/routeTree.gen.ts
 *.swp
 internal/webui/dist/
 deploy/secrets/
+web/test-results/
+web/playwright-report/

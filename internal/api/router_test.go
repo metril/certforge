@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -95,6 +96,51 @@ func TestSecurityHeaders(t *testing.T) {
 	rec := serve(t, http.MethodGet, "/api/v1/orgs", "", "")
 	if rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("X-Frame-Options") != "DENY" {
 		t.Fatalf("headers %v", rec.Header())
+	}
+	if rec.Header().Get("Referrer-Policy") != "same-origin" {
+		t.Fatalf("referrer-policy %v", rec.Header())
+	}
+	csp := rec.Header().Get("Content-Security-Policy")
+	for _, want := range []string{
+		"default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+		"img-src 'self' data:", "font-src 'self'", "connect-src 'self'",
+		"frame-ancestors 'none'", "base-uri 'self'",
+	} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("csp %q missing %q", csp, want)
+		}
+	}
+	if rec.Header().Get("Strict-Transport-Security") != "" {
+		t.Fatalf("HSTS should not be set over plain HTTP: %v", rec.Header())
+	}
+}
+
+func TestSecurityHeadersHSTS(t *testing.T) {
+	h := NewRouter(Deps{Meta: meta.NewRegistry()})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orgs", nil)
+	req.TLS = &tls.ConnectionState{}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Strict-Transport-Security"); got != "max-age=63072000; includeSubDomains" {
+		t.Fatalf("HSTS over TLS: %q", got)
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/orgs", nil)
+	req2.Header.Set("X-Forwarded-Proto", "https")
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+	if got := rec2.Header().Get("Strict-Transport-Security"); got != "max-age=63072000; includeSubDomains" {
+		t.Fatalf("HSTS behind X-Forwarded-Proto=https: %q", got)
+	}
+}
+
+func TestSecurityHeadersOnDocsAndSPA(t *testing.T) {
+	for _, p := range []string{"/api/docs/", "/o/home/overview"} {
+		rec := serve(t, http.MethodGet, p, "", "")
+		if rec.Header().Get("Content-Security-Policy") == "" {
+			t.Fatalf("%s: missing CSP", p)
+		}
 	}
 }
 

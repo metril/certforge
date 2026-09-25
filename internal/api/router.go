@@ -74,12 +74,25 @@ func isPublic(r *http.Request) bool {
 	return false
 }
 
+// contentSecurityPolicy is served on every response. script-src 'self' holds
+// because the UI's only scripts are same-origin files (theme pre-paint runs
+// from /theme-init.js, not an inline script) and the vendored Swagger UI at
+// /api/docs loads only its own same-origin bundle and init.js.
+// style-src allows 'unsafe-inline' for Radix's inline style attributes and
+// Swagger UI's injected <style> tags.
+const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

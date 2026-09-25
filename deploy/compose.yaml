@@ -19,7 +19,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.server
       args:
-        WITH_WEB: ${WITH_WEB:-0}
+        WITH_WEB: ${WITH_WEB:-1}
     image: ghcr.io/metril/certforge:dev
     restart: unless-stopped
     # Longer than Docker's 10s default: graceful shutdown can take up to 15s

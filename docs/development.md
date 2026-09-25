@@ -58,6 +58,10 @@ management port is the one exception, published to the host so the test can
 independently check the chain it got back through the API against Pebble's
 own roots/intermediates. Example: `CF_HTTP_PORT=18080 make e2e`.
 
+The same stack and the same `CF_HTTP_PORT` override are used by the browser
+smoke test below (`web/e2e/`); it just drives the running server with a real
+browser instead of `go test`.
+
 ## Code generation
 
 Generated code is committed. CI runs `make generate && git diff --exit-code`, so always regenerate and commit together.
@@ -128,3 +132,34 @@ Rules enforced in code:
 - Colours come only from `src/styles/tokens.css`; `tokens.test.ts` checks both themes for WCAG AA.
 - Tooltip copy lives in `src/lib/help.ts`; `help.test.ts` rejects entries over two sentences and "Learn more" links to missing doc headings.
 - Theme is applied before first paint by `public/theme-init.js`, loaded synchronously in `<head>`.
+
+### Docker
+
+`deploy/Dockerfile.server` builds the UI in a `node:24-alpine` stage and copies `web/dist` into `internal/webui/dist` in the Go stage, which builds with `-tags embedweb`. `ARG WITH_WEB` defaults to `1`, so both a plain `docker build -f deploy/Dockerfile.server .` and `docker compose -f deploy/compose.yaml up --build` embed the UI:
+
+```bash
+docker build -f deploy/Dockerfile.server -t certforge:web .          # serves the UI (default)
+docker build -f deploy/Dockerfile.server --build-arg WITH_WEB=0 -t certforge:api .   # placeholder page only
+```
+
+Locally, `npm run build` (in `web/`) then `make build-embed` does the same without Docker. `internal/webui`'s own tests (`TestSPAFallback`, `TestPlaceholder`) cover both binaries: the embedweb-tagged one falls back to `index.html` for client-side routes and caches `/assets/*` immutably; the plain build serves a small "CertForge" placeholder page instead.
+
+### Browser smoke test
+
+A Playwright test drives the built UI against a real compose stack (Postgres, the certforge image, Pebble, and challtestsrv), exactly like a browser would — no mocked network:
+
+```bash
+CF_HTTP_PORT=18080 docker compose -p certforge-e2e -f deploy/compose.yaml -f deploy/compose.test.yaml up -d --build --wait
+cd web && npx playwright install chromium && CF_HTTP_PORT=18080 npm run e2e
+CF_HTTP_PORT=18080 docker compose -p certforge-e2e -f deploy/compose.yaml -f deploy/compose.test.yaml down -v
+```
+
+(`CF_HTTP_PORT` only needs setting when the default 8080 is already taken on the host; the Makefile's `COMPOSE_TEST` variable is the same two-file, `-p certforge-e2e` invocation.) `web/e2e/global-setup.ts` completes first-run setup if needed (or logs in, on a rerun against a stack that already has it), then creates a Pebble CA, an ACME account, a challtestsrv DNS credential, and a `smoke` certificate through the running server's own HTTP API — never in-process — and waits for it to go `active`. `web/e2e/smoke.spec.ts` then drives the UI itself, in both themes: sign in, the certificate list (validity bar, next-renewal chip), the detail page, the Attempts tab and raw log viewer, and a PEM download (asserting the downloaded filename and that it decodes to a real certificate); a further test resizes to 375px and drags a name chip onto "Common name" in the wizard's Names step to confirm chips wrap without horizontal page scroll and the drag reassigns the CN. Screenshots land at `web/test-results/screens/{light,dark}-{certificates,detail,attempts}.png`. Override targets with `CF_E2E_BASE_URL`, `CF_E2E_ADMIN_PASSWORD`, `CF_E2E_ORG`, `CF_E2E_ACME_DIR`, `CF_E2E_TRUST_BUNDLE`, `CF_E2E_RESOLVERS`, and `CF_E2E_DNS_PROVIDER` (see `web/e2e/env.ts`).
+
+This is a local/manual step, not part of `.github/workflows/ci.yml`: it needs a from-source Docker build plus a real ACME issuance against Pebble to reach `active`, several minutes even on a warm cache, and the repository's Go e2e test (`make e2e`) is likewise not run in CI today.
+
+### Conventions
+
+- Server state lives in TanStack Query; query keys start with the resource and org id (`['certs', orgId, …]`) so one invalidation refreshes lists, details, and the overview.
+- API calls live only in `src/api/queries/*`; components never call `api` directly.
+- Every tooltip string is a `help.ts` key. A "Learn more" link must point at a heading that exists in `docs/`.
