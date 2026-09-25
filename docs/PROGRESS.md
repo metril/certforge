@@ -238,7 +238,7 @@ were Task 18's own commits.
 - 1C: `npm run e2e` (Playwright) and `make e2e` (Go, against Pebble) both run locally only; neither is wired into `.github/workflows/ci.yml`.
 - 1B: revocation is implemented in `signer.Signer` but not exposed in the API (the Revoke action lands with its screen).
 - Pebble and challtestsrv images are pinned to tag 2.10.1, not a digest; the issuance e2e (1B Task 15) kept the tag pin rather than switching to a digest. Pin digests in a later task.
-- Audit log: the head hash is not anchored outside the table, and the app still owns `audit_events`. Events written under a wrong KEK fail verification; KEK rotation (Phase 5) must carry the derived audit key.
+- Audit log: the head hash is not anchored outside the table, and the app still owns `audit_events`. Appending or altering rows needs the KEK, but an attacker with table-owner access who also deletes the `audit.chain_keyed` setting row can still replace history wholesale with a self-consistent legacy-only chain that passes verification clean; only external head-hash anchoring closes that residual. Events written under a wrong KEK fail verification; KEK rotation (Phase 5) must carry the derived audit key.
 - Base images are unpinned or ageing: the server image's `golang:1.23-alpine` build stage is already out of upstream support; bump the Go builder image (and pin image tags to digests) before cutting a release tag.
 - HEAD requests to `/healthz` and `/readyz` return 405 (only GET is registered for them).
 - The SPA fallback (root NotFound) answers non-GET methods with `index.html` instead of 404/405, since it does not check the request method.

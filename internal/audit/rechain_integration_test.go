@@ -178,3 +178,61 @@ func TestTriggerRejectsRelabelToLegacy(t *testing.T) {
 		t.Fatalf("check should have caught the wrong hash: %+v %v", r, err)
 	}
 }
+
+// TestCheckAndRechainFailClosedOnce covers fix round 2: an adversary with
+// table-owner access can bypass the append-only trigger entirely and
+// replace the *whole* table with a self-consistent, legacy-only sha256
+// chain. No hmac-sha256 row is ever reachable in that replacement chain, so
+// the monotonic per-row rule (fix round 1) never trips — the audit.chain_keyed
+// setting, read up front and checked independently of the per-row walk, is
+// what catches it: once the chain has been keyed, Check reports the very
+// first row of a legacy-only chain broken, and Rechain refuses to rewrite
+// anything (fail closed) rather than treating the replacement as unconverted
+// history to re-key.
+func TestCheckAndRechainFailClosedOnce(t *testing.T) {
+	pool, q := dbtest.New(t)
+	ctx := context.Background()
+	a := audit.New(pool, testKey)
+	if err := a.Record(ctx, audit.Event{Action: "x", ResourceType: "y"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Rechain(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := a.Check(ctx); err != nil || !r.OK {
+		t.Fatalf("chain before replacement %+v %v", r, err)
+	}
+
+	// Replace the entire table with a valid legacy-only chain, as an
+	// owner-access adversary could: disable the trigger, delete every row,
+	// insert a self-consistent sha256 chain.
+	for _, stmt := range []string{
+		"ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable",
+		"DELETE FROM audit_events",
+		"ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable",
+	} {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertLegacy(t, pool, a, 3)
+
+	r, err := a.Check(ctx)
+	if err != nil || r.OK || r.BrokenAtID == 0 {
+		t.Fatalf("check should fail closed on the replaced legacy chain: %+v %v", r, err)
+	}
+	first, err := q.ListAuditEventsAsc(ctx, sqlcgen.ListAuditEventsAscParams{ID: 0, Limit: 1})
+	if err != nil || len(first) == 0 {
+		t.Fatalf("first: %v %v", first, err)
+	}
+	if r.BrokenAtID != first[0].ID {
+		t.Fatalf("broken at %d, want the replacement chain's first row (id %d)", r.BrokenAtID, first[0].ID)
+	}
+
+	if _, err := a.Rechain(ctx); !errors.Is(err, audit.ErrChainBroken) {
+		t.Fatalf("rechain should refuse the replacement chain: err = %v", err)
+	}
+	if n, _ := q.CountLegacyAuditEvents(ctx); n != 3 {
+		t.Fatalf("replacement chain was rewritten: %d legacy rows left, want 3", n)
+	}
+}
