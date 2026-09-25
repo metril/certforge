@@ -51,6 +51,17 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 
 **Certificates → New certificate** opens a four-step wizard: **Names**, **Verification**, **Options**, **Review**. The summary on the right shows names, zones, verification coverage, CA, key type, and renewal as you go. Options and Review are optional: the fast path is paste names → check the pre-filled credential → **Issue certificate**. After issuing you land on the certificate's **Attempts** tab with the live attempt open. **Duplicate** on a certificate opens the same wizard pre-filled; **Edit** (`/certificates/{id}/edit`) opens it pre-filled from the existing certificate and saves with `PUT` instead — changing names shows a one-line notice that a new certificate will be issued.
 
+### Certificate page
+
+`/o/{org}/certificates/{id}/{tab}` — **Overview**, **Versions**, **Attempts**, **Settings**. The header shows the status, the validity bar (issued to expiry, hatched renewal window, a notch for today), the CA, ACME account, next renewal, and recent failures. Actions: **Renew now** (queues an attempt and opens **Attempts**), **Download**, **Duplicate** (opens the wizard pre-filled from this certificate), and, in the overflow menu, **Delete** (type the name to confirm — revoking a certificate is not part of Phase 1). While an attempt is running the page polls the certificate every 2 seconds, whichever tab is open; otherwise every 30 seconds, and never while the tab is hidden. A certificate waiting on a manual-dns step shows its TXT records above the tabs (see [manual-dns](#manual-dns)).
+
+- **Overview**: names grouped by domain, the coverage list, and the effective configuration with its source (**Cert**, **Org**, **Global**, **Default**).
+- **Versions**: every issued version — serial, validity (with a dashed segment marking the successor), SHA-256 fingerprint, and how it was obtained — each with its own **Download**.
+- **Attempts**: see [Attempts](#attempts).
+- **Settings**: the wizard's own steps (names, verification rules with coverage, options with their sources), read-only, with an **Edit** button that opens the wizard's edit route to make changes.
+
+**Download** opens a sheet to pick a version, the format (PEM in this release), and parts: `cert`, `chain`, `fullchain`, `key`, `combined`. One part downloads a `.pem` file; more than one downloads a `.zip`. The `key` and `combined` chips need the `keys:export` permission (global admins by default) and are disabled with an explanation otherwise; every key download is written to the audit log before any byte is sent.
+
 ## Names
 
 A certificate has a common name plus any number of SANs: wildcards (`*.example.com`, leftmost label only), names from different zones, and IP addresses where the CA supports them (not with DNS-01). Names are lower-cased and de-duplicated; the first is the common name. Changing names issues a new certificate immediately; other changes apply at the next renewal.

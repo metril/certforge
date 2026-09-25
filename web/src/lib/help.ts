@@ -92,6 +92,10 @@ export const help = {
   'rules.catchAll': { text: 'Rules that certificates fall back to when none of their own match.' },
   'attempt.retry': { text: 'Failed attempts back off from 5 minutes up to 24 hours. Rate limits use the CA’s retry time.' },
   'manual.records': { text: 'Add these TXT records at your DNS host, then confirm. CertForge checks them before asking the CA.', learnMore: 'certificates.md#manual-dns' },
+  'download.format': { text: 'PEM is text, used by most servers. Other formats arrive in a later phase.' },
+  'download.parts': { text: 'fullchain is the certificate plus intermediates, which most servers want.' },
+  'download.key': { text: 'Private key downloads are recorded in the audit log.' },
+  'cert.versions': { text: 'Every certificate issued for this entry. The dashed segment is the successor.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

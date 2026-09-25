@@ -1,4 +1,17 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { PageHeader } from '@/components/PageHeader';
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { certificateQuery } from '@/api/queries/certificates';
+import { CertificateDetail } from '@/features/certificates/detail/CertificateDetail';
+import { TABS, type Tab } from '@/features/certificates/detail/tabs';
 
-export const Route = createFileRoute('/_app/o/$org/certificates/$id/$tab')({ component: () => <PageHeader title="Certificate" /> });
+export const Route = createFileRoute('/_app/o/$org/certificates/$id/$tab')({
+  beforeLoad: ({ params }) => {
+    if (!(TABS as readonly string[]).includes(params.tab)) {
+      throw redirect({ to: '/o/$org/certificates/$id/$tab', params: { ...params, tab: 'overview' } });
+    }
+  },
+  loader: ({ context: { queryClient, org }, params }) => queryClient.ensureQueryData(certificateQuery(org.id, params.id)),
+  component: function CertificateRoute() {
+    const { id, tab } = Route.useParams();
+    return <CertificateDetail id={id} tab={tab as Tab} />;
+  },
+});

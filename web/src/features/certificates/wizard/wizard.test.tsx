@@ -25,6 +25,12 @@ beforeEach(() => {
       created = await request.json();
       return HttpResponse.json(makeCert({ id: 'c-new', name: 'www.example.com', status: 'pending', currentVersion: undefined }), { status: 201 });
     }),
+    // Task 16: submitting lands on the certificate's own detail route, which
+    // (unlike the route stub these tests originally landed on) actually
+    // fetches the certificate by id.
+    http.get(url('/orgs/org-1/certificates/c-new'), () =>
+      HttpResponse.json(makeCert({ id: 'c-new', name: 'www.example.com', status: 'pending', currentVersion: undefined })),
+    ),
   );
 });
 
@@ -52,6 +58,10 @@ it('fast path: paste names, credential pre-filled, Issue from step 2', async () 
   // keystroke) — the end state has exactly the one zone->credential entry
   // this create's own rules produced, nothing left over or duplicated.
   expect(JSON.parse(localStorage.getItem('cf-last-cred') ?? '{}')).toEqual({ 'example.com': 'd-1' });
+  // Task 16: let the certificate detail page itself settle (it fires its
+  // own queries) before the test ends, instead of leaving them in flight
+  // into the next test's handler reset.
+  await screen.findByRole('navigation', { name: 'Breadcrumb' });
 });
 
 it('blocks Issue while a zone has no credential and no catch-all', async () => {
@@ -163,6 +173,8 @@ it('edit mode: an untouched save keeps overrides, remembers no credential, and l
   expect(localStorage.getItem('cf-last-cred')).toBeNull();
   // Fix round 1 (review, take-now #6): no name change -> no new issuance -> Overview, not Attempts.
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/overview'));
+  // Task 16: let the certificate detail page itself settle before the test ends.
+  await screen.findByRole('navigation', { name: 'Breadcrumb' });
 });
 
 it('edit mode: changing a rule credential (names unchanged) remembers it and still lands on Overview', async () => {
@@ -189,6 +201,8 @@ it('edit mode: changing a rule credential (names unchanged) remembers it and sti
   await waitFor(() => expect(updated).toMatchObject({ verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-2' }] }));
   expect(JSON.parse(localStorage.getItem('cf-last-cred') ?? '{}')).toEqual({ 'example.com': 'd-2' });
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/overview'));
+  // Task 16: let the certificate detail page itself settle before the test ends.
+  await screen.findByRole('navigation', { name: 'Breadcrumb' });
 });
 
 it('edit mode: a name change reissues, PUTs, and lands on Attempts', async () => {
@@ -209,4 +223,6 @@ it('edit mode: a name change reissues, PUTs, and lands on Attempts', async () =>
   await user.click(screen.getByRole('button', { name: 'Save changes' }));
   await waitFor(() => expect(updated).toMatchObject({ commonName: 'www.example.com', sans: ['www.example.com', 'api.example.com'] }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/attempts'));
+  // Task 16: let the certificate detail page itself settle before the test ends.
+  await screen.findByRole('navigation', { name: 'Breadcrumb' });
 });

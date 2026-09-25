@@ -1,4 +1,5 @@
 import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { filenameFrom, saveBlob } from '@/lib/download';
 import { livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
 import { ApiError } from '../errors';
@@ -164,6 +165,26 @@ export const manualDnsQuery = (orgId: string, id: string) =>
     },
     refetchInterval: POLL.list,
   });
+
+export const versionsQuery = (orgId: string, id: string) =>
+  queryOptions({
+    queryKey: ['versions', orgId, id],
+    queryFn: () => call(api.GET('/orgs/{orgId}/certificates/{id}/versions', { params: { path: { orgId, id } } })),
+  });
+
+// Parts the server can render (docs/certificates.md "Downloads"): `combined`
+// is fullchain + key in one file. `key` and `combined` both need
+// keys:export (DownloadSheet disables those chips without it).
+export type PemPart = 'cert' | 'chain' | 'fullchain' | 'key' | 'combined';
+
+export async function downloadVersion(orgId: string, id: string, vid: string, parts: PemPart[], baseName: string): Promise<void> {
+  const { data, error, response } = await api.GET('/orgs/{orgId}/certificates/{id}/versions/{vid}/download', {
+    params: { path: { orgId, id, vid }, query: { format: 'pem', parts: parts.join(',') } },
+    parseAs: 'blob',
+  });
+  if (error !== undefined || !response.ok || !data) throw ApiError.from(response.status, error);
+  saveBlob(data, filenameFrom(response, `${baseName}${parts.length > 1 ? '.zip' : '.pem'}`));
+}
 
 // Adaptation (ruling): a 409 (nothing waiting, or the records expired) is an
 // expected outcome the card shows inline, not a toast — `meta.silent`

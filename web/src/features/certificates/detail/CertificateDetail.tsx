@@ -1,0 +1,85 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { errorMessage } from '@/api/errors';
+import { attemptsQuery, certificateQuery, useRenewCertificates } from '@/api/queries/certificates';
+import { ManualDnsCard } from '@/features/certificates/ManualDnsCard';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { livePoll } from '@/lib/polling';
+import { useMe, useOrg } from '@/lib/org';
+import { can } from '@/lib/permissions';
+import { AttemptsTab } from './AttemptsTab';
+import { CertificateHeader } from './CertificateHeader';
+import { DownloadSheet } from './DownloadSheet';
+import { OverviewTab } from './OverviewTab';
+import { SettingsTab } from './SettingsTab';
+import { TABS, type Tab } from './tabs';
+import { VersionsTab } from './VersionsTab';
+
+const LABEL: Record<Tab, string> = { overview: 'Overview', versions: 'Versions', attempts: 'Attempts', settings: 'Settings' };
+
+export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
+  const org = useOrg();
+  const me = useMe();
+  const navigate = useNavigate();
+  const renew = useRenewCertificates(org.id);
+  // Polling (ruling): the certificate itself only needs to refresh quickly
+  // while an attempt is actually running (a new current version can land at
+  // any moment); attemptsQuery already tracks that at its own 2s/30s pace, so
+  // this reuses its cached data instead of re-deriving it from cert.status.
+  const { data: attempts } = useQuery(attemptsQuery(org.id, id));
+  const running = !!attempts?.some((a) => a.outcome === 'running');
+  const { data: cert, isPending, error } = useQuery({ ...certificateQuery(org.id, id), refetchInterval: () => livePoll(running) });
+  const [download, setDownload] = useState<{ open: boolean; versionId?: string }>({ open: false });
+
+  if (isPending) return <p className="text-ink-muted">Loading…</p>;
+  if (error) return <p role="alert">{errorMessage(error)}</p>;
+
+  const goTab = (t: Tab) => void navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id, tab: t } });
+
+  return (
+    <div className="grid gap-6">
+      <nav aria-label="Breadcrumb" className="text-sm">
+        <Link to="/o/$org/certificates" params={{ org: org.slug }} className="text-ink-muted hover:text-ink">
+          Certificates
+        </Link>
+      </nav>
+      <CertificateHeader cert={cert} orgId={org.id} orgSlug={org.slug} onDownload={() => setDownload({ open: true })} onRenewed={() => goTab('attempts')} />
+      {/* Always mounted (controller ruling): it fetches its own manual-dns
+          records and renders nothing when none are waiting, so there's no
+          separate "is this a pending manual-dns cert" check to keep in sync
+          with the attempt/rule state. */}
+      <ManualDnsCard orgId={org.id} cert={cert} />
+      <Tabs value={tab} onValueChange={(v) => goTab(v as Tab)}>
+        <TabsList className="max-w-full overflow-x-auto">
+          {TABS.map((t) => (
+            <TabsTrigger key={t} value={t}>
+              {LABEL[t]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="overview">
+          <OverviewTab cert={cert} orgId={org.id} />
+        </TabsContent>
+        <TabsContent value="versions">
+          <VersionsTab cert={cert} orgId={org.id} onDownload={(versionId) => setDownload({ open: true, versionId })} />
+        </TabsContent>
+        <TabsContent value="attempts" className="pt-4">
+          <AttemptsTab orgId={org.id} certId={cert.id} onRenew={() => renew.mutate([cert.id])} />
+        </TabsContent>
+        <TabsContent value="settings">
+          <SettingsTab cert={cert} orgId={org.id} orgSlug={org.slug} />
+        </TabsContent>
+      </Tabs>
+      {download.open && (
+        <DownloadSheet
+          orgId={org.id}
+          cert={cert}
+          initialVersionId={download.versionId}
+          canExportKey={can(me, 'keys:export')}
+          onOpenChange={(o) => !o && setDownload({ open: false })}
+        />
+      )}
+    </div>
+  );
+}

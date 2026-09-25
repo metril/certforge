@@ -51,6 +51,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web UI verification rules: ordered, draggable rules per name pattern with per-zone credential pre-fill, a coverage panel, and credential creation without leaving the wizard.
 - Web UI certificate wizard: four steps with a live summary rail, per-certificate overrides with inherited sources, review, duplicate from an existing certificate, and an edit mode that loads an existing certificate into the same wizard and saves with `PUT` (a name change shows a one-line "will issue a new certificate" notice and reissues; anything else applies at the next renewal).
 - Web UI attempt viewer (step timeline, ACME error explanations, searchable raw log) with 2-second polling while an attempt runs, and the manual-dns records card.
+- Web UI certificate page: header with validity bar and Renew now, Overview, Versions, Attempts, and Settings tabs, and PEM download with part chips.
 
 ### Changed
 - Web UI settings: `SettingsPage.tsx`'s `SECTIONS`/`SectionSlug` moved to a small `sections.ts` so the settings route's `beforeLoad` no longer drags the whole Issuance defaults section (and `tldts`) into the app's main chunk; the build's largest chunk drops from 977 kB to under 400 kB, with no chunk over the 500 kB warning threshold, and `npm run build` now fails if `tldts` reappears in an eagerly-loaded chunk (`web/scripts/check-chunks.mjs`).
