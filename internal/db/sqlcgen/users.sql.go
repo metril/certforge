@@ -79,6 +79,30 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const getUserForUpdate = `-- name: GetUserForUpdate :one
+SELECT id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups FROM users WHERE id = $1 FOR UPDATE
+`
+
+// Locks the row so its current state (before/after an update) is accurate
+// against a concurrent PATCH of the same user.
+func (q *Queries) GetUserForUpdate(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getUserForUpdate, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.OidcIssuer,
+		&i.OidcSub,
+		&i.Email,
+		&i.DisplayName,
+		&i.LocalPasswordHash,
+		&i.Disabled,
+		&i.LastLogin,
+		&i.CreatedAt,
+		&i.OidcGroups,
+	)
+	return i, err
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups FROM users ORDER BY lower(display_name), id
 `

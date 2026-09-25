@@ -57,10 +57,28 @@ func (s *Server) UpdateUser(ctx context.Context, req gen.UpdateUserRequestObject
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.d.Queries.WithTx(tx)
 
-	u, err := q.GetUser(ctx, req.Id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	// Unlocked existence check first: a nonexistent id 404s before we take
+	// any locks.
+	if _, err := q.GetUser(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("user %s", req.Id)
+	} else if err != nil {
+		return nil, err
 	}
+
+	if req.Body.Disabled {
+		// Locks every global admin's row (including the target's, if it is
+		// one), ORDER BY id, before deciding anything: a concurrent disable
+		// of the last two admins serializes on this instead of both racing
+		// a stale "another admin exists" read.
+		if err := ensureAnotherGlobalAdmin(ctx, q, req.Id); err != nil {
+			return nil, err
+		}
+	}
+	// Lock (or re-lock, if already locked above) and re-read the target row
+	// now that we hold whatever locks this request takes, so `before`
+	// reflects the row's true current state under a concurrent PATCH of the
+	// same user instead of the stale value from the existence check above.
+	u, err := q.GetUserForUpdate(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -68,11 +86,6 @@ func (s *Server) UpdateUser(ctx context.Context, req gen.UpdateUserRequestObject
 	before := u.Disabled
 	var revoked int64
 	if before != req.Body.Disabled {
-		if req.Body.Disabled {
-			if err := ensureAnotherGlobalAdmin(ctx, q, u.ID); err != nil {
-				return nil, err
-			}
-		}
 		if err := q.SetUserDisabled(ctx, sqlcgen.SetUserDisabledParams{ID: u.ID, Disabled: req.Body.Disabled}); err != nil {
 			return nil, err
 		}

@@ -1,6 +1,11 @@
 -- name: GetUser :one
 SELECT * FROM users WHERE id = $1;
 
+-- name: GetUserForUpdate :one
+-- Locks the row so its current state (before/after an update) is accurate
+-- against a concurrent PATCH of the same user.
+SELECT * FROM users WHERE id = $1 FOR UPDATE;
+
 -- name: GetLocalAdmin :one
 SELECT * FROM users WHERE local_password_hash IS NOT NULL LIMIT 1;
 

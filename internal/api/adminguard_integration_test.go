@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -76,6 +77,66 @@ func TestEnsureAnotherGlobalAdmin(t *testing.T) {
 	}
 }
 
+// TestLockGlobalAdminUsersBlocksConcurrentCaller is the direct proof that
+// LockGlobalAdminUsers's FOR UPDATE actually holds its lock until commit,
+// rather than relying on goroutine scheduling luck (TestConcurrentDisableLastTwoAdmins
+// below still passes even with FOR UPDATE removed, since Go doesn't
+// guarantee the two calls' SELECTs truly overlap — one call routinely runs
+// to completion before the other starts). Here a second transaction's call
+// is deliberately started only after the first transaction's call has
+// already returned but before it commits: with the lock, the second call
+// must still be blocked after a short deadline, and must only complete once
+// the first transaction commits. Removing `FOR UPDATE OF u` from the query
+// makes this test fail immediately (the second call returns right away,
+// since a plain SELECT takes no lock under READ COMMITTED) — confirmed
+// below under "RED evidence".
+func TestLockGlobalAdminUsersBlocksConcurrentCaller(t *testing.T) {
+	pool, q := dbtest.New(t)
+	ctx := context.Background()
+	mkGlobalAdmin(ctx, t, q, "lock-a")
+	mkGlobalAdmin(ctx, t, q, "lock-b")
+
+	tx1, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx1.Rollback(ctx) }()
+	if _, err := q.WithTx(tx1).LockGlobalAdminUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		tx2, err := pool.Begin(ctx)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer func() { _ = tx2.Rollback(ctx) }()
+		_, err = q.WithTx(tx2).LockGlobalAdminUsers(ctx)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("second LockGlobalAdminUsers call returned (err=%v) before the first transaction committed; the query is not holding its row locks", err)
+	case <-time.After(300 * time.Millisecond):
+		// Still blocked, as expected.
+	}
+
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("second call failed after commit: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("second call never unblocked after the first transaction committed")
+	}
+}
+
 // TestConcurrentDisableLastTwoAdmins covers ruling C2's concurrency
 // requirement: with exactly two enabled global admins, each tries to
 // disable the other at the same instant. UpdateUser is called directly
@@ -96,18 +157,25 @@ func TestConcurrentDisableLastTwoAdmins(t *testing.T) {
 
 	s := &Server{d: Deps{Pool: pool, Queries: q, Auditor: audit.New(pool), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}}
 
-	disable := func(actor, target sqlcgen.User) error {
+	disable := func(start <-chan struct{}, actor, target sqlcgen.User) error {
+		<-start
 		p := authn.Principal{Kind: authn.KindUser, UserID: actor.ID, Roles: []string{"admin"},
 			Bindings: []authn.Binding{{Role: "admin"}}, OrgIDs: []uuid.UUID{}}
 		_, err := s.UpdateUser(authn.WithPrincipal(ctx, p), gen.UpdateUserRequestObject{Id: target.ID, Body: &gen.UserUpdate{Disabled: true}})
 		return err
 	}
 
+	// A shared start gate (rather than just launching both goroutines) makes
+	// it far less likely one call finishes and commits before the other even
+	// begins, which would prove nothing about the lock — both must actually
+	// contend for it.
+	start := make(chan struct{})
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
 	wg.Add(2)
-	go func() { defer wg.Done(); errs[0] = disable(a, b) }()
-	go func() { defer wg.Done(); errs[1] = disable(b, a) }()
+	go func() { defer wg.Done(); errs[0] = disable(start, a, b) }()
+	go func() { defer wg.Done(); errs[1] = disable(start, b, a) }()
+	close(start)
 	wg.Wait()
 
 	ok, conflicts := 0, 0
@@ -124,5 +192,27 @@ func TestConcurrentDisableLastTwoAdmins(t *testing.T) {
 	}
 	if ok != 1 || conflicts != 1 {
 		t.Fatalf("expected exactly one success and one 409, got errs=%v", errs)
+	}
+
+	// The real proof: exactly one of the two admins is still enabled
+	// afterward. If the lock didn't hold, both disables could commit (zero
+	// admins left) or neither could take effect where one should have.
+	fa, err := q.GetUser(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fb, err := q.GetUser(ctx, b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := 0
+	if !fa.Disabled {
+		enabled++
+	}
+	if !fb.Disabled {
+		enabled++
+	}
+	if enabled != 1 {
+		t.Fatalf("expected exactly one admin still enabled, got a.disabled=%v b.disabled=%v", fa.Disabled, fb.Disabled)
 	}
 }
