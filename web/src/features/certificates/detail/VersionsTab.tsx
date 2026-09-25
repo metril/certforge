@@ -11,15 +11,36 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { validityTone } from '@/lib/status';
 import { fmtDate } from '@/lib/time';
 
-export function VersionsTab({ cert, orgId, onDownload }: { cert: Certificate; orgId: string; onDownload: (versionId: string) => void }) {
+// Serial is pinned (`sticky left-0`, like DataTable's own Name column) so it
+// stays visible while the rest of the row scrolls horizontally at 375px —
+// controller ruling: keep the scrolling table here, no card-row layout.
+const STICKY_SERIAL = 'sticky left-0 z-10 bg-panel';
+
+export function VersionsTab({
+  cert,
+  orgId,
+  onDownload,
+  onRenew,
+}: {
+  cert: Certificate;
+  orgId: string;
+  onDownload: (versionId: string) => void;
+  onRenew: () => void;
+}) {
   const { data = [], isPending } = useQuery(versionsQuery(orgId, cert.id));
   const versions = [...data].sort((a, b) => Date.parse(b.notBefore) - Date.parse(a.notBefore));
-  if (!isPending && versions.length === 0) return <EmptyState message="No versions yet." />;
+  if (!isPending && versions.length === 0) {
+    return (
+      <EmptyState message="No versions yet.">
+        <Button onClick={onRenew}>Renew now</Button>
+      </EmptyState>
+    );
+  }
   return (
     <Table aria-label="Versions" className="mt-4">
       <TableHeader>
         <TableRow>
-          <TableHead>Serial</TableHead>
+          <TableHead className={STICKY_SERIAL}>Serial</TableHead>
           <TableHead>
             <span className="inline-flex items-center gap-1">
               Validity <HelpTip id="cert.versions" />
@@ -38,7 +59,7 @@ export function VersionsTab({ cert, orgId, onDownload }: { cert: Certificate; or
           const successor = i > 0 ? versions[i - 1]! : null;
           return (
             <TableRow key={v.id} className="h-9">
-              <TableCell>
+              <TableCell className={STICKY_SERIAL}>
                 <span className="inline-flex items-center gap-2">
                   <CopyField value={v.serial} label="serial" />
                   {current && <span className="rounded-sm bg-primary/10 px-1.5 text-xs font-semibold">Current</span>}

@@ -101,3 +101,42 @@ it('sends an unknown tab to overview', async () => {
   const { router } = renderRoute('/o/acme/certificates/c-1/bogus');
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/overview'));
 });
+
+it('deletes the certificate: type the name, DELETE fires, then navigates to the list', async () => {
+  let deleted = false;
+  server.use(http.delete(url('/orgs/org-1/certificates/c-1'), () => ((deleted = true), new HttpResponse(null, { status: 204 }))), ...base());
+  const { router, user } = renderRoute('/o/acme/certificates/c-1/overview');
+  await user.click(await screen.findByRole('button', { name: 'More actions' }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Delete certificate' });
+  await user.type(within(dialog).getByRole('textbox'), cert.name);
+  await user.click(within(dialog).getByRole('button', { name: 'Delete certificate' }));
+  await waitFor(() => expect(deleted).toBe(true));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates'));
+});
+
+// Fix round 1 (review, Take now #6): matches how AttemptsTab.test.tsx proves
+// its own 2s/30s polling, one level up — the *certificate* query, not just
+// attempts, must speed up while an attempt is running. Uses real timers
+// (only `Date` is faked, by the global `beforeEach` in test/setup.ts): the
+// route's own lazy-loaded chunk and TanStack Router's navigation both
+// resolve through real microtask/timer chains that fake `setTimeout`
+// disrupts, unlike AttemptsTab.test.tsx's plain `renderUI` with no router.
+it(
+  'polls the certificate every 2 s while an attempt is running',
+  async () => {
+    let calls = 0;
+    server.use(
+      http.get(url('/orgs/org-1/certificates/c-1'), () => ((calls++), HttpResponse.json(cert))),
+      http.get(url('/orgs/org-1/certificates/c-1/attempts'), () =>
+        HttpResponse.json([makeAttempt({ outcome: 'running', finishedAt: undefined, acmeErrorType: undefined, retryAfter: undefined })]),
+      ),
+      ...base(),
+    );
+    renderRoute('/o/acme/certificates/c-1/overview');
+    await screen.findByRole('heading', { level: 1, name: 'www' });
+    const first = calls;
+    await waitFor(() => expect(calls).toBeGreaterThan(first), { timeout: 3_000 });
+  },
+  10_000,
+);

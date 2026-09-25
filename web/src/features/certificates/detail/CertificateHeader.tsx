@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { CircleAlert, CopyPlus, Download, MoreHorizontal, RotateCw, Trash2 } from 'lucide-react';
 import { accountsQuery } from '@/api/queries/accounts';
 import { casQuery } from '@/api/queries/cas';
-import { useDeleteCertificates, useRenewCertificates } from '@/api/queries/certificates';
+import { certificateQuery, useDeleteCertificates, useRenewCertificates } from '@/api/queries/certificates';
 import type { Certificate, EffectiveMap } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { StatusChip } from '@/components/StatusChip';
@@ -22,6 +22,7 @@ type Props = { cert: Certificate; orgId: string; orgSlug: string; onDownload: ()
 export function CertificateHeader({ cert, orgId, orgSlug, onDownload, onRenewed }: Props) {
   const renew = useRenewCertificates(orgId);
   const del = useDeleteCertificates(orgId);
+  const qc = useQueryClient();
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
   const { data: cas = [] } = useQuery(casQuery(orgId));
@@ -108,6 +109,17 @@ export function CertificateHeader({ cert, orgId, orgSlug, onDownload, onRenewed 
         actionLabel="Delete certificate"
         onConfirm={async () => {
           await del.mutateAsync([cert.id]);
+          // Fix round 1 (review, Important #5): useDeleteCertificates's own
+          // onSuccess invalidates the whole `['certs', orgId]` family,
+          // including this certificate's own query — since this page is
+          // still mounted and that query is still active, invalidation
+          // would otherwise refetch it immediately and briefly flash a 404
+          // before the navigate below unmounts the page. cancelQueries stops
+          // that in-flight refetch's result from ever being committed;
+          // removeQueries drops the now-stale cached data too.
+          const key = certificateQuery(orgId, cert.id).queryKey;
+          await qc.cancelQueries({ queryKey: key });
+          qc.removeQueries({ queryKey: key });
           await navigate({ to: '/o/$org/certificates', params: { org: orgSlug } });
         }}
       />

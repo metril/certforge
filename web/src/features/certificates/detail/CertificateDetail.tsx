@@ -62,7 +62,12 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
           <OverviewTab cert={cert} orgId={org.id} />
         </TabsContent>
         <TabsContent value="versions">
-          <VersionsTab cert={cert} orgId={org.id} onDownload={(versionId) => setDownload({ open: true, versionId })} />
+          <VersionsTab
+            cert={cert}
+            orgId={org.id}
+            onDownload={(versionId) => setDownload({ open: true, versionId })}
+            onRenew={() => renew.mutate([cert.id])}
+          />
         </TabsContent>
         <TabsContent value="attempts" className="pt-4">
           <AttemptsTab orgId={org.id} certId={cert.id} onRenew={() => renew.mutate([cert.id])} />
