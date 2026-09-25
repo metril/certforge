@@ -11,16 +11,28 @@ import { StatusChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { relDays } from '@/lib/time';
 
-type Props = { cert: Certificate; orgId: string; orgSlug: string; onDownload: () => void; onRenewed: () => void };
+type Props = {
+  cert: Certificate;
+  orgId: string;
+  orgSlug: string;
+  canRenew: boolean;
+  canDelete: boolean;
+  onDownload: () => void;
+  onRenewed: () => void;
+};
 
 // Header actions (controller ruling): Renew now, Download, and Duplicate
 // (into the wizard's `new` route, pre-filled) sit inline; Delete is the only
 // destructive action and lives in the overflow menu. Revoke is not in Phase
-// 1's API and is not offered anywhere here.
-export function CertificateHeader({ cert, orgId, orgSlug, onDownload, onRenewed }: Props) {
+// 1's API and is not offered anywhere here. Renew now needs certs:issue,
+// Delete needs certs:write in this certificate's org (fix round 1); both are
+// disabled with a tooltip rather than hidden, matching DownloadSheet's
+// keys:export-gated parts.
+export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, onDownload, onRenewed }: Props) {
   const renew = useRenewCertificates(orgId);
   const del = useDeleteCertificates(orgId);
   const qc = useQueryClient();
@@ -43,22 +55,35 @@ export function CertificateHeader({ cert, orgId, orgSlug, onDownload, onRenewed 
           <span className="truncate font-mono text-xs text-ink-muted">{cert.commonName}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            disabled={renew.isPending}
-            onClick={() => {
-              const toasts = renewToastHandlers(cert.name);
-              renew.mutate([cert.id], {
-                ...toasts,
-                onSuccess: () => {
-                  toasts.onSuccess();
-                  onRenewed();
-                },
-              });
-            }}
-          >
-            <RotateCw className="size-4" aria-hidden />
-            Renew now
-          </Button>
+          {(() => {
+            const renewButton = (
+              <Button
+                disabled={renew.isPending || !canRenew}
+                onClick={() => {
+                  const toasts = renewToastHandlers(cert.name);
+                  renew.mutate([cert.id], {
+                    ...toasts,
+                    onSuccess: () => {
+                      toasts.onSuccess();
+                      onRenewed();
+                    },
+                  });
+                }}
+              >
+                <RotateCw className="size-4" aria-hidden />
+                Renew now
+              </Button>
+            );
+            if (canRenew) return renewButton;
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0}>{renewButton}</span>
+                </TooltipTrigger>
+                <TooltipContent>Needs the certs:issue permission</TooltipContent>
+              </Tooltip>
+            );
+          })()}
           <Button variant="outline" disabled={!cert.currentVersion} onClick={onDownload}>
             <Download className="size-4" aria-hidden />
             Download
@@ -76,10 +101,23 @@ export function CertificateHeader({ cert, orgId, orgSlug, onDownload, onRenewed 
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem variant="destructive" onSelect={() => setConfirm(true)}>
-                <Trash2 className="size-4" aria-hidden />
-                Delete
-              </DropdownMenuItem>
+              {(() => {
+                const deleteItem = (
+                  <DropdownMenuItem variant="destructive" disabled={!canDelete} onSelect={() => canDelete && setConfirm(true)}>
+                    <Trash2 className="size-4" aria-hidden />
+                    Delete
+                  </DropdownMenuItem>
+                );
+                if (canDelete) return deleteItem;
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>{deleteItem}</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">Needs the certs:write permission</TooltipContent>
+                  </Tooltip>
+                );
+              })()}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

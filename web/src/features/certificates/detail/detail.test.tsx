@@ -147,6 +147,23 @@ it('downloads chosen PEM parts as a zip; the key needs keys:export', async () =>
   expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('www.zip');
 });
 
+// Fix round 1 (review, Important #2): a viewer only has read actions in its
+// own org — no certs:issue, certs:write, or keys:export — so Renew now and
+// Delete stay visible but disabled (tooltip-gated, same as the key/combined
+// download parts), never enabled.
+it('a viewer with an org binding sees neither Renew nor Delete enabled and the key chips are disabled', async () => {
+  server.use(...base({ ...me, roles: ['viewer'], bindings: [{ role: 'viewer', orgId: org.id }] }));
+  const { user } = renderRoute('/o/acme/certificates/c-1/overview');
+  expect(await screen.findByRole('button', { name: 'Renew now' })).toBeDisabled();
+  await user.click(await screen.findByRole('button', { name: 'More actions' }));
+  expect(await screen.findByRole('menuitem', { name: 'Delete' })).toHaveAttribute('data-disabled');
+  await user.keyboard('{Escape}');
+  await user.click(await screen.findByRole('button', { name: 'Download' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Download' });
+  expect(within(sheet).getByRole('button', { name: 'key' })).toBeDisabled();
+  expect(within(sheet).getByRole('button', { name: 'combined' })).toBeDisabled();
+});
+
 it('lists versions newest first with the current one marked', async () => {
   server.use(...base());
   renderRoute('/o/acme/certificates/c-1/versions');

@@ -48,3 +48,79 @@ it('canGrantScope intersects with the creator role', () => {
   expect(canGrantScope(oa, 'keys:export', A)).toBe(false);
   expect(canGrantScope(me({ role: 'admin', orgId: null }), 'admin', null)).toBe(true);
 });
+
+// Fix round 1 (review, Important #1): an independent matrix, transcribed by
+// hand straight from internal/authz/authz.go — AllActions, globalOnly,
+// sharedRead, viewerActions, roleActions — not derived from permissions.ts's
+// own ROLE_ACTIONS/GLOBAL_ONLY/SHARED_READ/VIEWER, so this catches a drift
+// between the two independently of whichever one an edit changed.
+describe('full role x action x scope matrix (hand-transcribed from authz.go)', () => {
+  // authz.AllActions, in the order authz.go declares it.
+  const ALL_ACTIONS: Action[] = [
+    'orgs:read', 'orgs:write', 'settings:read', 'settings:write',
+    'users:read', 'users:write', 'cas:read', 'cas:write',
+    'accounts:read', 'accounts:write', 'dnscreds:read', 'dnscreds:write',
+    'certs:read', 'certs:write', 'certs:issue', 'keys:export',
+    'clients:read', 'clients:write', 'audit:read',
+    'sites:read', 'sites:write', 'bindings:read', 'bindings:write',
+    'apikeys:read', 'apikeys:write',
+  ];
+
+  // authz.globalOnly: only ever granted through a global (nil-org) binding.
+  const GLOBAL_ONLY: Action[] = ['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write'];
+
+  // authz.sharedRead: an org-scoped binding also grants these against a nil
+  // (global-resource) query orgId.
+  const SHARED_READ: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'users:read'];
+
+  // authz.viewerActions.
+  const VIEWER_ACTIONS: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read'];
+
+  // authz.roleActions: each role's action set, transcribed independently.
+  const ROLE_SETS: Record<string, Action[]> = {
+    admin: ALL_ACTIONS,
+    'org-admin': ALL_ACTIONS.filter((a) => !GLOBAL_ONLY.includes(a)),
+    operator: [...VIEWER_ACTIONS, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write'],
+    viewer: VIEWER_ACTIONS,
+    auditor: [...VIEWER_ACTIONS, 'audit:read'],
+  };
+
+  const ROLES = ['admin', 'org-admin', 'operator', 'viewer', 'auditor'] as const;
+
+  // authz.bindingsAllow, restated directly against the hand-transcribed
+  // tables above (not calling into permissions.ts's can()).
+  function expected(role: string, action: Action, bindingOrgId: string | null, queryOrgId: string | null | undefined): boolean {
+    if (!ROLE_SETS[role]?.includes(action)) return false;
+    if (bindingOrgId === null) return true; // a global binding always grants a held action
+    if (GLOBAL_ONLY.includes(action)) return false; // needs a global binding, and this one isn't
+    if (queryOrgId == null) return SHARED_READ.includes(action); // global-resource query
+    return bindingOrgId === queryOrgId;
+  }
+
+  type Scenario = { name: string; bindingOrgId: string | null; queryOrgId: string | null | undefined };
+  const SCENARIOS: Scenario[] = [
+    { name: 'global binding', bindingOrgId: null, queryOrgId: A },
+    { name: 'binding in the same org', bindingOrgId: A, queryOrgId: A },
+    { name: 'binding in another org', bindingOrgId: A, queryOrgId: B },
+    { name: 'orgId null', bindingOrgId: A, queryOrgId: null },
+    { name: 'orgId undefined', bindingOrgId: A, queryOrgId: undefined },
+  ];
+
+  for (const role of ROLES) {
+    for (const action of ALL_ACTIONS) {
+      for (const scenario of SCENARIOS) {
+        const want = expected(role, action, scenario.bindingOrgId, scenario.queryOrgId);
+        it(`${role} / ${action} / ${scenario.name} -> ${want}`, () => {
+          const m = me({ role: role as MeBinding['role'], orgId: scenario.bindingOrgId });
+          expect(can(m, action, scenario.queryOrgId)).toBe(want);
+        });
+      }
+    }
+  }
+
+  it('an unknown role grants nothing', () => {
+    const m = { bindings: [{ role: 'not-a-role', orgId: null }] as unknown as MeBinding[], orgs: [{ id: A, slug: 'a', name: 'A' }] };
+    for (const action of ALL_ACTIONS) expect(can(m, action, A)).toBe(false);
+    expect(can(m, 'orgs:read', null)).toBe(false);
+  });
+});

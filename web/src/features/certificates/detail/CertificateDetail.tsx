@@ -78,6 +78,8 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
         cert={cert}
         orgId={org.id}
         orgSlug={org.slug}
+        canRenew={can(me, 'certs:issue', org.id)}
+        canDelete={can(me, 'certs:write', org.id)}
         onDownload={() => setDownload({ open: true })}
         onRenewed={() => {
           markLive();

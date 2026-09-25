@@ -12,6 +12,7 @@ import type {
   Org,
   ProviderSchema,
   RoleBinding,
+  Site,
   UserDetail,
 } from '@/api/types';
 
@@ -60,6 +61,12 @@ export function makeAuditEvent(p: Partial<AuditEvent> = {}): AuditEvent {
     id: 1, ts: iso(0), actorType: 'user', actorId: 'u-1', actorName: 'admin', action: 'certificate.renew',
     resourceType: 'certificate', resourceId: 'c-1', orgId: org.id, ip: '192.0.2.10', details: {}, ...p,
   };
+}
+
+// Fix round 1 (review, Take now #3): later tasks (Orgs and sites) need a
+// site fixture.
+export function makeSite(p: Partial<Site> = {}): Site {
+  return { id: 's-1', orgId: org.id, name: 'Primary', createdAt: iso(-1), ...p };
 }
 
 export function makeCert(p: Partial<Certificate> = {}): Certificate {
