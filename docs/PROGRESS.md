@@ -6,7 +6,7 @@ Single status file. Updated in every commit that completes a task.
 
 | # | Phase | Status | Spec | Plan | Started | Finished |
 |---|---|---|---|---|---|---|
-| 1 | Core issuance slice | in progress | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | – |
+| 1 | Core issuance slice | done | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | 2026-09-24 |
 | 2 | Identity and tenancy | planned | [design](design.md) | – | – | – |
 | 3 | Agent | planned | [design](design.md) | – | – | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
@@ -89,7 +89,16 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 | 15 | Attempts and manual DNS | done | 63209bc |
 | 16 | Certificate detail | done | f2dd66b |
 | 17 | Overview and command palette | done | 93c3015 |
-| 18 | Docker build, Playwright smoke, docs | done | 55d4f42 |
+| 18 | Docker build, Playwright smoke, docs | done | c51fab6 |
+
+Phase 1C complete, which closes Phase 1. Task 18's row records c51fab6, the
+last of the three 1C final-review fix commits (f9ad837: `forwardRef` on the
+shadcn primitives so Radix poppers anchor to a `Button` under React 18, and
+the committed route tree; 4d5fe3b: live polling and renew toasts on the
+detail page, fixture and palette-filter fixes; c51fab6: sidebar tooltip
+props, a CSP-violation check in the smoke test that surfaced zod's
+`Function('')` probe, fixed with zod's `jitless` flag); 22044d1 and 55d4f42
+were Task 18's own commits.
 
 ## Decisions made during implementation
 
