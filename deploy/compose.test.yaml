@@ -36,3 +36,19 @@ services:
   challtestsrv:
     image: ghcr.io/letsencrypt/pebble-challtestsrv:2.10.1
     command: -defaultIPv6 "" -defaultIPv4 127.0.0.1
+  dex:
+    image: ghcr.io/dexidp/dex:v2.45.1
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes:
+      - ./dex/config.yaml:/etc/dex/config.yaml:ro
+    ports:
+      # Container and default host port match so a browser mapping the name
+      # dex to 127.0.0.1 reaches the same issuer URL the server uses.
+      - "${CF_DEX_PORT:-5556}:5556"
+    healthcheck:
+      # The image has no curl; wget -q -O- exits non-zero on a non-2xx
+      # response, which is all --wait needs here.
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:5556/dex/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

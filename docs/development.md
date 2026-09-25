@@ -51,6 +51,7 @@ overridable, useful when the defaults are already taken:
 | `CF_HTTP_PORT` | `8080` | certforge HTTP (also sets `CF_E2E_BASE_URL` and the default `CF_BASE_URL`) |
 | `CF_AGENT_PORT` | `8443` | certforge agent listener |
 | `CF_PEBBLE_MGMT_PORT` | `15000` | Pebble management API (also sets `CF_E2E_PEBBLE_MGMT`; the issuance e2e independently verifies the issued chain against `/intermediates/0` here) |
+| `CF_DEX_PORT` | `5556` | dex (e2e OIDC provider; also sets `CF_E2E_DEX_ADDR`). Playwright maps the name `dex` to `127.0.0.1`, so keep `5556` when running the browser test. |
 
 The issuance e2e test drives the compose server through its own HTTP API
 (`CF_E2E_BASE_URL`), the same way a real client would; it never talks to
@@ -75,7 +76,7 @@ Generated code is committed. CI runs `make generate && git diff --exit-code`, so
 
 - Unit: `make test`. No external services.
 - Integration: files start with `//go:build integration`. `dbtest.New(t)` returns a migrated pool on a fresh database inside one Postgres 16 container per test binary.
-- E2E: files in `test/e2e/` start with `//go:build e2e` and hit `CF_E2E_BASE_URL` (default `http://localhost:8080`). `make e2e` also runs the issuance test (`test/e2e/issuance_test.go`), which drives the running compose server through its HTTP API — log in (or complete first-run setup), create a CA/credential/account/certificate against Pebble and challtestsrv, poll for `active`, verify the chain, force a renewal, then break the credential and verify the resulting failure and backoff. The `e2e-challtestsrv` DNS provider (`internal/challenge/challtestsrv_e2e.go`) exists only in `-tags e2e` builds; the test compose builds the server with `GO_TAGS=e2e` so the running server can present TXT records on pebble-challtestsrv.
+- E2E: files in `test/e2e/` start with `//go:build e2e` and hit `CF_E2E_BASE_URL` (default `http://localhost:8080`). `make e2e` also runs the issuance test (`test/e2e/issuance_test.go`), which drives the running compose server through its HTTP API — log in (or complete first-run setup), create a CA/credential/account/certificate against Pebble and challtestsrv, poll for `active`, verify the chain, force a renewal, then break the credential and verify the resulting failure and backoff. The `e2e-challtestsrv` DNS provider (`internal/challenge/challtestsrv_e2e.go`) exists only in `-tags e2e` builds; the test compose builds the server with `GO_TAGS=e2e` so the running server can present TXT records on pebble-challtestsrv. `test/e2e/oidc_test.go` enables single sign-on against the compose dex (issuer `http://dex:5556/dex`, user `oidc-user@example.test` / `password`), logs in through dex's password form, binds the new user as viewer and checks `/auth/me`, the `session.login` audit event and the audit chain, then exercises user disable, API key issue/bearer use/revoke, role binding list/delete, org/site CRUD and audit list/export. Right after the first local admin login it `PUT`s `loginRatePerMinute: 0` on the `authentication` settings section (0 disables the limit; `internal/authn/settings.go`) so repeated logins across this test and the Phase 2B Playwright suite, which reuses the same running stack, never hit 429.
 
 | Build tag | Purpose |
 |---|---|

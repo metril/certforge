@@ -100,7 +100,7 @@ props, a CSP-violation check in the smoke test that surfaced zod's
 `Function('')` probe, fixed with zod's `jitless` flag); 22044d1 and 55d4f42
 were Task 18's own commits.
 
-### Phase 2A: identity backend — in progress (started 2026-09-25) ([plan](superpowers/plans/2026-09-25-phase-2a-identity-backend.md))
+### Phase 2A: identity backend — done (started 2026-09-25, finished 2026-09-25) ([plan](superpowers/plans/2026-09-25-phase-2a-identity-backend.md))
 
 | # | Task | Status | Commit |
 |---|---|---|---|
@@ -117,8 +117,8 @@ were Task 18's own commits.
 | 11 | Orgs and sites CRUD | done | 57bd3b7 |
 | 12 | Cross-org certificate list | done | d289146 |
 | 13 | Keyed audit chain | done | abe21b8 |
-| 14 | Audit API | done | pending |
-| 15 | dex e2e | todo | – |
+| 14 | Audit API | done | 5eef30e |
+| 15 | dex e2e | done | pending |
 
 ## Decisions made during implementation
 
@@ -263,3 +263,4 @@ were Task 18's own commits.
 - 2A Task 2: `apikeys:write` is held by `admin` and `org-admin` only (operators cannot mint keys), and API keys cannot create API keys — deliberate departures from the design's "intersected with the creator's role" wording; `authz.Can` always finishes by checking `bindingsAllow` against the principal's `Bindings` (the creator's bindings, for an API key principal), after `keyAllows` narrows by scope and key org — so an API key can only ever narrow, never widen, what its creator holds.
 - 2A Task 9: `api_keys` has a `name` column (not in the domain model) for the Access screen; API keys cannot mint API keys. Controller ruling: the middleware takes the API-key path only for `Authorization: Bearer cf_…` (an invalid one is a hard 401); any other scheme or bearer shape (`Basic …`, `Bearer <jwt>`) is ignored and falls through to the cookie session, and a valid bearer takes precedence over a cookie present on the same request.
 - 2A Task 10 (controller rulings C9/D1): creating or deleting a role binding is authorized per subject type, not uniformly by `bindings:write` at the request's `orgId`. A `user` subject still needs `bindings:write` in the binding's org (org-admins limited to their own org). An `oidc_group` subject always needs `bindings:write` globally, whatever org the binding targets — group mappings are admin-only, so an org-admin cannot create or delete one even in its own org. An `apikey` subject needs `apikeys:write` at the key's own scope (global for a global key, the key's org for an org-scoped one) instead of `bindings:write`. See ADR 0007.
+- 2A Task 15 (dex e2e, ruling C7 plus additional coverage): `test/e2e/oidc_test.go` PUTs `loginRatePerMinute: 0` on the `authentication` settings section right after the first local admin login, before any OIDC attempt — `PutSectionTx` fully replaces the section's stored JSON with exactly what a PUT sends (no per-field default merge; see `internal/settings/store.go`), so the field is also carried explicitly in the later full OIDC-config PUT rather than relying on it being merely absent. dex v2.45.1's builtin local (`staticPasswords`) connector does not emit a `groups` claim (upstream `dexidp/dex#3958` is still open, confirmed against the pinned image), so the real password-form login cannot exercise an `oidc_group` role binding end to end; the test binds the OIDC user's role by its own subject id instead (as the brief's sample does) and exercises `oidc_group` binding create/list/delete structurally with a synthetic group name — group-claim matching itself is already covered by `internal/authn`'s unit/integration tests against the fake `oidctest` provider. The same test also drives users list/disable (and confirms the disabled user's session dies), API key create/bearer-call/revoke, role binding list/delete, org/site CRUD, and audit list/export/verify — beyond the brief's own Step 3 sample — per the dispatch's explicit ruling to exercise that surface. `deploy/compose.test.yaml`'s `dex` service has a `wget`-based healthcheck against `/dex/healthz` (the image has `wget` but no `curl`; verified locally against the pinned tag) so `docker compose up --wait` doesn't return before dex is actually serving.

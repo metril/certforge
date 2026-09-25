@@ -47,6 +47,7 @@ e2e: deploy/secrets/kek
 	fi; \
 	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} \
 	CF_E2E_PEBBLE_MGMT=https://localhost:$${CF_PEBBLE_MGMT_PORT:-15000} \
+	CF_E2E_DEX_ADDR=127.0.0.1:$${CF_DEX_PORT:-5556} \
 	$(GO) test -tags e2e -count=1 ./test/e2e/...; status=$$?; $(COMPOSE_TEST) down -v; exit $$status
 
 vendor-swagger:
