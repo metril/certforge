@@ -141,10 +141,11 @@ audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 | 8 | All orgs | done | fc314b8 |
 | 9 | Audit log page | done | e5494c9 |
 | 10 | Overview recent activity | done | bdec67c |
-| 11 | Playwright: dex login and audit | done | 9f32505 |
+| 11 | Playwright: dex login and audit | done | 58e3504 |
 
-Phase 2B complete. Task 11's row records 9f32505, the Playwright/dex commit
-that closed out that task; the whole-branch final fix wave (two Important,
+Phase 2B complete, which closes Phase 2. Task 11's row records 58e3504, the last
+of the three 2B final-review fix commits (88f0063, cda0589, 58e3504); 3b84a7b and
+9f32505 were Task 11's own commits; the whole-branch final fix wave (two Important,
 seven Minor) closed out Phase 2B itself: 88f0063 gated every remaining
 Phase 1 write control by `can(me, action, orgId)` and fixed Recent
 activity's actor-name fallback for a caller without `users:read`; this
