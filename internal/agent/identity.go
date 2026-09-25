@@ -39,6 +39,10 @@ type GrantState struct {
 	VersionID       uuid.UUID             `json:"versionId"`
 	CertificateName string                `json:"certificateName"`
 	Files           []agentproto.FileSpec `json:"files"`
+	// Failed marks that the last deploy attempt for this grant did not reach
+	// agentproto.StateOK, so the next reconcile retries it even though its
+	// version, file list and on-disk digests otherwise look unchanged.
+	Failed bool `json:"failed,omitempty"`
 }
 
 // State is state.json.

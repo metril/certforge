@@ -72,3 +72,17 @@ Target config: `dir: /etc/traefik/dynamic` (same path in both containers, so `pa
 ## Hooks and the allowlist
 
 Hooks are commands defined in CertForge (Delivery → Hooks) and attached to grants. An agent runs a hook only if its `argv[0]` is exactly one of the paths in `CF_HOOK_ALLOW` (colon-separated). With `CF_HOOK_ALLOW` empty, hooks never run and are reported with exit code -1. Hooks run without a shell: `argv` is passed as is, so `$VAR`, `;` and `|` are literal. `pre_deploy` hooks run before files are written and a non-zero exit stops the deploy; `post_deploy` hooks run after and a non-zero exit marks the deployment failed with the files in place. Each hook gets `CF_GRANT_ID`, `CF_CERTIFICATE_NAME`, `CF_VERSION_ID`, `CF_FINGERPRINT` and `CF_FILES` (colon-separated paths) in its environment, runs in its own process group, and is killed with that group at its timeout. Stdout and stderr are kept up to 8 KiB each and shown under the client's Hooks tab. The distroless image has no shell; mount the executables you allow.
+
+## Grants and reconcile
+
+A grant gives one client one certificate with a layout, a deploy target, or both, plus hooks. Every change on the server (new certificate version, grant edit, layout, target or hook edit, redeploy) raises the client's desired revision. The agent reconciles on connect, on every `sync` nudge, on its pull schedule, and on `certforge-agent pull`: it fetches all assignments, downloads a bundle only for grants whose version, file list or on-disk digests differ, installs them, and reports every grant. Files of grants the server no longer lists are removed first (Traefik YAML first), then grants are installed; a path that a live grant lists is never removed. The server refuses two grants on one client that would write the same path. `push` grants nudge the agent immediately; a change that touches only `pull` grants sends no nudge, so they wait for the agent's own schedule (or the next nudge for another grant).
+
+## Drift
+
+Every heartbeat (Settings → Agents, 60 s by default) carries the SHA-256 of each installed file. A missing or changed file turns the deployment to `drift` and records one `deployment.drift` audit event. With auto-remediate on the grant, the server raises the revision and the agent reinstalls the files: right away for a `push` grant, on the next pull for a `pull` grant; the deployment returns to `ok` on the next report or heartbeat.
+
+## Pull mode
+
+For hosts that should not hold a socket, run `certforge-agent pull` from cron or a systemd timer: it enrols if needed, renews its certificate when due, reconciles once over REST, reports, sends one heartbeat and exits. Alternatively set `CF_AGENT_PULL_INTERVAL=15m` with `run` to reconcile on a schedule in addition to nudges; the schedule keeps running over REST while the WebSocket is down (for example behind a proxy that refuses upgrades).
+
+A pull-mode agent never receives `trust_bundle_update`. After an agent CA rotation it picks up the new bundle when it renews (the renew response carries it), and the listener keeps the old CA until that CA is retired, so it keeps working meanwhile; see operations.md → Agent CA rotation.

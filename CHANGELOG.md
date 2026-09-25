@@ -89,6 +89,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - certforge-agent enrolment with CA pinning, mTLS client, certificate renewal and status.
 - Agent atomic file writer with owner and mode, the Traefik file-provider target, and allowlisted, shell-free hooks with timeouts and capped output.
 - CF_WRITE_ALLOW: the agent confines every file write and remove to allowlisted directories (symlink-safe), refusing with a clear error when it is unset.
+- certforge-agent run and pull: level-triggered reconcile with removal of withdrawn grants, heartbeats, certificate renewal, trust bundle updates and reconnect with jittered backoff.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

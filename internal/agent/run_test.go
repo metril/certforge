@@ -1,0 +1,170 @@
+package agent
+
+import (
+	"context"
+	"crypto/x509"
+	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/metril/certforge/internal/agentca"
+	"github.com/metril/certforge/internal/agentproto"
+)
+
+func TestBackoffBounds(t *testing.T) {
+	b := backoff{min: time.Second, max: time.Minute}
+	if d := b.next(); d < 500*time.Millisecond || d > time.Second {
+		t.Fatalf("first %s", d)
+	}
+	var d time.Duration
+	for range 20 {
+		d = b.next()
+	}
+	if d < 30*time.Second || d > time.Minute {
+		t.Fatalf("capped %s", d)
+	}
+	b.reset()
+	if d := b.next(); d > time.Second {
+		t.Fatalf("after reset %s", d)
+	}
+}
+
+func TestEnsureEnrolledWaitsForTokenFile(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	cfg := Config{DataDir: t.TempDir(), TokenFile: t.TempDir() + "/token"}
+	if _, err := EnsureEnrolled(ctx, cfg, discard); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := EnsureEnrolled(context.Background(), Config{DataDir: t.TempDir()}, discard); err == nil {
+		t.Fatal("no token and no token file accepted")
+	}
+}
+
+func TestEnsureEnrolledPicksUpTokenFile(t *testing.T) {
+	f := newFakeServer(t)
+	defer func(d time.Duration) { tokenPollInterval = d }(tokenPollInterval)
+	tokenPollInterval = 20 * time.Millisecond
+	cfg := Config{DataDir: t.TempDir(), TokenFile: filepath.Join(t.TempDir(), "token")}
+	tok := f.token(t)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		tmp := cfg.TokenFile + ".tmp"
+		if err := os.WriteFile(tmp, []byte(tok), 0o600); err == nil {
+			_ = os.Rename(tmp, cfg.TokenFile)
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	id, err := EnsureEnrolled(ctx, cfg, discard)
+	if err != nil || id.State.ClientID != f.clientID {
+		t.Fatalf("enrolled %v err %v", id, err)
+	}
+}
+
+func testAgent(t *testing.T, f *fakeServer) *Agent {
+	t.Helper()
+	id, err := Enroll(context.Background(), t.TempDir(), f.token(t), Facts("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewAgent(Config{DataDir: id.Dir, Version: "test"}, discard, id)
+}
+
+func TestPullReconcilesReportsAndHeartbeats(t *testing.T) {
+	f := newFakeServer(t)
+	if err := Pull(context.Background(), Config{DataDir: t.TempDir(), Token: f.token(t), Version: "test"}, discard); err != nil {
+		t.Fatal(err)
+	}
+	f.with(func() {
+		if len(f.reports) != 1 || f.reports[0].Revision != 7 || f.heartbeats != 1 {
+			t.Fatalf("reports %+v heartbeats %d", f.reports, f.heartbeats)
+		}
+	})
+}
+
+func TestSessionTrustBundleUpdateRenewsAndReconnects(t *testing.T) {
+	f := newFakeServer(t)
+	a := testAgent(t, f)
+	next, _, err := agentca.NewCA(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := string(agentca.BundlePEM([]*x509.Certificate{f.ca.Cert, next}))
+	f.with(func() { f.bundle, f.onWS = bundle, sendAndWait(agentproto.TrustBundleUpdate{Bundle: bundle}) })
+	serial := a.ID.Cert.SerialNumber
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := a.session(ctx, nil); !errors.Is(err, errReconnect) {
+		t.Fatalf("session = %v", err)
+	}
+	saved, _ := os.ReadFile(filepath.Join(a.ID.Dir, caFile))
+	var renewals int
+	f.with(func() { renewals = f.renewals })
+	if string(saved) != bundle || renewals != 1 || a.ID.Cert.SerialNumber.Cmp(serial) == 0 {
+		t.Fatalf("bundle saved %v renewals %d", string(saved) == bundle, renewals)
+	}
+	f.with(func() { f.onWS = sendAndWait(agentproto.Revoked{}) })
+	if err := a.session(ctx, nil); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("reconnect with the new pool = %v", err)
+	}
+	f.with(func() {
+		if f.wsConns != 2 {
+			t.Fatalf("connections %d", f.wsConns)
+		}
+	})
+}
+
+func TestSessionRenewsWhenDue(t *testing.T) {
+	f := newFakeServer(t)
+	a := testAgent(t, f)
+	due := a.ID.Cert.NotAfter.Add(-time.Hour)
+	a.Now = func() time.Time { return due }
+	f.with(func() { f.onWS = sendAndWait(agentproto.Revoked{}) })
+	serial := a.ID.Cert.SerialNumber
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := a.session(ctx, nil); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("session = %v", err)
+	}
+	var renewals int
+	f.with(func() { renewals = f.renewals })
+	if renewals != 1 || a.ID.Cert.SerialNumber.Cmp(serial) == 0 {
+		t.Fatalf("renewals %d", renewals)
+	}
+}
+
+func TestDialUnauthorizedIsRevoked(t *testing.T) {
+	f := newFakeServer(t)
+	a := testAgent(t, f)
+	f.with(func() { f.wsStatus = http.StatusUnauthorized })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := a.session(ctx, nil); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("session = %v", err)
+	}
+	if err := Run(ctx, a.Cfg, discard); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("Run = %v", err)
+	}
+}
+
+func TestRunPullsWithoutSocket(t *testing.T) {
+	f := newFakeServer(t)
+	a := testAgent(t, f)
+	f.with(func() { f.wsStatus = http.StatusBadGateway }) // a proxy that refuses upgrades
+	cfg := a.Cfg
+	cfg.PullInterval = 50 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	if err := Run(ctx, cfg, discard); err != nil {
+		t.Fatal(err)
+	}
+	f.with(func() {
+		if len(f.reports) == 0 || f.heartbeats == 0 {
+			t.Fatalf("reports %d heartbeats %d while the socket was down", len(f.reports), f.heartbeats)
+		}
+	})
+}
