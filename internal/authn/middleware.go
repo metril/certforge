@@ -28,7 +28,8 @@ type MiddlewareOptions struct {
 
 // Middleware resolves the session cookie or an API key bearer token into a
 // Principal. An Authorization header of the form "Bearer cf_<prefix>_<secret>"
-// is tried first and, when malformed, unknown, expired, revoked, or its
+// (the "Bearer" scheme matched case-insensitively, per RFC 9110 §11.1) is
+// tried first and, when malformed, unknown, expired, revoked, or its
 // creator disabled, fails the request with 401 without falling back to the
 // cookie; any other scheme or bearer content (a reverse proxy's Basic
 // header, a "Bearer <jwt>") is ignored and the request falls through to the
@@ -42,7 +43,7 @@ func Middleware(o MiddlewareOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer cf_") {
+			if h := r.Header.Get("Authorization"); len(h) >= 10 && strings.EqualFold(h[:7], "Bearer ") && strings.HasPrefix(h[7:], "cf_") {
 				p, err := o.resolveBearer(ctx, h)
 				if errors.Is(err, ErrBadAPIKey) {
 					o.Fail(w, http.StatusUnauthorized, "Invalid API key", "The bearer token is malformed, unknown, expired, or revoked.")
@@ -114,10 +115,10 @@ func (o MiddlewareOptions) resolve(ctx context.Context, r *http.Request) (*Princ
 // resolveBearer authenticates "Bearer cf_<prefix>_<secret>". API keys
 // never need a CSRF token: browsers cannot attach them cross-site.
 func (o MiddlewareOptions) resolveBearer(ctx context.Context, header string) (*Principal, error) {
-	tok, ok := strings.CutPrefix(header, "Bearer ")
-	if !ok {
+	if len(header) < 7 || !strings.EqualFold(header[:7], "Bearer ") {
 		return nil, ErrBadAPIKey
 	}
+	tok := header[7:]
 	prefix, secret, ok := ParseAPIKeyToken(strings.TrimSpace(tok))
 	if !ok {
 		return nil, ErrBadAPIKey

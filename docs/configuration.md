@@ -64,6 +64,8 @@ Rendered from the server's settings schema: base URL and other server-wide value
 
 **API keys** are created with a name, scopes, optional org and expiry; the token is shown once.
 
+**Role bindings** grant a role to a user, an OIDC group, or an API key, either in one org or globally. The last global admin binding held by a user cannot be removed.
+
 ### Issuance defaults
 
 Two tabs: **Global** and your organization. Each field shows the value in effect and where it comes from (**Default**, **Global**, **Org**; hover the badge for the chain). Turn on **Override** to set a value at this level; **Reset to inherited** clears it. A reference that no longer exists (a deleted CA or account) shows its error next to the field.

@@ -824,6 +824,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/role-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List role bindings
+         * @description Bindings the caller may read (bindings:read in the binding's org, or globally for global bindings). Site-scoped bindings are not listed.
+         */
+        get: operations["listRoleBindings"];
+        put?: never;
+        /**
+         * Create a role binding
+         * @description A user subject needs bindings:write in orgId (globally when omitted), scoped to the org-admin's own org. An apikey subject needs apikeys:write at the key's own scope (global for global keys, the key's org for org-scoped keys) instead. An oidc_group subject always needs global bindings:write, whatever orgId the binding targets (OIDC group mappings are admin-only). A user subject is a user id, an apikey subject a key id (org keys bind only in their own org), an oidc_group subject the group name as the IdP sends it. Takes effect on the subject's next request.
+         */
+        post: operations["createRoleBinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/role-bindings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a role binding
+         * @description Needs bindings:write in the binding's org (user and oidc_group subjects; oidc_group always globally) or apikeys:write at the key's own scope (apikey subjects). The last global admin binding held by a user cannot be deleted (409).
+         */
+        delete: operations["deleteRoleBinding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1611,7 +1658,7 @@ export interface components {
             expiresAt: string | null;
             /**
              * Format: date-time
-             * @description Last successful use
+             * @description Last authenticated use
              */
             lastUsedAt: string | null;
             /**
@@ -1652,6 +1699,52 @@ export interface components {
         ApiKeyList: {
             /** @description Keys */
             items: components["schemas"]["ApiKey"][];
+        };
+        /**
+         * @description What a binding's subject names.
+         * @enum {string}
+         */
+        SubjectType: "user" | "oidc_group" | "apikey";
+        /** @description One role granted to a subject, globally or in one org. */
+        RoleBinding: {
+            /**
+             * Format: uuid
+             * @description Binding id.
+             */
+            id: string;
+            subjectType: components["schemas"]["SubjectType"];
+            /** @description User id */
+            subject: string;
+            /** @description User display name */
+            subjectLabel: string;
+            role: components["schemas"]["Role"];
+            /**
+             * Format: uuid
+             * @description Org the role applies to; null for global.
+             */
+            orgId: string | null;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+        };
+        /** @description A new role binding. */
+        RoleBindingInput: {
+            subjectType: components["schemas"]["SubjectType"];
+            /** @description User id */
+            subject: string;
+            role: components["schemas"]["Role"];
+            /**
+             * Format: uuid
+             * @description Org scope; omit or null for global.
+             */
+            orgId?: string | null;
+        };
+        /** @description Role bindings. */
+        RoleBindingList: {
+            /** @description Bindings */
+            items: components["schemas"]["RoleBinding"][];
         };
     };
     responses: {
@@ -3219,6 +3312,93 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listRoleBindings: {
+        parameters: {
+            query?: {
+                /** @description Only bindings scoped to this org. */
+                orgId?: string;
+                /** @description Only this subject type. */
+                subjectType?: components["schemas"]["SubjectType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bindings, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleBindingList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createRoleBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleBindingInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleBinding"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteRoleBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };

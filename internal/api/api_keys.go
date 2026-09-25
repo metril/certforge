@@ -87,19 +87,29 @@ func (s *Server) CreateApiKey(ctx context.Context, req gen.CreateApiKeyRequestOb
 	if len(granted) == 0 {
 		return nil, unprocessable("scopes", "none of the requested scopes are within your role here")
 	}
+	u, err := s.d.Queries.GetUser(ctx, p.UserID)
+	if err != nil {
+		return nil, err
+	}
 	token, prefix, hash, err := authn.NewAPIKeyToken()
 	if err != nil {
 		return nil, err
 	}
 	k, err := s.d.Queries.CreateAPIKey(ctx, sqlcgen.CreateAPIKeyParams{Name: name, Prefix: prefix, SecretHash: hash,
 		Scopes: granted, OrgID: in.OrgId, CreatedBy: p.UserID, ExpiresAt: in.ExpiresAt})
+	if pgCode(err) == pgUniqueViolation {
+		// The 12-hex prefix collided with an existing key's; regenerate once
+		// and retry rather than fail the request over a ~1-in-2^48 event.
+		token, prefix, hash, err = authn.NewAPIKeyToken()
+		if err != nil {
+			return nil, err
+		}
+		k, err = s.d.Queries.CreateAPIKey(ctx, sqlcgen.CreateAPIKeyParams{Name: name, Prefix: prefix, SecretHash: hash,
+			Scopes: granted, OrgID: in.OrgId, CreatedBy: p.UserID, ExpiresAt: in.ExpiresAt})
+	}
 	if pgCode(err) == pgForeignKeyViolation {
 		return nil, unprocessable("orgId", "no such org")
 	}
-	if err != nil {
-		return nil, err
-	}
-	u, err := s.d.Queries.GetUser(ctx, p.UserID)
 	if err != nil {
 		return nil, err
 	}

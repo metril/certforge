@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -34,6 +35,65 @@ func (q *Queries) CreateRoleBinding(ctx context.Context, arg CreateRoleBindingPa
 		arg.SiteID,
 	)
 	return err
+}
+
+const deleteRoleBinding = `-- name: DeleteRoleBinding :exec
+DELETE FROM role_bindings WHERE id = $1
+`
+
+func (q *Queries) DeleteRoleBinding(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteRoleBinding, id)
+	return err
+}
+
+const getRoleBinding = `-- name: GetRoleBinding :one
+SELECT id, subject_type, subject, role, org_id, site_id, created_at FROM role_bindings WHERE id = $1
+`
+
+func (q *Queries) GetRoleBinding(ctx context.Context, id uuid.UUID) (RoleBinding, error) {
+	row := q.db.QueryRow(ctx, getRoleBinding, id)
+	var i RoleBinding
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectType,
+		&i.Subject,
+		&i.Role,
+		&i.OrgID,
+		&i.SiteID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const insertRoleBinding = `-- name: InsertRoleBinding :one
+INSERT INTO role_bindings (subject_type, subject, role, org_id) VALUES ($1, $2, $3, $4) RETURNING id, subject_type, subject, role, org_id, site_id, created_at
+`
+
+type InsertRoleBindingParams struct {
+	SubjectType string     `json:"subject_type"`
+	Subject     string     `json:"subject"`
+	Role        string     `json:"role"`
+	OrgID       *uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) InsertRoleBinding(ctx context.Context, arg InsertRoleBindingParams) (RoleBinding, error) {
+	row := q.db.QueryRow(ctx, insertRoleBinding,
+		arg.SubjectType,
+		arg.Subject,
+		arg.Role,
+		arg.OrgID,
+	)
+	var i RoleBinding
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectType,
+		&i.Subject,
+		&i.Role,
+		&i.OrgID,
+		&i.SiteID,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const listRoleBindingsForPrincipal = `-- name: ListRoleBindingsForPrincipal :many
@@ -108,6 +168,54 @@ func (q *Queries) ListRoleBindingsForUser(ctx context.Context, subject string) (
 	return items, nil
 }
 
+const listRoleBindingsWithLabels = `-- name: ListRoleBindingsWithLabels :many
+SELECT rb.id, rb.subject_type, rb.subject, rb.role, rb.org_id, rb.created_at,
+       COALESCE(u.display_name, k.name, '')::text AS subject_label
+FROM role_bindings rb
+LEFT JOIN users u ON rb.subject_type = 'user' AND u.id::text = rb.subject
+LEFT JOIN api_keys k ON rb.subject_type = 'apikey' AND k.id::text = rb.subject
+WHERE rb.site_id IS NULL
+ORDER BY rb.created_at, rb.id
+`
+
+type ListRoleBindingsWithLabelsRow struct {
+	ID           uuid.UUID  `json:"id"`
+	SubjectType  string     `json:"subject_type"`
+	Subject      string     `json:"subject"`
+	Role         string     `json:"role"`
+	OrgID        *uuid.UUID `json:"org_id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	SubjectLabel string     `json:"subject_label"`
+}
+
+func (q *Queries) ListRoleBindingsWithLabels(ctx context.Context) ([]ListRoleBindingsWithLabelsRow, error) {
+	rows, err := q.db.Query(ctx, listRoleBindingsWithLabels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoleBindingsWithLabelsRow{}
+	for rows.Next() {
+		var i ListRoleBindingsWithLabelsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubjectType,
+			&i.Subject,
+			&i.Role,
+			&i.OrgID,
+			&i.CreatedAt,
+			&i.SubjectLabel,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockGlobalAdminUsers = `-- name: LockGlobalAdminUsers :many
 SELECT u.id, u.oidc_issuer, u.oidc_sub, u.email, u.display_name, u.local_password_hash, u.disabled, u.last_login, u.created_at, u.oidc_groups FROM users u
 JOIN role_bindings rb ON rb.subject_type = 'user' AND rb.subject = u.id::text
@@ -143,6 +251,32 @@ func (q *Queries) LockGlobalAdminUsers(ctx context.Context) ([]User, error) {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockGlobalUserAdminBindings = `-- name: LockGlobalUserAdminBindings :many
+SELECT id FROM role_bindings
+WHERE role = 'admin' AND subject_type = 'user' AND org_id IS NULL AND site_id IS NULL
+FOR UPDATE
+`
+
+func (q *Queries) LockGlobalUserAdminBindings(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockGlobalUserAdminBindings)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

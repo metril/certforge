@@ -1014,6 +1014,63 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /role-bindings:
+    get:
+      operationId: listRoleBindings
+      tags: [access]
+      summary: List role bindings
+      description: Bindings the caller may read (bindings:read in the binding's org, or globally for global bindings). Site-scoped bindings are not listed.
+      parameters:
+        - {name: orgId, in: query, required: false, description: Only bindings scoped to this org., schema: {type: string, format: uuid}}
+        - {name: subjectType, in: query, required: false, description: Only this subject type., schema: {$ref: "#/components/schemas/SubjectType"}}
+      responses:
+        "200":
+          description: Bindings, oldest first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RoleBindingList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createRoleBinding
+      tags: [access]
+      summary: Create a role binding
+      description: A user subject needs bindings:write in orgId (globally when omitted), scoped to the org-admin's own org. An apikey subject needs apikeys:write at the key's own scope (global for global keys, the key's org for org-scoped keys) instead. An oidc_group subject always needs global bindings:write, whatever orgId the binding targets (OIDC group mappings are admin-only). A user subject is a user id, an apikey subject a key id (org keys bind only in their own org), an oidc_group subject the group name as the IdP sends it. Takes effect on the subject's next request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RoleBindingInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RoleBinding"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /role-bindings/{id}:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    delete:
+      operationId: deleteRoleBinding
+      tags: [access]
+      summary: Delete a role binding
+      description: Needs bindings:write in the binding's org (user and oidc_group subjects; oidc_group always globally) or apikeys:write at the key's own scope (apikey subjects). The last global admin binding held by a user cannot be deleted (409).
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
 components:
   securitySchemes:
     sessionCookie:
@@ -1819,7 +1876,7 @@ components:
         createdBy: {type: string, format: uuid, description: Creating user; the key never exceeds their current permissions.}
         createdByName: {type: string, description: Creator's display name.}
         expiresAt: {type: string, format: date-time, nullable: true, description: Expiry; null never expires.}
-        lastUsedAt: {type: string, format: date-time, nullable: true, description: Last successful use, to the minute.}
+        lastUsedAt: {type: string, format: date-time, nullable: true, description: Last authenticated use, to the minute.}
         revokedAt: {type: string, format: date-time, nullable: true, description: When the key was revoked.}
         createdAt: {type: string, format: date-time, description: Creation time.}
     ApiKeyInput:
@@ -1844,3 +1901,34 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/ApiKey"}, description: Keys, newest first.}
+    SubjectType:
+      type: string
+      enum: [user, oidc_group, apikey]
+      description: What a binding's subject names.
+    RoleBinding:
+      type: object
+      description: One role granted to a subject, globally or in one org.
+      required: [id, subjectType, subject, subjectLabel, role, orgId, createdAt]
+      properties:
+        id: {type: string, format: uuid, description: Binding id.}
+        subjectType: {$ref: "#/components/schemas/SubjectType"}
+        subject: {type: string, description: User id, API key id, or OIDC group name.}
+        subjectLabel: {type: string, description: User display name, API key name, or the group name.}
+        role: {$ref: "#/components/schemas/Role"}
+        orgId: {type: string, format: uuid, nullable: true, description: Org the role applies to; null for global.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+    RoleBindingInput:
+      type: object
+      description: A new role binding.
+      required: [subjectType, subject, role]
+      properties:
+        subjectType: {$ref: "#/components/schemas/SubjectType"}
+        subject: {type: string, minLength: 1, maxLength: 256, description: User id, API key id, or OIDC group name.}
+        role: {$ref: "#/components/schemas/Role"}
+        orgId: {type: string, format: uuid, nullable: true, description: Org scope; omit or null for global.}
+    RoleBindingList:
+      type: object
+      description: Role bindings.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/RoleBinding"}, description: Bindings, oldest first.}

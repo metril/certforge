@@ -63,3 +63,6 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `PATCH /users/{id}` | disable or re-enable a user, revoking sessions |
 | `GET, POST /api-keys` | list, create API keys (token shown once) |
 | `DELETE /api-keys/{id}` | revoke an API key |
+| `GET /role-bindings` | list role bindings (`?orgId=`, `?subjectType=` filter) |
+| `POST /role-bindings` | create a role binding for a user, OIDC group, or API key |
+| `DELETE /role-bindings/{id}` | delete a role binding; 409 for the last global admin |

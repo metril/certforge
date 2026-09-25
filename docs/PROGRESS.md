@@ -112,8 +112,8 @@ were Task 18's own commits.
 | 6 | OIDC client and fake provider | done | f4ce6d8 |
 | 7 | OIDC endpoints | done | dc2a5c6 |
 | 8 | Users API | done | 3a15c6b |
-| 9 | API keys | done | pending |
-| 10 | Role bindings API | todo | – |
+| 9 | API keys | done | 9f7d72a |
+| 10 | Role bindings API | done | pending |
 | 11 | Orgs and sites CRUD | todo | – |
 | 12 | Cross-org certificate list | todo | – |
 | 13 | Keyed audit chain | todo | – |
@@ -262,3 +262,4 @@ were Task 18's own commits.
 - 1C Task 17 (controller ruling): the Overview page has no "Recent activity (last 20)" section; it depends on the audit log, which Phase 2 exposes to the web UI. No stand-in was added.
 - 2A Task 2: `apikeys:write` is held by `admin` and `org-admin` only (operators cannot mint keys), and API keys cannot create API keys — deliberate departures from the design's "intersected with the creator's role" wording; `authz.Can` always finishes by checking `bindingsAllow` against the principal's `Bindings` (the creator's bindings, for an API key principal), after `keyAllows` narrows by scope and key org — so an API key can only ever narrow, never widen, what its creator holds.
 - 2A Task 9: `api_keys` has a `name` column (not in the domain model) for the Access screen; API keys cannot mint API keys. Controller ruling: the middleware takes the API-key path only for `Authorization: Bearer cf_…` (an invalid one is a hard 401); any other scheme or bearer shape (`Basic …`, `Bearer <jwt>`) is ignored and falls through to the cookie session, and a valid bearer takes precedence over a cookie present on the same request.
+- 2A Task 10 (controller rulings C9/D1): creating or deleting a role binding is authorized per subject type, not uniformly by `bindings:write` at the request's `orgId`. A `user` subject still needs `bindings:write` in the binding's org (org-admins limited to their own org). An `oidc_group` subject always needs `bindings:write` globally, whatever org the binding targets — group mappings are admin-only, so an org-admin cannot create or delete one even in its own org. An `apikey` subject needs `apikeys:write` at the key's own scope (global for a global key, the key's org for an org-scoped one) instead of `bindings:write`. See ADR 0007.

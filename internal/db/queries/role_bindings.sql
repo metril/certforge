@@ -21,3 +21,26 @@ JOIN role_bindings rb ON rb.subject_type = 'user' AND rb.subject = u.id::text
 WHERE rb.role = 'admin' AND rb.org_id IS NULL
 ORDER BY u.id
 FOR UPDATE OF u;
+
+-- name: ListRoleBindingsWithLabels :many
+SELECT rb.id, rb.subject_type, rb.subject, rb.role, rb.org_id, rb.created_at,
+       COALESCE(u.display_name, k.name, '')::text AS subject_label
+FROM role_bindings rb
+LEFT JOIN users u ON rb.subject_type = 'user' AND u.id::text = rb.subject
+LEFT JOIN api_keys k ON rb.subject_type = 'apikey' AND k.id::text = rb.subject
+WHERE rb.site_id IS NULL
+ORDER BY rb.created_at, rb.id;
+
+-- name: InsertRoleBinding :one
+INSERT INTO role_bindings (subject_type, subject, role, org_id) VALUES ($1, $2, $3, $4) RETURNING *;
+
+-- name: GetRoleBinding :one
+SELECT * FROM role_bindings WHERE id = $1;
+
+-- name: DeleteRoleBinding :exec
+DELETE FROM role_bindings WHERE id = $1;
+
+-- name: LockGlobalUserAdminBindings :many
+SELECT id FROM role_bindings
+WHERE role = 'admin' AND subject_type = 'user' AND org_id IS NULL AND site_id IS NULL
+FOR UPDATE;

@@ -83,6 +83,43 @@ func TestAPIKeyScopeIntersection(t *testing.T) {
 	createKey(t, e, oa, oaCSRF, map[string]any{"name": "x", "scopes": []string{"certs:read"}, "orgId": org, "expiresAt": "2000-01-01T00:00:00Z"}, http.StatusUnprocessableEntity)
 }
 
+// TestAPIKeyVisibility covers a Task 9 review fold-in: an org-admin sees
+// only its own org's keys, never another org's or a global one; an
+// unauthorized ?orgId= is refused outright; and an org-scoped key is
+// refused on another org's route.
+func TestAPIKeyVisibility(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	org2, err := e.deps.Queries.CreateOrg(context.Background(), sqlcgen.CreateOrgParams{Slug: "lab", Name: "Lab"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oa, oaCSRF, _ := e.userSession("olga", "org-admin", &org)
+
+	ownKey := createKey(t, e, oa, oaCSRF, map[string]any{"name": "own", "scopes": []string{"certs:read"}, "orgId": org}, http.StatusCreated)
+	createKey(t, e, e.client, csrf, map[string]any{"name": "other", "scopes": []string{"certs:read"}, "orgId": org2.ID}, http.StatusCreated)
+	createKey(t, e, e.client, csrf, map[string]any{"name": "glob", "scopes": []string{"certs:read"}}, http.StatusCreated)
+
+	resp, body := e.doClient(oa, http.MethodGet, "/api/v1/api-keys", nil, nil) //nolint:bodyclose // doClient closes the body
+	var list struct {
+		Items []struct{ ID, Name string }
+	}
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &list) != nil {
+		t.Fatalf("list %d %s", resp.StatusCode, body)
+	}
+	if len(list.Items) != 1 || list.Items[0].ID != ownKey.APIKey.ID {
+		t.Fatalf("org-admin sees %+v, want only its own org's key", list.Items)
+	}
+
+	if resp, _ := e.doClient(oa, http.MethodGet, "/api/v1/api-keys?orgId="+org2.ID.String(), nil, nil); resp.StatusCode != http.StatusForbidden { //nolint:bodyclose // doClient closes the body
+		t.Fatalf("?orgId= for another org without permission: %d", resp.StatusCode)
+	}
+
+	if resp, _ := e.doBearer(ownKey.Token, http.MethodGet, "/api/v1/api-keys?orgId="+org2.ID.String(), nil); resp.StatusCode != http.StatusForbidden { //nolint:bodyclose // doClient closes the body
+		t.Fatalf("org-scoped key on another org's route: %d", resp.StatusCode)
+	}
+}
+
 func TestAPIKeyRefusals(t *testing.T) {
 	e := newTestEnv(t)
 	csrf, org := e.seedAdminSession()
