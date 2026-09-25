@@ -37,6 +37,24 @@ DELETE FROM enrollment_tokens WHERE client_id = $1 AND used_at IS NULL;
 SELECT client_id, expires_at FROM enrollment_tokens
 WHERE client_id = ANY(sqlc.arg(ids)::uuid[]) AND used_at IS NULL AND expires_at > now();
 
+-- name: ConsumeEnrollmentToken :one
+UPDATE enrollment_tokens SET used_at = now()
+WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+RETURNING client_id;
+
+-- name: ActivateClient :one
+UPDATE clients SET status = 'active', agent_cert_serial = sqlc.arg(agent_cert_serial),
+       agent_cert_not_after = sqlc.arg(agent_cert_not_after), agent_ca_id = sqlc.arg(agent_ca_id),
+       hostname = sqlc.arg(hostname), os = sqlc.arg(os), arch = sqlc.arg(arch),
+       agent_version = sqlc.arg(agent_version), last_seen = now()
+WHERE id = sqlc.arg(id) RETURNING *;
+
+-- name: RenewClientCert :one
+UPDATE clients SET agent_cert_serial = sqlc.arg(agent_cert_serial), agent_cert_not_after = sqlc.arg(agent_cert_not_after),
+       agent_ca_id = sqlc.arg(agent_ca_id), last_seen = now()
+WHERE id = sqlc.arg(id) AND status = 'active' AND agent_cert_serial = sqlc.arg(old_serial)
+RETURNING *;
+
 -- name: ClientCounts :many
 SELECT g.client_id,
        count(*)::bigint AS grants,

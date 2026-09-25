@@ -220,6 +220,68 @@ func TestUpdateClientAudit(t *testing.T) {
 	}
 }
 
+// Review carry-forward: a client in another org must 404, not leak through
+// a 200 or 403, and GET /clients must silently drop orgs the caller cannot
+// read rather than erroring or including them.
+func TestClientCrossOrg404(t *testing.T) {
+	f := newAgentFixture(t)
+	org2 := dbtest.Org(t, f.pool)
+	en, err := f.svc.CreateClient(context.Background(), org2, "other-org", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	op := f.as("operator") // bound to f.org only, not org2
+	if _, err := f.srv.GetClient(op, gen.GetClientRequestObject{OrgId: f.org, Id: en.Client.ID}); err == nil {
+		t.Fatal("cross-org get succeeded")
+	} else {
+		wantStatus(t, err, 404)
+	}
+	if _, err := f.srv.UpdateClient(op, gen.UpdateClientRequestObject{OrgId: f.org, Id: en.Client.ID, Body: &gen.ClientUpdate{Name: "hijacked"}}); err == nil {
+		t.Fatal("cross-org update succeeded")
+	} else {
+		wantStatus(t, err, 404)
+	}
+	if _, err := f.srv.RevokeClient(op, gen.RevokeClientRequestObject{OrgId: f.org, Id: en.Client.ID}); err == nil {
+		t.Fatal("cross-org revoke succeeded")
+	} else {
+		wantStatus(t, err, 404)
+	}
+	if _, err := f.srv.ReenrollClient(op, gen.ReenrollClientRequestObject{OrgId: f.org, Id: en.Client.ID}); err == nil {
+		t.Fatal("cross-org reenroll succeeded")
+	} else {
+		wantStatus(t, err, 404)
+	}
+	if _, err := f.srv.DeleteClient(op, gen.DeleteClientRequestObject{OrgId: f.org, Id: en.Client.ID}); err == nil {
+		t.Fatal("cross-org delete succeeded")
+	} else {
+		wantStatus(t, err, 404)
+	}
+	// The client in org2 is untouched by any of the above.
+	c, err := f.q.GetClientByID(context.Background(), en.Client.ID)
+	if err != nil || c.Status != "pending" || c.Name != "other-org" {
+		t.Fatalf("client mutated across orgs: %+v %v", c, err)
+	}
+}
+
+// GET /clients (cross-org listing) hides orgs the caller cannot read instead
+// of erroring or including them.
+func TestListAllClientsHidesUnreadableOrgs(t *testing.T) {
+	f := newAgentFixture(t)
+	org2 := dbtest.Org(t, f.pool)
+	f.newClient(t, "own-org")
+	if _, err := f.svc.CreateClient(context.Background(), org2, "other-org", nil); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.srv.ListAllClients(f.as("operator"), gen.ListAllClientsRequestObject{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := res.(gen.ListAllClients200JSONResponse).Items
+	if len(items) != 1 || items[0].Name != "own-org" {
+		t.Fatalf("cross-org listing leaked: %+v", items)
+	}
+}
+
 func TestOrgDeleteBlockedByClients(t *testing.T) {
 	f := newAgentFixture(t)
 	f.newClient(t, "web-1")

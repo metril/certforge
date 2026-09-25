@@ -39,7 +39,6 @@ func invalid(field, format string, a ...any) error {
 	return &Error{Kind: KindInvalid, Field: field, Detail: fmt.Sprintf(format, a...)}
 }
 
-//nolint:unused // used by a later task's grant/agent-listener handlers.
 func unauthorized(format string, a ...any) error {
 	return &Error{Kind: KindUnauthorized, Detail: fmt.Sprintf(format, a...)}
 }

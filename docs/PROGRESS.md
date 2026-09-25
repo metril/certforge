@@ -166,8 +166,8 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 | 1 | Shared plumbing | done | af72b21 |
 | 2 | OpenAPI contract | done | 39c473f |
 | 3 | Agent CA | done | bb91960 |
-| 4 | Clients API | done | pending |
-| 5 | Agent listener and enrolment | todo | – |
+| 4 | Clients API | done | d4bf277 |
+| 5 | Agent listener and enrolment | done | pending |
 | 6 | Layouts, targets and hooks | todo | – |
 | 7 | Grants and revisions | todo | – |
 | 8 | Agent sync over REST | todo | – |
@@ -318,6 +318,7 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 - A DNS provider whose only lego credential input is a server-side file (no inline field exists) is marked `unsupported: true` in its schema (`GET /meta/schemas` still lists it) and rejected with 422 on create/update; `transip` and `hyperone` are the only ones so far. Not offered until file-backed credentials arrive in Phase 5.
 - The scheduler still enqueues issuance jobs when the KEK canary has failed; it should refuse to schedule work it cannot decrypt/seal material for.
 - DNS provider secrets sit in the process environment during a lego provider's `Build` (lego's own env-var-based construction); no isolation beyond that yet.
+- 3A Task 5: the agent listener always uses a certificate from the internal agent CA; uploading or picking a CertForge-managed certificate for it is not supported yet.
 - River's own health (queue depth, stuck jobs) is not part of `/readyz`; only the database and KEK canary are checked.
 - Providers with ambient cloud credentials (`route53`, `gcloud`, `azuredns`, …) fall back to the server's own identity (instance role, ADC, …) when no keys are set on the stored credential; nothing here gates that off from a CertForge deployment's own cloud identity. Gate this in Phase 2.
 - A database error inside `IssueWorker.succeed` (after the CA has already issued) makes river retry the whole issuance from scratch, including a fresh CA order — against Let's Encrypt this risks the duplicate-certificate rate limit on a flaky database.
@@ -348,3 +349,4 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 - 3A: R3: the enrolment rate limit is its own `Deps.EnrollLimiter` (an `authn.Limiter` with the login defaults unless set), not the login limiter instance, so enrolment attempts and logins do not share buckets.
 - 3A: R10: `CF_AGENT_PULL_INTERVAL` ticks in `run` whether or not the WebSocket is up: while connected the session reconciles on it; while the socket is down (for example a proxy that refuses upgrades) `run` pulls over REST, reports and sends a heartbeat.
 - 3A: R13: the e2e agent container runs as the host user (`user: "${CF_E2E_UID}:${CF_E2E_GID}"`) so the host-side test can tamper with and clean up files; the chown-as-root path is covered by a unit test that runs only as root.
+- 3A Task 5 (review carry-forward): `Enroll` and `Renew` each re-check the signing CA's status under `LockAgentCA` (row `FOR UPDATE`) inside the same transaction that writes `clients.agent_ca_id`/`agent_cert_serial`, right before that write. This serializes against `agentca.Store.Retire`'s own `LockAgentCA` call on the same row, so a CA retired concurrently with an in-flight enrolment or renewal can never end up referenced by a committed client row; both paths return 409 in that case. Covered by `TestEnrollBlocksOnConcurrentRetire`/`TestRenewBlocksOnConcurrentRetire` (`internal/api/agent_router_integration_test.go`), which hold the CA row lock from the test, start the request, then flip the row to `retired` and commit to unblock it.

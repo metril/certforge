@@ -45,3 +45,7 @@ Public, unauthenticated routes (`/auth/login`, `/setup/complete`) are as exposed
 - Passwords over 1024 bytes get `422`.
 - More than 4 concurrent argon2 operations server-wide get `503` with `Retry-After: 1`; a client that respects it should retry after a second rather than hammering the endpoint.
 - The server's `http.Server` sets `ReadHeaderTimeout: 10s`, `ReadTimeout: 30s`, and `IdleTimeout: 120s`.
+
+## Agent listener
+
+`CF_LISTEN_AGENT` (port 8443 by default) is a second `http.Server`, entirely separate from the UI/API listener: mutual TLS, serving only `/agent/v1/*`. Its certificate is issued by the internal agent CA for Settings → Agents → listener names plus the Agent URL host, signed by the oldest non-retired agent CA so a rotation never strands an agent that has not yet picked up a new trust bundle. It is renewed automatically: an hourly river job re-checks it and re-issues once two thirds of its one-year lifetime has passed, or immediately when the signing CA or the configured names change. HTTP/2 is disabled on this listener (`TLSNextProto` cleared and `http/1.1` is the only negotiated protocol), since the WebSocket upgrade agents use needs HTTP/1.1.

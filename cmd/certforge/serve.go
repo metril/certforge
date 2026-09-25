@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -89,10 +90,14 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 			log.Info("audit chain re-keyed with HMAC-SHA256", "events", n)
 		}
 	}
+	agentListener := &agentca.Listener{Source: agentCA, Log: log, Names: func(ctx context.Context) ([]string, error) {
+		st, err := agentSettings.Get(ctx)
+		return st.Names(), err
+	}}
 	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Auditor: aud, Settings: agentSettings, Log: log}
 	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
 	issueWorker.Log = log
-	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log)
+	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log, agentListener.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)
 	}
@@ -105,18 +110,20 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// River's RunOnStart scan and issue jobs must not run before agentSvc,
 	// issueWorker.Listeners and the hub are wired, or a version issued in
 	// that window never reaches deployments and the field writes race.
+	agentSvc.Listener = agentListener
 	if err := riverClient.Start(context.Background()); err != nil {
 		return fmt.Errorf("start river: %w", err)
 	}
 	defer stopRiver(riverClient, log)
 	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
 	oidcClient := authn.NewOIDC(crypto.DeriveKey(cfg.KEK.Key, "certforge-oidc-state"), nil)
-	handler := api.NewRouter(api.Deps{
+	deps := api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings,
-	})
+	}
+	handler := api.NewRouter(deps)
 	srv := &http.Server{
 		Addr:              cfg.ListenHTTP,
 		Handler:           handler,
@@ -125,11 +132,32 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		IdleTimeout:       120 * time.Second,
 	}
 	go purgeSessions(ctx, sessions, log)
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
 		log.Info("listening", "addr", cfg.ListenHTTP, "version", version)
 		errCh <- srv.ListenAndServe()
 	}()
+	var agentSrv *http.Server
+	if canaryOK {
+		if _, err := agentCA.EnsureActive(ctx); err != nil {
+			log.Error("agent CA unavailable; the agent listener is not started", "err", err)
+		} else if err := agentListener.Reload(ctx); err != nil {
+			log.Error("agent listener certificate not issued; the agent listener is not started", "err", err)
+		} else {
+			agentSrv = &http.Server{
+				Addr:              cfg.ListenAgent,
+				Handler:           api.NewAgentRouter(deps),
+				TLSConfig:         agentListener.TLSConfig(),
+				TLSNextProto:      map[string]func(*http.Server, *tls.Conn, http.Handler){},
+				ReadHeaderTimeout: 10 * time.Second,
+				IdleTimeout:       120 * time.Second,
+			}
+			go func() {
+				log.Info("agent listener", "addr", cfg.ListenAgent)
+				errCh <- agentSrv.ListenAndServeTLS("", "")
+			}()
+		}
+	}
 	select {
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {
@@ -141,6 +169,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	log.Info("shutting down")
+	if agentSrv != nil {
+		if err := agentSrv.Shutdown(shutdownCtx); err != nil {
+			log.Warn("agent listener shutdown", "err", err)
+		}
+	}
 	return srv.Shutdown(shutdownCtx)
 }
 

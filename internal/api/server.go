@@ -29,21 +29,22 @@ import (
 
 // Deps are the services handlers use.
 type Deps struct {
-	Config       config.Config
-	Log          *slog.Logger
-	Pool         *pgxpool.Pool
-	Queries      *sqlcgen.Queries
-	Settings     *settings.Store
-	Sections     *settings.Registry
-	Meta         *meta.Registry
-	Sessions     *authn.Sessions
-	Auditor      *audit.Auditor
-	AuthSettings *authn.SettingsSource // authentication section; nil falls back to RemoteAddr
-	LoginLimiter *authn.Limiter        // nil: authn.DefaultLoginPerMinute/DefaultLoginBurst
-	OIDC         *authn.OIDC           // single sign-on client (Task 6)
-	Setup        *setup.Service
-	Issuance     *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
-	Certs        *certstore.Store  // certificate versions (Task 14)
+	Config        config.Config
+	Log           *slog.Logger
+	Pool          *pgxpool.Pool
+	Queries       *sqlcgen.Queries
+	Settings      *settings.Store
+	Sections      *settings.Registry
+	Meta          *meta.Registry
+	Sessions      *authn.Sessions
+	Auditor       *audit.Auditor
+	AuthSettings  *authn.SettingsSource // authentication section; nil falls back to RemoteAddr
+	LoginLimiter  *authn.Limiter        // nil: authn.DefaultLoginPerMinute/DefaultLoginBurst
+	EnrollLimiter *authn.Limiter        // per-IP limit on POST /agent/v1/enroll; nil: login defaults
+	OIDC          *authn.OIDC           // single sign-on client (Task 6)
+	Setup         *setup.Service
+	Issuance      *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
+	Certs         *certstore.Store  // certificate versions (Task 14)
 
 	Agents        *agents.Service        // clients, grants, sync (Phase 3)
 	AgentSettings *agents.SettingsSource // agents settings section; PUT invalidates it

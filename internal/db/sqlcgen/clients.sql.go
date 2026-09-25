@@ -12,6 +12,59 @@ import (
 	"github.com/google/uuid"
 )
 
+const activateClient = `-- name: ActivateClient :one
+UPDATE clients SET status = 'active', agent_cert_serial = $1,
+       agent_cert_not_after = $2, agent_ca_id = $3,
+       hostname = $4, os = $5, arch = $6,
+       agent_version = $7, last_seen = now()
+WHERE id = $8 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at
+`
+
+type ActivateClientParams struct {
+	AgentCertSerial   string     `json:"agent_cert_serial"`
+	AgentCertNotAfter *time.Time `json:"agent_cert_not_after"`
+	AgentCaID         *uuid.UUID `json:"agent_ca_id"`
+	Hostname          string     `json:"hostname"`
+	Os                string     `json:"os"`
+	Arch              string     `json:"arch"`
+	AgentVersion      string     `json:"agent_version"`
+	ID                uuid.UUID  `json:"id"`
+}
+
+func (q *Queries) ActivateClient(ctx context.Context, arg ActivateClientParams) (Client, error) {
+	row := q.db.QueryRow(ctx, activateClient,
+		arg.AgentCertSerial,
+		arg.AgentCertNotAfter,
+		arg.AgentCaID,
+		arg.Hostname,
+		arg.Os,
+		arg.Arch,
+		arg.AgentVersion,
+		arg.ID,
+	)
+	var i Client
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.Name,
+		&i.Status,
+		&i.AgentCertSerial,
+		&i.AgentCertNotAfter,
+		&i.AgentCaID,
+		&i.Hostname,
+		&i.Os,
+		&i.Arch,
+		&i.AgentVersion,
+		&i.Capabilities,
+		&i.LastSeen,
+		&i.DesiredRevision,
+		&i.AppliedRevision,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const clientCounts = `-- name: ClientCounts :many
 SELECT g.client_id,
        count(*)::bigint AS grants,
@@ -53,6 +106,19 @@ func (q *Queries) ClientCounts(ctx context.Context, ids []uuid.UUID) ([]ClientCo
 		return nil, err
 	}
 	return items, nil
+}
+
+const consumeEnrollmentToken = `-- name: ConsumeEnrollmentToken :one
+UPDATE enrollment_tokens SET used_at = now()
+WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+RETURNING client_id
+`
+
+func (q *Queries) ConsumeEnrollmentToken(ctx context.Context, tokenHash []byte) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, consumeEnrollmentToken, tokenHash)
+	var client_id uuid.UUID
+	err := row.Scan(&client_id)
+	return client_id, err
 }
 
 const createClient = `-- name: CreateClient :one
@@ -401,6 +467,52 @@ func (q *Queries) PendingTokens(ctx context.Context, ids []uuid.UUID) ([]Pending
 		return nil, err
 	}
 	return items, nil
+}
+
+const renewClientCert = `-- name: RenewClientCert :one
+UPDATE clients SET agent_cert_serial = $1, agent_cert_not_after = $2,
+       agent_ca_id = $3, last_seen = now()
+WHERE id = $4 AND status = 'active' AND agent_cert_serial = $5
+RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at
+`
+
+type RenewClientCertParams struct {
+	AgentCertSerial   string     `json:"agent_cert_serial"`
+	AgentCertNotAfter *time.Time `json:"agent_cert_not_after"`
+	AgentCaID         *uuid.UUID `json:"agent_ca_id"`
+	ID                uuid.UUID  `json:"id"`
+	OldSerial         string     `json:"old_serial"`
+}
+
+func (q *Queries) RenewClientCert(ctx context.Context, arg RenewClientCertParams) (Client, error) {
+	row := q.db.QueryRow(ctx, renewClientCert,
+		arg.AgentCertSerial,
+		arg.AgentCertNotAfter,
+		arg.AgentCaID,
+		arg.ID,
+		arg.OldSerial,
+	)
+	var i Client
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.Name,
+		&i.Status,
+		&i.AgentCertSerial,
+		&i.AgentCertNotAfter,
+		&i.AgentCaID,
+		&i.Hostname,
+		&i.Os,
+		&i.Arch,
+		&i.AgentVersion,
+		&i.Capabilities,
+		&i.LastSeen,
+		&i.DesiredRevision,
+		&i.AppliedRevision,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const setClientPending = `-- name: SetClientPending :one
