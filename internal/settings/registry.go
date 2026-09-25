@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"sync"
 
@@ -18,11 +19,15 @@ var ErrInvalid = errors.New("settings: invalid value")
 var sectionName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 
 // Section is one UI settings page: a JSON Schema and a default value.
+// Top-level string properties marked "secret": true are write-only: they are
+// stored encrypted in the secret column and never appear in the value.
 type Section struct {
 	Name    string
 	Schema  json.RawMessage
 	Default json.RawMessage
 	schema  *jsonschema.Schema
+	secrets []string
+	checks  []func(json.RawMessage) error
 }
 
 // SectionKey is the settings-table key that stores section name.
@@ -31,7 +36,10 @@ func SectionKey(name string) string { return "section." + name }
 // Key returns the settings-table key for s.
 func (s *Section) Key() string { return SectionKey(s.Name) }
 
-// Validate checks raw JSON against the section schema.
+// SecretKeys lists the section's write-only properties, sorted.
+func (s *Section) SecretKeys() []string { return slices.Clone(s.secrets) }
+
+// Validate checks raw JSON against the section schema, then the extra checks.
 func (s *Section) Validate(raw []byte) error {
 	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
@@ -40,7 +48,72 @@ func (s *Section) Validate(raw []byte) error {
 	if err := s.schema.Validate(inst); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
+	for _, check := range s.checks {
+		if err := check(raw); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+	}
 	return nil
+}
+
+// Public returns raw without the section's secret properties.
+func (s *Section) Public(raw json.RawMessage) (json.RawMessage, error) {
+	pub, _, err := s.split(raw)
+	return pub, err
+}
+
+// split separates the secret properties (as strings) from the rest.
+func (s *Section) split(raw json.RawMessage) (json.RawMessage, map[string]string, error) {
+	if len(s.secrets) == 0 {
+		return raw, nil, nil
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	in := map[string]string{}
+	for _, k := range s.secrets {
+		v, ok := doc[k]
+		if !ok {
+			continue
+		}
+		var str string
+		if err := json.Unmarshal(v, &str); err != nil {
+			return nil, nil, fmt.Errorf("%w: %s must be a string", ErrInvalid, k)
+		}
+		in[k] = str
+		delete(doc, k)
+	}
+	pub, err := json.Marshal(doc)
+	return pub, in, err
+}
+
+func secretProps(schema json.RawMessage) ([]string, error) {
+	var doc struct {
+		Required   []string `json:"required"`
+		Properties map[string]struct {
+			Secret bool `json:"secret"`
+			Type   any  `json:"type"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &doc); err != nil {
+		return nil, err
+	}
+	var out []string
+	for k, p := range doc.Properties {
+		if !p.Secret {
+			continue
+		}
+		if p.Type != "string" {
+			return nil, fmt.Errorf("secret property %q must have type string", k)
+		}
+		if slices.Contains(doc.Required, k) {
+			return nil, fmt.Errorf("secret property %q cannot be required", k)
+		}
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Registry holds the known settings sections.
@@ -70,9 +143,16 @@ func (r *Registry) Register(name string, schema, def json.RawMessage) error {
 	if err != nil {
 		return fmt.Errorf("settings: schema %s: %w", name, err)
 	}
-	sec := &Section{Name: name, Schema: schema, Default: def, schema: compiled}
+	secrets, err := secretProps(schema)
+	if err != nil {
+		return fmt.Errorf("settings: schema %s: %w", name, err)
+	}
+	sec := &Section{Name: name, Schema: schema, Default: def, schema: compiled, secrets: secrets}
 	if err := sec.Validate(def); err != nil {
 		return fmt.Errorf("settings: default for %s: %w", name, err)
+	}
+	if _, in, err := sec.split(def); err != nil || len(in) > 0 {
+		return fmt.Errorf("settings: default for %s must not hold secrets", name)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -80,6 +160,19 @@ func (r *Registry) Register(name string, schema, def json.RawMessage) error {
 		return fmt.Errorf("settings: section %q already registered", name)
 	}
 	r.sections[name] = sec
+	return nil
+}
+
+// AddCheck adds a validation step that runs after the schema. Call it at
+// startup, before the registry serves requests.
+func (r *Registry) AddCheck(name string, fn func(raw json.RawMessage) error) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.sections[name]
+	if !ok {
+		return fmt.Errorf("settings: section %q not registered", name)
+	}
+	s.checks = append(s.checks, fn)
 	return nil
 }
 

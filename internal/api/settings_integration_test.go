@@ -61,6 +61,40 @@ func TestSettingsGetPut(t *testing.T) {
 	}
 }
 
+func TestSettingsSecretField(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	e.deps.Sections.MustRegister("test_secret", json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{
+	  "issuer":{"type":"string","description":"Issuer."},"clientSecret":{"type":"string","secret":true,"description":"Secret."}}}`), json.RawMessage(`{}`))
+
+	resp, body := e.do(http.MethodPut, "/api/v1/settings/test_secret", map[string]string{"issuer": "a", "clientSecret": "__unchanged__"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("unchanged with nothing stored: %d %s", resp.StatusCode, body)
+	}
+	resp, body = e.do(http.MethodPut, "/api/v1/settings/test_secret", map[string]string{"issuer": "a", "clientSecret": "s3cret"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	if resp.StatusCode != http.StatusOK || strings.Contains(string(body), "s3cret") {
+		t.Fatalf("put %d %s", resp.StatusCode, body)
+	}
+	var sec struct {
+		Value         map[string]any `json:"value"`
+		StoredSecrets []string       `json:"storedSecrets"`
+	}
+	if err := json.Unmarshal(body, &sec); err != nil || len(sec.StoredSecrets) != 1 || sec.StoredSecrets[0] != "clientSecret" {
+		t.Fatalf("storedSecrets %s", body)
+	}
+	if _, ok := sec.Value["clientSecret"]; ok {
+		t.Fatalf("value holds secret: %s", body)
+	}
+	var details string
+	if err := e.deps.Pool.QueryRow(context.Background(),
+		`SELECT details::text FROM audit_events WHERE action = 'settings.update' ORDER BY id DESC LIMIT 1`).Scan(&details); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(details, "s3cret") || !strings.Contains(details, `"secretsChanged": ["clientSecret"]`) {
+		t.Fatalf("audit details %s", details)
+	}
+}
+
 func TestSettingsCSRF(t *testing.T) {
 	e := newTestEnv(t)
 	csrf, _ := e.seedAdminSession()

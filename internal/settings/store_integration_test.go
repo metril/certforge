@@ -7,8 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/dbtest"
@@ -177,5 +181,67 @@ func TestSections(t *testing.T) {
 	var row sqlcgen.Setting
 	if row, err = q.GetSetting(ctx, "section.general"); err != nil || row.Key != sec.Key() {
 		t.Fatalf("row %v err %v", row.Key, err)
+	}
+}
+
+func secretSection(t *testing.T) *settings.Section {
+	t.Helper()
+	r := settings.NewRegistry()
+	r.MustRegister("s", json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{
+	  "issuer":{"type":"string"},"clientSecret":{"type":"string","secret":true}}}`), json.RawMessage(`{}`))
+	sec, _ := r.Section("s")
+	return sec
+}
+
+func putTx(ctx context.Context, t *testing.T, pool *pgxpool.Pool, st *settings.Store, sec *settings.Section, raw string) error {
+	t.Helper()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := st.PutSectionTx(ctx, tx, sec, json.RawMessage(raw)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func TestSectionSecrets(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+	st := settings.NewStore(q, envelope(1))
+	sec := secretSection(t)
+
+	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"a","clientSecret":"__unchanged__"}`); !errors.Is(err, settings.ErrUnchangedWithoutStored) {
+		t.Fatalf("unchanged with nothing stored: %v", err)
+	}
+	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"a","clientSecret":"s3cret"}`); err != nil {
+		t.Fatal(err)
+	}
+	val, _, err := st.GetSection(ctx, sec)
+	if err != nil || strings.Contains(string(val), "s3cret") || strings.Contains(string(val), "clientSecret") {
+		t.Fatalf("value leaks secret: %s %v", val, err)
+	}
+	row, _ := q.GetSetting(ctx, sec.Key())
+	if bytes.Contains(row.Secret, []byte("s3cret")) {
+		t.Fatal("secret stored in plaintext")
+	}
+	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"b","clientSecret":"__unchanged__"}`); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := st.SectionSecrets(ctx, sec); m["clientSecret"] != "s3cret" {
+		t.Fatalf("unchanged lost the secret: %v", m)
+	}
+	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"b"}`); err != nil {
+		t.Fatal(err)
+	}
+	if keys, _ := st.StoredSecretKeys(ctx, sec); !slices.Equal(keys, []string{"clientSecret"}) {
+		t.Fatalf("absent field must keep the secret: %v", keys)
+	}
+	if err := putTx(ctx, t, pool, st, sec, `{"issuer":"b","clientSecret":""}`); err != nil {
+		t.Fatal(err)
+	}
+	if keys, _ := st.StoredSecretKeys(ctx, sec); len(keys) != 0 {
+		t.Fatalf("empty string must clear: %v", keys)
 	}
 }

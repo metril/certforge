@@ -161,7 +161,7 @@ export interface paths {
         get: operations["getSettingsSection"];
         /**
          * Replace a settings section
-         * @description Validates the value against the section schema (422 on failure) and stores it. Admin only.
+         * @description Validates the value against the section schema (422 on failure) and stores it. Admin only. For a secret property (schema "secret": true), send "__unchanged__" or omit the field to keep the stored value, "" to clear it, or any other string to replace it; "__unchanged__" with nothing stored is a 422. Secret values are never echoed back.
          */
         put: operations["putSettingsSection"];
         post?: never;
@@ -753,10 +753,12 @@ export interface components {
             schema: {
                 [key: string]: unknown;
             };
-            /** @description The section's effective value — its own stored value, or the section's built-in default when it has never been saved. */
+            /** @description The section's effective value — its own stored value, or the section's built-in default when it has never been saved. Secret properties are never included here. */
             value: components["schemas"]["SettingsValue"];
-            /** @description The raw value actually saved for this section, before built-in defaults are filled in; null when the section has never been saved. Lets a client tell "never configured" apart from "explicitly set to the built-in value" (value alone cannot, since it always looks concrete once a default is filled in). */
+            /** @description The raw value actually saved for this section, before built-in defaults are filled in; null when the section has never been saved. Lets a client tell "never configured" apart from "explicitly set to the built-in value" (value alone cannot, since it always looks concrete once a default is filled in). Secret properties are never included here. */
             stored: components["schemas"]["SettingsValue"] | null;
+            /** @description Names of the section's secret properties that currently hold a value. Secret values are never returned; send "__unchanged__" to keep one, "" to clear it. */
+            storedSecrets: string[];
         };
         /** @description First-run state. */
         SetupStatus: {

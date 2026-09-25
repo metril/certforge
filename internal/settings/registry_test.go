@@ -46,3 +46,51 @@ func TestRegisterRejects(t *testing.T) {
 		}
 	}
 }
+
+const secretSchema = `{"type":"object","additionalProperties":false,"properties":{
+  "issuer":{"type":"string","description":"Issuer."},
+  "clientSecret":{"type":"string","secret":true,"description":"Secret."}}}`
+
+func TestSecretKeys(t *testing.T) {
+	r := NewRegistry()
+	if err := r.Register("s", json.RawMessage(secretSchema), json.RawMessage(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	sec, _ := r.Section("s")
+	if got := sec.SecretKeys(); !slices.Equal(got, []string{"clientSecret"}) {
+		t.Fatalf("SecretKeys = %v", got)
+	}
+	pub, err := sec.Public(json.RawMessage(`{"issuer":"https://idp","clientSecret":"x"}`))
+	if err != nil || string(pub) != `{"issuer":"https://idp"}` {
+		t.Fatalf("Public = %s, %v", pub, err)
+	}
+}
+
+func TestSecretSchemaRules(t *testing.T) {
+	for name, schema := range map[string]string{
+		"non-string": `{"type":"object","properties":{"k":{"type":"integer","secret":true}}}`,
+		"required":   `{"type":"object","required":["k"],"properties":{"k":{"type":"string","secret":true}}}`,
+	} {
+		if err := NewRegistry().Register("s", json.RawMessage(schema), json.RawMessage(`{"k":"v"}`)); err == nil {
+			t.Fatalf("%s: registered", name)
+		}
+	}
+	if err := NewRegistry().Register("s", json.RawMessage(secretSchema), json.RawMessage(`{"clientSecret":"x"}`)); err == nil {
+		t.Fatal("default holding a secret was accepted")
+	}
+}
+
+func TestAddCheck(t *testing.T) {
+	r := NewRegistry()
+	r.MustRegister("s", json.RawMessage(secretSchema), json.RawMessage(`{}`))
+	if err := r.AddCheck("s", func(json.RawMessage) error { return errors.New("nope") }); err != nil {
+		t.Fatal(err)
+	}
+	sec, _ := r.Section("s")
+	if err := sec.Validate([]byte(`{}`)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v", err)
+	}
+	if err := r.AddCheck("missing", nil); err == nil {
+		t.Fatal("AddCheck on unknown section succeeded")
+	}
+}

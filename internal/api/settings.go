@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/metril/certforge/internal/api/gen"
@@ -49,27 +50,56 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	if err := sec.Validate(raw); err != nil {
 		return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
 	}
+	before, _, err := s.d.Settings.GetSection(ctx, sec)
+	if err != nil {
+		return nil, err
+	}
 	if sec.Name == issuance.SettingsKey {
-		if err := s.putGlobalIssuanceDefaults(ctx, sec, raw); err != nil {
-			return nil, err
-		}
+		err = s.putGlobalIssuanceDefaults(ctx, sec, raw)
 	} else {
-		// Settings.Set takes v any and re-marshals it; the explicit
-		// json.RawMessage conversion matters here — passing raw's plain
-		// []byte would base64-encode it as a JSON string instead of storing
-		// the object, since []byte (unlike json.RawMessage) doesn't
-		// implement json.Marshaler.
-		if err := s.d.Settings.Set(ctx, sec.Key(), json.RawMessage(raw)); err != nil {
-			return nil, err
-		}
+		err = s.putSection(ctx, sec, raw)
+	}
+	if err != nil {
+		return nil, err
+	}
+	after, err := sec.Public(raw)
+	if err != nil {
+		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "settings.update", ResourceType: "settings", ResourceID: sec.Name,
-		Details: map[string]any{"section": sec.Name}})
+		Details: map[string]any{"section": sec.Name, "before": before, "after": after, "secretsChanged": secretsChanged(sec, *req.Body)}})
 	out, err := s.sectionResponse(ctx, sec)
 	if err != nil {
 		return nil, err
 	}
 	return gen.PutSettingsSection200JSONResponse(out), nil
+}
+
+// putSection stores a section value and its secrets in one transaction.
+func (s *Server) putSection(ctx context.Context, sec *settings.Section, raw json.RawMessage) error {
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := s.d.Settings.PutSectionTx(ctx, tx, sec, raw); err != nil {
+		if errors.Is(err, settings.ErrInvalid) || errors.Is(err, settings.ErrUnchangedWithoutStored) {
+			return &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
+		}
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// secretsChanged names the secret properties the request set or cleared.
+func secretsChanged(sec *settings.Section, body gen.SettingsValue) []string {
+	out := []string{}
+	for _, k := range sec.SecretKeys() {
+		if v, ok := body[k]; ok && v != settings.Unchanged {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // putGlobalIssuanceDefaults validates and stores the issuance_defaults
@@ -128,5 +158,9 @@ func (s *Server) sectionResponse(ctx context.Context, sec *settings.Section) (ge
 		}
 		stored = &v
 	}
-	return gen.SettingsSection{Section: sec.Name, Schema: schema, Value: value, Stored: stored}, nil
+	storedSecrets, err := s.d.Settings.StoredSecretKeys(ctx, sec)
+	if err != nil {
+		return gen.SettingsSection{}, err
+	}
+	return gen.SettingsSection{Section: sec.Name, Schema: schema, Value: value, Stored: stored, StoredSecrets: storedSecrets}, nil
 }

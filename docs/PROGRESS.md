@@ -7,7 +7,7 @@ Single status file. Updated in every commit that completes a task.
 | # | Phase | Status | Spec | Plan | Started | Finished |
 |---|---|---|---|---|---|---|
 | 1 | Core issuance slice | done | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | 2026-09-24 |
-| 2 | Identity and tenancy | planned | [design](design.md) | – | – | – |
+| 2 | Identity and tenancy | in progress | [design](design.md) | [2A](superpowers/plans/2026-09-25-phase-2a-identity-backend.md) · [2B](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md) | 2026-09-25 | – |
 | 3 | Agent | planned | [design](design.md) | – | – | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
 | 5 | Vault and private CA | planned | [design](design.md) | – | – | – |
@@ -99,6 +99,26 @@ detail page, fixture and palette-filter fixes; c51fab6: sidebar tooltip
 props, a CSP-violation check in the smoke test that surfaced zod's
 `Function('')` probe, fixed with zod's `jitless` flag); 22044d1 and 55d4f42
 were Task 18's own commits.
+
+### Phase 2A: identity backend — in progress (started 2026-09-25) ([plan](superpowers/plans/2026-09-25-phase-2a-identity-backend.md))
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Settings secret fields | done | pending |
+| 2 | Principal, actions, group bindings | todo | – |
+| 3 | OpenAPI problem responses | todo | – |
+| 4 | Authentication section and trusted proxies | todo | – |
+| 5 | Login hardening | todo | – |
+| 6 | OIDC client and fake provider | todo | – |
+| 7 | OIDC endpoints | todo | – |
+| 8 | Users API | todo | – |
+| 9 | API keys | todo | – |
+| 10 | Role bindings API | todo | – |
+| 11 | Orgs and sites CRUD | todo | – |
+| 12 | Cross-org certificate list | todo | – |
+| 13 | Keyed audit chain | todo | – |
+| 14 | Audit API | todo | – |
+| 15 | dex e2e | todo | – |
 
 ## Decisions made during implementation
 
@@ -206,6 +226,11 @@ were Task 18's own commits.
 - 1C Task 18: the Playwright job is not added to `.github/workflows/ci.yml`. Bringing up `deploy/compose.yaml` + `compose.test.yaml` (Postgres, Pebble, challtestsrv, and a from-source certforge build) and waiting for a real ACME issuance to go `active` takes several minutes and needs Docker-in-Docker resources beyond what the existing web CI job reserves; recorded in Known gaps as a local-only step (`npm run e2e`) rather than adding a slow, flaky-on-shared-runners job "if it can run in a straightforward way" per the dispatch note.
 - 1C Task 18 fix round 1 (controller review): `web/src/lib/coverage.ts`'s `toAscii` ran every pattern/name through `new URL('http://'+s+'/').hostname` to get the server's IDNA/lowercase normalisation. jsdom's URL (used in vitest) leaves a bare `*` untouched, but every real browser's WHATWG host parser percent-encodes it (verified against real Chromium: `new URL('http://*/').hostname === '%2A'`), so in an actual browser no `*`/`*.zone` verification rule ever matched — the certificate detail page's Coverage panel showed "No matching rule" for an issued certificate, and the wizard's coverage gating would block Next for any wildcard/catch-all rule. `toAscii` now special-cases a bare `*` and a leading `*.` before URL-normalising the rest. Caught by running the Playwright smoke test against the live compose stack and inspecting its own screenshots, not by the (all jsdom, all passing) unit suite — `coverage.test.ts` gained a test that stubs a Chromium-parity `URL` (percent-encodes `*`) to catch a regression the jsdom-backed suite otherwise cannot.
 
+- 2A: group-to-role mappings are `role_bindings` rows with `subject_type = 'oidc_group'`, not a `groupRoleMappings` field in the `authentication` section (R2). One store serves both the bindings API and Settings → Authentication (2B edits them through `/role-bindings`).
+- 2A: stored secret state is `SettingsSection.storedSecrets: string[]`, not a per-field `stored: true` (R2). `stored` already names the raw saved document on `SettingsSection`, and `storedSecrets` matches `DNSCredential.storedSecrets`, which the web `SchemaForm` already consumes.
+- 2A: "All orgs" reads are `GET /certificates` (cross-org, filtered by `certs:read`) and `GET /audit` without `orgId`, not a magic `orgId=all` path value (R6). `{orgId}` is `format: uuid` in every path, so a sentinel would break the generated types.
+- 2A: CI already fails on untracked generated files (ci.yml runs test -z "$(git status --porcelain)" after make generate); R8's drift requirement needed no change.
+
 ## Known gaps
 
 - 1C: `npm run e2e` (Playwright) and `make e2e` (Go, against Pebble) both run locally only; neither is wired into `.github/workflows/ci.yml`.
@@ -213,7 +238,6 @@ were Task 18's own commits.
 - Pebble and challtestsrv images are pinned to tag 2.10.1, not a digest; the issuance e2e (1B Task 15) kept the tag pin rather than switching to a digest. Pin digests in a later task.
 - Audit log tamper-evidence hardening not yet done: keyed HMAC instead of a plain hash, anchoring the head hash outside the table, and running the app under a role that does not own `audit_events`.
 - Login attempts are not rate limited yet (argon2id cost only); add per-IP throttling with the Phase 2 auth work.
-- Settings sections cannot hold secret fields yet; add write-only secret: true support when the first secret-bearing section lands (Phase 2 OIDC).
 - Base images are unpinned or ageing: the server image's `golang:1.23-alpine` build stage is already out of upstream support; bump the Go builder image (and pin image tags to digests) before cutting a release tag.
 - HEAD requests to `/healthz` and `/readyz` return 405 (only GET is registered for them).
 - The SPA fallback (root NotFound) answers non-GET methods with `index.html` instead of 404/405, since it does not check the request method.
