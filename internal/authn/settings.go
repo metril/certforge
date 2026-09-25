@@ -207,17 +207,28 @@ func (s AuthSettings) trusted(a netip.Addr) bool {
 	return false
 }
 
+// negativeCacheTTL is how long Get keeps returning a reload error before
+// trying the store again, so a client whose store is down (or whose KEK is
+// briefly wrong) does not get hammered by every request that needs settings.
+const negativeCacheTTL = 5 * time.Second
+
 // SettingsSource caches the authentication section for 30 s. PUT
 // /settings/authentication calls Invalidate.
 type SettingsSource struct {
-	store *settings.Store
-	sec   *settings.Section
-	ttl   time.Duration
-	now   func() time.Time
-	mu    sync.Mutex
-	cur   AuthSettings
-	at    time.Time
-	valid bool
+	sec *settings.Section
+	ttl time.Duration
+	now func() time.Time
+	// load reads the section fresh from the store; a field (not a direct
+	// store call) so tests can substitute a fake without a database.
+	load func(ctx context.Context) (AuthSettings, error)
+
+	mu      sync.Mutex
+	cur     AuthSettings
+	at      time.Time
+	valid   bool
+	loading bool // a reload is already in flight in another goroutine
+	lastErr error
+	errAt   time.Time
 }
 
 // NewSettingsSource reads the registered authentication section from store.
@@ -226,30 +237,84 @@ func NewSettingsSource(store *settings.Store, reg *settings.Registry) (*Settings
 	if !ok {
 		return nil, errors.New("authn: authentication settings section not registered")
 	}
-	return &SettingsSource{store: store, sec: sec, ttl: 30 * time.Second, now: time.Now}, nil
+	s := &SettingsSource{sec: sec, ttl: 30 * time.Second, now: time.Now}
+	s.load = func(ctx context.Context) (AuthSettings, error) {
+		raw, _, err := store.GetSection(ctx, sec)
+		if err != nil {
+			return AuthSettings{}, err
+		}
+		var st AuthSettings
+		if err := json.Unmarshal(raw, &st); err != nil {
+			return AuthSettings{}, fmt.Errorf("authn: decode settings: %w", err)
+		}
+		secrets, err := store.SectionSecrets(ctx, sec)
+		if err != nil {
+			return AuthSettings{}, err
+		}
+		st.ClientSecret = secrets["clientSecret"]
+		st.normalize()
+		return st, nil
+	}
+	return s, nil
 }
 
-// Get returns the current settings, reloading after the cache expires.
+// Get returns the current settings, reloading after the cache expires. The
+// mutex is never held across the store round trip: once the cache is known
+// stale, at most one goroutine actually reloads (double-checked under the
+// loading flag) while any others fall back to the stale cached value rather
+// than blocking on, or duplicating, the same DB call. With no cached value
+// at all yet (cold start, or every reload so far has failed), a reload
+// error is remembered for negativeCacheTTL so repeated callers don't retry
+// a failing store on every request.
 func (s *SettingsSource) Get(ctx context.Context) (AuthSettings, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.valid && s.now().Sub(s.at) < s.ttl {
-		return s.cur, nil
+		cur := s.cur
+		s.mu.Unlock()
+		return cur, nil
 	}
-	raw, _, err := s.store.GetSection(ctx, s.sec)
-	if err != nil {
+	if s.valid {
+		if s.loading {
+			// Someone else is already reloading; the stale value is still
+			// better than blocking on a second concurrent DB round trip.
+			cur := s.cur
+			s.mu.Unlock()
+			return cur, nil
+		}
+		s.loading = true
+		s.mu.Unlock()
+
+		st, err := s.load(ctx)
+
+		s.mu.Lock()
+		s.loading = false
+		if err != nil {
+			s.lastErr, s.errAt = err, s.now()
+			cur := s.cur
+			s.mu.Unlock()
+			return cur, nil // keep serving the last known-good value
+		}
+		s.lastErr = nil
+		s.cur, s.at, s.valid = st, s.now(), true
+		s.mu.Unlock()
+		return st, nil
+	}
+	if s.lastErr != nil && s.now().Sub(s.errAt) < negativeCacheTTL {
+		err := s.lastErr
+		s.mu.Unlock()
 		return AuthSettings{}, err
 	}
-	var st AuthSettings
-	if err := json.Unmarshal(raw, &st); err != nil {
-		return AuthSettings{}, fmt.Errorf("authn: decode settings: %w", err)
-	}
-	secrets, err := s.store.SectionSecrets(ctx, s.sec)
+	s.mu.Unlock()
+
+	st, err := s.load(ctx)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err != nil {
+		s.lastErr, s.errAt = err, s.now()
 		return AuthSettings{}, err
 	}
-	st.ClientSecret = secrets["clientSecret"]
-	st.normalize()
+	s.lastErr = nil
 	s.cur, s.at, s.valid = st, s.now(), true
 	return st, nil
 }

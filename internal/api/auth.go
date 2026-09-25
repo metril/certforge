@@ -78,11 +78,22 @@ func (s *Server) Logout(ctx context.Context, _ gen.LogoutRequestObject) (gen.Log
 	return gen.Logout204Response{}, nil
 }
 
+// errSessionOnly is returned by GetMe for an authenticated API-key
+// principal: the endpoint returns the session's CSRF token, which an API
+// key never has, so it is session-only rather than merely unauthenticated.
+var errSessionOnly = &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "session-only endpoint"}
+
 // GetMe returns the current principal and its CSRF token.
 func (s *Server) GetMe(ctx context.Context, _ gen.GetMeRequestObject) (gen.GetMeResponseObject, error) {
 	p, ok := authn.PrincipalFrom(ctx)
+	if !ok {
+		return nil, errUnauthenticated
+	}
 	sess, ok2 := authn.SessionFrom(ctx)
-	if !ok || !ok2 {
+	if !ok2 {
+		if p.Kind == authn.KindAPIKey {
+			return nil, errSessionOnly
+		}
 		return nil, errUnauthenticated
 	}
 	u, err := s.d.Queries.GetUser(ctx, p.UserID)

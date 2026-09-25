@@ -195,12 +195,15 @@ func TestRoleBindingsAPIKeyScope(t *testing.T) {
 		t.Fatalf("delete apikey binding: %d", resp.StatusCode)
 	}
 	// The org-admin cannot delete a binding on the global key (again,
-	// apikeys:write is required globally, which it lacks).
+	// apikeys:write is required globally, which it lacks). It gets 404, not
+	// 403 (M1): a caller who cannot manage this binding's scope must not be
+	// able to tell an existing-but-forbidden binding apart from one that
+	// doesn't exist at all.
 	code, gb := post(e.client, csrf, map[string]any{"subjectType": "apikey", "subject": globalKey.APIKey.ID, "role": "viewer"})
 	if code != http.StatusCreated {
 		t.Fatalf("admin binding global key: %d", code)
 	}
-	if resp, _ := e.doClient(oa, http.MethodDelete, "/api/v1/role-bindings/"+gb.ID, nil, http.Header{"X-Csrf-Token": {oaCSRF}}); resp.StatusCode != http.StatusForbidden { //nolint:bodyclose // doClient closes the body
+	if resp, _ := e.doClient(oa, http.MethodDelete, "/api/v1/role-bindings/"+gb.ID, nil, http.Header{"X-Csrf-Token": {oaCSRF}}); resp.StatusCode != http.StatusNotFound { //nolint:bodyclose // doClient closes the body
 		t.Fatalf("org-admin deleting global key binding: %d", resp.StatusCode)
 	}
 }

@@ -220,7 +220,7 @@ export interface paths {
         };
         /**
          * Current principal
-         * @description The signed-in user, roles, visible orgs, and the CSRF token for mutating requests.
+         * @description The signed-in user, roles, visible orgs, and the CSRF token for mutating requests. Session-only, since it returns the session's CSRF token, which an API key never has; an authenticated API-key principal gets 403, not 401.
          */
         get: operations["getMe"];
         put?: never;

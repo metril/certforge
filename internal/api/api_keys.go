@@ -127,8 +127,15 @@ func (s *Server) RevokeApiKey(ctx context.Context, req gen.RevokeApiKeyRequestOb
 	if err != nil {
 		return nil, err
 	}
-	if _, err := authorize(ctx, authz.ActionAPIKeysWrite, k.OrgID); err != nil {
-		return nil, err
+	p, ok := authn.PrincipalFrom(ctx)
+	if !ok {
+		return nil, errUnauthenticated
+	}
+	if !authz.Can(p, authz.ActionAPIKeysWrite, k.OrgID) {
+		// 404, not 403: a caller who cannot manage this key's scope must
+		// not be able to tell it apart from one that doesn't exist (no
+		// existence oracle via a 403-vs-404 status difference).
+		return nil, notFound("API key %s", req.Id)
 	}
 	n, err := s.d.Queries.RevokeAPIKey(ctx, k.ID)
 	if err != nil {

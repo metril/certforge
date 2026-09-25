@@ -190,7 +190,10 @@ func (s *Server) DeleteRoleBinding(ctx context.Context, req gen.DeleteRoleBindin
 		authOrg = nil
 	}
 	if !authz.Can(p, action, authOrg) {
-		return nil, forbiddenAction(action)
+		// 404, not 403: a caller who cannot manage this binding's scope
+		// must not be able to tell it apart from one that doesn't exist
+		// (no existence oracle via a 403-vs-404 status difference).
+		return nil, notFound("role binding %s", req.Id)
 	}
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
