@@ -4,7 +4,9 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -27,34 +29,9 @@ func TestWebSocketHelloSyncRevoke(t *testing.T) {
 	cert, _, _ := e.enroll(t, en.Token)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	dial := func() agentproto.WS {
-		c, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(e.ts.URL, "https")+"/agent/v1/ws", //nolint:bodyclose // coder/websocket owns resp.Body
-			&websocket.DialOptions{HTTPClient: e.httpClient(t, &cert)})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return agentproto.WS{C: c}
-	}
-	send := func(ws agentproto.WS, m agentproto.Message) {
-		b, _ := agentproto.Marshal(m)
-		if err := ws.WriteMsg(ctx, b); err != nil {
-			t.Fatal(err)
-		}
-	}
-	recv := func(ws agentproto.WS) agentproto.Message {
-		b, err := ws.ReadMsg(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m, err := agentproto.Unmarshal(b)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return m
-	}
-	ws := dial()
-	send(ws, agentproto.Hello{AgentVersion: "1.2.3", Hostname: "host-9", OS: "linux", Arch: "arm64", Capabilities: []string{"traefik"}})
-	if m := recv(ws); m != agentproto.Message(agentproto.HelloAck{HeartbeatSeconds: 60, Revision: 0}) {
+	ws := dialWS(ctx, t, e, cert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1.2.3", Hostname: "host-9", OS: "linux", Arch: "arm64", Capabilities: []string{"traefik"}})
+	if m := recvWS(ctx, t, ws); m != agentproto.Message(agentproto.HelloAck{HeartbeatSeconds: 60, Revision: 0}) {
 		t.Fatalf("hello_ack %#v", m)
 	}
 	cl, _ := e.q.GetClientByID(ctx, en.Client.ID)
@@ -70,18 +47,18 @@ func TestWebSocketHelloSyncRevoke(t *testing.T) {
 	if _, err := e.svc.CreateGrant(e.as("operator"), e.org, en.Client.ID, agents.GrantInput{CertID: certID, Delivery: "push", LayoutID: &layout}); err != nil {
 		t.Fatal(err)
 	}
-	if m := recv(ws); m != agentproto.Message(agentproto.Sync{Revision: 1}) {
+	if m := recvWS(ctx, t, ws); m != agentproto.Message(agentproto.Sync{Revision: 1}) {
 		t.Fatalf("sync %#v", m)
 	}
-	ws2 := dial()
+	ws2 := dialWS(ctx, t, e, cert)
 	if _, err := ws.ReadMsg(ctx); websocket.CloseStatus(err) != agentproto.CloseReplaced {
 		t.Fatalf("old socket: %v", err)
 	}
-	send(ws2, agentproto.Heartbeat{})
+	sendWS(ctx, t, ws2, agentproto.Heartbeat{})
 	if _, err := e.svc.RevokeClient(e.as("operator"), e.org, en.Client.ID); err != nil {
 		t.Fatal(err)
 	}
-	if m := recv(ws2); m != agentproto.Message(agentproto.Revoked{}) {
+	if m := recvWS(ctx, t, ws2); m != agentproto.Message(agentproto.Revoked{}) {
 		t.Fatalf("revoked %#v", m)
 	}
 	if _, err := ws2.ReadMsg(ctx); websocket.CloseStatus(err) != agentproto.CloseRevoked {
@@ -91,6 +68,126 @@ func TestWebSocketHelloSyncRevoke(t *testing.T) {
 		select {
 		case <-ctx.Done():
 			t.Fatal("still connected after revoke")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+func dialWS(ctx context.Context, t *testing.T, e *agentEnv, cert tls.Certificate) agentproto.WS {
+	t.Helper()
+	c, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(e.ts.URL, "https")+"/agent/v1/ws", //nolint:bodyclose // coder/websocket owns resp.Body
+		&websocket.DialOptions{HTTPClient: e.httpClient(t, &cert)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return agentproto.WS{C: c}
+}
+
+func sendWS(ctx context.Context, t *testing.T, ws agentproto.WS, m agentproto.Message) {
+	t.Helper()
+	b, _ := agentproto.Marshal(m)
+	if err := ws.WriteMsg(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func recvWS(ctx context.Context, t *testing.T, ws agentproto.WS) agentproto.Message {
+	t.Helper()
+	b, err := ws.ReadMsg(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := agentproto.Unmarshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// TestWebSocketHeartbeatAndDeployResult covers the two remaining socket
+// message kinds against the same service methods the REST endpoints use:
+// deploy_result (a Report) settles the deployment and applies the
+// revision, and heartbeat touches last_seen without regressing the state
+// deploy_result already reported.
+func TestWebSocketHeartbeatAndDeployResult(t *testing.T) {
+	hub := agenthub.New(slog.Default())
+	t.Cleanup(hub.Shutdown)
+	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
+	e.svc.Hub = hub
+	cert, c, gid := e.enrolledWithGrant(t, "web-2", false)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ws := dialWS(ctx, t, e, cert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1"})
+	if _, ok := recvWS(ctx, t, ws).(agentproto.HelloAck); !ok {
+		t.Fatal("expected hello_ack")
+	}
+	hc := e.httpClient(t, &cert)
+	var as agentproto.Assignments
+	if code := e.get(t, hc, "/agent/v1/assignments", &as); code != http.StatusOK || len(as.Grants) != 1 {
+		t.Fatalf("assignments %d %+v", code, as)
+	}
+	sendWS(ctx, t, ws, agentproto.DeployResult{Report: okReport(as)})
+	deadline := time.Now().Add(5 * time.Second)
+	for e.deploymentState(t, gid) != "ok" {
+		if time.Now().After(deadline) {
+			t.Fatalf("deploy_result over the socket did not apply: state %s", e.deploymentState(t, gid))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cl, _ := e.q.GetClientByID(ctx, c.ID)
+	if cl.AppliedRevision != 1 || e.auditCount(t, "deployment.ok") != 1 {
+		t.Fatalf("applied revision %d audits %d", cl.AppliedRevision, e.auditCount(t, "deployment.ok"))
+	}
+	before := time.Now().Add(-time.Second)
+	sendWS(ctx, t, ws, agentproto.Heartbeat{Installed: []agentproto.InstalledFile{
+		{GrantID: gid, Path: as.Grants[0].Files[0].Path, SHA256: as.Grants[0].Files[0].SHA256, MTime: time.Now()},
+	}})
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		cl2, _ := e.q.GetClientByID(ctx, c.ID)
+		if cl2.LastSeen != nil && !cl2.LastSeen.Before(before) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("heartbeat over the socket did not update last_seen")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if e.deploymentState(t, gid) != "ok" {
+		t.Fatalf("heartbeat over the socket regressed deployment state: %s", e.deploymentState(t, gid))
+	}
+}
+
+// TestWebSocketNonActiveClientMessageRejected isolates OnMessage's own
+// rejection of a message from a client whose row is no longer active, from
+// the hub's Close call an explicit RevokeClient already issues: the
+// client's status is flipped directly in the database (RevokeClient would
+// have proactively closed this same socket itself, so calling it here
+// would never reach OnMessage with a still-open connection).
+func TestWebSocketNonActiveClientMessageRejected(t *testing.T) {
+	hub := agenthub.New(slog.Default())
+	t.Cleanup(hub.Shutdown)
+	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
+	e.svc.Hub = hub
+	en := e.newClient(t, "web-3")
+	cert, _, _ := e.enroll(t, en.Token)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ws := dialWS(ctx, t, e, cert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1"})
+	recvWS(ctx, t, ws)
+	if _, err := e.pool.Exec(ctx, `UPDATE clients SET status = 'revoked' WHERE id = $1`, en.Client.ID); err != nil {
+		t.Fatal(err)
+	}
+	sendWS(ctx, t, ws, agentproto.Heartbeat{})
+	if _, err := ws.ReadMsg(ctx); websocket.CloseStatus(err) != agentproto.CloseRevoked {
+		t.Fatalf("close: %v", err)
+	}
+	for hub.Connected(en.Client.ID) {
+		select {
+		case <-ctx.Done():
+			t.Fatal("still connected after a message from a non-active client")
 		case <-time.After(10 * time.Millisecond):
 		}
 	}

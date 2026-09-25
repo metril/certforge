@@ -27,6 +27,12 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Detail }
 
+// Unauthorized reports whether e means the caller is no longer authorized.
+// It implements agenthub's unauthorizer interface (Unauthorized() bool) by
+// structural typing only, so the hub can close a socket whose OnMessage
+// rejected it without this package importing internal/agenthub.
+func (e *Error) Unauthorized() bool { return e.Kind == KindUnauthorized }
+
 func notFound(format string, a ...any) error {
 	return &Error{Kind: KindNotFound, Detail: fmt.Sprintf(format, a...)}
 }

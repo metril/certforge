@@ -6,6 +6,7 @@ package agenthub
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -28,11 +29,24 @@ type Handler interface {
 	OnMessage(ctx context.Context, clientID uuid.UUID, m agentproto.Message) ([]agentproto.Message, error)
 }
 
+// unauthorizer is implemented by an error a Handler returns to mean the
+// client is no longer authorized to hold this socket (revoked, re-enrolled,
+// or otherwise no longer active): Serve closes with CloseRevoked instead of
+// just logging and continuing. agents.Error implements it without this
+// package importing internal/agents.
+type unauthorizer interface{ Unauthorized() bool }
+
+func isUnauthorized(err error) bool {
+	var u unauthorizer
+	return errors.As(err, &u) && u.Unauthorized()
+}
+
 // Defaults.
 const (
 	DefaultPingInterval = 25 * time.Second
 	DefaultIdleTimeout  = 75 * time.Second
 	writeTimeout        = 10 * time.Second
+	shutdownTimeout     = 2 * time.Second
 	closeNormal         = 1000
 	closeGoingAway      = 1001
 )
@@ -48,12 +62,13 @@ type Hub struct {
 }
 
 type conn struct {
-	s      Session
-	out    chan []byte
-	done   chan struct{}
-	once   sync.Once
-	code   int
-	reason string
+	s          Session
+	out        chan []byte
+	done       chan struct{}
+	writerDone chan struct{} // closed once the writer has flushed and called s.Close
+	once       sync.Once
+	code       int
+	reason     string
 }
 
 // close asks the writer to flush queued messages and close the session.
@@ -74,8 +89,16 @@ func New(log *slog.Logger) *Hub {
 
 // Serve registers s for clientID, evicting an older connection, and runs
 // until the session ends. Replies from handler are queued to the agent.
-func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler Handler) error {
-	c := &conn{s: s, out: make(chan []byte, 16), done: make(chan struct{})}
+//
+// verify, when non-nil, is called once right after registration, before
+// any message is processed: a revoke or re-enrolment that committed
+// between the caller's own authentication check (for example requireAgent
+// verifying the TLS client certificate) and this call registering the
+// socket must not leave a connection open under a client id it no longer
+// authorizes. A verify error closes the socket with CloseRevoked and Serve
+// returns without reading anything.
+func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler Handler, verify func(context.Context) error) error {
+	c := &conn{s: s, out: make(chan []byte, 16), done: make(chan struct{}), writerDone: make(chan struct{})}
 	h.mu.Lock()
 	old := h.conns[clientID]
 	h.conns[clientID] = c
@@ -84,11 +107,10 @@ func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler 
 		old.close(agentproto.CloseReplaced, "replaced by a newer connection")
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	writerDone := make(chan struct{})
 	var last atomic.Int64
 	last.Store(time.Now().UnixNano())
 	go func() {
-		defer close(writerDone)
+		defer close(c.writerDone)
 		h.writer(ctx, c)
 	}()
 	go h.keepalive(ctx, c, &last)
@@ -99,9 +121,16 @@ func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler 
 		}
 		h.mu.Unlock()
 		c.close(closeNormal, "")
-		<-writerDone
+		<-c.writerDone
 		cancel()
 	}()
+	if verify != nil {
+		if err := verify(ctx); err != nil {
+			h.Log.Warn("agent connection rejected on re-check after registering", "client", clientID, "err", err)
+			c.close(agentproto.CloseRevoked, "revoked")
+			return err
+		}
+	}
 	for {
 		b, err := s.ReadMsg(ctx)
 		if err != nil {
@@ -120,7 +149,13 @@ func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler 
 		}
 		replies, err := handler.OnMessage(ctx, clientID, m)
 		if err != nil {
+			if isUnauthorized(err) {
+				h.Log.Warn("agent no longer authorized; closing", "client", clientID, "type", m.MsgType(), "err", err)
+				c.close(agentproto.CloseRevoked, "revoked")
+				return err
+			}
 			h.Log.Warn("agent message failed", "client", clientID, "type", m.MsgType(), "err", err)
+			continue
 		}
 		for _, r := range replies {
 			h.enqueue(c, r)
@@ -134,7 +169,10 @@ func (h *Hub) write(ctx context.Context, c *conn, b []byte) error {
 	return c.s.WriteMsg(wctx, b)
 }
 
-// writer is the only goroutine that writes to or closes the session.
+// writer flushes queued application messages to the session and is the
+// only goroutine that closes it. keepalive writes ping frames to the same
+// session concurrently from its own goroutine; coder/websocket serialises
+// writes (including pings) on the wire itself, so this is safe.
 func (h *Hub) writer(ctx context.Context, c *conn) {
 	for {
 		select {
@@ -247,8 +285,20 @@ func (h *Hub) Broadcast(m agentproto.Message) int {
 }
 
 // Shutdown closes every socket with 1001 (going away); agents reconnect.
+// It waits, bounded by shutdownTimeout in total, for each writer to flush
+// and actually send its close frame before returning.
 func (h *Hub) Shutdown() {
-	for _, c := range h.all() {
+	conns := h.all()
+	for _, c := range conns {
 		c.close(closeGoingAway, "server shutting down")
+	}
+	deadline := time.NewTimer(shutdownTimeout)
+	defer deadline.Stop()
+	for _, c := range conns {
+		select {
+		case <-c.writerDone:
+		case <-deadline.C:
+			return
+		}
 	}
 }

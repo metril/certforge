@@ -95,7 +95,7 @@ func serve(t *testing.T, h *Hub, id uuid.UUID, s *fakeSession) chan error {
 	t.Helper()
 	done := make(chan error, 1)
 	go func() {
-		done <- h.Serve(context.Background(), id, s, helloHandler{got: make(chan agentproto.Message, 8)})
+		done <- h.Serve(context.Background(), id, s, helloHandler{got: make(chan agentproto.Message, 8)}, nil)
 	}()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
@@ -194,5 +194,56 @@ func TestBroadcastAndShutdown(t *testing.T) {
 	h.Shutdown()
 	if s1.closeCode(t) != 1001 || s2.closeCode(t) != 1001 {
 		t.Fatal("shutdown close codes")
+	}
+}
+
+// unauthorizedErr is what a Handler returns for a client no longer allowed
+// to hold its socket (revoked, re-enrolled, or otherwise not active).
+type unauthorizedErr struct{}
+
+func (unauthorizedErr) Error() string      { return "no longer authorized" }
+func (unauthorizedErr) Unauthorized() bool { return true }
+
+type rejectHandler struct{}
+
+func (rejectHandler) OnMessage(context.Context, uuid.UUID, agentproto.Message) ([]agentproto.Message, error) {
+	return nil, unauthorizedErr{}
+}
+
+func TestOnMessageUnauthorizedClosesRevoked(t *testing.T) {
+	h, id, s := New(nil), uuid.New(), newFakeSession()
+	done := make(chan error, 1)
+	go func() { done <- h.Serve(context.Background(), id, s, rejectHandler{}, nil) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for !h.Connected(id) {
+		if time.Now().After(deadline) {
+			t.Fatal("not registered")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	s.send(t, agentproto.Heartbeat{})
+	if code := s.closeCode(t); code != agentproto.CloseRevoked {
+		t.Fatalf("code %d", code)
+	}
+	<-done
+	if h.Connected(id) {
+		t.Fatal("still connected after an unauthorized message")
+	}
+}
+
+func TestVerifyFailureClosesRevokedWithoutProcessing(t *testing.T) {
+	h, id, s := New(nil), uuid.New(), newFakeSession()
+	got := make(chan agentproto.Message, 1)
+	verify := func(context.Context) error { return unauthorizedErr{} }
+	done := make(chan error, 1)
+	go func() { done <- h.Serve(context.Background(), id, s, helloHandler{got: got}, verify) }()
+	if code := s.closeCode(t); code != agentproto.CloseRevoked {
+		t.Fatalf("code %d", code)
+	}
+	<-done
+	select {
+	case m := <-got:
+		t.Fatalf("handler ran despite verify failing: %#v", m)
+	default:
 	}
 }
