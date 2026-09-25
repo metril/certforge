@@ -13,6 +13,15 @@ SELECT * FROM clients WHERE id = $1 AND org_id = $2 FOR UPDATE;
 -- name: LockClientByID :one
 SELECT * FROM clients WHERE id = $1 FOR UPDATE;
 
+-- name: LockClientsByID :many
+-- Locks the given clients FOR UPDATE in id order (a fixed order across
+-- every caller, regardless of the order ids arrive in), before any
+-- deployment row is written for one of their grants: render calls this
+-- first, so every path that renders a deployment locks clients before
+-- deployments, ruling out the client-then-deployment vs
+-- deployment-then-client deadlock between a grant write and a resync.
+SELECT id FROM clients WHERE id = ANY(sqlc.arg(ids)::uuid[]) ORDER BY id FOR UPDATE;
+
 -- name: UpdateClient :one
 UPDATE clients SET name = sqlc.arg(name), site_id = sqlc.narg(site_id)
 WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) RETURNING *;

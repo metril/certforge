@@ -107,6 +107,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
+	issuanceSvc.RenameHook = agentSvc.ResyncCertificateRename
 	// Started with a context independent of the shutdown signal: cancelling
 	// the context passed to Start aborts running jobs immediately (river's
 	// contract), which would race the graceful drain stopRiver performs below.

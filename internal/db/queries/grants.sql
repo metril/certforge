@@ -78,6 +78,29 @@ SELECT id FROM client_cert_grants WHERE sqlc.arg(hook_id)::uuid = ANY(hook_ids) 
 SELECT cert_id, count(*)::bigint AS grants FROM client_cert_grants
 WHERE cert_id = ANY(sqlc.arg(ids)::uuid[]) AND removed_at IS NULL GROUP BY cert_id;
 
+-- name: CountAllGrantsByCert :many
+-- Counts live AND removal-pending grants (any row still present; a
+-- removal-pending grant is only deleted once its agent confirms the files
+-- are gone), since cert_id is ON DELETE CASCADE and a certificate delete
+-- must not silently orphan a grant an agent still has to act on.
+SELECT cert_id, count(*)::bigint AS grants FROM client_cert_grants
+WHERE cert_id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY cert_id;
+
+-- name: LockCertificateForGrant :one
+-- Locks the certificate FOR KEY SHARE before a grant is inserted, so it
+-- conflicts with DeleteCertificate's FOR UPDATE lock (LockCertificateForGrant/
+-- GetCertificateForUpdate are incompatible row-lock modes) and the two
+-- serialize: whichever locks first is seen by the other, so a certificate
+-- can never be deleted out from under a grant being created for it.
+SELECT id FROM certificates WHERE id = $1 AND org_id = $2 FOR KEY SHARE;
+
+-- name: GrantClientIDs :many
+-- Cheap grant id -> client id lookup (no joins), used to isolate a
+-- multi-client re-render (OnVersion, SweepDeployments) into one
+-- transaction per client, so a render failure for one client's grant
+-- cannot roll back or stall another client's already-computed update.
+SELECT id, client_id FROM client_cert_grants WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND removed_at IS NULL;
+
 -- name: BumpClientRevisions :many
 UPDATE clients SET desired_revision = desired_revision + 1
 WHERE id = ANY(sqlc.arg(ids)::uuid[]) RETURNING id, desired_revision;

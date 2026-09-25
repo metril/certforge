@@ -247,11 +247,11 @@ func TestCertificateUsesCredentialAndReissuesOnNameChange(t *testing.T) {
 		t.Fatalf("credential delete not blocked: %v", err)
 	}
 	in.Name = "web2"
-	if _, reissue, err := f.store.UpdateCertificate(ctx, f.org, c.ID, in); err != nil || reissue {
+	if _, reissue, err := f.store.UpdateCertificate(ctx, f.org, c.ID, in, nil); err != nil || reissue {
 		t.Fatalf("rename must not reissue: %v %v", reissue, err)
 	}
 	in.SANs = append(in.SANs, "www.other.test")
-	if _, reissue, _ := f.store.UpdateCertificate(ctx, f.org, c.ID, in); !reissue {
+	if _, reissue, _ := f.store.UpdateCertificate(ctx, f.org, c.ID, in, nil); !reissue {
 		t.Fatal("name change must reissue")
 	}
 }

@@ -439,6 +439,36 @@ func (q *Queries) LockClientByID(ctx context.Context, id uuid.UUID) (Client, err
 	return i, err
 }
 
+const lockClientsByID = `-- name: LockClientsByID :many
+SELECT id FROM clients WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE
+`
+
+// Locks the given clients FOR UPDATE in id order (a fixed order across
+// every caller, regardless of the order ids arrive in), before any
+// deployment row is written for one of their grants: render calls this
+// first, so every path that renders a deployment locks clients before
+// deployments, ruling out the client-then-deployment vs
+// deployment-then-client deadlock between a grant write and a resync.
+func (q *Queries) LockClientsByID(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockClientsByID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pendingTokens = `-- name: PendingTokens :many
 SELECT client_id, expires_at FROM enrollment_tokens
 WHERE client_id = ANY($1::uuid[]) AND used_at IS NULL AND expires_at > now()

@@ -152,6 +152,20 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 			for _, f := range specs {
 				paths = append(paths, f.Path)
 			}
+			// expected is empty when this grant's certificate had no
+			// current version at its last render (never actually
+			// installed), which would otherwise let a removed grant
+			// contribute zero paths and silently release its layout/target
+			// paths for another grant to claim. Fall back to the paths its
+			// current layout/target definition would write; layout/target
+			// rows are never deleted while a grant (including a
+			// removal-pending one) still references them, so this is
+			// always available.
+			if len(specs) == 0 {
+				if paths, err = grantPaths(r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
+					return err
+				}
+			}
 		} else if paths, err = grantPaths(r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
 			return err
 		}
@@ -169,16 +183,39 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 // render recomputes the expected files of grantIDs from their certificate's
 // current version and resets their deployments to pending. It returns the
 // affected clients and which of them have a push grant among these.
+//
+// It locks every affected client FOR UPDATE, in id order, before writing
+// any deployment row: every caller that writes deployments does so through
+// render, so this is the one place a client-row lock happens before a
+// deployment-row lock, everywhere. CreateGrant/UpdateGrant already hold
+// their single client's lock by the time they call render (re-locking the
+// same row here is a no-op); resyncTx (layout/target/hook changes, OnVersion,
+// the sweep) does not lock any client beforehand, so without this the two
+// families would take the same two locks in opposite orders and could
+// deadlock. Locking here first also closes the race where checkPaths reads
+// a client's grants without holding its lock: by the time render returns,
+// every affected client is locked for the rest of the transaction, so a
+// concurrent CreateGrant/UpdateGrant on the same client blocks until this
+// transaction commits or rolls back, instead of both computing checkPaths
+// against a stale, pre-conflict view.
 func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uuid.UUID) ([]uuid.UUID, map[uuid.UUID]bool, error) {
 	rows, err := q.GrantSources(ctx, grantIDs)
 	if err != nil {
 		return nil, nil, err
 	}
 	clients := make([]uuid.UUID, 0, len(rows))
+	for _, r := range rows {
+		clients = append(clients, r.ClientID)
+	}
+	clients = uniq(clients)
+	if len(clients) > 0 {
+		if _, err := q.LockClientsByID(ctx, clients); err != nil {
+			return nil, nil, err
+		}
+	}
 	push := map[uuid.UUID]bool{}
 	materials := map[uuid.UUID]render.Material{}
 	for _, r := range rows {
-		clients = append(clients, r.ClientID)
 		if r.Delivery == "push" {
 			push[r.ClientID] = true
 		}
@@ -209,7 +246,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 			return nil, nil, err
 		}
 	}
-	return uniq(clients), push, nil
+	return clients, push, nil
 }
 
 func grantDetails(g sqlcgen.ClientCertGrant) map[string]any {
@@ -244,6 +281,16 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
 	}
 	if err := s.checkRefs(ctx, q, orgID, in); err != nil {
+		return uuid.Nil, err
+	}
+	// Locks the certificate FOR KEY SHARE before inserting a row that
+	// references it: FOR KEY SHARE conflicts with DeleteCertificate's FOR
+	// UPDATE, so the two serialize instead of a delete racing this insert
+	// (checkRefs's existence check alone is not enough: the certificate
+	// could be deleted between that check and the insert).
+	if _, err := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: in.CertID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, invalid("certificateId", "certificate %s is not in this org", in.CertID)
+	} else if err != nil {
 		return uuid.Nil, err
 	}
 	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: clientID, CertID: in.CertID, Delivery: in.Delivery,
@@ -337,7 +384,16 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID) err
 	if err != nil {
 		return err
 	}
-	immediate := c.Status != "active"
+	// A revoked client, or a pending one that never applied a revision
+	// (never enrolled, or enrolled but never actually deployed anything),
+	// has no agent that could ever remove this grant's files, so the row
+	// is deleted at once. A pending client with applied_revision > 0 has
+	// deployed before (it was active, then re-enrolled or its certificate
+	// expired and it dropped back to pending) and may still have files on
+	// disk from this grant, so it keeps the soft-delete path: the row
+	// stays removal-pending until that client reconnects and reports the
+	// files gone.
+	immediate := c.Status == "revoked" || (c.Status == "pending" && c.AppliedRevision == 0)
 	var revs []sqlcgen.BumpClientRevisionsRow
 	if immediate {
 		err = q.DeleteGrantRow(ctx, grantID)
@@ -408,10 +464,9 @@ func (s *Service) resyncTx(ctx context.Context, q *sqlcgen.Queries, ids []uuid.U
 	return func() { s.nudge(revs, push) }, nil
 }
 
-func (s *Service) resyncGrants(ctx context.Context, ids []uuid.UUID) error {
-	if len(ids) == 0 {
-		return nil
-	}
+// resyncGrantsOneClient re-renders one client's grants in their own
+// transaction.
+func (s *Service) resyncGrantsOneClient(ctx context.Context, ids []uuid.UUID) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -426,6 +481,38 @@ func (s *Service) resyncGrants(ctx context.Context, ids []uuid.UUID) error {
 	}
 	nudge()
 	return nil
+}
+
+// resyncGrants re-renders ids, one transaction per client: OnVersion and
+// SweepDeployments can be asked to re-render grants of many clients at
+// once, and a render failure for one client (for example a corrupted
+// deploy target config) must not roll back or delay every other client's
+// already-computed update. Every client is attempted; the first error is
+// returned (so the caller still knows something needs attention and, for
+// SweepDeployments, river retries), but only after every client has had
+// its own chance to commit.
+func (s *Service) resyncGrants(ctx context.Context, ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	groups, err := s.Q.GrantClientIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	byClient := map[uuid.UUID][]uuid.UUID{}
+	for _, g := range groups {
+		byClient[g.ClientID] = append(byClient[g.ClientID], g.ID)
+	}
+	var firstErr error
+	for clientID, grantIDs := range byClient {
+		if err := s.resyncGrantsOneClient(ctx, grantIDs); err != nil {
+			s.log().Error("agents: re-render failed for one client; continuing with the rest", "client", clientID, "err", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
 
 // Resync re-renders every live grant using a changed layout, target or hook
@@ -448,6 +535,21 @@ func (s *Service) Resync(ctx context.Context, q *sqlcgen.Queries, ref RefKind, i
 		return nil, err
 	}
 	return s.resyncTx(ctx, q, ids, ref != RefHook)
+}
+
+// ResyncCertificateRename re-renders every live grant of certID inside q,
+// the transaction that just renamed the certificate (issuance.Store's
+// UpdateCertificate rename hook): a Traefik target's generated files live
+// under certs/<SafeName(certificate name)>, so a rename can both make two
+// of a client's grants collide (checked, 409 fails the rename) and leaves
+// deployments.expected holding stale pre-rename paths until something
+// re-renders them. The caller runs the returned nudge after commit.
+func (s *Service) ResyncCertificateRename(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (func(), error) {
+	ids, err := q.LiveGrantIDsForCert(ctx, certID)
+	if err != nil {
+		return nil, err
+	}
+	return s.resyncTx(ctx, q, ids, true)
 }
 
 // OnVersion implements issuance.VersionListener: every live grant of the

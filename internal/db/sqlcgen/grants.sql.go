@@ -229,6 +229,40 @@ func (q *Queries) ClientGrantPaths(ctx context.Context, clientIds []uuid.UUID) (
 	return items, nil
 }
 
+const countAllGrantsByCert = `-- name: CountAllGrantsByCert :many
+SELECT cert_id, count(*)::bigint AS grants FROM client_cert_grants
+WHERE cert_id = ANY($1::uuid[]) GROUP BY cert_id
+`
+
+type CountAllGrantsByCertRow struct {
+	CertID uuid.UUID `json:"cert_id"`
+	Grants int64     `json:"grants"`
+}
+
+// Counts live AND removal-pending grants (any row still present; a
+// removal-pending grant is only deleted once its agent confirms the files
+// are gone), since cert_id is ON DELETE CASCADE and a certificate delete
+// must not silently orphan a grant an agent still has to act on.
+func (q *Queries) CountAllGrantsByCert(ctx context.Context, ids []uuid.UUID) ([]CountAllGrantsByCertRow, error) {
+	rows, err := q.db.Query(ctx, countAllGrantsByCert, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountAllGrantsByCertRow{}
+	for rows.Next() {
+		var i CountAllGrantsByCertRow
+		if err := rows.Scan(&i.CertID, &i.Grants); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countLiveGrantsByCert = `-- name: CountLiveGrantsByCert :many
 SELECT cert_id, count(*)::bigint AS grants FROM client_cert_grants
 WHERE cert_id = ANY($1::uuid[]) AND removed_at IS NULL GROUP BY cert_id
@@ -308,6 +342,39 @@ DELETE FROM client_cert_grants WHERE id = $1
 func (q *Queries) DeleteGrantRow(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteGrantRow, id)
 	return err
+}
+
+const grantClientIDs = `-- name: GrantClientIDs :many
+SELECT id, client_id FROM client_cert_grants WHERE id = ANY($1::uuid[]) AND removed_at IS NULL
+`
+
+type GrantClientIDsRow struct {
+	ID       uuid.UUID `json:"id"`
+	ClientID uuid.UUID `json:"client_id"`
+}
+
+// Cheap grant id -> client id lookup (no joins), used to isolate a
+// multi-client re-render (OnVersion, SweepDeployments) into one
+// transaction per client, so a render failure for one client's grant
+// cannot roll back or stall another client's already-computed update.
+func (q *Queries) GrantClientIDs(ctx context.Context, ids []uuid.UUID) ([]GrantClientIDsRow, error) {
+	rows, err := q.db.Query(ctx, grantClientIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GrantClientIDsRow{}
+	for rows.Next() {
+		var i GrantClientIDsRow
+		if err := rows.Scan(&i.ID, &i.ClientID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const grantSources = `-- name: GrantSources :many
@@ -538,6 +605,27 @@ func (q *Queries) LiveGrantIDsUsingTarget(ctx context.Context, deployTargetID *u
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockCertificateForGrant = `-- name: LockCertificateForGrant :one
+SELECT id FROM certificates WHERE id = $1 AND org_id = $2 FOR KEY SHARE
+`
+
+type LockCertificateForGrantParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the certificate FOR KEY SHARE before a grant is inserted, so it
+// conflicts with DeleteCertificate's FOR UPDATE lock (LockCertificateForGrant/
+// GetCertificateForUpdate are incompatible row-lock modes) and the two
+// serialize: whichever locks first is seen by the other, so a certificate
+// can never be deleted out from under a grant being created for it.
+func (q *Queries) LockCertificateForGrant(ctx context.Context, arg LockCertificateForGrantParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockCertificateForGrant, arg.ID, arg.OrgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const lockGrant = `-- name: LockGrant :one

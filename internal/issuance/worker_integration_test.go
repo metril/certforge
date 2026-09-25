@@ -93,7 +93,7 @@ func (s *renamingSigner) Issue(ctx context.Context, req signer.IssueRequest) (*s
 		return nil, err
 	}
 	if _, _, err := s.f.store.UpdateCertificate(ctx, s.f.org, s.certID,
-		CertInput{Name: cur.Name, CommonName: cur.CommonName, SANs: s.newSANs, Rules: cur.Rules}); err != nil {
+		CertInput{Name: cur.Name, CommonName: cur.CommonName, SANs: s.newSANs, Rules: cur.Rules}, nil); err != nil {
 		return nil, err
 	}
 	return iss, nil

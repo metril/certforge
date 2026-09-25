@@ -40,6 +40,14 @@ type Service struct {
 	// Log receives a warning when an audit write or EnqueueIssue fails
 	// after a successful certificate write; nil defaults to slog.Default().
 	Log *slog.Logger
+
+	// RenameHook runs inside Store.UpdateCertificate's transaction when a
+	// certificate's name changes; nil skips it. Wired to
+	// agents.Service.ResyncCertificateRename in production, so a rename
+	// that would make two of a client's grants write the same Traefik path
+	// (certs/<SafeName>) fails the rename itself, and grants otherwise
+	// re-render with the new name in the same transaction as the rename.
+	RenameHook RenameHook
 }
 
 // NewService wires production defaults.
@@ -124,7 +132,7 @@ func (s *Service) CreateCertificate(ctx context.Context, orgID uuid.UUID, in Cer
 // when names changed. A failed enqueue does not fail the call; see
 // enqueueBestEffort.
 func (s *Service) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in CertInput) (Certificate, error) {
-	c, reissue, err := s.Store.UpdateCertificate(ctx, orgID, id, in)
+	c, reissue, err := s.Store.UpdateCertificate(ctx, orgID, id, in, s.RenameHook)
 	if err != nil {
 		return c, err
 	}

@@ -482,10 +482,18 @@ func (s *Store) CreateCertificate(ctx context.Context, orgID uuid.UUID, in CertI
 	return c, nil
 }
 
+// RenameHook runs inside UpdateCertificate's transaction when a name
+// change commits, right before commit; its returned func (possibly nil)
+// runs after. Used by the agents service to re-render and path-check
+// grants whose Traefik target paths depend on the certificate name.
+type RenameHook func(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (func(), error)
+
 // UpdateCertificate replaces a definition. reissue reports that the names
-// changed, which makes the certificate due now. Runs inside one
-// transaction; see prepareCertTx.
-func (s *Store) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in CertInput) (c Certificate, reissue bool, err error) {
+// (common name or SANs) changed, which makes the certificate due now. Runs
+// inside one transaction; see prepareCertTx. When in.Name differs from the
+// stored name and hook is non-nil, hook runs inside the same transaction
+// before commit; a hook error fails the whole update (rolled back).
+func (s *Store) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in CertInput, hook RenameHook) (c Certificate, reissue bool, err error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Certificate{}, false, err
@@ -523,8 +531,17 @@ func (s *Store) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in C
 	if err != nil {
 		return Certificate{}, false, err
 	}
+	var after func()
+	if hook != nil && cur.Name != c.Name {
+		if after, err = hook(ctx, q, id); err != nil {
+			return Certificate{}, false, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Certificate{}, false, err
+	}
+	if after != nil {
+		after()
 	}
 	return c, reissue, nil
 }

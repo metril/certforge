@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
@@ -18,6 +19,7 @@ import (
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/render"
 )
@@ -266,17 +268,45 @@ func (s *Server) UpdateCertificate(ctx context.Context, r gen.UpdateCertificateR
 // queued for this certificate finds it gone and is a no-op
 // (IssueWorker.Issue returns nil on ErrNotFound); no explicit cancel is
 // needed.
+// DeleteCertificate locks the certificate row FOR UPDATE (GetCertificateForUpdate)
+// before counting its grants and deleting it, all in one transaction: a
+// bare read-then-delete over the pool could otherwise race a concurrent
+// CreateGrant, which locks the same row FOR KEY SHARE (an incompatible
+// mode) before inserting — see agents.Service.CreateGrant. The grant count
+// includes removal-pending grants (any row still present), not just live
+// ones, since cert_id is ON DELETE CASCADE and a removal-pending grant
+// still needs its agent to confirm the files are gone.
 func (s *Server) DeleteCertificate(ctx context.Context, r gen.DeleteCertificateRequestObject) (gen.DeleteCertificateResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	if rows, err := s.queries().CountLiveGrantsByCert(ctx, []uuid.UUID{r.Id}); err != nil {
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
 		return nil, err
-	} else if len(rows) > 0 && rows[0].Grants > 0 {
-		return nil, conflict("This certificate is granted to %d client(s); delete those grants first.", rows[0].Grants)
 	}
-	if err := s.d.Issuance.Store.DeleteCertificate(ctx, r.OrgId, r.Id); err != nil {
-		return nil, mapErr(err)
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
+	if _, err := q.GetCertificateForUpdate(ctx, sqlcgen.GetCertificateForUpdateParams{ID: r.Id, OrgID: r.OrgId}); errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("certificate %s", r.Id)
+	} else if err != nil {
+		return nil, err
+	}
+	rows, err := q.CountAllGrantsByCert(ctx, []uuid.UUID{r.Id})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) > 0 && rows[0].Grants > 0 {
+		return nil, conflict("This certificate is granted to %d client(s); remove and confirm those grants first.", rows[0].Grants)
+	}
+	n, err := q.DeleteCertificate(ctx, sqlcgen.DeleteCertificateParams{ID: r.Id, OrgID: r.OrgId})
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, notFound("certificate %s", r.Id)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "certificate.delete", ResourceType: "certificate", ResourceID: r.Id.String(), OrgID: &r.OrgId})
 	return gen.DeleteCertificate204Response{}, nil

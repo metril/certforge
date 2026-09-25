@@ -10,17 +10,21 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/signer"
 )
 
 // mapErr turns issuance domain errors into problem responses; anything else
-// stays an internal error.
+// stays an internal error. A rename that fails issuance.Store's RenameHook
+// (agents.Service.ResyncCertificateRename, an overlapping-path conflict)
+// surfaces as *agents.Error here too, mapped the same way mapAgentErr maps it.
 func mapErr(err error) error {
 	var ve *issuance.ValidationError
 	var iu *issuance.InUseError
 	var se *signer.Error
+	var ae *agents.Error
 	switch {
 	case err == nil:
 		return nil
@@ -32,6 +36,8 @@ func mapErr(err error) error {
 		return &HTTPError{Status: http.StatusConflict, Title: "In use", Detail: iu.Error()}
 	case errors.As(err, &se):
 		return &HTTPError{Status: http.StatusBadGateway, Title: "CA error", Detail: se.Error()}
+	case errors.As(err, &ae):
+		return mapAgentErr(err)
 	}
 	return err
 }

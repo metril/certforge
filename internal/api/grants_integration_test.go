@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -292,6 +293,13 @@ func TestGrantVsDeleteHookNoDangling(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		// Whichever side won, free the hook's name for the next iteration:
+		// on a create win, DeleteHook lost and the hook is still there
+		// (its only dependent, the grant above, is now gone, so this is
+		// safe); on a delete win it is a no-op.
+		if _, err := f.pool.Exec(ctx, `DELETE FROM hooks WHERE id = $1`, h.ID); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -346,5 +354,334 @@ func TestOnVersionUpdatesDeployments(t *testing.T) {
 	}
 	if cl, _ = f.q.GetClientByID(ctx, c.ID); cl.DesiredRevision != 3 {
 		t.Fatal("a sweep with nothing stale bumped the revision")
+	}
+}
+
+// Review Focus (fix round 1, finding 1): a layout update (resyncTx) and a
+// grant create on the same client take client and deployment locks; before
+// the fix they took them in opposite orders (resyncTx: deployment then
+// client; CreateGrant: client then deployment) and could deadlock (a 500),
+// and checkPaths could run before the affected client was locked. Now
+// render locks the affected clients first, so the two requests serialize:
+// whichever proceeds first commits, and the other sees its result and
+// fails with 409 — never a 500, and never both succeeding when their
+// results genuinely collide.
+func TestConcurrentLayoutUpdateVsGrantCreateNoDeadlock(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	certA, _ := f.currentCert(t, "a")
+	certB, _ := f.currentCert(t, "b")
+	l1 := f.layout(t, "l1", "/a.pem")
+	l2 := f.layout(t, "l2", "/b.pem")
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certA, Delivery: push(), LayoutId: &l1}}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10; i++ {
+		// Reset l1 back to its own path and remove any grant on certB from
+		// a previous iteration, so each iteration starts from the same
+		// unconflicted state and the race is exercised fresh each time.
+		if _, err := f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l1, Body: layoutInput("l1", "/a.pem")}); err != nil {
+			t.Fatal(err)
+		}
+		var gid *uuid.UUID
+		_ = f.pool.QueryRow(ctx, `SELECT id FROM client_cert_grants WHERE client_id = $1 AND cert_id = $2`, c.ID, certB).Scan(&gid)
+		if gid != nil {
+			if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: *gid}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.pool.Exec(ctx, `DELETE FROM client_cert_grants WHERE id = $1`, *gid); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var wg sync.WaitGroup
+		var updErr, createErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, updErr = f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l1, Body: layoutInput("l1", "/b.pem")})
+		}()
+		go func() {
+			defer wg.Done()
+			_, createErr = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certB, Delivery: push(), LayoutId: &l2}})
+		}()
+		wg.Wait()
+		for _, err := range []error{updErr, createErr} {
+			if err != nil && problemStatus(err) == 500 {
+				t.Fatalf("iteration %d: got a 500: %v", i, err)
+			}
+		}
+		if updErr == nil && createErr == nil {
+			t.Fatalf("iteration %d: both succeeded; overlapping /b.pem not detected", i)
+		}
+		if updErr != nil {
+			wantStatus(t, updErr, 409)
+		}
+		if createErr != nil {
+			wantStatus(t, createErr, 409)
+		}
+	}
+}
+
+// Review Focus (fix round 1, finding 2): DeleteCertificate must lock the
+// certificate and count removal-pending grants too (cert_id is ON DELETE
+// CASCADE), and CreateGrant must lock the certificate so it cannot insert a
+// grant for a certificate a concurrent delete is removing.
+func TestDeleteCertificateBlockedByRemovalPendingGrant(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := res.(gen.CreateGrant201JSONResponse).Id
+	if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid}); err != nil {
+		t.Fatal(err)
+	}
+	var removed *time.Time
+	_ = f.pool.QueryRow(ctx, `SELECT removed_at FROM client_cert_grants WHERE id = $1`, gid).Scan(&removed)
+	if removed == nil {
+		t.Fatal("setup: grant not removal-pending")
+	}
+	_, err = f.srv.DeleteCertificate(op, gen.DeleteCertificateRequestObject{OrgId: f.org, Id: certID})
+	wantStatus(t, err, 409)
+	var n int
+	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM certificates WHERE id = $1`, certID).Scan(&n)
+	if n != 1 {
+		t.Fatal("certificate deleted despite a removal-pending grant")
+	}
+}
+
+func TestConcurrentCreateGrantVsDeleteCertificateNoDangling(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	for i := 0; i < 10; i++ {
+		certID, _ := f.currentCert(t, fmt.Sprintf("web-%d", i))
+		var wg sync.WaitGroup
+		var createErr, deleteErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, createErr = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}})
+		}()
+		go func() {
+			defer wg.Done()
+			_, deleteErr = f.srv.DeleteCertificate(op, gen.DeleteCertificateRequestObject{OrgId: f.org, Id: certID})
+		}()
+		wg.Wait()
+		for _, err := range []error{createErr, deleteErr} {
+			if err != nil && problemStatus(err) == 500 {
+				t.Fatalf("iteration %d: got a 500: %v", i, err)
+			}
+		}
+		var orphan int
+		_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM client_cert_grants g WHERE g.cert_id = $1
+			AND NOT EXISTS (SELECT 1 FROM certificates ce WHERE ce.id = $1)`, certID).Scan(&orphan)
+		if orphan > 0 {
+			t.Fatalf("iteration %d: a grant references certificate %s which no longer exists", i, certID)
+		}
+		// Clean up whichever side won, so the next iteration starts clean.
+		if createErr == nil {
+			var gid uuid.UUID
+			if err := f.pool.QueryRow(ctx, `SELECT id FROM client_cert_grants WHERE cert_id = $1`, certID).Scan(&gid); err == nil {
+				if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid}); err != nil {
+					t.Fatal(err)
+				}
+				_, _ = f.pool.Exec(ctx, `DELETE FROM client_cert_grants WHERE id = $1`, gid)
+			}
+		}
+		if deleteErr == nil || createErr == nil {
+			_, _ = f.pool.Exec(ctx, `DELETE FROM certificates WHERE id = $1`, certID)
+		}
+	}
+}
+
+// Review Focus (fix round 1, finding 3): a render failure for one client
+// (a corrupted deploy target config) must not stop another client's
+// deployment from being updated by the same OnVersion/SweepDeployments run.
+func TestOnVersionIsolatesPerClientRenderFailure(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	good := f.activeClient(t, "web-good")
+	bad := f.activeClient(t, "web-bad")
+	certID, vid := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: good.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}}); err != nil {
+		t.Fatal(err)
+	}
+	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik",
+		Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: bad.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), DeployTargetId: &tg.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	// Corrupt the bad client's target config directly so ParseTarget fails
+	// deterministically on every render of that grant.
+	if _, err := f.pool.Exec(ctx, `UPDATE deploy_targets SET config = '{"dir":123}' WHERE id = $1`, tg.ID); err != nil {
+		t.Fatal(err)
+	}
+	tx, _ := f.store.Begin(ctx)
+	v2, err := f.certs.Insert(ctx, tx, certID, &signer.Issued{LeafDER: []byte("leaf2"), ChainDER: [][]byte{[]byte("int")},
+		PrivateKeyPKCS8: []byte("secret-key-2"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "02"}, "ec256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE certificates SET current_version_id = $2 WHERE id = $1`, certID, v2.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = tx.Commit(ctx)
+	f.svc.OnVersion(ctx, certID, v2.ID)
+	var gotGood uuid.UUID
+	_ = f.pool.QueryRow(ctx, `SELECT d.version_id FROM deployments d JOIN client_cert_grants g ON g.id = d.grant_id WHERE g.client_id = $1`, good.ID).Scan(&gotGood)
+	if gotGood != v2.ID {
+		t.Fatalf("good client's deployment not updated despite the bad client's render failure: got %v want %v", gotGood, v2.ID)
+	}
+	var gotBad uuid.UUID
+	_ = f.pool.QueryRow(ctx, `SELECT d.version_id FROM deployments d JOIN client_cert_grants g ON g.id = d.grant_id WHERE g.client_id = $1`, bad.ID).Scan(&gotBad)
+	if gotBad != vid {
+		t.Fatalf("bad client's deployment should be left at the old version after its render failed: got %v want %v", gotBad, vid)
+	}
+	// The sweep re-attempts the bad client's stale grant (and fails again)
+	// without erroring out before updating anything: nothing further to
+	// assert here beyond it not panicking or deadlocking.
+	_ = f.svc.SweepDeployments(ctx)
+}
+
+// Review Focus (fix round 1, finding 4a): a removal-pending grant whose
+// deployment was never rendered (expected == "[]", because its certificate
+// had no current version yet) must still contribute its layout's path to
+// the overlap check, not silently contribute zero paths.
+func TestGrantRejectsOverlappingPathWithUnrenderedRemovedGrant(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	certA, err := f.store.CreateCertificate(ctx, f.org, issuance.CertInput{Name: "a", CommonName: "a.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	certB, _ := f.currentCert(t, "b")
+	shared := f.layout(t, "shared", "/etc/ssl/shared.pem")
+	// certA has no issued version yet, so this grant's deployment renders
+	// with expected == "[]".
+	res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certA.ID, Delivery: push(), LayoutId: &shared}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := res.(gen.CreateGrant201JSONResponse).Id
+	var expected string
+	_ = f.pool.QueryRow(ctx, `SELECT expected::text FROM deployments WHERE grant_id = $1`, gid).Scan(&expected)
+	if expected != "[]" {
+		t.Fatalf("setup: expected %s, want an empty render", expected)
+	}
+	if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid}); err != nil {
+		t.Fatal(err)
+	}
+	var removed *time.Time
+	_ = f.pool.QueryRow(ctx, `SELECT removed_at FROM client_cert_grants WHERE id = $1`, gid).Scan(&removed)
+	if removed == nil {
+		t.Fatal("setup: grant not removal-pending")
+	}
+	_, err = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certB, Delivery: push(), LayoutId: &shared}})
+	wantStatus(t, err, 409)
+}
+
+// Review Focus (fix round 1, finding 4b): renaming a certificate that has
+// live grants re-checks overlapping Traefik paths (certs/<SafeName>
+// depends on the name) and re-renders those grants in the same
+// transaction as the rename.
+func TestCertificateRenameResyncsGrantsAndBlocksOverlap(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	apiCert, _ := f.currentCert(t, "api")
+	webCert, _ := f.currentCert(t, "web")
+	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik",
+		Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: apiCert, Delivery: push(), DeployTargetId: &tg.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	webGrant, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: webCert, Delivery: push(), DeployTargetId: &tg.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := func() int64 {
+		cl, _ := f.q.GetClientByID(ctx, c.ID)
+		return cl.DesiredRevision
+	}
+	before := rev()
+	// Renaming "web" to "API" collides with the existing "api" grant's
+	// Traefik certs/api/* paths on the same client (SafeName lowercases,
+	// so "API" and "api" share certs/api/*); the literal names still
+	// differ, so this isn't blocked by the name-uniqueness constraint.
+	_, err = f.srv.UpdateCertificate(op, gen.UpdateCertificateRequestObject{OrgId: f.org, Id: webCert,
+		Body: &gen.CertificateInput{Name: "API", CommonName: "web.example.test"}})
+	wantStatus(t, err, 409)
+	var stillWeb string
+	_ = f.pool.QueryRow(ctx, `SELECT name FROM certificates WHERE id = $1`, webCert).Scan(&stillWeb)
+	if stillWeb != "web" {
+		t.Fatalf("rename committed despite the overlap: name is now %q", stillWeb)
+	}
+	if rev() != before {
+		t.Fatalf("a rejected rename bumped the revision: %d -> %d", before, rev())
+	}
+	// A non-colliding rename succeeds, re-renders the grant under the new
+	// name, and bumps the revision.
+	if _, err := f.srv.UpdateCertificate(op, gen.UpdateCertificateRequestObject{OrgId: f.org, Id: webCert,
+		Body: &gen.CertificateInput{Name: "website", CommonName: "web.example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	var expected string
+	_ = f.pool.QueryRow(ctx, `SELECT expected::text FROM deployments WHERE grant_id = $1`, webGrant.(gen.CreateGrant201JSONResponse).Id).Scan(&expected)
+	if !strings.Contains(expected, "certs/website/") {
+		t.Fatalf("deployment not re-rendered under the new name: %s", expected)
+	}
+	if rev() != before+1 {
+		t.Fatalf("successful rename did not bump the revision once: before %d now %d", before, rev())
+	}
+}
+
+// Review Focus (fix round 1, ruling 5): DeleteGrant only hard-deletes at
+// once for a client that could never have deployed anything (revoked, or
+// pending with applied_revision 0). A client that re-enrolled (dropped
+// back to pending) after actually applying a revision may still have this
+// grant's files on disk, so it keeps the soft-delete path.
+func TestDeleteGrantSoftDeletesReenrolledClientThatHadDeployed(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := res.(gen.CreateGrant201JSONResponse).Id
+	// Simulate a client that applied a revision and then re-enrolled
+	// (dropped back to pending without resetting applied_revision).
+	if _, err := f.pool.Exec(ctx, `UPDATE clients SET status = 'pending', applied_revision = 1 WHERE id = $1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM client_cert_grants WHERE id = $1`, gid).Scan(&n)
+	if n != 1 {
+		t.Fatal("grant of a re-enrolled, previously-deployed client hard-deleted instead of soft-deleted")
+	}
+	var removed *time.Time
+	_ = f.pool.QueryRow(ctx, `SELECT removed_at FROM client_cert_grants WHERE id = $1`, gid).Scan(&removed)
+	if removed == nil {
+		t.Fatal("grant not marked removal-pending")
 	}
 }

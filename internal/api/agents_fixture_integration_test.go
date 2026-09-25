@@ -84,6 +84,7 @@ func newAgentFixture(t *testing.T) *agentFixture {
 		Settings: agents.StaticSettings(agents.Settings{}, "https://cf.example.test"), Log: slog.Default()}
 	f.srv.d.Queries = q
 	f.srv.d.Agents = svc
+	f.srv.d.Issuance.RenameHook = svc.ResyncCertificateRename
 	return &agentFixture{apiFixture: f, svc: svc, ca: ca, q: q, hub: hub}
 }
 
