@@ -71,22 +71,31 @@ func (s *Server) StartOidcLogin(ctx context.Context, req gen.StartOidcLoginReque
 }
 
 // OidcCallback finishes the flow, upserts the user and starts a session.
+// Every failure — a bad or expired state, a denied login, a settings/DB/IdP
+// error, or a disabled user — is a 302 to /login?error=<code>: this handler
+// answers a browser navigation, so it must never fall through to the
+// generic problem+json 500 path (ruling B2).
 func (s *Server) OidcCallback(ctx context.Context, _ gen.OidcCallbackRequestObject) (gen.OidcCallbackResponseObject, error) {
 	w, r := httpFrom(ctx)
 	http.SetCookie(w, s.d.OIDC.ClearStateCookie(s.secureCookie(ctx, r)))
-	fail := func(code string) gen.OidcCallbackResponseObject {
-		s.audit(ctx, audit.Event{Action: "session.login_failed", ResourceType: "user", ActorType: "anonymous",
-			Details: map[string]any{"method": "oidc", "reason": code}})
+	fail := func(code, resourceID string) gen.OidcCallbackResponseObject {
+		ev := audit.Event{Action: "session.login_failed", ResourceType: "user", ActorType: "anonymous",
+			Details: map[string]any{"method": "oidc", "reason": code}}
+		if resourceID != "" {
+			ev.ResourceID = resourceID
+		}
+		s.audit(ctx, ev)
 		return gen.OidcCallback302Response{Headers: gen.OidcCallback302ResponseHeaders{Location: "/login?error=" + code}}
 	}
 	st, err := s.d.AuthSettings.Get(ctx)
 	if err != nil {
-		return nil, err
+		s.d.Log.Error("oidc callback: read auth settings failed", "err", err)
+		return fail("oidc_failed", ""), nil
 	}
 	id, next, err := s.d.OIDC.Finish(ctx, st, s.callbackURL(ctx), r)
 	if err != nil {
 		s.d.Log.Warn("oidc login failed", "err", err)
-		return fail(oidcErrorCode(err)), nil
+		return fail(oidcErrorCode(err), ""), nil
 	}
 	var email *string
 	if id.Email != "" {
@@ -95,13 +104,15 @@ func (s *Server) OidcCallback(ctx context.Context, _ gen.OidcCallbackRequestObje
 	u, err := s.d.Queries.UpsertOIDCUser(ctx, sqlcgen.UpsertOIDCUserParams{Issuer: id.Issuer, Subject: id.Subject,
 		Email: email, DisplayName: id.Name, Groups: id.Groups})
 	if err != nil {
-		return nil, err
+		s.d.Log.Error("oidc callback: user upsert failed", "err", err)
+		return fail("oidc_failed", ""), nil
 	}
 	if u.Disabled {
-		return fail("user_disabled"), nil
+		return fail("user_disabled", u.ID.String()), nil
 	}
 	if _, err := s.startSession(ctx, u.ID); err != nil {
-		return nil, err
+		s.d.Log.Error("oidc callback: session start failed", "err", err)
+		return fail("oidc_failed", u.ID.String()), nil
 	}
 	s.audit(ctx, audit.Event{Action: "session.login", ResourceType: "user", ResourceID: u.ID.String(),
 		ActorType: authn.KindUser, ActorID: u.ID.String(), Details: map[string]any{"method": "oidc", "issuer": id.Issuer, "groups": id.Groups}})

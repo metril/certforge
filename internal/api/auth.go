@@ -197,10 +197,18 @@ func (s *Server) baseURL(ctx context.Context) string {
 	return s.d.Config.BaseURL
 }
 
-// secureCookie is true over TLS or when the effective base URL is https.
+// secureCookie is true over TLS, when the effective base URL is https, or
+// when the request arrived from a configured trusted proxy that terminated
+// TLS itself (X-Forwarded-Proto: https) — otherwise a deployment behind such
+// a proxy would never get Secure cookies at all.
 func (s *Server) secureCookie(ctx context.Context, r *http.Request) bool {
 	if r != nil && r.TLS != nil {
 		return true
+	}
+	if r != nil && s.d.AuthSettings != nil {
+		if st, err := s.d.AuthSettings.Get(ctx); err == nil && st.TrustedProxy(r) && r.Header.Get("X-Forwarded-Proto") == "https" {
+			return true
+		}
 	}
 	return strings.HasPrefix(s.baseURL(ctx), "https://")
 }

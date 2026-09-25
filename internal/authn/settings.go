@@ -186,6 +186,17 @@ func (s AuthSettings) ClientIP(r *http.Request) string {
 	return addr.String()
 }
 
+// TrustedProxy reports whether r's TCP peer is one of the configured
+// trusted proxies, for callers (such as the cookie Secure flag) that need to
+// know whether X-Forwarded-Proto from this request can be believed.
+func (s AuthSettings) TrustedProxy(r *http.Request) bool {
+	addr, err := netip.ParseAddr(RemoteIP(r))
+	if err != nil {
+		return false
+	}
+	return s.trusted(addr)
+}
+
 func (s AuthSettings) trusted(a netip.Addr) bool {
 	a = a.Unmap()
 	for _, p := range s.proxies {

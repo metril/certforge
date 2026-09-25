@@ -55,7 +55,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/healthz", s.healthz)
 	r.Get("/readyz", s.readyz)
 	r.Route("/api/v1", func(v1 chi.Router) {
-		v1.Use(withClientIP(d.AuthSettings), limitLogins(d.LoginLimiter, loginLimiterSettings, d.Auditor, d.Log), requireJSON, authn.Middleware(authn.MiddlewareOptions{
+		v1.Use(withClientIP(d.AuthSettings), s.limitLogins(d.LoginLimiter, loginLimiterSettings, d.Auditor, d.Log), requireJSON, authn.Middleware(authn.MiddlewareOptions{
 			Sessions: d.Sessions, Queries: d.Queries, Public: isPublic, Fail: Write, Log: d.Log,
 		}))
 		v1.NotFound(func(w http.ResponseWriter, _ *http.Request) { Write(w, http.StatusNotFound, "Not found", "") })
@@ -90,8 +90,11 @@ func isPublic(r *http.Request) bool {
 // and the OIDC callback. When src is non-nil, l is reconfigured from the
 // authentication section's loginRatePerMinute/loginBurst before every check.
 // A rate-limited attempt is audited as session.login_failed, same as a bad
-// password, so the audit log shows every rejected login attempt.
-func limitLogins(l *authn.Limiter, src *authn.SettingsSource, aud *audit.Auditor, log *slog.Logger) func(http.Handler) http.Handler {
+// password, so the audit log shows every rejected login attempt. It is a
+// method on *Server (not a free function) because the OIDC callback's
+// rate-limited response must also clear the cf_oidc state cookie, which
+// needs s.secureCookie and s.d.OIDC.
+func (s *Server) limitLogins(l *authn.Limiter, src *authn.SettingsSource, aud *audit.Auditor, log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var method string
@@ -121,8 +124,12 @@ func limitLogins(l *authn.Limiter, src *authn.SettingsSource, aud *audit.Auditor
 				}
 				// The OIDC callback is a browser navigation, not an API
 				// call: a rate-limited attempt still redirects to /login
-				// (B2), never problem+json.
+				// (B2), never problem+json, and the state cookie is
+				// cleared exactly as a normal callback would clear it.
 				if method == "oidc" {
+					if s.d.OIDC != nil {
+						http.SetCookie(w, s.d.OIDC.ClearStateCookie(s.secureCookie(r.Context(), r)))
+					}
 					http.Redirect(w, r, "/login?error=rate_limited", http.StatusFound)
 					return
 				}

@@ -207,6 +207,42 @@ func TestOIDCTokenEndpointDown(t *testing.T) {
 	}
 }
 
+// TestOIDCCallbackDBErrorRedirects exercises the callback's remaining E3
+// failure path: a database error after the identity provider has already
+// confirmed the login must still redirect to /login, not 500. The
+// authentication section is cached for 30s (authn.SettingsSource), so
+// closing the pool right before the callback leaves discovery/exchange
+// (both pure HTTP calls to the fake provider) unaffected and fails exactly
+// the user-upsert query this is meant to exercise.
+func TestOIDCCallbackDBErrorRedirects(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	fake := oidctest.New(t)
+	fake.SetUser(oidctest.User{Subject: "db-error"})
+	enableOIDC(t, e, csrf, fake)
+
+	jar, _ := cookiejar.New(nil)
+	b := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, _ := e.doClient(b, http.MethodGet, "/api/v1/auth/oidc/start?next=%2F", nil, nil) //nolint:bodyclose // doClient closes the body
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	idp, err := b.Get(resp.Header.Get("Location")) //nolint:noctx // test helper follows a redirect from a canned response
+	if err != nil {
+		t.Fatal(err)
+	}
+	idp.Body.Close()
+	cb, err := url.Parse(idp.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.deps.Pool.Close()                                                        // the user upsert (and everything else DB-backed) now fails
+	resp, _ = e.doClient(b, http.MethodGet, cb.Path+"?"+cb.RawQuery, nil, nil) //nolint:bodyclose // doClient closes the body
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/login?error=oidc_failed" {
+		t.Fatalf("db error → %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+}
+
 // TestAuthenticationTestEndpointForbidden confirms settings:write (admin
 // only) gates the connection test: a lower role must never be able to make
 // the server fetch an admin-supplied URL.
@@ -214,6 +250,92 @@ func TestAuthenticationTestEndpointForbidden(t *testing.T) {
 	e := newTestEnv(t)
 	resp, _ := e.do(http.MethodPost, "/api/v1/settings/authentication/test", map[string]string{"issuer": "http://127.0.0.1:1"}, "") //nolint:bodyclose // testEnv.doRaw closes the body
 	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("%d", resp.StatusCode)
+		t.Fatalf("anonymous: %d", resp.StatusCode)
 	}
+
+	csrf, org := e.seedAdminSession()
+	fake := oidctest.New(t)
+	fake.SetUser(oidctest.User{Subject: "viewer1", Groups: []string{"ro"}})
+	enableOIDC(t, e, csrf, fake)
+	if err := e.deps.Queries.CreateRoleBinding(context.Background(), sqlcgen.CreateRoleBindingParams{
+		SubjectType: "oidc_group", Subject: "ro", Role: "viewer", OrgID: &org}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := oidcLogin(t, e, "/")
+	meResp, meRaw := e.doClient(b, http.MethodGet, "/api/v1/auth/me", nil, nil) //nolint:bodyclose // doClient closes the body
+	var mb meBody
+	if meResp.StatusCode != http.StatusOK || json.Unmarshal(meRaw, &mb) != nil {
+		t.Fatalf("viewer me: %d %s", meResp.StatusCode, meRaw)
+	}
+	hdr := http.Header{authn.CSRFHeader: []string{mb.CsrfToken}}
+	resp, _ = e.doClient(b, http.MethodPost, "/api/v1/settings/authentication/test", //nolint:bodyclose // doClient closes the body
+		map[string]string{"issuer": "http://127.0.0.1:1"}, hdr)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("viewer: %d", resp.StatusCode)
+	}
+}
+
+// TestOIDCStateCookieAttributes checks the cf_oidc state cookie's shape
+// (HttpOnly, SameSite=Lax, scoped to /api/v1/auth/oidc, Secure when the
+// request came from a trusted proxy terminating TLS) and that both a
+// successful and a failed callback clear it.
+func TestOIDCStateCookieAttributes(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	fake := oidctest.New(t)
+	fake.SetUser(oidctest.User{Subject: "cookie-test"})
+	// One PUT: settings/{section} replaces the whole section, so
+	// trustedProxies must ride along with enabling OIDC, not a separate call.
+	resp, out := e.do(http.MethodPut, "/api/v1/settings/authentication", map[string]any{ //nolint:bodyclose // testEnv.doRaw closes the body
+		"enabled": true, "issuer": fake.URL(), "clientId": oidctest.ClientID, "clientSecret": oidctest.ClientSecret,
+		"trustedProxies": []string{"127.0.0.1/32", "::1/128"},
+	}, csrf)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("enable oidc + trustedProxies: %d %s", resp.StatusCode, out)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	b := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	hdr := http.Header{"X-Forwarded-Proto": {"https"}}
+	resp, _ = e.doClient(b, http.MethodGet, "/api/v1/auth/oidc/start", nil, hdr) //nolint:bodyclose // doClient closes the body
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	state := findCookie(resp, authn.StateCookieName)
+	if state == nil || !state.HttpOnly || state.SameSite != http.SameSiteLaxMode ||
+		state.Path != "/api/v1/auth/oidc" || !state.Secure {
+		t.Fatalf("state cookie %+v", state)
+	}
+
+	idp, err := b.Get(resp.Header.Get("Location")) //nolint:noctx // test helper follows a redirect from a canned response
+	if err != nil {
+		t.Fatal(err)
+	}
+	idp.Body.Close()
+	cb, err := url.Parse(idp.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, _ = e.doClient(b, http.MethodGet, cb.Path+"?"+cb.RawQuery, nil, hdr) //nolint:bodyclose // doClient closes the body
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("callback: %d", resp.StatusCode)
+	}
+	if cleared := findCookie(resp, authn.StateCookieName); cleared == nil || cleared.MaxAge >= 0 {
+		t.Fatalf("state cookie not cleared on success: %+v", cleared)
+	}
+
+	// A failed callback (no valid state cookie this time round) clears it too.
+	resp, _ = e.doClient(b, http.MethodGet, "/api/v1/auth/oidc/callback?code=x&state=y", nil, hdr) //nolint:bodyclose // doClient closes the body
+	if cleared := findCookie(resp, authn.StateCookieName); cleared == nil || cleared.MaxAge >= 0 {
+		t.Fatalf("state cookie not cleared on failure: %+v", cleared)
+	}
+}
+
+func findCookie(resp *http.Response, name string) *http.Cookie {
+	for _, c := range resp.Cookies() {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
 }

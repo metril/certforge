@@ -203,7 +203,7 @@ paths:
       operationId: oidcCallback
       tags: [auth]
       summary: Single sign-on callback
-      description: The identity provider returns here. On success creates or updates the user by (issuer, subject), records groups, starts a session (revoking the user's others), and redirects to next. On failure redirects to /login?error= one of oidc_state, oidc_denied, oidc_failed, oidc_disabled, user_disabled. Public; rate limited per client address.
+      description: The identity provider returns here. On success creates or updates the user by (issuer, subject), records groups, starts a session (revoking the user's others), and redirects to next. On failure redirects to /login?error= one of oidc_state, oidc_denied, oidc_failed, oidc_disabled, user_disabled, rate_limited. Public; rate limited per client address (redirects rather than returning 429).
       security: []
       parameters:
         - {name: code, in: query, required: false, description: Authorization code., schema: {type: string}}
@@ -218,7 +218,6 @@ paths:
               description: Redirect target.
               schema: {type: string}
         "400": {$ref: "#/components/responses/BadRequest"}
-        "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/InternalError"}
   /settings/authentication/test:
     post:

@@ -193,7 +193,7 @@ export interface paths {
         };
         /**
          * Single sign-on callback
-         * @description The identity provider returns here. On success creates or updates the user by (issuer, subject), records groups, starts a session (revoking the user's others), and redirects to next. On failure redirects to /login?error= one of oidc_state, oidc_denied, oidc_failed, oidc_disabled, user_disabled. Public; rate limited per client address.
+         * @description The identity provider returns here. On success creates or updates the user by (issuer, subject), records groups, starts a session (revoking the user's others), and redirects to next. On failure redirects to /login?error= one of oidc_state, oidc_denied, oidc_failed, oidc_disabled, user_disabled, rate_limited. Public; rate limited per client address (redirects rather than returning 429).
          */
         get: operations["oidcCallback"];
         put?: never;
@@ -1828,7 +1828,6 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
-            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
         };
     };
