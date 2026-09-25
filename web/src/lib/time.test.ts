@@ -36,3 +36,10 @@ it('handles the just-now / minute and hour / day boundaries', () => {
   expect(relTime(new Date(now - 60_000).toISOString(), now)).toBe('1 min ago');
   expect(relTime(new Date(now - 24 * HOUR).toISOString(), now)).toBe('1 d ago');
 });
+
+// A future timestamp (clock skew, or `now` not yet advanced past a
+// just-received event) clamps to 0 s elapsed rather than going negative.
+it('clamps a future timestamp to "just now"', () => {
+  const now = Date.parse('2026-09-24T12:00:00Z');
+  expect(relTime(new Date(now + 5_000).toISOString(), now)).toBe('just now');
+});

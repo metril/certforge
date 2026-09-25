@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { errorMessage } from '@/api/errors';
 import { recentActivityQuery } from '@/api/queries/audit';
 import { usersQuery } from '@/api/queries/users';
+import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { ToneChip } from '@/components/StatusChip';
 import { actionTone } from '@/features/audit/actions';
@@ -24,7 +25,7 @@ export function RecentActivity({ orgId }: { orgId?: string }) {
 
   const actor = (e: { actorId: string; actorName: string; actorType: string }) => {
     if (canUsers) {
-      const name = users.data?.find((u) => u.id === e.actorId)?.displayName ?? e.actorName ?? e.actorType;
+      const name = users.data?.find((u) => u.id === e.actorId)?.displayName || e.actorName || e.actorType;
       return <span className="truncate">{name}</span>;
     }
     return <span className="truncate font-mono text-xs">{e.actorId}</span>;
@@ -39,9 +40,7 @@ export function RecentActivity({ orgId }: { orgId?: string }) {
         </Link>
       </h2>
       {q.isError ? (
-        <p role="alert" className="text-xs">
-          {errorMessage(q.error)}
-        </p>
+        <ErrorState message={`Couldn't load recent activity. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
       ) : q.data?.length === 0 ? (
         <p className="text-sm text-ink-muted">No activity yet.</p>
       ) : (
@@ -51,8 +50,11 @@ export function RecentActivity({ orgId }: { orgId?: string }) {
             return (
               <li key={e.id} className="grid gap-1 border-b border-border py-2 text-sm last:border-0">
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* dataUpdatedAt (not Date.now()) so an identical-data poll
+                      still re-renders this label — the query result object
+                      itself only changes reference when the timestamp does. */}
                   <time dateTime={e.ts} title={fmtDateTime(e.ts)} className="shrink-0 text-xs text-ink-muted">
-                    {relTime(e.ts)}
+                    {relTime(e.ts, q.dataUpdatedAt)}
                   </time>
                   <Link to="/o/$org/audit" params={{ org: slug }} search={{ event: e.id }} className="min-w-0 hover:underline">
                     <ToneChip tone={tone} icon={Icon} label={e.action} />
