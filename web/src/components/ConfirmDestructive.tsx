@@ -5,18 +5,21 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { HelpKey } from '@/lib/help';
+import { HelpTip } from './HelpTip';
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   consequence: string;
+  help?: HelpKey;
   confirmText: string;
   actionLabel: string;
   onConfirm: () => Promise<unknown>;
 };
 
-export function ConfirmDestructive({ open, onOpenChange, title, consequence, confirmText, actionLabel, onConfirm }: Props) {
+export function ConfirmDestructive({ open, onOpenChange, title, consequence, help, confirmText, actionLabel, onConfirm }: Props) {
   const [typed, setTyped] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,7 +49,10 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, con
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{consequence}</DialogDescription>
+          <DialogDescription className="flex items-start gap-1.5">
+            <span>{consequence}</span>
+            {help && <HelpTip id={help} />}
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-1.5">
           <Label htmlFor="confirm-destructive">

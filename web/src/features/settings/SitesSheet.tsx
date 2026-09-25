@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, Pencil, Trash2 } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
@@ -21,9 +21,19 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
   const del = useDeleteSite(orgId);
   const canWrite = !!org && can(me, 'sites:write', org.id);
   const [name, setName] = useState('');
-  const [renaming, setRenaming] = useState<{ id: string; from: string; name: string } | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState<Site | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const newSiteRef = useRef<HTMLInputElement>(null);
+
+  // A different org opening in the same mounted sheet (or the sheet
+  // closing, org -> null) should not carry over a half-typed add/rename
+  // or a stale error from the previous org.
+  useEffect(() => {
+    setName('');
+    setRenaming(null);
+    setError(null);
+  }, [org?.id]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setError(null);
@@ -50,7 +60,21 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
         <SheetHeader>
           <SheetTitle>Sites of {org?.name}</SheetTitle>
         </SheetHeader>
-        {q.data?.length === 0 && <EmptyState message="No sites yet." />}
+        {q.isPending && <p className="text-sm text-ink-muted">Loading…</p>}
+        {q.isError && (
+          <p role="alert" className="text-xs">
+            {errorMessage(q.error)}
+          </p>
+        )}
+        {q.data?.length === 0 && (
+          <EmptyState message="No sites yet.">
+            {canWrite && (
+              <Button size="sm" variant="outline" onClick={() => newSiteRef.current?.focus()}>
+                Add a site
+              </Button>
+            )}
+          </EmptyState>
+        )}
         <ul className="grid">
           {(q.data ?? []).map((s) => (
             <li key={s.id} className="flex h-9 items-center gap-2 border-b border-border text-sm">
@@ -66,7 +90,7 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
                   <span className="truncate">{s.name}</span>
                   {canWrite && (
                     <span className="ml-auto flex">
-                      <Button variant="ghost" size="icon" aria-label={`Rename ${s.name}`} onClick={() => setRenaming({ id: s.id, from: s.name, name: s.name })}>
+                      <Button variant="ghost" size="icon" aria-label={`Rename ${s.name}`} onClick={() => setRenaming({ id: s.id, name: s.name })}>
                         <Pencil className="size-4" aria-hidden />
                       </Button>
                       <Button variant="ghost" size="icon" aria-label={`Delete ${s.name}`} onClick={() => setDeleting(s)}>
@@ -81,7 +105,7 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
         </ul>
         {canWrite && (
           <form onSubmit={add} className="flex gap-2">
-            <Input aria-label="New site" placeholder="Berlin" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
+            <Input ref={newSiteRef} aria-label="New site" placeholder="Berlin" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
             <Button type="submit" disabled={!name.trim() || create.isPending}>
               Add
             </Button>

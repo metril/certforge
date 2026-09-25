@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, meWith, org, problem, url } from '@/test/fixtures';
+import { authHandlers, me, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const general = { section: 'general', schema: { type: 'object', properties: {} }, value: {}, stored: null, storedSecrets: [] };
@@ -49,6 +49,61 @@ it('shows the dependents that block a delete', async () => {
   expect(await within(dialog).findByText(/2 certificates, 1 DNS credential/)).toBeInTheDocument();
 });
 
+it('navigates to / and refreshes Me after deleting the active org', async () => {
+  let meCalls = 0;
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => {
+      meCalls += 1;
+      return HttpResponse.json(meCalls === 1 ? me : meWith([{ role: 'admin', orgId: null }], []));
+    }),
+    ...base,
+    http.delete(url('/orgs/:orgId'), () => new HttpResponse(null, { status: 204 })),
+  );
+  const { user } = renderRoute('/settings/general');
+  await user.click(await screen.findByRole('button', { name: 'Delete Acme' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Delete Acme' });
+  await user.type(within(dialog).getByRole('textbox'), 'acme');
+  await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  expect(await screen.findByText('No organization exists for your account yet.')).toBeInTheDocument();
+  expect(meCalls).toBeGreaterThanOrEqual(2);
+});
+
+it('keeps a manually edited slug when the name keeps changing', async () => {
+  server.use(...authHandlers({ authed: true }), ...base);
+  const { user } = renderRoute('/settings/general');
+  await user.click(await screen.findByRole('button', { name: 'New organization' }));
+  const sheet = await screen.findByRole('dialog', { name: 'New organization' });
+  const slug = within(sheet).getByLabelText('Slug');
+  await user.type(within(sheet).getByLabelText('Name'), 'Lab');
+  await user.clear(slug);
+  await user.type(slug, 'custom-slug');
+  await user.type(within(sheet).getByLabelText('Name'), ' Two');
+  expect(slug).toHaveValue('custom-slug');
+});
+
+it('shows a fetch error in the sites sheet', async () => {
+  server.use(...authHandlers({ authed: true }),
+    http.get(url('/settings/general'), () => HttpResponse.json(general)),
+    http.get(url('/orgs'), () => HttpResponse.json({ items: [org] })),
+    http.get(url('/orgs/:orgId/sites'), () => problem(500, 'Could not load sites.')));
+  const { user } = renderRoute('/settings/general');
+  await user.click(await screen.findByRole('button', { name: 'Sites of Acme' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Sites of Acme' });
+  expect(await within(sheet).findByRole('alert')).toHaveTextContent('Could not load sites.');
+});
+
+it('shows an inline error for a duplicate site name', async () => {
+  server.use(...authHandlers({ authed: true }), ...base,
+    http.post(url('/orgs/:orgId/sites'), () => problem(409, 'Site name already used.', {}, 'Conflict')));
+  const { user } = renderRoute('/settings/general');
+  await user.click(await screen.findByRole('button', { name: 'Sites of Acme' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Sites of Acme' });
+  await user.type(within(sheet).getByLabelText('New site'), 'Berlin');
+  await user.click(within(sheet).getByRole('button', { name: 'Add' }));
+  expect(await within(sheet).findByText('Site name already used.')).toBeInTheDocument();
+});
+
 it('manages sites', async () => {
   const calls: string[] = [];
   server.use(...authHandlers({ authed: true }), ...base,
@@ -76,5 +131,6 @@ it('hides org writes from non-admins', async () => {
   renderRoute('/settings/general');
   expect(await screen.findByRole('button', { name: 'Sites of Acme' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'New organization' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Rename Acme' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Delete Acme' })).not.toBeInTheDocument();
 });

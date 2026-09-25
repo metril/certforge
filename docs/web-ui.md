@@ -20,7 +20,7 @@ Below `md` width, the needs-attention queue and upcoming renewals render as stac
 
 ## Settings → General
 
-Base URL, then **Organizations**: admins add (slug derived from the name, "all" reserved), rename, and delete orgs (type the slug; an org that still holds certificates, credentials, accounts, CAs, bindings or API keys is refused and the dialog lists them). **Sites** opens a sheet to add, rename and delete an org's sites.
+Base URL, then **Organizations**: admins add (slug derived from the name, "all" reserved), rename, and delete orgs (type the slug; an org that still holds certificates, credentials, accounts, CAs, sites, bindings or API keys is refused and the dialog lists them). **Sites** opens a sheet to add, rename and delete an org's sites.
 
 ## Settings → Access
 

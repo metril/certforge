@@ -52,6 +52,7 @@ export const help = {
     learnMore: 'configuration.md#general',
   },
   'org.slugPermanent': { text: 'Slugs are part of every URL, so they never change.' },
+  'org.deleteCascade': { text: 'Its issuance defaults and revoked-key history are removed with it.' },
   'backup.kek': {
     text: 'Whether the key-encryption key is loaded and passes its startup check.',
     learnMore: 'configuration.md#the-kek',
