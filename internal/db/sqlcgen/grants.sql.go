@@ -620,7 +620,10 @@ type LockCertificateForGrantParams struct {
 // conflicts with DeleteCertificate's FOR UPDATE lock (LockCertificateForGrant/
 // GetCertificateForUpdate are incompatible row-lock modes) and the two
 // serialize: whichever locks first is seen by the other, so a certificate
-// can never be deleted out from under a grant being created for it.
+// can never be deleted out from under a grant being created for it. Also
+// conflicts with UpdateCertificate's rename lock (GetCertificateForUpdate,
+// also FOR UPDATE): see checkRefs/CreateGrant's package-level lock-order
+// comment in internal/agents.
 func (q *Queries) LockCertificateForGrant(ctx context.Context, arg LockCertificateForGrantParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, lockCertificateForGrant, arg.ID, arg.OrgID)
 	var id uuid.UUID
@@ -692,6 +695,46 @@ func (q *Queries) LockHooksInOrg(ctx context.Context, arg LockHooksInOrgParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockLayoutForGrant = `-- name: LockLayoutForGrant :one
+SELECT id FROM output_specs WHERE id = $1 AND org_id = $2 FOR KEY SHARE
+`
+
+type LockLayoutForGrantParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the layout FOR KEY SHARE before a grant references it (output_spec_id
+// is a real FK, so the insert/update would otherwise take this lock
+// implicitly, at whatever point the statement runs): FOR KEY SHARE conflicts
+// with UpdateLayout's implicit FOR NO KEY UPDATE row lock, so the two
+// serialize instead of racing. See the package-level lock-order comment in
+// internal/agents.
+func (q *Queries) LockLayoutForGrant(ctx context.Context, arg LockLayoutForGrantParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockLayoutForGrant, arg.ID, arg.OrgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockTargetForGrant = `-- name: LockTargetForGrant :one
+SELECT id FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR KEY SHARE
+`
+
+type LockTargetForGrantParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the deploy target FOR KEY SHARE before a grant references it, for
+// the same reason as LockLayoutForGrant.
+func (q *Queries) LockTargetForGrant(ctx context.Context, arg LockTargetForGrantParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockTargetForGrant, arg.ID, arg.OrgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const markGrantRemoved = `-- name: MarkGrantRemoved :exec

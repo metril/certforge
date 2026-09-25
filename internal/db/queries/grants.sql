@@ -91,8 +91,25 @@ WHERE cert_id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY cert_id;
 -- conflicts with DeleteCertificate's FOR UPDATE lock (LockCertificateForGrant/
 -- GetCertificateForUpdate are incompatible row-lock modes) and the two
 -- serialize: whichever locks first is seen by the other, so a certificate
--- can never be deleted out from under a grant being created for it.
+-- can never be deleted out from under a grant being created for it. Also
+-- conflicts with UpdateCertificate's rename lock (GetCertificateForUpdate,
+-- also FOR UPDATE): see checkRefs/CreateGrant's package-level lock-order
+-- comment in internal/agents.
 SELECT id FROM certificates WHERE id = $1 AND org_id = $2 FOR KEY SHARE;
+
+-- name: LockLayoutForGrant :one
+-- Locks the layout FOR KEY SHARE before a grant references it (output_spec_id
+-- is a real FK, so the insert/update would otherwise take this lock
+-- implicitly, at whatever point the statement runs): FOR KEY SHARE conflicts
+-- with UpdateLayout's implicit FOR NO KEY UPDATE row lock, so the two
+-- serialize instead of racing. See the package-level lock-order comment in
+-- internal/agents.
+SELECT id FROM output_specs WHERE id = $1 AND org_id = $2 FOR KEY SHARE;
+
+-- name: LockTargetForGrant :one
+-- Locks the deploy target FOR KEY SHARE before a grant references it, for
+-- the same reason as LockLayoutForGrant.
+SELECT id FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR KEY SHARE;
 
 -- name: GrantClientIDs :many
 -- Cheap grant id -> client id lookup (no joins), used to isolate a

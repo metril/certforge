@@ -685,3 +685,125 @@ func TestDeleteGrantSoftDeletesReenrolledClientThatHadDeployed(t *testing.T) {
 		t.Fatal("grant not marked removal-pending")
 	}
 }
+
+// Fix round 2: CreateGrant/UpdateGrant must lock referenced rows (hooks,
+// layout, deploy target, certificate) before the client row, the same order
+// a hook/layout/target update or a certificate rename uses (its own row,
+// then affected clients via Resync/render). Before the fix, CreateGrant
+// locked the client first and the hook second: a concurrent hook update
+// (hook row, then the client via Resync) and a concurrent CreateGrant on a
+// client already using that hook (client, then the hook FOR SHARE) lock the
+// same two rows in opposite order, an AB-BA deadlock Postgres reports as a
+// 500. With the fix both lock hook-before-client, so they only serialize.
+func TestConcurrentHookUpdateVsCreateGrantNoDeadlock(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	sixty := 60
+	hRes, err := f.srv.CreateHook(op, gen.CreateHookRequestObject{OrgId: f.org,
+		Body: &gen.HookInput{Name: "reload", Phase: gen.HookPhase("post_deploy"), Argv: []string{"/bin/true"}, TimeoutSeconds: &sixty}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := hRes.(gen.CreateHook201JSONResponse)
+	cert1, _ := f.currentCert(t, "web-1st")
+	layout1 := f.layout(t, "l1", "/etc/ssl/first.pem")
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: cert1, Delivery: push(), LayoutId: &layout1, HookIds: &[]uuid.UUID{h.Id}}}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 8; i++ {
+		certI, _ := f.currentCert(t, fmt.Sprintf("web-%d", i))
+		layoutI := f.layout(t, fmt.Sprintf("l-%d", i), fmt.Sprintf("/etc/ssl/%d.pem", i))
+		var wg sync.WaitGroup
+		var updErr, createErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, updErr = f.srv.UpdateHook(op, gen.UpdateHookRequestObject{OrgId: f.org, Id: h.Id,
+				Body: &gen.HookInput{Name: fmt.Sprintf("reload-%d", i), Phase: gen.HookPhase("post_deploy"), Argv: []string{"/bin/true"}, TimeoutSeconds: &sixty}})
+		}()
+		go func() {
+			defer wg.Done()
+			_, createErr = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+				Body: &gen.GrantInput{CertificateId: certI, Delivery: push(), LayoutId: &layoutI, HookIds: &[]uuid.UUID{h.Id}}})
+		}()
+		wg.Wait()
+		for _, err := range []error{updErr, createErr} {
+			if err != nil && problemStatus(err) == 500 {
+				t.Fatalf("iteration %d: got a 500 (deadlock): %v", i, err)
+			}
+		}
+		if updErr != nil {
+			t.Fatalf("iteration %d: unexpected hook update error: %v", i, updErr)
+		}
+		if createErr != nil {
+			t.Fatalf("iteration %d: unexpected grant create error: %v", i, createErr)
+		}
+		var gid uuid.UUID
+		if err := f.pool.QueryRow(ctx, `SELECT id FROM client_cert_grants WHERE client_id = $1 AND cert_id = $2`, c.ID, certI).Scan(&gid); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid}); err != nil {
+			t.Fatal(err)
+		}
+		_, _ = f.pool.Exec(ctx, `DELETE FROM client_cert_grants WHERE id = $1`, gid)
+	}
+}
+
+// Fix round 2: same AB-BA shape as the hook case above, for a certificate
+// rename. Before the fix, UpdateCertificate's rename locked the certificate
+// (GetCertificateForUpdate, FOR UPDATE) then affected clients via
+// ResyncCertificateRename/render, while CreateGrant locked the client first
+// and the certificate second (LockCertificateForGrant, FOR KEY SHARE): a
+// rename racing a CreateGrant for the same certificate, on a client that
+// already holds a live grant on it, could deadlock. The client already has
+// a live grant on this certificate, so the concurrent create always loses
+// to the client/certificate uniqueness constraint (409); the rename always
+// succeeds. The only unacceptable outcome is a 500.
+func TestConcurrentCertificateRenameVsCreateGrantNoDeadlock(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 8; i++ {
+		var wg sync.WaitGroup
+		var renameErr, createErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, renameErr = f.srv.UpdateCertificate(op, gen.UpdateCertificateRequestObject{OrgId: f.org, Id: certID,
+				Body: &gen.CertificateInput{Name: fmt.Sprintf("web-renamed-%d", i), CommonName: "web.example.test"}})
+		}()
+		go func() {
+			defer wg.Done()
+			_, createErr = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+				Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}})
+		}()
+		wg.Wait()
+		for _, err := range []error{renameErr, createErr} {
+			if err != nil && problemStatus(err) == 500 {
+				t.Fatalf("iteration %d: got a 500 (deadlock): %v", i, err)
+			}
+		}
+		if renameErr != nil {
+			t.Fatalf("iteration %d: unexpected rename error: %v", i, renameErr)
+		}
+		// The client already has a live grant on this certificate, so the
+		// concurrent create always loses to the uniqueness constraint.
+		if createErr == nil {
+			t.Fatalf("iteration %d: duplicate grant create unexpectedly succeeded", i)
+		}
+		wantStatus(t, createErr, 409)
+	}
+	var name string
+	_ = f.pool.QueryRow(ctx, `SELECT name FROM certificates WHERE id = $1`, certID).Scan(&name)
+	if name != "web-renamed-7" {
+		t.Fatalf("certificate not renamed by the last iteration: %s", name)
+	}
+}

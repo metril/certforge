@@ -83,6 +83,14 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	// re-checks dependents, so the two either serialize with this grant
 	// winning (DeleteHook then sees it and refuses) or DeleteHook wins and
 	// this recount below catches the now-missing hook.
+	//
+	// checkRefs runs, and so takes these locks, before CreateGrant/UpdateGrant
+	// lock the client row: see the package comment for the global lock
+	// order (referenced rows, then client, then deployments). Locking hooks
+	// here first matters because a hook update (internal/api.UpdateHook)
+	// locks the hook row before it locks affected clients via Resync; if a
+	// grant write locked the client first and hooks second, the two could
+	// deadlock (AB-BA).
 	if len(in.HookIDs) > 0 {
 		locked, err := q.LockHooksInOrg(ctx, sqlcgen.LockHooksInOrgParams{Ids: in.hooks(), OrgID: orgID})
 		if err != nil {
@@ -90,6 +98,27 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 		}
 		if len(uniq(locked)) != len(uniq(in.HookIDs)) {
 			return invalid("hookIds", "every hook must be in this org")
+		}
+	}
+	// output_spec_id and deploy_target_id are real FKs: an insert/update
+	// that sets them would otherwise take this lock implicitly, at whatever
+	// point the statement runs (in CreateGrant, after the client lock).
+	// Locking them explicitly here, before the client, matches a layout or
+	// deploy target update, which locks its own row before locking affected
+	// clients via Resync; without this a grant write and a layout/target
+	// update could deadlock the same way as the hook case above.
+	if in.LayoutID != nil {
+		if _, err := q.LockLayoutForGrant(ctx, sqlcgen.LockLayoutForGrantParams{ID: *in.LayoutID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
+			return invalid("layoutId", "layout %s is not in this org", *in.LayoutID)
+		} else if err != nil {
+			return err
+		}
+	}
+	if in.TargetID != nil {
+		if _, err := q.LockTargetForGrant(ctx, sqlcgen.LockTargetForGrantParams{ID: *in.TargetID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
+			return invalid("deployTargetId", "deploy target %s is not in this org", *in.TargetID)
+		} else if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -273,13 +302,8 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Q.WithTx(tx)
-	c, err := s.lockClient(ctx, q, orgID, clientID)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	if c.Status == "revoked" {
-		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
-	}
+	// Referenced rows lock first, the client last (package comment): hooks
+	// and layout/target here, then the certificate, then the client below.
 	if err := s.checkRefs(ctx, q, orgID, in); err != nil {
 		return uuid.Nil, err
 	}
@@ -287,11 +311,20 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 	// references it: FOR KEY SHARE conflicts with DeleteCertificate's FOR
 	// UPDATE, so the two serialize instead of a delete racing this insert
 	// (checkRefs's existence check alone is not enough: the certificate
-	// could be deleted between that check and the insert).
+	// could be deleted between that check and the insert). Also serializes
+	// against a certificate rename (UpdateCertificate's GetCertificateForUpdate,
+	// also FOR UPDATE).
 	if _, err := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: in.CertID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, invalid("certificateId", "certificate %s is not in this org", in.CertID)
 	} else if err != nil {
 		return uuid.Nil, err
+	}
+	c, err := s.lockClient(ctx, q, orgID, clientID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if c.Status == "revoked" {
+		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
 	}
 	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: clientID, CertID: in.CertID, Delivery: in.Delivery,
 		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate})
@@ -332,14 +365,17 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 	if err != nil {
 		return err
 	}
-	if _, err := q.LockClientByID(ctx, cur.ClientID); err != nil {
-		return err
-	}
 	in.CertID = cur.CertID
 	if err := in.validate(); err != nil {
 		return err
 	}
+	// Referenced rows (hooks, layout/target) lock before the client, same
+	// order as CreateGrant; the certificate itself is not locked here since
+	// UpdateGrant never changes it.
 	if err := s.checkRefs(ctx, q, orgID, in); err != nil {
+		return err
+	}
+	if _, err := q.LockClientByID(ctx, cur.ClientID); err != nil {
 		return err
 	}
 	g, err := q.UpdateGrant(ctx, sqlcgen.UpdateGrantParams{Delivery: in.Delivery, OutputSpecID: in.LayoutID,

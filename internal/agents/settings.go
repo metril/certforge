@@ -1,6 +1,22 @@
 // Package agents is the server side of certforge-agent: clients and
 // enrolment, grants and desired revisions, assignments, bundles, reports,
 // heartbeat drift, and the agents settings section.
+//
+// Global lock order: every transaction that can lock both a client row and a
+// row it references (a certificate, a hook, a layout/output_spec, a deploy
+// target) locks the referenced row(s) first, then the client row(s) (in id
+// order when there is more than one), then writes deployment rows. This
+// applies everywhere a grant, a client, or a delivery object (layout, deploy
+// target, hook, certificate name) is written inside a transaction:
+// CreateGrant and UpdateGrant lock the certificate/hooks/layout/target before
+// the client (checkRefs, then LockCertificateForGrant); a layout, deploy
+// target or hook update locks its own row (the UPDATE statement) before
+// calling Resync, which locks clients via render; a certificate rename locks
+// the certificate (GetCertificateForUpdate) before calling
+// ResyncCertificateRename, also via render. DeleteCertificate and DeleteHook
+// only ever lock their own referenced row, never a client, so they cannot
+// invert the order. Reversing this order anywhere reintroduces a deadlock:
+// see render's comment for why deployments are always written last.
 package agents
 
 import (
