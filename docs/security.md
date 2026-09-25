@@ -77,3 +77,7 @@ Until setup completes, anyone who can reach the server can claim it through `POS
 ## Agent listener and enrolment
 
 `POST /agent/v1/enroll` is rate limited per client address the same way login is (its own `EnrollLimiter`, not shared with login's), so brute-forcing a token cannot be sped up by parallelizing. Enrolment tokens are single-use (`used_at` set atomically on first consumption; a replayed or concurrently raced token loses), stored only as a SHA-256 hash, and pin the agent CA fingerprint that signed the listener certificate at issuance time, so a token minted before a CA rotation cannot be replayed against a different CA later. The server refuses every agent certificate except the newest serial issued to its client: re-enrolling or renewing immediately invalidates whatever certificate the agent held before. Revocation is immediate and needs no CRL or OCSP responder — a revoked client's serial no longer matches, so its certificate stops authenticating on its very next request.
+
+## Agent hooks
+
+A compromised server could push any argv to every agent. Hooks are therefore off unless the agent operator lists executables in `CF_HOOK_ALLOW`; argv[0] must match an entry exactly, argv is never run through a shell, and each run is recorded (`hook.run` audit event, hook run history). Allow narrow, purpose-built executables, never a shell or interpreter.

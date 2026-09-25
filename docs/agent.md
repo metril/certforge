@@ -29,3 +29,40 @@ The agent renews its certificate at two thirds of its lifetime (90 days by defau
 | `certforge-agent pull` | One reconcile over REST, report, heartbeat, exit. No socket. |
 | `certforge-agent status` | Print client id, agent URL, certificate expiry and last revision. |
 | `certforge-agent version` | Print the version. |
+
+## File layouts
+
+A layout (Delivery → Layouts) lists files by absolute path on the agent host. Each file concatenates PEM parts in order: `cert`, `chain`, `fullchain`, `key`, `combined` (fullchain + key). Files are written atomically (temp file in the same directory, fsync, chmod, rename). `owner` and `group` accept names or numeric ids and apply only when the agent runs as root; otherwise the agent logs one warning and applies the mode only. In the distroless image only `root`, `nonroot` (65532) and `nobody` resolve by name, so prefer numeric ids. Paths must be absolute and clean; mount the target directories into the agent container.
+
+## Traefik integration
+
+Share Traefik's file-provider directory with the agent and grant the certificate with a Traefik target (see [deploy-targets.md](deploy-targets.md#traefik)):
+
+    services:
+      traefik:
+        image: traefik:v3.1
+        command:
+          - --providers.file.directory=/etc/traefik/dynamic
+          - --providers.file.watch=true
+        volumes:
+          - traefik-dynamic:/etc/traefik/dynamic:ro
+      certforge-agent:
+        image: ghcr.io/metril/certforge-agent:latest
+        environment:
+          CF_AGENT_TOKEN_FILE: /run/secrets/cf_agent_token
+        secrets: [cf_agent_token]
+        volumes:
+          - certforge-agent:/data
+          - traefik-dynamic:/etc/traefik/dynamic
+    volumes:
+      traefik-dynamic:
+      certforge-agent:
+    secrets:
+      cf_agent_token:
+        file: ./cf_agent_token
+
+Target config: `dir: /etc/traefik/dynamic` (same path in both containers, so `pathPrefix` stays empty). Renewals overwrite the same files and rewrite the YAML, which Traefik's watcher picks up. No Docker socket, no reload command.
+
+## Hooks and the allowlist
+
+Hooks are commands defined in CertForge (Delivery → Hooks) and attached to grants. An agent runs a hook only if its `argv[0]` is exactly one of the paths in `CF_HOOK_ALLOW` (colon-separated). With `CF_HOOK_ALLOW` empty, hooks never run and are reported with exit code -1. Hooks run without a shell: `argv` is passed as is, so `$VAR`, `;` and `|` are literal. `pre_deploy` hooks run before files are written and a non-zero exit stops the deploy; `post_deploy` hooks run after and a non-zero exit marks the deployment failed with the files in place. Each hook gets `CF_GRANT_ID`, `CF_CERTIFICATE_NAME`, `CF_VERSION_ID`, `CF_FINGERPRINT` and `CF_FILES` (colon-separated paths) in its environment, runs in its own process group, and is killed with that group at its timeout. Stdout and stderr are kept up to 8 KiB each and shown under the client's Hooks tab. The distroless image has no shell; mount the executables you allow.

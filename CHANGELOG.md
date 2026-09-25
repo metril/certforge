@@ -87,6 +87,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Agent sync endpoints (assignments, audited bundles, reports, heartbeat) with drift detection, auto-remediation and hook run history.
 - Agent WebSocket hub: hello with agent facts, sync nudges, revocation close, keepalive and eviction; clients report whether their agent is connected.
 - certforge-agent enrolment with CA pinning, mTLS client, certificate renewal and status.
+- Agent atomic file writer with owner and mode, the Traefik file-provider target, and allowlisted, shell-free hooks with timeouts and capped output.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.
