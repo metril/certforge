@@ -21,6 +21,20 @@ type AcmeAccount struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type ApiKey struct {
+	ID         uuid.UUID  `json:"id"`
+	Name       string     `json:"name"`
+	Prefix     string     `json:"prefix"`
+	SecretHash []byte     `json:"secret_hash"`
+	Scopes     []string   `json:"scopes"`
+	OrgID      *uuid.UUID `json:"org_id"`
+	CreatedBy  uuid.UUID  `json:"created_by"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	RevokedAt  *time.Time `json:"revoked_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
 type AuditEvent struct {
 	ID           int64      `json:"id"`
 	Ts           time.Time  `json:"ts"`

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -24,9 +26,15 @@ type MiddlewareOptions struct {
 	Log      *slog.Logger
 }
 
-// Middleware resolves the session cookie into a Principal. Session-authenticated
-// mutating requests to non-public routes must carry a matching X-CSRF-Token.
-// Requests without a valid session get 401 unless Public(r) is true.
+// Middleware resolves the session cookie or an API key bearer token into a
+// Principal. An Authorization header of the form "Bearer cf_<prefix>_<secret>"
+// is tried first and, when malformed, unknown, expired, revoked, or its
+// creator disabled, fails the request with 401 without falling back to the
+// cookie; any other scheme or bearer content (a reverse proxy's Basic
+// header, a "Bearer <jwt>") is ignored and the request falls through to the
+// cookie session below. Session-authenticated mutating requests to
+// non-public routes must carry a matching X-CSRF-Token; API keys never
+// need one. Requests without a valid session get 401 unless Public(r) is true.
 func Middleware(o MiddlewareOptions) func(http.Handler) http.Handler {
 	if o.Log == nil {
 		o.Log = slog.Default()
@@ -34,6 +42,20 @@ func Middleware(o MiddlewareOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
+			if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer cf_") {
+				p, err := o.resolveBearer(ctx, h)
+				if errors.Is(err, ErrBadAPIKey) {
+					o.Fail(w, http.StatusUnauthorized, "Invalid API key", "The bearer token is malformed, unknown, expired, or revoked.")
+					return
+				}
+				if err != nil {
+					o.Log.Error("api key lookup failed", "err", err)
+					o.Fail(w, http.StatusInternalServerError, "Internal server error", "")
+					return
+				}
+				next.ServeHTTP(w, r.WithContext(WithPrincipal(ctx, *p)))
+				return
+			}
 			p, sess, err := o.resolve(ctx, r)
 			if err != nil {
 				o.Log.Error("session lookup failed", "err", err)
@@ -87,6 +109,45 @@ func (o MiddlewareOptions) resolve(ctx context.Context, r *http.Request) (*Princ
 		return nil, sqlcgen.Session{}, err
 	}
 	return &p, sess, nil
+}
+
+// resolveBearer authenticates "Bearer cf_<prefix>_<secret>". API keys
+// never need a CSRF token: browsers cannot attach them cross-site.
+func (o MiddlewareOptions) resolveBearer(ctx context.Context, header string) (*Principal, error) {
+	tok, ok := strings.CutPrefix(header, "Bearer ")
+	if !ok {
+		return nil, ErrBadAPIKey
+	}
+	prefix, secret, ok := ParseAPIKeyToken(strings.TrimSpace(tok))
+	if !ok {
+		return nil, ErrBadAPIKey
+	}
+	k, err := o.Queries.GetAPIKeyByPrefix(ctx, prefix)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrBadAPIKey
+	}
+	if err != nil {
+		return nil, err
+	}
+	if subtle.ConstantTimeCompare(k.SecretHash, HashAPIKeySecret(secret)) != 1 || k.RevokedAt != nil ||
+		(k.ExpiresAt != nil && !time.Now().Before(*k.ExpiresAt)) {
+		return nil, ErrBadAPIKey
+	}
+	u, err := o.Queries.GetUser(ctx, k.CreatedBy)
+	if err != nil {
+		return nil, err
+	}
+	if u.Disabled {
+		return nil, ErrBadAPIKey
+	}
+	p, err := LoadAPIKeyPrincipal(ctx, o.Queries, u, k)
+	if err != nil {
+		return nil, err
+	}
+	if err := o.Queries.TouchAPIKey(ctx, k.ID); err != nil {
+		o.Log.Warn("api key last-used update failed", "err", err)
+	}
+	return &p, nil
 }
 
 func isMutating(method string) bool {

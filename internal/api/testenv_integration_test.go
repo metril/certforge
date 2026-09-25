@@ -200,6 +200,12 @@ func (e *testEnv) doClient(c *http.Client, method, path string, body any, hdr ht
 	return resp, out
 }
 
+// doBearer sends a request authenticated only by an API key token.
+func (e *testEnv) doBearer(token, method, path string, body any) (*http.Response, []byte) {
+	e.t.Helper()
+	return e.doClient(&http.Client{}, method, path, body, http.Header{"Authorization": {"Bearer " + token}})
+}
+
 func (e *testEnv) doRaw(method, path, contentType, body, csrf string) (*http.Response, []byte) {
 	e.t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), method, e.srv.URL+path, strings.NewReader(body))

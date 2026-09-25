@@ -777,6 +777,53 @@ export interface paths {
         patch: operations["updateUser"];
         trace?: never;
     };
+    "/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List API keys
+         * @description Keys the caller may see; org keys need apikeys:read in that org, global keys need it globally. Secrets are never returned.
+         */
+        get: operations["listApiKeys"];
+        put?: never;
+        /**
+         * Create an API key
+         * @description Needs apikeys:write in orgId (globally when omitted) and a signed-in user; keys cannot create keys. Requested scopes are intersected with what the creator may do there; 422 when none remain. The token is returned once.
+         */
+        post: operations["createApiKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an API key
+         * @description Needs apikeys:write in the key's org. Takes effect on the next request; revoking twice is a no-op.
+         */
+        delete: operations["revokeApiKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1526,6 +1573,85 @@ export interface components {
         UserUpdate: {
             /** @description true disables the user and revokes their sessions. */
             disabled: boolean;
+        };
+        /**
+         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; admin is everything.
+         * @enum {string}
+         */
+        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "clients:write" | "admin";
+        /** @description An API key without its secret. */
+        ApiKey: {
+            /**
+             * Format: uuid
+             * @description Key id; the audit actor id for its requests.
+             */
+            id: string;
+            /** @description Label chosen at creation. */
+            name: string;
+            /** @description Public part of the token: cf_<prefix>_… */
+            prefix: string;
+            /** @description Granted scopes after intersection with the creator's role. */
+            scopes: components["schemas"]["ApiKeyScope"][];
+            /**
+             * Format: uuid
+             * @description The only org the key can act in; null for all orgs its creator can.
+             */
+            orgId: string | null;
+            /**
+             * Format: uuid
+             * @description Creating user; the key never exceeds their current permissions.
+             */
+            createdBy: string;
+            /** @description Creator's display name. */
+            createdByName: string;
+            /**
+             * Format: date-time
+             * @description Expiry; null never expires.
+             */
+            expiresAt: string | null;
+            /**
+             * Format: date-time
+             * @description Last successful use
+             */
+            lastUsedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the key was revoked.
+             */
+            revokedAt: string | null;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+        };
+        /** @description A new API key. */
+        ApiKeyInput: {
+            /** @description Label. */
+            name: string;
+            /** @description Requested scopes. */
+            scopes: components["schemas"]["ApiKeyScope"][];
+            /**
+             * Format: uuid
+             * @description Limit the key to this org.
+             */
+            orgId?: string | null;
+            /**
+             * Format: date-time
+             * @description Expiry
+             */
+            expiresAt?: string | null;
+        };
+        /** @description A new key and its token. */
+        ApiKeyCreated: {
+            apiKey: components["schemas"]["ApiKey"];
+            /** @description Bearer token cf_<prefix>_<secret>. Shown once; only its hash is stored. */
+            token: string;
+        };
+        /** @description API keys. */
+        ApiKeyList: {
+            /** @description Keys */
+            items: components["schemas"]["ApiKey"][];
         };
     };
     responses: {
@@ -3009,6 +3135,90 @@ export interface operations {
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listApiKeys: {
+        parameters: {
+            query?: {
+                /** @description Only keys scoped to this org. */
+                orgId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Keys, newest first, revoked ones included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyInput"];
+            };
+        };
+        responses: {
+            /** @description Created; token shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    revokeApiKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };

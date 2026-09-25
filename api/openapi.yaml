@@ -17,6 +17,7 @@ servers:
   - url: /api/v1
 security:
   - sessionCookie: []
+  - bearerApiKey: []
 tags:
   - name: meta
     description: Registries of pluggable types.
@@ -958,6 +959,61 @@ paths:
         "415": {$ref: "#/components/responses/UnsupportedMediaType"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /api-keys:
+    get:
+      operationId: listApiKeys
+      tags: [access]
+      summary: List API keys
+      description: Keys the caller may see; org keys need apikeys:read in that org, global keys need it globally. Secrets are never returned.
+      parameters:
+        - {name: orgId, in: query, required: false, description: Only keys scoped to this org., schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Keys, newest first, revoked ones included.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApiKeyList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createApiKey
+      tags: [access]
+      summary: Create an API key
+      description: Needs apikeys:write in orgId (globally when omitted) and a signed-in user; keys cannot create keys. Requested scopes are intersected with what the creator may do there; 422 when none remain. The token is returned once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApiKeyInput"}
+      responses:
+        "201":
+          description: Created; token shown once.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApiKeyCreated"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /api-keys/{id}:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    delete:
+      operationId: revokeApiKey
+      tags: [access]
+      summary: Revoke an API key
+      description: Needs apikeys:write in the key's org. Takes effect on the next request; revoking twice is a no-op.
+      responses:
+        "204": {description: Revoked.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
 components:
   securitySchemes:
     sessionCookie:
@@ -965,6 +1021,10 @@ components:
       in: cookie
       name: cf_session
       description: Session cookie from POST /auth/login.
+    bearerApiKey:
+      type: http
+      scheme: bearer
+      description: "API key: Authorization: Bearer cf_<prefix>_<secret>. No CSRF header needed."
   parameters:
     OrgId:
       name: orgId
@@ -1742,3 +1802,45 @@ components:
       required: [disabled]
       properties:
         disabled: {type: boolean, description: true disables the user and revokes their sessions.}
+    ApiKeyScope:
+      type: string
+      enum: ["certs:read", "certs:write", "certs:issue", "keys:export", "clients:write", "admin"]
+      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; admin is everything.
+    ApiKey:
+      type: object
+      description: An API key without its secret.
+      required: [id, name, prefix, scopes, orgId, createdBy, createdByName, expiresAt, lastUsedAt, revokedAt, createdAt]
+      properties:
+        id: {type: string, format: uuid, description: Key id; the audit actor id for its requests.}
+        name: {type: string, description: Label chosen at creation.}
+        prefix: {type: string, description: "Public part of the token: cf_<prefix>_…"}
+        scopes: {type: array, items: {$ref: "#/components/schemas/ApiKeyScope"}, description: Granted scopes after intersection with the creator's role.}
+        orgId: {type: string, format: uuid, nullable: true, description: The only org the key can act in; null for all orgs its creator can.}
+        createdBy: {type: string, format: uuid, description: Creating user; the key never exceeds their current permissions.}
+        createdByName: {type: string, description: Creator's display name.}
+        expiresAt: {type: string, format: date-time, nullable: true, description: Expiry; null never expires.}
+        lastUsedAt: {type: string, format: date-time, nullable: true, description: Last successful use, to the minute.}
+        revokedAt: {type: string, format: date-time, nullable: true, description: When the key was revoked.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+    ApiKeyInput:
+      type: object
+      description: A new API key.
+      required: [name, scopes]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Label.}
+        scopes: {type: array, minItems: 1, items: {$ref: "#/components/schemas/ApiKeyScope"}, description: Requested scopes.}
+        orgId: {type: string, format: uuid, nullable: true, description: Limit the key to this org.}
+        expiresAt: {type: string, format: date-time, nullable: true, description: Expiry, at least one minute ahead; omit for none.}
+    ApiKeyCreated:
+      type: object
+      description: A new key and its token.
+      required: [apiKey, token]
+      properties:
+        apiKey: {$ref: "#/components/schemas/ApiKey"}
+        token: {type: string, description: "Bearer token cf_<prefix>_<secret>. Shown once; only its hash is stored."}
+    ApiKeyList:
+      type: object
+      description: API keys.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/ApiKey"}, description: Keys, newest first.}

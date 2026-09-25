@@ -16,6 +16,10 @@ Browser sign-in: GET /auth/oidc/start (single sign-on) or POST /auth/login (loca
 | `certs:issue` | renew now, confirm manual-dns | admin, org-admin, operator |
 | `keys:export` | download `key` or `combined` (audited) | global admin |
 
+### API keys
+
+Send `Authorization: Bearer cf_<prefix>_<secret>`. Keys need no CSRF header. A key can do at most what its creator can do right now, restricted to its scopes (`certs:read` also covers orgs, sites, CAs, accounts, DNS credentials; `clients:write` covers clients read and write; `admin` is everything) and to its org when it has one. Keys stop working when revoked, expired, or when the creator is disabled. The token is returned once by `POST /api-keys`; only its SHA-256 is stored.
+
 ## Errors
 
 Errors are `application/problem+json` (RFC 9457) with `title` and `detail`. 401 unauthenticated, 403 missing permission, 404 not found in this org, 409 in use or nothing to confirm, 422 invalid input (the title names the field), 502 the CA rejected the request (detail carries the ACME problem type).
@@ -57,3 +61,5 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm` | resume the waiting attempt |
 | `GET /users` | list users |
 | `PATCH /users/{id}` | disable or re-enable a user, revoking sessions |
+| `GET, POST /api-keys` | list, create API keys (token shown once) |
+| `DELETE /api-keys/{id}` | revoke an API key |

@@ -21,6 +21,10 @@
 
 Login is auth code with PKCE and a nonce; accounts are matched by (issuer, subject) only, never by email, and `email_verified` is never consulted. Flow state (state, nonce, PKCE verifier, return path) rides in the `cf_oidc` cookie, HMAC-SHA256 signed with a key derived from the KEK (`HKDF(KEK, "certforge-oidc-state")`), not in server-side storage. Every callback failure — rate limited, disabled, denied, or any other error — redirects the browser to `/login?error=<code>`, never problem+json. See [ADR 0006](adr/0006-oidc-sessions.md).
 
+## API keys
+
+A key can do at most what its creator can do right now, restricted to its scopes and to its org when it has one; it stops working when revoked, expired, or when its creator is disabled. Keys cannot create keys. The API-key path is taken only for `Authorization: Bearer cf_<prefix>_<secret>` — any other scheme or bearer content (a reverse proxy's `Basic` header, an upstream JWT) is ignored and the request falls through to its cookie session, if any; when a request carries both a valid bearer and a cookie, the bearer decides the outcome and needs no CSRF header.
+
 ## Authorization
 
 Roles: `admin` (everything, including CAs, KEK, global settings, key export), `org-admin` (everything within its org except global-only actions), `operator` (certificates, credentials, accounts, clients, issue and renew), `viewer` (read-only, no secrets), `auditor` (viewer plus audit log). Global-only actions: settings:write, orgs:write, cas:write, keys:export, users:write. users:read is readable by any role that holds it in some org (org-admins pick users for bindings). Agents never pass `Can()`; they use their own mTLS listener. Phase 1 seeds only the global `admin` binding for the local admin.

@@ -111,8 +111,8 @@ were Task 18's own commits.
 | 5 | Login hardening | done | ba24442 |
 | 6 | OIDC client and fake provider | done | f4ce6d8 |
 | 7 | OIDC endpoints | done | dc2a5c6 |
-| 8 | Users API | done | pending |
-| 9 | API keys | todo | – |
+| 8 | Users API | done | 3a15c6b |
+| 9 | API keys | done | pending |
 | 10 | Role bindings API | todo | – |
 | 11 | Orgs and sites CRUD | todo | – |
 | 12 | Cross-org certificate list | todo | – |
@@ -261,3 +261,4 @@ were Task 18's own commits.
 - 1C Task 11: the certificates list's Grants column always renders "–" (client × certificate assignments are Phase 3, same as Deployments above); the card layout below 768 px has no click-to-select or bulk actions (mobile is triage-only per spec, and the floating bulk bar would have nothing to select).
 - 1C Task 17 (controller ruling): the Overview page has no "Recent activity (last 20)" section; it depends on the audit log, which Phase 2 exposes to the web UI. No stand-in was added.
 - 2A Task 2: `apikeys:write` is held by `admin` and `org-admin` only (operators cannot mint keys), and API keys cannot create API keys — deliberate departures from the design's "intersected with the creator's role" wording; `authz.Can` always finishes by checking `bindingsAllow` against the principal's `Bindings` (the creator's bindings, for an API key principal), after `keyAllows` narrows by scope and key org — so an API key can only ever narrow, never widen, what its creator holds.
+- 2A Task 9: `api_keys` has a `name` column (not in the domain model) for the Access screen; API keys cannot mint API keys. Controller ruling: the middleware takes the API-key path only for `Authorization: Bearer cf_…` (an invalid one is a hard 401); any other scheme or bearer shape (`Basic …`, `Bearer <jwt>`) is ignored and falls through to the cookie session, and a valid bearer takes precedence over a cookie present on the same request.
