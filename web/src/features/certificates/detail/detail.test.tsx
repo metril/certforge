@@ -105,8 +105,25 @@ it(
       ...base(),
     );
     const { user } = renderRoute('/o/acme/certificates/c-1/versions');
-    await user.click(await screen.findByRole('button', { name: 'Renew now' }));
+    // Re-review fix: the header's own "Renew now" button is *always*
+    // rendered too (CertificateHeader, above the tabs) — an unscoped
+    // `findByRole('button', { name: 'Renew now' })` resolves to it as soon
+    // as it mounts, before the Versions tab's own empty-state fetch even
+    // settles enough to render its own same-named button, so this test used
+    // to click the header's button instead. Scoping to the visible tabpanel
+    // (only the active tab's content matches `getByRole`'s default
+    // hidden-elements-excluded behaviour) guarantees this exercises the
+    // Versions tab's own `onRenew` wiring, not the header's.
+    const panel = await screen.findByRole('tabpanel');
+    await user.click(await within(panel).findByRole('button', { name: 'Renew now' }));
     await waitFor(() => expect(renewed).toBe(true));
+    // `useRenewCertificates`'s own onSuccess invalidates the certificate
+    // query, triggering one incidental refetch of its own; capturing the
+    // `calls` baseline before that settles would let a bare "calls
+    // increased" assertion below pass on that one incidental call alone,
+    // even without the liveUntil fix. Let it land first, then baseline.
+    await waitFor(() => expect(calls).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 300));
     const first = calls;
     await waitFor(() => expect(calls).toBeGreaterThan(first), { timeout: 3_000 });
   },

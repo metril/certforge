@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
 import { cleanup, configure } from '@testing-library/react';
 import { server } from './server';
 import { NOW } from './fixtures';
@@ -8,10 +8,24 @@ import { NOW } from './fixtures';
 // refs, act(), keys, prop types, etc.) that a merely-passing assertion would
 // miss; fail the test outright instead of letting it scroll by unnoticed.
 // No allowlist: every current call site is fixed rather than silenced.
+//
+// Re-review fix: this used to *throw* from inside the override, synchronously,
+// which is unsafe — React's own error-recovery paths (for example
+// `logCapturedError`, run from inside a commit after an error boundary
+// catches something) call `console.error` themselves, from deep inside
+// React's call stack; throwing from in there produced a second, cascading
+// "Uncaught Exception" that vitest could misattribute to the wrong test
+// (observed firsthand while building this: a single dropped-ref warning
+// during one test's render produced duplicated failures bleeding into an
+// unrelated subsequent test). Recording every call and asserting the list is
+// empty in `afterEach` gets the same "any console.error fails the test"
+// guarantee without ever running a `throw` inside a caller (React or
+// otherwise) that isn't expecting one.
+let consoleErrors: string[] = [];
 const rawConsoleError = console.error;
 console.error = (...args: Parameters<typeof console.error>) => {
   rawConsoleError(...args);
-  throw new Error(`console.error called in test: ${args.map(String).join(' ')}`);
+  consoleErrors.push(args.map(String).join(' '));
 };
 
 // I4: RJSF/Ajv/tldts cold-load slowly the first time a lazy chunk imports
@@ -86,5 +100,10 @@ afterEach(() => {
   server.resetHandlers();
   if (typeof localStorage !== 'undefined') localStorage.clear();
   clipboardText = '';
+  // Reset before asserting, so a failure here never leaks this test's
+  // console.error calls into the next one's list.
+  const errors = consoleErrors;
+  consoleErrors = [];
+  expect(errors, 'console.error called in test (see test/setup.ts)').toEqual([]);
 });
 afterAll(() => server.close());

@@ -8,18 +8,36 @@ const SURFACE = { light: 'rgb(246, 247, 249)', dark: 'rgb(22, 27, 36)' } as cons
 // browser console error at request time — Playwright never fails the test on
 // its own, so every CSP violation logged during a test is collected here and
 // asserted empty at the end, on top of whatever the test already checks.
-const cspViolations = new WeakMap<Page, string[]>();
+//
+// Re-review fix: two gaps in the original version. First, the console-message
+// regex was an exact literal ("Content-Security-Policy"), but Chromium's
+// actual wording is "...violates the following Content Security Policy
+// directive..." — no hyphens, so the literal never matched anything and this
+// check was silently a no-op. Second, a console message is one way a
+// violation surfaces, but the browser's own `securitypolicyviolation` event
+// fires for every blocked request regardless of whether anything is ever
+// logged to the console — collecting both closes that gap.
+const cspConsoleViolations = new WeakMap<Page, string[]>();
+const CSP_MESSAGE = /content[- ]security[- ]policy/i;
 
-test.beforeEach(({ page }) => {
+test.beforeEach(async ({ page }) => {
   const violations: string[] = [];
-  cspViolations.set(page, violations);
+  cspConsoleViolations.set(page, violations);
   page.on('console', (msg: ConsoleMessage) => {
-    if (msg.type() === 'error' && /Content-Security-Policy/i.test(msg.text())) violations.push(msg.text());
+    if (msg.type() === 'error' && CSP_MESSAGE.test(msg.text())) violations.push(msg.text());
+  });
+  await page.addInitScript(() => {
+    const w = window as unknown as { __cspViolations: string[] };
+    w.__cspViolations = [];
+    document.addEventListener('securitypolicyviolation', (e) => {
+      w.__cspViolations.push(`${e.violatedDirective}: ${e.blockedURI}`);
+    });
   });
 });
 
-test.afterEach(({ page }) => {
-  expect(cspViolations.get(page)).toEqual([]);
+test.afterEach(async ({ page }) => {
+  expect(cspConsoleViolations.get(page)).toEqual([]);
+  expect(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)).toEqual([]);
 });
 
 for (const theme of ['light', 'dark'] as const) {

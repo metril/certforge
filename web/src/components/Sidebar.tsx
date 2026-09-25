@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from 'react';
+import { forwardRef, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -19,25 +19,47 @@ const activeClass = 'border-primary bg-panel font-semibold text-ink';
 // Without forwardRef, that ref dropped (React warned "Function components
 // cannot be given refs") and the tooltip anchored nowhere, so it appeared at
 // (0, -200%) instead of next to the link.
+//
+// Re-review fix: forwardRef alone wasn't enough — Radix's Slot also merges
+// in its own onPointerMove/onFocus/onBlur (hover/focus-intent tracking)
+// plus aria-describedby/data-state onto whatever element it clones, and
+// this component was still destructuring only its own named props, so all
+// of that landed in the void instead of on the rendered `<a>`. Without
+// onPointerMove/onFocus/onBlur actually reaching the anchor, Radix never
+// sees the hover/focus that should open the tooltip, so the compact
+// icon-rail tooltips never opened even once forwardRef fixed their
+// position. `...rest` now carries every such prop through; `onClick` is
+// pulled out and composed with `onNavigate` instead of just overwritten,
+// since a future Slot-provided onClick (there is none today, but Radix's
+// merge convention always composes rather than assumes ownership) must
+// still run.
 const TargetLink = forwardRef<
   HTMLAnchorElement,
   {
     target: NavTarget;
     org: string;
-    className: string;
     label?: string;
     active: boolean;
     onNavigate?: () => void;
     children: ReactNode;
-  }
->(function TargetLink({ target, org, className, label, active, onNavigate, children }, ref) {
+  } & Omit<ComponentPropsWithoutRef<'a'>, 'target' | 'children'>
+>(function TargetLink({ target, org, label, active, onNavigate, onClick, children, ...rest }, ref) {
   // The single source of truth for "is this item active" is `active`
   // (nav.ts's isNavPathActive, a segment-boundary-aware prefix match run
   // against the current pathname), not TanStack Router's own built-in
   // Link active-state: that compares against this Link's own literal
   // resolved href, which can't know that e.g. every /settings/:section
   // should light up the same "Settings" item.
-  const common = { ref, className, 'aria-label': label, 'aria-current': active ? ('page' as const) : undefined, onClick: onNavigate };
+  const common = {
+    ref,
+    ...rest,
+    'aria-label': label,
+    'aria-current': active ? ('page' as const) : undefined,
+    onClick: (e: MouseEvent<HTMLAnchorElement>) => {
+      onClick?.(e);
+      onNavigate?.();
+    },
+  };
   switch (target) {
     case 'overview':
       return (

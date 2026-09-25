@@ -72,6 +72,20 @@ it('renders an icon rail with accessible names below 1280 px', async () => {
   expect(within(nav).queryByText('Operate')).toBeNull();
 });
 
+// Re-review fix: TargetLink (the icon rail's <Link>) forwarded a ref
+// (fixed in the Critical commit) but still destructured only its own named
+// props, dropping the onPointerMove/onFocus/onBlur Radix's Slot merges
+// onto whatever `TooltipTrigger asChild` clones — without them reaching the
+// actual <a>, Radix never sees the hover that should open the tooltip.
+it('opens a tooltip on hover for a compact icon-rail link', async () => {
+  viewport(false);
+  server.use(...authHandlers({ authed: true }));
+  const { user } = renderRoute('/o/acme/overview');
+  const nav = await screen.findByRole('navigation', { name: 'Main' });
+  await user.hover(within(nav).getByRole('link', { name: 'Certificates' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Certificates');
+});
+
 it('signs out from the user menu', async () => {
   viewport(true);
   server.use(...authHandlers({ authed: true }));
