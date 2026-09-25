@@ -118,7 +118,14 @@ were Task 18's own commits.
 | 12 | Cross-org certificate list | done | d289146 |
 | 13 | Keyed audit chain | done | abe21b8 |
 | 14 | Audit API | done | 5eef30e |
-| 15 | dex e2e | done | 2bfa5f3 |
+| 15 | dex e2e | done | 14c1eed |
+
+Phase 2A complete. Task 15's row records 14c1eed, the last of the three 2A
+final-review fix commits (f879d92: the last-admin guard locks binding rows
+too, and the auditor refuses to record under a wrong KEK; 0d6b931:
+404-unless-authorised on binding and key deletes, session-only /auth/me,
+lock-free settings reload; 14c1eed: generation-checked settings reload,
+audit docs and tests); d624d5d and 2bfa5f3 were Task 15's own commits.
 
 ## Decisions made during implementation
 
