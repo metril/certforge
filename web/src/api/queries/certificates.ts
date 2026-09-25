@@ -1,6 +1,7 @@
 import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
+import { ApiError } from '../errors';
 import type { Certificate, CertificateInput, CertStatus } from '../types';
 
 export const certificateQuery = (orgId: string, id: string) =>
@@ -138,6 +139,49 @@ export function useDeleteCertificates(orgId: string) {
     meta: { silent: true },
     onSuccess: ({ ok }) => {
       if (ok.length > 0) void qc.invalidateQueries({ queryKey: ['certs', orgId] });
+    },
+  });
+}
+
+export const attemptsQuery = (orgId: string, id: string) =>
+  queryOptions({
+    queryKey: ['attempts', orgId, id],
+    queryFn: () => call(api.GET('/orgs/{orgId}/certificates/{id}/attempts', { params: { path: { orgId, id } } })),
+    refetchInterval: (q) => livePoll(!!q.state.data?.some((a) => a.outcome === 'running')),
+    staleTime: 0,
+  });
+
+export const manualDnsQuery = (orgId: string, id: string) =>
+  queryOptions({
+    queryKey: ['manual-dns', orgId, id],
+    queryFn: async () => {
+      try {
+        return await call(api.GET('/orgs/{orgId}/certificates/{id}/manual-dns', { params: { path: { orgId, id } } }));
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return [];
+        throw e;
+      }
+    },
+    refetchInterval: POLL.list,
+  });
+
+// Adaptation (ruling): a 409 (nothing waiting, or the records expired) is an
+// expected outcome the card shows inline, not a toast — `meta.silent`
+// suppresses the mutationCache's default error toast. `onSettled` (not just
+// `onSuccess`) refetches both queries on a 409 too, since the confirm may
+// have raced a fresh set of records/an attempt failure the card should pick
+// up regardless of which side won.
+export function useConfirmManualDns(orgId: string, id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(api.POST('/orgs/{orgId}/certificates/{id}/manual-dns/confirm', { params: { path: { orgId, id } } })),
+    meta: { silent: true, success: 'Checking the records now' },
+    onSettled: async () => {
+      await qc.invalidateQueries({ queryKey: ['manual-dns', orgId, id] });
+      await qc.invalidateQueries({ queryKey: ['attempts', orgId, id] });
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['certs', orgId] });
     },
   });
 }

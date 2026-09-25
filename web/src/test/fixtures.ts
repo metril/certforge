@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { AcmeAccount, CA, CAPreset, Certificate, Me, Org, ProviderSchema } from '@/api/types';
+import type { AcmeAccount, Attempt, CA, CAPreset, Certificate, Me, Org, ProviderSchema } from '@/api/types';
 
 export const url = (path: string) => `*/api/v1${path}`;
 export const DAY = 86_400_000;
@@ -135,3 +135,21 @@ export const hyperone = {
   },
 } as ProviderSchema;
 export const providers: ProviderSchema[] = [acmedns, route53, cloudflare, hetzner, hyperone];
+
+export function makeAttempt(p: Partial<Attempt> = {}): Attempt {
+  return {
+    id: 'a-1',
+    startedAt: iso(-0.01),
+    finishedAt: iso(-0.009),
+    outcome: 'failed',
+    acmeErrorType: 'urn:ietf:params:acme:error:dns',
+    retryAfter: iso(0.02),
+    steps: [
+      { name: 'account', status: 'success', startedAt: iso(-0.01), finishedAt: iso(-0.0099) },
+      { name: 'order', status: 'success', startedAt: iso(-0.0099), finishedAt: iso(-0.0098) },
+      { name: 'challenge www.example.com', status: 'failed', startedAt: iso(-0.0098), finishedAt: iso(-0.009), message: 'NXDOMAIN looking up TXT for _acme-challenge.www.example.com' },
+    ],
+    log: 'obtaining certificate\nrequesting order\npresenting dns-01 for www.example.com\nerror: NXDOMAIN looking up TXT',
+    ...p,
+  };
+}

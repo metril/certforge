@@ -90,6 +90,8 @@ export const help = {
   'rules.cnameAlias': { text: 'Zone that _acme-challenge is delegated to by CNAME.', learnMore: 'certificates.md#cname-delegation' },
   'rules.coverage': { text: 'Which rule proves each name. Names without one block issuing.' },
   'rules.catchAll': { text: 'Rules that certificates fall back to when none of their own match.' },
+  'attempt.retry': { text: 'Failed attempts back off from 5 minutes up to 24 hours. Rate limits use the CA’s retry time.' },
+  'manual.records': { text: 'Add these TXT records at your DNS host, then confirm. CertForge checks them before asking the CA.', learnMore: 'certificates.md#manual-dns' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

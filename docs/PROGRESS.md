@@ -85,8 +85,8 @@ secret-reuse guard, among smaller fixes — see the Decisions entry below);
 | 11 | Certificates list | done | 65a19e1 |
 | 12 | Wizard names step | done | 34419a9 |
 | 13 | Verification rules and coverage | done | f381130 |
-| 14 | Wizard assembly | done | pending |
-| 15 | Attempts and manual DNS | planned | |
+| 14 | Wizard assembly | done | 2c62746 |
+| 15 | Attempts and manual DNS | done | pending |
 | 16 | Certificate detail | planned | |
 | 17 | Overview and command palette | planned | |
 | 18 | Docker build, Playwright smoke, docs | planned | |

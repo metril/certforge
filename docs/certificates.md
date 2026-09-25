@@ -119,6 +119,8 @@ When an attempt reaches a manual rule, the certificate shows the TXT records to 
 
 If nobody confirms within 1 hour, the attempt fails with `manual-dns: TXT records were not confirmed in time`, the pending records are dropped, and the normal backoff schedules the next attempt, which shows fresh records. Remove old TXT records by hand.
 
+In the web UI, a pending certificate with records waiting shows an amber **Manual DNS** card on its own page (and, from Task 17, at the top of the Overview queue). It lists each record (name, type, value, TTL) with a copy button per field and **Copy all as zone lines** for pasting straight into a zone file. Add the records at your DNS host, then select **I've added them**; the card shows the CA's answer inline if nothing was waiting or the records expired, and the **Attempts** tab shows progress.
+
 ## Renewal
 
 - `percent` N: renew when N% of the lifetime remains (default 33: day 60 of a 90-day certificate, day 4 of a 6-day certificate).
@@ -134,6 +136,23 @@ A failed attempt sets `failureCount`, `lastError`, and the next try to `min(5 mi
 ## Attempts
 
 Each attempt records a step timeline: `caa`, `rate_ledger`, `account`, `order`, `challenge <name>`, `finalize`, `store`, each `running`, `success`, `failed`, `skipped` or `waiting_manual`, plus a log, the ACME error type (for example `urn:ietf:params:acme:error:rateLimited`) and `retryAfter`.
+
+The certificate's **Attempts** tab shows every attempt, newest first, as a step timeline. The failing step (if any) opens by default with its message; the raw log is collapsed behind **Raw log**, which adds a search box and a copy button once opened. While an attempt is `running` the tab polls every 2 seconds; once none is, it slows to 30 seconds, and never polls while the tab is hidden.
+
+### Troubleshooting
+
+A failed attempt shows a one-line explanation of the ACME error plus a link to the fix:
+
+| ACME error | Meaning | What to do |
+|---|---|---|
+| `rateLimited` | The CA's rate limit was reached | Wait for the retry time shown; avoid re-issuing identical names |
+| `dns`, `incorrectResponse` | The TXT record was missing or wrong when the CA looked | Check the record, CNAME delegation, and the propagation wait |
+| `unauthorized` | The CA rejected the proof | Check the verification rule that covers the name |
+| `caa` | A CAA record forbids this CA | Add the CA's identifier to the domain's CAA record |
+| `externalAccountRequired` | The CA needs EAB | Add the key ID and HMAC on the CA |
+| `badNonce`, `serverInternal`, `orderNotReady` | Transient | CertForge retries with backoff (5 minutes doubling to 24 hours) |
+
+Any other ACME error type shows as "The CA returned `<type>`."; open **Raw log** for the underlying detail.
 
 ## Downloads
 
