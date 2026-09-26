@@ -25,6 +25,72 @@ import (
 
 func push() gen.GrantDelivery { return gen.GrantDelivery("push") }
 
+// Review Focus (final fix wave, I3): force skips waiting for the agent and
+// hard-deletes a grant at once, whether it is still live or already
+// removal-pending, audited with forced true.
+func TestForceDeleteGrantSkipsWaitingOnAgent(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := res.(gen.CreateGrant201JSONResponse).Id
+	force := true
+	if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid, Params: gen.DeleteGrantParams{Force: &force}}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = f.pool.QueryRow(context.Background(), `SELECT count(*) FROM client_cert_grants WHERE id = $1`, gid).Scan(&n)
+	if n != 0 {
+		t.Fatal("force delete did not hard-delete the still-live grant")
+	}
+	var details string
+	_ = f.pool.QueryRow(context.Background(), `SELECT details::text FROM audit_events WHERE action = 'grant.delete' AND resource_id = $1`, gid.String()).Scan(&details)
+	if !strings.Contains(details, `"forced": true`) {
+		t.Fatalf("forced not audited: %s", details)
+	}
+}
+
+// A removal-pending grant on a client that has since applied a revision
+// (a plain, non-forced delete would wait for it to confirm the files are
+// gone) is also hard-deleted at once by force.
+func TestForceDeleteRemovalPendingGrant(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	c := f.activeClient(t, "web-1")
+	if _, err := f.pool.Exec(context.Background(), `UPDATE clients SET applied_revision = 1 WHERE id = $1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := res.(gen.CreateGrant201JSONResponse).Id
+	if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid}); err != nil {
+		t.Fatal(err)
+	}
+	var removed *time.Time
+	_ = f.pool.QueryRow(context.Background(), `SELECT removed_at FROM client_cert_grants WHERE id = $1`, gid).Scan(&removed)
+	if removed == nil {
+		t.Fatal("setup: grant not removal-pending")
+	}
+	force := true
+	if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid, Params: gen.DeleteGrantParams{Force: &force}}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = f.pool.QueryRow(context.Background(), `SELECT count(*) FROM client_cert_grants WHERE id = $1`, gid).Scan(&n)
+	if n != 0 {
+		t.Fatal("force delete did not hard-delete the removal-pending grant")
+	}
+}
+
 func TestGrantLifecycle(t *testing.T) {
 	f := newAgentFixture(t)
 	op, ctx := f.as("operator"), context.Background()

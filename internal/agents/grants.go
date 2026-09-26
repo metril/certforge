@@ -302,6 +302,15 @@ func (s *Service) lockGrant(ctx context.Context, q *sqlcgen.Queries, orgID, id u
 	return g, err
 }
 
+// lockGrantAny is lockGrant without excluding a removal-pending grant.
+func (s *Service) lockGrantAny(ctx context.Context, q *sqlcgen.Queries, orgID, id uuid.UUID) (sqlcgen.ClientCertGrant, error) {
+	g, err := q.LockGrantAny(ctx, sqlcgen.LockGrantAnyParams{ID: id, OrgID: orgID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return g, notFound("grant %s", id)
+	}
+	return g, err
+}
+
 // CreateGrant grants a certificate to a client and bumps its revision.
 func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in GrantInput) (uuid.UUID, error) {
 	if err := in.validate(); err != nil {
@@ -415,17 +424,29 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 }
 
 // DeleteGrant queues the grant's files for removal by an enrolled agent, or
-// deletes it at once when no agent can act on it.
-func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID) error {
+// deletes it at once when no agent can act on it, or when force is set
+// (the agent is gone for good and will never confirm removal: force skips
+// waiting on it and hard-deletes a removal-pending or still-live grant
+// right away, audited with details["forced"] = true). A live grant force-
+// deleted this way is never nudged; the agent notices it is gone the next
+// time it reconciles and treats its files as orphaned, the same as any
+// other grant the server no longer lists.
+func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID, force bool) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Q.WithTx(tx)
-	g, err := s.lockGrant(ctx, q, orgID, grantID)
+	// LockGrantAny, not lockGrant: this grant may already be removal-
+	// pending (force needs to reach it too; a plain, non-forced call on
+	// one that already is has nothing left to do and returns below).
+	g, err := s.lockGrantAny(ctx, q, orgID, grantID)
 	if err != nil {
 		return err
+	}
+	if g.RemovedAt != nil && !force {
+		return nil
 	}
 	c, err := q.GetClientByID(ctx, g.ClientID)
 	if err != nil {
@@ -439,8 +460,10 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID) err
 	// expired and it dropped back to pending) and may still have files on
 	// disk from this grant, so it keeps the soft-delete path: the row
 	// stays removal-pending until that client reconnects and reports the
-	// files gone.
-	immediate := c.Status == "revoked" || (c.Status == "pending" && c.AppliedRevision == 0)
+	// files gone. force, or a grant that is already removal-pending
+	// (nothing left to wait on but the agent, which force skips), always
+	// deletes at once.
+	immediate := force || g.RemovedAt != nil || c.Status == "revoked" || (c.Status == "pending" && c.AppliedRevision == 0)
 	var revs []sqlcgen.BumpClientRevisionsRow
 	if immediate {
 		err = q.DeleteGrantRow(ctx, grantID)
@@ -461,6 +484,9 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID) err
 	s.nudge(revs, map[uuid.UUID]bool{g.ClientID: g.Delivery == "push"})
 	d := grantDetails(g)
 	d["immediate"] = immediate
+	if force {
+		d["forced"] = true
+	}
 	s.audit(ctx, audit.Event{Action: "grant.delete", ResourceType: "grant", ResourceID: grantID.String(), OrgID: &orgID, Details: d})
 	return nil
 }

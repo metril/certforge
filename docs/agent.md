@@ -135,3 +135,4 @@ Mount every directory a layout or target writes to, and list it in `CF_WRITE_ALL
 | Deployment `failed` with a hook message | See the client's Hooks tab. `not listed in CF_HOOK_ALLOW` means the agent's allowlist lacks that executable. |
 | Deployment in `drift` | A file changed or vanished on the host. Turn on auto-remediate or use Redeploy. |
 | `not running as root: layout owner and group are ignored` | The agent runs with `--user`; only modes are applied. |
+| A grant stays removal-pending forever | Its agent is gone for good and will never report the files removed. `DELETE .../grants/{id}?force=true` hard-deletes it at once; revoking the client does this automatically for all of its removal-pending grants. |

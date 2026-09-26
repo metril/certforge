@@ -7,6 +7,14 @@ SELECT client_cert_grants.* FROM client_cert_grants
 WHERE client_cert_grants.id = $1 AND removed_at IS NULL AND client_id IN (SELECT c.id FROM clients c WHERE c.org_id = $2)
 FOR UPDATE;
 
+-- name: LockGrantAny :one
+-- Like LockGrant but without the removed_at IS NULL filter: DeleteGrant
+-- uses this so a force delete (or a plain delete's own lookup) can reach a
+-- grant that is already removal-pending, not only a still-live one.
+SELECT client_cert_grants.* FROM client_cert_grants
+WHERE client_cert_grants.id = $1 AND client_id IN (SELECT c.id FROM clients c WHERE c.org_id = $2)
+FOR UPDATE;
+
 -- name: UpdateGrant :one
 UPDATE client_cert_grants SET delivery = sqlc.arg(delivery), output_spec_id = sqlc.narg(output_spec_id),
        deploy_target_id = sqlc.narg(deploy_target_id), hook_ids = sqlc.arg(hook_ids),
@@ -22,6 +30,12 @@ WHERE id = sqlc.arg(id);
 
 -- name: DeleteGrantRow :exec
 DELETE FROM client_cert_grants WHERE id = $1;
+
+-- name: RemovalPendingGrantsForClient :many
+-- Revoking a client can never be confirmed by its agent again, so
+-- RevokeClient hard-deletes every grant of this client still awaiting
+-- removal instead of leaving it removal-pending forever.
+SELECT * FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL FOR UPDATE;
 
 -- name: GrantViews :many
 SELECT g.id, g.client_id, c.name AS client_name, g.cert_id, ce.name AS certificate_name, g.delivery,

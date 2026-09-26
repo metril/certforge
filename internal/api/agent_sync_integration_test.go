@@ -198,7 +198,7 @@ func TestBundleOtherClientGrant(t *testing.T) {
 	if code := e.get(t, e.httpClient(t, &certA), "/agent/v1/grants/not-a-uuid/bundle", nil); code != http.StatusNotFound {
 		t.Fatalf("bad id %d", code)
 	}
-	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gidA); err != nil {
+	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gidA, false); err != nil {
 		t.Fatal(err)
 	}
 	if code := e.get(t, e.httpClient(t, &certA), "/agent/v1/grants/"+gidA.String()+"/bundle", nil); code != http.StatusNotFound {
@@ -236,7 +236,7 @@ func TestRemovalNeedsRemovalResult(t *testing.T) {
 	hc := e.httpClient(t, &cert)
 	var before agentproto.Assignments
 	e.get(t, hc, "/agent/v1/assignments", &before)
-	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gid); err != nil {
+	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gid, false); err != nil {
 		t.Fatal(err)
 	}
 	// The deploy result the agent computed from the pre-delete assignments.
@@ -307,7 +307,7 @@ func TestRemovedGrantConfirmed(t *testing.T) {
 	hc := e.httpClient(t, &cert)
 	var before agentproto.Assignments
 	e.get(t, hc, "/agent/v1/assignments", &before)
-	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gid); err != nil {
+	if err := e.svc.DeleteGrant(e.as("operator"), e.org, gid, false); err != nil {
 		t.Fatal(err)
 	}
 	var as agentproto.Assignments

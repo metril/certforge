@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -203,6 +204,47 @@ func TestRevokeReenrollDelete(t *testing.T) {
 	}
 	if f.auditCount(t, "client.revoke") != 1 {
 		t.Fatal("second revoke was audited")
+	}
+}
+
+// Review Focus (final fix wave, I3): a revoked client's agent can never
+// come back to confirm a removal, so RevokeClient hard-deletes every grant
+// of this client still awaiting one instead of leaving it removal-pending
+// forever.
+func TestRevokeClientHardDeletesRemovalPendingGrants(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	c := f.activeClient(t, "web-1")
+	if _, err := f.pool.Exec(context.Background(), `UPDATE clients SET applied_revision = 1 WHERE id = $1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: gen.GrantDelivery("push"), LayoutId: &layout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := res.(gen.CreateGrant201JSONResponse).Id
+	if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid}); err != nil {
+		t.Fatal(err)
+	}
+	var removed *time.Time
+	_ = f.pool.QueryRow(context.Background(), `SELECT removed_at FROM client_cert_grants WHERE id = $1`, gid).Scan(&removed)
+	if removed == nil {
+		t.Fatal("setup: grant not removal-pending")
+	}
+	if _, err := f.srv.RevokeClient(op, gen.RevokeClientRequestObject{OrgId: f.org, Id: c.ID}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = f.pool.QueryRow(context.Background(), `SELECT count(*) FROM client_cert_grants WHERE id = $1`, gid).Scan(&n)
+	if n != 0 {
+		t.Fatal("revoke did not hard-delete the removal-pending grant")
+	}
+	var details string
+	_ = f.pool.QueryRow(context.Background(), `SELECT details::text FROM audit_events WHERE action = 'grant.delete' AND resource_id = $1 ORDER BY id DESC LIMIT 1`, gid.String()).Scan(&details)
+	if !strings.Contains(details, `"forced": true`) {
+		t.Fatalf("forced not audited: %s", details)
 	}
 }
 

@@ -1245,7 +1245,7 @@ paths:
       operationId: revokeClient
       tags: [clients]
       summary: Revoke a client
-      description: Needs clients:write. Refuses the agent's certificate from now on, deletes unused tokens and closes its socket (code 4001). Revoking twice is a no-op.
+      description: Needs clients:write. Refuses the agent's certificate from now on, deletes unused tokens and closes its socket (code 4001). Also hard-deletes any of this client's grants still awaiting agent removal confirmation (audited per grant with forced true), since a revoked agent can never confirm one. Revoking twice is a no-op.
       responses:
         "200":
           description: The revoked client.
@@ -1369,9 +1369,12 @@ paths:
       operationId: deleteGrant
       tags: [clients]
       summary: Delete a grant
-      description: Needs clients:write. The agent removes the files (Traefik YAML first) on its next sync and the grant disappears once it reports; for a client that never enrolled or is revoked it is deleted at once.
+      description: Needs clients:write. The agent removes the files (Traefik YAML first) on its next sync and the grant disappears once it reports; for a client that never enrolled or is revoked it is deleted at once. force skips waiting for the agent and hard-deletes a removal-pending or still-live grant immediately, audited with forced true — for an agent that is gone for good.
+      parameters:
+        - {$ref: "#/components/parameters/GrantForce"}
       responses:
         "204": {description: Deleted or queued for removal.}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -2049,6 +2052,7 @@ components:
     ClientStatusFilter: {name: status, in: query, required: false, description: Only clients with this status., schema: {$ref: "#/components/schemas/ClientStatus"}}
     ClientQ: {name: q, in: query, required: false, description: Case-insensitive substring of the client name or reported hostname., schema: {type: string}}
     ClientSort: {name: sort, in: query, required: false, description: "name, lastSeen or status; prefix - for descending. Default name.", schema: {type: string}}
+    GrantForce: {name: force, in: query, required: false, description: Hard-delete a removal-pending or still-live grant at once instead of waiting for the agent to confirm the files are gone; audited with forced true., schema: {type: boolean, default: false}}
   responses:
     BadRequest:
       description: Malformed request, query parameter, or JSON body.

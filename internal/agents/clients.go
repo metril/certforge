@@ -185,6 +185,18 @@ func (s *Service) RevokeClient(ctx context.Context, orgID, id uuid.UUID) (sqlcge
 	if err := q.DeleteUnusedEnrollmentTokens(ctx, id); err != nil {
 		return c, err
 	}
+	// A revoked client's agent can never come back to confirm a removal,
+	// so every grant of this client still awaiting one is hard-deleted now
+	// rather than left removal-pending forever.
+	pending, err := q.RemovalPendingGrantsForClient(ctx, id)
+	if err != nil {
+		return c, err
+	}
+	for _, g := range pending {
+		if err := q.DeleteGrantRow(ctx, g.ID); err != nil {
+			return c, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return c, err
 	}
@@ -194,6 +206,11 @@ func (s *Service) RevokeClient(ctx context.Context, orgID, id uuid.UUID) (sqlcge
 	}
 	s.audit(ctx, audit.Event{Action: "client.revoke", ResourceType: "client", ResourceID: id.String(), OrgID: &orgID,
 		Details: map[string]any{"serial": cur.AgentCertSerial, "previousStatus": cur.Status}})
+	for _, g := range pending {
+		d := grantDetails(g)
+		d["forced"] = true
+		s.audit(ctx, audit.Event{Action: "grant.delete", ResourceType: "grant", ResourceID: g.ID.String(), OrgID: &orgID, Details: d})
+	}
 	return c, nil
 }
 

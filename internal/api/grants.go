@@ -128,12 +128,14 @@ func (s *Server) UpdateGrant(ctx context.Context, r gen.UpdateGrantRequestObject
 	return gen.UpdateGrant200JSONResponse(g), nil
 }
 
-// DeleteGrant removes a grant (via the agent when it is enrolled).
+// DeleteGrant removes a grant (via the agent when it is enrolled, or at
+// once when force is set).
 func (s *Server) DeleteGrant(ctx context.Context, r gen.DeleteGrantRequestObject) (gen.DeleteGrantResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionClientsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	if err := s.d.Agents.DeleteGrant(ctx, r.OrgId, r.Id); err != nil {
+	force := r.Params.Force != nil && *r.Params.Force
+	if err := s.d.Agents.DeleteGrant(ctx, r.OrgId, r.Id, force); err != nil {
 		return nil, mapAgentErr(err)
 	}
 	return gen.DeleteGrant204Response{}, nil

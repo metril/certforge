@@ -962,7 +962,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke a client
-         * @description Needs clients:write. Refuses the agent's certificate from now on, deletes unused tokens and closes its socket (code 4001). Revoking twice is a no-op.
+         * @description Needs clients:write. Refuses the agent's certificate from now on, deletes unused tokens and closes its socket (code 4001). Also hard-deletes any of this client's grants still awaiting agent removal confirmation (audited per grant with forced true), since a revoked agent can never confirm one. Revoking twice is a no-op.
          */
         post: operations["revokeClient"];
         delete?: never;
@@ -1067,7 +1067,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a grant
-         * @description Needs clients:write. The agent removes the files (Traefik YAML first) on its next sync and the grant disappears once it reports; for a client that never enrolled or is revoked it is deleted at once.
+         * @description Needs clients:write. The agent removes the files (Traefik YAML first) on its next sync and the grant disappears once it reports; for a client that never enrolled or is revoked it is deleted at once. force skips waiting for the agent and hard-deletes a removal-pending or still-live grant immediately, audited with forced true — for an agent that is gone for good.
          */
         delete: operations["deleteGrant"];
         options?: never;
@@ -3299,6 +3299,8 @@ export interface components {
         ClientQ: string;
         /** @description name, lastSeen or status; prefix - for descending. Default name. */
         ClientSort: string;
+        /** @description Hard-delete a removal-pending or still-live grant at once instead of waiting for the agent to confirm the files are gone; audited with forced true. */
+        GrantForce: boolean;
     };
     requestBodies: never;
     headers: never;
@@ -5254,7 +5256,10 @@ export interface operations {
     };
     deleteGrant: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Hard-delete a removal-pending or still-live grant at once instead of waiting for the agent to confirm the files are gone; audited with forced true. */
+                force?: components["parameters"]["GrantForce"];
+            };
             header?: never;
             path: {
                 /** @description Org id. */
@@ -5273,6 +5278,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

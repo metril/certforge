@@ -665,6 +665,41 @@ func (q *Queries) LockGrant(ctx context.Context, arg LockGrantParams) (ClientCer
 	return i, err
 }
 
+const lockGrantAny = `-- name: LockGrantAny :one
+SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq FROM client_cert_grants
+WHERE client_cert_grants.id = $1 AND client_id IN (SELECT c.id FROM clients c WHERE c.org_id = $2)
+FOR UPDATE
+`
+
+type LockGrantAnyParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Like LockGrant but without the removed_at IS NULL filter: DeleteGrant
+// uses this so a force delete (or a plain delete's own lookup) can reach a
+// grant that is already removal-pending, not only a still-live one.
+func (q *Queries) LockGrantAny(ctx context.Context, arg LockGrantAnyParams) (ClientCertGrant, error) {
+	row := q.db.QueryRow(ctx, lockGrantAny, arg.ID, arg.OrgID)
+	var i ClientCertGrant
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.CertID,
+		&i.Delivery,
+		&i.OutputSpecID,
+		&i.DeployTargetID,
+		&i.HookIds,
+		&i.AutoRemediate,
+		&i.RemovedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RemovedRevision,
+		&i.RedeploySeq,
+	)
+	return i, err
+}
+
 const lockHooksInOrg = `-- name: LockHooksInOrg :many
 SELECT id FROM hooks WHERE id = ANY($1::uuid[]) AND org_id = $2 FOR SHARE
 `
@@ -762,6 +797,47 @@ type MarkGrantRemovedParams struct {
 func (q *Queries) MarkGrantRemoved(ctx context.Context, arg MarkGrantRemovedParams) error {
 	_, err := q.db.Exec(ctx, markGrantRemoved, arg.RemovedRevision, arg.ID)
 	return err
+}
+
+const removalPendingGrantsForClient = `-- name: RemovalPendingGrantsForClient :many
+SELECT id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL FOR UPDATE
+`
+
+// Revoking a client can never be confirmed by its agent again, so
+// RevokeClient hard-deletes every grant of this client still awaiting
+// removal instead of leaving it removal-pending forever.
+func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID uuid.UUID) ([]ClientCertGrant, error) {
+	rows, err := q.db.Query(ctx, removalPendingGrantsForClient, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ClientCertGrant{}
+	for rows.Next() {
+		var i ClientCertGrant
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientID,
+			&i.CertID,
+			&i.Delivery,
+			&i.OutputSpecID,
+			&i.DeployTargetID,
+			&i.HookIds,
+			&i.AutoRemediate,
+			&i.RemovedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.RemovedRevision,
+			&i.RedeploySeq,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const staleDeploymentGrantIDs = `-- name: StaleDeploymentGrantIDs :many
