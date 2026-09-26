@@ -11,4 +11,9 @@ export const E2E = {
   dexIssuer: process.env.CF_E2E_DEX_ISSUER ?? 'http://dex:5556/dex',
   oidcUser: process.env.CF_E2E_OIDC_USER ?? 'oidc-user@example.test',
   oidcPassword: process.env.CF_E2E_OIDC_PASSWORD ?? 'password',
+  // make e2e-web's bind-mount root (3A Task 15): agent-data/ holds the token
+  // file the compose agent waits for, ssl/ is its /etc/ssl/certforge.
+  agentDir: process.env.CF_E2E_AGENT_DIR ?? '../.e2e',
+  // Where agents reach the server on the compose network.
+  agentUrl: process.env.CF_E2E_AGENT_URL ?? 'https://certforge:8443',
 };

@@ -8,7 +8,7 @@ SWAGGER_UI_VERSION := 5.17.14
 COMPOSE_TEST := docker compose -p certforge-e2e -f deploy/compose.yaml -f deploy/compose.test.yaml
 COMPOSE_TEST_ABS := docker compose -p certforge-e2e -f $(CURDIR)/deploy/compose.yaml -f $(CURDIR)/deploy/compose.test.yaml
 
-.PHONY: generate build build-embed test test-integration lint e2e vendor-swagger image-agent
+.PHONY: generate build build-embed test test-integration lint e2e e2e-web vendor-swagger image-agent
 
 generate:
 	@if [ -f sqlc.yaml ]; then $(GO) run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate; fi
@@ -58,6 +58,21 @@ e2e: deploy/secrets/kek
 	CF_E2E_AGENT_DIR=$(CURDIR)/.e2e \
 	CF_E2E_COMPOSE="$(COMPOSE_TEST_ABS)" \
 	$(GO) test -tags e2e -count=1 -timeout 20m ./test/e2e/...; status=$$?; $(COMPOSE_TEST) --profile e2e down -v; exit $$status
+
+# Playwright against a fresh compose stack with the agent service (plan 3B).
+# --profile e2e brings up the agent service (compose.test.yaml keeps it out
+# of the plain dev stack; see its own comment on why it must not start
+# without CF_E2E_UID/GID, which this target exports below).
+e2e-web: deploy/secrets/kek
+	rm -rf .e2e && mkdir -p .e2e/agent-data .e2e/traefik .e2e/ssl
+	export CF_E2E_UID=$$(id -u) CF_E2E_GID=$$(id -g); \
+	$(COMPOSE_TEST) --profile e2e up -d --build --wait; up_status=$$?; \
+	if [ $$up_status -ne 0 ]; then \
+		$(COMPOSE_TEST) --profile e2e down -v; exit $$up_status; \
+	fi; \
+	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} \
+	CF_E2E_AGENT_DIR=$(CURDIR)/.e2e \
+	npm --prefix web run e2e; status=$$?; $(COMPOSE_TEST) --profile e2e down -v; exit $$status
 
 vendor-swagger:
 	curl -fsSL -o internal/api/docs/swagger-ui-bundle.js https://cdn.jsdelivr.net/npm/swagger-ui-dist@$(SWAGGER_UI_VERSION)/swagger-ui-bundle.js

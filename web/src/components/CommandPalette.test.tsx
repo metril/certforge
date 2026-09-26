@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Action } from '@/lib/permissions';
 import { server } from '@/test/server';
-import { authHandlers, makeCert, meWith, org, org2, url } from '@/test/fixtures';
+import { authHandlers, makeCert, makeClient, meWith, org, org2, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 // Every real role's read actions come as a fixed VIEWER block (see
@@ -191,6 +191,37 @@ it('shows every org-scoped page entry for an org-admin', async () => {
 // selector for Ctrl/Cmd-K specifically, so a second press — even with the
 // search input focused — closes it instead of being swallowed the same way
 // a generic dialog/sheet/popover swallows it (lib/shortcuts.test.ts).
+it('jumps to a client by hostname and offers Enrol client to writers', async () => {
+  server.use(
+    ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })),
+    http.get(url('/orgs/org-1/clients'), () => HttpResponse.json({ items: [makeClient({ id: 'cl-4', name: 'db-1', hostname: 'db-1.rack-a.lan' })], nextCursor: null })),
+    http.get(url('/orgs/org-1/clients/cl-4'), () => HttpResponse.json(makeClient({ id: 'cl-4', name: 'db-1' }))),
+    http.get(url('/orgs/org-1/clients/cl-4/grants'), () => HttpResponse.json({ items: [] })),
+  );
+  const { router, user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  expect(await within(dialog).findByText('Enrol client')).toBeInTheDocument();
+  expect(within(dialog).getByText('Delivery: File layouts')).toBeInTheDocument();
+  expect(within(dialog).getByText('Settings: Agents')).toBeInTheDocument();
+  await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'rack-a');
+  await user.click(await within(dialog).findByRole('option', { name: /^db-1/ }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/clients/cl-4/certificates'));
+});
+
+it('hides Enrol client and Delivery pages without the permissions', async () => {
+  permissionOverride = { can: (a) => a === 'certs:read' || a === 'clients:read', canAnywhere: () => false };
+  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  expect(await within(dialog).findByText('Clients')).toBeInTheDocument();
+  expect(within(dialog).queryByText('Enrol client')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Delivery: Deploy targets')).not.toBeInTheDocument();
+});
+
 it('closes on a second Ctrl-K pressed while its own search input has focus', async () => {
   server.use(...certificateHandlers(makeCert({ id: 'c-8', name: 'edge' })));
   const { user } = renderRoute('/o/acme/overview');

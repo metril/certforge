@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { FileText, Plus, RotateCw, ShieldCheck } from 'lucide-react';
+import { FileText, Plus, RotateCw, Server, ShieldCheck } from 'lucide-react';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
+import { allClientsQuery } from '@/api/queries/clients';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ALL_ORGS_SLUG, useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
@@ -10,8 +11,9 @@ import { renewToastHandlers } from '@/lib/renewToast';
 import { keywordFilter } from '@/lib/utils';
 
 /**
- * Ctrl/Cmd-K palette: jump to a certificate by name, common name, or any
- * SAN, jump to a page, or run "New certificate"/"Renew <name>". Every
+ * Ctrl/Cmd-K palette: jump to a certificate by any name or a client by name
+ * or hostname, jump to a page, or run New certificate, Enrol client, Renew
+ * <name>. Every
  * `CommandItem` gets a `value` prefixed with its kind (`page:`, `cert:`,
  * `action:`, `renew:`) plus its own id, so two entries never collide on
  * cmdk's own value-based selection even when a page label and a
@@ -51,7 +53,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const canReadDnsCreds = !!org && can(me, 'dnscreds:read', org.id);
   const canReadAudit = allOrgs ? canAnywhere(me, 'audit:read') : !!org && can(me, 'audit:read', org.id);
   const canReadUsers = canAnywhere(me, 'users:read');
+  const canReadClients = allOrgs ? canAnywhere(me, 'clients:read') : !!org && can(me, 'clients:read', org.id);
+  const canWriteClients = !!org && can(me, 'clients:write', org.id);
+  const canReadDelivery = !!org && can(me, 'delivery:read', org.id);
   const { data: certs = [] } = useQuery({ ...allCertificatesQuery(org?.id ?? ''), enabled: open && !!org && (canReadCerts || canIssue) });
+  const { data: clientsData } = useQuery({ ...allClientsQuery(org?.id ?? ''), enabled: open && !!org && canReadClients });
+  const clients = clientsData?.items ?? [];
   const [search, setSearch] = useState('');
 
   const run = (fn: () => void) => {
@@ -64,6 +71,9 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       ? [
           { label: 'Overview', keywords: ['dashboard', 'triage'], go: () => void navigate({ to: '/o/$org/overview', params: { org: ALL_ORGS_SLUG } }) },
           { label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: ALL_ORGS_SLUG } }) },
+          ...(canReadClients
+            ? [{ label: 'Clients', keywords: ['agents', 'hosts', 'fleet'], go: () => void navigate({ to: '/o/$org/clients', params: { org: ALL_ORGS_SLUG } }) }]
+            : []),
           ...(canReadAudit
             ? [{ label: 'Audit log', keywords: ['events', 'history', 'who', 'changes'], go: () => void navigate({ to: '/o/$org/audit', params: { org: ALL_ORGS_SLUG } }) }]
             : []),
@@ -74,6 +84,9 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             ...(canReadCerts
               ? [{ label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: org.slug } }) }]
               : []),
+            ...(canReadClients
+              ? [{ label: 'Clients', keywords: ['agents', 'hosts', 'fleet'], go: () => void navigate({ to: '/o/$org/clients', params: { org: org.slug } }) }]
+              : []),
             ...(canReadCas
               ? [{ label: 'Issuers: CAs', keywords: ['ca', 'acme', 'directory'], go: () => void navigate({ to: '/o/$org/issuers/cas', params: { org: org.slug } }) }]
               : []),
@@ -82,6 +95,13 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               : []),
             ...(canReadDnsCreds
               ? [{ label: 'Issuers: DNS credentials', keywords: ['dns', 'provider', 'credential'], go: () => void navigate({ to: '/o/$org/issuers/dns', params: { org: org.slug } }) }]
+              : []),
+            ...(canReadDelivery
+              ? [
+                  { label: 'Delivery: Deploy targets', keywords: ['traefik', 'target'], go: () => void navigate({ to: '/o/$org/delivery/targets', params: { org: org.slug } }) },
+                  { label: 'Delivery: File layouts', keywords: ['layout', 'files', 'output', 'pem'], go: () => void navigate({ to: '/o/$org/delivery/layouts', params: { org: org.slug } }) },
+                  { label: 'Delivery: Hooks', keywords: ['hook', 'reload', 'command'], go: () => void navigate({ to: '/o/$org/delivery/hooks', params: { org: org.slug } }) },
+                ]
               : []),
             ...(canReadAudit
               ? [{ label: 'Audit log', keywords: ['events', 'history', 'who', 'changes'], go: () => void navigate({ to: '/o/$org/audit', params: { org: org.slug } }) }]
@@ -94,6 +114,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       : []),
     { label: 'Settings: Authentication', keywords: ['oidc', 'sso', 'single sign-on', 'groups'], go: () => void navigate({ to: '/settings/$section', params: { section: 'authentication' } }) },
     { label: 'Settings: Issuance defaults', keywords: ['defaults', 'renewal', 'key type'], go: () => void navigate({ to: '/settings/$section', params: { section: 'issuance-defaults' } }) },
+    { label: 'Settings: Agents', keywords: ['agent ca', 'listener', 'rotation', 'heartbeat'], go: () => void navigate({ to: '/settings/$section', params: { section: 'agents' } }) },
     { label: 'Settings: Backup and keys', keywords: ['kek', 'backup'], go: () => void navigate({ to: '/settings/$section', params: { section: 'backup' } }) },
   ];
 
@@ -134,7 +155,23 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             ))}
           </CommandGroup>
         )}
-        {org && (canCreate || (canIssue && search.trim() !== '')) && (
+        {org && canReadClients && clients.length > 0 && (
+          <CommandGroup heading="Clients">
+            {clients.map((c) => (
+              <CommandItem
+                key={c.id}
+                value={`client:${c.id}`}
+                keywords={[c.name, c.hostname]}
+                onSelect={() => run(() => void navigate({ to: '/o/$org/clients/$id', params: { org: org.slug, id: c.id } }))}
+              >
+                <Server className="size-4" aria-hidden />
+                <span>{c.name}</span>
+                <span className="ml-auto truncate font-mono text-xs text-ink-muted">{c.hostname}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+        {org && (canCreate || canWriteClients || (canIssue && search.trim() !== '')) && (
           <CommandGroup heading="Actions">
             {canCreate && (
               <CommandItem
@@ -144,6 +181,16 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               >
                 <Plus className="size-4" aria-hidden />
                 New certificate
+              </CommandItem>
+            )}
+            {canWriteClients && (
+              <CommandItem
+                value="action:enrol-client"
+                keywords={['enrol', 'enroll', 'agent', 'client', 'token']}
+                onSelect={() => run(() => void navigate({ to: '/o/$org/clients/new', params: { org: org.slug } }))}
+              >
+                <Plus className="size-4" aria-hidden />
+                Enrol client
               </CommandItem>
             )}
             {canIssue &&

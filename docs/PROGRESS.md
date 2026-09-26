@@ -195,8 +195,8 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 | 8 | File layouts | done | 0a69a95 |
 | 9 | Hooks | done | dd6ad83 |
 | 10 | Settings → Agents | done | 3999f5a |
-| 11 | Certificate deployments, grants column, Overview | done | pending |
-| 12 | Palette, docs and Playwright | todo | – |
+| 11 | Certificate deployments, grants column, Overview | done | a4c6f87 |
+| 12 | Palette, docs and Playwright | done | pending |
 
 ## Decisions made during implementation
 
@@ -320,7 +320,9 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 
 ## Known gaps
 
-- 3A Task 15: the e2e checks the Traefik YAML byte for byte but runs no Traefik container; the Playwright agent flow belongs to plan 3B.
+- 3A Task 15: the e2e checks the Traefik YAML byte for byte but runs no Traefik container.
+- 3B: `make e2e-web` (Playwright with the compose agent) is not in CI, like the rest of the browser suite.
+- Playwright coverage before 3B never clicked a schema-form Save, which is how the CSP validator bug shipped through Phases 1–2; keep at least one UI-driven save in the smoke suite.
 - 3B: the client header has no "Update available" badge; no endpoint reports the newest agent version.
 - 3A: `serve`'s startup path only tries the agent CA and listener certificate once (`agentCA.EnsureActive`/`agentListener.Reload`); if either fails (for example a KEK canary that recovers moments later), the agent listener never starts for that process's lifetime — it logs the error and continues without one. There is no retry loop; the fix is to restart the server process.
 - 1C: `npm run e2e` (Playwright) and `make e2e` (Go, against Pebble) both run locally only; neither is wired into `.github/workflows/ci.yml`.
@@ -389,3 +391,4 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 - 3B Task 2 (3a-facts.md deviation from the brief): `dockerRunSnippet`/`composeSnippet` (`web/src/features/clients/enrol/snippets.ts`) both set `CF_WRITE_ALLOW` (a placeholder `/etc/certforge/deploy` the operator edits) and mount that directory, since the shipped 3A agent fails every deploy with it unset (`docs/agent.md` "Write allowlist") — the brief's own literal snippet sample and `snippets.test.ts` sample omit it entirely.
 - 3B Task 2: carried over Task 1's deferred grant-removal wiring: `useDeleteGrant(orgId)` now takes `{id, force?}` and sends `?force=true`; `useRevokeClient`/`useDeleteClient` also invalidate `['grants', orgId]`, `['deployments', orgId]`, `['certs', orgId]`; `invalidateGrants` also invalidates `['certs', 'all', 'every']`; `ConnectionDot` and `ToneChip` are now `forwardRef` for a future `asChild` tooltip trigger; `clients.ts`'s `everyPage`/`allClientsQuery` now return `{items, truncated}` (unconsumed until a later task).
 - 3B Task 8 (3a-facts.md deviation from the brief): the brief's `LayoutSheet` catch routes every 409 to Name; 3a-facts.md notes a layout PATCH can also 409 for a path collision across a client's grants, which names a client/certificate pair, not "name" — `LayoutSheet.submit` now only sets `nameError` when the 409's message matches `/name/i`, otherwise it goes to the page-level `formError` alert, mirroring Task 7's `TargetSheet` routing exactly.
+- 3B Task 12: Schema-form validation runs on `@cfworker/json-schema` (a pure JSON Schema interpreter), not ajv: ajv's `new Function` codegen is blocked by the server's `script-src 'self'` CSP, so `@rjsf/validator-ajv8` silently failed every schema-form Save in a real browser; `web/src/forms/validator.ts` implements RJSF's `ValidatorType` against the interpreter (draft 2020-12).

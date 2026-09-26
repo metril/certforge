@@ -77,4 +77,4 @@ Users with a global role get **All orgs** at the top of the org switcher (/o/all
 
 ### Command palette
 
-Press `Ctrl`/`Cmd` `K` from anywhere in the app to open it. Type to jump straight to a certificate by its name, common name, or any SAN; jump to any Phase 1 page (Certificates, Issuers, Settings sections); or run **New certificate** or **Renew `<name>`** without leaving the keyboard.
+Press `Ctrl`/`Cmd` `K` from anywhere in the app to open it. Type to jump straight to a certificate by its name, common name, or any SAN; to clients by name or hostname; to any page (Certificates, Issuers, the Clients and Delivery pages, Settings sections including Settings → Agents); or run **New certificate**, **Enrol client** (for roles that can enrol), or **Renew `<name>`** without leaving the keyboard.
