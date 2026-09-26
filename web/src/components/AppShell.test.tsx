@@ -42,7 +42,7 @@ function viewport(min1280: boolean, min768 = true) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-it('shows eight items; Phase 1 items link, the rest are disabled with a tooltip', async () => {
+it('shows eight items; enabled items link, the rest are disabled with a tooltip', async () => {
   viewport(true);
   server.use(...authHandlers({ authed: true }));
   renderRoute('/o/acme/certificates');
@@ -50,17 +50,18 @@ it('shows eight items; Phase 1 items link, the rest are disabled with a tooltip'
   const links: [string, string][] = [
     ['Overview', '/o/acme/overview'],
     ['Certificates', '/o/acme/certificates'],
+    ['Clients', '/o/acme/clients'],
     ['Issuers', '/o/acme/issuers'],
     ['Audit log', '/o/acme/audit'],
     ['Settings', '/settings/general'],
   ];
   for (const [name, href] of links) expect(within(nav).getByRole('link', { name })).toHaveAttribute('href', href);
   expect(within(nav).getByRole('link', { name: 'Certificates' })).toHaveAttribute('aria-current', 'page');
-  for (const name of ['Clients', 'Delivery', 'Alerts']) {
+  for (const name of ['Delivery', 'Alerts']) {
     expect(within(nav).getByText(name).closest('[aria-disabled="true"]')).not.toBeNull();
   }
   expect(within(nav).getByText('Operate')).toBeInTheDocument();
-  act(() => (within(nav).getByText('Clients').closest('[aria-disabled="true"]') as HTMLElement).focus());
+  act(() => (within(nav).getByText('Delivery').closest('[aria-disabled="true"]') as HTMLElement).focus());
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Available in a later phase');
 });
 

@@ -1,3 +1,4 @@
+import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { CertStatus } from '@/api/types';
 import type { HelpKey } from '@/lib/help';
@@ -48,27 +49,30 @@ const ICON: Record<Tone, string> = {
   neutral: 'text-ink-muted',
 };
 
-export function ToneChip({
-  tone,
-  icon: Icon,
-  label,
-  help,
-  className,
-}: {
+type ToneChipProps = {
   tone: Tone;
   icon: LucideIcon;
   label: string;
   help?: HelpKey;
-  className?: string;
-}) {
+} & Omit<ComponentPropsWithoutRef<'span'>, 'children'>;
+
+// forwardRef so a ToneChip (or StatusChip/DeploymentChip, which render it)
+// can sit inside a `Tooltip`/`PermissionTip`'s `asChild` trigger — Radix
+// clones the child and attaches a ref to the real DOM node, the same
+// requirement Sidebar's TargetLink documents.
+export const ToneChip = forwardRef<HTMLSpanElement, ToneChipProps>(function ToneChip({ tone, icon: Icon, label, help, className, ...rest }, ref) {
   return (
-    <span className={cn('inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-sm border px-2 text-xs font-semibold', CHIP[tone], TEXT[tone], className)}>
+    <span
+      ref={ref}
+      className={cn('inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-sm border px-2 text-xs font-semibold', CHIP[tone], TEXT[tone], className)}
+      {...rest}
+    >
       <Icon className={cn('size-3.5', ICON[tone])} aria-hidden />
       {label}
       {help && <HelpTip id={help} />}
     </span>
   );
-}
+});
 
 /** failed is outlined (an event, not a persistent state); expired is filled;
  * pending uses the animated dash border (see .cf-dash in app.css). */

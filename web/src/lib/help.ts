@@ -152,6 +152,15 @@ export const help = {
   'deploy.ok': { text: 'The agent installed the current version and the files still match.' },
   'deploy.failed': { text: 'The agent reported an error. It tries again on the next change or redeploy.' },
   'deploy.drift': { text: 'Files on the host changed or went missing after the deploy.', learnMore: 'agent.md#drift' },
+  'client.name': { text: 'Unique in this org. Shown in lists and audit events.' },
+  'client.site': { text: 'Sites group clients for filtering. They never limit access.' },
+  'client.agentVersion': { text: 'certforge-agent version the host reported when it last connected.' },
+  'client.grants': { text: 'Certificates granted to this client.' },
+  'client.drift': { text: 'Grants whose files on the host no longer match, and grants whose last deploy failed.', learnMore: 'agent.md#drift' },
+  'client.lastSeen': { text: 'Last connection, heartbeat or report from the agent.' },
+  'client.token': { text: 'Single use and shown only now. Start the agent with it before it expires.', learnMore: 'agent.md#enrolment' },
+  'client.snippet': { text: 'Runs the agent with a volume for its identity. Mount your certificate directories too.', learnMore: 'agent.md#running-with-docker' },
+  'client.waiting': { text: 'The agent enrols with the token, then connects. This updates by itself.', learnMore: 'agent.md#troubleshooting' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

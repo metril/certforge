@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isNavPathActive } from './nav';
+import { ALL_ORGS_TARGETS, isNavPathActive, NAV } from './nav';
 
 // Fix round 1 (review): a raw `pathname.startsWith(prefix)` lit up
 // Certificates for "/o/acme/certificates-foo" and couldn't light up
@@ -20,4 +20,11 @@ it('does not match a sibling path that merely starts with the same characters', 
 
 it('does not match an unrelated path', () => {
   expect(isNavPathActive('/o/acme/issuers', '/o/acme/certificates')).toBe(false);
+});
+
+it('enables Clients, also under All orgs, and keeps Alerts for later', () => {
+  const items = NAV.flatMap((g) => g.items);
+  expect(items.find((i) => i.label === 'Clients')?.target).toBe('clients');
+  expect(items.find((i) => i.label === 'Alerts')?.target).toBeUndefined();
+  expect(ALL_ORGS_TARGETS.has('clients')).toBe(true);
 });

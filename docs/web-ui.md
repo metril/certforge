@@ -1,6 +1,6 @@
 # Web UI
 
-The chrome and dashboard shared by every screen: the Overview page and the command palette.
+The chrome, the dashboard and the fleet screens: Overview, Clients, the command palette.
 
 ## Sign in
 
@@ -17,6 +17,10 @@ The login page shows **Sign in with single sign-on** when Settings → Authentic
 - **Upcoming renewals** and **Recent activity** side by side: certificates due in the next 7 days, and the last 20 audit events (shown to roles that can read the audit log; each links to the event on the Audit log page).
 
 Below `md` width, the needs-attention queue and upcoming renewals render as stacked card rows instead of a table line, and the horizon scales to the screen width.
+
+## Clients
+
+`/o/:org/clients` lists the org's agents: connection (Online, Offline, Never connected, Revoked), site, agent version, grants, drift and failed counts, and last seen. Filter by status and site (kept in the URL as `?status=` and `?site=`; a site is a filter, never a scope), search by name or hostname, sort by name, connection or last seen, and save views. Below `md` width the list renders as cards. Under All orgs the list is read-only with an Org column. **Enrol client** takes a name and an optional site, then shows the one-time token with its agent URL and expiry, a `docker run` line and a Compose file to copy, and a live panel that waits for the agent (checked every 2 seconds) and shows its host once it connects. An expired token offers **New token**. The token is shown once and never stored in the browser.
 
 ## Settings → General
 

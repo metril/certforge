@@ -23,7 +23,14 @@ export const certificateDeploymentsQuery = (orgId: string, certId: string) =>
  * certificates list's Grants column. */
 export async function invalidateGrants(qc: QueryClient, orgId: string): Promise<void> {
   await Promise.all(
-    [['grants', orgId], ['deployments', orgId], ['clients', orgId], ['clients', 'all'], ['certs', orgId]].map((queryKey) => qc.invalidateQueries({ queryKey })),
+    [
+      ['grants', orgId],
+      ['deployments', orgId],
+      ['clients', orgId],
+      ['clients', 'all'],
+      ['certs', orgId],
+      ['certs', 'all', 'every'],
+    ].map((queryKey) => qc.invalidateQueries({ queryKey })),
   );
 }
 
@@ -71,7 +78,10 @@ export function useUpdateGrant(orgId: string) {
 export function useDeleteGrant(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => call(api.DELETE('/orgs/{orgId}/grants/{id}', { params: { path: { orgId, id } } })),
+    // Grant delete is asynchronous (3a-facts.md): it stays "removal-pending"
+    // until the agent confirms, unless force=true hard-deletes it now.
+    mutationFn: ({ id, force }: { id: string; force?: boolean }) =>
+      call(api.DELETE('/orgs/{orgId}/grants/{id}', { params: { path: { orgId, id }, query: force ? { force: true } : undefined } })),
     meta: { silent: true, success: 'Grant removed' },
     onSuccess: () => invalidateGrants(qc, orgId),
   });

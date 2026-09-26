@@ -34,16 +34,22 @@ export const allOrgsClientsInfinite = (s: ClientListQuery) =>
 const PAGE = 200;
 const MAX_PAGES = 50;
 
-async function everyPage(get: (cursor?: string) => Promise<{ items: Client[]; nextCursor?: string | null }>): Promise<Client[]> {
+export type EveryPage<T> = { items: T[]; truncated: boolean };
+
+/** truncated is true when the 50 x 200 cap stopped the walk before the
+ * server ran out of pages (a genuinely large org, not the common case). */
+async function everyPage(get: (cursor?: string) => Promise<{ items: Client[]; nextCursor?: string | null }>): Promise<EveryPage<Client>> {
   const out: Client[] = [];
   let cursor: string | undefined;
+  let truncated = false;
   for (let i = 0; i < MAX_PAGES; i++) {
     const page = await get(cursor);
     out.push(...page.items);
     if (!page.nextCursor) break;
     cursor = page.nextCursor;
+    if (i === MAX_PAGES - 1) truncated = true;
   }
-  return out;
+  return { items: out, truncated };
 }
 
 /** Every client in the org, or in every readable org when orgId is 'all'
@@ -73,6 +79,18 @@ function invalidateClients(qc: QueryClient, orgId: string) {
   return Promise.all([qc.invalidateQueries({ queryKey: ['clients', orgId] }), qc.invalidateQueries({ queryKey: ['clients', 'all'] })]);
 }
 
+// Revoking or deleting a client also moves its grants (hard-deleted or
+// left removal-pending, 3a-facts.md), their deployments, and the
+// certificates list's Grants column.
+function invalidateClientAndGrants(qc: QueryClient, orgId: string) {
+  return Promise.all([
+    invalidateClients(qc, orgId),
+    qc.invalidateQueries({ queryKey: ['grants', orgId] }),
+    qc.invalidateQueries({ queryKey: ['deployments', orgId] }),
+    qc.invalidateQueries({ queryKey: ['certs', orgId] }),
+  ]);
+}
+
 export function useCreateClient(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -99,7 +117,7 @@ export function useRevokeClient(orgId: string) {
   return useMutation({
     mutationFn: (id: string) => call(api.POST('/orgs/{orgId}/clients/{id}/revoke', { params: { path: { orgId, id } } })),
     meta: { silent: true, success: 'Client revoked' },
-    onSuccess: () => invalidateClients(qc, orgId),
+    onSuccess: () => invalidateClientAndGrants(qc, orgId),
   });
 }
 
@@ -118,7 +136,7 @@ export function useDeleteClient(orgId: string) {
   return useMutation({
     mutationFn: (id: string) => call(api.DELETE('/orgs/{orgId}/clients/{id}', { params: { path: { orgId, id } } })),
     meta: { silent: true, success: 'Client deleted' },
-    onSuccess: () => invalidateClients(qc, orgId),
+    onSuccess: () => invalidateClientAndGrants(qc, orgId),
   });
 }
 
