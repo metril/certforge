@@ -166,6 +166,7 @@ export const help = {
   'client.reenroll': { text: 'Issues a new token and disconnects the agent until it enrols again. Use it after rebuilding the host.', learnMore: 'agent.md#enrolment' },
   'client.revoke': { text: 'Refuses the agent’s certificate and closes its connection. Files already on the host stay; grants still waiting for removal are dropped.' },
   'client.delete': { text: 'Only revoked clients, or clients that never enrolled, can be deleted.' },
+  'grant.certificates': { text: 'Pick one or more certificates. Each becomes its own grant with the settings below.', learnMore: 'agent.md#grants-and-reconcile' },
   'grant.delivery': { text: 'Push sends changes at once over the connection. Pull waits for the agent’s schedule or a manual certforge-agent pull.', learnMore: 'agent.md#pull-mode' },
   'grant.layout': { text: 'Files the agent writes, built from PEM parts.', learnMore: 'agent.md#file-layouts' },
   'grant.target': { text: 'What the agent does besides writing files, such as updating Traefik.', learnMore: 'deploy-targets.md#traefik' },

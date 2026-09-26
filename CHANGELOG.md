@@ -95,6 +95,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web: Clients list with connection, site, drift and last seen, and Enrol client with copyable docker run and Compose snippets and a live wait for the agent.
 - Web: client detail with connection, agent and certificate facts, and rename, site, re-enrol, revoke and delete.
 - Web: client certificates tab with deployment state, expected against installed files for drift, redeploy and remove.
+- Web: grant several certificates to a client at once with layout, deploy target, hooks and auto-remediation, and edit grants.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

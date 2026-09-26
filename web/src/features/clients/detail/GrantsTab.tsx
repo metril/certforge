@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ChevronDown, Pencil, RotateCw, Trash2 } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
-import { deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
+import { deployTargetsQuery, hooksQuery, layoutsQuery } from '@/api/queries/delivery';
 import { grantsQuery, useDeleteGrant, useRedeployGrant } from '@/api/queries/grants';
 import type { Client, Grant } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
@@ -55,6 +55,10 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   const q = useQuery(grantsQuery(orgId, client.id));
   const { data: layouts = [] } = useQuery({ ...layoutsQuery(orgId), enabled: canDelivery });
   const { data: targets = [] } = useQuery({ ...deployTargetsQuery(orgId), enabled: canDelivery });
+  // Warms the grant sheet's hooks cache (same query key) while this tab is
+  // open, so the sheet's hook run order doesn't lag one round trip behind
+  // the grant it's editing.
+  useQuery({ ...hooksQuery(orgId), enabled: canDelivery });
   const redeploy = useRedeployGrant(orgId);
   const del = useDeleteGrant(orgId);
   const [removing, setRemoving] = useState<Grant | null>(null);

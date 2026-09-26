@@ -50,6 +50,7 @@ it('creates a pending client, shows token and snippets, then sees the agent onli
   expect(screen.getByText('Waiting for agent')).toBeInTheDocument();
   await waitFor(() => expect(within(screen.getByRole('region', { name: 'Agent connection' })).getByText('Online')).toBeInTheDocument(), { timeout: 5000 });
   expect(screen.getByText('edge-1.lan · linux/amd64 · 0.3.0')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Grant certificate' })).toHaveAttribute('href', '/o/acme/clients/cl-9/certificates?grant=new');
 }, 10_000);
 
 it('shows a duplicate name under the field', async () => {
