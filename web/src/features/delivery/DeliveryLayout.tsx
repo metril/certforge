@@ -8,6 +8,7 @@ import { useOrg } from '@/lib/org';
 const DELIVERY_TABS = [
   { to: '/o/$org/delivery/targets', full: 'Deploy targets', short: 'Targets' },
   { to: '/o/$org/delivery/layouts', full: 'File layouts', short: 'Layouts' },
+  { to: '/o/$org/delivery/hooks', full: 'Hooks', short: 'Hooks' },
 ] as const;
 
 export function DeliveryLayout({ children }: { children: ReactNode }) {

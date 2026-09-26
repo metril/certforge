@@ -27,6 +27,7 @@ import { Route as AppOOrgCertificatesNewRouteImport } from './routes/_app/o/$org
 import { Route as AppOOrgClientsIndexRouteImport } from './routes/_app/o/$org/clients/index'
 import { Route as AppOOrgClientsNewRouteImport } from './routes/_app/o/$org/clients/new'
 import { Route as AppOOrgDeliveryIndexRouteImport } from './routes/_app/o/$org/delivery/index'
+import { Route as AppOOrgDeliveryHooksRouteImport } from './routes/_app/o/$org/delivery/hooks'
 import { Route as AppOOrgDeliveryLayoutsRouteImport } from './routes/_app/o/$org/delivery/layouts'
 import { Route as AppOOrgDeliveryTargetsRouteImport } from './routes/_app/o/$org/delivery/targets'
 import { Route as AppOOrgIssuersIndexRouteImport } from './routes/_app/o/$org/issuers/index'
@@ -129,6 +130,11 @@ const AppOOrgDeliveryIndexRoute = AppOOrgDeliveryIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppOOrgDeliveryRouteRoute,
 } as any)
+const AppOOrgDeliveryHooksRoute = AppOOrgDeliveryHooksRouteImport.update({
+  id: '/hooks',
+  path: '/hooks',
+  getParentRoute: () => AppOOrgDeliveryRouteRoute,
+} as any)
 const AppOOrgDeliveryLayoutsRoute = AppOOrgDeliveryLayoutsRouteImport.update({
   id: '/layouts',
   path: '/layouts',
@@ -203,6 +209,7 @@ export interface FileRoutesByFullPath {
   '/o/$org/': typeof AppOOrgIndexRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/o/$org/delivery/hooks': typeof AppOOrgDeliveryHooksRoute
   '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
@@ -230,6 +237,7 @@ export interface FileRoutesByTo {
   '/o/$org': typeof AppOOrgIndexRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/o/$org/delivery/hooks': typeof AppOOrgDeliveryHooksRoute
   '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
@@ -262,6 +270,7 @@ export interface FileRoutesById {
   '/_app/o/$org/': typeof AppOOrgIndexRoute
   '/_app/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/_app/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/_app/o/$org/delivery/hooks': typeof AppOOrgDeliveryHooksRoute
   '/_app/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/_app/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/_app/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
@@ -294,6 +303,7 @@ export interface FileRouteTypes {
     | '/o/$org/'
     | '/o/$org/certificates/new'
     | '/o/$org/clients/new'
+    | '/o/$org/delivery/hooks'
     | '/o/$org/delivery/layouts'
     | '/o/$org/delivery/targets'
     | '/o/$org/issuers/accounts'
@@ -321,6 +331,7 @@ export interface FileRouteTypes {
     | '/o/$org'
     | '/o/$org/certificates/new'
     | '/o/$org/clients/new'
+    | '/o/$org/delivery/hooks'
     | '/o/$org/delivery/layouts'
     | '/o/$org/delivery/targets'
     | '/o/$org/issuers/accounts'
@@ -352,6 +363,7 @@ export interface FileRouteTypes {
     | '/_app/o/$org/'
     | '/_app/o/$org/certificates/new'
     | '/_app/o/$org/clients/new'
+    | '/_app/o/$org/delivery/hooks'
     | '/_app/o/$org/delivery/layouts'
     | '/_app/o/$org/delivery/targets'
     | '/_app/o/$org/issuers/accounts'
@@ -502,6 +514,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgDeliveryIndexRouteImport
       parentRoute: typeof AppOOrgDeliveryRouteRoute
     }
+    '/_app/o/$org/delivery/hooks': {
+      id: '/_app/o/$org/delivery/hooks'
+      path: '/hooks'
+      fullPath: '/o/$org/delivery/hooks'
+      preLoaderRoute: typeof AppOOrgDeliveryHooksRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
     '/_app/o/$org/delivery/layouts': {
       id: '/_app/o/$org/delivery/layouts'
       path: '/layouts'
@@ -583,12 +602,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppOOrgDeliveryRouteRouteChildren {
+  AppOOrgDeliveryHooksRoute: typeof AppOOrgDeliveryHooksRoute
   AppOOrgDeliveryLayoutsRoute: typeof AppOOrgDeliveryLayoutsRoute
   AppOOrgDeliveryTargetsRoute: typeof AppOOrgDeliveryTargetsRoute
   AppOOrgDeliveryIndexRoute: typeof AppOOrgDeliveryIndexRoute
 }
 
 const AppOOrgDeliveryRouteRouteChildren: AppOOrgDeliveryRouteRouteChildren = {
+  AppOOrgDeliveryHooksRoute: AppOOrgDeliveryHooksRoute,
   AppOOrgDeliveryLayoutsRoute: AppOOrgDeliveryLayoutsRoute,
   AppOOrgDeliveryTargetsRoute: AppOOrgDeliveryTargetsRoute,
   AppOOrgDeliveryIndexRoute: AppOOrgDeliveryIndexRoute,

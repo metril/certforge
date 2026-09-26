@@ -193,6 +193,10 @@ export const help = {
   'layout.group': { text: 'Group name or gid. Applied only when the agent runs as root.' },
   'layout.mode': { text: 'Octal permissions, such as 0640.' },
   'layout.keyMode': { text: 'This file holds a private key and every user on the host can read it. Use 0640 or tighter.' },
+  'hook.phase': { text: 'Pre-deploy runs before files are written, and a failure stops the deploy. Post-deploy runs after.' },
+  'hook.argv': { text: 'The executable, then one argument per row. It never runs through a shell.', learnMore: 'agent.md#hooks-and-the-allowlist' },
+  'hook.allowlist': { text: 'Agents run a hook only when this exact path is in their CF_HOOK_ALLOW. Otherwise the run is refused.', learnMore: 'agent.md#hooks-and-the-allowlist' },
+  'hook.timeout': { text: 'The hook and its child processes are stopped after this long.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

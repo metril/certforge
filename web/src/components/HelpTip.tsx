@@ -1,8 +1,9 @@
-import { Info } from 'lucide-react';
+import { Info, TriangleAlert } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { docsHref, firstSentences, help, type Help, type HelpKey } from '@/lib/help';
+import { cn } from '@/lib/utils';
 
-export function HelpTip({ id, text }: { id?: HelpKey; text?: string }) {
+export function HelpTip({ id, text, warning = false }: { id?: HelpKey; text?: string; warning?: boolean }) {
   const entry: Help | null = id ? help[id] : text ? { text: firstSentences(text, 2) } : null;
   if (!entry) return null;
   return (
@@ -10,10 +11,13 @@ export function HelpTip({ id, text }: { id?: HelpKey; text?: string }) {
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label="Help"
-          className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-ink-muted hover:text-ink"
+          aria-label={warning ? 'Warning' : 'Help'}
+          className={cn(
+            'inline-flex size-4 shrink-0 items-center justify-center rounded-sm',
+            warning ? 'text-expiring hover:text-ink' : 'text-ink-muted hover:text-ink',
+          )}
         >
-          <Info className="size-3.5" aria-hidden />
+          {warning ? <TriangleAlert className="size-3.5" aria-hidden /> : <Info className="size-3.5" aria-hidden />}
         </button>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-64 text-xs leading-snug">
