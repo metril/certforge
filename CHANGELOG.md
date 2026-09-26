@@ -97,6 +97,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web: client certificates tab with deployment state, expected against installed files for drift, redeploy and remove.
 - Web: grant several certificates to a client at once with layout, deploy target, hooks and auto-remediation, and edit grants.
 - Web: client hook run history with output, client activity, and Phase 3 audit actions in the Audit log filters.
+- Web: Delivery section with deploy targets built from each type's schema.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

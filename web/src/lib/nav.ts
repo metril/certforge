@@ -1,6 +1,6 @@
 import { Bell, Gauge, Landmark, ScrollText, Server, Settings, ShieldCheck, Truck, type LucideIcon } from 'lucide-react';
 
-export type NavTarget = 'overview' | 'certificates' | 'clients' | 'issuers' | 'audit' | 'settings';
+export type NavTarget = 'overview' | 'certificates' | 'clients' | 'issuers' | 'delivery' | 'audit' | 'settings';
 export type NavItem = { label: string; icon: LucideIcon; target?: NavTarget };
 
 export const LATER = 'Available in a later phase';
@@ -29,7 +29,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     group: 'Configure',
     items: [
       { label: 'Issuers', icon: Landmark, target: 'issuers' },
-      { label: 'Delivery', icon: Truck },
+      { label: 'Delivery', icon: Truck, target: 'delivery' },
       { label: 'Alerts', icon: Bell },
     ],
   },

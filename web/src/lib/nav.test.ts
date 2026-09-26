@@ -28,3 +28,8 @@ it('enables Clients, also under All orgs, and keeps Alerts for later', () => {
   expect(items.find((i) => i.label === 'Alerts')?.target).toBeUndefined();
   expect(ALL_ORGS_TARGETS.has('clients')).toBe(true);
 });
+
+it('enables Delivery for one org only', () => {
+  expect(NAV.flatMap((g) => g.items).find((i) => i.label === 'Delivery')?.target).toBe('delivery');
+  expect(ALL_ORGS_TARGETS.has('delivery')).toBe(false);
+});

@@ -183,6 +183,9 @@ export const help = {
   'grant.forceRemove': { text: 'Deletes the grant now and leaves any files on the host for the agent to clean up later. Use it when the agent is gone for good.' },
   'deploy.redeploy': { text: 'Asks the agent to reinstall the current version and report again.' },
   'hook.exit': { text: 'Exit status. -1 means the agent refused it, it failed to start, or it timed out.', learnMore: 'agent.md#hooks-and-the-allowlist' },
+  'target.type': { text: 'How the target is driven. Its fields come from the type’s schema.', learnMore: 'deploy-targets.md#traefik' },
+  'target.runsOn': { text: 'Agent targets run on the client after it writes the grant’s files.', learnMore: 'agent.md#traefik-integration' },
+  'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

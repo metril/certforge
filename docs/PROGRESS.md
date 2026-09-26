@@ -190,8 +190,8 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 | 3 | Client detail and settings | done | 814b3cf |
 | 4 | Grants table and file comparison | done | 258b43b |
 | 5 | Grant sheet | done | a41ec05 |
-| 6 | Hook runs and activity | done | pending |
-| 7 | Delivery section and deploy targets | todo | – |
+| 6 | Hook runs and activity | done | 59216f8 |
+| 7 | Delivery section and deploy targets | done | pending |
 | 8 | File layouts | todo | – |
 | 9 | Hooks | todo | – |
 | 10 | Settings → Agents | todo | – |

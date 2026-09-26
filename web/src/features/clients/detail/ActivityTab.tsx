@@ -29,7 +29,7 @@ export function ActivityTab({ orgId, orgSlug, clientId }: { orgId: string; orgSl
     return (
       <EmptyState message="No activity yet.">
         <Button asChild variant="outline">
-          <Link to="/o/$org/audit" params={{ org: orgSlug }}>
+          <Link to="/o/$org/audit" params={{ org: orgSlug }} search={{ q: clientId }}>
             Open audit log
           </Link>
         </Button>

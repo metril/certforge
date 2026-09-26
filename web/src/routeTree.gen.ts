@@ -19,12 +19,15 @@ import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/ind
 import { Route as AppSettingsSectionRouteImport } from './routes/_app/settings/$section'
 import { Route as AppOOrgIndexRouteImport } from './routes/_app/o/$org/index'
 import { Route as AppOOrgAuditRouteImport } from './routes/_app/o/$org/audit'
+import { Route as AppOOrgDeliveryRouteRouteImport } from './routes/_app/o/$org/delivery/route'
 import { Route as AppOOrgIssuersRouteRouteImport } from './routes/_app/o/$org/issuers/route'
 import { Route as AppOOrgOverviewRouteImport } from './routes/_app/o/$org/overview'
 import { Route as AppOOrgCertificatesIndexRouteImport } from './routes/_app/o/$org/certificates/index'
 import { Route as AppOOrgCertificatesNewRouteImport } from './routes/_app/o/$org/certificates/new'
 import { Route as AppOOrgClientsIndexRouteImport } from './routes/_app/o/$org/clients/index'
 import { Route as AppOOrgClientsNewRouteImport } from './routes/_app/o/$org/clients/new'
+import { Route as AppOOrgDeliveryIndexRouteImport } from './routes/_app/o/$org/delivery/index'
+import { Route as AppOOrgDeliveryTargetsRouteImport } from './routes/_app/o/$org/delivery/targets'
 import { Route as AppOOrgIssuersIndexRouteImport } from './routes/_app/o/$org/issuers/index'
 import { Route as AppOOrgIssuersAccountsRouteImport } from './routes/_app/o/$org/issuers/accounts'
 import { Route as AppOOrgIssuersCasRouteImport } from './routes/_app/o/$org/issuers/cas'
@@ -84,6 +87,11 @@ const AppOOrgAuditRoute = AppOOrgAuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => AppOOrgRouteRoute,
 } as any)
+const AppOOrgDeliveryRouteRoute = AppOOrgDeliveryRouteRouteImport.update({
+  id: '/delivery',
+  path: '/delivery',
+  getParentRoute: () => AppOOrgRouteRoute,
+} as any)
 const AppOOrgIssuersRouteRoute = AppOOrgIssuersRouteRouteImport.update({
   id: '/issuers',
   path: '/issuers',
@@ -114,6 +122,16 @@ const AppOOrgClientsNewRoute = AppOOrgClientsNewRouteImport.update({
   id: '/clients/new',
   path: '/clients/new',
   getParentRoute: () => AppOOrgRouteRoute,
+} as any)
+const AppOOrgDeliveryIndexRoute = AppOOrgDeliveryIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppOOrgDeliveryRouteRoute,
+} as any)
+const AppOOrgDeliveryTargetsRoute = AppOOrgDeliveryTargetsRouteImport.update({
+  id: '/targets',
+  path: '/targets',
+  getParentRoute: () => AppOOrgDeliveryRouteRoute,
 } as any)
 const AppOOrgIssuersIndexRoute = AppOOrgIssuersIndexRouteImport.update({
   id: '/',
@@ -172,17 +190,20 @@ export interface FileRoutesByFullPath {
   '/o/$org': typeof AppOOrgRouteRouteWithChildren
   '/settings/$section': typeof AppSettingsSectionRoute
   '/settings/': typeof AppSettingsIndexRoute
+  '/o/$org/delivery': typeof AppOOrgDeliveryRouteRouteWithChildren
   '/o/$org/issuers': typeof AppOOrgIssuersRouteRouteWithChildren
   '/o/$org/audit': typeof AppOOrgAuditRoute
   '/o/$org/overview': typeof AppOOrgOverviewRoute
   '/o/$org/': typeof AppOOrgIndexRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
   '/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
   '/o/$org/certificates/': typeof AppOOrgCertificatesIndexRoute
   '/o/$org/clients/': typeof AppOOrgClientsIndexRoute
+  '/o/$org/delivery/': typeof AppOOrgDeliveryIndexRoute
   '/o/$org/issuers/': typeof AppOOrgIssuersIndexRoute
   '/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
@@ -202,11 +223,13 @@ export interface FileRoutesByTo {
   '/o/$org': typeof AppOOrgIndexRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
   '/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
   '/o/$org/certificates': typeof AppOOrgCertificatesIndexRoute
   '/o/$org/clients': typeof AppOOrgClientsIndexRoute
+  '/o/$org/delivery': typeof AppOOrgDeliveryIndexRoute
   '/o/$org/issuers': typeof AppOOrgIssuersIndexRoute
   '/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
@@ -224,17 +247,20 @@ export interface FileRoutesById {
   '/_app/o/$org': typeof AppOOrgRouteRouteWithChildren
   '/_app/settings/$section': typeof AppSettingsSectionRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
+  '/_app/o/$org/delivery': typeof AppOOrgDeliveryRouteRouteWithChildren
   '/_app/o/$org/issuers': typeof AppOOrgIssuersRouteRouteWithChildren
   '/_app/o/$org/audit': typeof AppOOrgAuditRoute
   '/_app/o/$org/overview': typeof AppOOrgOverviewRoute
   '/_app/o/$org/': typeof AppOOrgIndexRoute
   '/_app/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/_app/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/_app/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/_app/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
   '/_app/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/_app/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
   '/_app/o/$org/certificates/': typeof AppOOrgCertificatesIndexRoute
   '/_app/o/$org/clients/': typeof AppOOrgClientsIndexRoute
+  '/_app/o/$org/delivery/': typeof AppOOrgDeliveryIndexRoute
   '/_app/o/$org/issuers/': typeof AppOOrgIssuersIndexRoute
   '/_app/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/_app/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
@@ -252,17 +278,20 @@ export interface FileRouteTypes {
     | '/o/$org'
     | '/settings/$section'
     | '/settings/'
+    | '/o/$org/delivery'
     | '/o/$org/issuers'
     | '/o/$org/audit'
     | '/o/$org/overview'
     | '/o/$org/'
     | '/o/$org/certificates/new'
     | '/o/$org/clients/new'
+    | '/o/$org/delivery/targets'
     | '/o/$org/issuers/accounts'
     | '/o/$org/issuers/cas'
     | '/o/$org/issuers/dns'
     | '/o/$org/certificates/'
     | '/o/$org/clients/'
+    | '/o/$org/delivery/'
     | '/o/$org/issuers/'
     | '/o/$org/certificates/$id/$tab'
     | '/o/$org/certificates/$id/edit'
@@ -282,11 +311,13 @@ export interface FileRouteTypes {
     | '/o/$org'
     | '/o/$org/certificates/new'
     | '/o/$org/clients/new'
+    | '/o/$org/delivery/targets'
     | '/o/$org/issuers/accounts'
     | '/o/$org/issuers/cas'
     | '/o/$org/issuers/dns'
     | '/o/$org/certificates'
     | '/o/$org/clients'
+    | '/o/$org/delivery'
     | '/o/$org/issuers'
     | '/o/$org/certificates/$id/$tab'
     | '/o/$org/certificates/$id/edit'
@@ -303,17 +334,20 @@ export interface FileRouteTypes {
     | '/_app/o/$org'
     | '/_app/settings/$section'
     | '/_app/settings/'
+    | '/_app/o/$org/delivery'
     | '/_app/o/$org/issuers'
     | '/_app/o/$org/audit'
     | '/_app/o/$org/overview'
     | '/_app/o/$org/'
     | '/_app/o/$org/certificates/new'
     | '/_app/o/$org/clients/new'
+    | '/_app/o/$org/delivery/targets'
     | '/_app/o/$org/issuers/accounts'
     | '/_app/o/$org/issuers/cas'
     | '/_app/o/$org/issuers/dns'
     | '/_app/o/$org/certificates/'
     | '/_app/o/$org/clients/'
+    | '/_app/o/$org/delivery/'
     | '/_app/o/$org/issuers/'
     | '/_app/o/$org/certificates/$id/$tab'
     | '/_app/o/$org/certificates/$id/edit'
@@ -400,6 +434,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgAuditRouteImport
       parentRoute: typeof AppOOrgRouteRoute
     }
+    '/_app/o/$org/delivery': {
+      id: '/_app/o/$org/delivery'
+      path: '/delivery'
+      fullPath: '/o/$org/delivery'
+      preLoaderRoute: typeof AppOOrgDeliveryRouteRouteImport
+      parentRoute: typeof AppOOrgRouteRoute
+    }
     '/_app/o/$org/issuers': {
       id: '/_app/o/$org/issuers'
       path: '/issuers'
@@ -441,6 +482,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/o/$org/clients/new'
       preLoaderRoute: typeof AppOOrgClientsNewRouteImport
       parentRoute: typeof AppOOrgRouteRoute
+    }
+    '/_app/o/$org/delivery/': {
+      id: '/_app/o/$org/delivery/'
+      path: '/'
+      fullPath: '/o/$org/delivery/'
+      preLoaderRoute: typeof AppOOrgDeliveryIndexRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/delivery/targets': {
+      id: '/_app/o/$org/delivery/targets'
+      path: '/targets'
+      fullPath: '/o/$org/delivery/targets'
+      preLoaderRoute: typeof AppOOrgDeliveryTargetsRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
     }
     '/_app/o/$org/issuers/': {
       id: '/_app/o/$org/issuers/'
@@ -508,6 +563,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppOOrgDeliveryRouteRouteChildren {
+  AppOOrgDeliveryTargetsRoute: typeof AppOOrgDeliveryTargetsRoute
+  AppOOrgDeliveryIndexRoute: typeof AppOOrgDeliveryIndexRoute
+}
+
+const AppOOrgDeliveryRouteRouteChildren: AppOOrgDeliveryRouteRouteChildren = {
+  AppOOrgDeliveryTargetsRoute: AppOOrgDeliveryTargetsRoute,
+  AppOOrgDeliveryIndexRoute: AppOOrgDeliveryIndexRoute,
+}
+
+const AppOOrgDeliveryRouteRouteWithChildren =
+  AppOOrgDeliveryRouteRoute._addFileChildren(AppOOrgDeliveryRouteRouteChildren)
+
 interface AppOOrgIssuersRouteRouteChildren {
   AppOOrgIssuersAccountsRoute: typeof AppOOrgIssuersAccountsRoute
   AppOOrgIssuersCasRoute: typeof AppOOrgIssuersCasRoute
@@ -526,6 +594,7 @@ const AppOOrgIssuersRouteRouteWithChildren =
   AppOOrgIssuersRouteRoute._addFileChildren(AppOOrgIssuersRouteRouteChildren)
 
 interface AppOOrgRouteRouteChildren {
+  AppOOrgDeliveryRouteRoute: typeof AppOOrgDeliveryRouteRouteWithChildren
   AppOOrgIssuersRouteRoute: typeof AppOOrgIssuersRouteRouteWithChildren
   AppOOrgAuditRoute: typeof AppOOrgAuditRoute
   AppOOrgOverviewRoute: typeof AppOOrgOverviewRoute
@@ -542,6 +611,7 @@ interface AppOOrgRouteRouteChildren {
 }
 
 const AppOOrgRouteRouteChildren: AppOOrgRouteRouteChildren = {
+  AppOOrgDeliveryRouteRoute: AppOOrgDeliveryRouteRouteWithChildren,
   AppOOrgIssuersRouteRoute: AppOOrgIssuersRouteRouteWithChildren,
   AppOOrgAuditRoute: AppOOrgAuditRoute,
   AppOOrgOverviewRoute: AppOOrgOverviewRoute,

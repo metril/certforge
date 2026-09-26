@@ -12,15 +12,34 @@ import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PHASE_LABEL } from '@/lib/clientStatus';
+import { help } from '@/lib/help';
 import { fmtDateTime, fmtDuration, relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 const COLS = 'md:grid-cols-[96px_minmax(0,140px)_96px_minmax(0,1fr)_80px_72px_28px]';
 
 function ExitChip({ code }: { code: number }) {
-  if (code === 0) return <ToneChip tone="valid" icon={CircleCheck} label="0" />;
-  if (code === -1) return <ToneChip tone="failed" icon={Ban} label="Not run" />;
-  return <ToneChip tone="failed" icon={CircleAlert} label={String(code)} />;
+  const chip =
+    code === 0 ? (
+      <ToneChip tone="valid" icon={CircleCheck} label="0" />
+    ) : code === -1 ? (
+      <ToneChip tone="failed" icon={Ban} label="Not run" />
+    ) : (
+      <ToneChip tone="failed" icon={CircleAlert} label={String(code)} />
+    );
+  // The column header's HelpTip (hook.exit) is hidden below `md` along with
+  // the rest of the header row, so the chip carries its own tooltip too —
+  // the only place that explanation is reachable at phone width.
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="inline-flex w-fit">
+          {chip}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{help['hook.exit'].text}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function Output({ run }: { run: HookRun }) {
@@ -70,9 +89,11 @@ export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: st
             <li key={r.id} className="grid gap-2 border-b border-border py-2 text-sm last:border-0">
               <div className={cn('grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 md:min-h-8', COLS)}>
                 <time dateTime={r.ranAt} title={fmtDateTime(r.ranAt)} className="text-xs text-ink-muted">
-                  {relTime(r.ranAt)}
+                  {relTime(r.ranAt, q.dataUpdatedAt)}
                 </time>
-                <span className={cn('truncate', !r.hookName && 'text-ink-muted')}>{name}</span>
+                <span title={name} className={cn('truncate', !r.hookName && 'text-ink-muted')}>
+                  {name}
+                </span>
                 <span className="text-xs">{PHASE_LABEL[r.phase]}</span>
                 <Tooltip>
                   <TooltipTrigger asChild>

@@ -51,17 +51,18 @@ it('shows eight items; enabled items link, the rest are disabled with a tooltip'
     ['Overview', '/o/acme/overview'],
     ['Certificates', '/o/acme/certificates'],
     ['Clients', '/o/acme/clients'],
+    ['Delivery', '/o/acme/delivery'],
     ['Issuers', '/o/acme/issuers'],
     ['Audit log', '/o/acme/audit'],
     ['Settings', '/settings/general'],
   ];
   for (const [name, href] of links) expect(within(nav).getByRole('link', { name })).toHaveAttribute('href', href);
   expect(within(nav).getByRole('link', { name: 'Certificates' })).toHaveAttribute('aria-current', 'page');
-  for (const name of ['Delivery', 'Alerts']) {
+  for (const name of ['Alerts']) {
     expect(within(nav).getByText(name).closest('[aria-disabled="true"]')).not.toBeNull();
   }
   expect(within(nav).getByText('Operate')).toBeInTheDocument();
-  act(() => (within(nav).getByText('Delivery').closest('[aria-disabled="true"]') as HTMLElement).focus());
+  act(() => (within(nav).getByText('Alerts').closest('[aria-disabled="true"]') as HTMLElement).focus());
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Available in a later phase');
 });
 

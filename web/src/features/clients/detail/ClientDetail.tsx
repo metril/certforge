@@ -41,7 +41,7 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
       toast.error('Grant not found.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search.grant, grantsQ.isPending, grants]);
+  }, [search.grant, grantsQ.isPending, grants.map((g) => g.id).join(',')]);
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (error) return <p role="alert">{errorMessage(error)}</p>;
   const canWrite = can(me, 'clients:write', org.id);
