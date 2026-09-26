@@ -155,7 +155,7 @@ layout, Clear filters buttons on Users/Bindings, `useRefreshMe()` on a
 binding mutation affecting the caller, ToneChip notices on the audit page,
 and the Access docs' API-key binding mention).
 
-### Phase 3: agent — in progress (started 2026-09-25)
+### Phase 3: agent — done (started 2026-09-25, finished 2026-09-26)
 
 Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS listener, WS hub, grants, push/pull, Traefik target, hooks, heartbeat, drift, agent image) and 3B clients web UI (clients, grants editor, deployments, layouts, targets, hooks, Settings → Agents). Plan 3A: [agent backend](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) (done). Plan 3B: [clients web UI](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md) (in progress).
 
@@ -197,6 +197,18 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 | 10 | Settings → Agents | done | 3999f5a |
 | 11 | Certificate deployments, grants column, Overview | done | a4c6f87 |
 | 12 | Palette, docs and Playwright | done | pending |
+
+Phase 3B complete, which closes Phase 3. Task 12's row stays `pending` for a
+later review to backfill, as the last task's own row always does; 0487844
+is Task 12's own commit. 7bb0555 landed first, a separate fix commit
+between Task 12's own dispatch and its Playwright run, replacing
+`@rjsf/validator-ajv8` with the CSP-safe `@cfworker/json-schema` interpreter
+(see Decisions and the new Known gap below) — ajv compiles JSON Schemas via
+`new Function`, which the server's `script-src 'self'` CSP blocks in a real
+browser, so every schema-form Save (Settings, DNS credentials/providers)
+silently no-opped outside of tests; Task 12's own new `clients.spec.ts`, the
+first Playwright spec to ever click Save on one of these forms, is what
+surfaced it.
 
 ## Decisions made during implementation
 
