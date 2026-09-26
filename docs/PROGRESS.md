@@ -8,7 +8,7 @@ Single status file. Updated in every commit that completes a task.
 |---|---|---|---|---|---|---|
 | 1 | Core issuance slice | done | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | 2026-09-24 |
 | 2 | Identity and tenancy | done | [design](design.md) | [2A](superpowers/plans/2026-09-25-phase-2a-identity-backend.md) · [2B](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md) | 2026-09-25 | 2026-09-25 |
-| 3 | Agent | in progress | [design](design.md) | [3A](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) · 3B (planning) | 2026-09-25 | – |
+| 3 | Agent | in progress | [design](design.md) | [3A](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) · [3B](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md) | 2026-09-25 | – |
 | 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
 | 5 | Vault and private CA | planned | [design](design.md) | – | – | – |
 | 6 | Ops | planned | [design](design.md) | – | – | – |
@@ -181,6 +181,23 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 
 Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5dfae, 42d23e2, c536704, c1add2a, a6ded75 and residual pass af9c5c9 (Task 7's round-2 lock-order fix landed as d84d545 after Task 8). Plan 3B: [clients web UI](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md).
 
+#### Phase 3B tasks
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Types, queries, status model, shared chips | done | pending |
+| 2 | Clients list and enrolment | todo | – |
+| 3 | Client detail and settings | todo | – |
+| 4 | Grants table and file comparison | todo | – |
+| 5 | Grant sheet | todo | – |
+| 6 | Hook runs and activity | todo | – |
+| 7 | Delivery section and deploy targets | todo | – |
+| 8 | File layouts | todo | – |
+| 9 | Hooks | todo | – |
+| 10 | Settings → Agents | todo | – |
+| 11 | Certificate deployments, grants column, Overview | todo | – |
+| 12 | Palette, docs and Playwright | todo | – |
+
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.
@@ -304,6 +321,7 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 ## Known gaps
 
 - 3A Task 15: the e2e checks the Traefik YAML byte for byte but runs no Traefik container; the Playwright agent flow belongs to plan 3B.
+- 3B: the client header has no "Update available" badge; no endpoint reports the newest agent version.
 - 3A: `serve`'s startup path only tries the agent CA and listener certificate once (`agentCA.EnsureActive`/`agentListener.Reload`); if either fails (for example a KEK canary that recovers moments later), the agent listener never starts for that process's lifetime — it logs the error and continues without one. There is no retry loop; the fix is to restart the server process.
 - 1C: `npm run e2e` (Playwright) and `make e2e` (Go, against Pebble) both run locally only; neither is wired into `.github/workflows/ci.yml`.
 - 1B: revocation is implemented in `signer.Signer` but not exposed in the API (the Revoke action lands with its screen).
@@ -367,3 +385,4 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 - 3A final fix wave, minors M1-M4: `serve.go` now shuts the agent listener down before `hub.Shutdown()` (was the other order), so a new socket can no longer be accepted into a hub that is already shutting down. `agents.OnMessage` (the WebSocket path) now re-runs `Authenticate` (leaf certificate, carried on the socket's context via the new `agents.WithLeaf`) on every message, the same check `requireAgent` already does per REST request, instead of only checking `status = active`; a certificate a renew replaces is now refused mid-socket, not just on the next fresh connection (`TestWebSocketRejectsStaleCertificateAfterRenew`). `sync.go`'s report handler now rejects a hook run whose `phase` is not `pre_deploy`/`post_deploy` (logged, not stored) instead of storing it verbatim, without affecting the rest of that report (`TestReportRejectsUnknownHookPhase`). Removed the dead `issuance.Store.DeleteCertificate` (unused; the real delete path with its locking and dependent-grant checks is `internal/api/certificates.go`'s `DeleteCertificate` handler, calling `sqlcgen.DeleteCertificate` directly).
 - 3A final fix wave, residual pass on I2 (re-review): a failed deploy no longer deletes `GrantState` outright. `GrantState` gains `Pending bool`; on a failed `Deploy` (or a failed `Bundle` fetch), the existing state for that grant (if any) is kept exactly as it was after the grant's last successful deploy, only marked `Pending`, instead of being replaced or removed — so the old file paths stay tracked for stale/orphan cleanup to find once the assignment moves on (a paths-change-then-fail-then-eventually-succeed sequence now cleans up the old path via the same `stale()` mechanism a successful redeploy already used, instead of silently orphaning it), and `needsDeploy` retries on the next reconcile regardless of `Pending`, on top of its existing version/redeploySeq/files checks. A grant with no confirmed prior deploy still has nothing to keep (unchanged: no entry). `reconcile_test.go`'s `TestReconcileRedeploysOnRedeploySeqBump` now also asserts the post_deploy hook re-runs on the redeploySeq-triggered redeploy (and does not run again on an unchanged reconcile in between); new `TestReconcileKeepsOldFilesTrackedAfterFailedDeploy` covers the ok→paths-change→fail-after-writing→eventually-succeed→old-file-removed sequence. `TestHeartbeatDriftAndRemediate` (`internal/api/agent_sync_integration_test.go`) now also asserts auto-remediation bumps `client_cert_grants.redeploy_seq` to 1.
 - 3A final fix wave, minors M6-M7: `test/e2e/agent_test.go`'s `trust, _ :=` now checks the error; its drift audit query is now filtered to the grant's own `resourceId` (was: any `deployment.drift` event in the org, which could spuriously pass against an unrelated event) and its redeploy step now also asserts a `grant.redeploy` audit event for that grant (I2's e2e assertion, cheap to add). `deploy/compose.test.yaml`'s `agent` service is now under a `profiles: [e2e]` entry, and the `e2e` Makefile target passes `--profile e2e`, so bringing up this same compose file for the dev Playwright stack (which does not use the agent at all) no longer creates root-owned `.e2e/agent-data` et al. from the service's default `CF_E2E_UID`/`CF_E2E_GID` (0:0). `TestAgentCARotateRetireWithLiveAgent` (`internal/api/agent_cas_integration_test.go`) extends rotate/retire coverage with a real WebSocket agent (a real `agenthub.Hub`, not the fake one `TestAgentCARotateRetire` uses) through the whole rotate → renew → retire chain: the live socket receives the `trust_bundle_update` on rotate, its own next message after a renew+retire is rejected by M4's per-message serial re-check (matching docs/agent.md's "a connected agent renews immediately on trust_bundle_update, then reconnects"), and a fresh socket dialled with the renewed certificate operates normally against the switched listener chain.
+- 3B Task 1 (3a-facts.md deviation from the brief): `makeClient`'s fixture also sets `agentCaId: 'aca-1'` (the brief's own snippet omits it), since the shipped schema has `Client.agentCaId` as a required, non-optional field — omitting it would make every fixture-built `Client` fail a strict-typed `ClientList`/`ClientCreated` response.

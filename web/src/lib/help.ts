@@ -147,6 +147,11 @@ export const help = {
   'audit.exportError': { text: 'A query failed partway through the export; the downloaded file is missing events after that point. Try again, or narrow the filters.' },
   'audit.missingEvent': { text: "The linked event doesn't exist, or your role can't read it." },
   'audit.exportTruncated': { text: 'The export hit the 100,000-row cap; narrow the filters to get every matching event.' },
+  'client.connection': { text: 'Online means the agent is connected or pulled within the offline threshold. Offline clients catch up when they reconnect or pull.', learnMore: 'agent.md#troubleshooting' },
+  'deploy.pending': { text: 'Waiting for the agent to install the current version.' },
+  'deploy.ok': { text: 'The agent installed the current version and the files still match.' },
+  'deploy.failed': { text: 'The agent reported an error. It tries again on the next change or redeploy.' },
+  'deploy.drift': { text: 'Files on the host changed or went missing after the deploy.', learnMore: 'agent.md#drift' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

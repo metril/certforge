@@ -44,4 +44,15 @@ export const server = setupServer(
   http.get(url('/audit/verify'), () =>
     HttpResponse.json({ ok: true, count: 0, brokenAtId: null, checkedAt: '2026-09-24T12:00:00Z', headHash: '' }),
   ),
+  // Phase 3B: Overview, the clients list, the palette and Settings → Agents
+  // fetch these on every render; tests that care override them.
+  http.get(url('/orgs/:orgId/clients'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get(url('/clients'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get(url('/orgs/:orgId/sites'), () => HttpResponse.json({ items: [] })),
+  http.get(url('/orgs/:orgId/layouts'), () => HttpResponse.json({ items: [] })),
+  http.get(url('/orgs/:orgId/deploy-targets'), () => HttpResponse.json({ items: [] })),
+  http.get(url('/orgs/:orgId/hooks'), () => HttpResponse.json({ items: [] })),
+  http.get(url('/orgs/:orgId/certificates/:id/deployments'), () => HttpResponse.json({ items: [] })),
+  http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: null, names: [], notAfter: null } })),
+  http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [], notifiers: [], signers: [] })),
 );

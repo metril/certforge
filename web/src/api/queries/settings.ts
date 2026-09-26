@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, call } from '../client';
 
-export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication';
+export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication' | 'agents';
 
 export const settingsQuery = (section: SectionId) =>
   queryOptions({ queryKey: ['settings', section], queryFn: () => call(api.GET('/settings/{section}', { params: { path: { section } } })) });
@@ -37,6 +37,8 @@ export function useSaveSettings(section: SectionId, opts: { silent?: boolean } =
       if (section === 'authentication' || section === 'general') {
         await qc.invalidateQueries({ queryKey: ['auth-methods'] });
       }
+      // Listener names and the agent URL re-issue the listener certificate.
+      if (section === 'agents') await qc.invalidateQueries({ queryKey: ['agent-cas'] });
     },
   });
 }

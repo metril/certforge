@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MeBinding } from '@/api/types';
+import { org, org2, meWith } from '@/test/fixtures';
 import { can, canAnywhere, canGrantScope, hasGlobalBinding, type Action } from './permissions';
 
 const A = 'org-a';
@@ -39,6 +40,14 @@ it('knows when the All orgs view is available', () => {
 it('canAnywhere checks global and every visible org', () => {
   expect(canAnywhere(me({ role: 'auditor', orgId: B }), 'audit:read')).toBe(true);
   expect(canAnywhere(me({ role: 'viewer', orgId: A }), 'audit:read')).toBe(false);
+});
+
+it('delivery follows clients: viewers read, operators write, per org', () => {
+  const m = meWith([{ role: 'viewer', orgId: org.id }, { role: 'operator', orgId: org2.id }], [org, org2]);
+  expect(can(m, 'delivery:read', org.id)).toBe(true);
+  expect(can(m, 'delivery:write', org.id)).toBe(false);
+  expect(can(m, 'delivery:write', org2.id)).toBe(true);
+  expect(can(m, 'clients:write', org2.id)).toBe(true);
 });
 
 it('canGrantScope intersects with the creator role', () => {

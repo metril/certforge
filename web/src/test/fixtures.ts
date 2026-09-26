@@ -1,12 +1,20 @@
 import { http, HttpResponse } from 'msw';
 import type {
   AcmeAccount,
+  AgentCA,
   ApiKey,
   Attempt,
   AuditEvent,
   CA,
   CAPreset,
   Certificate,
+  Client,
+  Deployment,
+  DeployTarget,
+  Grant,
+  Hook,
+  HookRun,
+  Layout,
   Me,
   MeBinding,
   Org,
@@ -197,6 +205,82 @@ export const hyperone = {
   },
 } as ProviderSchema;
 export const providers: ProviderSchema[] = [acmedns, route53, cloudflare, hetzner, hyperone];
+
+export function makeClient(p: Partial<Client> = {}): Client {
+  return {
+    id: 'cl-1', orgId: org.id, siteId: null, name: 'web-1', status: 'active', connected: true, online: true, hostname: 'web-1.lan',
+    os: 'linux', arch: 'amd64', agentVersion: '0.3.0', capabilities: ['traefik', 'hooks'], lastSeen: iso(0),
+    agentCertNotAfter: iso(60), agentCaId: 'aca-1', desiredRevision: 3, appliedRevision: 3, grantCount: 1, driftCount: 0, failedCount: 0,
+    tokenExpiresAt: null, createdAt: iso(-10), ...p,
+  };
+}
+
+export function makeDeployment(p: Partial<Deployment> = {}): Deployment {
+  const f = { path: '/etc/ssl/www.pem', sha256: 'aa'.repeat(32) };
+  return { state: 'ok', versionId: 'v-1', expected: [f], installed: [f], error: '', reportedAt: iso(0), updatedAt: iso(0), ...p };
+}
+
+export function makeGrant(p: Partial<Grant> = {}): Grant {
+  return {
+    id: 'g-1', clientId: 'cl-1', clientName: 'web-1', certificateId: 'c-1', certificateName: 'www', delivery: 'push',
+    layoutId: 'l-1', deployTargetId: null, hookIds: [], autoRemediate: false, deployment: makeDeployment(),
+    createdAt: iso(-2), updatedAt: iso(-1), ...p,
+  };
+}
+
+export function makeLayout(p: Partial<Layout> = {}): Layout {
+  return {
+    id: 'l-1', orgId: org.id, name: 'nginx', grantCount: 1, createdAt: iso(-5), updatedAt: iso(-5),
+    files: [{ path: '/etc/ssl/www.pem', format: 'pem', parts: ['fullchain'], owner: 'root', group: 'www-data', mode: '0640' }],
+    ...p,
+  };
+}
+
+export function makeTarget(p: Partial<DeployTarget> = {}): DeployTarget {
+  return {
+    id: 't-1', orgId: org.id, name: 'edge traefik', type: 'traefik', runsOn: 'agent', config: { dir: '/etc/traefik/dynamic' },
+    grantCount: 0, createdAt: iso(-5), updatedAt: iso(-5), ...p,
+  };
+}
+
+export function makeHook(p: Partial<Hook> = {}): Hook {
+  return {
+    id: 'h-1', orgId: org.id, name: 'reload nginx', phase: 'post_deploy', argv: ['/usr/sbin/nginx', '-s', 'reload'],
+    timeoutSeconds: 60, grantCount: 0, createdAt: iso(-5), updatedAt: iso(-5), ...p,
+  };
+}
+
+export function makeHookRun(p: Partial<HookRun> = {}): HookRun {
+  return {
+    id: 'hr-1', grantId: 'g-1', hookId: 'h-1', hookName: 'reload nginx', phase: 'post_deploy',
+    argv: ['/usr/sbin/nginx', '-s', 'reload'], exitCode: 0, durationMs: 120, stdout: '', stderr: '', ranAt: iso(0), ...p,
+  };
+}
+
+export function makeAgentCA(p: Partial<AgentCA> = {}): AgentCA {
+  return {
+    id: 'aca-1', status: 'active', fingerprint: 'cd'.repeat(32), subject: 'CertForge agent CA', notBefore: iso(-100),
+    notAfter: iso(3550), activeClientCerts: 2, createdAt: iso(-100), ...p,
+  };
+}
+
+// Mirrors internal/delivery.TraefikSchema (plan 3A Task 6).
+export const traefikSchema = {
+  code: 'traefik',
+  name: 'Traefik (file provider)',
+  aliases: [],
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['dir'],
+    properties: {
+      dir: { type: 'string', title: 'Directory on the agent', description: "Traefik's file-provider directory as the agent sees it.", pattern: '^/', examples: ['/etc/traefik/dynamic'] },
+      pathPrefix: { type: 'string', title: 'Directory as Traefik sees it', description: 'Prefix for certFile and keyFile when Traefik mounts the directory elsewhere.', pattern: '^(/.*)?$' },
+      defaultCert: { type: 'boolean', title: 'Default certificate', description: 'Also serve this certificate when no SNI matches.', default: false },
+      stores: { type: 'array', title: 'TLS stores', description: 'Traefik TLS stores for the certificate. Empty means default.', items: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' }, default: ['default'] },
+    },
+  },
+} as ProviderSchema;
 
 export function makeAttempt(p: Partial<Attempt> = {}): Attempt {
   return {
