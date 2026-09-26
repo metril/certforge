@@ -106,7 +106,13 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	// Locking them explicitly here, before the client, matches a layout or
 	// deploy target update, which locks its own row before locking affected
 	// clients via Resync; without this a grant write and a layout/target
-	// update could deadlock the same way as the hook case above.
+	// update could deadlock the same way as the hook case above. The lock
+	// mode matters too: LockLayoutForGrant/LockTargetForGrant take FOR
+	// SHARE, which actually conflicts with an UPDATE's implicit FOR NO KEY
+	// UPDATE (FOR KEY SHARE would not: Postgres treats it as compatible
+	// with FOR NO KEY UPDATE), so a layout/target PATCH and a grant
+	// create/update referencing the same row always serialize instead of
+	// each proceeding unaware of the other.
 	if in.LayoutID != nil {
 		if _, err := q.LockLayoutForGrant(ctx, sqlcgen.LockLayoutForGrantParams{ID: *in.LayoutID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
 			return invalid("layoutId", "layout %s is not in this org", *in.LayoutID)

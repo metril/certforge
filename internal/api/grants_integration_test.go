@@ -501,6 +501,69 @@ func TestConcurrentCreateGrantVsDeleteCertificateNoDangling(t *testing.T) {
 	}
 }
 
+// Review Focus (final fix wave, I1): LockLayoutForGrant/LockTargetForGrant
+// used to take FOR KEY SHARE, which Postgres treats as compatible with the
+// FOR NO KEY UPDATE an UPDATE statement takes implicitly (UpdateLayout): the
+// two locks never actually conflicted, so a layout PATCH and a CreateGrant
+// referencing the same layout could run unaware of each other, and a grant
+// created while the PATCH's own Resync had already read its pre-update list
+// of live grants could be left rendered from the pre-update layout forever.
+// FOR SHARE does conflict with FOR NO KEY UPDATE, forcing the two to
+// serialize: whichever commits first is either what the other renders from
+// directly, or is what Resync re-renders once it commits second.
+func TestConcurrentLayoutUpdateVsGrantCreateSameLayoutNeverStale(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	l1 := f.layout(t, "l1", "/a.pem")
+	for i := 0; i < 10; i++ {
+		if _, err := f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l1, Body: layoutInput("l1", "/a.pem")}); err != nil {
+			t.Fatal(err)
+		}
+		var wg sync.WaitGroup
+		var updErr, createErr error
+		var gid uuid.UUID
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, updErr = f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l1, Body: layoutInput("l1", "/b.pem")})
+		}()
+		go func() {
+			defer wg.Done()
+			res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &l1}})
+			createErr = err
+			if err == nil {
+				gid = res.(gen.CreateGrant201JSONResponse).Id
+			}
+		}()
+		wg.Wait()
+		if updErr != nil {
+			t.Fatalf("iteration %d: layout update failed: %v", i, updErr)
+		}
+		if createErr != nil {
+			t.Fatalf("iteration %d: grant create failed: %v", i, createErr)
+		}
+		var expected []byte
+		if err := f.pool.QueryRow(ctx, `SELECT expected FROM deployments WHERE grant_id = $1`, gid).Scan(&expected); err != nil {
+			t.Fatal(err)
+		}
+		var specs []agentproto.FileSpec
+		if err := json.Unmarshal(expected, &specs); err != nil {
+			t.Fatal(err)
+		}
+		if len(specs) != 1 || specs[0].Path != "/b.pem" {
+			t.Fatalf("iteration %d: stale expected %+v", i, specs)
+		}
+		if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: gid}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.pool.Exec(ctx, `DELETE FROM client_cert_grants WHERE id = $1`, gid); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // Review Focus (fix round 1, finding 3): a render failure for one client
 // (a corrupted deploy target config) must not stop another client's
 // deployment from being updated by the same OnVersion/SweepDeployments run.

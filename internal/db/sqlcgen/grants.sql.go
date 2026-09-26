@@ -700,7 +700,7 @@ func (q *Queries) LockHooksInOrg(ctx context.Context, arg LockHooksInOrgParams) 
 }
 
 const lockLayoutForGrant = `-- name: LockLayoutForGrant :one
-SELECT id FROM output_specs WHERE id = $1 AND org_id = $2 FOR KEY SHARE
+SELECT id FROM output_specs WHERE id = $1 AND org_id = $2 FOR SHARE
 `
 
 type LockLayoutForGrantParams struct {
@@ -708,12 +708,17 @@ type LockLayoutForGrantParams struct {
 	OrgID uuid.UUID `json:"org_id"`
 }
 
-// Locks the layout FOR KEY SHARE before a grant references it (output_spec_id
+// Locks the layout FOR SHARE before a grant references it (output_spec_id
 // is a real FK, so the insert/update would otherwise take this lock
-// implicitly, at whatever point the statement runs): FOR KEY SHARE conflicts
+// implicitly, at whatever point the statement runs): FOR SHARE conflicts
 // with UpdateLayout's implicit FOR NO KEY UPDATE row lock, so the two
-// serialize instead of racing. See the package-level lock-order comment in
-// internal/agents.
+// serialize instead of racing. FOR KEY SHARE would not do this: Postgres
+// treats FOR KEY SHARE and FOR NO KEY UPDATE as compatible with each other,
+// so that pair never actually blocked one another, and a layout PATCH
+// racing a CreateGrant referencing the same layout could each proceed
+// without seeing the other, leaving the grant rendered from a pre-update
+// layout that the PATCH's own Resync had already read past. See the
+// package-level lock-order comment in internal/agents.
 func (q *Queries) LockLayoutForGrant(ctx context.Context, arg LockLayoutForGrantParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, lockLayoutForGrant, arg.ID, arg.OrgID)
 	var id uuid.UUID
@@ -722,7 +727,7 @@ func (q *Queries) LockLayoutForGrant(ctx context.Context, arg LockLayoutForGrant
 }
 
 const lockTargetForGrant = `-- name: LockTargetForGrant :one
-SELECT id FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR KEY SHARE
+SELECT id FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
 `
 
 type LockTargetForGrantParams struct {
@@ -730,8 +735,8 @@ type LockTargetForGrantParams struct {
 	OrgID uuid.UUID `json:"org_id"`
 }
 
-// Locks the deploy target FOR KEY SHARE before a grant references it, for
-// the same reason as LockLayoutForGrant.
+// Locks the deploy target FOR SHARE before a grant references it, for the
+// same reason as LockLayoutForGrant.
 func (q *Queries) LockTargetForGrant(ctx context.Context, arg LockTargetForGrantParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, lockTargetForGrant, arg.ID, arg.OrgID)
 	var id uuid.UUID
