@@ -57,7 +57,7 @@ it('refuses a relative directory before sending', async () => {
   await user.type(within(sheet).getByLabelText('Name'), 'bad');
   await user.type(within(sheet).getByLabelText('Directory on the agent'), 'traefik');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await new Promise((r) => setTimeout(r, 50));
+  await within(sheet).findByText(/must match pattern/i);
   expect(screen.getByRole('dialog', { name: 'Add deploy target' })).toBeInTheDocument();
   expect(posted).toBeUndefined();
 });
@@ -94,4 +94,73 @@ it('is read-only for a viewer', async () => {
 it('is not available under All orgs', async () => {
   const { router } = renderRoute('/o/all/delivery/targets');
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/all/overview'));
+});
+
+it('edits a target with a PATCH carrying name, type and config', async () => {
+  let patched: unknown;
+  server.use(
+    http.patch(url('/orgs/org-1/deploy-targets/:id'), async ({ request }) => {
+      patched = await request.json();
+      return HttpResponse.json(makeTarget({ name: 'renamed' }));
+    }),
+  );
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=t-2');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit spare' });
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ name: 'spare', type: 'traefik', config: { dir: '/srv/traefik' } }));
+  expect(Object.keys(patched as object).sort()).toEqual(['config', 'name', 'type']);
+});
+
+it('shows stores as chips and a field description as a tooltip', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () =>
+      HttpResponse.json({ items: [makeTarget({ config: { dir: '/etc/traefik/dynamic', stores: ['default', 'internal'] } })] }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=t-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit edge traefik' });
+  expect(within(sheet).getByText('default')).toBeInTheDocument();
+  expect(within(sheet).getByText('internal')).toBeInTheDocument();
+  const dirLabel = within(sheet).getByText('Directory on the agent');
+  await user.hover(within(dirLabel.closest('div')!).getByRole('button', { name: 'Help' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent("Traefik's file-provider directory as the agent sees it.");
+});
+
+it('surfaces a failed meta/schemas fetch with a retry and a disabled, explained Add button', async () => {
+  server.use(http.get(url('/meta/schemas'), () => problem(500, 'boom')));
+  renderRoute('/o/acme/delivery/targets');
+  await screen.findByRole('table', { name: 'Deploy targets' });
+  expect(await screen.findByText("Couldn't load target types. boom")).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Add target' })).toBeDisabled();
+});
+
+it('clears an unknown ?edit= id and reports it', async () => {
+  renderRoute('/o/acme/delivery/targets?edit=nope');
+  await screen.findByRole('table', { name: 'Deploy targets' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(await screen.findByText('Deploy target not found.')).toBeInTheDocument();
+});
+
+it('never opens the add sheet for a viewer, even with ?edit=new', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
+  renderRoute('/o/acme/delivery/targets?edit=new');
+  await screen.findByRole('table', { name: 'Deploy targets' });
+  expect(screen.queryByRole('dialog', { name: 'Add deploy target' })).not.toBeInTheDocument();
+});
+
+it('puts a name-conflict 409 under Name and any other 409 in the page alert', async () => {
+  server.use(http.post(url('/orgs/org-1/deploy-targets'), () => problem(409, 'A deploy target named "edge traefik" already exists.')));
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  await user.type(within(sheet).getByLabelText('Name'), 'edge traefik');
+  await user.type(within(sheet).getByLabelText('Directory on the agent'), '/etc/traefik/dynamic');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(await within(sheet).findByText('A deploy target named "edge traefik" already exists.')).toBeInTheDocument();
+  expect(within(sheet).getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
+
+  server.use(http.post(url('/orgs/org-1/deploy-targets'), () => problem(409, 'Used by web-1/www.')));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  const alert = await within(sheet).findByText('Used by web-1/www.');
+  expect(alert.closest('[role="alert"]')).toBeInTheDocument();
+  expect(within(sheet).getByLabelText('Name')).not.toHaveAttribute('aria-invalid', 'true');
 });

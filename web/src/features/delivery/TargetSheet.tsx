@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
+import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage } from '@/api/errors';
 import { useSaveDeployTarget } from '@/api/queries/delivery';
 import type { DeployTarget, DeployTargetInput, ProviderSchema } from '@/api/types';
@@ -45,7 +46,12 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
       const msg = errorMessage(e);
       const field = fieldErrorFromMessage(schema, msg);
       if (field) setExtra(field);
-      else if (e instanceof ApiError && e.status === 409) setNameError(msg);
+      // Only a name conflict ("A deploy target named ... already exists" —
+      // the server's detail names the target) belongs under Name; a 409 on
+      // a config path collision (two targets writing the same directory)
+      // names a path or another target, not "name", and reads better as a
+      // page-level alert than silently attached to the wrong field.
+      else if (e instanceof ApiError && e.status === 409 && /name/i.test(msg)) setNameError(msg);
       else setFormError(msg);
     }
   };
@@ -105,7 +111,8 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
             extraErrors={extra ?? undefined}
           />
           {formError && (
-            <p role="alert" className="text-sm">
+            <p role="alert" className="flex items-center gap-1.5 text-sm">
+              <CircleAlert className="size-4 text-failed" aria-hidden />
               {formError}
             </p>
           )}

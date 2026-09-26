@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { deployTargetsQuery, useDeleteDeployTarget } from '@/api/queries/delivery';
 import { metaSchemasQuery } from '@/api/queries/dns';
@@ -13,6 +14,7 @@ import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
@@ -28,15 +30,38 @@ export function TargetsPage() {
   const { edit } = useSearch({ from: '/_app/o/$org/delivery/targets' });
   const navigate = useNavigate({ from: '/o/$org/delivery/targets' });
   const q = useQuery(deployTargetsQuery(org.id));
-  const { data: meta } = useQuery(metaSchemasQuery);
+  const metaQ = useQuery(metaSchemasQuery);
   const del = useDeleteDeployTarget(org.id);
   const [deleting, setDeleting] = useState<DeployTarget | null>(null);
   const openSheet = (id: string | undefined) => void navigate({ search: { edit: id }, replace: id === undefined });
-  const types = meta?.deployTargets ?? [];
+  const types = metaQ.data?.deployTargets ?? [];
   const typeName = (code: string) => types.find((t) => t.code === code)?.name ?? code;
   const targets = q.data ?? [];
+  // A hand-edited or stale `?edit=<id>` that no longer resolves (deleted
+  // elsewhere) must not leave the page silently doing nothing — drop it
+  // from the URL and say why, once the list has actually loaded.
+  useEffect(() => {
+    if (q.isPending || !edit || edit === 'new') return;
+    if (!targets.some((t) => t.id === edit)) {
+      openSheet(undefined);
+      toast.error('Deploy target not found.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit, q.isPending, targets.map((t) => t.id).join(',')]);
   const editing = targets.find((t) => t.id === edit);
-  const add = (
+  const add = metaQ.isError ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="inline-flex">
+          <Button disabled aria-label="Add target">
+            <Plus className="size-4" aria-hidden />
+            Add target
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>Couldn't load target types.</TooltipContent>
+    </Tooltip>
+  ) : (
     <PermissionTip allowed={canWrite} action="delivery:write">
       <Button disabled={!canWrite || types.length === 0} onClick={() => openSheet('new')}>
         <Plus className="size-4" aria-hidden />
@@ -47,6 +72,9 @@ export function TargetsPage() {
 
   return (
     <div className="grid gap-4">
+      {metaQ.isError && !q.isPending && !q.isError && (
+        <ErrorState message={`Couldn't load target types. ${errorMessage(metaQ.error)}`} onRetry={() => void metaQ.refetch()} />
+      )}
       {q.isPending ? (
         <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
       ) : q.isError ? (
@@ -87,7 +115,9 @@ export function TargetsPage() {
                   <TableCell className={cn('truncate py-1 font-semibold', stickyCol)}>{t.name}</TableCell>
                   <TableCell className="truncate py-1">{typeName(t.type)}</TableCell>
                   <TableCell className="py-1">Agent</TableCell>
-                  <TableCell className="truncate py-1 font-mono text-xs">{String((t.config as { dir?: unknown }).dir ?? '–')}</TableCell>
+                  <TableCell title={String((t.config as { dir?: unknown }).dir ?? '')} className="truncate py-1 font-mono text-xs">
+                    {String((t.config as { dir?: unknown }).dir ?? '–')}
+                  </TableCell>
                   <TableCell className="py-1">
                     <UsedBy count={t.grantCount} />
                   </TableCell>
@@ -100,7 +130,7 @@ export function TargetsPage() {
           </Table>
         </>
       )}
-      {(edit === 'new' || editing) && types.length > 0 && (
+      {((canWrite && edit === 'new') || editing) && types.length > 0 && (
         <TargetSheet key={edit} orgId={org.id} target={editing} types={types} readOnly={!canWrite} onOpenChange={(o) => !o && openSheet(undefined)} />
       )}
       <ConfirmDestructive
