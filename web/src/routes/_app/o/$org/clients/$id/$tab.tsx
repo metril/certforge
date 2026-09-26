@@ -15,7 +15,9 @@ export const Route = createFileRoute('/_app/o/$org/clients/$id/$tab')({
     }
   },
   loader: ({ context: { queryClient, org }, params }) =>
-    Promise.all([queryClient.ensureQueryData(clientQuery(org.id, params.id)), queryClient.ensureQueryData(sitesQuery(org.id))]),
+    // Sites is prefetched (not ensured): a sites failure must not break the
+    // client detail route, which only needs it for a display name.
+    Promise.all([queryClient.ensureQueryData(clientQuery(org.id, params.id)), queryClient.prefetchQuery(sitesQuery(org.id))]),
   component: function ClientRoute() {
     const { id, tab } = Route.useParams();
     return <ClientDetail id={id} tab={tab as ClientTab} />;

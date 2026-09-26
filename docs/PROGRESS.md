@@ -185,10 +185,10 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | Types, queries, status model, shared chips | done | pending |
+| 1 | Types, queries, status model, shared chips | done | b1d644e |
 | 2 | Clients list and enrolment | done | 729fcbc |
-| 3 | Client detail and settings | done | pending |
-| 4 | Grants table and file comparison | todo | – |
+| 3 | Client detail and settings | done | 814b3cf |
+| 4 | Grants table and file comparison | done | pending |
 | 5 | Grant sheet | todo | – |
 | 6 | Hook runs and activity | todo | – |
 | 7 | Delivery section and deploy targets | todo | – |

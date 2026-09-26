@@ -18,6 +18,7 @@ beforeEach(() => {
     ...authHandlers({ authed: true }),
     http.get(url('/orgs/org-1/sites'), () => HttpResponse.json({ items: [makeSite({ id: 's-1', name: 'Rack A' }), makeSite({ id: 's-2', name: 'Rack B' })] })),
     http.get(url('/orgs/org-1/clients/cl-1'), () => HttpResponse.json(client)),
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () => HttpResponse.json({ items: [] })),
     http.patch(url('/orgs/org-1/clients/cl-1'), async ({ request }) => {
       patched = await request.json();
       client = { ...client, ...(patched as Partial<Client>) };
@@ -125,5 +126,32 @@ it('All orgs redirects to the All orgs overview', async () => {
 
 it('redirects an unknown tab to the default one', async () => {
   const { router } = renderRoute('/o/acme/clients/cl-1/nope');
-  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/clients/cl-1/settings'));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/clients/cl-1/certificates'));
+});
+
+it('labels a client that never connected', async () => {
+  client = makeClient({ connected: false, online: false, lastSeen: null });
+  renderRoute('/o/acme/clients/cl-1/settings');
+  expect(await screen.findByText('Never connected')).toBeInTheDocument();
+});
+
+it('labels a revoked client', async () => {
+  client = makeClient({ status: 'revoked', connected: false, online: false });
+  renderRoute('/o/acme/clients/cl-1/settings');
+  expect(await screen.findByText('Revoked')).toBeInTheDocument();
+});
+
+it('Escape closes the re-enrol token dialog and forgets the token', async () => {
+  const { user } = renderRoute('/o/acme/clients/cl-1/settings');
+  await user.click(await screen.findByRole('button', { name: 'Re-enrol' }));
+  await user.type(screen.getByLabelText(/to confirm/), 'web-1');
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Re-enrol' }));
+  const dialog = await screen.findByRole('dialog', { name: 'New token for web-1' });
+  expect(within(dialog).getByText('cf1.aHR0cHM6Ly9jZg.ab12.s3cret')).toBeInTheDocument();
+  // The dialog autofocuses a control that also carries a (closed) tooltip;
+  // the first Escape only dismisses that transient layer, same as a real
+  // browser, so the assertion presses it until the dialog itself is gone.
+  await user.keyboard('{Escape}');
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByText('cf1.aHR0cHM6Ly9jZg.ab12.s3cret')).not.toBeInTheDocument());
 });

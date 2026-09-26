@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
-// Tasks 4 and 5 add `open` (expanded grant) and `grant` (open the grant sheet).
-export const clientDetailSearch = z.object({});
+// Task 5 adds `grant` (open the grant sheet).
+export const clientDetailSearch = z.object({
+  /** Expanded grant row (Overview's drift and failed items link here). */
+  open: z.string().regex(/^[\w-]{1,64}$/).optional().catch(undefined),
+});
 export type ClientDetailSearch = z.infer<typeof clientDetailSearch>;

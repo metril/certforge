@@ -164,8 +164,15 @@ export const help = {
   'client.agentCert': { text: 'The agent’s own identity certificate. It renews itself at two thirds of its lifetime.', learnMore: 'agent.md#enrolment' },
   'client.capabilities': { text: 'Features the agent reported, such as traefik and hooks.' },
   'client.reenroll': { text: 'Issues a new token and disconnects the agent until it enrols again. Use it after rebuilding the host.', learnMore: 'agent.md#enrolment' },
-  'client.revoke': { text: 'Refuses the agent’s certificate and closes its connection. Files already on the host stay.' },
+  'client.revoke': { text: 'Refuses the agent’s certificate and closes its connection. Files already on the host stay; grants still waiting for removal are dropped.' },
   'client.delete': { text: 'Only revoked clients, or clients that never enrolled, can be deleted.' },
+  'grant.delivery': { text: 'Push sends changes at once over the connection. Pull waits for the agent’s schedule or a manual certforge-agent pull.', learnMore: 'agent.md#pull-mode' },
+  'grant.layout': { text: 'Files the agent writes, built from PEM parts.', learnMore: 'agent.md#file-layouts' },
+  'grant.target': { text: 'What the agent does besides writing files, such as updating Traefik.', learnMore: 'deploy-targets.md#traefik' },
+  'grant.hooks': { text: 'Commands the agent runs around the deploy, in the numbered order. Reorder them with the arrows.', learnMore: 'agent.md#hooks-and-the-allowlist' },
+  'grant.autoRemediate': { text: 'On drift, reinstall the files automatically instead of only reporting it.', learnMore: 'agent.md#drift' },
+  'grant.files': { text: 'Expected digests come from the server; installed ones from the agent’s last report.', learnMore: 'agent.md#drift' },
+  'deploy.redeploy': { text: 'Asks the agent to reinstall the current version and report again.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;
