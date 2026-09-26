@@ -144,3 +144,9 @@ it('lists every org read-only under All orgs', async () => {
   expect(screen.queryByRole('link', { name: 'Enrol client' })).not.toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Site' })).not.toBeInTheDocument();
 });
+
+it('links each row to its client', async () => {
+  renderRoute('/o/acme/clients');
+  const table = await findLoadedTable('Clients');
+  expect(within(table).getByRole('link', { name: 'web-1' })).toHaveAttribute('href', '/o/acme/clients/cl-1');
+});

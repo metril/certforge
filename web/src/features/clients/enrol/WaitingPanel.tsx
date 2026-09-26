@@ -61,9 +61,9 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link to="/o/$org/clients" params={{ org: orgSlug }}>
-                Back to clients
+            <Button asChild>
+              <Link to="/o/$org/clients/$id" params={{ org: orgSlug, id: clientId }}>
+                Open client
               </Link>
             </Button>
           </div>

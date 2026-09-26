@@ -32,6 +32,8 @@ import { Route as AppOOrgIssuersDnsRouteImport } from './routes/_app/o/$org/issu
 import { Route as AppOOrgCertificatesIdIndexRouteImport } from './routes/_app/o/$org/certificates/$id/index'
 import { Route as AppOOrgCertificatesIdTabRouteImport } from './routes/_app/o/$org/certificates/$id/$tab'
 import { Route as AppOOrgCertificatesIdEditRouteImport } from './routes/_app/o/$org/certificates/$id/edit'
+import { Route as AppOOrgClientsIdIndexRouteImport } from './routes/_app/o/$org/clients/$id/index'
+import { Route as AppOOrgClientsIdTabRouteImport } from './routes/_app/o/$org/clients/$id/$tab'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -151,6 +153,16 @@ const AppOOrgCertificatesIdEditRoute =
     path: '/certificates/$id/edit',
     getParentRoute: () => AppOOrgRouteRoute,
   } as any)
+const AppOOrgClientsIdIndexRoute = AppOOrgClientsIdIndexRouteImport.update({
+  id: '/clients/$id/',
+  path: '/clients/$id/',
+  getParentRoute: () => AppOOrgRouteRoute,
+} as any)
+const AppOOrgClientsIdTabRoute = AppOOrgClientsIdTabRouteImport.update({
+  id: '/clients/$id/$tab',
+  path: '/clients/$id/$tab',
+  getParentRoute: () => AppOOrgRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -174,7 +186,9 @@ export interface FileRoutesByFullPath {
   '/o/$org/issuers/': typeof AppOOrgIssuersIndexRoute
   '/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
+  '/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
   '/o/$org/certificates/$id/': typeof AppOOrgCertificatesIdIndexRoute
+  '/o/$org/clients/$id/': typeof AppOOrgClientsIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -196,7 +210,9 @@ export interface FileRoutesByTo {
   '/o/$org/issuers': typeof AppOOrgIssuersIndexRoute
   '/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
+  '/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
   '/o/$org/certificates/$id': typeof AppOOrgCertificatesIdIndexRoute
+  '/o/$org/clients/$id': typeof AppOOrgClientsIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -222,7 +238,9 @@ export interface FileRoutesById {
   '/_app/o/$org/issuers/': typeof AppOOrgIssuersIndexRoute
   '/_app/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/_app/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
+  '/_app/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
   '/_app/o/$org/certificates/$id/': typeof AppOOrgCertificatesIdIndexRoute
+  '/_app/o/$org/clients/$id/': typeof AppOOrgClientsIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -248,7 +266,9 @@ export interface FileRouteTypes {
     | '/o/$org/issuers/'
     | '/o/$org/certificates/$id/$tab'
     | '/o/$org/certificates/$id/edit'
+    | '/o/$org/clients/$id/$tab'
     | '/o/$org/certificates/$id/'
+    | '/o/$org/clients/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -270,7 +290,9 @@ export interface FileRouteTypes {
     | '/o/$org/issuers'
     | '/o/$org/certificates/$id/$tab'
     | '/o/$org/certificates/$id/edit'
+    | '/o/$org/clients/$id/$tab'
     | '/o/$org/certificates/$id'
+    | '/o/$org/clients/$id'
   id:
     | '__root__'
     | '/_app'
@@ -295,7 +317,9 @@ export interface FileRouteTypes {
     | '/_app/o/$org/issuers/'
     | '/_app/o/$org/certificates/$id/$tab'
     | '/_app/o/$org/certificates/$id/edit'
+    | '/_app/o/$org/clients/$id/$tab'
     | '/_app/o/$org/certificates/$id/'
+    | '/_app/o/$org/clients/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -467,6 +491,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgCertificatesIdEditRouteImport
       parentRoute: typeof AppOOrgRouteRoute
     }
+    '/_app/o/$org/clients/$id/': {
+      id: '/_app/o/$org/clients/$id/'
+      path: '/clients/$id'
+      fullPath: '/o/$org/clients/$id/'
+      preLoaderRoute: typeof AppOOrgClientsIdIndexRouteImport
+      parentRoute: typeof AppOOrgRouteRoute
+    }
+    '/_app/o/$org/clients/$id/$tab': {
+      id: '/_app/o/$org/clients/$id/$tab'
+      path: '/clients/$id/$tab'
+      fullPath: '/o/$org/clients/$id/$tab'
+      preLoaderRoute: typeof AppOOrgClientsIdTabRouteImport
+      parentRoute: typeof AppOOrgRouteRoute
+    }
   }
 }
 
@@ -498,7 +536,9 @@ interface AppOOrgRouteRouteChildren {
   AppOOrgClientsIndexRoute: typeof AppOOrgClientsIndexRoute
   AppOOrgCertificatesIdTabRoute: typeof AppOOrgCertificatesIdTabRoute
   AppOOrgCertificatesIdEditRoute: typeof AppOOrgCertificatesIdEditRoute
+  AppOOrgClientsIdTabRoute: typeof AppOOrgClientsIdTabRoute
   AppOOrgCertificatesIdIndexRoute: typeof AppOOrgCertificatesIdIndexRoute
+  AppOOrgClientsIdIndexRoute: typeof AppOOrgClientsIdIndexRoute
 }
 
 const AppOOrgRouteRouteChildren: AppOOrgRouteRouteChildren = {
@@ -512,7 +552,9 @@ const AppOOrgRouteRouteChildren: AppOOrgRouteRouteChildren = {
   AppOOrgClientsIndexRoute: AppOOrgClientsIndexRoute,
   AppOOrgCertificatesIdTabRoute: AppOOrgCertificatesIdTabRoute,
   AppOOrgCertificatesIdEditRoute: AppOOrgCertificatesIdEditRoute,
+  AppOOrgClientsIdTabRoute: AppOOrgClientsIdTabRoute,
   AppOOrgCertificatesIdIndexRoute: AppOOrgCertificatesIdIndexRoute,
+  AppOOrgClientsIdIndexRoute: AppOOrgClientsIdIndexRoute,
 }
 
 const AppOOrgRouteRouteWithChildren = AppOOrgRouteRoute._addFileChildren(

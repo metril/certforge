@@ -161,6 +161,11 @@ export const help = {
   'client.token': { text: 'Single use and shown only now. Start the agent with it before it expires.', learnMore: 'agent.md#enrolment' },
   'client.snippet': { text: 'Runs the agent with a volume for its identity. Edit CF_WRITE_ALLOW and the mount to match your deploy directory.', learnMore: 'agent.md#running-with-docker' },
   'client.waiting': { text: 'The agent enrols with the token, then connects. This updates by itself.', learnMore: 'agent.md#troubleshooting' },
+  'client.agentCert': { text: 'The agent’s own identity certificate. It renews itself at two thirds of its lifetime.', learnMore: 'agent.md#enrolment' },
+  'client.capabilities': { text: 'Features the agent reported, such as traefik and hooks.' },
+  'client.reenroll': { text: 'Issues a new token and disconnects the agent until it enrols again. Use it after rebuilding the host.', learnMore: 'agent.md#enrolment' },
+  'client.revoke': { text: 'Refuses the agent’s certificate and closes its connection. Files already on the host stay.' },
+  'client.delete': { text: 'Only revoked clients, or clients that never enrolled, can be deleted.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

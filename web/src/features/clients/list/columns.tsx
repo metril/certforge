@@ -1,4 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table';
+import { Link } from '@tanstack/react-router';
 import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { DeploymentCounts } from '@/components/DeploymentChip';
@@ -9,14 +10,21 @@ const col = createColumnHelper<Client>();
 const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 /** siteName in one org; orgName under All orgs (sites are per org). */
-export function clientColumns({ siteName, orgName }: { siteName?: (id: string | null) => string; orgName?: (c: Client) => string }) {
+export function clientColumns({ slugOf, siteName, orgName }: { slugOf: (c: Client) => string; siteName?: (id: string | null) => string; orgName?: (c: Client) => string }) {
   return [
     col.accessor('name', {
       header: 'Name',
       meta: { sortKey: 'name', className: cn('w-48', stickyCol) },
       cell: ({ row }) => (
         <div className="grid min-w-0">
-          <span className="truncate font-semibold">{row.original.name}</span>
+          <Link
+            to="/o/$org/clients/$id"
+            params={{ org: slugOf(row.original), id: row.original.id }}
+            onClick={(e) => e.stopPropagation()}
+            className="truncate font-semibold hover:underline"
+          >
+            {row.original.name}
+          </Link>
           <span className="truncate font-mono text-xs text-ink-muted">{row.original.hostname || '–'}</span>
         </div>
       ),

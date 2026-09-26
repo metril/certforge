@@ -20,7 +20,11 @@ Below `md` width, the needs-attention queue and upcoming renewals render as stac
 
 ## Clients
 
-`/o/:org/clients` lists the org's agents: connection (Online, Offline, Never connected, Revoked), site, agent version, grants, drift and failed counts, and last seen. Filter by status and site (kept in the URL as `?status=` and `?site=`; a site is a filter, never a scope), search by name or hostname, sort by name, connection or last seen, and save views. Below `md` width the list renders as cards. Under All orgs the list is read-only with an Org column. **Enrol client** takes a name and an optional site, then shows the one-time token with its agent URL and expiry, a `docker run` line and a Compose file to copy, and a live panel that waits for the agent (checked every 2 seconds) and shows its host once it connects. An expired token offers **New token**. The token is shown once and never stored in the browser.
+`/o/:org/clients` lists the org's agents: connection (Online, Offline, Never connected, Revoked), site, agent version, grants, drift and failed counts, and last seen. Filter by status and site (kept in the URL as `?status=` and `?site=`; a site is a filter, never a scope), search by name or hostname, sort by name, connection or last seen, and save views. Below `md` width the list renders as cards. Under All orgs the list is read-only with an Org column. Each row opens the client. **Enrol client** takes a name and an optional site, then shows the one-time token with its agent URL and expiry, a `docker run` line and a Compose file to copy, and a live panel that waits for the agent (checked every 2 seconds) and shows its host once it connects. An expired token offers **New token**. The token is shown once and never stored in the browser.
+
+## Client detail
+
+`/o/:org/clients/:id/:tab`. The header shows the connection (Connected, Online (pull) for an agent that pulls without a live connection, Offline since a time, Never connected, Revoked), hostname, site, agent version and platform, the agent certificate's expiry (highlighted under 14 days) and the capabilities the agent reported. **Settings** renames the client and moves it between sites, and holds **Re-enrol** (a new one-time token, shown in a dialog; the agent is disconnected until it uses it), **Revoke** (the agent is refused from then on; files on the host stay) and **Delete** (only for revoked or never-enrolled clients). Each asks you to type the client's name.
 
 ## Settings → General
 

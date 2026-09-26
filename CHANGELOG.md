@@ -93,6 +93,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - certforge-agent container image (distroless, /data volume) and build targets.
 - Web: API layer for clients, grants, layouts, deploy targets, hooks and the agent CA, with shared connection and deployment status chips.
 - Web: Clients list with connection, site, drift and last seen, and Enrol client with copyable docker run and Compose snippets and a live wait for the agent.
+- Web: client detail with connection, agent and certificate facts, and rename, site, re-enrol, revoke and delete.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus, Search } from 'lucide-react';
@@ -20,7 +20,7 @@ import { SavedViews } from '@/components/SavedViews';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useAllOrgs, useMe, useOrg } from '@/lib/org';
+import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -36,9 +36,9 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'revoked', label: 'Revoked' },
 ];
 
-function ClientCard({ client, context }: { client: Client; context?: string }) {
+function ClientCard({ client, org, context }: { client: Client; org: string; context?: string }) {
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-panel p-3">
+    <Link to="/o/$org/clients/$id" params={{ org, id: client.id }} className="grid gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle">
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-semibold">{client.name}</span>
         <ConnectionDot client={client} />
@@ -50,7 +50,7 @@ function ClientCard({ client, context }: { client: Client; context?: string }) {
         <DeploymentCounts client={client} />
         <span>{client.lastSeen ? `Seen ${relTime(client.lastSeen)}` : 'Never seen'}</span>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -87,7 +87,12 @@ export function ClientsPage() {
     return (id: string | null) => (id ? (byId.get(id) ?? '–') : '–');
   }, [sites]);
   const orgName = useMemo(() => (c: Client) => me.orgs.find((o) => o.id === c.orgId)?.name ?? c.orgId, [me.orgs]);
-  const columns = useMemo(() => (allOrgs ? clientColumns({ orgName }) : clientColumns({ siteName })), [allOrgs, orgName, siteName]);
+  const slugOf = useOrgSlugOf();
+  const slug = useCallback((c: Client) => (allOrgs ? slugOf(c.orgId) : org.slug), [allOrgs, slugOf, org.slug]);
+  const columns = useMemo(
+    () => (allOrgs ? clientColumns({ slugOf: slug, orgName }) : clientColumns({ slugOf: slug, siteName })),
+    [allOrgs, orgName, siteName, slug],
+  );
 
   useEffect(() => setCursorNotice(false), [search.status, search.site, search.q, search.sort, allOrgs]);
 
@@ -195,11 +200,15 @@ export function ClientsPage() {
               getRowId={(r) => r.id}
               sort={search.sort}
               onSort={(s) => setSearch({ sort: s as ClientListSearch['sort'] })}
+              onRowOpen={(id) => {
+                const c = rows.find((r) => r.id === id);
+                if (c) void navigate({ to: '/o/$org/clients/$id', params: { org: slug(c), id } });
+              }}
             />
           ) : (
             <div className="grid gap-2">
               {rows.map((c) => (
-                <ClientCard key={c.id} client={c} context={allOrgs ? orgName(c) : c.siteId ? siteName(c.siteId) : undefined} />
+                <ClientCard key={c.id} client={c} org={slug(c)} context={allOrgs ? orgName(c) : c.siteId ? siteName(c.siteId) : undefined} />
               ))}
             </div>
           )}
