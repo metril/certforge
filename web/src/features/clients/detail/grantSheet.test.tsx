@@ -100,6 +100,33 @@ it('partial failure: keeps the failed certificate selected with its reason', asy
   expect(posted.map((p) => p.certificateId)).toEqual(['c-2', 'c-3']);
 });
 
+it('warns about no push while delivery is pull', async () => {
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  expect(within(sheet).queryByText('No push')).not.toBeInTheDocument();
+  await user.click(within(sheet).getByRole('radio', { name: 'Pull' }));
+  expect(within(sheet).getByText('No push')).toBeInTheDocument();
+  await user.click(within(sheet).getByRole('radio', { name: 'Push' }));
+  expect(within(sheet).queryByText('No push')).not.toBeInTheDocument();
+});
+
+it('shows a 409 on save with the failed tone and keeps the sheet open', async () => {
+  server.use(http.patch(url('/orgs/org-1/grants/g-1'), () => problem(409, 'The path collides with another grant.')));
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  const message = await within(sheet).findByText('The path collides with another grant.');
+  expect(message.closest('[role="alert"]')).toHaveClass('text-failed');
+  expect(screen.getByRole('dialog', { name: 'Edit www' })).toBeInTheDocument();
+});
+
+it('clears an unknown grant id from the url and notifies', async () => {
+  const { router } = renderRoute('/o/acme/clients/cl-1/certificates?grant=nope-1');
+  await screen.findByText('Grant not found.');
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('grant'));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
 it('edits a grant with every field sent', async () => {
   const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
   const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
@@ -118,6 +145,7 @@ it('shows hooks in run order and saves the reordered list', async () => {
   );
   const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
   const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  await within(sheet).findByRole('list', { name: 'Hook run order' });
   const order = () => within(within(sheet).getByRole('list', { name: 'Hook run order' })).getAllByRole('listitem').map((li) => li.textContent);
   expect(order()).toEqual([expect.stringMatching(/^1\.reload nginx/), expect.stringMatching(/^2\.notify/)]);
   expect(within(sheet).getByRole('button', { name: 'Move reload nginx up' })).toBeDisabled();

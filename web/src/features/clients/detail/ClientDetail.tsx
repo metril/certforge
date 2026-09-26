@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { clientQuery } from '@/api/queries/clients';
 import { grantsQuery } from '@/api/queries/grants';
@@ -23,7 +25,21 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
   const search = useSearch({ from: '/_app/o/$org/clients/$id/$tab' });
   const { data: client, isPending, error } = useQuery(clientQuery(org.id, id));
   const { data: sites = [] } = useQuery(sitesQuery(org.id));
-  const { data: grants = [] } = useQuery(grantsQuery(org.id, id));
+  const grantsQ = useQuery(grantsQuery(org.id, id));
+  const grants = grantsQ.data ?? [];
+  const setGrant = (grant: string | undefined) =>
+    void navigate({ to: '/o/$org/clients/$id/$tab', params: { org: org.slug, id, tab: 'certificates' }, search: (prev) => ({ ...prev, grant }), replace: grant === undefined });
+  // A grant id that no longer resolves (deleted elsewhere, or hand-edited)
+  // must not leave the sheet silently un-openable: drop it from the URL and
+  // say why, once the grants list has actually loaded.
+  useEffect(() => {
+    if (grantsQ.isPending || !search.grant || search.grant === 'new') return;
+    if (!grants.some((g) => g.id === search.grant)) {
+      setGrant(undefined);
+      toast.error('Grant not found.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.grant, grantsQ.isPending, grants]);
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (error) return <p role="alert">{errorMessage(error)}</p>;
   const canWrite = can(me, 'clients:write', org.id);
@@ -31,8 +47,6 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
   const goTab = (t: ClientTab) => void navigate({ to: '/o/$org/clients/$id/$tab', params: { org: org.slug, id, tab: t }, search: {} });
   const setOpen = (open: string | undefined) =>
     void navigate({ to: '/o/$org/clients/$id/$tab', params: { org: org.slug, id, tab }, search: (prev) => ({ ...prev, open }), replace: true });
-  const setGrant = (grant: string | undefined) =>
-    void navigate({ to: '/o/$org/clients/$id/$tab', params: { org: org.slug, id, tab: 'certificates' }, search: (prev) => ({ ...prev, grant }), replace: grant === undefined });
   const writable = canWrite && client.status !== 'revoked';
   const grantButton = (
     <ClientWriteTip canWrite={canWrite} revoked={client.status === 'revoked'}>

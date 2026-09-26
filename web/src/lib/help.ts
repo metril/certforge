@@ -167,7 +167,14 @@ export const help = {
   'client.revoke': { text: 'Refuses the agent’s certificate and closes its connection. Files already on the host stay; grants still waiting for removal are dropped.' },
   'client.delete': { text: 'Only revoked clients, or clients that never enrolled, can be deleted.' },
   'grant.certificates': { text: 'Pick one or more certificates. Each becomes its own grant with the settings below.', learnMore: 'agent.md#grants-and-reconcile' },
-  'grant.delivery': { text: 'Push sends changes at once over the connection. Pull waits for the agent’s schedule or a manual certforge-agent pull.', learnMore: 'agent.md#pull-mode' },
+  'grant.delivery': {
+    text: 'Push sends changes at once over the connection. Pull waits for the agent’s schedule or a manual certforge-agent pull, and shows a warning for the delay.',
+    learnMore: 'agent.md#pull-mode',
+  },
+  'grant.pullWarning': {
+    text: 'Pull grants get no push from the server. With CF_AGENT_PULL_INTERVAL=0 they deploy only when the agent reconnects or runs pull.',
+    learnMore: 'agent.md#pull-mode',
+  },
   'grant.layout': { text: 'Files the agent writes, built from PEM parts.', learnMore: 'agent.md#file-layouts' },
   'grant.target': { text: 'What the agent does besides writing files, such as updating Traefik.', learnMore: 'deploy-targets.md#traefik' },
   'grant.hooks': { text: 'Commands the agent runs around the deploy, in the numbered order. Reorder them with the arrows.', learnMore: 'agent.md#hooks-and-the-allowlist' },

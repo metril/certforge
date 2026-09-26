@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { allCertificatesQuery, plural } from '@/api/queries/certificates';
@@ -13,6 +13,7 @@ import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
 import { MultiCombobox } from '@/components/MultiCombobox';
 import { SegmentedControl } from '@/components/SegmentedControl';
+import { ToneChip } from '@/components/StatusChip';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -20,11 +21,32 @@ import { PHASE_LABEL } from '@/lib/clientStatus';
 
 type Props = { orgId: string; client: Client; grants: Grant[]; editing?: Grant; onOpenChange: (open: boolean) => void };
 
+/** A field whose options come from a query: a skeleton while pending, an
+ * inline error (with retry) on failure, never the "nothing yet" empty text
+ * for either — that text is reserved for a settled, genuinely empty list. */
+function QueryField({ label, q, children }: { label: string; q: UseQueryResult<unknown>; children: ReactNode }) {
+  if (q.isPending) return <div aria-busy="true" aria-label={`Loading ${label}`} className="h-9 animate-pulse rounded-md bg-subtle" />;
+  if (q.isError)
+    return (
+      <p role="alert" className="flex flex-wrap items-center gap-2 text-sm text-failed">
+        <CircleAlert className="size-3.5 shrink-0" aria-hidden />
+        <span className="flex-1">{`Couldn't load ${label}. ${errorMessage(q.error)}`}</span>
+        <Button variant="outline" size="sm" onClick={() => void q.refetch()}>
+          Retry
+        </Button>
+      </p>
+    );
+  return <>{children}</>;
+}
+
 export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Props) {
   const certs = useQuery(allCertificatesQuery(orgId));
-  const { data: layouts = [] } = useQuery(layoutsQuery(orgId));
-  const { data: targets = [] } = useQuery(deployTargetsQuery(orgId));
-  const { data: hooks = [] } = useQuery(hooksQuery(orgId));
+  const layoutsQ = useQuery(layoutsQuery(orgId));
+  const targetsQ = useQuery(deployTargetsQuery(orgId));
+  const hooksQ = useQuery(hooksQuery(orgId));
+  const layouts = layoutsQ.data ?? [];
+  const targets = targetsQ.data ?? [];
+  const hooks = hooksQ.data ?? [];
   const { data: meta } = useQuery(metaSchemasQuery);
   const create = useCreateGrants(orgId, client.id);
   const update = useUpdateGrant(orgId);
@@ -59,6 +81,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
     if (!layoutId && !targetId) next.where = 'Pick a layout, a deploy target, or both.';
     setErrors(next);
     setFormError(null);
+    setFailures([]);
     if (next.certs || next.where) return;
     const rest = { delivery, layoutId: layoutId ?? null, deployTargetId: targetId ?? null, hookIds, autoRemediate };
     if (editing) {
@@ -110,87 +133,96 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
             </Field>
           )}
           <Field id="grant-delivery" label="Delivery" help="grant.delivery">
-            <SegmentedControl<GrantDelivery>
-              id="grant-delivery"
-              aria-label="Delivery"
-              value={delivery}
-              onChange={setDelivery}
-              options={[
-                { value: 'push', label: 'Push' },
-                { value: 'pull', label: 'Pull' },
-              ]}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <SegmentedControl<GrantDelivery>
+                id="grant-delivery"
+                aria-label="Delivery"
+                value={delivery}
+                onChange={setDelivery}
+                options={[
+                  { value: 'push', label: 'Push' },
+                  { value: 'pull', label: 'Pull' },
+                ]}
+              />
+              {delivery === 'pull' && <ToneChip tone="expiring" icon={TriangleAlert} label="No push" help="grant.pullWarning" />}
+            </div>
           </Field>
           <Field id="grant-layout" label="Layout" help="grant.layout" optional>
-            <Combobox
-              id="grant-layout"
-              aria-label="Layout"
-              value={layoutId}
-              onChange={(v) => {
-                setLayoutId(v);
-                setErrors((e) => ({ ...e, where: undefined }));
-              }}
-              options={layouts.map((l) => ({ value: l.id, label: l.name, hint: plural(l.files.length, 'file') }))}
-              placeholder="No layout"
-              emptyText="No layouts yet."
-            />
+            <QueryField label="layouts" q={layoutsQ}>
+              <Combobox
+                id="grant-layout"
+                aria-label="Layout"
+                value={layoutId}
+                onChange={(v) => {
+                  setLayoutId(v);
+                  setErrors((e) => ({ ...e, where: undefined }));
+                }}
+                options={layouts.map((l) => ({ value: l.id, label: l.name, hint: plural(l.files.length, 'file') }))}
+                placeholder="No layout"
+                emptyText="No layouts yet."
+              />
+            </QueryField>
           </Field>
           <Field id="grant-target" label="Deploy target" help="grant.target" optional error={errors.where}>
-            <Combobox
-              id="grant-target"
-              aria-label="Deploy target"
-              value={targetId}
-              onChange={(v) => {
-                setTargetId(v);
-                setErrors((e) => ({ ...e, where: undefined }));
-              }}
-              options={targets.map((t) => ({ value: t.id, label: t.name, hint: typeName(t.type) }))}
-              placeholder="No target"
-              emptyText="No deploy targets yet."
-            />
+            <QueryField label="deploy targets" q={targetsQ}>
+              <Combobox
+                id="grant-target"
+                aria-label="Deploy target"
+                value={targetId}
+                onChange={(v) => {
+                  setTargetId(v);
+                  setErrors((e) => ({ ...e, where: undefined }));
+                }}
+                options={targets.map((t) => ({ value: t.id, label: t.name, hint: typeName(t.type) }))}
+                placeholder="No target"
+                emptyText="No deploy targets yet."
+              />
+            </QueryField>
           </Field>
           <Field id="grant-hooks" label="Hooks" help="grant.hooks" optional>
-            {hooks.length ? (
-              <div className="grid gap-2">
-                <ChipSet
-                  id="grant-hooks"
-                  aria-label="Hooks"
-                  value={hookIds}
-                  onChange={setHookIds}
-                  options={hooks.map((h) => ({ value: h.id, label: h.name, hint: PHASE_LABEL[h.phase] }))}
-                />
-                {hookIds.length > 0 && (
-                  <ol aria-label="Hook run order" className="grid gap-1">
-                    {hookIds.map((hid, i) => {
-                      const h = hooks.find((x) => x.id === hid);
-                      const name = h?.name ?? hid;
-                      return (
-                        <li key={hid} className="flex min-h-9 items-center gap-2 rounded-md border border-border px-2 text-sm">
-                          <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
-                          <span className="min-w-0 flex-1 truncate">{name}</span>
-                          {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
-                          <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
-                            <ArrowUp className="size-3.5" aria-hidden />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="size-7"
-                            aria-label={`Move ${name} down`}
-                            disabled={i === hookIds.length - 1}
-                            onClick={() => moveHook(i, 1)}
-                          >
-                            <ArrowDown className="size-3.5" aria-hidden />
-                          </Button>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-ink-muted">No hooks in this org.</p>
-            )}
+            <QueryField label="hooks" q={hooksQ}>
+              {hooks.length ? (
+                <div className="grid gap-2">
+                  <ChipSet
+                    id="grant-hooks"
+                    aria-label="Hooks"
+                    value={hookIds}
+                    onChange={setHookIds}
+                    options={hooks.map((h) => ({ value: h.id, label: h.name, hint: PHASE_LABEL[h.phase] }))}
+                  />
+                  {hookIds.length > 0 && (
+                    <ol aria-label="Hook run order" className="grid gap-1">
+                      {hookIds.map((hid, i) => {
+                        const h = hooks.find((x) => x.id === hid);
+                        const name = h?.name ?? hid;
+                        return (
+                          <li key={hid} className="flex min-h-9 items-center gap-2 rounded-md border border-border px-2 text-sm">
+                            <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
+                            <span className="min-w-0 flex-1 truncate">{name}</span>
+                            {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
+                            <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
+                              <ArrowUp className="size-3.5" aria-hidden />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="size-7"
+                              aria-label={`Move ${name} down`}
+                              disabled={i === hookIds.length - 1}
+                              onClick={() => moveHook(i, 1)}
+                            >
+                              <ArrowDown className="size-3.5" aria-hidden />
+                            </Button>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-ink-muted">No hooks in this org.</p>
+              )}
+            </QueryField>
           </Field>
           <SwitchField
             id="grant-auto"
@@ -209,7 +241,8 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
             </ul>
           )}
           {formError && (
-            <p role="alert" className="text-sm">
+            <p role="alert" className="flex items-center gap-1 text-sm text-failed">
+              <CircleAlert className="size-3.5 shrink-0" aria-hidden />
               {formError}
             </p>
           )}
