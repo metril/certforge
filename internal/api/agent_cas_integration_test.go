@@ -9,13 +9,17 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/agenthub"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
@@ -108,6 +112,93 @@ func TestAgentCARotateRetire(t *testing.T) {
 	wantStatus(t, err, 404)
 	if e.auditCount(t, "agent_ca.rotate") != 1 || e.auditCount(t, "agent_ca.retire") != 1 || len(e.hub.broadcasts) != 2 {
 		t.Fatal("rotation audit or broadcast missing")
+	}
+}
+
+// TestAgentCARotateRetireWithLiveAgent (M7) extends the rotate/retire
+// coverage above with an agent that holds an open WebSocket over a real
+// agenthub.Hub (TestAgentCARotateRetire uses a fake hub that only records
+// broadcasts), through the whole rotate → renew → retire chain: the live
+// socket receives the trust_bundle_update on rotate; docs/agent.md says a
+// connected agent renews immediately on that message, which this test does
+// over REST with the old certificate (still trusted; only the listener's
+// own signing identity waits for retire) — after which the client's
+// agent_ca_id has moved off the old CA, retire succeeds, and a fresh
+// socket dialled with the renewed certificate operates normally against
+// the now-switched listener chain. The original socket's own next message,
+// sent with the now-superseded certificate, is rejected (agents.OnMessage's
+// per-message serial re-check, M4), matching what a real agent does next
+// in practice: stop using the old connection and reconnect with the one
+// it just renewed.
+func TestAgentCARotateRetireWithLiveAgent(t *testing.T) {
+	hub := agenthub.New(slog.Default())
+	t.Cleanup(hub.Shutdown)
+	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
+	e.svc.Hub = hub
+	admin := e.as("admin")
+	en := e.newClient(t, "web-1")
+	cert, _, code := e.enroll(t, en.Token)
+	if code != http.StatusOK {
+		t.Fatalf("enroll %d", code)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ws := dialWS(ctx, t, e, cert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1.0", Hostname: "h", OS: "linux", Arch: "amd64"})
+	recvWS(ctx, t, ws)
+
+	res, err := e.srv.ListAgentCAs(e.as("viewer"), gen.ListAgentCAsRequestObject{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldID := res.(gen.ListAgentCAs200JSONResponse).Items[0].Id
+	rot, err := e.srv.RotateAgentCA(admin, gen.RotateAgentCARequestObject{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := rot.(gen.RotateAgentCA201JSONResponse)
+	if m := recvWS(ctx, t, ws); m == nil {
+		t.Fatal("live agent did not receive a message on rotate")
+	} else if tb, ok := m.(agentproto.TrustBundleUpdate); !ok || strings.Count(tb.Bundle, "BEGIN CERTIFICATE") != 2 {
+		t.Fatalf("expected a trust_bundle_update with both CAs, got %#v", m)
+	}
+	if _, err := e.srv.RetireAgentCA(admin, gen.RetireAgentCARequestObject{Id: oldID}); err == nil {
+		t.Fatal("retire succeeded while the live agent's certificate still depends on the old CA")
+	}
+	var rr agentproto.RenewResponse
+	if code := e.post(t, e.httpClient(t, &cert), "/agent/v1/renew",
+		agentproto.RenewRequest{CSR: csrPEM(t, cert.PrivateKey.(crypto.Signer))}, &rr); code != http.StatusOK {
+		t.Fatalf("renew after trust_bundle_update: %d", code)
+	}
+	blk, _ := pem.Decode([]byte(rr.Certificate))
+	renewed, _ := x509.ParseCertificate(blk.Bytes)
+	renewedCert := tls.Certificate{Certificate: [][]byte{renewed.Raw}, PrivateKey: cert.PrivateKey}
+	if _, err := e.srv.RetireAgentCA(admin, gen.RetireAgentCARequestObject{Id: oldID}); err != nil {
+		t.Fatalf("retire after the live agent renewed: %v", err)
+	}
+	if info, _ := e.listener.Info(); info.CAID != next.Id {
+		t.Fatal("listener not re-issued by the new CA after retire")
+	}
+	// Retire itself broadcasts a fresh trust bundle (without the retired
+	// CA) to every connected socket, including this stale one; drain it
+	// before checking the close below.
+	if m := recvWS(ctx, t, ws); m == nil {
+		t.Fatal("no trust bundle broadcast on retire")
+	} else if _, ok := m.(agentproto.TrustBundleUpdate); !ok {
+		t.Fatalf("expected a trust_bundle_update after retire, got %#v", m)
+	}
+	// The original socket's certificate no longer matches the client's
+	// current serial: its next message is rejected and the socket closes.
+	sendWS(ctx, t, ws, agentproto.Heartbeat{})
+	if _, err := ws.ReadMsg(ctx); websocket.CloseStatus(err) != agentproto.CloseRevoked {
+		t.Fatalf("stale socket after renew+retire: %v", err)
+	}
+	// A fresh socket dialled with the renewed certificate operates
+	// normally against the now-switched listener chain.
+	ws2 := dialWS(ctx, t, e, renewedCert)
+	sendWS(ctx, t, ws2, agentproto.Hello{AgentVersion: "1.0", Hostname: "h", OS: "linux", Arch: "amd64"})
+	if m := recvWS(ctx, t, ws2); m != agentproto.Message(agentproto.HelloAck{HeartbeatSeconds: 60, Revision: 0}) {
+		t.Fatalf("live agent could not reconnect after the chain switch: %#v", m)
 	}
 }
 

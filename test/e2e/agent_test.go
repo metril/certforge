@@ -85,7 +85,10 @@ func TestAgentAgainstCompose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 	dir := envOr("CF_E2E_AGENT_DIR", "../../.e2e")
-	trust, _ := os.ReadFile("testdata/pebble.minica.pem")
+	trust, err := os.ReadFile("testdata/pebble.minica.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
 	roots := x509.NewCertPool()
 	roots.AppendCertsFromPEM(trust)
 	waitForPebbleReady(ctx, t, &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}})
@@ -166,7 +169,7 @@ func TestAgentAgainstCompose(t *testing.T) {
 	var drift struct {
 		Items []map[string]any `json:"items"`
 	}
-	c.call(ctx, t, http.MethodGet, "/api/v1/audit?action=deployment.drift", nil, &drift)
+	c.call(ctx, t, http.MethodGet, "/api/v1/audit?action=deployment.drift&resourceId="+grant.ID, nil, &drift)
 	if len(drift.Items) == 0 {
 		t.Fatal("drift was not audited")
 	}
@@ -195,6 +198,13 @@ func TestAgentAgainstCompose(t *testing.T) {
 	connected("agent reconnected after restart")
 	c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/grants/"+grant.ID+"/redeploy", nil, nil)
 	deploymentOK("redeploy after restart")
+	var redeployed struct {
+		Items []map[string]any `json:"items"`
+	}
+	c.call(ctx, t, http.MethodGet, "/api/v1/audit?action=grant.redeploy&resourceId="+grant.ID, nil, &redeployed)
+	if len(redeployed.Items) == 0 {
+		t.Fatal("redeploy was not audited")
+	}
 
 	// 5. Delete the grant → the agent removes the YAML and the files.
 	c.call(ctx, t, http.MethodDelete, "/api/v1/orgs/"+orgID+"/grants/"+grant.ID, nil, nil)

@@ -43,6 +43,13 @@ services:
     image: ghcr.io/letsencrypt/pebble-challtestsrv:2.10.1
     command: -defaultIPv6 "" -defaultIPv4 127.0.0.1
   agent:
+    # Only started for `make e2e` (which passes --profile e2e): the dev
+    # Playwright stack brings up this same compose.test.yaml file without
+    # that flag, and does not need the agent at all, so it must not create
+    # the root-owned .e2e/agent-data et al. this service's default
+    # CF_E2E_UID/GID (0:0, root) would leave behind when make e2e's own
+    # export of the host uid/gid is not in play.
+    profiles: [e2e]
     build:
       context: ..
       dockerfile: deploy/Dockerfile.agent
