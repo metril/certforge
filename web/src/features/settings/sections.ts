@@ -13,6 +13,7 @@ export const SECTIONS = [
   { slug: 'access', label: 'Access' },
   { slug: 'authentication', label: 'Authentication' },
   { slug: 'issuance-defaults', label: 'Issuance defaults' },
+  { slug: 'agents', label: 'Agents' },
   { slug: 'backup', label: 'Backup and keys' },
 ] as const;
 export type SectionSlug = (typeof SECTIONS)[number]['slug'];

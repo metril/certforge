@@ -197,6 +197,11 @@ export const help = {
   'hook.argv': { text: 'The executable, then one argument per row. It never runs through a shell.', learnMore: 'agent.md#hooks-and-the-allowlist' },
   'hook.allowlist': { text: 'Agents run a hook only when this exact path is in their CF_HOOK_ALLOW. Otherwise the run is refused.', learnMore: 'agent.md#hooks-and-the-allowlist' },
   'hook.timeout': { text: 'The hook and its child processes are stopped after this long.' },
+  'agents.listener': { text: 'The certificate agents see on the agent port, signed by the oldest agent CA not yet retired. It renews itself.', learnMore: 'configuration.md#agents' },
+  'agents.ca': { text: 'Signs every agent’s identity certificate. After a rotation the old CA stays trusted until you retire it.', learnMore: 'operations.md#agent-ca-rotation' },
+  'agents.activeCerts': { text: 'Unexpired certificates of active clients signed by this CA.' },
+  'agents.rotate': { text: 'New agent certificates and renewals come from the new CA. Unused tokens keep working until the old CA is retired.', learnMore: 'operations.md#agent-ca-rotation' },
+  'agents.retire': { text: 'Stops trusting this CA. Allowed once no agent certificate from it is still in use.', learnMore: 'operations.md#agent-ca-rotation' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

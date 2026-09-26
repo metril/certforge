@@ -50,6 +50,10 @@ Three tabs, kept in the URL (`?tab=users|bindings|keys`). **Users** lists everyo
 
 The redirect URI to register (copy button), the single sign-on form rendered from the section schema (the client secret shows Stored with Replace), **Test connection** for the issuer currently in the form, and **Group mappings**: group-to-role bindings, the same rows as group bindings in Access.
 
+## Settings → Agents
+
+The agents settings (the URL agents dial, extra listener names, token and agent certificate lifetimes, heartbeat and offline thresholds), then the **listener certificate** (its names, expiry and issuing CA) and the **agent CAs**. **Rotate** creates a new CA that signs new agent certificates; agents move over as they renew, and unused enrolment tokens keep working until the old CA is retired. A retiring CA can be **retired** once no agent still uses it; the listener certificate then switches to the newer CA and tokens pinned to the retired one are refused. Only global admins can change anything here.
+
 ## Audit log
 
 `/o/:org/audit` lists events newest first: time, actor, action, resource, IP (and org in All orgs). Filters live in the URL as removable chips: search, action (or a whole group such as `session.*`), resource type, actor, and a date range. Clicking a row opens the event with a before/after diff for changes; a link with `?event=<id>` opens that event directly, even if it isn't on the currently loaded page. The chip in the header shows whether the hash chain verifies (checked at most once a minute) and is only shown to callers with a global role, since verifying the chain covers every org. **Export CSV** downloads the filtered events; the export itself is audited, and a one-line notice appears if the 100,000-row cap was hit. An org's view shows that org's events; global events (sign-ins, settings) appear under All orgs. Below `md` width the list renders as stacked card rows. Agent-originated events show the client's name as the actor.

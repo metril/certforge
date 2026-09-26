@@ -193,8 +193,8 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 | 6 | Hook runs and activity | done | 59216f8 |
 | 7 | Delivery section and deploy targets | done | 116c808 |
 | 8 | File layouts | done | 0a69a95 |
-| 9 | Hooks | done | pending |
-| 10 | Settings → Agents | todo | – |
+| 9 | Hooks | done | dd6ad83 |
+| 10 | Settings → Agents | done | pending |
 | 11 | Certificate deployments, grants column, Overview | todo | – |
 | 12 | Palette, docs and Playwright | todo | – |
 

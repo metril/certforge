@@ -5,6 +5,7 @@ import { useMe } from '@/lib/org';
 import { LATER } from '@/lib/nav';
 import { canAnywhere } from '@/lib/permissions';
 import { AccessPage } from './access/AccessPage';
+import { AgentsSection } from './agents/AgentsSection';
 import { AuthenticationSection } from './AuthenticationSection';
 import { IssuanceDefaultsSection } from './IssuanceDefaultsSection';
 import { KekStatus } from './KekStatus';
@@ -12,7 +13,7 @@ import { OrgsList } from './OrgsList';
 import { SchemaSection } from './SchemaSection';
 import { SECTIONS, type SectionSlug } from './sections';
 
-const LATER_SECTIONS = ['Agents', 'Integrations'];
+const LATER_SECTIONS = ['Integrations'];
 
 const item = 'flex h-9 items-center px-3 text-sm text-ink-muted hover:bg-subtle hover:text-ink';
 
@@ -63,6 +64,7 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
           {section === 'access' && <AccessPage />}
           {section === 'authentication' && <AuthenticationSection />}
           {section === 'issuance-defaults' && <IssuanceDefaultsSection />}
+          {section === 'agents' && <AgentsSection />}
           {section === 'backup' && (
             <>
               <KekStatus />
