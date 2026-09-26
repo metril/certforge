@@ -72,3 +72,40 @@ describe('cfworker-based validator never uses Function/eval', () => {
     evalSpy.mockRestore();
   });
 });
+
+// fix round 1, finding 2 (pinning): `toRJSFError`'s `required` handling
+// extracts the missing property's name from cfworker's fixed message
+// template (`Instance does not have required property "X".`) with a regex;
+// this pins that extraction so a future cfworker upgrade that reworded the
+// template would fail loudly here instead of silently losing
+// `params.missingProperty`/the field association.
+it('extracts missingProperty and the field property path from a required error', () => {
+  const validator = createValidator();
+  const { errors } = validator.validateFormData({}, { type: 'object', required: ['name'] } as RJSFSchema);
+  expect(errors).toHaveLength(1);
+  expect(errors[0]).toMatchObject({ name: 'required', property: 'name', params: { missingProperty: 'name' } });
+});
+
+describe('reworded messages for the common keywords', () => {
+  it('pattern includes the pattern text', () => {
+    const validator = createValidator();
+    const { errors } = validator.validateFormData({ code: 'x' }, { type: 'object', properties: { code: { type: 'string', pattern: '^[A-Z]{3}$' } } } as RJSFSchema);
+    expect(errors[0]?.message).toBe('String does not match pattern "^[A-Z]{3}$".');
+  });
+
+  it('enum lists the allowed values', () => {
+    const validator = createValidator();
+    const { errors } = validator.validateFormData({ mode: 'z' }, { type: 'object', properties: { mode: { type: 'string', enum: ['a', 'b'] } } } as RJSFSchema);
+    expect(errors[0]?.message).toBe('Must be one of: a, b.');
+  });
+
+  it('minimum/maximum/minLength/maxLength read naturally', () => {
+    const validator = createValidator();
+    const numSchema = { type: 'object', properties: { n: { type: 'integer', minimum: 5, maximum: 10 } } } as RJSFSchema;
+    expect(validator.validateFormData({ n: 1 }, numSchema).errors[0]?.message).toBe('Must be at least 5.');
+    expect(validator.validateFormData({ n: 20 }, numSchema).errors[0]?.message).toBe('Must be at most 10.');
+    const strSchema = { type: 'object', properties: { s: { type: 'string', minLength: 3, maxLength: 5 } } } as RJSFSchema;
+    expect(validator.validateFormData({ s: 'a' }, strSchema).errors[0]?.message).toBe('Must be at least 3 characters long.');
+    expect(validator.validateFormData({ s: 'abcdef' }, strSchema).errors[0]?.message).toBe('Must be at most 5 characters long.');
+  });
+});

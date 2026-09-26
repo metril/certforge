@@ -171,10 +171,53 @@ it('renders required, pattern, enum, minimum and format errors under their own f
   const errorNear = (el: HTMLElement) => within(el.parentElement!).queryByRole('alert')?.textContent ?? '';
 
   expect(errorNear(screen.getByLabelText('Name'))).toMatch(/required property "name"/i);
-  expect(errorNear(screen.getByLabelText('Code'))).toMatch(/pattern/i);
-  expect(errorNear(screen.getByRole('radiogroup', { name: 'Mode' }))).toMatch(/does not match any of/i);
-  expect(errorNear(screen.getByLabelText('Count'))).toMatch(/less than/i);
+  expect(errorNear(screen.getByLabelText('Code'))).toMatch(/pattern "\^\[A-Z\]\{3\}\$"/i);
+  expect(errorNear(screen.getByRole('radiogroup', { name: 'Mode' }))).toMatch(/must be one of: a, b/i);
+  expect(errorNear(screen.getByLabelText('Count'))).toMatch(/must be at least 5/i);
   expect(errorNear(screen.getByLabelText('Site'))).toMatch(/format "uri"/i);
+
+  // fix round 1, finding 1: exactly one alert per invalid field (name, code,
+  // mode, count, site) and none anywhere else — cfworker's
+  // `shortCircuit=false` (needed so every field's own error still renders)
+  // also emits a `properties` wrapper unit at the root ("Property \"code\"
+  // does not match schema.") alongside each leaf; that wrapper must be
+  // dropped, not just the leaf's own alert kept, or this would be 6.
+  expect(screen.getAllByRole('alert')).toHaveLength(5);
+});
+
+it('drops properties wrapper units, at both the root and a nested object, keeping only the leaf error', () => {
+  const nestedSchema = {
+    type: 'object',
+    properties: {
+      dir: { type: 'string', title: 'Directory', pattern: '^/' },
+      inner: {
+        type: 'object',
+        title: 'Inner',
+        properties: {
+          dir: { type: 'string', title: 'Inner directory', pattern: '^/' },
+        },
+      },
+    },
+  } as RJSFSchema;
+
+  function NestedHarness({ value, handle }: { value: Record<string, unknown>; handle: Ref<SchemaFormHandle> }) {
+    const [v, setV] = useState<Record<string, unknown>>(value);
+    return <SchemaForm ref={handle} schema={nestedSchema} value={v} onChange={setV} />;
+  }
+
+  const ref = createRef<SchemaFormHandle>();
+  renderUI(<NestedHarness value={{ dir: 'x', inner: { dir: 'x' } }} handle={ref} />);
+  act(() => {
+    ref.current!.validate();
+  });
+
+  // Exactly one alert per invalid field (root `dir` and nested `inner.dir`),
+  // and none anywhere else (in particular none at the root object or at
+  // `inner` itself, which is where the dropped `properties` wrapper units
+  // would otherwise have landed).
+  expect(screen.getAllByRole('alert')).toHaveLength(2);
+  expect(within(screen.getByLabelText('Directory').parentElement!).getByRole('alert')).toHaveTextContent(/pattern "\^\/"/i);
+  expect(within(screen.getByLabelText('Inner directory').parentElement!).getByRole('alert')).toHaveTextContent(/pattern "\^\/"/i);
 });
 
 // oneOf still has to resolve to the branch matching the current formData
