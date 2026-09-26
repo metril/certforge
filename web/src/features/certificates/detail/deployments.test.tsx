@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import type { CertificateDeployment } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, makeCert, makeDeployment, makeSite, url } from '@/test/fixtures';
+import { authHandlers, makeCert, makeDeployment, makeSite, meWith, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let rows: CertificateDeployment[];
@@ -75,4 +75,22 @@ it('points at Clients when nothing holds it', async () => {
   renderRoute('/o/acme/certificates/c-1/deployments');
   expect(await screen.findByText('Not granted to any client yet.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Open clients' })).toHaveAttribute('href', '/o/acme/clients');
+});
+
+it('disables Redeploy for a viewer', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
+  renderRoute('/o/acme/certificates/c-1/deployments');
+  const list = await screen.findByRole('list', { name: 'Deployments' });
+  for (const button of within(list).getAllByRole('button', { name: 'Redeploy' })) expect(button).toBeDisabled();
+});
+
+it('shows Older version when the installed version is not the certificate\'s current one, and No version yet before a first issue', async () => {
+  rows = [
+    { ...rows[0], deployment: makeDeployment({ versionId: 'v-0' }) },
+    { ...rows[1], deployment: makeDeployment({ state: 'pending', versionId: null, installed: [], reportedAt: null }) },
+  ];
+  renderRoute('/o/acme/certificates/c-1/deployments');
+  const list = await screen.findByRole('list', { name: 'Deployments' });
+  expect(within(within(list).getByRole('link', { name: 'web-1' }).closest('li')!).getByText(/^Older version/)).toBeInTheDocument();
+  expect(within(within(list).getByRole('link', { name: 'db-1' }).closest('li')!).getByText('No version yet')).toBeInTheDocument();
 });

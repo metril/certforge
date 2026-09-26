@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils';
 export function HealthStrip({ readiness, listener }: { readiness?: Readiness; listener?: AgentListener }) {
   const failing = readiness && !readiness.ok ? readiness.checks.filter((c) => !c.ok) : [];
   const notAfter = listener?.notAfter ?? null;
-  const listenerDue = notAfter !== null && daysUntil(notAfter) < EXPIRING_DAYS;
+  const dueIn = notAfter !== null ? daysUntil(notAfter) : null;
+  const listenerDue = dueIn !== null && dueIn < EXPIRING_DAYS;
   if (failing.length === 0 && !listenerDue) return null;
   return (
     <div
@@ -35,7 +36,7 @@ export function HealthStrip({ readiness, listener }: { readiness?: Readiness; li
       {listenerDue && (
         <span className="inline-flex flex-wrap items-center gap-1.5">
           <Clock className="size-4 text-expiring" aria-hidden />
-          Agent listener certificate expires {relDays(notAfter)}
+          Agent listener certificate {dueIn !== null && dueIn <= 0 ? 'expired' : 'expires'} {relDays(notAfter!)}
           <Link to="/settings/$section" params={{ section: 'agents' }} className="text-primary underline-offset-2 hover:underline">
             Settings → Agents
           </Link>

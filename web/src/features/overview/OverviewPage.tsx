@@ -168,6 +168,9 @@ export function OverviewPage() {
           </h2>
           {!allOrgs &&
             manualDnsCerts.map((c) => <ManualDnsCard key={c.id} orgId={org.id} cert={c} canConfirm={can(me, 'certs:issue', org.id)} />)}
+          {canClients && clients.data?.truncated && (
+            <p className="text-xs text-ink-muted">Client checks cover the first {clients.data.items.length} clients only.</p>
+          )}
           {queue.length > 0 ? (
             <ul className="grid">
               {queue.map((q) => {
@@ -183,11 +186,13 @@ export function OverviewPage() {
                         {c.name}
                       </Link>
                       <span className="truncate text-ink-muted">{cause}</span>
-                      <Button size="sm" variant="outline" asChild>
-                        <Link to="/o/$org/clients/$id/$tab" params={params}>
-                          {k.fix}
-                        </Link>
-                      </Button>
+                      {can(me, 'clients:write', c.orgId) && (
+                        <Button size="sm" variant="outline" asChild>
+                          <Link to="/o/$org/clients/$id/$tab" params={params}>
+                            {k.fix}
+                          </Link>
+                        </Button>
+                      )}
                     </li>
                   );
                 }
@@ -209,6 +214,8 @@ export function OverviewPage() {
                 );
               })}
             </ul>
+          ) : canClients && clients.isError ? (
+            <ErrorState message={`Couldn't check clients. ${errorMessage(clients.error)}`} onRetry={() => void clients.refetch()} />
           ) : (
             (allOrgs || manualDnsCerts.length === 0) && (
               <p className="flex items-center gap-1.5 text-sm">

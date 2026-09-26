@@ -27,13 +27,12 @@ function installedNote(d: CertificateDeployment, cert: Certificate): string {
   return `${version} · ${ok}/${d.deployment.expected.length} files match`;
 }
 
-// The row carries no lastSeen: an enrolled client the server does not
-// count as online reads Offline, a pending one Never connected.
-const connectionOf = (d: CertificateDeployment) => ({
-  status: d.clientStatus,
-  online: d.clientOnline,
-  lastSeen: d.clientStatus === 'pending' ? null : d.deployment.updatedAt,
-});
+// The row carries no real lastSeen (the deployment's updatedAt is not the
+// client's last-seen time): pass null and let an explicit label carry the
+// Offline/Online word for an active client, falling back to
+// ConnectionDot's own Never connected/Revoked reading otherwise.
+const connectionOf = (d: CertificateDeployment) => ({ status: d.clientStatus, online: d.clientOnline, lastSeen: null });
+const connectionLabel = (d: CertificateDeployment) => (d.clientStatus === 'active' && !d.clientOnline ? 'Offline' : undefined);
 
 /** A layout or target name linking to its Delivery sheet; "–" when the grant has none. */
 function DeliveryRef({ orgSlug, kind, id, name }: { orgSlug: string; kind: 'layouts' | 'targets'; id: string | null; name: string | null }) {
@@ -102,7 +101,7 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
               >
                 {d.clientName}
               </Link>
-              <ConnectionDot client={connectionOf(d)} />
+              <ConnectionDot client={connectionOf(d)} label={connectionLabel(d)} />
             </span>
             <span className="truncate">{siteName(d.siteId)}</span>
             <span>{DELIVERY_LABEL[d.delivery]}</span>
@@ -111,7 +110,12 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
             <DeploymentChip state={d.deployment.state} withHelp />
             <span className="truncate text-xs text-ink-muted">{installedNote(d, cert)}</span>
             <PermissionTip allowed={canWrite} action="clients:write" side="left">
-              <Button size="sm" variant="outline" disabled={!canWrite || d.clientStatus === 'revoked' || redeploy.isPending} onClick={() => redeploy.mutate(d.grantId)}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!canWrite || d.clientStatus === 'revoked' || (redeploy.isPending && redeploy.variables === d.grantId)}
+                onClick={() => redeploy.mutate(d.grantId)}
+              >
                 <RotateCw className="size-3.5" aria-hidden />
                 Redeploy
               </Button>

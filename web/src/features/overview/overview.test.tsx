@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, iso, makeCert, makeClient, meWith, NOW, problem, url } from '@/test/fixtures';
+import { authHandlers, iso, makeCert, makeClient, meWith, NOW, org, org2, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let ready = true;
@@ -120,6 +120,7 @@ it('queues client problems with one fix each', async () => {
           makeClient({ id: 'cl-2', name: 'db-1', connected: false, online: false, lastSeen: iso(-1) }),
           makeClient({ id: 'cl-3', name: 'edge-1', agentCertNotAfter: iso(5) }),
           makeClient({ id: 'cl-4', name: 'cron-1', connected: false, online: true, lastSeen: new Date(NOW - 30_000).toISOString() }),
+          makeClient({ id: 'cl-5', name: 'api-1', failedCount: 1 }),
         ],
         nextCursor: null,
       }),
@@ -130,11 +131,73 @@ it('queues client problems with one fix each', async () => {
   const drift = (await within(queue).findByRole('link', { name: 'web-1' })).closest('li')!;
   expect(drift).toHaveTextContent('Drift');
   expect(within(drift).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/o/acme/clients/cl-1/certificates');
-  expect(within(queue).getByRole('link', { name: 'db-1' }).closest('li')!).toHaveTextContent('Last seen 1 d ago');
+  const offline = within(queue).getByRole('link', { name: 'db-1' }).closest('li')!;
+  expect(offline).toHaveTextContent('Last seen 1 d ago');
+  expect(within(offline).getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/o/acme/clients/cl-2/certificates');
   const cert = within(queue).getByRole('link', { name: 'edge-1' }).closest('li')!;
   expect(within(cert).getByRole('link', { name: 'Re-enrol' })).toHaveAttribute('href', '/o/acme/clients/cl-3/settings');
+  const deployFailed = within(queue).getByRole('link', { name: 'api-1' }).closest('li')!;
+  expect(deployFailed).toHaveTextContent('Deploy failed');
+  expect(within(deployFailed).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/o/acme/clients/cl-5/certificates');
   // A pull client seen 30 s ago is online, so it is not queued as offline.
   expect(within(queue).queryByRole('link', { name: 'cron-1' })).not.toBeInTheDocument();
+});
+
+it('gives a client problem no fix link when the caller lacks clients:write', async () => {
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))),
+    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/clients'), () => HttpResponse.json({ items: [makeClient({ id: 'cl-1', name: 'web-1', driftCount: 1 })], nextCursor: null })),
+  );
+  renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  const row = (await within(queue).findByRole('link', { name: 'web-1' })).closest('li')!;
+  expect(row).toHaveTextContent('Drift');
+  expect(within(row).queryByRole('link', { name: 'Review' })).not.toBeInTheDocument();
+});
+
+it('under All orgs, gates each client problem\'s fix link by that client\'s own org', async () => {
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }, { role: 'viewer', orgId: 'org-2' }, { role: 'viewer', orgId: null }], [org, org2]))),
+    http.get(url('/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/clients'), () =>
+      HttpResponse.json({
+        items: [
+          makeClient({ id: 'cl-1', orgId: 'org-1', name: 'web-1', driftCount: 1 }),
+          makeClient({ id: 'cl-2', orgId: 'org-2', name: 'lab-1', driftCount: 1 }),
+        ],
+        nextCursor: null,
+      }),
+    ),
+  );
+  renderRoute('/o/all/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  const writable = (await within(queue).findByRole('link', { name: 'web-1' })).closest('li')!;
+  expect(within(writable).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/o/acme/clients/cl-1/certificates');
+  const readOnly = within(queue).getByRole('link', { name: 'lab-1' }).closest('li')!;
+  expect(within(readOnly).queryByRole('link', { name: 'Review' })).not.toBeInTheDocument();
+});
+
+it('warns when the clients walk was truncated', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/clients'), () => HttpResponse.json({ items: [makeClient()], nextCursor: 'next' })),
+  );
+  renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  expect(await within(queue).findByText('Client checks cover the first 50 clients only.')).toBeInTheDocument();
+});
+
+it('shows a Retry line instead of "Nothing needs attention" when the clients check fails', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/clients'), () => problem(500, 'boom')),
+  );
+  renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  expect(await within(queue).findByText(/Couldn.t check clients/)).toBeInTheDocument();
+  expect(within(queue).queryByText('Nothing needs attention.')).not.toBeInTheDocument();
+  expect(within(queue).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
 });
 
 it('warns when the agent listener certificate is close to expiry', async () => {
@@ -144,3 +207,18 @@ it('warns when the agent listener certificate is close to expiry', async () => {
   expect(strip).toHaveTextContent('Agent listener certificate expires in 5 d');
   expect(within(strip).getByRole('link', { name: 'Settings → Agents' })).toHaveAttribute('href', '/settings/agents');
 });
+
+it('says the agent listener certificate has expired once past its notAfter', async () => {
+  server.use(http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: 'aca-1', names: ['cf.lan'], notAfter: iso(-2) } })));
+  renderRoute('/o/acme/overview');
+  const strip = await screen.findByRole('alert', { name: 'Server health' });
+  expect(strip).toHaveTextContent('Agent listener certificate expired 2 d ago');
+});
+
+it('stays silent about the agent listener certificate at 14 days or more', async () => {
+  server.use(http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: 'aca-1', names: ['cf.lan'], notAfter: iso(14) } })));
+  renderRoute('/o/acme/overview');
+  await screen.findByRole('link', { name: 'api' });
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
