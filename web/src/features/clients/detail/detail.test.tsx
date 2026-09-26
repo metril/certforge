@@ -148,10 +148,8 @@ it('Escape closes the re-enrol token dialog and forgets the token', async () => 
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Re-enrol' }));
   const dialog = await screen.findByRole('dialog', { name: 'New token for web-1' });
   expect(within(dialog).getByText('cf1.aHR0cHM6Ly9jZg.ab12.s3cret')).toBeInTheDocument();
-  // The dialog autofocuses a control that also carries a (closed) tooltip;
-  // the first Escape only dismisses that transient layer, same as a real
-  // browser, so the assertion presses it until the dialog itself is gone.
-  await user.keyboard('{Escape}');
+  // The dialog autofocuses Done (no tooltip of its own), so one Escape
+  // closes it, rather than a tooltip-carrying control eating it first.
   await user.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByText('cf1.aHR0cHM6Ly9jZg.ab12.s3cret')).not.toBeInTheDocument());
 });

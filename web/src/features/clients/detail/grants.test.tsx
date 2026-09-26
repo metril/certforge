@@ -3,7 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Grant } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, makeClient, makeDeployment, makeGrant, makeHook, makeLayout, makeTarget, meWith, org, url } from '@/test/fixtures';
+import { authHandlers, makeClient, makeDeployment, makeGrant, makeHook, makeLayout, makeTarget, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const a = 'aa'.repeat(32);
@@ -49,8 +49,9 @@ beforeEach(() => {
       calls.push(`redeploy ${params.id}`);
       return HttpResponse.json(grants.find((g) => g.id === params.id));
     }),
-    http.delete(url('/orgs/org-1/grants/:id'), ({ params }) => {
-      calls.push(`delete ${params.id}`);
+    http.delete(url('/orgs/org-1/grants/:id'), ({ params, request }) => {
+      const forced = new URL(request.url).searchParams.get('force') === 'true';
+      calls.push(`delete ${params.id}${forced ? ' force' : ''}`);
       grants = grants.filter((g) => g.id !== params.id);
       return new HttpResponse(null, { status: 204 });
     }),
@@ -59,9 +60,18 @@ beforeEach(() => {
 
 const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr')!;
 
+// findByRole also matches the loading skeleton (same aria-label, no row
+// text yet), so a synchronous rowOf right after it can race the fetch;
+// wait for the skeleton's aria-busy to clear before reading row content.
+async function findLoadedTable(name = 'Grants') {
+  const table = await screen.findByRole('table', { name });
+  await waitFor(() => expect(table).not.toHaveAttribute('aria-busy', 'true'));
+  return table;
+}
+
 it('is the default tab and lists grants with delivery, layout, target, hooks and state', async () => {
   const { router } = renderRoute('/o/acme/clients/cl-1');
-  await screen.findByRole('table', { name: 'Grants' });
+  await findLoadedTable();
   expect(router.state.location.pathname).toBe('/o/acme/clients/cl-1/certificates');
   const www = rowOf('www');
   for (const text of ['Push', 'nginx', '1', 'On', 'Deployed']) expect(within(www).getByText(text)).toBeInTheDocument();
@@ -83,7 +93,7 @@ it('expands a drift row from the URL with expected against installed files', asy
 
 it('shows the agent error of a failed deployment and toggles rows through the URL', async () => {
   const { user, router } = renderRoute('/o/acme/clients/cl-1/certificates');
-  await screen.findByRole('table', { name: 'Grants' });
+  await findLoadedTable();
   await user.click(screen.getByRole('button', { name: 'Files for mail' }));
   expect(await screen.findByText('chown: unknown user nginx')).toBeInTheDocument();
   expect(router.state.location.search).toMatchObject({ open: 'g-3' });
@@ -93,7 +103,7 @@ it('shows the agent error of a failed deployment and toggles rows through the UR
 
 it('removes a grant after the certificate name is typed', async () => {
   const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
-  await screen.findByRole('table', { name: 'Grants' });
+  await findLoadedTable();
   await user.click(screen.getByRole('button', { name: 'Remove www' }));
   await user.type(screen.getByLabelText(/to confirm/), 'www');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
@@ -101,10 +111,20 @@ it('removes a grant after the certificate name is typed', async () => {
   expect(calls).toEqual(['delete g-1']);
 });
 
+it('removes without waiting for the agent when the force switch is on', async () => {
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  await user.click(screen.getByRole('button', { name: 'Remove www' }));
+  await user.click(screen.getByRole('switch', { name: 'Remove without waiting for the agent' }));
+  await user.type(screen.getByLabelText(/to confirm/), 'www');
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(calls).toEqual(['delete g-1 force']));
+});
+
 it('disables writes for a viewer', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
   renderRoute('/o/acme/clients/cl-1/certificates');
-  await screen.findByRole('table', { name: 'Grants' });
+  await findLoadedTable();
   expect(screen.getByRole('button', { name: 'Redeploy www' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Remove www' })).toBeDisabled();
 });
@@ -112,18 +132,21 @@ it('disables writes for a viewer', async () => {
 it('explains disabled writes on a revoked client without blaming permissions', async () => {
   server.use(http.get(url('/orgs/org-1/clients/cl-1'), () => HttpResponse.json(makeClient({ status: 'revoked', connected: false, online: false }))));
   renderRoute('/o/acme/clients/cl-1/certificates');
-  await screen.findByRole('table', { name: 'Grants' });
+  await findLoadedTable();
   const remove = screen.getByRole('button', { name: 'Remove www' });
   expect(remove).toBeDisabled();
   act(() => (remove.parentElement as HTMLElement).focus());
   expect(await screen.findByRole('tooltip')).toHaveTextContent('The client is revoked');
 });
 
-it('renders cards below md', async () => {
+it('renders cards below md, with hooks and auto-remediate', async () => {
   stubViewport(false);
   renderRoute('/o/acme/clients/cl-1/certificates');
   const cards = await screen.findByRole('list', { name: 'Grants' });
   expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  const wwwCard = within(cards).getByRole('link', { name: 'www' }).closest('li')!;
+  expect(wwwCard).toHaveTextContent('1 hooks');
+  expect(wwwCard).toHaveTextContent('Auto-remediate On');
   expect(within(cards).getByRole('link', { name: 'api' }).closest('li')!).toHaveTextContent('Drift');
 });
 
@@ -131,4 +154,41 @@ it('says so when nothing is granted', async () => {
   grants = [];
   renderRoute('/o/acme/clients/cl-1/certificates');
   expect(await screen.findByText('No certificates granted yet.')).toBeInTheDocument();
+});
+
+it('shows skeleton rows while grants load', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      return HttpResponse.json({ items: grants });
+    }),
+  );
+  renderRoute('/o/acme/clients/cl-1/certificates');
+  const table = await screen.findByRole('table', { name: 'Grants' });
+  expect(table).toHaveAttribute('aria-busy', 'true');
+  await screen.findByRole('link', { name: 'www' });
+});
+
+it('only disables the row being redeployed', async () => {
+  server.use(
+    http.post(url('/orgs/org-1/grants/:id/redeploy'), async ({ params }) => {
+      calls.push(`redeploy ${params.id}`);
+      await new Promise((r) => setTimeout(r, 30));
+      return HttpResponse.json(grants.find((g) => g.id === params.id));
+    }),
+  );
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  await user.click(screen.getByRole('button', { name: 'Redeploy www' }));
+  expect(screen.getByRole('button', { name: 'Redeploy www' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Redeploy api' })).toBeEnabled();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Redeploy www' })).toBeEnabled());
+});
+
+it('shows a toast when redeploy fails', async () => {
+  server.use(http.post(url('/orgs/org-1/grants/:id/redeploy'), () => problem(500, 'agent unreachable')));
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  await user.click(screen.getByRole('button', { name: 'Redeploy www' }));
+  expect(await screen.findByText('agent unreachable')).toBeInTheDocument();
 });

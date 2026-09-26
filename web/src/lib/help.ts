@@ -172,6 +172,7 @@ export const help = {
   'grant.hooks': { text: 'Commands the agent runs around the deploy, in the numbered order. Reorder them with the arrows.', learnMore: 'agent.md#hooks-and-the-allowlist' },
   'grant.autoRemediate': { text: 'On drift, reinstall the files automatically instead of only reporting it.', learnMore: 'agent.md#drift' },
   'grant.files': { text: 'Expected digests come from the server; installed ones from the agent’s last report.', learnMore: 'agent.md#drift' },
+  'grant.forceRemove': { text: 'Deletes the grant now and leaves any files on the host for the agent to clean up later. Use it when the agent is gone for good.' },
   'deploy.redeploy': { text: 'Asks the agent to reinstall the current version and report again.' },
 } satisfies Record<string, Help>;
 

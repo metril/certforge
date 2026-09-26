@@ -11,6 +11,7 @@ import { DeploymentChip } from '@/components/DeploymentChip';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
+import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DELIVERY_LABEL } from '@/lib/clientStatus';
@@ -57,17 +58,55 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   const redeploy = useRedeployGrant(orgId);
   const del = useDeleteGrant(orgId);
   const [removing, setRemoving] = useState<Grant | null>(null);
+  const [force, setForce] = useState(false);
   const writable = canWrite && client.status !== 'revoked';
   const layoutName = (id: string | null) => (id ? (layouts.find((l) => l.id === id)?.name ?? '…') : '–');
   const targetName = (id: string | null) => (id ? (targets.find((t) => t.id === id)?.name ?? '…') : '–');
+  // Only the row actually being redeployed shows as busy; other rows stay
+  // clickable while one redeploy is in flight.
+  const redeploying = (g: Grant) => redeploy.isPending && redeploy.variables === g.id;
 
   if (q.isError) return <ErrorState message={`Couldn't load grants. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
-  if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
+  if (q.isPending) {
+    return (
+      <Table aria-label="Grants" aria-busy="true" className="table-fixed">
+        <TableHeader>
+          <TableRow>
+            <Head label="Certificate" className="w-44" />
+            <Head label="Delivery" className="w-24" />
+            <Head label="Layout" />
+            <Head label="Target" />
+            <Head label="Hooks" className="w-20" />
+            <Head label="Auto-remediate" className="w-32" />
+            <Head label="State" className="w-36" />
+            <TableHead className="w-28">
+              <span className="sr-only">Actions</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <TableRow key={`skeleton-${i}`} aria-hidden className="h-9 rounded-none">
+              {Array.from({ length: 8 }).map((_, j) => (
+                <TableCell key={j}>
+                  <div className="h-3 w-3/4 animate-pulse rounded-sm bg-subtle" />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  }
   const grants = q.data;
   if (grants.length === 0) return <EmptyState message="No certificates granted yet.">{emptyAction}</EmptyState>;
 
   const toggle = (g: Grant) => onOpen(open === g.id ? undefined : g.id);
   const attention = (g: Grant) => g.deployment.state === 'drift' || g.deployment.state === 'failed';
+  const startRemoving = (g: Grant) => {
+    setForce(false);
+    setRemoving(g);
+  };
 
   const actions = (g: Grant) => (
     <span className="inline-flex">
@@ -83,7 +122,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
           variant="ghost"
           size="icon-sm"
           className="size-7"
-          disabled={!writable || redeploy.isPending}
+          disabled={!writable || redeploying(g)}
           aria-label={`Redeploy ${g.certificateName}`}
           onClick={() => redeploy.mutate(g.id)}
         >
@@ -91,7 +130,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
         </Button>
       </ClientWriteTip>
       <ClientWriteTip canWrite={canWrite} revoked={client.status === 'revoked'} side="left">
-        <Button variant="ghost" size="icon-sm" className="size-7" disabled={!writable} aria-label={`Remove ${g.certificateName}`} onClick={() => setRemoving(g)}>
+        <Button variant="ghost" size="icon-sm" className="size-7" disabled={!writable} aria-label={`Remove ${g.certificateName}`} onClick={() => startRemoving(g)}>
           <Trash2 className="size-3.5" aria-hidden />
         </Button>
       </ClientWriteTip>
@@ -118,7 +157,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
       <div className="flex flex-wrap items-center gap-3 text-xs text-ink-muted">
         {g.deployment.reportedAt && <span>Reported {relTime(g.deployment.reportedAt)}</span>}
         <ClientWriteTip canWrite={canWrite} revoked={client.status === 'revoked'}>
-          <Button size="sm" variant={attention(g) ? 'default' : 'outline'} disabled={!writable || redeploy.isPending} onClick={() => redeploy.mutate(g.id)}>
+          <Button size="sm" variant={attention(g) ? 'default' : 'outline'} disabled={!writable || redeploying(g)} onClick={() => redeploy.mutate(g.id)}>
             <RotateCw className="size-3.5" aria-hidden />
             Redeploy
           </Button>
@@ -191,10 +230,10 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
             <li key={g.id} className="grid gap-2 rounded-md border border-border bg-panel p-3">
               <div className="flex items-center justify-between gap-2">
                 {certLink(g)}
-                <DeploymentChip state={g.deployment.state} />
+                <DeploymentChip state={g.deployment.state} withHelp />
               </div>
               <span className="truncate text-xs text-ink-muted">
-                {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)}
+                {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)} · {g.hookIds.length || '–'} hooks · Auto-remediate {g.autoRemediate ? 'On' : 'Off'}
               </span>
               <div className="flex items-center justify-between">
                 {toggleButton(g)}
@@ -209,11 +248,19 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={`Remove ${removing?.certificateName ?? ''} from ${client.name}`}
-        consequence="The agent removes this certificate's files on its next sync."
+        consequence="The files are removed when the agent next syncs; until then, this grant blocks deleting the certificate, its layout, its target and its hooks."
         confirmText={removing?.certificateName ?? ''}
         actionLabel="Remove"
-        onConfirm={() => del.mutateAsync({ id: removing!.id })}
-      />
+        onConfirm={() => del.mutateAsync({ id: removing!.id, force })}
+      >
+        <SwitchField
+          id="grant-force-remove"
+          label="Remove without waiting for the agent"
+          help="grant.forceRemove"
+          checked={force}
+          onCheckedChange={setForce}
+        />
+      </ConfirmDestructive>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CircleAlert } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { Button } from '@/components/ui/button';
@@ -17,9 +17,12 @@ type Props = {
   confirmText: string;
   actionLabel: string;
   onConfirm: () => Promise<unknown>;
+  /** Extra controls (e.g. a force-delete switch) rendered above the confirm
+   * input; existing callers are unaffected. */
+  children?: ReactNode;
 };
 
-export function ConfirmDestructive({ open, onOpenChange, title, consequence, help, confirmText, actionLabel, onConfirm }: Props) {
+export function ConfirmDestructive({ open, onOpenChange, title, consequence, help, confirmText, actionLabel, onConfirm, children }: Props) {
   const [typed, setTyped] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,6 +57,7 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
             {help && <HelpTip id={help} />}
           </DialogDescription>
         </DialogHeader>
+        {children}
         <div className="grid gap-1.5">
           <Label htmlFor="confirm-destructive">
             Type <span className="font-mono">{confirmText}</span> to confirm
