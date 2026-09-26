@@ -115,7 +115,15 @@ func TestWebSocketHeartbeatAndDeployResult(t *testing.T) {
 	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
 	e.svc.Hub = hub
 	cert, c, gid := e.enrolledWithGrant(t, "web-2", false)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// 30s, not 15s: the test chains two independent 5s wall-clock poll
+	// loops below (deploy result, then heartbeat) on top of the hello/
+	// assignments round trip, all sharing this one ctx. Under full-suite
+	// load a 15s budget could run out while a poll loop was still legally
+	// within its own 5s window, so a later ctx-bound call (GetClientByID)
+	// would silently return a zero value instead of a real answer,
+	// surfacing as a spurious "heartbeat did not update last_seen" failure
+	// rather than a slow-poll timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	ws := dialWS(ctx, t, e, cert)
 	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1"})
@@ -135,9 +143,20 @@ func TestWebSocketHeartbeatAndDeployResult(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// Report commits the deployment state and applied revision in one
+	// transaction, then writes the audit event afterwards (a separate
+	// insert): the state can legitimately read "ok" for a moment before
+	// that audit row exists, so poll it too instead of checking once.
+	deadline = time.Now().Add(5 * time.Second)
+	for e.auditCount(t, "deployment.ok") != 1 {
+		if time.Now().After(deadline) {
+			t.Fatalf("deployment.ok not audited: count %d", e.auditCount(t, "deployment.ok"))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	cl, _ := e.q.GetClientByID(ctx, c.ID)
-	if cl.AppliedRevision != 1 || e.auditCount(t, "deployment.ok") != 1 {
-		t.Fatalf("applied revision %d audits %d", cl.AppliedRevision, e.auditCount(t, "deployment.ok"))
+	if cl.AppliedRevision != 1 {
+		t.Fatalf("applied revision %d", cl.AppliedRevision)
 	}
 	before := time.Now().Add(-time.Second)
 	sendWS(ctx, t, ws, agentproto.Heartbeat{Installed: []agentproto.InstalledFile{

@@ -42,6 +42,30 @@ services:
   challtestsrv:
     image: ghcr.io/letsencrypt/pebble-challtestsrv:2.10.1
     command: -defaultIPv6 "" -defaultIPv4 127.0.0.1
+  agent:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.agent
+    image: certforge-agent:e2e
+    # The host user, so the host-side test can tamper with and clean up the
+    # files it writes (owner/group are then ignored; a unit test covers chown).
+    user: "${CF_E2E_UID:-0}:${CF_E2E_GID:-0}"
+    restart: unless-stopped
+    environment:
+      CF_AGENT_DATA: /data
+      # The test writes the token here after creating the client; run waits.
+      CF_AGENT_TOKEN_FILE: /data/token
+      # Confines every file the agent writes or removes to the layout's
+      # /etc/ssl/certforge and the Traefik target's /etc/traefik/dynamic;
+      # required for any deploy (empty means every deploy fails).
+      CF_WRITE_ALLOW: /etc/ssl/certforge:/etc/traefik/dynamic
+    volumes:
+      - ../.e2e/agent-data:/data
+      - ../.e2e/traefik:/etc/traefik/dynamic
+      - ../.e2e/ssl:/etc/ssl/certforge
+    depends_on:
+      certforge:
+        condition: service_healthy
   dex:
     image: ghcr.io/dexidp/dex:v2.45.1
     command: ["dex", "serve", "/etc/dex/config.yaml"]

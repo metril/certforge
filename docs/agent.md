@@ -120,3 +120,18 @@ Compose, keeping the token out of the environment:
         file: ./cf_agent_token
 
 Mount every directory a layout or target writes to, and list it in `CF_WRITE_ALLOW` (see [Write allowlist](#write-allowlist)) — without it every deploy fails. The image runs as root so layout owners and groups can be applied; with `--user` the agent applies modes only. The token is needed only until the agent has enrolled; after that the `/data` volume is its identity, so keep it.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `enrol: 401 … invalid, already used or expired` | Tokens are single-use and expire (24 h by default). Re-enrol the client for a new token. |
+| `enrol: 409 … no longer signs the listener certificate` | The CA the token pins was retired after the token was created. Re-enrol the client for a new token. |
+| `… does not contain the CA pinned by the token` | Something between the agent and the server terminates TLS, or the Agent URL points at the wrong service. The agent port needs TLS passthrough. |
+| `x509: certificate is valid for …, not …` after enrolment | The Agent URL host is not on the listener certificate. Set Settings → Agents → Agent URL (its host is added automatically) or Listener names. |
+| Agent logs `the server refused this agent` and exits | The client was revoked or re-enrolled, or its certificate was replaced. Re-enrol and restart the agent with the new token. |
+| Agent keeps reconnecting after a long outage | Its certificate expired (it renews at two thirds of the lifetime). Re-enrol. |
+| Deployment stays `pending` | The agent is offline, the grant is `pull` and no pull ran yet, or the certificate has no issued version. `certforge-agent status` shows the last revision it applied. |
+| Deployment `failed` with a hook message | See the client's Hooks tab. `not listed in CF_HOOK_ALLOW` means the agent's allowlist lacks that executable. |
+| Deployment in `drift` | A file changed or vanished on the host. Turn on auto-remediate or use Redeploy. |
+| `not running as root: layout owner and group are ignored` | The agent runs with `--user`; only modes are applied. |

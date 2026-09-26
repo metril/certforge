@@ -6,6 +6,7 @@ OAPI_CODEGEN_VERSION := v2.4.1
 GOLANGCI_LINT_VERSION := v1.61.0
 SWAGGER_UI_VERSION := 5.17.14
 COMPOSE_TEST := docker compose -p certforge-e2e -f deploy/compose.yaml -f deploy/compose.test.yaml
+COMPOSE_TEST_ABS := docker compose -p certforge-e2e -f $(CURDIR)/deploy/compose.yaml -f $(CURDIR)/deploy/compose.test.yaml
 
 .PHONY: generate build build-embed test test-integration lint e2e vendor-swagger image-agent
 
@@ -45,6 +46,8 @@ deploy/secrets/kek:
 	chmod 0644 $@
 
 e2e: deploy/secrets/kek
+	rm -rf .e2e && mkdir -p .e2e/agent-data .e2e/traefik .e2e/ssl
+	export CF_E2E_UID=$$(id -u) CF_E2E_GID=$$(id -g); \
 	$(COMPOSE_TEST) up -d --build --wait; up_status=$$?; \
 	if [ $$up_status -ne 0 ]; then \
 		$(COMPOSE_TEST) down -v; exit $$up_status; \
@@ -52,7 +55,9 @@ e2e: deploy/secrets/kek
 	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} \
 	CF_E2E_PEBBLE_MGMT=https://localhost:$${CF_PEBBLE_MGMT_PORT:-15000} \
 	CF_E2E_DEX_ADDR=127.0.0.1:$${CF_DEX_PORT:-5556} \
-	$(GO) test -tags e2e -count=1 ./test/e2e/...; status=$$?; $(COMPOSE_TEST) down -v; exit $$status
+	CF_E2E_AGENT_DIR=$(CURDIR)/.e2e \
+	CF_E2E_COMPOSE="$(COMPOSE_TEST_ABS)" \
+	$(GO) test -tags e2e -count=1 -timeout 20m ./test/e2e/...; status=$$?; $(COMPOSE_TEST) down -v; exit $$status
 
 vendor-swagger:
 	curl -fsSL -o internal/api/docs/swagger-ui-bundle.js https://cdn.jsdelivr.net/npm/swagger-ui-dist@$(SWAGGER_UI_VERSION)/swagger-ui-bundle.js

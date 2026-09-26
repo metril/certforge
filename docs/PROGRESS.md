@@ -159,7 +159,7 @@ and the Access docs' API-key binding mention).
 
 Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS listener, WS hub, grants, push/pull, Traefik target, hooks, heartbeat, drift, agent image) and 3B clients web UI (clients, grants editor, deployments, layouts, targets, hooks, Settings → Agents). Plan 3A: [agent backend](superpowers/plans/2026-09-25-phase-3a-agent-backend.md). Plan 3B (web UI) follows.
 
-#### Phase 3A tasks
+#### Phase 3A tasks — done (finished 2026-09-25)
 
 | # | Task | Status | Commit |
 |---|---|---|---|
@@ -176,8 +176,8 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 | 11 | Agent identity and enrolment | done | 8b5ba50 |
 | 12 | Agent files, Traefik target, hooks | done | 30f4794 |
 | 13 | Agent reconcile, run and pull | done | 55dc9b5 |
-| 14 | Agent image | done | pending |
-| 15 | Agent e2e | todo | – |
+| 14 | Agent image | done | c3fe4ba |
+| 15 | Agent e2e | done | pending |
 
 ## Decisions made during implementation
 
@@ -301,6 +301,7 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 
 ## Known gaps
 
+- 3A Task 15: the e2e checks the Traefik YAML byte for byte but runs no Traefik container; the Playwright agent flow belongs to plan 3B.
 - 1C: `npm run e2e` (Playwright) and `make e2e` (Go, against Pebble) both run locally only; neither is wired into `.github/workflows/ci.yml`.
 - 1B: revocation is implemented in `signer.Signer` but not exposed in the API (the Revoke action lands with its screen).
 - Pebble and challtestsrv images are pinned to tag 2.10.1, not a digest; the issuance e2e (1B Task 15) kept the tag pin rather than switching to a digest. Pin digests in a later task.
@@ -356,3 +357,4 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 - 3A Task 7 fix round 1 (review): `agents.render` now locks every affected client `FOR UPDATE` (in id order) before writing any deployment row — the one place a client lock happens before a deployment lock, in every caller (`CreateGrant`/`UpdateGrant`, which already held a single client's lock, `Resync`/`resyncTx` for layout/target/hook changes and `OnVersion`/the sweep, which held none), closing a deadlock between the two lock orders and a race where `checkPaths` could run before the affected client was locked. `CreateGrant` additionally locks the certificate `FOR KEY SHARE` before inserting (conflicts with `DeleteCertificate`'s `FOR UPDATE`), and `DeleteCertificate` now locks the certificate and counts live *and* removal-pending grants (any row still present; `cert_id` is `ON DELETE CASCADE`) inside one transaction, so a certificate can never be deleted out from under a grant being created for it, or while an agent still has to confirm a removal. `OnVersion`/`SweepDeployments` now re-render one client per transaction (grouped via the new `GrantClientIDs` query), so a render failure for one client (for example a corrupted deploy target config) is logged and does not roll back or stall any other client's update. `checkPaths` falls back to the layout/target-derived paths for a removal-pending grant whose `deployments.expected` is still `[]` (never rendered), instead of silently contributing zero paths. A certificate rename re-renders and path-checks its live grants in the same transaction as the rename (`issuance.Store.UpdateCertificate`'s new `RenameHook`, wired to `agents.Service.ResyncCertificateRename`), since a Traefik target's paths depend on `SafeName(certificate name)`.
 - 3A Task 7 fix round 1, ruling on re-enrol: `DeleteGrant` hard-deletes at once only when the client is `revoked`, or is `pending` with `applied_revision = 0` (never enrolled, or enrolled but never actually applied anything). A `pending` client with `applied_revision > 0` has deployed before (re-enrolled, or dropped back to `pending` after its certificate expired) and may still have this grant's files on disk, so it keeps the soft-delete path: the row stays removal-pending until that client reconnects and reports the files gone. `applied_revision` itself is not yet written anywhere (the agent report handler that sets it is a later task); tests set it directly.
 - 3A Task 12 fix round 1, ruling (deviation from the plan): the agent only writes or removes files under directories listed in `CF_WRITE_ALLOW` (colon-separated absolute directory prefixes); empty means every deploy fails with a clear per-grant error ("path not under CF_WRITE_ALLOW") and the agent logs a startup warning. The comparison resolves `filepath.EvalSymlinks` on the deepest existing parent of both the target path and each allow entry, so a symlinked parent cannot be used to escape the allowlist, and the temp file `writeAtomic` creates lands in that same resolved, confined directory. `Deployer.Deploy` and `Deployer.Remove` (and its `certs/<name>` directory pruning) enforce this; `Remove` takes the exact `certsDir` `Deploy` returned instead of guessing from any path whose grandparent happens to be named `certs`, so an unrelated layout path can never be pruned. Hooks additionally get a minimal environment (`PATH`, `HOME`, `LANG`, `LC_*`, `TZ` plus the grant's own `CF_*` vars) instead of the agent's full process environment, so `CF_AGENT_*`/`CF_HOOK_ALLOW`/`CF_WRITE_ALLOW` never reach a hook. `Deploy` also now fails when the bundle's `versionId` does not match the assignment's, and refuses a world-writable mode even if the server sent one.
+- 3A Task 15: `test/e2e/agent_test.go`'s `TestAgentAgainstCompose` drives a real `certforge-agent` container (built from `deploy/Dockerfile.agent`) through `docker compose`: enrolment via a token file, a Traefik + layout grant with fingerprint verification, tamper → drift → auto-remediation, a server restart with reconnect and redeploy, and grant deletion removing both the layout file and the Traefik target's files/directory. `deploy/compose.test.yaml`'s `agent` service runs as `${CF_E2E_UID}:${CF_E2E_GID}` (the host user the `e2e` Makefile target exports), not root, so the test can tamper with and clean up files directly; `CF_WRITE_ALLOW` is set to both bind-mounted directories (`/etc/ssl/certforge:/etc/traefik/dynamic`) since it is required for any deploy. `Phase 3A` is now complete; 3B (clients web UI) follows.
