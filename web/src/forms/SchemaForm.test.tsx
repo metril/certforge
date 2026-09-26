@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createRef, useState, type Ref } from 'react';
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import type { RJSFSchema } from '@rjsf/utils';
 import { expect, it, vi } from 'vitest';
 import { renderUI } from '@/test/render';
@@ -136,4 +136,64 @@ it('rejects an invalid config against the real cloudflare.json schema', () => {
     ok = ref.current!.validate();
   });
   expect(ok).toBe(false);
+});
+
+// validator-fix: replacing @rjsf/validator-ajv8 with the @cfworker/json-schema
+// based validator (./validator.ts) must keep every field's own error message
+// rendered under that same field, for each keyword the app's real schemas
+// use (required, pattern, enum, minimum, format).
+const validationSchema = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: { type: 'string', title: 'Name' },
+    code: { type: 'string', title: 'Code', pattern: '^[A-Z]{3}$' },
+    mode: { type: 'string', title: 'Mode', enum: ['a', 'b'] },
+    count: { type: 'integer', title: 'Count', minimum: 5 },
+    site: { type: 'string', title: 'Site', format: 'uri' },
+  },
+} as RJSFSchema;
+
+function ValidationHarness({ value, handle }: { value: Record<string, unknown>; handle: Ref<SchemaFormHandle> }) {
+  const [v, setV] = useState<Record<string, unknown>>(value);
+  return <SchemaForm ref={handle} schema={validationSchema} value={v} onChange={setV} />;
+}
+
+it('renders required, pattern, enum, minimum and format errors under their own fields', () => {
+  const ref = createRef<SchemaFormHandle>();
+  renderUI(<ValidationHarness value={{ code: 'abc', mode: 'z', count: 1, site: 'not a uri' }} handle={ref} />);
+  let ok = true;
+  act(() => {
+    ok = ref.current!.validate();
+  });
+  expect(ok).toBe(false);
+
+  const errorNear = (el: HTMLElement) => within(el.parentElement!).queryByRole('alert')?.textContent ?? '';
+
+  expect(errorNear(screen.getByLabelText('Name'))).toMatch(/required property "name"/i);
+  expect(errorNear(screen.getByLabelText('Code'))).toMatch(/pattern/i);
+  expect(errorNear(screen.getByRole('radiogroup', { name: 'Mode' }))).toMatch(/does not match any of/i);
+  expect(errorNear(screen.getByLabelText('Count'))).toMatch(/less than/i);
+  expect(errorNear(screen.getByLabelText('Site'))).toMatch(/format "uri"/i);
+});
+
+// oneOf still has to resolve to the branch matching the current formData
+// (RJSF's getFirstMatchingOption calls validator.isValid() per branch).
+const oneOfSchema = {
+  type: 'object',
+  oneOf: [
+    { properties: { method: { type: 'string', const: 'email' }, email: { type: 'string', title: 'Email address' } }, required: ['method', 'email'] },
+    { properties: { method: { type: 'string', const: 'phone' }, phone: { type: 'string', title: 'Phone number' } }, required: ['method', 'phone'] },
+  ],
+} as RJSFSchema;
+
+function OneOfHarness({ value }: { value: Record<string, unknown> }) {
+  const [v, setV] = useState<Record<string, unknown>>(value);
+  return <SchemaForm schema={oneOfSchema} value={v} onChange={setV} />;
+}
+
+it('resolves a oneOf schema to the branch matching the current formData', () => {
+  renderUI(<OneOfHarness value={{ method: 'phone', phone: '555' }} />);
+  expect(screen.getByLabelText('Phone number')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument();
 });

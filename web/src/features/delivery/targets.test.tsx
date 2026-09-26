@@ -57,7 +57,7 @@ it('refuses a relative directory before sending', async () => {
   await user.type(within(sheet).getByLabelText('Name'), 'bad');
   await user.type(within(sheet).getByLabelText('Directory on the agent'), 'traefik');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await within(sheet).findByText(/must match pattern/i);
+  await within(sheet).findByText(/does not match pattern/i);
   expect(screen.getByRole('dialog', { name: 'Add deploy target' })).toBeInTheDocument();
   expect(posted).toBeUndefined();
 });

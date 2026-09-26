@@ -1,26 +1,18 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
-import type Form from '@rjsf/core';
-import { withTheme } from '@rjsf/core';
+// Imported from these specific subpaths (rather than the `@rjsf/core`
+// barrel) because @rjsf/core's own index.js unconditionally imports
+// getTestRegistry.js, which imports @rjsf/validator-ajv8 — a package this
+// app no longer installs (see ./validator.ts). Neither withTheme.js nor
+// components/Form.js reference that module, so this avoids the dependency
+// without patching @rjsf/core itself.
+import type Form from '@rjsf/core/lib/components/Form.js';
+import withTheme from '@rjsf/core/lib/withTheme.js';
 import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
-import { customizeValidator } from '@rjsf/validator-ajv8';
-import Ajv2020 from 'ajv/dist/2020';
 import { shadcnTheme } from './theme';
 import { buildUiSchema, serverPathKeys } from './uiSchema';
+import { validator } from './validator';
 
 const ThemedForm = withTheme(shadcnTheme);
-
-// Adaptation (preflight A11, Critical): every committed provider schema
-// (internal/challenge/schemas/*.json) declares draft 2020-12
-// ($schema: https://json-schema.org/draft/2020-12/schema). The default
-// @rjsf/validator-ajv8 validator builds a draft-07 Ajv instance, which fails
-// to compile a 2020-12 schema; validateForm() then always returns false with
-// no visible error (ErrorListTemplate renders nothing), so a credential form
-// could never be submitted. Building the validator with the 2020-12 Ajv
-// class fixes this; @rjsf/validator-ajv8's default `strict: false` (see its
-// createAjvInstance) means the schemas' non-standard `secret`/`serverPath`/
-// `unsupported`/`unsupportedReason` keywords are ignored rather than
-// rejected.
-const validator = customizeValidator({ AjvClass: Ajv2020 });
 
 export type SchemaFormHandle = { validate: () => boolean };
 
