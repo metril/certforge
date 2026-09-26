@@ -9,26 +9,43 @@ import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { emptyFile, hasErrors, keyReadableByOthers, OUTPUT_PARTS, validateFiles } from './layoutFiles';
+import { emptyFile, hasErrors, keyReadableByOthers, OUTPUT_PARTS, validateFiles, type FileErrors } from './layoutFiles';
 
 const MAX_FILES = 20;
+
+// A stable per-row id (independent of array position) so Move up/down keeps
+// keyboard focus attached to the file that moved, not to the slot it left.
+let nextRowId = 0;
+type Row = { id: string; file: OutputFile };
+const makeRow = (file: OutputFile = emptyFile()): Row => ({ id: `row-${nextRowId++}`, file });
+
+// The 422 the server sends for a bad file field names it as "files[i].field"
+// in the problem's title (internal/api/issuance_common.go's unprocessable),
+// e.g. "Invalid files[0].mode" — map that back onto the row, else fall
+// through to the page alert.
+const FIELD_422 = /^Invalid files\[(\d+)\]\.(path|parts|mode|owner|group)$/;
 
 type Props = { orgId: string; layout?: Layout; readOnly: boolean; onOpenChange: (open: boolean) => void };
 
 export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
   const save = useSaveLayout(orgId);
   const [name, setName] = useState(layout?.name ?? '');
-  const [files, setFiles] = useState<OutputFile[]>(layout?.files ?? [emptyFile()]);
+  const [rows, setRows] = useState<Row[]>(() => (layout?.files ?? [emptyFile()]).map(makeRow));
   const [showErrors, setShowErrors] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<{ i: number; field: keyof FileErrors; msg: string } | null>(null);
+  const files = rows.map((r) => r.file);
   const errors = validateFiles(files);
   const title = layout ? (readOnly ? layout.name : `Edit ${layout.name}`) : 'New layout';
 
-  const setFile = (i: number, patch: Partial<OutputFile>) => setFiles((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  const setFile = (i: number, patch: Partial<OutputFile>) => {
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, file: { ...r.file, ...patch } } : r)));
+    if (serverError?.i === i) setServerError(null);
+  };
   const move = (i: number, d: -1 | 1) =>
-    setFiles((fs) => {
-      const next = [...fs];
+    setRows((rs) => {
+      const next = [...rs];
       [next[i], next[i + d]] = [next[i + d]!, next[i]!];
       return next;
     });
@@ -36,6 +53,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
   const submit = async () => {
     setShowErrors(true);
     setFormError(null);
+    setServerError(null);
     const nameOk = name.trim() !== '';
     setNameError(nameOk ? null : 'Enter a name.');
     if (!nameOk || hasErrors(errors)) return;
@@ -44,14 +62,24 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
       onOpenChange(false);
     } catch (e) {
       const msg = errorMessage(e);
-      // Only a name conflict ("A file layout named ... already exists" — the
-      // server's detail names the layout) belongs under Name; a 409 on a
-      // path collision across a client's grants names a client/certificate
-      // pair, not "name", and reads better as a page-level alert than
-      // silently attached to the wrong field (3a-facts.md, mirroring
-      // Task 7's TargetSheet).
-      if (e instanceof ApiError && e.status === 409 && /name/i.test(msg)) setNameError(msg);
-      else setFormError(msg);
+      if (e instanceof ApiError) {
+        // Only a name conflict ("A layout named ... exists in this org" —
+        // the server's own wording) belongs under Name; a 409 on a path
+        // collision across a client's grants names a client/certificate
+        // pair, not a layout name, and reads better as a page-level alert
+        // than silently attached to the wrong field (3a-facts.md, mirroring
+        // Task 7's TargetSheet).
+        if (e.status === 409 && /^A layout named/i.test(msg)) {
+          setNameError(msg);
+          return;
+        }
+        const field = FIELD_422.exec(e.problem.title ?? '');
+        if (field) {
+          setServerError({ i: Number(field[1]), field: field[2] as keyof FileErrors, msg });
+          return;
+        }
+      }
+      setFormError(msg);
     }
   };
 
@@ -77,12 +105,13 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
             />
           </Field>
           <ol aria-label="Files" className="grid gap-3">
-            {files.map((f, i) => {
-              const e = showErrors ? errors[i]! : {};
+            {rows.map((row, i) => {
+              const e: FileErrors = { ...(showErrors ? errors[i] : {}), ...(serverError?.i === i ? { [serverError.field]: serverError.msg } : {}) };
+              const f = row.file;
               const n = i + 1;
               const fid = `layout-file-${i}`;
               return (
-                <li key={i} aria-label={`File ${n}`} className="grid gap-3 rounded-md border border-border p-3">
+                <li key={row.id} aria-label={`File ${n}`} className="grid gap-3 rounded-md border border-border p-3">
                   <div className="flex items-start gap-1">
                     <Field id={`${fid}-path`} label="Path" help="layout.path" error={e.path} className="min-w-0 flex-1">
                       <Input
@@ -99,7 +128,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                         <Button variant="ghost" size="icon-sm" className="size-9" aria-label={`Move file ${n} up`} disabled={i === 0} onClick={() => move(i, -1)}>
                           <ArrowUp className="size-4" aria-hidden />
                         </Button>
-                        <Button variant="ghost" size="icon-sm" className="size-9" aria-label={`Move file ${n} down`} disabled={i === files.length - 1} onClick={() => move(i, 1)}>
+                        <Button variant="ghost" size="icon-sm" className="size-9" aria-label={`Move file ${n} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
                           <ArrowDown className="size-4" aria-hidden />
                         </Button>
                         <Button
@@ -107,8 +136,8 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                           size="icon-sm"
                           className="size-9"
                           aria-label={`Remove file ${n}`}
-                          disabled={files.length === 1}
-                          onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))}
+                          disabled={rows.length === 1}
+                          onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
                         >
                           <X className="size-4" aria-hidden />
                         </Button>
@@ -160,7 +189,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
             })}
           </ol>
           {!readOnly && (
-            <Button variant="outline" size="sm" className="w-fit" disabled={files.length >= MAX_FILES} onClick={() => setFiles((fs) => [...fs, emptyFile()])}>
+            <Button variant="outline" size="sm" className="w-fit" disabled={rows.length >= MAX_FILES} onClick={() => setRows((rs) => [...rs, makeRow()])}>
               <Plus className="size-4" aria-hidden />
               Add file
             </Button>

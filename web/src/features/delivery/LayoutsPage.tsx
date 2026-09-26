@@ -105,7 +105,7 @@ export function LayoutsPage() {
           </Table>
         </>
       )}
-      {(edit === 'new' || editing) && <LayoutSheet key={edit} orgId={org.id} layout={editing} readOnly={!canWrite} onOpenChange={(o) => !o && openSheet(undefined)} />}
+      {((canWrite && edit === 'new') || editing) && <LayoutSheet key={edit} orgId={org.id} layout={editing} readOnly={!canWrite} onOpenChange={(o) => !o && openSheet(undefined)} />}
       <ConfirmDestructive
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}

@@ -3,9 +3,14 @@ import type { OutputFile, OutputPart } from '@/api/types';
 export const OUTPUT_PARTS: OutputPart[] = ['cert', 'chain', 'fullchain', 'key', 'combined'];
 export type FileErrors = Partial<Record<'path' | 'parts' | 'mode' | 'owner' | 'group', string>>;
 
+// Mirrors internal/delivery/delivery.go's modeRe/ownerRe/validateMode/
+// validateOwner exactly, so a file that would be rejected server-side is
+// caught before it is ever sent.
 const MODE = /^0?[0-7]{3}$/;
-const ACCOUNT = /^[A-Za-z0-9._-]{0,32}$/;
-const ACCOUNT_MSG = 'Letters, digits, dot, dash or underscore.';
+const ACCOUNT = /^([a-z_][a-z0-9_.-]{0,31}|[0-9]{1,10})?$/;
+const ACCOUNT_NUMERIC = /^[0-9]{1,10}$/;
+const UINT32_MAX = 4294967295;
+const ACCOUNT_MSG = 'Use a user/group name, or a numeric id.';
 
 export function emptyFile(): OutputFile {
   return { path: '', format: 'pem', parts: ['fullchain'], owner: '', group: '', mode: '0640' };
@@ -15,9 +20,27 @@ export function emptyFile(): OutputFile {
  * never reaches the API. */
 export function pathError(p: string): string | null {
   if (!p) return 'Enter a path.';
+  if (p.includes('\0')) return 'Remove the embedded NUL character.';
   if (!p.startsWith('/')) return 'Use an absolute path.';
-  if (p.endsWith('/')) return 'Name a file, not a directory.';
+  if (p === '/' || p.endsWith('/')) return 'Name a file, not a directory.';
   if (p.slice(1).split('/').some((s) => s === '' || s === '.' || s === '..')) return 'Remove empty, . and .. segments.';
+  return null;
+}
+
+/** Mirrors delivery.validateMode: octal, and never world-writable — a
+ * layout file can hold a private key, and a mode an agent would write as
+ * world-writable is always a mistake. */
+export function modeError(mode: string): string | null {
+  if (!MODE.test(mode)) return 'Use octal, such as 0640.';
+  if ((parseInt(mode, 8) & 0o002) !== 0) return 'Must not be world-writable.';
+  return null;
+}
+
+/** Mirrors delivery.validateOwner: a user/group name, or a numeric id that
+ * fits in a uint32 (the range chown accepts). */
+export function accountError(s: string): string | null {
+  if (!ACCOUNT.test(s)) return ACCOUNT_MSG;
+  if (ACCOUNT_NUMERIC.test(s) && Number(s) > UINT32_MAX) return 'Numeric id must fit in 32 bits.';
   return null;
 }
 
@@ -31,9 +54,12 @@ export function validateFiles(files: OutputFile[]): FileErrors[] {
     else if (seen.has(path)) e.path = 'Another file already uses this path.';
     seen.add(path);
     if (f.parts.length === 0) e.parts = 'Pick at least one part.';
-    if (!MODE.test(f.mode)) e.mode = 'Use octal, such as 0640.';
-    if (!ACCOUNT.test(f.owner)) e.owner = ACCOUNT_MSG;
-    if (!ACCOUNT.test(f.group)) e.group = ACCOUNT_MSG;
+    const me = modeError(f.mode);
+    if (me) e.mode = me;
+    const oe = accountError(f.owner);
+    if (oe) e.owner = oe;
+    const ge = accountError(f.group);
+    if (ge) e.group = ge;
     return e;
   });
 }
