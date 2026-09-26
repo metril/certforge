@@ -11,10 +11,12 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
+import { ActivityTab } from './ActivityTab';
 import { ClientHeader } from './ClientHeader';
 import { ClientWriteTip } from './ClientWriteTip';
 import { GrantSheet } from './GrantSheet';
 import { GrantsTab } from './GrantsTab';
+import { HookRunsTab } from './HookRunsTab';
 import { SettingsTab } from './SettingsTab';
 import { CLIENT_TAB_LABEL, CLIENT_TABS, type ClientTab } from './tabs';
 
@@ -85,6 +87,12 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
             emptyAction={grantButton}
             onEdit={(g) => setGrant(g.id)}
           />
+        </TabsContent>
+        <TabsContent value="hooks" className="pt-4">
+          <HookRunsTab orgId={org.id} clientId={id} onOpenCertificates={() => goTab('certificates')} />
+        </TabsContent>
+        <TabsContent value="activity" className="pt-4">
+          <ActivityTab orgId={org.id} orgSlug={org.slug} clientId={id} />
         </TabsContent>
         <TabsContent value="settings" className="pt-4">
           {/* key: a refetched name/site resets the form after a save elsewhere */}

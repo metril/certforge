@@ -1,22 +1,30 @@
-import { CircleCheck, CirclePlus, Pencil, Trash2, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CirclePlus, FileDiff, Pencil, Trash2, TriangleAlert, type LucideIcon } from 'lucide-react';
 import type { ComboOption } from '@/components/Combobox';
 import type { Tone } from '@/lib/status';
 
 // Actions the server records (internal/api, internal/issuance, internal/setup,
-// internal/authn). B5: includes the legacy auth.* actions alongside session.*.
+// internal/authn, internal/agent). B5: includes the legacy auth.* actions
+// alongside session.*. Phase 3 adds client/grant/deployment/layout/
+// deploy_target/hook/agent_ca actions.
 export const AUDIT_ACTIONS = [
-  'acme_account.create', 'acme_account.delete', 'api_key.create', 'api_key.revoke', 'audit.export',
-  'auth.local_admin_password_set', 'auth.login', 'auth.login_failed', 'auth.logout', 'ca.create', 'ca.delete',
-  'ca.update', 'certificate.create', 'certificate.delete', 'certificate.key_exported', 'certificate.manual_dns_confirmed',
-  'certificate.renew', 'certificate.update', 'dns_credential.create', 'dns_credential.delete', 'dns_credential.test',
-  'dns_credential.update', 'issuance_defaults.update', 'org.create', 'org.delete', 'org.update', 'role_binding.create',
-  'role_binding.delete', 'session.login', 'session.login_failed', 'session.logout', 'session.revoked',
-  'settings.update', 'setup.complete', 'site.create', 'site.delete', 'site.update', 'user.update',
+  'acme_account.create', 'acme_account.delete', 'agent_ca.retire', 'agent_ca.rotate', 'api_key.create',
+  'api_key.revoke', 'audit.export', 'auth.local_admin_password_set', 'auth.login', 'auth.login_failed',
+  'auth.logout', 'ca.create', 'ca.delete', 'ca.update', 'certificate.create', 'certificate.delete',
+  'certificate.key_exported', 'certificate.manual_dns_confirmed', 'certificate.renew', 'certificate.update',
+  'client.cert_renewed', 'client.create', 'client.delete', 'client.enrolled', 'client.reenroll', 'client.revoke',
+  'client.update', 'deploy_target.create', 'deploy_target.delete', 'deploy_target.update', 'deployment.drift',
+  'deployment.failed', 'deployment.ok', 'dns_credential.create', 'dns_credential.delete', 'dns_credential.test',
+  'dns_credential.update', 'grant.bundle_fetched', 'grant.create', 'grant.delete', 'grant.redeploy',
+  'grant.update', 'hook.create', 'hook.delete', 'hook.run', 'hook.update', 'issuance_defaults.update',
+  'layout.create', 'layout.delete', 'layout.update', 'org.create', 'org.delete', 'org.update',
+  'role_binding.create', 'role_binding.delete', 'session.login', 'session.login_failed', 'session.logout',
+  'session.revoked', 'settings.update', 'setup.complete', 'site.create', 'site.delete', 'site.update',
+  'user.update',
 ] as const;
 
 export const AUDIT_RESOURCE_TYPES = [
-  'acme_account', 'api_key', 'audit', 'ca', 'certificate', 'certificate_version', 'dns_credential',
-  'issuance_defaults', 'org', 'role_binding', 'settings', 'site', 'user',
+  'acme_account', 'agent_ca', 'api_key', 'audit', 'ca', 'certificate', 'certificate_version', 'client', 'deploy_target',
+  'dns_credential', 'grant', 'hook', 'issuance_defaults', 'layout', 'org', 'role_binding', 'settings', 'site', 'user',
 ] as const;
 
 export const actionLabel = (a: string) => (a.endsWith('.') ? `${a}*` : a);
@@ -24,6 +32,9 @@ export const actionLabel = (a: string) => (a.endsWith('.') ? `${a}*` : a);
 /** Tone/icon for the Overview's Recent activity chip: a quick visual cue by
  * verb family, not a full per-action taxonomy. */
 export function actionTone(action: string): { tone: Tone; icon: LucideIcon } {
+  if (action === 'deployment.drift') return { tone: 'drift', icon: FileDiff };
+  if (action.endsWith('.failed')) return { tone: 'failed', icon: TriangleAlert };
+  if (action === 'deployment.ok' || action === 'client.enrolled') return { tone: 'valid', icon: CircleCheck };
   if (action.endsWith('_failed')) return { tone: 'failed', icon: TriangleAlert };
   if (action.includes('delete') || action.includes('revoke')) return { tone: 'failed', icon: Trash2 };
   if (action.includes('create')) return { tone: 'valid', icon: CirclePlus };

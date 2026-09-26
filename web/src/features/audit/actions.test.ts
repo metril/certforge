@@ -1,4 +1,4 @@
-import { CircleCheck, CirclePlus, Pencil, Trash2, TriangleAlert } from 'lucide-react';
+import { CircleCheck, CirclePlus, FileDiff, Pencil, Trash2, TriangleAlert } from 'lucide-react';
 import { expect, it } from 'vitest';
 import { actionTone } from './actions';
 
@@ -13,6 +13,12 @@ it.each([
   ['certificate.manual_dns_confirmed', 'valid', CircleCheck],
   ['certificate.update', 'neutral', Pencil],
   ['dns_credential.test', 'neutral', Pencil],
+  ['deployment.drift', 'drift', FileDiff],
+  ['deployment.failed', 'failed', TriangleAlert],
+  ['deployment.ok', 'valid', CircleCheck],
+  ['client.enrolled', 'valid', CircleCheck],
+  ['client.revoke', 'failed', Trash2],
+  ['grant.create', 'valid', CirclePlus],
 ])('actionTone(%s) is %s', (action, tone, icon) => {
   expect(actionTone(action)).toEqual({ tone, icon });
 });

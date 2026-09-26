@@ -182,6 +182,7 @@ export const help = {
   'grant.files': { text: 'Expected digests come from the server; installed ones from the agent’s last report.', learnMore: 'agent.md#drift' },
   'grant.forceRemove': { text: 'Deletes the grant now and leaves any files on the host for the agent to clean up later. Use it when the agent is gone for good.' },
   'deploy.redeploy': { text: 'Asks the agent to reinstall the current version and report again.' },
+  'hook.exit': { text: 'Exit status. -1 means the agent refused it, it failed to start, or it timed out.', learnMore: 'agent.md#hooks-and-the-allowlist' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;
