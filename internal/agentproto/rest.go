@@ -82,15 +82,22 @@ type HookSpec struct {
 
 // Assignment is one live grant with an issued version.
 type Assignment struct {
-	ID              uuid.UUID  `json:"id"`
-	CertificateID   uuid.UUID  `json:"certificateId"`
-	CertificateName string     `json:"certificateName"`
-	VersionID       uuid.UUID  `json:"versionId"`
-	Fingerprint     string     `json:"fingerprint"`
-	Delivery        string     `json:"delivery"`
-	Files           []FileSpec `json:"files"`
-	Target          *Target    `json:"target"`
-	Hooks           []HookSpec `json:"hooks"`
+	ID              uuid.UUID `json:"id"`
+	CertificateID   uuid.UUID `json:"certificateId"`
+	CertificateName string    `json:"certificateName"`
+	VersionID       uuid.UUID `json:"versionId"`
+	// RedeploySeq is bumped by an explicit Redeploy and by server-side
+	// auto-remediation. The agent is level-triggered on the assignment: a
+	// grant needs redeploying when it has no saved state, or when
+	// VersionID, RedeploySeq or Files differ from what it last wrote —
+	// never when the on-disk bytes merely look wrong (that is reported,
+	// and drift marked, only through the heartbeat's installed digests).
+	RedeploySeq int64      `json:"redeploySeq"`
+	Fingerprint string     `json:"fingerprint"`
+	Delivery    string     `json:"delivery"`
+	Files       []FileSpec `json:"files"`
+	Target      *Target    `json:"target"`
+	Hooks       []HookSpec `json:"hooks"`
 }
 
 // Removal is a deleted grant whose files the agent must remove.

@@ -106,7 +106,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 			continue
 		}
 		a := agentproto.Assignment{ID: r.ID, CertificateID: r.CertID, CertificateName: r.CertificateName, VersionID: *r.VersionID,
-			Delivery: r.Delivery, Files: specs, Target: target, Hooks: []agentproto.HookSpec{}}
+			RedeploySeq: r.RedeploySeq, Delivery: r.Delivery, Files: specs, Target: target, Hooks: []agentproto.HookSpec{}}
 		if r.Fingerprint != nil {
 			a.Fingerprint = *r.Fingerprint
 		}
@@ -203,7 +203,8 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 		byGrant[r.GrantID] = r
 	}
 	var events []audit.Event
-	remediate, pushRemediate := false, false
+	var remediateGrants []uuid.UUID
+	pushRemediate := false
 	for _, res := range rep.Results {
 		d, ok := byGrant[res.GrantID]
 		if !ok {
@@ -237,7 +238,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 			if next != d.State {
 				events = append(events, deploymentEvent(c, d, next, errText, missing, mismatched))
 				if next == stateDrift && d.AutoRemediate {
-					remediate = true
+					remediateGrants = append(remediateGrants, d.GrantID)
 					pushRemediate = pushRemediate || d.Delivery == "push"
 				}
 			}
@@ -261,7 +262,10 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 		return err
 	}
 	var revs []sqlcgen.BumpClientRevisionsRow
-	if remediate {
+	if len(remediateGrants) > 0 {
+		if err := q.BumpRedeploySeqs(ctx, uniq(remediateGrants)); err != nil {
+			return err
+		}
 		if revs, err = s.bump(ctx, q, []uuid.UUID{c.ID}); err != nil {
 			return err
 		}
@@ -297,7 +301,8 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 		return err
 	}
 	var events []audit.Event
-	remediate, pushRemediate := false, false
+	var remediateGrants []uuid.UUID
+	pushRemediate := false
 	for _, d := range rows {
 		if d.RemovedAt != nil || d.VersionID == nil {
 			continue
@@ -316,12 +321,15 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 		}
 		events = append(events, deploymentEvent(c, d, next, "", missing, mismatched))
 		if next == stateDrift && d.AutoRemediate {
-			remediate = true
+			remediateGrants = append(remediateGrants, d.GrantID)
 			pushRemediate = pushRemediate || d.Delivery == "push"
 		}
 	}
 	var revs []sqlcgen.BumpClientRevisionsRow
-	if remediate {
+	if len(remediateGrants) > 0 {
+		if err := q.BumpRedeploySeqs(ctx, uniq(remediateGrants)); err != nil {
+			return err
+		}
 		if revs, err = s.bump(ctx, q, []uuid.UUID{c.ID}); err != nil {
 			return err
 		}

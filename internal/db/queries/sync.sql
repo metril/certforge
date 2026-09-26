@@ -1,5 +1,5 @@
 -- name: ClientAssignments :many
-SELECT g.id, g.cert_id, ce.name AS certificate_name, g.delivery, g.hook_ids, g.removed_at,
+SELECT g.id, g.cert_id, ce.name AS certificate_name, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
        d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
@@ -43,6 +43,15 @@ VALUES (sqlc.arg(client_id), sqlc.arg(grant_id)::uuid,
          WHERE h.id = sqlc.arg(hook_id)::uuid AND h.org_id = sqlc.arg(org_id)
            AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.id = sqlc.arg(grant_id)::uuid AND h.id = ANY(g.hook_ids))),
         sqlc.arg(phase), sqlc.arg(argv)::text[], sqlc.arg(exit_code), sqlc.arg(duration_ms), sqlc.arg(stdout), sqlc.arg(stderr));
+
+-- name: BumpRedeploySeqs :exec
+-- Bumped by an explicit Redeploy and by server-side auto-remediation (a
+-- heartbeat or report drift with auto_remediate): the agent is
+-- level-triggered on the assignment (versionId, redeploySeq, and the file
+-- list), never on-disk bytes, so this is what forces a redeploy when
+-- nothing about the rendered files themselves changed.
+UPDATE client_cert_grants SET redeploy_seq = redeploy_seq + 1, updated_at = now()
+WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: SetAppliedRevision :exec
 UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST(sqlc.arg(revision)::bigint, desired_revision)),

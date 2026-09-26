@@ -36,7 +36,10 @@ var ErrNotEnrolled = errors.New("agent: not enrolled")
 
 // GrantState is what the agent installed for one grant, in write order.
 type GrantState struct {
-	VersionID       uuid.UUID             `json:"versionId"`
+	VersionID uuid.UUID `json:"versionId"`
+	// RedeploySeq is the assignment's RedeploySeq as of the last successful
+	// deploy; see needsDeploy.
+	RedeploySeq     int64                 `json:"redeploySeq"`
 	CertificateName string                `json:"certificateName"`
 	Files           []agentproto.FileSpec `json:"files"`
 	// CertsDir is the certs/<name> directory Deploy's Traefik target created
@@ -45,10 +48,6 @@ type GrantState struct {
 	// guessing it back from file names, so a removal prunes only a directory
 	// this grant's own target actually created.
 	CertsDir string `json:"certsDir,omitempty"`
-	// Failed marks that the last deploy attempt for this grant did not reach
-	// agentproto.StateOK, so the next reconcile retries it even though its
-	// version, file list and on-disk digests otherwise look unchanged.
-	Failed bool `json:"failed,omitempty"`
 }
 
 // State is state.json.

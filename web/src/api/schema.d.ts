@@ -1095,7 +1095,7 @@ export interface paths {
         put?: never;
         /**
          * Redeploy a grant
-         * @description Needs clients:write. Marks the deployment pending and bumps the client's revision so the agent reinstalls and reports.
+         * @description Needs clients:write. A force reinstall, whether or not anything changed since the last deploy — bumps the grant's redeploySeq, marks the deployment pending and bumps the client's revision so the agent rewrites every file, re-runs its hooks, and reports again.
          */
         post: operations["redeployGrant"];
         delete?: never;

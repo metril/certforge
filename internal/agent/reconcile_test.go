@@ -62,19 +62,54 @@ func TestReconcileDeploysThenReportsUnchanged(t *testing.T) {
 	}
 }
 
-func TestReconcileRedeploysTamperedFile(t *testing.T) {
+// TestReconcileDoesNotRedeployOnDiskTamper is the ruling on I2: the agent
+// is level-triggered on the assignment (version, redeploySeq, file list),
+// never on-disk bytes, so a tampered file is left alone by Reconcile; the
+// server learns about it (and, with auto-remediate, forces a redeploy by
+// bumping redeploySeq) only from the digests this same reconcile reports.
+func TestReconcileDoesNotRedeployOnDiskTamper(t *testing.T) {
 	dir := t.TempDir()
 	a, b := layoutGrant(dir, "web")
 	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}, bundles: map[uuid.UUID]agentproto.Bundle{a.ID: b}}
 	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}), ID: newTestIdentity(t), Log: discard}
 	_, _ = r.Reconcile(context.Background())
 	_ = os.WriteFile(a.Files[0].Path, []byte("tampered"), 0o644)
+	rep, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(a.Files[0].Path)
+	if api.fetched != 1 || string(got) != "tampered" {
+		t.Fatalf("on-disk tamper redeployed: fetched %d content %q", api.fetched, got)
+	}
+	// The mismatched digest is still what gets reported, so the server can
+	// still notice and mark drift even though the agent did not redeploy.
+	if len(rep.Results) != 1 || rep.Results[0].State != agentproto.StateOK ||
+		rep.Results[0].Installed[0].SHA256 == a.Files[0].SHA256 {
+		t.Fatalf("report %+v", rep.Results)
+	}
+}
+
+// TestReconcileRedeploysOnRedeploySeqBump: a bumped redeploySeq (an explicit
+// Redeploy, or server-side auto-remediation) forces a redeploy even when
+// the version and rendered file list are unchanged.
+func TestReconcileRedeploysOnRedeploySeqBump(t *testing.T) {
+	dir := t.TempDir()
+	a, b := layoutGrant(dir, "web")
+	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}, bundles: map[uuid.UUID]agentproto.Bundle{a.ID: b}}
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}), ID: newTestIdentity(t), Log: discard}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(a.Files[0].Path, []byte("tampered"), 0o644)
+	a.RedeploySeq = 1
+	api.as = agentproto.Assignments{Revision: 2, Grants: []agentproto.Assignment{a}}
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(a.Files[0].Path)
 	if api.fetched != 2 || string(got) != "PEM-web" {
-		t.Fatalf("fetched %d content %q", api.fetched, got)
+		t.Fatalf("redeploySeq bump did not redeploy: fetched %d content %q", api.fetched, got)
 	}
 }
 

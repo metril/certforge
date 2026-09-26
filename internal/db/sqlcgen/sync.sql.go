@@ -12,8 +12,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const bumpRedeploySeqs = `-- name: BumpRedeploySeqs :exec
+UPDATE client_cert_grants SET redeploy_seq = redeploy_seq + 1, updated_at = now()
+WHERE id = ANY($1::uuid[])
+`
+
+// Bumped by an explicit Redeploy and by server-side auto-remediation (a
+// heartbeat or report drift with auto_remediate): the agent is
+// level-triggered on the assignment (versionId, redeploySeq, and the file
+// list), never on-disk bytes, so this is what forces a redeploy when
+// nothing about the rendered files themselves changed.
+func (q *Queries) BumpRedeploySeqs(ctx context.Context, ids []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, bumpRedeploySeqs, ids)
+	return err
+}
+
 const clientAssignments = `-- name: ClientAssignments :many
-SELECT g.id, g.cert_id, ce.name AS certificate_name, g.delivery, g.hook_ids, g.removed_at,
+SELECT g.id, g.cert_id, ce.name AS certificate_name, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
        d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
@@ -31,6 +46,7 @@ type ClientAssignmentsRow struct {
 	Delivery        string      `json:"delivery"`
 	HookIds         []uuid.UUID `json:"hook_ids"`
 	RemovedAt       *time.Time  `json:"removed_at"`
+	RedeploySeq     int64       `json:"redeploy_seq"`
 	VersionID       *uuid.UUID  `json:"version_id"`
 	Expected        []byte      `json:"expected"`
 	Fingerprint     *string     `json:"fingerprint"`
@@ -54,6 +70,7 @@ func (q *Queries) ClientAssignments(ctx context.Context, clientID uuid.UUID) ([]
 			&i.Delivery,
 			&i.HookIds,
 			&i.RemovedAt,
+			&i.RedeploySeq,
 			&i.VersionID,
 			&i.Expected,
 			&i.Fingerprint,

@@ -27,16 +27,16 @@ type Reconciler struct {
 	Log      *slog.Logger
 }
 
+// needsDeploy is level-triggered on the assignment, never on-disk bytes: a
+// grant redeploys when the version, the server's redeploy_seq (bumped by an
+// explicit Redeploy or by server-side auto-remediation), or the rendered
+// file list itself differs from what was last successfully written. An
+// on-disk mismatch is not read here at all; it is reported through the
+// heartbeat's installed digests, and the server marks it drift (with
+// auto-remediate, that bumps redeploySeq, which is what actually forces
+// the next redeploy here).
 func needsDeploy(gs GrantState, a agentproto.Assignment) bool {
-	if gs.Failed || gs.VersionID != a.VersionID || !slices.Equal(gs.Files, a.Files) {
-		return true
-	}
-	for _, f := range a.Files {
-		if sum, _, err := fileDigest(f.Path); err != nil || sum != f.SHA256 {
-			return true
-		}
-	}
-	return false
+	return gs.VersionID != a.VersionID || gs.RedeploySeq != a.RedeploySeq || !slices.Equal(gs.Files, a.Files)
 }
 
 func installedResult(a agentproto.Assignment) agentproto.GrantResult {
@@ -187,15 +187,20 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 			continue
 		}
 		res, written, certsDir := r.Deployer.Deploy(ctx, a, b)
-		if len(written) > 0 {
+		if res.State != agentproto.StateOK {
+			// A failed deploy leaves no state for this grant, so the next
+			// reconcile retries it from scratch instead of trusting
+			// whatever was partially written.
+			delete(st.Grants, a.ID)
+		} else if len(written) > 0 {
 			if had {
 				stf := unclaimed(stale(gs.Files, written), live)
 				if _, err := r.Deployer.Remove(stf, gs.CertsDir); err != nil {
 					r.Log.Warn("old files not removed", "grant", a.ID, "err", err)
 				}
 			}
-			st.Grants[a.ID] = GrantState{VersionID: a.VersionID, CertificateName: a.CertificateName, Files: written,
-				CertsDir: certsDir, Failed: res.State != agentproto.StateOK}
+			st.Grants[a.ID] = GrantState{VersionID: a.VersionID, RedeploySeq: a.RedeploySeq, CertificateName: a.CertificateName,
+				Files: written, CertsDir: certsDir}
 		}
 		rep.Results = append(rep.Results, res)
 	}

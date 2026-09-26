@@ -144,6 +144,7 @@ type ClientCertGrant struct {
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
 	RemovedRevision int64       `json:"removed_revision"`
+	RedeploySeq     int64       `json:"redeploy_seq"`
 }
 
 type DeployTarget struct {

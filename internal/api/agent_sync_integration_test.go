@@ -121,6 +121,72 @@ func TestHeartbeatDriftAndRemediate(t *testing.T) {
 	}
 }
 
+// TestHeartbeatDriftPersistsWithoutRemediate is the ruling on I2: without
+// auto-remediate, an on-disk mismatch marks drift but never forces a
+// redeploy (no redeploy_seq or revision bump) — the deployment stays
+// drift until an operator calls Redeploy.
+func TestHeartbeatDriftPersistsWithoutRemediate(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, c, gid := e.enrolledWithGrant(t, "web-1", false)
+	hc := e.httpClient(t, &cert)
+	var as agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as)
+	e.post(t, hc, "/agent/v1/report", okReport(as), nil)
+	path := as.Grants[0].Files[0].Path
+	bad := agentproto.Heartbeat{Installed: []agentproto.InstalledFile{{GrantID: gid, Path: path, SHA256: "0000", MTime: time.Now()}}}
+	for range 3 {
+		if code := e.post(t, hc, "/agent/v1/heartbeat", bad, nil); code != http.StatusNoContent {
+			t.Fatalf("heartbeat %d", code)
+		}
+	}
+	cl, _ := e.q.GetClientByID(context.Background(), c.ID)
+	if e.deploymentState(t, gid) != "drift" || e.auditCount(t, "deployment.drift") != 1 || cl.DesiredRevision != 1 {
+		t.Fatalf("drift without remediate: state %s audits %d rev %d", e.deploymentState(t, gid), e.auditCount(t, "deployment.drift"), cl.DesiredRevision)
+	}
+	var seq int64
+	if err := e.pool.QueryRow(context.Background(), `SELECT redeploy_seq FROM client_cert_grants WHERE id = $1`, gid).Scan(&seq); err != nil {
+		t.Fatal(err)
+	}
+	if seq != 0 {
+		t.Fatalf("redeploy_seq bumped without auto-remediate: %d", seq)
+	}
+	var as2 agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as2)
+	if as2.Revision != as.Revision {
+		t.Fatalf("client nudged without auto-remediate: rev %d -> %d", as.Revision, as2.Revision)
+	}
+}
+
+// TestRedeployForcesReinstall is the ruling on I2: Redeploy on an ok grant
+// bumps redeploy_seq (so the agent's needsDeploy sees it as changed even
+// though version and files are unchanged, forcing it to refetch the bundle,
+// rewrite the files and re-run hooks) and resets the deployment to pending.
+func TestRedeployForcesReinstall(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, _, gid := e.enrolledWithGrant(t, "web-1", false)
+	hc := e.httpClient(t, &cert)
+	var as agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as)
+	e.post(t, hc, "/agent/v1/report", okReport(as), nil)
+	if e.deploymentState(t, gid) != "ok" {
+		t.Fatal("setup: deployment not ok")
+	}
+	if err := e.svc.Redeploy(e.as("operator"), e.org, gid); err != nil {
+		t.Fatal(err)
+	}
+	if e.deploymentState(t, gid) != "pending" {
+		t.Fatalf("redeploy did not reset the deployment to pending: %s", e.deploymentState(t, gid))
+	}
+	var as2 agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as2)
+	if as2.Grants[0].RedeploySeq != as.Grants[0].RedeploySeq+1 {
+		t.Fatalf("redeploy did not bump redeploySeq: %d -> %d", as.Grants[0].RedeploySeq, as2.Grants[0].RedeploySeq)
+	}
+	if e.auditCount(t, "grant.redeploy") != 1 {
+		t.Fatal("redeploy not audited")
+	}
+}
+
 // Review Focus: an agent reaching beyond its own grants.
 func TestBundleOtherClientGrant(t *testing.T) {
 	e := newAgentEnv(t)

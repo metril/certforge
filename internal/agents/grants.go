@@ -465,7 +465,10 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID) err
 	return nil
 }
 
-// Redeploy marks a grant pending and nudges its agent.
+// Redeploy forces a grant to reinstall: it bumps the grant's redeploy_seq
+// (so the agent's needsDeploy sees it as changed even when the version and
+// rendered files are identical, forcing a fresh write and hook run), marks
+// the deployment pending and nudges its agent.
 func (s *Service) Redeploy(ctx context.Context, orgID, grantID uuid.UUID) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -475,6 +478,9 @@ func (s *Service) Redeploy(ctx context.Context, orgID, grantID uuid.UUID) error 
 	q := s.Q.WithTx(tx)
 	g, err := s.lockGrant(ctx, q, orgID, grantID)
 	if err != nil {
+		return err
+	}
+	if err := q.BumpRedeploySeqs(ctx, []uuid.UUID{grantID}); err != nil {
 		return err
 	}
 	_, push, err := s.render(ctx, q, []uuid.UUID{grantID})
