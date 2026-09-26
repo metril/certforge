@@ -1,7 +1,7 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
 import type Form from '@rjsf/core';
 import { withTheme } from '@rjsf/core';
-import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
+import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
 import { customizeValidator } from '@rjsf/validator-ajv8';
 import Ajv2020 from 'ajv/dist/2020';
 import { shadcnTheme } from './theme';
@@ -44,11 +44,27 @@ type Props = {
    * `uiSchema.ts`'s `fieldErrorFromMessage`.
    */
   extraErrors?: ErrorSchema;
+  /**
+   * Per-field `uiSchema` overrides merged over `buildUiSchema`'s own output
+   * (fix round 1, Task 10: Settings → Agents needs the Agent URL field's
+   * tooltip to add a caveat — that changing it doesn't reach already-
+   * enrolled agents — that the server's own schema `description` doesn't
+   * carry). Keyed by property name, e.g. `{ agentUrl: { 'ui:description': '...' } }`.
+   */
+  uiSchemaOverrides?: UiSchema;
 };
 
-export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors }, ref) {
+export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors, uiSchemaOverrides }, ref) {
   const formRef = useRef<Form>(null);
-  const uiSchema = useMemo(() => buildUiSchema(schema, { storedSecrets }), [schema, storedSecrets]);
+  const uiSchema = useMemo(() => {
+    const base = buildUiSchema(schema, { storedSecrets });
+    if (!uiSchemaOverrides) return base;
+    const merged: UiSchema = { ...base };
+    for (const [key, override] of Object.entries(uiSchemaOverrides)) {
+      merged[key] = { ...(typeof base[key] === 'object' ? base[key] : {}), ...(typeof override === 'object' ? override : {}) };
+    }
+    return merged;
+  }, [schema, storedSecrets, uiSchemaOverrides]);
   const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
   useImperativeHandle(ref, () => ({ validate: () => formRef.current?.validateForm() ?? false }), []);
   return (

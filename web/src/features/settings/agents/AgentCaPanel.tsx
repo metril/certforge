@@ -25,15 +25,19 @@ const STATUS: Record<AgentCA['status'], { label: string; tone: Tone; icon: Lucid
   retired: { label: 'Retired', tone: 'neutral', icon: Ban },
 };
 
-type Confirm = { kind: 'rotate' } | { kind: 'retire'; ca: AgentCA } | null;
-
 export function AgentCaPanel() {
   const me = useMe();
   const canWrite = can(me, 'settings:write');
   const q = useQuery(agentCAsQuery);
   const rotate = useRotateAgentCA();
   const retire = useRetireAgentCA();
-  const [confirm, setConfirm] = useState<Confirm>(null);
+  // Fix round 1 (review, minor #4): two separate pieces of state instead of
+  // a `{kind, ca}` union whose `onConfirm` needed a `''` fallback id for the
+  // cases (rotate, closed) where there was no CA to retire. `retireTarget`
+  // itself is the one source of truth for which CA (if any) Retire targets,
+  // so `ConfirmDestructive`'s `onConfirm` always has a real id.
+  const [rotateOpen, setRotateOpen] = useState(false);
+  const [retireTarget, setRetireTarget] = useState<AgentCA | null>(null);
 
   if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
   if (q.isError) return <ErrorState message={`Couldn't load agent CAs. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
@@ -65,7 +69,12 @@ export function AgentCaPanel() {
             <dd className="font-mono text-xs">{shortHash(issuer?.fingerprint ?? null)}</dd>
           </dl>
         ) : (
-          <p className="text-sm text-ink-muted">The agent listener is not running.</p>
+          <div className="grid gap-1">
+            <p className="text-sm text-ink-muted">The agent listener is not running.</p>
+            {/* Fix round 1 (review, Important #2; 3a-facts: "if the listener
+                failed to start at boot, the server needs a restart"). */}
+            <p className="text-sm text-ink-muted">Restart the server after fixing the cause.</p>
+          </div>
         )}
       </section>
       <section aria-label="Agent certificate authorities" className="grid gap-3">
@@ -74,7 +83,7 @@ export function AgentCaPanel() {
             Agent CAs <HelpTip id="agents.ca" />
           </h3>
           <PermissionTip allowed={canWrite} action="settings:write">
-            <Button variant="outline" disabled={!canWrite || rotate.isPending} onClick={() => setConfirm({ kind: 'rotate' })}>
+            <Button variant="outline" disabled={!canWrite || rotate.isPending} onClick={() => setRotateOpen(true)}>
               <RefreshCw className="size-4" aria-hidden />
               Rotate
             </Button>
@@ -85,7 +94,7 @@ export function AgentCaPanel() {
             const s = STATUS[ca.status];
             const inUse = ca.activeClientCerts > 0;
             const retireButton = (
-              <Button size="sm" variant="outline" disabled={!canWrite || inUse} onClick={() => setConfirm({ kind: 'retire', ca })}>
+              <Button size="sm" variant="outline" disabled={!canWrite || inUse} onClick={() => setRetireTarget(ca)}>
                 Retire
               </Button>
             );
@@ -126,8 +135,8 @@ export function AgentCaPanel() {
         </ul>
       </section>
       <ConfirmDestructive
-        open={confirm?.kind === 'rotate'}
-        onOpenChange={(o) => !o && setConfirm(null)}
+        open={rotateOpen}
+        onOpenChange={setRotateOpen}
         title="Rotate agent CA"
         consequence="Agents move to the new CA as they renew; unused enrolment tokens keep working until the old CA is retired."
         help="agents.rotate"
@@ -136,14 +145,14 @@ export function AgentCaPanel() {
         onConfirm={() => rotate.mutateAsync()}
       />
       <ConfirmDestructive
-        open={confirm?.kind === 'retire'}
-        onOpenChange={(o) => !o && setConfirm(null)}
+        open={retireTarget !== null}
+        onOpenChange={(o) => !o && setRetireTarget(null)}
         title="Retire agent CA"
         consequence="The listener certificate switches to the next CA, and enrolment tokens pinned to this one are refused."
         help="agents.retire"
         confirmText="retire"
         actionLabel="Retire"
-        onConfirm={() => retire.mutateAsync(confirm?.kind === 'retire' ? confirm.ca.id : '')}
+        onConfirm={() => retire.mutateAsync(retireTarget!.id)}
       />
     </>
   );

@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, expect, it } from 'vitest';
 import type { AgentCA } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, iso, makeAgentCA, meWith, org, url } from '@/test/fixtures';
+import { authHandlers, iso, makeAgentCA, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 beforeAll(async () => {
@@ -76,6 +76,14 @@ it('shows the listener certificate, and flags it under 14 days', async () => {
   expect(within(listener).getByText('efefefefefef…')).toBeInTheDocument();
 });
 
+it('flags the listener expiry chip once under 14 days', async () => {
+  listenerNotAfter = iso(10);
+  renderRoute('/settings/agents');
+  const listener = await screen.findByRole('region', { name: 'Listener certificate' });
+  const chip = within(listener).getByText('Expires in 10 d');
+  expect(chip.className).toMatch(/expiring/);
+});
+
 it('rotates by typing rotate, and retires only an unused retiring CA', async () => {
   const { user } = renderRoute('/settings/agents');
   const list = await screen.findByRole('list', { name: 'Agent CAs' });
@@ -100,15 +108,34 @@ it('keeps Retire disabled while agents still use the CA', async () => {
   expect(await screen.findByRole('button', { name: 'Retire' })).toBeDisabled();
 });
 
+it('shows a 409 detail inline when retire is refused', async () => {
+  const { user } = renderRoute('/settings/agents');
+  server.use(http.post(url('/agents/ca/:id/retire'), () => problem(409, 'Agents still use this CA')));
+  await user.click(await screen.findByRole('button', { name: 'Retire' }));
+  await user.type(screen.getByLabelText(/to confirm/), 'retire');
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Retire' }));
+  expect(await within(screen.getByRole('dialog')).findByText(/Agents still use this CA/)).toBeInTheDocument();
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+});
+
 it('is read-only without settings:write', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
   renderRoute('/settings/agents');
   expect(await screen.findByRole('button', { name: 'Rotate' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Retire' })).toBeDisabled();
   expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
 });
 
-it('says when the listener is not running', async () => {
+it('says when the listener is not running, and to restart the server', async () => {
   listenerNotAfter = null;
   renderRoute('/settings/agents');
   expect(await screen.findByText('The agent listener is not running.')).toBeInTheDocument();
+  expect(screen.getByText('Restart the server after fixing the cause.')).toBeInTheDocument();
+});
+
+it('warns that the Agent URL only reaches new enrolments', async () => {
+  const { user } = renderRoute('/settings/agents');
+  const field = (await screen.findByText('Agent URL')).closest('div')!;
+  await user.hover(within(field).getByRole('button', { name: 'Help' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Only new enrolments pick up a changed URL');
 });

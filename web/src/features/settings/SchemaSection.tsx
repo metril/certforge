@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
+import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
 import { settingsQuery, useSaveSettings, type SectionId } from '@/api/queries/settings';
 import { errorMessage } from '@/api/errors';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,16 @@ import { can } from '@/lib/permissions';
  * extra buttons (Authentication's "Test connection") next to Save, given
  * the form's current (possibly unsaved) value. Read-only, with no Save,
  * unless the caller holds settings:write. */
-export function SchemaSection({ section, actions }: { section: SectionId; actions?: (value: Record<string, unknown>) => ReactNode }) {
+export function SchemaSection({
+  section,
+  actions,
+  uiSchemaOverrides,
+}: {
+  section: SectionId;
+  actions?: (value: Record<string, unknown>) => ReactNode;
+  /** Forwarded to `SchemaForm` (fix round 1, Task 10: Agent URL's extra tooltip caveat). */
+  uiSchemaOverrides?: UiSchema;
+}) {
   const me = useMe();
   const q = useQuery(settingsQuery(section));
   const save = useSaveSettings(section);
@@ -33,7 +42,16 @@ export function SchemaSection({ section, actions }: { section: SectionId; action
 
   return (
     <div className="grid max-w-[720px] gap-6">
-      <SchemaForm ref={formRef} schema={schema} value={value} onChange={(v) => { setDraft(v); setSaveError(null); }} storedSecrets={stored} readonly={!editable} extraErrors={saveError ?? undefined} />
+      <SchemaForm
+        ref={formRef}
+        schema={schema}
+        value={value}
+        onChange={(v) => { setDraft(v); setSaveError(null); }}
+        storedSecrets={stored}
+        readonly={!editable}
+        extraErrors={saveError ?? undefined}
+        uiSchemaOverrides={uiSchemaOverrides}
+      />
       {editable && (
         <div className="flex flex-wrap gap-2">
           <Button

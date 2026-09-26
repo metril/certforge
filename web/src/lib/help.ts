@@ -197,6 +197,7 @@ export const help = {
   'hook.argv': { text: 'The executable, then one argument per row. It never runs through a shell.', learnMore: 'agent.md#hooks-and-the-allowlist' },
   'hook.allowlist': { text: 'Agents run a hook only when this exact path is in their CF_HOOK_ALLOW. Otherwise the run is refused.', learnMore: 'agent.md#hooks-and-the-allowlist' },
   'hook.timeout': { text: 'The hook and its child processes are stopped after this long.' },
+  'agents.agentUrl': { text: 'Only new enrolments pick up a changed URL. Already-enrolled agents keep the URL they enrolled with; re-enrol them to move them.', learnMore: 'configuration.md#agents' },
   'agents.listener': { text: 'The certificate agents see on the agent port, signed by the oldest agent CA not yet retired. It renews itself.', learnMore: 'configuration.md#agents' },
   'agents.ca': { text: 'Signs every agent’s identity certificate. After a rotation the old CA stays trusted until you retire it.', learnMore: 'operations.md#agent-ca-rotation' },
   'agents.activeCerts': { text: 'Unexpired certificates of active clients signed by this CA.' },
