@@ -30,13 +30,13 @@ type Reconciler struct {
 // needsDeploy is level-triggered on the assignment, never on-disk bytes: a
 // grant redeploys when the version, the server's redeploy_seq (bumped by an
 // explicit Redeploy or by server-side auto-remediation), or the rendered
-// file list itself differs from what was last successfully written. An
-// on-disk mismatch is not read here at all; it is reported through the
-// heartbeat's installed digests, and the server marks it drift (with
-// auto-remediate, that bumps redeploySeq, which is what actually forces
-// the next redeploy here).
+// file list itself differs from what was last successfully written, or the
+// last attempt for this grant failed (gs.Pending). An on-disk mismatch is
+// not read here at all; it is reported through the heartbeat's installed
+// digests, and the server marks it drift (with auto-remediate, that bumps
+// redeploySeq, which is what actually forces the next redeploy here).
 func needsDeploy(gs GrantState, a agentproto.Assignment) bool {
-	return gs.VersionID != a.VersionID || gs.RedeploySeq != a.RedeploySeq || !slices.Equal(gs.Files, a.Files)
+	return gs.Pending || gs.VersionID != a.VersionID || gs.RedeploySeq != a.RedeploySeq || !slices.Equal(gs.Files, a.Files)
 }
 
 func installedResult(a agentproto.Assignment) agentproto.GrantResult {
@@ -182,16 +182,27 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 		}
 		b, err := r.API.Bundle(ctx, a.ID)
 		if err != nil {
+			if had {
+				gs.Pending = true
+				st.Grants[a.ID] = gs
+			}
 			rep.Results = append(rep.Results, agentproto.GrantResult{GrantID: a.ID, VersionID: a.VersionID,
 				State: agentproto.StateFailed, Error: "bundle: " + err.Error()})
 			continue
 		}
 		res, written, certsDir := r.Deployer.Deploy(ctx, a, b)
 		if res.State != agentproto.StateOK {
-			// A failed deploy leaves no state for this grant, so the next
-			// reconcile retries it from scratch instead of trusting
-			// whatever was partially written.
-			delete(st.Grants, a.ID)
+			// A failed deploy never overwrites this grant's last
+			// successfully confirmed state; it is left exactly as it was,
+			// only marked Pending, so stale/orphan cleanup can still find
+			// and remove those old files once the assignment moves on,
+			// and so the next reconcile retries regardless of whether
+			// version/redeploySeq/files still match this stale state. A
+			// grant with no confirmed deploy yet has nothing to keep.
+			if had {
+				gs.Pending = true
+				st.Grants[a.ID] = gs
+			}
 		} else if len(written) > 0 {
 			if had {
 				stf := unclaimed(stale(gs.Files, written), live)

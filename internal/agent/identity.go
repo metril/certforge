@@ -48,6 +48,16 @@ type GrantState struct {
 	// guessing it back from file names, so a removal prunes only a directory
 	// this grant's own target actually created.
 	CertsDir string `json:"certsDir,omitempty"`
+	// Pending marks that the last deploy attempt for this grant did not
+	// reach agentproto.StateOK. The rest of the struct is left exactly as
+	// it was after this grant's last successful deploy (not overwritten
+	// with whatever the failed attempt wrote), so stale/orphan cleanup can
+	// still find and remove those old files once the assignment moves on
+	// to something else, even though this deploy never confirmed writing
+	// its replacement. needsDeploy always retries while this is set,
+	// regardless of whether the assignment's version, redeploySeq and
+	// files still match this (stale) state.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // State is state.json.

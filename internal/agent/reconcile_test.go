@@ -96,20 +96,108 @@ func TestReconcileDoesNotRedeployOnDiskTamper(t *testing.T) {
 func TestReconcileRedeploysOnRedeploySeqBump(t *testing.T) {
 	dir := t.TempDir()
 	a, b := layoutGrant(dir, "web")
+	// A harmless post_deploy hook, so a redeploy's hook re-run is
+	// observable in the report.
+	a.Hooks = []agentproto.HookSpec{{ID: uuid.New(), Phase: "post_deploy", Argv: []string{"/bin/sh", "-c", "exit 0"}, TimeoutSeconds: 5}}
 	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}, bundles: map[uuid.UUID]agentproto.Bundle{a.ID: b}}
-	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}), ID: newTestIdentity(t), Log: discard}
-	if _, err := r.Reconcile(context.Background()); err != nil {
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}, "/bin/sh"), ID: newTestIdentity(t), Log: discard}
+	rep, err := r.Reconcile(context.Background())
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(rep.Results[0].HookRuns) != 1 {
+		t.Fatalf("first deploy did not run its post_deploy hook: %+v", rep.Results[0])
+	}
+	// An unchanged reconcile does not redeploy, so the hook does not re-run.
+	rep, err = r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Results[0].HookRuns) != 0 {
+		t.Fatalf("hook re-ran on an unchanged reconcile: %+v", rep.Results[0])
 	}
 	_ = os.WriteFile(a.Files[0].Path, []byte("tampered"), 0o644)
 	a.RedeploySeq = 1
 	api.as = agentproto.Assignments{Revision: 2, Grants: []agentproto.Assignment{a}}
-	if _, err := r.Reconcile(context.Background()); err != nil {
+	rep, err = r.Reconcile(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(a.Files[0].Path)
 	if api.fetched != 2 || string(got) != "PEM-web" {
 		t.Fatalf("redeploySeq bump did not redeploy: fetched %d content %q", api.fetched, got)
+	}
+	if len(rep.Results[0].HookRuns) != 1 {
+		t.Fatalf("redeploySeq bump did not re-run the post_deploy hook: %+v", rep.Results[0])
+	}
+}
+
+// TestReconcileKeepsOldFilesTrackedAfterFailedDeploy (residual fix wave): a
+// failed deploy does not delete this grant's state outright. It keeps the
+// previously written files tracked (marked Pending) so stale/orphan
+// cleanup can still find and remove them once the assignment moves on,
+// even though this particular attempt never confirmed a replacement; the
+// next reconcile still retries regardless.
+func TestReconcileKeepsOldFilesTrackedAfterFailedDeploy(t *testing.T) {
+	dir := t.TempDir()
+	a1, b1 := layoutGrant(dir, "web")
+	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a1}}, bundles: map[uuid.UUID]agentproto.Bundle{a1.ID: b1}}
+	id := newTestIdentity(t)
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}, "/bin/sh"), ID: id, Log: discard}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	oldPath := a1.Files[0].Path
+	if _, err := os.Stat(oldPath); err != nil {
+		t.Fatal("setup: old file not written")
+	}
+	// The path changes, and the new bundle's post_deploy hook fails after
+	// the new file is actually written.
+	newPath := filepath.Join(dir, "out", "web2.pem")
+	data := []byte("PEM-web")
+	a2 := agentproto.Assignment{ID: a1.ID, CertificateName: "web", VersionID: a1.VersionID,
+		Files: []agentproto.FileSpec{{Path: newPath, Mode: "0644", SHA256: delivery.Digest(data)}},
+		Hooks: []agentproto.HookSpec{{ID: uuid.New(), Phase: "post_deploy", Argv: []string{"/bin/sh", "-c", "exit 1"}, TimeoutSeconds: 5}}}
+	b2 := agentproto.Bundle{VersionID: a1.VersionID, Files: []agentproto.BundleFile{{Path: newPath, Mode: "0644", Content: data}}}
+	api.as = agentproto.Assignments{Revision: 2, Grants: []agentproto.Assignment{a2}}
+	api.bundles[a2.ID] = b2
+	rep, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Results) != 1 || rep.Results[0].State != agentproto.StateFailed {
+		t.Fatalf("expected a failed report, got %+v", rep.Results)
+	}
+	if _, err := os.Stat(oldPath); err != nil {
+		t.Fatal("old file removed too early, before the new one was confirmed")
+	}
+	if _, err := os.Stat(newPath); err != nil {
+		t.Fatal("new file not written despite the failing post_deploy hook")
+	}
+	gs, ok := id.State.Grants[a1.ID]
+	if !ok || !gs.Pending || len(gs.Files) != 1 || gs.Files[0].Path != oldPath {
+		t.Fatalf("old file not tracked pending: ok=%v %+v", ok, gs)
+	}
+	// The next reconcile retries even though nothing about the assignment
+	// changed since the last (failed) attempt: a third bundle fetch.
+	if _, err := r.Reconcile(context.Background()); err != nil || api.fetched != 3 {
+		t.Fatalf("did not retry the failed deploy: err=%v fetched=%d", err, api.fetched)
+	}
+	// Fix the hook; the deploy finally succeeds and cleans up the old,
+	// now-stale file.
+	a2.Hooks = nil
+	api.as = agentproto.Assignments{Revision: 3, Grants: []agentproto.Assignment{a2}}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Fatal("old file not removed once the deploy finally succeeded")
+	}
+	if _, err := os.Stat(newPath); err != nil {
+		t.Fatal("new file missing after the successful deploy")
+	}
+	if gs := id.State.Grants[a1.ID]; gs.Pending {
+		t.Fatal("state still marked pending after a successful deploy")
 	}
 }
 

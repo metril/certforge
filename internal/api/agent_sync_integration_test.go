@@ -114,6 +114,13 @@ func TestHeartbeatDriftAndRemediate(t *testing.T) {
 	if len(msgs) != 2 || msgs[1] != agentproto.Message(agentproto.Sync{Revision: 2}) {
 		t.Fatalf("remediation nudge %v", msgs)
 	}
+	var seq int64
+	if err := e.pool.QueryRow(context.Background(), `SELECT redeploy_seq FROM client_cert_grants WHERE id = $1`, gid).Scan(&seq); err != nil {
+		t.Fatal(err)
+	}
+	if seq != 1 {
+		t.Fatalf("auto-remediation did not bump redeploy_seq: %d", seq)
+	}
 	good := agentproto.Heartbeat{Installed: []agentproto.InstalledFile{{GrantID: gid, Path: path, SHA256: as.Grants[0].Files[0].SHA256, MTime: time.Now()}}}
 	e.post(t, hc, "/agent/v1/heartbeat", good, nil)
 	if e.deploymentState(t, gid) != "ok" || e.auditCount(t, "deployment.ok") != 2 {
