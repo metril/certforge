@@ -152,11 +152,18 @@ export function ClientsPage() {
             )}
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
-              <Input aria-label="Search clients" className="pl-8 font-mono text-xs" placeholder="web-1" value={text} onChange={(e) => setText(e.target.value)} />
+              <Input
+                aria-label="Search clients"
+                className="pl-8 font-mono text-xs"
+                placeholder="web-1"
+                maxLength={200}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
             </div>
             <SavedViews
               list="clients"
-              current={{ status: search.status, site: search.site, q: search.q, sort: search.sort }}
+              current={{ status: search.status, site: allOrgs ? undefined : search.site, q: search.q, sort: search.sort }}
               onApply={(s) => void navigate({ search: clientListSearch.parse(s) })}
             />
           </div>

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { CircleX, LoaderCircle } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { clientQuery } from '@/api/queries/clients';
+import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { HelpTip } from '@/components/HelpTip';
 import { ToneChip } from '@/components/StatusChip';
@@ -13,6 +14,11 @@ import { cn } from '@/lib/utils';
 
 type Props = { orgId: string; orgSlug: string; clientId: string; expiresAt: string; renewing: boolean; onNewToken: () => void };
 
+function isExpired(c: Pick<Client, 'status' | 'online'> | undefined, expiresAt: string): boolean {
+  const online = c?.status === 'active' && c.online;
+  return !online && c?.status === 'pending' && Date.parse(expiresAt) <= Date.now();
+}
+
 /** Live "waiting for agent": polls every 2 s until the client is active and
  * online (connected, or pulled recently), then offers the next step. */
 export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, onNewToken }: Props) {
@@ -20,18 +26,25 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
     ...clientQuery(orgId, clientId),
     refetchInterval: (query) => {
       const c = query.state.data;
+      // Expiry is evaluated fresh (Date.now()) on every poll, so it stops
+      // as soon as the token passes, without waiting on a separate ticker.
+      if (isExpired(c, expiresAt)) return false;
       return livePoll(!(c?.status === 'active' && c.online));
     },
   });
-  // Re-evaluates token expiry without waiting for a response to change.
-  const [now, setNow] = useState(() => Date.now());
+  // Nothing about the query changes at the exact moment the token expires,
+  // so a single timeout forces one more render then, to flip the border
+  // and stop the "Waiting for agent" spinner without a repeating ticker.
+  const [, forceUpdate] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 15_000);
-    return () => window.clearInterval(t);
-  }, []);
+    const ms = Date.parse(expiresAt) - Date.now();
+    if (ms <= 0) return;
+    const t = window.setTimeout(forceUpdate, ms);
+    return () => window.clearTimeout(t);
+  }, [expiresAt]);
   const c = q.data;
   const online = c?.status === 'active' && c.online;
-  const expired = !online && c?.status === 'pending' && Date.parse(expiresAt) <= now;
+  const expired = isExpired(c, expiresAt);
 
   return (
     <section

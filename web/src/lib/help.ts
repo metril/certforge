@@ -159,7 +159,7 @@ export const help = {
   'client.drift': { text: 'Grants whose files on the host no longer match, and grants whose last deploy failed.', learnMore: 'agent.md#drift' },
   'client.lastSeen': { text: 'Last connection, heartbeat or report from the agent.' },
   'client.token': { text: 'Single use and shown only now. Start the agent with it before it expires.', learnMore: 'agent.md#enrolment' },
-  'client.snippet': { text: 'Runs the agent with a volume for its identity. Mount your certificate directories too.', learnMore: 'agent.md#running-with-docker' },
+  'client.snippet': { text: 'Runs the agent with a volume for its identity. Edit CF_WRITE_ALLOW and the mount to match your deploy directory.', learnMore: 'agent.md#running-with-docker' },
   'client.waiting': { text: 'The agent enrols with the token, then connects. This updates by itself.', learnMore: 'agent.md#troubleshooting' },
 } satisfies Record<string, Help>;
 

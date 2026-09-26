@@ -14,12 +14,15 @@ it('renders the docker run line with the token and a required CF_WRITE_ALLOW', (
   expect(out).toContain('ghcr.io/metril/certforge-agent:latest');
 });
 
-it('renders a compose file with the token, a named data volume and CF_WRITE_ALLOW', () => {
+it('renders a compose file with the token, a named data volume and a bind-mounted CF_WRITE_ALLOW dir', () => {
   const out = composeSnippet(token);
   expect(out).toContain(`CF_AGENT_TOKEN: '${token}'`);
   expect(out).toContain('CF_WRITE_ALLOW: /etc/certforge/deploy');
   expect(out).toContain('image: ghcr.io/metril/certforge-agent:latest');
   expect(out).toContain('- certforge-agent:/data');
-  expect(out).toContain('- certforge-deploy:/etc/certforge/deploy');
-  expect(out.trim().endsWith('volumes:\n  certforge-agent:\n  certforge-deploy:')).toBe(true);
+  // Bind-mounted (not a named volume), matching docker run's own mount and
+  // readable by whatever else (Traefik, ...) shares the host directory.
+  expect(out).toContain('- /etc/certforge/deploy:/etc/certforge/deploy');
+  expect(out).not.toContain('certforge-deploy');
+  expect(out.trim().endsWith('volumes:\n  certforge-agent:')).toBe(true);
 });

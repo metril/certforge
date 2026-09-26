@@ -34,9 +34,11 @@ export function composeSnippet(token: string): string {
     `      CF_WRITE_ALLOW: ${WRITE_DIR}`,
     '    volumes:',
     '      - certforge-agent:/data',
-    `      - certforge-deploy:${WRITE_DIR}`,
+    // A named volume is invisible to Traefik on the host; bind-mount the
+    // same host directory docker run uses so whatever else reads
+    // WRITE_DIR (Traefik's file provider, a bind-mounted target) sees it.
+    `      - ${WRITE_DIR}:${WRITE_DIR}`,
     'volumes:',
     '  certforge-agent:',
-    '  certforge-deploy:',
   ].join('\n');
 }

@@ -6,7 +6,7 @@ import { server } from '@/test/server';
 import { authHandlers, iso, makeClient, makeSite, meWith, NOW, org, org2, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
-let lastQuery: URLSearchParams;
+let lastQuery: URLSearchParams | undefined;
 let items: Client[];
 
 function stubViewport(isMdUp: boolean) {
@@ -31,6 +31,9 @@ async function findLoadedTable(name: string) {
 
 beforeEach(() => {
   stubViewport(true);
+  // Reset so a leftover value from a previous test can never make a
+  // not-yet-sent request's assertion pass by accident.
+  lastQuery = undefined;
   items = [
     makeClient({ id: 'cl-1', name: 'web-1', siteId: 's-1', driftCount: 2 }),
     makeClient({ id: 'cl-2', name: 'db-1', connected: false, online: false, lastSeen: iso(-1), failedCount: 1 }),
@@ -70,25 +73,26 @@ it('shows a pull-only client seen 30 s ago as Online', async () => {
 
 it('sends URL filters and sort, and filters by status and site', async () => {
   const { user, router } = renderRoute('/o/acme/clients?sort=-lastSeen');
-  await screen.findByRole('table', { name: 'Clients' });
-  expect(lastQuery.get('sort')).toBe('-lastSeen');
+  await findLoadedTable('Clients');
+  await waitFor(() => expect(lastQuery?.get('sort')).toBe('-lastSeen'));
   await user.click(screen.getByRole('radio', { name: 'Pending' }));
-  await waitFor(() => expect(lastQuery.get('status')).toBe('pending'));
+  await waitFor(() => expect(lastQuery?.get('status')).toBe('pending'));
   await user.click(screen.getByRole('combobox', { name: 'Site' }));
   await user.click(await screen.findByRole('option', { name: 'Rack A' }));
-  await waitFor(() => expect(lastQuery.get('site')).toBe('s-1'));
+  await waitFor(() => expect(lastQuery?.get('site')).toBe('s-1'));
   expect(router.state.location.search).toMatchObject({ status: 'pending', site: 's-1', sort: '-lastSeen' });
   await user.click(screen.getByRole('button', { name: 'Remove filter Site: Rack A' }));
-  await waitFor(() => expect(lastQuery.get('site')).toBeNull());
+  await waitFor(() => expect(lastQuery?.get('site')).toBeNull());
 });
 
 it('survives a bad URL', async () => {
   renderRoute(`/o/acme/clients?status=bogus&site=%00&sort=evil&q=${'x'.repeat(201)}`);
-  await screen.findByRole('table', { name: 'Clients' });
-  expect(lastQuery.get('status')).toBeNull();
-  expect(lastQuery.get('site')).toBeNull();
-  expect(lastQuery.get('sort')).toBeNull();
-  expect(lastQuery.get('q')).toBeNull();
+  await findLoadedTable('Clients');
+  await waitFor(() => expect(lastQuery).toBeDefined());
+  expect(lastQuery?.get('status')).toBeNull();
+  expect(lastQuery?.get('site')).toBeNull();
+  expect(lastQuery?.get('sort')).toBeNull();
+  expect(lastQuery?.get('q')).toBeNull();
 });
 
 it('stale cursor: resets to the first page', async () => {
@@ -98,9 +102,14 @@ it('stale cursor: resets to the first page', async () => {
     ),
   );
   const { user } = renderRoute('/o/acme/clients');
-  await findLoadedTable('Clients');
+  const table = await findLoadedTable('Clients');
+  rowOf(table, 'web-1');
   await user.click(screen.getByRole('button', { name: 'Load more' }));
   expect(await screen.findByText('The list changed since it was loaded; showing the first page again.')).toBeInTheDocument();
+  // The reset itself re-fetches page one (no cursor), so the same rows
+  // that were showing before "Load more" are still there afterwards, not
+  // an empty or half-populated list.
+  await waitFor(() => expect(rowOf(screen.getByRole('table', { name: 'Clients' }), 'web-1')).toBeInTheDocument());
 });
 
 it('shows one sentence and Enrol client when empty; a viewer gets it disabled', async () => {
