@@ -7,6 +7,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/metril/certforge/internal/agentproto"
+	"github.com/metril/certforge/internal/agents"
 )
 
 // ws upgrades an authenticated agent to its socket and hands it to the hub.
@@ -29,7 +30,11 @@ func (a *agentAPI) ws(w http.ResponseWriter, r *http.Request) {
 		_, err := a.d.Agents.Authenticate(ctx, leaf)
 		return err
 	}
-	if err := a.d.Hub.Serve(r.Context(), c.ID, agentproto.WS{C: conn}, a.d.Agents, verify); err != nil {
+	// The leaf travels with the socket's context so OnMessage can re-run
+	// Authenticate (serial included) on every message for as long as the
+	// connection lives, not only here at accept time.
+	ctx := agents.WithLeaf(r.Context(), leaf)
+	if err := a.d.Hub.Serve(ctx, c.ID, agentproto.WS{C: conn}, a.d.Agents, verify); err != nil {
 		a.d.Log.Debug("agent socket ended", "client", c.ID, "err", err)
 	}
 }

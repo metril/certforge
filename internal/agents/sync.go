@@ -244,6 +244,10 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 			}
 		}
 		for _, hr := range res.HookRuns {
+			if hr.Phase != "pre_deploy" && hr.Phase != "post_deploy" {
+				s.log().Warn("agents: hook run with an unknown phase rejected", "client", c.ID, "grant", d.GrantID, "phase", hr.Phase)
+				continue
+			}
 			argv := make([]string, 0, len(hr.Argv))
 			for _, a := range hr.Argv {
 				argv = append(argv, clip(a, 4096))

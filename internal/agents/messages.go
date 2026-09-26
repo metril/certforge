@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -10,15 +11,36 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
+type leafKey struct{}
+
+// WithLeaf attaches the agent's verified leaf certificate to ctx. The agent
+// listener does this once, when it accepts the socket; OnMessage re-runs
+// Authenticate on it for every message on the connection's long lifetime,
+// not only at connect, so a certificate replaced by a renew or a
+// revoke-then-reenroll is refused mid-socket exactly as a fresh REST
+// request already is (requireAgent re-authenticates every request).
+func WithLeaf(ctx context.Context, leaf *x509.Certificate) context.Context {
+	return context.WithValue(ctx, leafKey{}, leaf)
+}
+
+func leafFrom(ctx context.Context) *x509.Certificate {
+	leaf, _ := ctx.Value(leafKey{}).(*x509.Certificate)
+	return leaf
+}
+
 // OnMessage implements agenthub.Handler: the socket carries the same
 // heartbeat and report the REST endpoints accept, plus hello.
 func (s *Service) OnMessage(ctx context.Context, clientID uuid.UUID, m agentproto.Message) ([]agentproto.Message, error) {
-	c, err := s.Q.GetClientByID(ctx, clientID)
+	leaf := leafFrom(ctx)
+	if leaf == nil {
+		return nil, unauthorized("client %s: no verified agent certificate on this connection", clientID)
+	}
+	c, err := s.Authenticate(ctx, leaf)
 	if err != nil {
 		return nil, err
 	}
-	if c.Status != "active" {
-		return nil, unauthorized("client %s is %s", clientID, c.Status)
+	if c.ID != clientID {
+		return nil, unauthorized("client %s: certificate belongs to a different client", clientID)
 	}
 	switch v := m.(type) {
 	case agentproto.Hello:

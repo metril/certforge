@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"crypto"
 	"crypto/tls"
 	"log/slog"
 	"net/http"
@@ -70,6 +71,37 @@ func TestWebSocketHelloSyncRevoke(t *testing.T) {
 			t.Fatal("still connected after revoke")
 		case <-time.After(10 * time.Millisecond):
 		}
+	}
+}
+
+// TestWebSocketRejectsStaleCertificateAfterRenew (M4): OnMessage re-checks
+// the serial (via the same Authenticate requireAgent uses) on every
+// message, not only at connect, so a certificate a renew replaces is
+// refused mid-socket exactly as it already would be on a fresh REST
+// request, instead of the socket trusting whatever certificate it opened
+// under until something else eventually reconnects it.
+func TestWebSocketRejectsStaleCertificateAfterRenew(t *testing.T) {
+	hub := agenthub.New(slog.Default())
+	t.Cleanup(hub.Shutdown)
+	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
+	e.svc.Hub = hub
+	en := e.newClient(t, "web-1")
+	cert, _, code := e.enroll(t, en.Token)
+	if code != http.StatusOK {
+		t.Fatalf("enroll %d", code)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ws := dialWS(ctx, t, e, cert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1.0", Hostname: "h", OS: "linux", Arch: "amd64"})
+	recvWS(ctx, t, ws)
+	if code := e.post(t, e.httpClient(t, &cert), "/agent/v1/renew",
+		agentproto.RenewRequest{CSR: csrPEM(t, cert.PrivateKey.(crypto.Signer))}, nil); code != http.StatusOK {
+		t.Fatalf("renew %d", code)
+	}
+	sendWS(ctx, t, ws, agentproto.Heartbeat{})
+	if _, err := ws.ReadMsg(ctx); websocket.CloseStatus(err) != agentproto.CloseRevoked {
+		t.Fatalf("stale socket after renew: %v", err)
 	}
 }
 

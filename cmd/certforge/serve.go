@@ -176,12 +176,16 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	log.Info("shutting down")
-	hub.Shutdown()
+	// The agent listener stops accepting new sockets and connections first,
+	// before the hub itself shuts down: shutting the hub down first would
+	// leave a window where a new agent socket could still be accepted and
+	// registered into a hub that is already closing.
 	if agentSrv != nil {
 		if err := agentSrv.Shutdown(shutdownCtx); err != nil {
 			log.Warn("agent listener shutdown", "err", err)
 		}
 	}
+	hub.Shutdown()
 	return srv.Shutdown(shutdownCtx)
 }
 

@@ -323,6 +323,34 @@ func TestRemovedGrantConfirmed(t *testing.T) {
 	}
 }
 
+// TestReportRejectsUnknownHookPhase (M2): an unknown phase is rejected
+// (logged, not stored) but does not stop the rest of the report — the
+// deployment state and any other, valid hook run in the same result still
+// land.
+func TestReportRejectsUnknownHookPhase(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, _, gid := e.enrolledWithGrant(t, "web-1", false)
+	hc := e.httpClient(t, &cert)
+	var as agentproto.Assignments
+	e.get(t, hc, "/agent/v1/assignments", &as)
+	rep := okReport(as)
+	rep.Results[0].HookRuns = []agentproto.HookRun{
+		{Phase: "bogus", Argv: []string{"/bin/true"}},
+		{Phase: "post_deploy", Argv: []string{"/bin/true"}},
+	}
+	if code := e.post(t, hc, "/agent/v1/report", rep, nil); code != http.StatusNoContent {
+		t.Fatalf("report %d", code)
+	}
+	if e.deploymentState(t, gid) != "ok" {
+		t.Fatalf("deployment state %s", e.deploymentState(t, gid))
+	}
+	var runs int
+	_ = e.pool.QueryRow(context.Background(), `SELECT count(*) FROM hook_runs WHERE grant_id = $1`, gid).Scan(&runs)
+	if runs != 1 {
+		t.Fatalf("hook runs %d (want only the valid phase kept)", runs)
+	}
+}
+
 func TestReportFailedAndHookRuns(t *testing.T) {
 	e := newAgentEnv(t)
 	cert, c, gid := e.enrolledWithGrant(t, "web-1", false)

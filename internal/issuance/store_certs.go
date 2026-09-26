@@ -802,18 +802,6 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 	return buildListPage(certs, keys, q.Limit), nil
 }
 
-// DeleteCertificate deletes a certificate and all its versions and attempts.
-func (s *Store) DeleteCertificate(ctx context.Context, orgID, id uuid.UUID) error {
-	n, err := s.q.DeleteCertificate(ctx, sqlcgen.DeleteCertificateParams{ID: id, OrgID: orgID})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 // DueCertificateIDs returns certificates whose next_renew_at has passed.
 func (s *Store) DueCertificateIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.q.ListDueCertificateIDs(ctx, int32(limit))
