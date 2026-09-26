@@ -30,15 +30,21 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
   const submit = async () => {
     setShow(true);
     setFormError(null);
-    const nameOk = name.trim() !== '';
-    setNameError(nameOk ? null : 'Enter a name.');
+    const trimmedName = name.trim();
+    const nameOk = trimmedName !== '' && trimmedName.length <= 100;
+    setNameError(trimmedName === '' ? 'Enter a name.' : nameOk ? null : 'Use 1 to 100 characters.');
     if (!nameOk || errs.some(Boolean) || timeoutError) return;
     try {
-      await save.mutateAsync({ id: hook?.id, body: { name: name.trim(), phase, argv, timeoutSeconds: seconds } });
+      await save.mutateAsync({ id: hook?.id, body: { name: trimmedName, phase, argv, timeoutSeconds: seconds } });
       onOpenChange(false);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setNameError(errorMessage(e));
-      else setFormError(errorMessage(e));
+      const msg = errorMessage(e);
+      // Only a name conflict ("A hook named ... exists in this org" — the
+      // server's own wording) belongs under Name; any other 409 (or a
+      // 422/5xx) reads better as a page-level alert than silently attached
+      // to the wrong field (mirroring Task 7/8's Target/LayoutSheet).
+      if (e instanceof ApiError && e.status === 409 && /^A hook named/i.test(msg)) setNameError(msg);
+      else setFormError(msg);
     }
   };
 
