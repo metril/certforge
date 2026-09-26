@@ -99,10 +99,13 @@ export function certColumns(
         return v ? <span className="whitespace-nowrap">{relDays(v)}</span> : '–';
       },
     }),
-    // design.md screen inventory lists a "grants" column for the
-    // certificates list; grants (client × certificate assignments) are
-    // Phase 3 work, so this is a placeholder column per the controller
-    // ruling ("grants (Phase 3, render '–')").
-    col.display({ id: 'grants', header: 'Grants', cell: () => '–' }),
+    col.accessor('grantCount', {
+      header: 'Grants',
+      meta: { help: 'cert.grants', className: 'w-20' },
+      cell: ({ getValue }) => {
+        const n = getValue();
+        return n === undefined ? <span className="text-ink-muted">–</span> : <span className="tabular-nums">{n}</span>;
+      },
+    }),
   ];
 }

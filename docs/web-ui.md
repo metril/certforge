@@ -10,9 +10,9 @@ The login page shows **Sign in with single sign-on** when Settings → Authentic
 
 `/o/:org/overview` is the landing page after sign-in. It shows, top to bottom:
 
-- **Health strip** — appears only when `/readyz` reports a failing check (for example, the KEK not loaded); silent once the server is healthy.
+- **Health strip** — appears only when `/readyz` reports a failing check (for example, the KEK not loaded), or when the agent listener certificate has under 14 days left (with a link to Settings → Agents); silent once the server is healthy.
 - **Status tiles** — a count per certificate status (Active, Pending, Failed, Expired). Each tile is a filter: it links to the certificates list with that status pre-selected, not a modal or a drill-down page.
-- **Needs attention** — one row per certificate that wants a look, most urgent first: expired, then waiting on manual DNS, then failed, then overdue for renewal. A certificate waiting on manual DNS is pinned at the top as its own card with the TXT records to add; the rest list the cause (the failure's first line, or how overdue) with an inline **Renew now**.
+- **Needs attention** — one row per problem that wants a look, most urgent first: expired, waiting on manual DNS, issuance failed, deploy failed, drift, overdue for renewal, a client offline while it holds grants, and an agent certificate close to expiry. A certificate waiting on manual DNS is pinned at the top as its own card with the TXT records to add; certificate rows list the cause with an inline **Renew now**; client rows link to the client with one fix (Review, Open, or Re-enrol).
 - **Expiry horizon** — one tick per certificate at its expiry, over the next 90 days, coloured by state, with the renewal window shaded behind it. Drag across the strip to list every certificate expiring in that range.
 - **Upcoming renewals** and **Recent activity** side by side: certificates due in the next 7 days, and the last 20 audit events (shown to roles that can read the audit log; each links to the event on the Audit log page).
 
@@ -25,6 +25,10 @@ Below `md` width, the needs-attention queue and upcoming renewals render as stac
 ## Client detail
 
 `/o/:org/clients/:id/:tab`. The header shows the connection (Connected, Online (pull) for an agent that pulls without a live connection, Offline since a time, Never connected, Revoked), hostname, site, agent version and platform, the agent certificate's expiry (highlighted under 14 days) and the capabilities the agent reported. **Certificates** (the default tab) lists the client's grants: delivery (push or pull), layout, deploy target, hooks, auto-remediation and the deployment state (Pending, Deployed, Failed, Drift). Open a row to compare the files the server expects with what the agent last reported, see the agent's error, and **Redeploy**; the open row is kept in the URL (`?open=`). **Remove** asks for the certificate's name; the agent deletes the files on its next sync. **Grant certificate** picks one or more certificates, push or pull delivery, a layout and/or a deploy target, hooks in run order (a numbered list under the hook chips, reordered with Move up and Move down), and whether drift is repaired automatically. Each certificate becomes its own grant; if some fail (for example one is already granted) the others are kept and the sheet lists why. The pencil on a row edits a grant; its certificate cannot change. **Settings** renames the client and moves it between sites, and holds **Re-enrol** (a new one-time token, shown in a dialog; the agent is disconnected until it uses it), **Revoke** (the agent is refused from then on; files on the host stay) and **Delete** (only for revoked or never-enrolled clients). Each asks you to type the client's name. **Hooks** is the client's hook run history: when, which hook, phase, the command, exit status (Not run when the agent refused it or it timed out), duration, and its output. **Activity** lists audit events that mention the client, including those the agent recorded itself (enrolment, deployments, drift), with a link to the same filter on the Audit log page.
+
+## Certificate deployments
+
+A certificate's **Deployments** tab lists every client that holds it: connection, site, delivery, the grant's layout and deploy target (each opens it under Delivery), deployment state, whether the installed files match the current version, and **Redeploy**. The client name opens that client with the grant expanded. The certificates list's **Grants** column counts these.
 
 ## Delivery
 

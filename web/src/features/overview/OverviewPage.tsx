@@ -1,10 +1,12 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CircleAlert, CircleCheck, CircleX, Clock, Hourglass, type LucideIcon } from 'lucide-react';
+import { CircleAlert, CircleCheck, CircleX, Clock, FileDiff, Hourglass, WifiOff, type LucideIcon } from 'lucide-react';
 import { allCertificatesQuery, allOrgsCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
+import { allClientsQuery } from '@/api/queries/clients';
+import { agentCAsQuery } from '@/api/queries/agents';
 import { errorMessage } from '@/api/errors';
 import { readinessQuery } from '@/api/queries/health';
-import type { Certificate } from '@/api/types';
+import type { Certificate, Client } from '@/api/types';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
@@ -14,12 +16,13 @@ import { ToneChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { ManualDnsCard } from '@/features/certificates/ManualDnsCard';
-import { can } from '@/lib/permissions';
+import { can, canAnywhere } from '@/lib/permissions';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
 import type { Tone } from '@/lib/status';
 import { DAY, relDays } from '@/lib/time';
 import { attentionItems, statusCounts, upcomingRenewals, usesManualDns, type AttentionKind } from './attention';
+import { attentionQueue, clientAttentionItems, type ClientAttentionKind } from './clientAttention';
 import { ExpiryHorizon } from './ExpiryHorizon';
 import { HealthStrip } from './HealthStrip';
 import { RecentActivity } from './RecentActivity';
@@ -29,6 +32,12 @@ const KIND: Record<AttentionKind, { tone: Tone; icon: LucideIcon; label: string 
   'manual-dns': { tone: 'pending', icon: Hourglass, label: 'Manual DNS' },
   failed: { tone: 'failed', icon: CircleAlert, label: 'Failed' },
   overdue: { tone: 'expiring', icon: Clock, label: 'Overdue' },
+};
+const CLIENT_KIND: Record<ClientAttentionKind, { tone: Tone; icon: LucideIcon; label: string; tab: 'certificates' | 'settings'; fix: string }> = {
+  'deploy-failed': { tone: 'failed', icon: CircleAlert, label: 'Deploy failed', tab: 'certificates', fix: 'Review' },
+  drift: { tone: 'drift', icon: FileDiff, label: 'Drift', tab: 'certificates', fix: 'Review' },
+  offline: { tone: 'neutral', icon: WifiOff, label: 'Offline', tab: 'certificates', fix: 'Open' },
+  'agent-cert': { tone: 'expiring', icon: Clock, label: 'Agent certificate', tab: 'settings', fix: 'Re-enrol' },
 };
 const TILES = [
   { status: 'active', label: 'Active', icon: CircleCheck, cls: 'text-valid' },
@@ -59,6 +68,10 @@ export function OverviewPage() {
   const me = useMe();
   const { data: certs = [], isPending, isError, error, refetch } = useQuery(allOrgs ? allOrgsCertificatesQuery : allCertificatesQuery(org.id));
   const readiness = useQuery(readinessQuery);
+  const canClients = allOrgs ? canAnywhere(me, 'clients:read') : can(me, 'clients:read', org.id);
+  // org.id is 'all' under All orgs, which allClientsQuery maps to GET /clients.
+  const clients = useQuery({ ...allClientsQuery(org.id), enabled: canClients });
+  const agentCAs = useQuery({ ...agentCAsQuery, enabled: can(me, 'settings:read') });
   const renew = useRenewCertificates(org.id);
   const search = useSearch({ from: '/_app/o/$org/overview' });
   const navigate = useNavigate({ from: '/o/$org/overview' });
@@ -81,7 +94,7 @@ export function OverviewPage() {
       <>
         <PageHeader title="Overview" />
         <div className="grid gap-6">
-          <HealthStrip readiness={readiness.data} />
+          <HealthStrip readiness={readiness.data} listener={agentCAs.data?.listener} />
           <EmptyState message="No certificates yet.">
             {!allOrgs &&
               (can(me, 'certs:write', org.id) ? (
@@ -112,6 +125,9 @@ export function OverviewPage() {
   // *attention item* above stays `pending`-only, so the queue's own count
   // doesn't double-count a cert this section already surfaces its own way.
   const manualDnsCerts = certs.filter((c) => c.status !== 'revoked' && c.status !== 'expired' && usesManualDns(c));
+  const clientItems = clientAttentionItems(clients.data?.items ?? [], now);
+  const queue = attentionQueue(others, clientItems);
+  const clientSlug = (c: Client) => (allOrgs ? slugOf(c.orgId) : org.slug);
   const counts = statusCounts(certs);
   const upcoming = upcomingRenewals(certs, now);
   const inRange = range
@@ -128,7 +144,7 @@ export function OverviewPage() {
     <>
       <PageHeader title="Overview" />
       <div className="grid gap-8">
-        <HealthStrip readiness={readiness.data} />
+        <HealthStrip readiness={readiness.data} listener={agentCAs.data?.listener} />
         <nav aria-label="Filter certificates by status" className="flex flex-wrap gap-2">
           {TILES.map((t) => (
             <Link
@@ -148,16 +164,37 @@ export function OverviewPage() {
         <section aria-label="Needs attention" className="grid gap-3">
           <h2 className="flex items-center gap-1.5 text-base font-semibold">
             Needs attention <HelpTip id="overview.attention" />
-            <span className="text-sm font-normal text-ink-muted">{items.length}</span>
+            <span className="text-sm font-normal text-ink-muted">{items.length + clientItems.length}</span>
           </h2>
           {!allOrgs &&
             manualDnsCerts.map((c) => <ManualDnsCard key={c.id} orgId={org.id} cert={c} canConfirm={can(me, 'certs:issue', org.id)} />)}
-          {others.length > 0 ? (
+          {queue.length > 0 ? (
             <ul className="grid">
-              {others.map((i) => {
+              {queue.map((q) => {
+                const row = 'grid min-h-9 grid-cols-1 items-center gap-2 border-b border-border py-2 text-sm md:grid-cols-[auto_minmax(0,160px)_minmax(0,1fr)_auto] md:gap-4 md:py-1';
+                if (q.type === 'client') {
+                  const { client: c, cause, kind } = q.item;
+                  const k = CLIENT_KIND[kind];
+                  const params = { org: clientSlug(c), id: c.id, tab: k.tab };
+                  return (
+                    <li key={`${kind}-${c.id}`} className={row}>
+                      <ToneChip tone={k.tone} icon={k.icon} label={k.label} />
+                      <Link to="/o/$org/clients/$id/$tab" params={params} className="truncate font-semibold hover:underline">
+                        {c.name}
+                      </Link>
+                      <span className="truncate text-ink-muted">{cause}</span>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link to="/o/$org/clients/$id/$tab" params={params}>
+                          {k.fix}
+                        </Link>
+                      </Button>
+                    </li>
+                  );
+                }
+                const i = q.item;
                 const k = KIND[i.kind];
                 return (
-                  <li key={i.cert.id} className="grid min-h-9 grid-cols-1 items-center gap-2 border-b border-border py-2 text-sm md:grid-cols-[auto_minmax(0,160px)_minmax(0,1fr)_auto] md:gap-4 md:py-1">
+                  <li key={i.cert.id} className={row}>
                     <ToneChip tone={k.tone} icon={k.icon} label={k.label} />
                     <Link to="/o/$org/certificates/$id/$tab" params={{ org: slug(i.cert), id: i.cert.id, tab: 'attempts' }} className="truncate font-semibold hover:underline">
                       {i.cert.name}

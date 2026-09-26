@@ -6,5 +6,5 @@
 // OverviewTab/SettingsTab) would force that whole module into the eager
 // bundle regardless of how the route's `component` field is split — the
 // exact regression scripts/check-chunks.mjs guards against.
-export const TABS = ['overview', 'versions', 'attempts', 'settings'] as const;
+export const TABS = ['overview', 'versions', 'attempts', 'deployments', 'settings'] as const;
 export type Tab = (typeof TABS)[number];

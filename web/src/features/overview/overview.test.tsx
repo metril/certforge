@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, iso, makeCert, meWith, problem, url } from '@/test/fixtures';
+import { authHandlers, iso, makeCert, makeClient, meWith, NOW, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let ready = true;
@@ -109,4 +109,38 @@ it('disables New certificate in the empty state for a viewer', async () => {
   );
   renderRoute('/o/acme/overview');
   expect(await screen.findByRole('button', { name: 'New certificate' })).toBeDisabled();
+});
+
+it('queues client problems with one fix each', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/clients'), () =>
+      HttpResponse.json({
+        items: [
+          makeClient({ id: 'cl-1', name: 'web-1', driftCount: 1 }),
+          makeClient({ id: 'cl-2', name: 'db-1', connected: false, online: false, lastSeen: iso(-1) }),
+          makeClient({ id: 'cl-3', name: 'edge-1', agentCertNotAfter: iso(5) }),
+          makeClient({ id: 'cl-4', name: 'cron-1', connected: false, online: true, lastSeen: new Date(NOW - 30_000).toISOString() }),
+        ],
+        nextCursor: null,
+      }),
+    ),
+  );
+  renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  const drift = (await within(queue).findByRole('link', { name: 'web-1' })).closest('li')!;
+  expect(drift).toHaveTextContent('Drift');
+  expect(within(drift).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/o/acme/clients/cl-1/certificates');
+  expect(within(queue).getByRole('link', { name: 'db-1' }).closest('li')!).toHaveTextContent('Last seen 1 d ago');
+  const cert = within(queue).getByRole('link', { name: 'edge-1' }).closest('li')!;
+  expect(within(cert).getByRole('link', { name: 'Re-enrol' })).toHaveAttribute('href', '/o/acme/clients/cl-3/settings');
+  // A pull client seen 30 s ago is online, so it is not queued as offline.
+  expect(within(queue).queryByRole('link', { name: 'cron-1' })).not.toBeInTheDocument();
+});
+
+it('warns when the agent listener certificate is close to expiry', async () => {
+  server.use(http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: 'aca-1', names: ['cf.lan'], notAfter: iso(5) } })));
+  renderRoute('/o/acme/overview');
+  const strip = await screen.findByRole('alert', { name: 'Server health' });
+  expect(strip).toHaveTextContent('Agent listener certificate expires in 5 d');
+  expect(within(strip).getByRole('link', { name: 'Settings → Agents' })).toHaveAttribute('href', '/settings/agents');
 });

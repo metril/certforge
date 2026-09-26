@@ -329,3 +329,11 @@ it('disables New certificate and bulk Renew/Delete for a viewer', async () => {
   expect(within(bar).getByRole('button', { name: 'Renew' })).toBeDisabled();
   expect(within(bar).getByRole('button', { name: 'Delete' })).toBeDisabled();
 });
+
+it('shows how many clients hold each certificate', async () => {
+  all = [makeCert({ id: 'c-1', name: 'www', grantCount: 3 }), makeCert({ id: 'c-2', name: 'api' })];
+  renderRoute('/o/acme/certificates');
+  const table = await screen.findByRole('table', { name: 'Certificates' });
+  const www = within(table).getByRole('link', { name: 'www' }).closest('tr')!;
+  expect(within(www).getByText('3')).toBeInTheDocument();
+});

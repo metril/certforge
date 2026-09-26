@@ -12,13 +12,14 @@ import { can } from '@/lib/permissions';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { AttemptsTab } from './AttemptsTab';
 import { CertificateHeader } from './CertificateHeader';
+import { DeploymentsTab } from './DeploymentsTab';
 import { DownloadSheet } from './DownloadSheet';
 import { OverviewTab } from './OverviewTab';
 import { SettingsTab } from './SettingsTab';
 import { TABS, type Tab } from './tabs';
 import { VersionsTab } from './VersionsTab';
 
-const LABEL: Record<Tab, string> = { overview: 'Overview', versions: 'Versions', attempts: 'Attempts', settings: 'Settings' };
+const LABEL: Record<Tab, string> = { overview: 'Overview', versions: 'Versions', attempts: 'Attempts', deployments: 'Deployments', settings: 'Settings' };
 
 const LIVE_WINDOW_MS = 60_000;
 
@@ -112,6 +113,9 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
         </TabsContent>
         <TabsContent value="attempts" className="pt-4">
           <AttemptsTab orgId={org.id} certId={cert.id} onRenew={renewNow} />
+        </TabsContent>
+        <TabsContent value="deployments" className="pt-4">
+          <DeploymentsTab cert={cert} orgId={org.id} orgSlug={org.slug} />
         </TabsContent>
         <TabsContent value="settings">
           <SettingsTab cert={cert} orgId={org.id} orgSlug={org.slug} />
