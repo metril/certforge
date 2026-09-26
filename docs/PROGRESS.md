@@ -157,7 +157,7 @@ and the Access docs' API-key binding mention).
 
 ### Phase 3: agent — in progress (started 2026-09-25)
 
-Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS listener, WS hub, grants, push/pull, Traefik target, hooks, heartbeat, drift, agent image) and 3B clients web UI (clients, grants editor, deployments, layouts, targets, hooks, Settings → Agents). Plan 3A: [agent backend](superpowers/plans/2026-09-25-phase-3a-agent-backend.md). Plan 3B (web UI) follows.
+Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS listener, WS hub, grants, push/pull, Traefik target, hooks, heartbeat, drift, agent image) and 3B clients web UI (clients, grants editor, deployments, layouts, targets, hooks, Settings → Agents). Plan 3A: [agent backend](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) (done). Plan 3B: [clients web UI](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md) (in progress).
 
 #### Phase 3A tasks — done (finished 2026-09-25)
 
@@ -178,6 +178,8 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 | 13 | Agent reconcile, run and pull | done | 55dc9b5 |
 | 14 | Agent image | done | c3fe4ba |
 | 15 | Agent e2e | done | cb05b1b |
+
+Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5dfae, 42d23e2, c536704, c1add2a, a6ded75 and residual pass af9c5c9 (Task 7's round-2 lock-order fix landed as d84d545 after Task 8). Plan 3B: [clients web UI](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md).
 
 ## Decisions made during implementation
 
