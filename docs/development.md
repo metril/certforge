@@ -40,8 +40,9 @@
 | Target | What it does |
 |---|---|
 | `make generate` | Runs sqlc and oapi-codegen at pinned versions |
-| `make build` | Builds `bin/certforge` with the placeholder web page |
+| `make build` | Builds `bin/certforge` with the placeholder web page, and `bin/certforge-agent` |
 | `make build-embed` | Copies `web/dist` into `internal/webui/dist` and builds with `-tags embedweb` |
+| `make image-agent` | Builds the agent image (`deploy/Dockerfile.agent`) as `ghcr.io/metril/certforge-agent:dev` |
 | `make test` | Unit tests with `-race` |
 | `make test-integration` | Unit and integration tests (`-tags integration`, needs Docker) |
 | `make lint` | golangci-lint v1.61.0 with `.golangci.yml` |
@@ -153,6 +154,8 @@ docker build -f deploy/Dockerfile.server --build-arg WITH_WEB=0 -t certforge:api
 ```
 
 Locally, `npm run build` (in `web/`) then `make build-embed` does the same without Docker. `internal/webui`'s own tests (`TestSPAFallback`, `TestPlaceholder`) cover both binaries: the embedweb-tagged one falls back to `index.html` for client-side routes and caches `/assets/*` immutably; the plain build serves a small "CertForge" placeholder page instead.
+
+`deploy/Dockerfile.agent` builds `certforge-agent` alone (no web stage) into the same distroless base, running as root so it can chown layout files; see [agent.md → Running with Docker](agent.md#running-with-docker). `make image-agent` builds it as `ghcr.io/metril/certforge-agent:dev`.
 
 ### Browser smoke test
 

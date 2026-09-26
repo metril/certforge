@@ -6,3 +6,4 @@ internal/webui/dist
 deploy/secrets
 .superpowers
 docs/superpowers
+.e2e

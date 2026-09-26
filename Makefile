@@ -7,7 +7,7 @@ GOLANGCI_LINT_VERSION := v1.61.0
 SWAGGER_UI_VERSION := 5.17.14
 COMPOSE_TEST := docker compose -p certforge-e2e -f deploy/compose.yaml -f deploy/compose.test.yaml
 
-.PHONY: generate build build-embed test test-integration lint e2e vendor-swagger
+.PHONY: generate build build-embed test test-integration lint e2e vendor-swagger image-agent
 
 generate:
 	@if [ -f sqlc.yaml ]; then $(GO) run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate; fi
@@ -19,6 +19,10 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/certforge ./cmd/certforge
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/certforge-agent ./cmd/certforge-agent
+
+image-agent:
+	docker build -f deploy/Dockerfile.agent --build-arg VERSION=$(VERSION) -t ghcr.io/metril/certforge-agent:dev .
 
 build-embed:
 	rm -rf internal/webui/dist

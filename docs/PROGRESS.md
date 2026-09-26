@@ -175,8 +175,8 @@ Phase 3 is split into two plans: 3A agent backend (agent CA, enrollment, mTLS li
 | 10 | Agent CA API | done | 540adfc |
 | 11 | Agent identity and enrolment | done | 8b5ba50 |
 | 12 | Agent files, Traefik target, hooks | done | 30f4794 |
-| 13 | Agent reconcile, run and pull | done | pending |
-| 14 | Agent image | todo | – |
+| 13 | Agent reconcile, run and pull | done | 55dc9b5 |
+| 14 | Agent image | done | pending |
 | 15 | Agent e2e | todo | – |
 
 ## Decisions made during implementation

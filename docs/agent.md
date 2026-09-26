@@ -86,3 +86,37 @@ Every heartbeat (Settings → Agents, 60 s by default) carries the SHA-256 of ea
 For hosts that should not hold a socket, run `certforge-agent pull` from cron or a systemd timer: it enrols if needed, renews its certificate when due, reconciles once over REST, reports, sends one heartbeat and exits. Alternatively set `CF_AGENT_PULL_INTERVAL=15m` with `run` to reconcile on a schedule in addition to nudges; the schedule keeps running over REST while the WebSocket is down (for example behind a proxy that refuses upgrades).
 
 A pull-mode agent never receives `trust_bundle_update`. After an agent CA rotation it picks up the new bundle when it renews (the renew response carries it), and the listener keeps the old CA until that CA is retired, so it keeps working meanwhile; see operations.md → Agent CA rotation.
+
+## Running with Docker
+
+One command, with the token from Clients → Enrol client:
+
+    docker run -d --name certforge-agent --restart unless-stopped \
+      -e CF_AGENT_TOKEN='<token>' \
+      -e CF_WRITE_ALLOW=/etc/ssl/certforge \
+      -v certforge-agent:/data \
+      -v /etc/ssl/certforge:/etc/ssl/certforge \
+      ghcr.io/metril/certforge-agent:latest
+
+Compose, keeping the token out of the environment:
+
+    services:
+      certforge-agent:
+        image: ghcr.io/metril/certforge-agent:latest
+        restart: unless-stopped
+        environment:
+          CF_AGENT_TOKEN_FILE: /run/secrets/cf_agent_token
+          CF_WRITE_ALLOW: /etc/traefik/dynamic
+          # CF_HOOK_ALLOW: /hooks/reload-nginx
+        secrets: [cf_agent_token]
+        volumes:
+          - certforge-agent:/data
+          - traefik-dynamic:/etc/traefik/dynamic
+    volumes:
+      certforge-agent:
+      traefik-dynamic:
+    secrets:
+      cf_agent_token:
+        file: ./cf_agent_token
+
+Mount every directory a layout or target writes to, and list it in `CF_WRITE_ALLOW` (see [Write allowlist](#write-allowlist)) — without it every deploy fails. The image runs as root so layout owners and groups can be applied; with `--user` the agent applies modes only. The token is needed only until the agent has enrolled; after that the `/data` volume is its identity, so keep it.

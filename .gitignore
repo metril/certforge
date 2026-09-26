@@ -20,3 +20,6 @@ web/playwright-report/
 
 # Agentic workflow scratch space (task briefs, reports); never committed.
 /.superpowers/
+
+# e2e agent bind mounts (make e2e)
+/.e2e/

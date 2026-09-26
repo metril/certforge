@@ -87,3 +87,10 @@ jobs:
       # the embedweb-tagged file in CI.
       - run: mkdir -p internal/webui/dist && printf '<!doctype html><title>stub</title>' > internal/webui/dist/index.html
       - run: go vet -tags embedweb ./...
+  agent-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deploy/Dockerfile.agent -t certforge-agent:ci .
+      - run: docker run --rm certforge-agent:ci version
+      - run: docker run --rm certforge-agent:ci status | grep -q "Not enrolled"
