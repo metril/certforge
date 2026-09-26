@@ -53,7 +53,14 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
     if (!uiSchemaOverrides) return base;
     const merged: UiSchema = { ...base };
     for (const [key, override] of Object.entries(uiSchemaOverrides)) {
-      merged[key] = { ...(typeof base[key] === 'object' ? base[key] : {}), ...(typeof override === 'object' ? override : {}) };
+      // A top-level 'ui:order' (an array) or any other non-object override
+      // must pass through as-is: spreading an array into an object (the
+      // old unconditional object-merge below) turns it into {0: ..., 1:
+      // ...}, which RJSF's ui:order does not understand.
+      merged[key] =
+        Array.isArray(override) || typeof override !== 'object'
+          ? override
+          : { ...(typeof base[key] === 'object' ? base[key] : {}), ...override };
     }
     return merged;
   }, [schema, storedSecrets, uiSchemaOverrides]);

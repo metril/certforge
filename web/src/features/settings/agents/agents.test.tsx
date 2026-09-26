@@ -33,10 +33,17 @@ beforeEach(() => {
           type: 'object',
           properties: {
             agentUrl: { type: 'string', title: 'Agent URL', description: 'The address agents dial.' },
+            listenerNames: {
+              type: 'array',
+              title: 'Listener names',
+              description: 'Extra hostnames the listener certificate covers, beyond localhost.',
+              items: { type: 'string' },
+              default: [],
+            },
             heartbeatSeconds: { type: 'integer', title: 'Heartbeat interval (seconds)', minimum: 15, default: 60 },
           },
         },
-        value: { agentUrl: '', heartbeatSeconds: 60 },
+        value: { agentUrl: '', listenerNames: [], heartbeatSeconds: 60 },
         stored: null,
         storedSecrets: [],
       }),
@@ -66,6 +73,28 @@ it('is a Settings section with the schema form', async () => {
   await user.type(await screen.findByLabelText('Agent URL'), 'https://cf.lan:8443');
   await user.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(put).toMatchObject({ agentUrl: 'https://cf.lan:8443', heartbeatSeconds: 60 }));
+});
+
+// Review fix round 1 (Important #1): RJSF forces displayLabel=false on any
+// field with a `ui:field` set (our `listArray` custom field for a plain
+// string array), so listenerNames rendered with no visible label and no
+// help tip at all — FieldTemplate's showLabel now special-cases
+// `ui:field: 'listArray'` back on.
+it('shows a label and help tip for the listenerNames listArray field', async () => {
+  const { user } = renderRoute('/settings/agents');
+  const field = (await screen.findByText('Listener names')).closest('div')!;
+  await user.hover(within(field).getByRole('button', { name: 'Help' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Extra hostnames the listener certificate covers');
+});
+
+// Review fix round 1 (Important #2): the server's schema has no guaranteed
+// property order; AgentsSection's `ui:order` puts Agent URL first (most
+// likely to need editing), then the identity fields, then tuning.
+it('renders fields in AgentsSection\'s ui:order', async () => {
+  const { container } = renderRoute('/settings/agents');
+  await screen.findByLabelText('Agent URL');
+  const labels = Array.from(container.querySelectorAll('label')).map((l) => l.textContent);
+  expect(labels).toEqual(['Agent URL', 'Listener names', 'Heartbeat interval (seconds)']);
 });
 
 it('shows the listener certificate, and flags it under 14 days', async () => {

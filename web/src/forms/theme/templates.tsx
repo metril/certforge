@@ -6,10 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
-function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawErrors, children, hidden, classNames, schema }: FieldTemplateProps) {
+function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawErrors, children, hidden, classNames, schema, uiSchema }: FieldTemplateProps) {
   if (hidden) return <div className="hidden">{children}</div>;
-  // Booleans render their own label + help inside SwitchField.
-  const showLabel = displayLabel && !!label && schema.type !== 'boolean';
+  // Booleans render their own label + help inside SwitchField. RJSF forces
+  // displayLabel=false whenever a field sets `ui:field` (our `listArray`
+  // custom field, uiSchema.ts's buildUiSchema), so a chip-entry list like
+  // Agents' Listener names or Authentication's scopes/trustedProxies would
+  // otherwise render with no label and no help tip at all.
+  const showLabel = (displayLabel || uiSchema?.['ui:field'] === 'listArray') && !!label && schema.type !== 'boolean';
   return (
     <div className={cn('grid gap-1.5', classNames)}>
       {showLabel && (

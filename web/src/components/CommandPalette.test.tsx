@@ -191,6 +191,18 @@ it('shows every org-scoped page entry for an org-admin', async () => {
 // selector for Ctrl/Cmd-K specifically, so a second press — even with the
 // search input focused — closes it instead of being swallowed the same way
 // a generic dialog/sheet/popover swallows it (lib/shortcuts.test.ts).
+it('closes on a second Ctrl-K pressed while its own search input has focus', async () => {
+  server.use(...certificateHandlers(makeCert({ id: 'c-8', name: 'edge' })));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const input = await screen.findByPlaceholderText('www.example.com');
+  await user.click(input);
+  expect(input).toHaveFocus();
+  await user.keyboard('{Control>}k{/Control}');
+  await waitFor(() => expect(screen.queryByPlaceholderText('www.example.com')).toBeNull());
+});
+
 it('jumps to a client by hostname and offers Enrol client to writers', async () => {
   server.use(
     ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })),
@@ -220,16 +232,4 @@ it('hides Enrol client and Delivery pages without the permissions', async () => 
   expect(await within(dialog).findByText('Clients')).toBeInTheDocument();
   expect(within(dialog).queryByText('Enrol client')).not.toBeInTheDocument();
   expect(within(dialog).queryByText('Delivery: Deploy targets')).not.toBeInTheDocument();
-});
-
-it('closes on a second Ctrl-K pressed while its own search input has focus', async () => {
-  server.use(...certificateHandlers(makeCert({ id: 'c-8', name: 'edge' })));
-  const { user } = renderRoute('/o/acme/overview');
-  await screen.findByRole('heading', { name: 'Overview' });
-  await user.keyboard('{Control>}k{/Control}');
-  const input = await screen.findByPlaceholderText('www.example.com');
-  await user.click(input);
-  expect(input).toHaveFocus();
-  await user.keyboard('{Control>}k{/Control}');
-  await waitFor(() => expect(screen.queryByPlaceholderText('www.example.com')).toBeNull());
 });

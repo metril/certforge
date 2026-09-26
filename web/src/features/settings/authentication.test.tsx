@@ -89,6 +89,18 @@ it('keeps the stored client secret when saving other fields', async () => {
   expect(put.issuer).toBe('https://login.example.com');
 });
 
+// Review fix round 1 (Important #1): FieldTemplate's showLabel special-cases
+// ui:field: 'listArray' so a plain-string-array field keeps its visible
+// label and help tip despite RJSF's own displayLabel=false for it.
+it('shows a label and help tip for the scopes listArray field', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  const { user } = renderRoute('/settings/authentication');
+  await screen.findByText('Stored');
+  const field = screen.getByText('Scopes').closest('div')!;
+  await user.hover(within(field).getByRole('button', { name: 'Help' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Requested scopes; must include openid.');
+});
+
 it('a trusted proxy is written at its own field, not over the whole form (fix round 1, Critical)', async () => {
   // Regression for the array Field's onChange(v, []) bug: an empty RJSF
   // path means "replace the root", so adding a trusted proxy silently

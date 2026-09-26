@@ -67,7 +67,7 @@ export const ToneChip = forwardRef<HTMLSpanElement, ToneChipProps>(function Tone
       className={cn('inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-sm border px-2 text-xs font-semibold', CHIP[tone], TEXT[tone], className)}
       {...rest}
     >
-      <Icon className={cn('size-3.5', ICON[tone])} aria-hidden />
+      <Icon className={cn('size-3.5 shrink-0', ICON[tone])} aria-hidden />
       {label}
       {help && <HelpTip id={help} />}
     </span>

@@ -17,7 +17,7 @@ import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
-const COLS = 'md:grid-cols-[minmax(0,1fr)_minmax(0,112px)_56px_minmax(0,120px)_minmax(0,120px)_104px_minmax(0,180px)_112px]';
+const COLS = 'md:grid-cols-[minmax(0,1fr)_minmax(0,112px)_56px_minmax(0,120px)_minmax(0,120px)_minmax(0,120px)_minmax(0,180px)_112px]';
 
 function installedNote(d: CertificateDeployment, cert: Certificate): string {
   if (!d.deployment.versionId) return 'No version yet';
