@@ -23,12 +23,14 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatalf("set %+v %v", c, err)
 	}
 	for name, m := range map[string]map[string]string{
-		"relative hook":  {"CF_HOOK_ALLOW": "nginx"},
-		"unclean hook":   {"CF_HOOK_ALLOW": "/usr/../bin/sh"},
-		"relative write": {"CF_WRITE_ALLOW": "etc/ssl"},
-		"unclean write":  {"CF_WRITE_ALLOW": "/etc/../ssl"},
-		"short pull":     {"CF_AGENT_PULL_INTERVAL": "30s"},
-		"bad pull":       {"CF_AGENT_PULL_INTERVAL": "soon"},
+		"relative hook":            {"CF_HOOK_ALLOW": "nginx"},
+		"unclean hook":             {"CF_HOOK_ALLOW": "/usr/../bin/sh"},
+		"relative write":           {"CF_WRITE_ALLOW": "etc/ssl"},
+		"unclean write":            {"CF_WRITE_ALLOW": "/etc/../ssl"},
+		"root write":               {"CF_WRITE_ALLOW": "/"},
+		"root write, second entry": {"CF_WRITE_ALLOW": "/etc/ssl:/"},
+		"short pull":               {"CF_AGENT_PULL_INTERVAL": "30s"},
+		"bad pull":                 {"CF_AGENT_PULL_INTERVAL": "soon"},
 	} {
 		if _, err := LoadConfig(env(m), "dev"); err == nil {
 			t.Errorf("%s accepted", name)

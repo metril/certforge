@@ -85,16 +85,15 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		files = append(files, delivery.RenderTraefik(a.CertificateName, cfg, b.Material.Fullchain, b.Material.Key)...)
 		certsDir = path.Join(cfg.Dir, "certs", delivery.SafeName(a.CertificateName))
 	}
-	resolved := make([]string, len(files))
-	for i, f := range files {
+	// A first pass fails fast, before any hook runs, on a path that is
+	// unclean or outside CF_WRITE_ALLOW right now.
+	for _, f := range files {
 		if err := delivery.CleanPath("path", f.Path); err != nil {
 			return fail("refusing to write %q: %v", f.Path, err)
 		}
-		real, err := confine(d.WriteAllow, f.Path)
-		if err != nil {
+		if _, err := confine(d.WriteAllow, f.Path); err != nil {
 			return fail("%v", err)
 		}
-		resolved[i] = real
 	}
 	env := hookEnv(a, files)
 	for _, h := range a.Hooks {
@@ -107,12 +106,19 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			return fail("pre_deploy hook %s exited %d; files were not written", h.Argv[0], run.ExitCode)
 		}
 	}
-	for i, f := range files {
+	for _, f := range files {
 		mode, err := parseMode(f.Mode)
 		if err != nil {
 			return fail("%s: %v", f.Path, err)
 		}
-		if err := d.Files.Write(resolved[i], f.Data, mode, f.Owner, f.Group); err != nil {
+		// Re-resolved right before the write, not the first pass's cached
+		// path: a pre_deploy hook runs arbitrary code and could have swapped
+		// a symlink into the path in between.
+		real, err := confine(d.WriteAllow, f.Path)
+		if err != nil {
+			return fail("%v", err)
+		}
+		if err := d.Files.Write(real, f.Data, mode, f.Owner, f.Group); err != nil {
 			return fail("write %s: %v", f.Path, err)
 		}
 		sum := delivery.Digest(f.Data)
@@ -140,6 +146,9 @@ func (d *Deployer) Remove(files []agentproto.FileSpec, certsDir string) ([]strin
 	removed := make([]string, 0, len(files))
 	for i := len(files) - 1; i >= 0; i-- {
 		p := files[i].Path
+		if err := delivery.CleanPath("path", p); err != nil {
+			return removed, err
+		}
 		real, err := confine(d.WriteAllow, p)
 		if err != nil {
 			return removed, err
@@ -150,8 +159,10 @@ func (d *Deployer) Remove(files []agentproto.FileSpec, certsDir string) ([]strin
 		removed = append(removed, p)
 	}
 	if certsDir != "" {
-		if real, err := confine(d.WriteAllow, certsDir); err == nil {
-			_ = os.Remove(real) // only succeeds once empty
+		if err := delivery.CleanPath("path", certsDir); err == nil {
+			if real, err := confine(d.WriteAllow, certsDir); err == nil {
+				_ = os.Remove(real) // only succeeds once empty
+			}
 		}
 	}
 	return removed, nil

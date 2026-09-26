@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,4 +179,42 @@ func TestDeployerWriteAllowConfinement(t *testing.T) {
 			t.Fatalf("confine via symlinked parent: err = %v", err)
 		}
 	})
+}
+
+// Review Focus: a pre_deploy hook runs arbitrary code between the first
+// confinement check and the write; it must not be able to swap a symlink
+// into an already-checked path to escape CF_WRITE_ALLOW.
+func TestDeployerReConfinesAfterPreDeployHookSymlinkSwap(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	d := testDeployer([]string{dir}, "/bin/sh")
+	versionID := uuid.New()
+	p := filepath.Join(sub, "web.pem")
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", VersionID: versionID,
+		Hooks: []agentproto.HookSpec{{ID: uuid.New(), Phase: "pre_deploy",
+			Argv:           []string{"/bin/sh", "-c", fmt.Sprintf("rm -rf %s && ln -s %s %s", sub, outside, sub)},
+			TimeoutSeconds: 5}}}
+	b := agentproto.Bundle{VersionID: versionID, Files: []agentproto.BundleFile{{Path: p, Mode: "0644", Content: []byte("PEM")}}}
+	res, written, _ := d.Deploy(context.Background(), a, b)
+	if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "CF_WRITE_ALLOW") || len(written) != 0 {
+		t.Fatalf("res %+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "web.pem")); !os.IsNotExist(err) {
+		t.Fatal("file written outside CF_WRITE_ALLOW through a symlink a pre_deploy hook swapped in")
+	}
+}
+
+// Review Focus: Remove refuses an unclean path before it ever reaches
+// confine, the same as Deploy does.
+func TestDeployerRemoveRejectsUncleanPath(t *testing.T) {
+	dir := t.TempDir()
+	d := testDeployer([]string{dir})
+	_, err := d.Remove([]agentproto.FileSpec{{Path: dir + "/../evil"}}, "")
+	if err == nil || strings.Contains(err.Error(), "CF_WRITE_ALLOW") {
+		t.Fatalf("err = %v", err)
+	}
 }

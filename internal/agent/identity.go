@@ -39,6 +39,12 @@ type GrantState struct {
 	VersionID       uuid.UUID             `json:"versionId"`
 	CertificateName string                `json:"certificateName"`
 	Files           []agentproto.FileSpec `json:"files"`
+	// CertsDir is the certs/<name> directory Deploy's Traefik target created
+	// for this grant (see Deployer.Deploy), or "" when the grant has no
+	// target. Reconcile stores it exactly as Deploy returned it, rather than
+	// guessing it back from file names, so a removal prunes only a directory
+	// this grant's own target actually created.
+	CertsDir string `json:"certsDir,omitempty"`
 	// Failed marks that the last deploy attempt for this grant did not reach
 	// agentproto.StateOK, so the next reconcile retries it even though its
 	// version, file list and on-disk digests otherwise look unchanged.

@@ -5,10 +5,12 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/metril/certforge/internal/agentproto"
+	"github.com/metril/certforge/internal/delivery"
 )
 
 // API is what reconciling needs from the server (Client implements it).
@@ -81,13 +83,43 @@ func unclaimedPaths(paths []string, live map[string]bool) []agentproto.FileSpec 
 	return out
 }
 
-// certsDirOf finds the certs/<name> directory a Traefik target's own two
-// files (fullchain.pem, privkey.pem) always share, so Remove can prune it
-// once empty; "" when files carries neither.
-func certsDirOf(files []agentproto.FileSpec) string {
-	for _, f := range files {
-		if filepath.Base(f.Path) == "privkey.pem" || filepath.Base(f.Path) == "fullchain.pem" {
-			return filepath.Dir(f.Path)
+// union appends to files every path in extra not already present in files,
+// so a removal never relies on a single source of truth for what to delete:
+// a partial write failure that left state.json out of step with what the
+// server's removal message lists must still get every file removed.
+func union(files, extra []agentproto.FileSpec) []agentproto.FileSpec {
+	for _, e := range extra {
+		if !slices.ContainsFunc(files, func(f agentproto.FileSpec) bool { return f.Path == e.Path }) {
+			files = append(files, e)
+		}
+	}
+	return files
+}
+
+// certsDirFromTarget recovers the certs/<name> directory for a removal whose
+// grant left no local state at all (so there is no stored GrantState.CertsDir
+// to prune by): only when the removal names its target and lists at least
+// one file under that target's own certs/ prefix, read off that file's own
+// path, never guessed from a fixed filename such as privkey.pem (a layout
+// file may happen to be named that in a directory that is not a Traefik
+// target's certs/<name> directory at all).
+func certsDirFromTarget(t *agentproto.Target, files []string) string {
+	if t == nil {
+		return ""
+	}
+	cfg, err := delivery.ParseTarget(t.Type, t.Config)
+	if err != nil {
+		return ""
+	}
+	prefix := filepath.Join(cfg.Dir, "certs") + string(filepath.Separator)
+	for _, p := range files {
+		if !strings.HasPrefix(p, prefix) {
+			continue
+		}
+		if rest := strings.TrimPrefix(p, prefix); rest != "" {
+			if i := strings.IndexRune(rest, filepath.Separator); i > 0 {
+				return filepath.Join(cfg.Dir, "certs", rest[:i])
+			}
 		}
 	}
 	return ""
@@ -117,13 +149,13 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 	}
 	for _, rm := range as.Removed {
 		known[rm.ID] = true
-		files := st.Grants[rm.ID].Files
-		if len(files) == 0 {
-			files = unclaimedPaths(rm.Files, live)
-		} else {
-			files = unclaimed(files, live)
+		gs, hadState := st.Grants[rm.ID]
+		files := union(unclaimed(gs.Files, live), unclaimedPaths(rm.Files, live))
+		certsDir := gs.CertsDir
+		if !hadState {
+			certsDir = certsDirFromTarget(rm.Target, rm.Files)
 		}
-		if _, err := r.Deployer.Remove(files, certsDirOf(files)); err != nil {
+		if _, err := r.Deployer.Remove(files, certsDir); err != nil {
 			rep.Results = append(rep.Results, agentproto.GrantResult{GrantID: rm.ID, State: agentproto.StateFailed, Error: "remove: " + err.Error()})
 			continue
 		}
@@ -135,7 +167,8 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 			continue
 		}
 		files := unclaimed(gs.Files, live)
-		if _, err := r.Deployer.Remove(files, certsDirOf(files)); err != nil {
+		if _, err := r.Deployer.Remove(files, gs.CertsDir); err != nil {
+			rep.Results = append(rep.Results, agentproto.GrantResult{GrantID: id, State: agentproto.StateFailed, Error: "remove: " + err.Error()})
 			r.Log.Warn("files of a grant the server no longer lists were not removed", "grant", id, "err", err)
 			continue
 		}
@@ -153,16 +186,16 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 				State: agentproto.StateFailed, Error: "bundle: " + err.Error()})
 			continue
 		}
-		res, written, _ := r.Deployer.Deploy(ctx, a, b)
+		res, written, certsDir := r.Deployer.Deploy(ctx, a, b)
 		if len(written) > 0 {
 			if had {
 				stf := unclaimed(stale(gs.Files, written), live)
-				if _, err := r.Deployer.Remove(stf, certsDirOf(stf)); err != nil {
+				if _, err := r.Deployer.Remove(stf, gs.CertsDir); err != nil {
 					r.Log.Warn("old files not removed", "grant", a.ID, "err", err)
 				}
 			}
 			st.Grants[a.ID] = GrantState{VersionID: a.VersionID, CertificateName: a.CertificateName, Files: written,
-				Failed: res.State != agentproto.StateOK}
+				CertsDir: certsDir, Failed: res.State != agentproto.StateOK}
 		}
 		rep.Results = append(rep.Results, res)
 	}

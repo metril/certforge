@@ -57,6 +57,11 @@ func LoadConfig(getenv func(string) string, version string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
+	for _, p := range writeAllow {
+		if p == "/" {
+			return c, fmt.Errorf("CF_WRITE_ALLOW: %q must not be the filesystem root", p)
+		}
+	}
 	c.WriteAllow = writeAllow
 	if v := strings.TrimSpace(getenv("CF_AGENT_PULL_INTERVAL")); v != "" && v != "0" {
 		d, err := time.ParseDuration(v)

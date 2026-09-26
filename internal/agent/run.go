@@ -89,8 +89,15 @@ func NewAgent(cfg Config, log *slog.Logger, id *Identity) *Agent {
 		Deployer: &Deployer{Files: NewFileWriter(log), Hooks: &HookRunner{Allow: cfg.HookAllow}, Log: log, WriteAllow: cfg.WriteAllow}}
 }
 
+// renewDue reads the live certificate through the identity's lock: it can
+// change concurrently under a renewal or a trust-bundle update.
+func (a *Agent) renewDue() bool {
+	cert, _ := a.ID.current()
+	return agentproto.RenewDue(cert.NotBefore, cert.NotAfter, a.Now())
+}
+
 func (a *Agent) renewIfDue(ctx context.Context) error {
-	if !agentproto.RenewDue(a.ID.Cert.NotBefore, a.ID.Cert.NotAfter, a.Now()) {
+	if !a.renewDue() {
 		return nil
 	}
 	return a.renew(ctx)
@@ -104,7 +111,8 @@ func (a *Agent) renew(ctx context.Context) error {
 		}
 		return fmt.Errorf("renew: %w", err)
 	}
-	a.Log.Info("agent certificate renewed", "not_after", a.ID.Cert.NotAfter)
+	cert, _ := a.ID.current()
+	a.Log.Info("agent certificate renewed", "not_after", cert.NotAfter)
 	return nil
 }
 
@@ -305,7 +313,7 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 				return err
 			}
 		case <-renew.C:
-			if agentproto.RenewDue(a.ID.Cert.NotBefore, a.ID.Cert.NotAfter, a.Now()) {
+			if a.renewDue() {
 				return errReconnect
 			}
 		case <-pull:

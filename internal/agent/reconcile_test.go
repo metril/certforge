@@ -151,3 +151,118 @@ func TestStateInstalled(t *testing.T) {
 		t.Fatalf("missing file digest %q", inst[0].SHA256)
 	}
 }
+
+// Review Focus: certsDir must come from Deploy's own return value, not be
+// guessed back from file names. A layout (no target) whose files happen to
+// be named privkey.pem/fullchain.pem must never have its directory pruned.
+func TestReconcileNeverPrunesDirNamedLikeCertsFiles(t *testing.T) {
+	dir := t.TempDir()
+	admin := filepath.Join(dir, "admin")
+	fullchain, privkey := filepath.Join(admin, "fullchain.pem"), filepath.Join(admin, "privkey.pem")
+	data1, data2 := []byte("FULL"), []byte("KEY")
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", VersionID: uuid.New(), Files: []agentproto.FileSpec{
+		{Path: fullchain, Mode: "0644", SHA256: delivery.Digest(data1)},
+		{Path: privkey, Mode: "0600", SHA256: delivery.Digest(data2)},
+	}}
+	b := agentproto.Bundle{VersionID: a.VersionID, Files: []agentproto.BundleFile{
+		{Path: fullchain, Mode: "0644", Content: data1},
+		{Path: privkey, Mode: "0600", Content: data2},
+	}}
+	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}, bundles: map[uuid.UUID]agentproto.Bundle{a.ID: b}}
+	id := newTestIdentity(t)
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}), ID: id, Log: discard}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if id.State.Grants[a.ID].CertsDir != "" {
+		t.Fatalf("CertsDir set for a layout grant with no target: %+v", id.State.Grants[a.ID])
+	}
+	api.as = agentproto.Assignments{Revision: 2, Removed: []agentproto.Removal{{ID: a.ID, Files: []string{fullchain, privkey}}}}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(admin); err != nil {
+		t.Fatalf("admin dir pruned despite not being a Traefik target's certs dir: %v", err)
+	}
+}
+
+// The exact certs/<name> directory Deploy created is pruned once its grant
+// is removed.
+func TestReconcileRemovalPrunesTargetCertsDir(t *testing.T) {
+	dir := t.TempDir()
+	a, b := traefikGrant(dir)
+	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}, bundles: map[uuid.UUID]agentproto.Bundle{a.ID: b}}
+	id := newTestIdentity(t)
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}, "/bin/sh"), ID: id, Log: discard}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	certsDir := id.State.Grants[a.ID].CertsDir
+	if certsDir == "" {
+		t.Fatal("CertsDir not recorded for a Traefik-target grant")
+	}
+	api.as = agentproto.Assignments{Revision: 2, Removed: []agentproto.Removal{{ID: a.ID, Files: []string{}}}}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(certsDir); !os.IsNotExist(err) {
+		t.Fatal("certs dir not pruned")
+	}
+}
+
+// A partial write failure can leave state.json listing a file the server's
+// removal message no longer names; removal unions both lists so it is still
+// cleaned up.
+func TestReconcileRemovalUnionsStateAndServerFileLists(t *testing.T) {
+	dir := t.TempDir()
+	a, b := layoutGrant(dir, "web")
+	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}, bundles: map[uuid.UUID]agentproto.Bundle{a.ID: b}}
+	id := newTestIdentity(t)
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}), ID: id, Log: discard}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// state.json lists a second file the server's removal message omits
+	// (simulating a leftover from an earlier partial write).
+	leftover := filepath.Join(dir, "out", "leftover.pem")
+	if err := os.WriteFile(leftover, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gs := id.State.Grants[a.ID]
+	gs.Files = append(gs.Files, agentproto.FileSpec{Path: leftover, Mode: "0644", SHA256: delivery.Digest([]byte("x"))})
+	id.State.Grants[a.ID] = gs
+	api.as = agentproto.Assignments{Revision: 2, Removed: []agentproto.Removal{{ID: a.ID, Files: []string{a.Files[0].Path}}}}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{a.Files[0].Path, leftover} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Fatalf("%s not removed", p)
+		}
+	}
+}
+
+// An orphan (a grant in state.json the server no longer mentions at all)
+// whose removal fails is reported as a failed result for its grant id.
+func TestReconcileOrphanRemovalFailureIsReported(t *testing.T) {
+	dir := t.TempDir()
+	a, b := layoutGrant(dir, "web")
+	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}, bundles: map[uuid.UUID]agentproto.Bundle{a.ID: b}}
+	id := newTestIdentity(t)
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}), ID: id, Log: discard}
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r.Deployer.WriteAllow = nil // every remove now refuses
+	api.as = agentproto.Assignments{Revision: 2}
+	rep, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Results) != 1 || rep.Results[0].GrantID != a.ID || rep.Results[0].State != agentproto.StateFailed {
+		t.Fatalf("report %+v", rep)
+	}
+	if _, ok := id.State.Grants[a.ID]; !ok {
+		t.Fatal("orphan dropped from state despite a failed removal")
+	}
+}
