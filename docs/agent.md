@@ -71,7 +71,7 @@ Target config: `dir: /etc/traefik/dynamic` (same path in both containers, so `pa
 
 ## Hooks and the allowlist
 
-Hooks are commands defined in CertForge (Delivery → Hooks) and attached to grants. An agent runs a hook only if its `argv[0]` is exactly one of the paths in `CF_HOOK_ALLOW` (colon-separated). With `CF_HOOK_ALLOW` empty, hooks never run and are reported with exit code -1. Hooks run without a shell: `argv` is passed as is, so `$VAR`, `;` and `|` are literal. `pre_deploy` hooks run before files are written and a non-zero exit stops the deploy; `post_deploy` hooks run after and a non-zero exit marks the deployment failed with the files in place. Each hook gets `CF_GRANT_ID`, `CF_CERTIFICATE_NAME`, `CF_VERSION_ID`, `CF_FINGERPRINT` and `CF_FILES` (colon-separated paths) in its environment, runs in its own process group, and is killed with that group at its timeout. Stdout and stderr are kept up to 8 KiB each and shown under the client's Hooks tab. The distroless image has no shell; mount the executables you allow.
+Hooks are commands defined in CertForge (Delivery → Hooks) and attached to grants. An agent runs a hook only if its `argv[0]` is exactly one of the paths in `CF_HOOK_ALLOW` (colon-separated). With `CF_HOOK_ALLOW` empty, hooks never run and are reported with exit code -1. Hooks run without a shell: `argv` is passed as is, so `$VAR`, `;` and `|` are literal. `pre_deploy` hooks run before files are written and a non-zero exit stops the deploy; `post_deploy` hooks run after and a non-zero exit marks the deployment failed with the files in place. Each hook gets `CF_GRANT_ID`, `CF_CERTIFICATE_NAME`, `CF_VERSION_ID`, `CF_FINGERPRINT` and `CF_FILES` (colon-separated paths) in its environment, runs in its own process group, and is killed with that group at its timeout. Stdout and stderr are kept up to 8 KiB each and shown under the client's Hooks tab. The distroless image has no shell and no dynamic linker or libc at all, so a hook mounted into it must be a statically linked binary (`CGO_ENABLED=0 go build`, or any other toolchain's static output) — a dynamically linked one fails to start with no useful error. Mount the executables you allow.
 
 ## Grants and reconcile
 
@@ -98,7 +98,7 @@ One command, with the token from Clients → Enrol client:
       -v /etc/ssl/certforge:/etc/ssl/certforge \
       ghcr.io/metril/certforge-agent:latest
 
-Compose, keeping the token out of the environment:
+Compose, keeping the token out of the environment, with a Traefik service sharing the deploy target's volume so it actually picks up what the agent writes:
 
     services:
       certforge-agent:
@@ -112,6 +112,12 @@ Compose, keeping the token out of the environment:
         volumes:
           - certforge-agent:/data
           - traefik-dynamic:/etc/traefik/dynamic
+      traefik:
+        image: traefik:v3
+        command: --providers.file.directory=/etc/traefik/dynamic --providers.file.watch=true
+        volumes:
+          - traefik-dynamic:/etc/traefik/dynamic:ro
+        ports: ["443:443"]
     volumes:
       certforge-agent:
       traefik-dynamic:
@@ -119,7 +125,7 @@ Compose, keeping the token out of the environment:
       cf_agent_token:
         file: ./cf_agent_token
 
-Mount every directory a layout or target writes to, and list it in `CF_WRITE_ALLOW` (see [Write allowlist](#write-allowlist)) — without it every deploy fails. The image runs as root so layout owners and groups can be applied; with `--user` the agent applies modes only. The token is needed only until the agent has enrolled; after that the `/data` volume is its identity, so keep it.
+Mount every directory a layout or target writes to, and list it in `CF_WRITE_ALLOW` (see [Write allowlist](#write-allowlist)) — without it every deploy fails. The image runs as root so layout owners and groups can be applied; with `--user` the agent applies modes only, and `/data` must already be writable by that user — a plain named volume like `certforge-agent:` above is created root-owned on first use, so a non-root `--user` needs either a bind mount you have chowned yourself, or an init step that chowns the volume before the agent starts. The token is needed only until the agent has enrolled; after that the `/data` volume is its identity, so keep it.
 
 ## Troubleshooting
 

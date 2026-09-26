@@ -155,7 +155,7 @@ docker build -f deploy/Dockerfile.server --build-arg WITH_WEB=0 -t certforge:api
 
 Locally, `npm run build` (in `web/`) then `make build-embed` does the same without Docker. `internal/webui`'s own tests (`TestSPAFallback`, `TestPlaceholder`) cover both binaries: the embedweb-tagged one falls back to `index.html` for client-side routes and caches `/assets/*` immutably; the plain build serves a small "CertForge" placeholder page instead.
 
-`deploy/Dockerfile.agent` builds `certforge-agent` alone (no web stage) into the same distroless base, running as root so it can chown layout files; see [agent.md → Running with Docker](agent.md#running-with-docker). `make image-agent` builds it as `ghcr.io/metril/certforge-agent:dev`.
+`deploy/Dockerfile.agent` builds `certforge-agent` alone (no web stage) into `gcr.io/distroless/static-debian12` — the same distroless family the server image uses, but its plain (root) tag, not the server's `:nonroot` one, since the agent runs as root by default so it can chown layout files; see [agent.md → Running with Docker](agent.md#running-with-docker). `make image-agent` builds it as `ghcr.io/metril/certforge-agent:dev`.
 
 ### Browser smoke test
 
