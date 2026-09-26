@@ -30,6 +30,8 @@ Below `md` width, the needs-attention queue and upcoming renewals render as stac
 
 `/o/:org/delivery` holds what grants use, in tabs. **Deploy targets** lists each target's type, where it runs (the agent), its directory and how many grants use it. **Add target** picks a type and fills the form the type publishes (for Traefik: the directory the agent writes to, the same directory as Traefik sees it, whether this is the default certificate, and the TLS stores). A target in use cannot be deleted; the delete button says how many grants use it. Viewers can open a target read-only. Delivery is per org, so it is not offered under All orgs.
 
+**File layouts** describe the files an agent writes for a grant, in order: an absolute path, the PEM parts joined into it (cert, chain, fullchain, key, combined), owner, group and mode. The editor checks paths as you type once you have tried to save (absolute, no `.` or `..`, not a directory, no duplicates) and warns when a file holding a private key is readable by every user. Layouts in use cannot be deleted.
+
 ## Settings → General
 
 Base URL, then **Organizations**: admins add (slug derived from the name, "all" reserved), rename, and delete orgs (type the slug; an org that still holds certificates, credentials, accounts, CAs, sites, bindings or API keys is refused and the dialog lists them). **Sites** opens a sheet to add, rename and delete an org's sites.

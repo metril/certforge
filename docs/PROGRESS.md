@@ -191,8 +191,8 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 | 4 | Grants table and file comparison | done | 258b43b |
 | 5 | Grant sheet | done | a41ec05 |
 | 6 | Hook runs and activity | done | 59216f8 |
-| 7 | Delivery section and deploy targets | done | pending |
-| 8 | File layouts | todo | – |
+| 7 | Delivery section and deploy targets | done | 116c808 |
+| 8 | File layouts | done | pending |
 | 9 | Hooks | todo | – |
 | 10 | Settings → Agents | todo | – |
 | 11 | Certificate deployments, grants column, Overview | todo | – |
@@ -388,3 +388,4 @@ Phase 3A closed at af9c5c9 after the whole-branch review: fix wave 0e400b8, 6f5d
 - 3B Task 1 (3a-facts.md deviation from the brief): `makeClient`'s fixture also sets `agentCaId: 'aca-1'` (the brief's own snippet omits it), since the shipped schema has `Client.agentCaId` as a required, non-optional field — omitting it would make every fixture-built `Client` fail a strict-typed `ClientList`/`ClientCreated` response.
 - 3B Task 2 (3a-facts.md deviation from the brief): `dockerRunSnippet`/`composeSnippet` (`web/src/features/clients/enrol/snippets.ts`) both set `CF_WRITE_ALLOW` (a placeholder `/etc/certforge/deploy` the operator edits) and mount that directory, since the shipped 3A agent fails every deploy with it unset (`docs/agent.md` "Write allowlist") — the brief's own literal snippet sample and `snippets.test.ts` sample omit it entirely.
 - 3B Task 2: carried over Task 1's deferred grant-removal wiring: `useDeleteGrant(orgId)` now takes `{id, force?}` and sends `?force=true`; `useRevokeClient`/`useDeleteClient` also invalidate `['grants', orgId]`, `['deployments', orgId]`, `['certs', orgId]`; `invalidateGrants` also invalidates `['certs', 'all', 'every']`; `ConnectionDot` and `ToneChip` are now `forwardRef` for a future `asChild` tooltip trigger; `clients.ts`'s `everyPage`/`allClientsQuery` now return `{items, truncated}` (unconsumed until a later task).
+- 3B Task 8 (3a-facts.md deviation from the brief): the brief's `LayoutSheet` catch routes every 409 to Name; 3a-facts.md notes a layout PATCH can also 409 for a path collision across a client's grants, which names a client/certificate pair, not "name" — `LayoutSheet.submit` now only sets `nameError` when the 409's message matches `/name/i`, otherwise it goes to the page-level `formError` alert, mirroring Task 7's `TargetSheet` routing exactly.

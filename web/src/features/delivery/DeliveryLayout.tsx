@@ -5,7 +5,10 @@ import { TAB_ACTIVE, TAB_LINK, TabLabel } from '@/components/TabLabel';
 import { useOrg } from '@/lib/org';
 
 // design.md navigation: Delivery = Deploy targets, File layouts, Hooks.
-const DELIVERY_TABS = [{ to: '/o/$org/delivery/targets', full: 'Deploy targets', short: 'Targets' }] as const;
+const DELIVERY_TABS = [
+  { to: '/o/$org/delivery/targets', full: 'Deploy targets', short: 'Targets' },
+  { to: '/o/$org/delivery/layouts', full: 'File layouts', short: 'Layouts' },
+] as const;
 
 export function DeliveryLayout({ children }: { children: ReactNode }) {
   const { slug: org } = useOrg();
