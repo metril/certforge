@@ -977,6 +977,23 @@ func (s *Store) CreateExternalCertificate(ctx context.Context, tx pgx.Tx, orgID 
 	return certFromRow(row)
 }
 
+// LockCertificateForUpdate locks and returns a certificate FOR UPDATE
+// inside tx (fix round 1: issuance.Service.UploadVersion's own
+// transaction, before it decides whether the upload is refused for being
+// managed or for stranding a live grant that needs a key). FOR UPDATE
+// conflicts with agents.checkRefs's FOR KEY SHARE lock on the same row
+// (LockCertificateForGrant), unlike the plain UPDATE SetCurrentVersion
+// alone would issue (an implicit FOR NO KEY UPDATE, which does not
+// conflict with FOR KEY SHARE) — see UploadVersion's own doc comment for
+// why that distinction is what actually closes the race.
+func (s *Store) LockCertificateForUpdate(ctx context.Context, tx pgx.Tx, orgID, id uuid.UUID) (Certificate, error) {
+	row, err := s.q.WithTx(tx).GetCertificateForUpdate(ctx, sqlcgen.GetCertificateForUpdateParams{ID: id, OrgID: orgID})
+	if err != nil {
+		return Certificate{}, notFound(err)
+	}
+	return certFromRow(row)
+}
+
 // SetCurrentVersion attaches versionID as certID's current version and
 // refreshes its derived fields (names, status, next_renew_at) inside tx;
 // see CreateExternalCertificate.

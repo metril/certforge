@@ -56,6 +56,13 @@ type Service struct {
 	// cmd/certforge/serve.go), so a grant already on a certificate re-
 	// renders once its uploaded version commits.
 	Listeners []VersionListener
+
+	// KeylessGrantHook backs UploadVersion's keyless-grant rule (R10, fix
+	// round 1): nil disables the check. Wired to agents.LiveGrantsNeedKeyTx
+	// in production (cmd/certforge/serve.go); see KeylessGrantHook's own
+	// doc comment (upload.go) for why this is a plain function value, not
+	// a method on some agents type this package would have to import.
+	KeylessGrantHook KeylessGrantHook
 }
 
 // notifyVersion calls every listener; a panicking listener is logged and

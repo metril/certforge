@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"strings"
@@ -998,7 +999,12 @@ func TestGrantKeylessCert(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(specs) == 0 {
-		t.Fatal("expected no files rendered for the cert-only layout")
+		t.Fatal("cert-only layout rendered no files")
+	}
+	for _, sp := range specs {
+		if sp.SHA256 == "" {
+			t.Fatalf("file %s has an empty digest", sp.Path)
+		}
 	}
 
 	// A second keyless version survives: the only live grant needs no key,
@@ -1019,5 +1025,132 @@ func TestGrantKeylessCert(t *testing.T) {
 	}
 	if afterVersionID != versionID {
 		t.Fatalf("deployment not re-rendered onto the new version: deployment=%s certificate=%s", afterVersionID, versionID)
+	}
+}
+
+// TestUpdateGrantKeylessCert422 is TestGrantKeylessCert's rule via
+// updateGrant: changing a live grant's layout to one that needs a key is
+// refused (422) exactly like creating it that way would be, since
+// checkRefs backs both paths identically.
+func TestUpdateGrantKeylessCert422(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+
+	leafDER, _, _ := realCert(t, "update-keyless.example.test", 9201)
+	body := pemCert(leafDER)
+	res, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateUpload{Name: "update-keyless", CertificatePem: &body}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	certID := res.(gen.UploadCertificate201JSONResponse).Id
+
+	certLayout := f.layout(t, "cert-only-update", "/etc/ssl/update-keyless.pem")
+	res2, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &certLayout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := res2.(gen.CreateGrant201JSONResponse).Id
+
+	keyFiles, err := json.Marshal([]delivery.OutputFile{{Path: "/etc/ssl/update-keyless.key", Format: "pem", Parts: []string{"key"}, Mode: "0600"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyLayout, err := f.q.CreateLayout(ctx, sqlcgen.CreateLayoutParams{OrgID: f.org, Name: "update-key-layout", Files: keyFiles, ExtraCertIds: []uuid.UUID{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: gid, Body: &gen.GrantUpdate{
+		Delivery: gen.GrantDelivery("push"), LayoutId: &keyLayout.ID, HookIds: []uuid.UUID{}, AutoRemediate: false}})
+	wantStatus(t, err, 422)
+}
+
+// TestGrantKeylessRace is fix round 1's concurrency coverage: a key-needing
+// grant created concurrently with a keyless version upload on the same
+// certificate never both succeed. Real Postgres row locks (not goroutine
+// scheduling) provide the guarantee, so a pass here is deterministic, not
+// lucky: whichever of createGrant's FOR KEY SHARE and UploadVersion's FOR
+// UPDATE locks the certificate row first excludes the other until it
+// commits or rolls back (see agents.checkRefs and
+// issuance.Service.UploadVersion's own doc comments).
+func TestGrantKeylessRace(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+
+	keyFiles, err := json.Marshal([]delivery.OutputFile{{Path: "/etc/ssl/race.key", Format: "pem", Parts: []string{"key"}, Mode: "0600"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyLayout, err := f.q.CreateLayout(ctx, sqlcgen.CreateLayoutParams{OrgID: f.org, Name: "race-key-layout", Files: keyFiles, ExtraCertIds: []uuid.UUID{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 30; i++ {
+		name := fmt.Sprintf("race-%d", i)
+		leafDER, _, keyPKCS8 := realCert(t, name+".example.test", int64(9300+i))
+		certBody := pemCert(leafDER)
+		keyBody := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyPKCS8}))
+		res, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+			Body: &gen.CertificateUpload{Name: name, CertificatePem: &certBody, PrivateKeyPem: &keyBody}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		certID := res.(gen.UploadCertificate201JSONResponse).Id
+
+		leaf2DER, _, _ := realCert(t, name+".example.test", int64(9400+i))
+		body2 := pemCert(leaf2DER)
+
+		// start is a rendezvous, not a mere goroutine spawn: both
+		// goroutines block on the same receive and are released by one
+		// close, so their DB calls begin as close to simultaneously as the
+		// Go scheduler allows, maximizing overlap on the certificate row
+		// instead of leaving it to whichever goroutine happens to be
+		// scheduled first.
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		var grantErr, uploadErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, grantErr = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+				Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &keyLayout.ID}})
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, uploadErr = f.srv.UploadCertificateVersion(op, gen.UploadCertificateVersionRequestObject{OrgId: f.org, Id: certID,
+				Body: &gen.CertificateVersionUpload{CertificatePem: &body2}})
+		}()
+		close(start)
+		wg.Wait()
+
+		if grantErr != nil && problemStatus(grantErr) == 500 {
+			t.Fatalf("iteration %d: grant create: unexpected 500: %v", i, grantErr)
+		}
+		if uploadErr != nil && problemStatus(uploadErr) == 500 {
+			t.Fatalf("iteration %d: version upload: unexpected 500: %v", i, uploadErr)
+		}
+		if grantErr == nil && uploadErr == nil {
+			t.Fatalf("iteration %d: both the key-needing grant and the keyless version upload succeeded", i)
+		}
+
+		var hasKey bool
+		if err := f.pool.QueryRow(ctx, `SELECT (v.private_key IS NOT NULL) FROM certificates cert
+			JOIN certificate_versions v ON v.id = cert.current_version_id WHERE cert.id = $1`, certID).Scan(&hasKey); err != nil {
+			t.Fatal(err)
+		}
+		var liveGrant bool
+		if err := f.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL)`, certID).Scan(&liveGrant); err != nil {
+			t.Fatal(err)
+		}
+		if liveGrant && !hasKey {
+			t.Fatalf("iteration %d: stranded -- a live grant needs a key but the current version has none", i)
+		}
 	}
 }

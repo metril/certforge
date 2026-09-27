@@ -88,6 +88,9 @@ func newAgentFixture(t *testing.T) *agentFixture {
 	// version (issued, or Task 13's UploadCertificate/UploadVersion)
 	// re-renders any grant already on the certificate.
 	f.srv.d.Issuance.Listeners = append(f.srv.d.Issuance.Listeners, svc)
+	// Same as cmd/certforge/serve.go: backs UploadVersion's keyless-grant
+	// rule (fix round 1).
+	f.srv.d.Issuance.KeylessGrantHook = agents.LiveGrantsNeedKeyTx
 	return &agentFixture{apiFixture: f, svc: svc, ca: ca, q: q, hub: hub}
 }
 

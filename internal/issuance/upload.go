@@ -1,11 +1,13 @@
 package issuance
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,8 +15,24 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 
 	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
 )
+
+// KeylessGrantHook reports whether certID has a live grant whose layout or
+// deploy target needs a key (R10's keyless-grant rule, the upload
+// direction): UploadVersion calls it, inside its own transaction, right
+// after locking the certificate row FOR UPDATE, before accepting a keyless
+// version. nil disables the check (tests that don't exercise grants).
+// Wired to agents.LiveGrantsNeedKeyTx in production (cmd/certforge/serve.go)
+// — a plain function value, not a *agents.Service method bound here,
+// because this package must not import internal/agents (R7); q is always
+// tx-scoped (s.Store.q.WithTx(tx)), the same transaction UploadVersion's
+// own writes run in, so this read and a concurrent createGrant/updateGrant
+// (which locks the same certificate row FOR KEY SHARE before its own
+// needsKey check, see agents.checkRefs) can never each act on a view of
+// the other that is already stale by the time either commits.
+type KeylessGrantHook func(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (bool, error)
 
 // UploadInput is the raw material behind an uploaded certificate or version
 // (R10): a PEM leaf, optionally followed by its chain, plus an optional PEM
@@ -51,6 +69,7 @@ func ParseUpload(in UploadInput) (*signer.Issued, signer.KeyType, error) {
 	var leafDER []byte
 	var chainDER [][]byte
 	var keyDER []byte // PKCS#8, or nil for a keyless upload
+	field := "certificatePem"
 
 	if len(in.CertificatePEM) > 0 {
 		var ders [][]byte
@@ -76,6 +95,12 @@ func ParseUpload(in UploadInput) (*signer.Issued, signer.KeyType, error) {
 			}
 		}
 	} else {
+		field = "pkcs12Base64"
+		// go-pkcs12's DecodeChain errors "private key missing" whenever the
+		// bundle has none, so key is never nil here on a nil error: a
+		// PKCS#12 upload always carries a key (documented in
+		// docs/certificates.md#upload); there is no keyless PKCS#12 branch
+		// to handle.
 		key, cert, caCerts, err := pkcs12.DecodeChain(in.PKCS12, in.Password)
 		if err != nil {
 			return nil, "", &ValidationError{"pkcs12Base64", "cannot decode: " + err.Error()}
@@ -84,35 +109,44 @@ func ParseUpload(in UploadInput) (*signer.Issued, signer.KeyType, error) {
 		for _, c := range caCerts {
 			chainDER = append(chainDER, c.Raw)
 		}
-		if key != nil {
-			signerKey, ok := key.(crypto.Signer)
-			if !ok {
-				return nil, "", &ValidationError{"pkcs12Base64", fmt.Sprintf("unsupported key type %T", key)}
-			}
-			if keyDER, err = x509.MarshalPKCS8PrivateKey(signerKey); err != nil {
-				return nil, "", &ValidationError{"pkcs12Base64", "cannot marshal key: " + err.Error()}
-			}
+		signerKey, ok := key.(crypto.Signer)
+		if !ok {
+			return nil, "", &ValidationError{"pkcs12Base64", fmt.Sprintf("unsupported key type %T", key)}
+		}
+		if keyDER, err = x509.MarshalPKCS8PrivateKey(signerKey); err != nil {
+			return nil, "", &ValidationError{"pkcs12Base64", "cannot marshal key: " + err.Error()}
 		}
 	}
 
 	leaf, err := x509.ParseCertificate(leafDER)
 	if err != nil {
-		return nil, "", &ValidationError{"certificatePem", "cannot parse leaf: " + err.Error()}
+		return nil, "", &ValidationError{field, "cannot parse leaf: " + err.Error()}
+	}
+	if chainDER, err = validateChain(leaf, chainDER, field); err != nil {
+		return nil, "", err
 	}
 
-	keyField := "certificatePem"
-	if keyDER != nil {
+	// keyField is where a key-specific problem (parse failure, unsupported
+	// type, or a mismatch against the leaf) is reported: privateKeyPem for
+	// a separately supplied PEM key, pkcs12Base64 for a PKCS#12 key (there
+	// is no separate key field to name there), or field itself
+	// (certificatePem/pkcs12Base64) when there is no key at all and the
+	// leaf's own public key is what KeyTypeOf goes on to reject.
+	keyField := field
+	if len(in.PrivateKeyPEM) > 0 {
 		keyField = "privateKeyPem"
+	}
+	if keyDER != nil {
 		key, err := x509.ParsePKCS8PrivateKey(keyDER)
 		if err != nil {
-			return nil, "", &ValidationError{"privateKeyPem", "cannot parse key: " + err.Error()}
+			return nil, "", &ValidationError{keyField, "cannot parse key: " + err.Error()}
 		}
 		signerKey, ok := key.(crypto.Signer)
 		if !ok {
-			return nil, "", &ValidationError{"privateKeyPem", fmt.Sprintf("unsupported key type %T", key)}
+			return nil, "", &ValidationError{keyField, fmt.Sprintf("unsupported key type %T", key)}
 		}
 		if !publicKeysEqual(leaf.PublicKey, signerKey.Public()) {
-			return nil, "", &ValidationError{"privateKeyPem", "does not match the certificate"}
+			return nil, "", &ValidationError{keyField, "does not match the certificate"}
 		}
 	}
 	keyType, err := signer.KeyTypeOf(leaf.PublicKey)
@@ -153,6 +187,46 @@ func normalizeKeyPEM(keyPEM []byte) ([]byte, error) {
 	return x509.MarshalPKCS8PrivateKey(key)
 }
 
+// validateChain drops any chain entry byte-identical to leaf (a leaf
+// repeated in the chain would otherwise render fullchain with it twice),
+// then links the rest into signing order starting from leaf: at each step
+// the pool member whose Subject matches the current certificate's Issuer
+// is required to satisfy CheckSignatureFrom against it, so a chain that
+// does not actually sign the certificate above it (including the very
+// first link, which must sign leaf itself) or that includes an unrelated
+// certificate never passing raises a 422 on field, instead of being stored
+// out of order or unverified. Bag/submission order does not matter: PEM
+// concatenation order and PKCS#12 bag order are both just a starting pool.
+func validateChain(leaf *x509.Certificate, chainDER [][]byte, field string) ([][]byte, error) {
+	var pool []*x509.Certificate
+	for _, der := range chainDER {
+		c, err := x509.ParseCertificate(der)
+		if err != nil {
+			return nil, &ValidationError{field, "cannot parse chain certificate: " + err.Error()}
+		}
+		if bytes.Equal(c.Raw, leaf.Raw) {
+			continue // the leaf itself, repeated in the chain; drop it
+		}
+		pool = append(pool, c)
+	}
+	ordered := make([][]byte, 0, len(pool))
+	cur := leaf
+	for len(pool) > 0 {
+		idx := slices.IndexFunc(pool, func(c *x509.Certificate) bool { return bytes.Equal(c.RawSubject, cur.RawIssuer) })
+		if idx < 0 {
+			return nil, &ValidationError{field, "the chain does not lead from the certificate to every entry provided"}
+		}
+		next := pool[idx]
+		if err := cur.CheckSignatureFrom(next); err != nil {
+			return nil, &ValidationError{field, "a chain certificate did not sign the certificate above it: " + err.Error()}
+		}
+		ordered = append(ordered, next.Raw)
+		cur = next
+		pool = slices.Delete(pool, idx, idx+1)
+	}
+	return ordered, nil
+}
+
 // publicKeysEqual compares two crypto.PublicKey values through the Equal
 // method every stdlib key type (*rsa.PublicKey, *ecdsa.PublicKey,
 // ed25519.PublicKey) implements.
@@ -162,16 +236,38 @@ func publicKeysEqual(a, b crypto.PublicKey) bool {
 }
 
 // uploadNames derives a certificate's common name and SANs from its own
-// leaf, lower-cased: an upload's names come from the certificate itself,
-// not from a caller-supplied CommonName/SANs pair the way CertInput's do
-// (CertificateUpload/CertificateVersionUpload carry no such fields).
+// leaf: an upload's names come from the certificate itself, not from a
+// caller-supplied CommonName/SANs pair the way CertInput's do
+// (CertificateUpload/CertificateVersionUpload carry no such fields). Only
+// the DNS SANs are considered — a leaf with IP SANs but no DNS SAN at all
+// (leaf.DNSNames empty) is rejected outright, since CertForge's own
+// certificate model is DNS-name-based throughout (docs/certificates.md#upload
+// documents this). When the leaf's subject CN is itself one of the DNS
+// SANs, it is moved first (matching how an ordinary CertForge-issued
+// certificate is always named after its own CommonName); otherwise the
+// first SAN, in whatever order the leaf lists them, stands in for it. The
+// result runs through the same NormalizeNames every other certificate's
+// names do (lower-cased, de-duplicated, shape-validated), so an upload
+// cannot smuggle in a name CertForge would refuse from any other path.
 func uploadNames(leaf *x509.Certificate) (string, []string, error) {
 	if len(leaf.DNSNames) == 0 {
-		return "", nil, &ValidationError{"certificatePem", "the leaf certificate has no DNS names"}
+		return "", nil, &ValidationError{"certificatePem", "the leaf certificate has no DNS names (a certificate with only IP SANs cannot be uploaded)"}
 	}
-	names := make([]string, len(leaf.DNSNames))
-	for i, n := range leaf.DNSNames {
-		names[i] = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(n), "."))
+	cn := leaf.DNSNames[0]
+	if leaf.Subject.CommonName != "" {
+		if idx := slices.Index(leaf.DNSNames, leaf.Subject.CommonName); idx >= 0 {
+			cn = leaf.Subject.CommonName
+		}
+	}
+	sans := make([]string, 0, len(leaf.DNSNames))
+	for _, n := range leaf.DNSNames {
+		if n != cn {
+			sans = append(sans, n)
+		}
+	}
+	names, err := NormalizeNames(cn, sans)
+	if err != nil {
+		return "", nil, &ValidationError{"certificatePem", err.Error()}
 	}
 	return names[0], names[1:], nil
 }
@@ -237,24 +333,29 @@ func (s *Service) UploadCertificate(ctx context.Context, orgID uuid.UUID, name s
 }
 
 // UploadVersion adds an uploaded PEM/PKCS#12 version to an existing
-// certificate: certstore.Insert then SetCurrentVersion, in one transaction.
-// Refused (409 ConflictError) when the certificate is still managed by
-// CertForge: uploads only ever apply to a certificate CertForge does not
-// renew itself. Names and status are recomputed from the newly uploaded
-// leaf, exactly like UploadCertificate — an uploaded version can cover
-// different names than the certificate's current definition. Audited
-// certificate.version_uploaded, then every registered Listener runs
-// (OnVersion). The caller (the API handler) checks beforehand whether a
-// keyless upload would strand a live grant that needs a key (409); that
-// check reaches into internal/agents, which this package must not import.
+// certificate: certstore.Insert then SetCurrentVersion, in one transaction
+// that locks the certificate row FOR UPDATE (Store.LockCertificateForUpdate)
+// before either write. Refused (409 ConflictError) when the certificate is
+// still managed by CertForge: uploads only ever apply to a certificate
+// CertForge does not renew itself. Names and status are recomputed from
+// the newly uploaded leaf, exactly like UploadCertificate — an uploaded
+// version can cover different names than the certificate's current
+// definition. Audited certificate.version_uploaded, then every registered
+// Listener runs (OnVersion).
+//
+// A keyless upload is refused (409) when s.KeylessGrantHook (nil in tests
+// that don't exercise grants) reports a live grant whose layout or deploy
+// target needs a key. The hook runs after the FOR UPDATE lock is held and
+// inside this same transaction (fix round 1): agents.checkRefs locks the
+// same certificate row FOR KEY SHARE — which conflicts with FOR UPDATE,
+// unlike the plain UPDATE SetCurrentVersion alone would have issued
+// (implicit FOR NO KEY UPDATE, which does not conflict with FOR KEY
+// SHARE) — right before its own needsKey check, so whichever of a
+// concurrent createGrant/updateGrant and this call locks the row first is
+// fully committed or rolled back before the other's check runs; neither
+// can act on a view of the other that is already stale by the time either
+// commits.
 func (s *Service) UploadVersion(ctx context.Context, orgID, certID uuid.UUID, in UploadInput) (Certificate, certstore.Version, error) {
-	cur, err := s.Store.GetCertificate(ctx, orgID, certID)
-	if err != nil {
-		return Certificate{}, certstore.Version{}, err
-	}
-	if cur.Managed {
-		return Certificate{}, certstore.Version{}, &ConflictError{Msg: "certificate is managed by CertForge; upload a version only for an unmanaged certificate"}
-	}
 	iss, keyType, err := ParseUpload(in)
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err
@@ -274,6 +375,22 @@ func (s *Service) UploadVersion(ctx context.Context, orgID, certID uuid.UUID, in
 		return Certificate{}, certstore.Version{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	cur, err := s.Store.LockCertificateForUpdate(ctx, tx, orgID, certID)
+	if err != nil {
+		return Certificate{}, certstore.Version{}, err
+	}
+	if cur.Managed {
+		return Certificate{}, certstore.Version{}, &ConflictError{Msg: "certificate is managed by CertForge; upload a version only for an unmanaged certificate"}
+	}
+	if len(iss.PrivateKeyPKCS8) == 0 && s.KeylessGrantHook != nil {
+		needsKey, err := s.KeylessGrantHook(ctx, s.Store.q.WithTx(tx), certID)
+		if err != nil {
+			return Certificate{}, certstore.Version{}, err
+		}
+		if needsKey {
+			return Certificate{}, certstore.Version{}, &ConflictError{Msg: "This certificate has a live grant whose layout or deploy target needs a key; upload a version with a key, or remove those grants first."}
+		}
+	}
 	v, err := s.Certs.Insert(ctx, tx, certID, iss, string(keyType), certstore.InsertOpts{Source: "uploaded"})
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err

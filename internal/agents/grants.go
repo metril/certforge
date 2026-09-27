@@ -137,6 +137,26 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 			return err
 		}
 	}
+	// Locks the certificate FOR KEY SHARE before inserting/updating a row
+	// that references it: FOR KEY SHARE conflicts with DeleteCertificate's
+	// FOR UPDATE, so the two serialize instead of a delete racing this
+	// write (checkRefs's existence check above alone is not enough: the
+	// certificate could be deleted between that check and the write).
+	// Also serializes against a certificate rename (UpdateCertificate's
+	// GetCertificateForUpdate, also FOR UPDATE) and, critically for the
+	// needsKey check right after, against issuance.Service.UploadVersion's
+	// own FOR UPDATE lock on this same row (fix round 1): FOR KEY SHARE and
+	// FOR UPDATE do conflict (unlike FOR KEY SHARE and the plain UPDATE's
+	// implicit FOR NO KEY UPDATE that SetCurrentVersion used to rely on),
+	// so whichever of a concurrent createGrant/updateGrant and
+	// uploadCertificateVersion locks this row first is fully committed (or
+	// rolled back) before the other's needsKey/KeylessGrantHook check reads
+	// the row — neither can act on a stale view of the other.
+	if _, err := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: in.CertID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
+		return invalid("certificateId", "certificate %s is not in this org", in.CertID)
+	} else if err != nil {
+		return err
+	}
 	// R10: a layout that needs a key, or any deploy target (Traefik always
 	// renders fullchain + key), cannot be granted against a certificate
 	// whose current version has no stored key (a keyless upload/import).
@@ -155,20 +175,22 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	return nil
 }
 
-// LiveGrantsNeedKey reports whether any live grant of certID has a layout
-// that needs a key or a deploy target (Traefik always renders fullchain +
-// key) — the check uploadCertificateVersion runs before accepting a
-// keyless version, so it never strands a live grant that createGrant/
-// updateGrant would have refused in the other direction (see checkRefs).
-// Lives here, not in internal/issuance, because that package must not
-// import internal/agents (R7); the API handler calls this before calling
-// into issuance.Service.UploadVersion.
-func (s *Service) LiveGrantsNeedKey(ctx context.Context, certID uuid.UUID) (bool, error) {
-	ids, err := s.Q.LiveGrantIDsForCert(ctx, certID)
+// LiveGrantsNeedKeyTx reports whether any live grant of certID has a
+// layout that needs a key or a deploy target (Traefik always renders
+// fullchain + key), using q (tx-scoped when called from a transaction that
+// already holds a lock serializing this read against a concurrent
+// createGrant/updateGrant — see issuance.Service.KeylessGrantHook, wired to
+// this function in cmd/certforge/serve.go — or pool-scoped otherwise). A
+// plain function, not a *Service method: issuance.KeylessGrantHook's type
+// takes a *sqlcgen.Queries, not an internal/agents.Service (which
+// internal/issuance must not import, R7), so this is wired directly by
+// value.
+func LiveGrantsNeedKeyTx(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (bool, error) {
+	ids, err := q.LiveGrantIDsForCert(ctx, certID)
 	if err != nil || len(ids) == 0 {
 		return false, err
 	}
-	rows, err := s.Q.GrantSources(ctx, ids)
+	rows, err := q.GrantSources(ctx, ids)
 	if err != nil {
 		return false, err
 	}
@@ -188,6 +210,12 @@ func (s *Service) LiveGrantsNeedKey(ctx context.Context, certID uuid.UUID) (bool
 		}
 	}
 	return false, nil
+}
+
+// LiveGrantsNeedKey is LiveGrantsNeedKeyTx over the service's own
+// connection pool, for a caller outside any transaction.
+func (s *Service) LiveGrantsNeedKey(ctx context.Context, certID uuid.UUID) (bool, error) {
+	return LiveGrantsNeedKeyTx(ctx, s.Q, certID)
 }
 
 func targetOf(typ *string, cfg []byte) *agentproto.Target {
@@ -458,21 +486,10 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Q.WithTx(tx)
-	// Referenced rows lock first, the client last (package comment): hooks
-	// and layout/target here, then the certificate, then the client below.
+	// Referenced rows lock first, the client last (package comment): hooks,
+	// layout/target and the certificate all lock inside checkRefs, then the
+	// client below.
 	if err := s.checkRefs(ctx, q, orgID, in); err != nil {
-		return uuid.Nil, err
-	}
-	// Locks the certificate FOR KEY SHARE before inserting a row that
-	// references it: FOR KEY SHARE conflicts with DeleteCertificate's FOR
-	// UPDATE, so the two serialize instead of a delete racing this insert
-	// (checkRefs's existence check alone is not enough: the certificate
-	// could be deleted between that check and the insert). Also serializes
-	// against a certificate rename (UpdateCertificate's GetCertificateForUpdate,
-	// also FOR UPDATE).
-	if _, err := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: in.CertID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, invalid("certificateId", "certificate %s is not in this org", in.CertID)
-	} else if err != nil {
 		return uuid.Nil, err
 	}
 	c, err := s.lockClient(ctx, q, orgID, clientID)
@@ -525,9 +542,11 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 	if err := in.validate(); err != nil {
 		return err
 	}
-	// Referenced rows (hooks, layout/target) lock before the client, same
-	// order as CreateGrant; the certificate itself is not locked here since
-	// UpdateGrant never changes it.
+	// Referenced rows (hooks, layout/target, certificate) lock before the
+	// client, same order as CreateGrant, inside checkRefs. UpdateGrant never
+	// changes the certificate, but checkRefs still locks and re-checks it
+	// (the needsKey rule can newly apply when a layout/target changes even
+	// though the certificate itself does not).
 	if err := s.checkRefs(ctx, q, orgID, in); err != nil {
 		return err
 	}

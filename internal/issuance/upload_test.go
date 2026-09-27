@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,24 +49,82 @@ func pemBlock(typ string, der []byte) []byte {
 
 func certPEM(der []byte) []byte { return pemBlock("CERTIFICATE", der) }
 
-func TestParseUploadPEM(t *testing.T) {
-	leafDER, key := ecCert(t, "leaf.example.test", 1)
-	chain1DER, _ := ecCert(t, "intermediate-1.example.test", 2)
-	chain2DER, _ := ecCert(t, "intermediate-2.example.test", 3)
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+// chainKit is a real leaf -> intermediate -> root signing chain: unlike
+// genCert/ecCert's independent self-signed certificates, each link here
+// actually satisfies CheckSignatureFrom against the one above it, so it
+// exercises ParseUpload's chain validation (fix round 1) rather than
+// tripping over it.
+type chainKit struct {
+	leafDER, intDER, rootDER []byte
+	leafKey                  *ecdsa.PrivateKey
+}
+
+func buildChain(t *testing.T, cn string) chainKit {
+	t.Helper()
+	now := time.Now()
+	caTpl := func(serial int64, name string) *x509.Certificate {
+		return &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: name},
+			NotBefore: now.Add(-time.Hour), NotAfter: now.Add(365 * 24 * time.Hour),
+			IsCA: true, KeyUsage: x509.KeyUsageCertSign, BasicConstraintsValid: true}
+	}
+
+	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundle := append(append(certPEM(leafDER), certPEM(chain1DER)...), certPEM(chain2DER)...)
+	rootTpl := caTpl(100, "Test Root")
+	rootDER, err := x509.CreateCertificate(rand.Reader, rootTpl, rootTpl, &rootKey.PublicKey, rootKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCert, err := x509.ParseCertificate(rootDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	intKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intTpl := caTpl(101, "Test Intermediate")
+	intDER, err := x509.CreateCertificate(rand.Reader, intTpl, rootCert, &intKey.PublicKey, rootKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intCert, err := x509.ParseCertificate(intDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafTpl := &x509.Certificate{SerialNumber: big.NewInt(102), Subject: pkix.Name{CommonName: cn},
+		NotBefore: now.Add(-time.Hour), NotAfter: now.Add(90 * 24 * time.Hour), DNSNames: []string{cn}}
+	leafDER, err := x509.CreateCertificate(rand.Reader, leafTpl, intCert, &leafKey.PublicKey, intKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return chainKit{leafDER: leafDER, intDER: intDER, rootDER: rootDER, leafKey: leafKey}
+}
+
+func TestParseUploadPEM(t *testing.T) {
+	ck := buildChain(t, "leaf.example.test")
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(ck.leafKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := append(append(certPEM(ck.leafDER), certPEM(ck.intDER)...), certPEM(ck.rootDER)...)
 
 	iss, kt, err := ParseUpload(UploadInput{CertificatePEM: bundle, PrivateKeyPEM: pemBlock("PRIVATE KEY", pkcs8)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(iss.LeafDER) != string(leafDER) {
+	if string(iss.LeafDER) != string(ck.leafDER) {
 		t.Fatal("leaf mismatch")
 	}
-	if len(iss.ChainDER) != 2 || string(iss.ChainDER[0]) != string(chain1DER) || string(iss.ChainDER[1]) != string(chain2DER) {
+	if len(iss.ChainDER) != 2 || string(iss.ChainDER[0]) != string(ck.intDER) || string(iss.ChainDER[1]) != string(ck.rootDER) {
 		t.Fatalf("chain order wrong: %d entries", len(iss.ChainDER))
 	}
 	if kt != signer.EC256 {
@@ -76,7 +135,7 @@ func TestParseUploadPEM(t *testing.T) {
 	}
 
 	// Keyless: no PrivateKeyPEM at all.
-	iss2, kt2, err := ParseUpload(UploadInput{CertificatePEM: certPEM(leafDER)})
+	iss2, kt2, err := ParseUpload(UploadInput{CertificatePEM: certPEM(ck.leafDER)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,18 +147,81 @@ func TestParseUploadPEM(t *testing.T) {
 	}
 }
 
+// TestParseUploadChainReordered is fix round 1: a chain submitted out of
+// signing order (root before intermediate) is reordered by issuer, not
+// stored as submitted.
+func TestParseUploadChainReordered(t *testing.T) {
+	ck := buildChain(t, "reordered.example.test")
+	bundle := append(append(certPEM(ck.leafDER), certPEM(ck.rootDER)...), certPEM(ck.intDER)...)
+	iss, _, err := ParseUpload(UploadInput{CertificatePEM: bundle})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(iss.ChainDER) != 2 || string(iss.ChainDER[0]) != string(ck.intDER) || string(iss.ChainDER[1]) != string(ck.rootDER) {
+		t.Fatalf("chain not reordered by issuer: %d entries", len(iss.ChainDER))
+	}
+}
+
+// TestParseUploadChainDropsRepeatedLeaf is fix round 1: a leaf repeated in
+// the chain (some tools emit the leaf again when building a "fullchain"
+// bundle) is dropped, not kept as a redundant chain entry.
+func TestParseUploadChainDropsRepeatedLeaf(t *testing.T) {
+	ck := buildChain(t, "repeat.example.test")
+	bundle := append(append(append(certPEM(ck.leafDER), certPEM(ck.leafDER)...), certPEM(ck.intDER)...), certPEM(ck.rootDER)...)
+	iss, _, err := ParseUpload(UploadInput{CertificatePEM: bundle})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(iss.ChainDER) != 2 || string(iss.ChainDER[0]) != string(ck.intDER) || string(iss.ChainDER[1]) != string(ck.rootDER) {
+		t.Fatalf("leaf not dropped from chain: %d entries", len(iss.ChainDER))
+	}
+}
+
+// TestParseUploadChainMustSignLeaf is fix round 1: a chain entry whose
+// Subject matches the leaf's Issuer (so it looks like the right next
+// link) but never actually signed it is a 422, not silently accepted.
+func TestParseUploadChainMustSignLeaf(t *testing.T) {
+	ck := buildChain(t, "wrongchain.example.test")
+	fakeKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fakeTpl := &x509.Certificate{SerialNumber: big.NewInt(777), Subject: pkix.Name{CommonName: "Test Intermediate"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(365 * 24 * time.Hour),
+		IsCA: true, KeyUsage: x509.KeyUsageCertSign, BasicConstraintsValid: true}
+	fakeDER, err := x509.CreateCertificate(rand.Reader, fakeTpl, fakeTpl, &fakeKey.PublicKey, fakeKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bundle := append(certPEM(ck.leafDER), certPEM(fakeDER)...)
+	_, _, err = ParseUpload(UploadInput{CertificatePEM: bundle})
+	var ve *ValidationError
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if !errors.As(err, &ve) || ve.Field != "certificatePem" || !strings.Contains(ve.Msg, "did not sign") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestParseUploadPKCS12(t *testing.T) {
-	leafDER, key := ecCert(t, "p12.example.test", 10)
-	chainDER, _ := ecCert(t, "p12-int.example.test", 11)
-	leaf, err := x509.ParseCertificate(leafDER)
+	ck := buildChain(t, "p12.example.test")
+	leaf, err := x509.ParseCertificate(ck.leafDER)
 	if err != nil {
 		t.Fatal(err)
 	}
-	chainCert, err := x509.ParseCertificate(chainDER)
+	intCert, err := x509.ParseCertificate(ck.intDER)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p12, err := pkcs12.Modern2023.Encode(key, leaf, []*x509.Certificate{chainCert}, "s3cret!")
+	rootCert, err := x509.ParseCertificate(ck.rootDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// caCerts given to the encoder in reverse (bag) order: root before
+	// intermediate, so a correct reorder-by-issuer is what makes this pass.
+	p12, err := pkcs12.Modern2023.Encode(ck.leafKey, leaf, []*x509.Certificate{rootCert, intCert}, "s3cret!")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,11 +230,11 @@ func TestParseUploadPKCS12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(iss.LeafDER) != string(leafDER) {
+	if string(iss.LeafDER) != string(ck.leafDER) {
 		t.Fatal("leaf mismatch")
 	}
-	if len(iss.ChainDER) != 1 || string(iss.ChainDER[0]) != string(chainDER) {
-		t.Fatalf("chain = %d entries", len(iss.ChainDER))
+	if len(iss.ChainDER) != 2 || string(iss.ChainDER[0]) != string(ck.intDER) || string(iss.ChainDER[1]) != string(ck.rootDER) {
+		t.Fatalf("chain not reordered by issuer from PKCS#12 bag order: %d entries", len(iss.ChainDER))
 	}
 	if len(iss.PrivateKeyPKCS8) == 0 {
 		t.Fatal("expected a stored key")

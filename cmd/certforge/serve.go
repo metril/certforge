@@ -135,6 +135,10 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// (Task 13) re-renders any grant already on the certificate exactly
 	// like a freshly issued one does.
 	issuanceSvc.Listeners = append(issuanceSvc.Listeners, agentSvc)
+	// Backs UploadVersion's keyless-grant rule (fix round 1); see
+	// issuance.Service.KeylessGrantHook and agents.LiveGrantsNeedKeyTx's own
+	// doc comments for why this is wired as a plain function value.
+	issuanceSvc.KeylessGrantHook = agents.LiveGrantsNeedKeyTx
 	// Started with a context independent of the shutdown signal: cancelling
 	// the context passed to Start aborts running jobs immediately (river's
 	// contract), which would race the graceful drain stopRiver performs below.
