@@ -117,11 +117,15 @@ func (s *Store) RecordCertIssued(ctx context.Context, tx pgx.Tx, caID, certID uu
 }
 
 // RecordFailedValidation writes one failed_validation row per registered
-// domain of names.
-func (s *Store) RecordFailedValidation(ctx context.Context, caID uuid.UUID, names []string, at time.Time) error {
+// domain of names, carrying certID (fix round 1: a failed_validation row
+// used to carry no cert_id at all, so a certificate that only ever failed
+// could never be discovered by RateLedgerReport's domain scoping — it has
+// no names_hash/duplicate scoping of its own, unlike cert_issued, but the
+// certificate that failed is still attributable).
+func (s *Store) RecordFailedValidation(ctx context.Context, caID, certID uuid.UUID, names []string, at time.Time) error {
 	for _, d := range RegisteredDomains(names) {
 		if err := s.q.InsertLedgerRow(ctx, sqlcgen.InsertLedgerRowParams{CaID: caID, Kind: kindFailedValidation,
-			RegisteredDomain: d, At: at}); err != nil {
+			RegisteredDomain: d, CertID: &certID, At: at}); err != nil {
 			return err
 		}
 	}
@@ -244,15 +248,15 @@ type LedgerItem struct {
 func (s *Store) RateLedgerReport(ctx context.Context, orgID, caID uuid.UUID, limits RateLimits, cert *Certificate, now time.Time) ([]LedgerItem, error) {
 	var items []LedgerItem
 
-	// The calling org's registered domains against caID. Only cert_issued
-	// rows carry a cert_id — a failed_validation row is not tied to any one
-	// certificate (RecordFailedValidation runs from fail, which no longer
-	// has the succeed transaction to attribute it precisely) — so domain
-	// discovery goes through cert_issued history alone and is reused for
-	// both domain-scoped items below; each item's count stays CA-wide
+	// The calling org's registered domains against caID, discovered across
+	// every kind that carries a cert_id (cert_issued and failed_validation;
+	// new_order never does and so never matches) over the widest window (7d)
+	// — reused for both domain-scoped items below, so a certificate that has
+	// only ever failed validation is still discoverable even though it has
+	// no cert_issued row of its own. Each item's own count stays CA-wide
 	// either way.
 	domains, err := s.q.LedgerDomainsInWindow(ctx, sqlcgen.LedgerDomainsInWindowParams{
-		CaID: caID, Kind: kindCertIssued, At: now.Add(-windowCertsPerDomain), OrgID: orgID})
+		CaID: caID, At: now.Add(-windowCertsPerDomain), OrgID: orgID})
 	if err != nil {
 		return nil, err
 	}

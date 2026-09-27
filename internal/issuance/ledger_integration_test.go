@@ -55,6 +55,57 @@ func TestCheckLedgerWindows(t *testing.T) {
 	}
 }
 
+// TestCheckLedgerExcludesExactWindowBoundary: fix round 1 (controller
+// ruling). A row exactly window-old (at == now-window) must not count: the
+// window's own RetryAt is oldest+window, so a retry exactly at RetryAt must
+// see that oldest row have already left, not still count it.
+func TestCheckLedgerExcludesExactWindowBoundary(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	c := f.cert(t, []string{"boundary.example.test"}, nil)
+	boundary := now0.Add(-7 * 24 * time.Hour) // exactly the 7d edge
+	if err := f.store.RecordCertIssued(ctx, nil, f.ca.ID, c.ID, []string{"boundary.example.test"}, boundary); err != nil {
+		t.Fatal(err)
+	}
+	exceeded, err := CheckLedger(ctx, f.store, f.ca.ID, []string{"boundary.example.test"}, RateLimits{CertsPerRegisteredDomainPerWeek: 1}, now0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exceeded != nil {
+		t.Fatalf("exceeded = %+v, want nil: a row exactly at the window boundary must not count", exceeded)
+	}
+}
+
+// TestRateLedgerReportShowsFailingOnlyCertificate: fix round 1 (review
+// finding). A certificate that has only ever failed validation (never
+// issued) must still surface a failedValidationsPerHour item for its
+// domain — failed_validation rows carry no names_hash/duplicate scoping,
+// but they do carry cert_id, and domain discovery must consider them.
+func TestRateLedgerReportShowsFailingOnlyCertificate(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	c := f.cert(t, []string{"failsonly.example.test"}, nil)
+	if err := f.store.RecordFailedValidation(ctx, f.ca.ID, c.ID, []string{"failsonly.example.test"}, now0.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	items, err := f.store.RateLedgerReport(ctx, f.org, f.ca.ID, RateLimits{FailedValidationsPerHour: 5}, nil, now0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, it := range items {
+		if it.Limit == LimitFailedValidationsPerHour && it.Scope == "example.test" {
+			found = true
+			if it.Count != 1 {
+				t.Fatalf("count = %d, want 1", it.Count)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("failedValidationsPerHour item missing for a certificate that only ever failed validation; items = %+v", items)
+	}
+}
+
 // TestLedgerStagingRecordsOnly drives a staging-preset issuance whose
 // pre-recorded ledger is far over every limit: the rate_ledger step must
 // still succeed ("recorded only (staging CA)"), never enforcing.

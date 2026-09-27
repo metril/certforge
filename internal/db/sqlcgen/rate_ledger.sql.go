@@ -14,7 +14,7 @@ import (
 
 const countLedgerByCA = `-- name: CountLedgerByCA :one
 SELECT count(*) FROM rate_ledger
-WHERE ca_id = $1 AND kind = $2 AND at >= $3
+WHERE ca_id = $1 AND kind = $2 AND at > $3
 `
 
 type CountLedgerByCAParams struct {
@@ -34,7 +34,7 @@ func (q *Queries) CountLedgerByCA(ctx context.Context, arg CountLedgerByCAParams
 
 const countLedgerByDomain = `-- name: CountLedgerByDomain :one
 SELECT count(*) FROM rate_ledger
-WHERE ca_id = $1 AND kind = $2 AND registered_domain = $3 AND at >= $4
+WHERE ca_id = $1 AND kind = $2 AND registered_domain = $3 AND at > $4
 `
 
 type CountLedgerByDomainParams struct {
@@ -45,7 +45,10 @@ type CountLedgerByDomainParams struct {
 }
 
 // Counts kind's rows scoped to one registered domain (certsPerRegistered
-// DomainPerWeek, failedValidationsPerHour). CA-wide: not org-scoped.
+// DomainPerWeek, failedValidationsPerHour). CA-wide: not org-scoped. at > $4
+// (not >=), fix round 1: a row exactly window-old must not still count, or
+// a retry exactly at RetryAt (oldest+window) would wrongly see it blocked
+// again.
 func (q *Queries) CountLedgerByDomain(ctx context.Context, arg CountLedgerByDomainParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countLedgerByDomain,
 		arg.CaID,
@@ -60,7 +63,7 @@ func (q *Queries) CountLedgerByDomain(ctx context.Context, arg CountLedgerByDoma
 
 const countLedgerByNames = `-- name: CountLedgerByNames :one
 SELECT count(*) FROM rate_ledger
-WHERE ca_id = $1 AND kind = $2 AND names_hash = $3 AND registered_domain = $4 AND at >= $5
+WHERE ca_id = $1 AND kind = $2 AND names_hash = $3 AND registered_domain = $4 AND at > $5
 `
 
 type CountLedgerByNamesParams struct {
@@ -121,27 +124,25 @@ func (q *Queries) InsertLedgerRow(ctx context.Context, arg InsertLedgerRowParams
 const ledgerDomainsInWindow = `-- name: LedgerDomainsInWindow :many
 SELECT DISTINCT rl.registered_domain FROM rate_ledger rl
 JOIN certificates c ON c.id = rl.cert_id
-WHERE rl.ca_id = $1 AND rl.kind = $2 AND rl.at >= $3 AND c.org_id = $4
+WHERE rl.ca_id = $1 AND rl.at > $2 AND c.org_id = $3
 ORDER BY rl.registered_domain
 `
 
 type LedgerDomainsInWindowParams struct {
 	CaID  uuid.UUID `json:"ca_id"`
-	Kind  string    `json:"kind"`
 	At    time.Time `json:"at"`
 	OrgID uuid.UUID `json:"org_id"`
 }
 
-// The distinct registered domains kind has rows for, in the window, scoped
-// to certificates the calling org owns (GetRateLedger's item scopes); the
-// counts themselves stay CA-wide (queried separately, unscoped by org).
+// The distinct registered domains with any rate-ledger activity in the
+// window (fix round 1: every kind, not just cert_issued — a
+// failed_validation row carries cert_id too, and a certificate that has
+// only ever failed must still be discoverable), scoped to certificates the
+// calling org owns (GetRateLedger's item scopes); new_order rows carry no
+// cert_id and so never match this join at all. The counts themselves stay
+// CA-wide (queried separately, unscoped by org).
 func (q *Queries) LedgerDomainsInWindow(ctx context.Context, arg LedgerDomainsInWindowParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, ledgerDomainsInWindow,
-		arg.CaID,
-		arg.Kind,
-		arg.At,
-		arg.OrgID,
-	)
+	rows, err := q.db.Query(ctx, ledgerDomainsInWindow, arg.CaID, arg.At, arg.OrgID)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +163,7 @@ func (q *Queries) LedgerDomainsInWindow(ctx context.Context, arg LedgerDomainsIn
 
 const oldestLedgerByCA = `-- name: OldestLedgerByCA :one
 SELECT min(at)::timestamptz FROM rate_ledger
-WHERE ca_id = $1 AND kind = $2 AND at >= $3
+WHERE ca_id = $1 AND kind = $2 AND at > $3
 `
 
 type OldestLedgerByCAParams struct {
@@ -181,7 +182,7 @@ func (q *Queries) OldestLedgerByCA(ctx context.Context, arg OldestLedgerByCAPara
 
 const oldestLedgerByDomain = `-- name: OldestLedgerByDomain :one
 SELECT min(at)::timestamptz FROM rate_ledger
-WHERE ca_id = $1 AND kind = $2 AND registered_domain = $3 AND at >= $4
+WHERE ca_id = $1 AND kind = $2 AND registered_domain = $3 AND at > $4
 `
 
 type OldestLedgerByDomainParams struct {
@@ -208,7 +209,7 @@ func (q *Queries) OldestLedgerByDomain(ctx context.Context, arg OldestLedgerByDo
 
 const oldestLedgerByNames = `-- name: OldestLedgerByNames :one
 SELECT min(at)::timestamptz FROM rate_ledger
-WHERE ca_id = $1 AND kind = $2 AND names_hash = $3 AND registered_domain = $4 AND at >= $5
+WHERE ca_id = $1 AND kind = $2 AND names_hash = $3 AND registered_domain = $4 AND at > $5
 `
 
 type OldestLedgerByNamesParams struct {

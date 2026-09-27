@@ -33,7 +33,7 @@ func TestGetRateLedgerAPI(t *testing.T) {
 	if err := f.store.RecordCertIssued(ctx, nil, ca.Id, c.ID, []string{"a.example.test"}, now.Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.store.RecordFailedValidation(ctx, ca.Id, []string{"a.example.test"}, now.Add(-time.Minute)); err != nil {
+	if err := f.store.RecordFailedValidation(ctx, ca.Id, c.ID, []string{"a.example.test"}, now.Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 

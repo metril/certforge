@@ -251,6 +251,13 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 			tl.Logf("reuseKey requested but the stored key could not be read (%v); generating a fresh key", err)
 		}
 	}
+	// Recorded here, directly before the order is actually sent: everything
+	// above (account lookup, CA-mismatch check, router/solver build) can
+	// still fail the attempt without ever contacting the CA, and none of
+	// those must count as an order (fix round 1).
+	if err := w.Store.RecordNewOrder(ctx, ca.ID, w.Now()); err != nil {
+		return nil, eff, err
+	}
 	tl.Step("order", challenge.StepRunning, strings.Join(req.Names, ", "))
 	iss, err := sig.Issue(ctx, req)
 	if err != nil {
@@ -350,13 +357,15 @@ var validationFailureTypes = map[string]bool{
 }
 
 // rateLedgerStep runs the local rate-limit check (R7) for cert's names
-// against ca's CA-wide ledger, then records a new_order row for the attempt
-// about to run — always, even for a staging preset, which is recorded but
-// never enforced (its CA does not itself rate-limit; Deviations R7).
+// against ca's CA-wide ledger. A staging preset is never enforced (its CA
+// does not itself rate-limit; Deviations R7) — the check is skipped, but
+// its new_order row is still recorded like any other CA's, directly before
+// sig.Issue (fix round 1: recording it here, before the account lookup,
+// the CA-mismatch check and the solver build, counted orders that were
+// never actually sent whenever one of those failed first).
 func (w *IssueWorker) rateLedgerStep(ctx context.Context, tl *Timeline, cert Certificate, ca CA, cfg IssuanceSettings) error {
 	tl.Step("rate_ledger", challenge.StepRunning, "")
-	staging := ca.Staging()
-	if !staging {
+	if !ca.Staging() {
 		exceeded, err := CheckLedger(ctx, w.Store, ca.ID, cert.Names(), cfg.RateLimits, w.Now())
 		if err != nil {
 			return err
@@ -365,15 +374,10 @@ func (w *IssueWorker) rateLedgerStep(ctx context.Context, tl *Timeline, cert Cer
 			tl.Step("rate_ledger", challenge.StepFailed, exceeded.Error())
 			return &signer.Error{Type: "urn:ietf:params:acme:error:rateLimited", Detail: exceeded.Error(), Err: exceeded}
 		}
-	}
-	if err := w.Store.RecordNewOrder(ctx, ca.ID, w.Now()); err != nil {
-		return err
-	}
-	if staging {
-		tl.Step("rate_ledger", challenge.StepSuccess, "recorded only (staging CA)")
-	} else {
 		tl.Step("rate_ledger", challenge.StepSuccess, "within limits")
+		return nil
 	}
+	tl.Step("rate_ledger", challenge.StepSuccess, "recorded only (staging CA)")
 	return nil
 }
 
@@ -555,8 +559,10 @@ func (w *IssueWorker) notifyVersion(ctx context.Context, certID, versionID uuid.
 
 // fail records cause as this attempt's outcome and schedules the next one.
 // eff is the Effective resolved by run (zero-valued from the panic-recovery
-// path, which never carries an ACME error type): when it names a CA and
-// cause's ACME type is one of validationFailureTypes, a failed_validation
+// path, which never carries an ACME error type): when it names a CA, cause's
+// ACME type is one of validationFailureTypes, and se.Status is non-zero (the
+// CA actually returned it — a local pre-check like caa's own, never sent to
+// the CA, reports no HTTP status at all, fix round 1), a failed_validation
 // row is recorded against it (Deviations R7) — best-effort, logged rather
 // than failing the whole attempt-finish on a write error.
 func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, eff Effective, cause error) error {
@@ -568,8 +574,8 @@ func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid
 	if errors.As(cause, &se) {
 		acmeType, retryAfter = se.Type, se.RetryAfter
 	}
-	if caID := eff.CAID.Value; caID != nil && validationFailureTypes[acmeType] {
-		if rerr := w.Store.RecordFailedValidation(ctx, *caID, cert.Names(), now); rerr != nil {
+	if caID := eff.CAID.Value; caID != nil && se != nil && se.Status != 0 && validationFailureTypes[acmeType] {
+		if rerr := w.Store.RecordFailedValidation(ctx, *caID, cert.ID, cert.Names(), now); rerr != nil {
 			w.Log.Warn("record failed validation", "attempt", attemptID, "err", rerr)
 		}
 	}

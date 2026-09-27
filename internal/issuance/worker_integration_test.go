@@ -490,6 +490,85 @@ func TestWorkerLedgerBlocksAndSchedules(t *testing.T) {
 	}
 }
 
+// TestWorkerNewOrderNotRecordedBeforeAccountLookup: fix round 1. new_order
+// must be recorded directly before sig.Issue, not by the rate_ledger step.
+// This certificate overrides only caId to a second CA, inheriting the
+// fixture org's default accountId — which belongs to the *first* CA — so
+// run's own CA-mismatch check ("ACME account ... belongs to a different
+// CA") fires right after the account lookup succeeds, well after
+// rate_ledger but well before any order is attempted; that must leave no
+// new_order row behind.
+func TestWorkerNewOrderNotRecordedBeforeAccountLookup(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ca2, err := f.store.CreateCA(ctx, f.org, CAInput{Name: "Other CA", Preset: "custom", DirectoryURL: "https://other.test/dir", Resolvers: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred := f.credential(t, "cf")
+	c := f.cert(t, []string{"badaccount.example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	cur, err := f.store.GetCertificate(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.store.UpdateCertificate(ctx, f.org, c.ID, CertInput{Name: cur.Name, CommonName: cur.CommonName, SANs: cur.SANs,
+		Rules: cur.Rules, Overrides: Defaults{CAID: &ca2.ID}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	fs := &fakeSigner{}
+	if err := newWorker(f, fs).Issue(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fs.calls != 0 {
+		t.Fatalf("signer.Issue was called %d time(s)", fs.calls)
+	}
+	got, err := f.store.GetCertificate(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != StatusFailed || !strings.Contains(got.LastError, "different CA") {
+		t.Fatalf("cert = %+v, want a CA-mismatch failure", got)
+	}
+	// The effective CA for this attempt was ca2, not the fixture's f.ca:
+	// f.ledgerCount only ever looks at f.ca's rows, so it would misreport
+	// zero regardless of where new_order landed. Count ca2's own rows.
+	var n int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM rate_ledger WHERE ca_id = $1 AND kind = $2`, ca2.ID, kindNewOrder).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("new_order rows = %d, want 0 (the CA-mismatch check failed before any order was attempted)", n)
+	}
+}
+
+// TestFailDoesNotRecordFailedValidationForLocalCAAForbid: fix round 1
+// (controller ruling). The caa step's own local pre-check never contacts
+// the CA (signer.Error.Status stays 0), so its failure must not count
+// against failedValidationsPerHour — that limit tracks failures the CA
+// itself saw.
+func TestFailDoesNotRecordFailedValidationForLocalCAAForbid(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	cred := f.credential(t, "cf")
+	c := f.cert(t, []string{"caa-fail.example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	fs := &caaSigner{identities: []string{"letsencrypt.org"}}
+	w := newWorker(f, &fs.fakeSigner)
+	w.NewSigner = func(CA) signer.Signer { return fs }
+	w.CAA = fakeCAAResolver{records: map[string][]CAARecord{
+		"caa-fail.example.test": {{Tag: "issue", Value: "other-ca.example"}},
+	}}
+	if err := w.Issue(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	a := lastAttempt(t, f, c.ID)
+	if st := stepStatus(a)["caa"]; st != challenge.StepFailed {
+		t.Fatalf("caa step = %q, want failed", st)
+	}
+	if n := f.ledgerCount(t, kindFailedValidation); n != 0 {
+		t.Fatalf("failed_validation rows = %d, want 0 (a local CAA pre-check never reached the CA)", n)
+	}
+}
+
 func TestIssueSuccessNotifiesListeners(t *testing.T) {
 	f := newFixture(t)
 	cred := f.credential(t, "cf")
