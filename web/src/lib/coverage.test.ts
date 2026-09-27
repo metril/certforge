@@ -63,20 +63,62 @@ it('toAscii and matchRule still treat "*" as a wildcard under a Chromium-parity 
 
 const names = ['www.example.com', '*.example.com', 'api.other.net', '10.0.0.1'];
 
-it('reports first-match rules, missing credentials, inherited catch-all, and IPs', () => {
+it('reports first-match rules, incomplete rules, inherited catch-all, and IPs', () => {
   const c = coverage(
     names,
     [
-      { match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' as const },
-      { match: 'other.net', method: 'dns-01', via: 'server' as const },
+      { match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' },
+      { match: 'other.net', method: 'dns-01' },
     ],
     null,
   );
-  expect(c.map((x) => x.state)).toEqual(['rule', 'rule', 'missing-credential', 'ip']);
-  const inh = { rules: [{ match: '*', method: 'dns-01' as const, dnsCredentialId: 'd-2', via: 'server' as const }], source: 'org' as const };
+  expect(c.map((x) => x.state)).toEqual(['rule', 'rule', 'incomplete', 'ip']);
+  const inh = { rules: [{ match: '*', method: 'dns-01' as const, dnsCredentialId: 'd-2' }], source: 'org' as const };
   expect(coverage(['api.other.net'], [], inh)[0]).toMatchObject({ state: 'inherited', source: 'org' });
   expect(verificationReady(['api.other.net'], [], inh)).toBe(true);
   expect(verificationReady(['api.other.net'], [], null)).toBe(false);
+});
+
+// Context (post-4A review): the server rejects a wildcard's http-01/tls-
+// alpn-01 rule the same way it rejects no match at all, falling through to
+// the next rule — a wildcard can never be covered by either method.
+it('a wildcard resolving only to an http-01 or tls-alpn-01 rule is "wildcard-non-dns", not covered', () => {
+  const rules = [{ match: '*.a.test', method: 'http-01' as const, via: 'server' as const }];
+  const c = coverage(['*.a.test'], rules, null);
+  expect(c[0]).toMatchObject({ name: '*.a.test', state: 'wildcard-non-dns' });
+  expect(verificationReady(['*.a.test'], rules, null)).toBe(false);
+});
+
+it('a wildcard falls through a skipped http-01 rule to a later dns-01 rule', () => {
+  const rules = [
+    { match: '*.a.test', method: 'http-01' as const, via: 'server' as const },
+    { match: 'a.test', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+  ];
+  const c = coverage(['*.a.test'], rules, null);
+  expect(c[0]).toMatchObject({ name: '*.a.test', state: 'rule', ruleIndex: 1 });
+});
+
+it('an http-01 rule via agent with no client is incomplete', () => {
+  const rules = [{ match: 'a.test', method: 'http-01' as const, via: 'agent' as const }];
+  expect(coverage(['a.test'], rules, null)[0]).toMatchObject({ state: 'incomplete' });
+  const withClient = [{ match: 'a.test', method: 'http-01' as const, via: 'agent' as const, clientId: 'c-1' }];
+  expect(coverage(['a.test'], withClient, null)[0]).toMatchObject({ state: 'rule' });
+});
+
+it('a tls-alpn-01 rule with no client is incomplete', () => {
+  const rules = [{ match: 'a.test', method: 'tls-alpn-01' as const }];
+  expect(coverage(['a.test'], rules, null)[0]).toMatchObject({ state: 'incomplete' });
+});
+
+it('mixed methods are each covered by their own rule', () => {
+  const rules = [
+    { match: 'a.test', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+    { match: 'b.test', method: 'http-01' as const, via: 'server' as const },
+    { match: 'c.test', method: 'tls-alpn-01' as const, clientId: 'c-1' },
+  ];
+  const c = coverage(['a.test', 'b.test', 'c.test'], rules, null);
+  expect(c.map((x) => x.state)).toEqual(['rule', 'rule', 'rule']);
+  expect(verificationReady(['a.test', 'b.test', 'c.test'], rules, null)).toBe(true);
 });
 
 // Fix round 1 (review, Important): the router strips a wildcard name's
@@ -110,16 +152,12 @@ it('an invalid match pattern blocks verificationReady even when coverage would o
   expect(verificationReady(['a.example.com'], rules, null)).toBe(false);
 });
 
-it('prefills one rule per zone, never guesses a credential, and leans on a catch-all', () => {
+it('prefills one dns-01 rule per zone, never guesses a credential, and leans on a catch-all', () => {
   const suggest = (z: string) => (z === 'example.com' ? 'd-1' : undefined);
-  expect(prefillRules(names, 'dns-01', suggest, null)).toEqual([
-    { match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' },
-    { match: 'other.net', method: 'dns-01', via: 'server' },
+  expect(prefillRules(names, suggest, null)).toEqual([
+    { match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' },
+    { match: 'other.net', method: 'dns-01' },
   ]);
-  const inh = { rules: [{ match: '*', method: 'dns-01' as const, dnsCredentialId: 'd-2', via: 'server' as const }], source: 'org' as const };
-  expect(prefillRules(names, 'dns-01', suggest, inh)).toEqual([{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }]);
-  expect(prefillRules(names, 'manual-dns', suggest, null)).toEqual([
-    { match: 'example.com', method: 'manual-dns', via: 'server' },
-    { match: 'other.net', method: 'manual-dns', via: 'server' },
-  ]);
+  const inh = { rules: [{ match: '*', method: 'dns-01' as const, dnsCredentialId: 'd-2' }], source: 'org' as const };
+  expect(prefillRules(names, suggest, inh)).toEqual([{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }]);
 });

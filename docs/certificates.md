@@ -108,6 +108,12 @@ Optional per `dns-01`/`manual-dns` rule: `propagationSeconds`, `resolvers`, `cna
 
 With `via: server` (the default), CertForge answers the ACME CA's http-01 validation request itself: it stores the token's key authorization in memory for up to 10 minutes and serves it at `GET /.well-known/acme-challenge/{token}` on the main HTTP listener — unauthenticated, plain text, not under `/api/v1` (see [docs/api.md](api.md)). The CA must be able to reach that path over plain HTTP on port 80 for the certificate's names, so put CertForge's main listener behind (or route port 80 directly to) whatever serves those names; see [docs/operations.md](operations.md) for a reverse-proxy example.
 
+With `via: agent`, the named client answers instead: on its own http-01 listener (`CF_AGENT_HTTP01_LISTEN`) when it has one, or by writing the token to a file under `webroot` for another web server on that host to serve — set `webroot` only when the client has no listener of its own. See [agent.md#challenge-serving](agent.md#challenge-serving).
+
+#### TLS-ALPN-01
+
+`tls-alpn-01` has no server mode: the named client answers on its own TLS listener (`CF_AGENT_TLSALPN_LISTEN`), presenting a self-signed certificate with the validation value in a `acmeIdentifier` extension during the TLS handshake on port 443 — there is no file to write and no `webroot`. See [agent.md#challenge-serving](agent.md#challenge-serving).
+
 #### Mixing methods
 
 A certificate's rules no longer have to share one method: `www.example.com` can use `dns-01` while `api.example.com` uses `http-01` and `mail.example.com` uses `tls-alpn-01`, all in the same certificate and the same CA order. Each name's own rule decides its method exactly as in [Verification rules](#verification-rules) — there is nothing extra to configure to mix them.
@@ -116,11 +122,11 @@ Internally, a certificate whose names resolve to more than one challenge type is
 
 ### The verification rules step (web UI)
 
-Pick a **Method** first: **DNS-01** (a DNS credential writes the TXT record) or **Manual DNS** (you add the records by hand; see [manual-dns](#manual-dns)). The API already supports a per-rule method (including http-01 and tls-alpn-01, and mixing them — see [Mixing methods](#mixing-methods)); the wizard's own per-rule method selector arrives with the certificates web UI work (Phase 4B), so this version picks one method for the whole certificate.
+Rules are an ordered list; drag a row's grip to reorder, or use its **Move up**/**Move down** buttons. Each row picks its own **Method** (**DNS** / **Manual** / **HTTP** / **TLS-ALPN**) — a certificate can mix them, as in [Mixing methods](#mixing-methods). A DNS row shows a credential picker; an HTTP row shows **Served by** (**Server**, the default, or **Agent**) and, under Agent, a client picker plus an optional **Webroot** under **Advanced**; a TLS-ALPN row shows a client picker. A client picker only offers active clients that report the method's capability, unless an HTTP row has a webroot set, where any active client can write the token file. **Advanced** also holds propagation wait, resolvers, and (DNS only) a CNAME alias zone.
 
-Rules are an ordered list; drag a row's grip to reorder, or use its **Move up**/**Move down** buttons. The wizard pre-fills one rule per registered domain with the credential you last used for that zone (remembered locally) or, failing that, a credential an existing certificate already uses there. If no credential is known and your organization's catch-all rule already covers the name, no rule is added; otherwise the rule is added without a credential, and the **Coverage** list shows **No credential** — issuing stays blocked until you pick one or use **Add credential**, which opens the provider picker and the credential form without leaving the wizard. **Advanced** per rule: propagation wait, resolvers, and a CNAME alias zone.
+The wizard pre-fills one DNS rule per registered domain with the credential you last used for that zone (remembered locally) or, failing that, a credential an existing certificate already uses there. If no credential is known and your organization's catch-all rule already covers the name, no rule is added; otherwise the rule is added without a credential, and the **Coverage** list shows **No credential** — issuing stays blocked until you pick one, switch the row to another method, or use **Add credential**, which opens the provider picker and the credential form without leaving the wizard. **Add rule** copies the previous row's method.
 
-The **Coverage** panel lists every certificate name with the rule that proves it, or **Catch-all: inherited from Org/Global** when none of the certificate's own rules match but the org or global catch-all does. A name with neither is flagged and blocks **Next**.
+The **Coverage** panel lists every certificate name with the rule and method that prove it (for example "HTTP · server" or "DNS · cloudflare-prod"), or **Catch-all: inherited from Org/Global** when none of the certificate's own rules match but the org or global catch-all does. A wildcard name that only resolves to an HTTP or TLS-ALPN rule shows **Wildcards need a DNS method** — see [Verification methods](#verification-methods). A name with neither is flagged and blocks **Next**.
 
 ### CNAME delegation
 

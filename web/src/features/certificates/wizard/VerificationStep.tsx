@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type Dispatch } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { allCertificatesQuery } from '@/api/queries/certificates';
+import { allClientsQuery } from '@/api/queries/clients';
 import { dnsCredentialsQuery, metaSchemasQuery } from '@/api/queries/dns';
 import type { ProviderSchema } from '@/api/types';
 import { CredentialSheet } from '@/features/issuers/CredentialSheet';
@@ -16,17 +17,19 @@ type Props = { orgId: string; state: WizardState; dispatch: Dispatch<WizardActio
 export function VerificationStep({ orgId, state, dispatch, inherited }: Props) {
   const credsQ = useQuery(dnsCredentialsQuery(orgId));
   const certsQ = useQuery(allCertificatesQuery(orgId));
+  const clientsQ = useQuery(allClientsQuery(orgId));
   const { data: meta } = useQuery(metaSchemasQuery);
   const creds = useMemo(() => credsQ.data ?? [], [credsQ.data]);
+  const clients = useMemo(() => clientsQ.data?.items ?? [], [clientsQ.data]);
   const [pickerFor, setPickerFor] = useState<number | null>(null);
   const [sheet, setSheet] = useState<{ provider: ProviderSchema; ruleIndex: number } | null>(null);
 
-  // Until the user edits the rules, keep them prefilled from the names (one per zone).
+  // Until the user edits the rules, keep them prefilled from the names (one dns-01 rule per zone).
   useEffect(() => {
     if (state.rulesTouched || !credsQ.isSuccess || !certsQ.isSuccess) return;
-    const rules = prefillRules(state.names, state.method, makeSuggester(certsQ.data, creds), inherited);
+    const rules = prefillRules(state.names, makeSuggester(certsQ.data, creds), inherited);
     if (JSON.stringify(rules) !== JSON.stringify(state.rules)) dispatch({ type: 'prefillRules', rules });
-  }, [state.rulesTouched, state.names, state.method, state.rules, credsQ.isSuccess, certsQ.isSuccess, certsQ.data, creds, inherited, dispatch]);
+  }, [state.rulesTouched, state.names, state.rules, credsQ.isSuccess, certsQ.isSuccess, certsQ.data, creds, inherited, dispatch]);
 
   // Fix round 1 (review): remembering a rule's credential per zone happens
   // once, after a certificate is actually created (Task 14, via
@@ -40,12 +43,11 @@ export function VerificationStep({ orgId, state, dispatch, inherited }: Props) {
       <VerificationRulesEditor
         rules={state.rules}
         onChange={(rules) => dispatch({ type: 'setRules', rules })}
-        method={state.method}
-        onMethodChange={(method) => dispatch({ type: 'setMethod', method })}
         credentials={creds}
+        clients={clients}
         onAddCredential={setPickerFor}
       />
-      <CoveragePanel items={coverage(state.names, state.rules, inherited)} credentials={creds} />
+      <CoveragePanel items={coverage(state.names, state.rules, inherited)} credentials={creds} clients={clients} />
       <ProviderPicker
         open={pickerFor !== null}
         onOpenChange={(o) => !o && setPickerFor(null)}

@@ -208,7 +208,7 @@ it('renders and saves the Verification rules field', async () => {
   await user.click(rulesField.getByRole('switch', { name: 'Override Verification rules' }));
   expect(await rulesField.findByLabelText('Rule 1 match')).toHaveValue('*');
   await user.click(screen.getByRole('button', { name: 'Save org defaults' }));
-  await waitFor(() => expect((puts.org as Record<string, unknown>).verificationRules).toEqual([{ match: '*', method: 'dns-01', via: 'server' }]));
+  await waitFor(() => expect((puts.org as Record<string, unknown>).verificationRules).toEqual([{ match: '*', method: 'dns-01' }]));
 });
 
 it('disables Override for a lookup field with nothing to choose', async () => {

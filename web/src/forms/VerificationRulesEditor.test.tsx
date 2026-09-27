@@ -1,35 +1,84 @@
 import { useState } from 'react';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
-import type { VerificationMethod, VerificationRule } from '@/api/types';
+import type { VerificationRule } from '@/api/types';
+import { makeClient } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { VerificationRulesEditor } from './VerificationRulesEditor';
 
+const clients = [
+  makeClient({ id: 'cl-http', name: 'web-1', status: 'active', capabilities: ['http-01'] }),
+  makeClient({ id: 'cl-alpn', name: 'web-2', status: 'active', capabilities: ['tls-alpn-01'] }),
+];
+
 function Harness({ initial }: { initial: VerificationRule[] }) {
   const [rules, setRules] = useState(initial);
-  const [method, setMethod] = useState<VerificationMethod>(initial[0]?.method ?? 'dns-01');
-  return <VerificationRulesEditor rules={rules} onChange={setRules} method={method} onMethodChange={setMethod} credentials={[]} />;
+  return <VerificationRulesEditor rules={rules} onChange={setRules} credentials={[]} clients={clients} />;
 }
 
-// Fix round 1 (review, item 5): manual-dns needs no DNS credential, so
-// neither the row's combobox nor the column-header tooltip should appear.
-it('manual-dns hides the credential column and its header', () => {
-  renderUI(<Harness initial={[{ match: 'example.com', method: 'manual-dns', via: 'server' }]} />);
-  expect(screen.queryByRole('combobox', { name: 'Rule 1 credential' })).toBeNull();
-  expect(screen.queryByText('Credential')).toBeNull();
-  expect(screen.getByText('Match')).toBeInTheDocument();
+it('every row picks its own method, DNS / Manual / HTTP / TLS-ALPN', () => {
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01' }]} />);
+  expect(screen.getByRole('radiogroup', { name: 'Rule 1 method' })).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'DNS' })).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'Manual' })).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'HTTP' })).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'TLS-ALPN' })).toBeInTheDocument();
 });
 
-it('dns-01 shows the credential column and its header', () => {
-  renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01', via: 'server' }]} />);
+it('manual-dns hides the credential combobox', () => {
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'manual-dns' }]} />);
+  expect(screen.queryByRole('combobox', { name: 'Rule 1 credential' })).toBeNull();
+});
+
+it('dns-01 shows the credential combobox', () => {
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01' }]} />);
   expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toBeInTheDocument();
-  expect(screen.getByText('Credential')).toBeInTheDocument();
+});
+
+it('http-01 shows Served by, defaulting to server with no client picker', () => {
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'http-01', via: 'server' }]} />);
+  expect(screen.getByRole('radiogroup', { name: 'Rule 1 served by' })).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'Server' })).toHaveAttribute('aria-checked', 'true');
+  expect(screen.queryByRole('combobox', { name: 'Rule 1 client' })).toBeNull();
+});
+
+it('http-01 via agent shows a client combobox filtered by capability', async () => {
+  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'http-01', via: 'agent' }]} />);
+  const combo = screen.getByRole('combobox', { name: 'Rule 1 client' });
+  await user.click(combo);
+  expect(screen.getByRole('option', { name: 'web-1' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'web-2' })).toBeNull();
+});
+
+it('tls-alpn-01 shows a client combobox filtered by its own capability, no Served by', () => {
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'tls-alpn-01' }]} />);
+  expect(screen.queryByRole('radiogroup', { name: 'Rule 1 served by' })).toBeNull();
+  expect(screen.getByRole('combobox', { name: 'Rule 1 client' })).toBeInTheDocument();
+});
+
+it('switching a row to HTTP clears its DNS credential and defaults via to server', async () => {
+  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }]} />);
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 1 method' })).getByRole('radio', { name: 'HTTP' }));
+  expect(screen.getByRole('radio', { name: 'Server' })).toHaveAttribute('aria-checked', 'true');
+  expect(screen.queryByRole('combobox', { name: 'Rule 1 credential' })).toBeNull();
+});
+
+it('"Add rule" copies the previous row\'s method', async () => {
+  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'tls-alpn-01' }]} />);
+  await user.click(screen.getByRole('button', { name: 'Add rule' }));
+  expect(screen.getByRole('combobox', { name: 'Rule 2 client' })).toBeInTheDocument();
+});
+
+it('"Add rule" with no rows yet defaults to dns-01', async () => {
+  const { user } = renderUI(<Harness initial={[]} />);
+  await user.click(screen.getByRole('button', { name: 'Add rule' }));
+  expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toBeInTheDocument();
 });
 
 // Fix round 1 (review, item 2): a malformed match pattern (challenge/
 // match.go's ParseMatch/validZone grammar) shows a one-line inline error.
 it('shows a one-line inline error for a match pattern the server would reject', async () => {
-  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01', via: 'server' }]} />);
+  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01' }]} />);
   const input = screen.getByLabelText('Rule 1 match');
   await user.clear(input);
   await user.type(input, 'example.com/oops');
@@ -37,6 +86,13 @@ it('shows a one-line inline error for a match pattern the server would reject', 
 });
 
 it('shows no error for an empty freshly-added row', () => {
-  renderUI(<Harness initial={[{ match: '', method: 'dns-01', via: 'server' }]} />);
+  renderUI(<Harness initial={[{ match: '', method: 'dns-01' }]} />);
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('the column header row reads Match, Method, Details', () => {
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01' }]} />);
+  expect(screen.getByText('Match')).toBeInTheDocument();
+  expect(screen.getByText('Method')).toBeInTheDocument();
+  expect(screen.getByText('Details')).toBeInTheDocument();
 });

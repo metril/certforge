@@ -117,6 +117,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - ACME Renewal Information schedules renewals and marks replacements.
 - Upload externally managed certificates as PEM or PKCS#12.
 - Download sheet offers DER, PKCS#12 and JKS with generated passwords.
+- Verification rules choose DNS, manual DNS, HTTP or TLS-ALPN per rule.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

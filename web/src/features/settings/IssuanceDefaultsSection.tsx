@@ -84,6 +84,11 @@ export function IssuanceDefaultsSection() {
   const canWriteGlobal = can(me, 'settings:write', null);
   const canWriteOrg = can(me, 'certs:write', org?.id ?? null);
   const ctx = useFieldCtx(org?.id ?? '');
+  // The Global tab's issuance defaults aren't org-scoped, so its own
+  // verification-rules editor never offers a client picker — clients live
+  // per org (FieldCtx.clients, allClientsQuery(orgId)); the Org tab below
+  // keeps the real, org-scoped list.
+  const globalCtx: typeof ctx = { ...ctx, clients: [] };
   const globalQ = useQuery(settingsQuery('issuance_defaults'));
   const orgQ = useQuery({ ...orgDefaultsQuery(org?.id ?? ''), enabled: !!org });
   const effectiveQ = useQuery({ ...effectiveDefaultsQuery(org?.id ?? ''), enabled: !!org });
@@ -127,7 +132,7 @@ export function IssuanceDefaultsSection() {
           value={globalDraft ?? globalStored ?? {}}
           onChange={setGlobalDraft}
           inherited={fromBuiltin(globalValue)}
-          ctx={ctx}
+          ctx={globalCtx}
           error={(k) => (globalError?.field === k ? globalError.message : null)}
         />
         <SaveRow

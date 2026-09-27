@@ -1,12 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, ISSUANCE_FIELDS } from './issuanceFields';
+import type { DnsCredential } from '@/api/types';
+import { makeClient } from '@/test/fixtures';
+import { renderUI } from '@/test/render';
+import { fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, ISSUANCE_FIELDS, rulesSummary, type FieldCtx } from './issuanceFields';
 
-const ctx = { cas: [], accounts: [], credentials: [] };
+const ctx: FieldCtx = { cas: [], accounts: [], credentials: [], clients: [] };
 const renewPolicy = ISSUANCE_FIELDS.find((f) => f.key === 'renewPolicy')!;
 const caField = ISSUANCE_FIELDS.find((f) => f.key === 'caId')!;
 const accountField = ISSUANCE_FIELDS.find((f) => f.key === 'accountId')!;
+const verificationRulesField = ISSUANCE_FIELDS.find((f) => f.key === 'verificationRules')!;
 
 describe('renewPolicy copy (preflight A9: value is percent of lifetime REMAINING)', () => {
   it('shows the percent copy as "remains", not "elapsed"', () => {
@@ -90,11 +95,47 @@ describe('fullPayload (review fix round 1, #1/#3)', () => {
 
 describe('lookup fields disable Override when there is nothing to choose (review fix round 1, #4)', () => {
   it('caId', () => {
-    expect(caField.disabledReason?.({ cas: [], accounts: [], credentials: [] })).toBe('No CAs yet');
-    expect(caField.disabledReason?.({ cas: [{ id: 'ca-1', name: 'x', preset: 'letsencrypt', directoryUrl: '', resolvers: [] }], accounts: [], credentials: [] })).toBeUndefined();
+    expect(caField.disabledReason?.(ctx)).toBe('No CAs yet');
+    expect(caField.disabledReason?.({ ...ctx, cas: [{ id: 'ca-1', name: 'x', preset: 'letsencrypt', directoryUrl: '', resolvers: [] }] })).toBeUndefined();
   });
   it('accountId', () => {
-    expect(accountField.disabledReason?.({ cas: [], accounts: [], credentials: [] })).toBe('No accounts yet');
+    expect(accountField.disabledReason?.(ctx)).toBe('No accounts yet');
+  });
+});
+
+describe('rulesSummary (Task 3: per-rule methods, never "no credential" for HTTP/TLS-ALPN)', () => {
+  const creds: DnsCredential[] = [{ id: 'd-1', name: 'Cloudflare prod', providerCode: 'cloudflare', config: {} }];
+  const clients = [makeClient({ id: 'c-1', name: 'web-1', status: 'active', capabilities: ['http-01', 'tls-alpn-01'] })];
+
+  it('names server or a client for HTTP/TLS-ALPN, and manual for manual-dns', () => {
+    expect(
+      rulesSummary(
+        [
+          { match: 'a.test', method: 'dns-01', dnsCredentialId: 'd-1' },
+          { match: 'b.test', method: 'http-01', via: 'server' },
+          { match: 'c.test', method: 'http-01', via: 'agent', clientId: 'c-1' },
+          { match: 'd.test', method: 'tls-alpn-01', clientId: 'c-1' },
+          { match: 'e.test', method: 'manual-dns' },
+        ],
+        creds,
+        clients,
+      ),
+    ).toBe('a.test → Cloudflare prod; b.test → server; c.test → web-1; d.test → web-1; e.test → manual');
+  });
+
+  it('an agent rule with no client says "no client", never "no credential"', () => {
+    expect(rulesSummary([{ match: 'a.test', method: 'tls-alpn-01' }], creds, clients)).toBe('a.test → no client');
+  });
+});
+
+// Task 3 (B1): the Global tab's issuance defaults aren't org-scoped, so its
+// verification-rules editor's TLS-ALPN client picker offers no clients.
+describe('the Global tab has no clients (FieldCtx.clients: [] there)', () => {
+  it('a TLS-ALPN row shows the empty text instead of any client', async () => {
+    const { user } = renderUI(<>{verificationRulesField.editor([{ match: '*', method: 'tls-alpn-01' }], () => {}, { ...ctx, clients: [] }, 'f-verificationRules')}</>);
+    await user.click(screen.getByRole('combobox', { name: 'Rule 1 client' }));
+    expect(await screen.findByText('No client serves tls-alpn-01')).toBeInTheDocument();
+    expect(screen.queryByRole('option')).toBeNull();
   });
 });
 

@@ -4,7 +4,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import type { DnsCredential } from '@/api/types';
 import { server } from '@/test/server';
-import { makeCert, providers, url } from '@/test/fixtures';
+import { makeCert, makeClient, providers, url } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { verificationReady, type Inherited } from '@/lib/coverage';
 import { initialWizard, wizardReducer } from './state';
@@ -17,6 +17,15 @@ beforeEach(() => {
     http.get(url('/orgs/org-1/dns-credentials'), () => HttpResponse.json(creds)),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: providers, deployTargets: [], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/clients'), () =>
+      HttpResponse.json({
+        items: [
+          makeClient({ id: 'cl-http', name: 'web-1', status: 'active', capabilities: ['http-01'] }),
+          makeClient({ id: 'cl-alpn', name: 'web-2', status: 'active', capabilities: ['tls-alpn-01'] }),
+        ],
+        nextCursor: null,
+      }),
+    ),
     http.post(url('/orgs/org-1/dns-credentials'), async ({ request }) => {
       const body = (await request.json()) as Omit<DnsCredential, 'id'>;
       const created = { ...body, id: 'd-9' };
@@ -32,6 +41,7 @@ function H({ inherited }: { inherited: Inherited }) {
     <>
       <VerificationStep orgId="org-1" state={state} dispatch={dispatch} inherited={inherited} />
       <output data-testid="ready">{String(verificationReady(state.names, state.rules, inherited))}</output>
+      <output data-testid="rules">{JSON.stringify(state.rules)}</output>
     </>
   );
 }
@@ -96,7 +106,7 @@ it('moving a rule up with the keyboard changes which one covers a name (first ma
   await user.click(screen.getByRole('button', { name: 'Add rule' }));
   await user.type(screen.getByLabelText('Rule 2 match'), 'a.example.com');
   let row = within(screen.getByRole('region', { name: 'Coverage' })).getByText('a.example.com').closest('li')!;
-  expect(row).toHaveTextContent('Rule 1: example.com → Cloudflare prod');
+  expect(row).toHaveTextContent('Rule 1: example.com → DNS · Cloudflare prod');
   expect(screen.getByTestId('ready')).toHaveTextContent('true');
 
   await user.click(screen.getByLabelText('Move rule 2 up'));
@@ -104,4 +114,42 @@ it('moving a rule up with the keyboard changes which one covers a name (first ma
   row = within(screen.getByRole('region', { name: 'Coverage' })).getByText('a.example.com').closest('li')!;
   expect(row).toHaveTextContent('No credential');
   expect(screen.getByTestId('ready')).toHaveTextContent('false');
+});
+
+it('per-row method: switching row 2 to HTTP, Agent and picking a client dispatches a mixed-method rule set', async () => {
+  const { user } = renderUI(<H inherited={null} />);
+  await waitFor(() => expect(screen.getByLabelText('Rule 2 match')).toHaveValue('other.net'));
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 method' })).getByRole('radio', { name: 'HTTP' }));
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 served by' })).getByRole('radio', { name: 'Agent' }));
+  await user.click(screen.getByRole('combobox', { name: 'Rule 2 client' }));
+  await user.click(await screen.findByRole('option', { name: 'web-1' }));
+  await waitFor(() =>
+    expect(JSON.parse(screen.getByTestId('rules').textContent ?? '[]')).toEqual([
+      { match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' },
+      { match: 'other.net', method: 'http-01', via: 'agent', clientId: 'cl-http' },
+    ]),
+  );
+});
+
+it('only capable clients: a client without tls-alpn-01 is not offered on a TLS-ALPN row', async () => {
+  const { user } = renderUI(<H inherited={null} />);
+  await waitFor(() => expect(screen.getByLabelText('Rule 2 match')).toHaveValue('other.net'));
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 method' })).getByRole('radio', { name: 'TLS-ALPN' }));
+  await user.click(screen.getByRole('combobox', { name: 'Rule 2 client' }));
+  expect(await screen.findByRole('option', { name: 'web-2' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'web-1' })).toBeNull();
+});
+
+it('coverage shows the method: DNS · credential, then HTTP · client once switched', async () => {
+  const { user } = renderUI(<H inherited={null} />);
+  await waitFor(() => expect(screen.getByLabelText('Rule 1 match')).toHaveValue('example.com'));
+  let row = within(screen.getByRole('region', { name: 'Coverage' })).getByText('www.example.com').closest('li')!;
+  expect(row).toHaveTextContent('Rule 1: example.com → DNS · Cloudflare prod');
+
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 method' })).getByRole('radio', { name: 'HTTP' }));
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 served by' })).getByRole('radio', { name: 'Agent' }));
+  await user.click(screen.getByRole('combobox', { name: 'Rule 2 client' }));
+  await user.click(await screen.findByRole('option', { name: 'web-1' }));
+  row = within(screen.getByRole('region', { name: 'Coverage' })).getByText('api.other.net').closest('li')!;
+  expect(row).toHaveTextContent('Rule 2: other.net → HTTP · web-1');
 });

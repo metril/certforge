@@ -1,4 +1,4 @@
-import type { Certificate, CertificateInput, IssuanceDefaults, VerificationMethod, VerificationRule } from '@/api/types';
+import type { Certificate, CertificateInput, IssuanceDefaults, VerificationRule } from '@/api/types';
 import { classifyName, MAX_NAMES } from '@/lib/names';
 
 export type WizardState = {
@@ -6,7 +6,6 @@ export type WizardState = {
   cn: string | null;
   name: string;
   nameTouched: boolean;
-  method: VerificationMethod;
   rules: VerificationRule[];
   rulesTouched: boolean;
   overrides: IssuanceDefaults;
@@ -17,7 +16,6 @@ export type WizardAction =
   | { type: 'removeName'; name: string }
   | { type: 'setCn'; name: string }
   | { type: 'setName'; name: string }
-  | { type: 'setMethod'; method: VerificationMethod }
   | { type: 'setRules'; rules: VerificationRule[] }
   | { type: 'prefillRules'; rules: VerificationRule[] }
   | { type: 'setOverrides'; overrides: IssuanceDefaults };
@@ -27,7 +25,6 @@ export const initialWizard: WizardState = {
   cn: null,
   name: '',
   nameTouched: false,
-  method: 'dns-01',
   rules: [],
   rulesTouched: false,
   overrides: {},
@@ -51,15 +48,6 @@ export function wizardReducer(s: WizardState, a: WizardAction): WizardState {
       return withCn(s, a.name);
     case 'setName':
       return { ...s, name: a.name, nameTouched: true };
-    case 'setMethod':
-      return {
-        ...s,
-        method: a.method,
-        rulesTouched: true,
-        rules: s.rules.map((rule) =>
-          a.method === 'manual-dns' ? { match: rule.match, method: a.method, via: 'server' as const } : { ...rule, method: a.method },
-        ),
-      };
     case 'setRules':
       return { ...s, rules: a.rules, rulesTouched: true };
     case 'prefillRules':
@@ -84,7 +72,6 @@ export function fromCertificate(c: Certificate): WizardState {
     cn: c.commonName,
     name: c.name,
     nameTouched: true,
-    method: c.verificationRules[0]?.method ?? 'dns-01',
     rules: c.verificationRules,
     rulesTouched: true,
     overrides: c.overrides ?? {},

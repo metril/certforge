@@ -1,7 +1,13 @@
 import type { OutputFile, OutputPart } from '@/api/types';
+import { pathError } from '@/lib/paths';
 
 export const OUTPUT_PARTS: OutputPart[] = ['cert', 'chain', 'fullchain', 'key', 'combined'];
 export type FileErrors = Partial<Record<'path' | 'parts' | 'mode' | 'owner' | 'group', string>>;
+
+// Moved to lib/paths.ts (Task 3): lib/rules.ts's webroot field also needs
+// it, and forms shouldn't import from features/delivery. Re-exported here
+// so this file's own existing callers are unaffected.
+export { pathError };
 
 // Mirrors internal/delivery/delivery.go's modeRe/ownerRe/validateMode/
 // validateOwner exactly, so a file that would be rejected server-side is
@@ -14,17 +20,6 @@ const ACCOUNT_MSG = 'Use a user/group name, or a numeric id.';
 
 export function emptyFile(): OutputFile {
   return { path: '', format: 'pem', parts: ['fullchain'], owner: '', group: '', mode: '0640' };
-}
-
-/** Mirrors the server's delivery.CleanPath (plan 3A Task 6), so a bad path
- * never reaches the API. */
-export function pathError(p: string): string | null {
-  if (!p) return 'Enter a path.';
-  if (p.includes('\0')) return 'Remove the embedded NUL character.';
-  if (!p.startsWith('/')) return 'Use an absolute path.';
-  if (p === '/' || p.endsWith('/')) return 'Name a file, not a directory.';
-  if (p.slice(1).split('/').some((s) => s === '' || s === '.' || s === '..')) return 'Remove empty, . and .. segments.';
-  return null;
 }
 
 /** Mirrors delivery.validateMode: octal, and never world-writable — a

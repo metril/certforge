@@ -6,10 +6,18 @@ import type { IssuanceDefaults } from '@/api/types';
 import { ISSUANCE_FIELDS, useFieldCtx } from '@/features/settings/issuanceFields';
 import { coverage, isCovered, type Inherited } from '@/lib/coverage';
 import { classifyName } from '@/lib/names';
+import { METHOD_LABEL } from '@/lib/rules';
 import { effectiveOf } from './ReviewStep';
 import type { WizardState } from './state';
 
-const METHOD: Record<string, string> = { 'dns-01': 'DNS-01', 'manual-dns': 'Manual DNS' };
+/** "DNS + HTTP, 3 rules": the unique method labels among the rules, in the
+ * order they first appear, then the rule count. */
+function ruleSummary(rules: WizardState['rules']): string {
+  const labels: string[] = [];
+  for (const r of rules) if (!labels.includes(METHOD_LABEL[r.method])) labels.push(METHOD_LABEL[r.method]);
+  const count = `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}`;
+  return labels.length ? `${labels.join(' + ')}, ${count}` : count;
+}
 
 export function SummaryRail({ orgId, state, inherited }: { orgId: string; state: WizardState; inherited: Inherited }) {
   const ctx = useFieldCtx(orgId);
@@ -25,7 +33,7 @@ export function SummaryRail({ orgId, state, inherited }: { orgId: string; state:
   const rows: [string, ReactNode][] = [
     ['Names', `${state.names.length} in ${zones} ${zones === 1 ? 'zone' : 'zones'}`],
     ['Common name', <span className="break-all font-mono text-xs">{state.cn ?? '–'}</span>],
-    ['Verification', `${METHOD[state.method]}, ${state.rules.length} ${state.rules.length === 1 ? 'rule' : 'rules'}`],
+    ['Verification', ruleSummary(state.rules)],
     [
       'Coverage',
       <span className="inline-flex items-center gap-1">

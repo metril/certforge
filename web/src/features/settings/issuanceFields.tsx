@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { accountsQuery } from '@/api/queries/accounts';
 import { casQuery } from '@/api/queries/cas';
+import { allClientsQuery } from '@/api/queries/clients';
 import { dnsCredentialsQuery } from '@/api/queries/dns';
-import type { AcmeAccount, CA, DnsCredential, EffectiveMap, EffectiveValue, IssuanceDefaults, KeyType, Source, VerificationRule } from '@/api/types';
+import type { AcmeAccount, CA, Client, DnsCredential, EffectiveMap, EffectiveValue, IssuanceDefaults, KeyType, Source, VerificationRule } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { ListInput } from '@/components/ListInput';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
@@ -13,8 +14,11 @@ import { Switch } from '@/components/ui/switch';
 import { InheritableField, type ChainEntry } from '@/forms/InheritableField';
 import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
 import type { HelpKey } from '@/lib/help';
+import { ruleTarget } from '@/lib/rules';
 
-export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[] };
+// Clients are org-scoped (allClientsQuery(orgId)); the Global tab has no
+// single org to ask, so IssuanceDefaultsSection passes an empty list there.
+export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[]; clients: Client[] };
 export type FieldKey = keyof IssuanceDefaults;
 type V<K extends FieldKey> = NonNullable<IssuanceDefaults[K]>;
 
@@ -208,29 +212,19 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     key: 'verificationRules',
     label: 'Verification rules',
     help: 'rules.catchAll',
-    initial: (c) => [{ match: '*', method: 'dns-01', dnsCredentialId: c.credentials[0]?.id, via: 'server' as const }],
-    display: (v, c) => rulesSummary(v, c.credentials),
+    initial: (c) => [{ match: '*', method: 'dns-01', dnsCredentialId: c.credentials[0]?.id }],
+    display: (v, c) => rulesSummary(v, c.credentials, c.clients),
     editor: (v, set, c) => (
       <div className="w-full">
-        <VerificationRulesEditor
-          rules={v}
-          onChange={set}
-          method={v[0]?.method ?? 'dns-01'}
-          onMethodChange={(m) =>
-            set(v.map((r) => (m === 'manual-dns' ? { match: r.match, method: m, via: 'server' as const } : { ...r, method: m })))
-          }
-          credentials={c.credentials}
-        />
+        <VerificationRulesEditor rules={v} onChange={set} credentials={c.credentials} clients={c.clients} />
       </div>
     ),
   }),
 ];
 
-export function rulesSummary(rules: VerificationRule[], creds: DnsCredential[]): string {
+export function rulesSummary(rules: VerificationRule[], creds: DnsCredential[], clients: Client[]): string {
   if (!rules.length) return 'None';
-  return rules
-    .map((r) => `${r.match} → ${r.method === 'manual-dns' ? 'manual' : (creds.find((c) => c.id === r.dnsCredentialId)?.name ?? 'no credential')}`)
-    .join('; ');
+  return rules.map((r) => `${r.match} → ${ruleTarget(r, creds, clients)}`).join('; ');
 }
 
 // enabled: !!orgId guards the no-org edge case (IssuanceDefaultsSection
@@ -241,7 +235,8 @@ export function useFieldCtx(orgId: string): FieldCtx {
   const cas = useQuery({ ...casQuery(orgId), enabled: !!orgId }).data ?? [];
   const accounts = useQuery({ ...accountsQuery(orgId), enabled: !!orgId }).data ?? [];
   const credentials = useQuery({ ...dnsCredentialsQuery(orgId), enabled: !!orgId }).data ?? [];
-  return { cas, accounts, credentials };
+  const clients = useQuery({ ...allClientsQuery(orgId), enabled: !!orgId }).data?.items ?? [];
+  return { cas, accounts, credentials, clients };
 }
 
 export const fromDefault = (): EffectiveValue => ({ value: null, source: 'default' });

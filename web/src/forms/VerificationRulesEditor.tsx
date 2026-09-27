@@ -3,7 +3,7 @@ import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ChevronDown, ChevronUp, CircleAlert, GripVertical, Plus, X } from 'lucide-react';
-import type { DnsCredential, VerificationMethod, VerificationRule } from '@/api/types';
+import type { ChallengeVia, Client, DnsCredential, VerificationMethod, VerificationRule } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
@@ -12,19 +12,38 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { matchError } from '@/lib/coverage';
-import { LATER } from '@/lib/nav';
+import { help } from '@/lib/help';
+import { clientOptions, webrootError, withMethod, withVia } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 
 let seq = 0;
 const newKey = () => `rule-${++seq}`;
 
+const METHOD_OPTIONS = [
+  { value: 'dns-01' as const, label: 'DNS' },
+  { value: 'manual-dns' as const, label: 'Manual' },
+  { value: 'http-01' as const, label: 'HTTP', hint: help['rules.http01'].text },
+  { value: 'tls-alpn-01' as const, label: 'TLS-ALPN', hint: help['rules.tlsalpn01'].text },
+];
+
+const VIA_OPTIONS = [
+  { value: 'server' as const, label: 'Server' },
+  { value: 'agent' as const, label: 'Agent' },
+];
+
+function hasAdvanced(rule: VerificationRule): boolean {
+  return rule.method === 'dns-01' || rule.method === 'manual-dns' || (rule.method === 'http-01' && rule.via === 'agent');
+}
+
 type RowProps = {
   id: string;
   index: number;
   rule: VerificationRule;
-  method: VerificationMethod;
   credentials: DnsCredential[];
+  clients: Client[];
   onUpdate: (patch: Partial<VerificationRule>) => void;
+  onSetMethod: (m: VerificationMethod) => void;
+  onSetVia: (v: ChallengeVia) => void;
   onRemove: () => void;
   onMove: (delta: -1 | 1) => void;
   canMoveUp: boolean;
@@ -32,7 +51,7 @@ type RowProps = {
   onAddCredential?: () => void;
 };
 
-function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onMove, canMoveUp, canMoveDown, onAddCredential }: RowProps) {
+function RuleRow({ id, index, rule, credentials, clients, onUpdate, onSetMethod, onSetVia, onRemove, onMove, canMoveUp, canMoveDown, onAddCredential }: RowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const [advanced, setAdvanced] = useState(false);
   const n = index + 1;
@@ -41,6 +60,10 @@ function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onM
   // verificationReady) without an immediate "Required." error.
   const matchErr = rule.match.trim() ? matchError(rule.match) : null;
   const errorId = `${id}-match-error`;
+  const via = rule.method === 'http-01' ? (rule.via ?? 'server') : undefined;
+  const showClient = rule.method === 'tls-alpn-01' || (rule.method === 'http-01' && via === 'agent');
+  const clientMethod = rule.method === 'tls-alpn-01' ? 'tls-alpn-01' : 'http-01';
+  const showAdvanced = hasAdvanced(rule);
   return (
     <li
       ref={setNodeRef}
@@ -69,7 +92,14 @@ function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onM
           placeholder="*.example.com"
           onChange={(e) => onUpdate({ match: e.target.value })}
         />
-        {method === 'dns-01' && (
+        <SegmentedControl<VerificationMethod>
+          aria-label={`Rule ${n} method`}
+          size="sm"
+          value={rule.method}
+          onChange={onSetMethod}
+          options={METHOD_OPTIONS}
+        />
+        {rule.method === 'dns-01' && (
           <div className="w-full sm:w-64">
             <Combobox
               aria-label={`Rule ${n} credential`}
@@ -89,9 +119,30 @@ function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onM
             />
           </div>
         )}
-        <Button type="button" variant="ghost" size="sm" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
-          Advanced
-        </Button>
+        {rule.method === 'http-01' && (
+          <span className="flex items-center gap-1">
+            <SegmentedControl<ChallengeVia> aria-label={`Rule ${n} served by`} size="sm" value={via ?? 'server'} onChange={onSetVia} options={VIA_OPTIONS} />
+            <HelpTip id="rules.via" />
+          </span>
+        )}
+        {showClient && (
+          <div className="flex w-full items-center gap-1 sm:w-64">
+            <Combobox
+              aria-label={`Rule ${n} client`}
+              value={rule.clientId}
+              onChange={(v) => onUpdate({ clientId: v })}
+              options={clientOptions(clients, clientMethod, rule.method === 'http-01' ? rule.webroot : undefined).map((c) => ({ value: c.id, label: c.name }))}
+              placeholder="Choose client"
+              emptyText={`No client serves ${clientMethod}`}
+            />
+            <HelpTip id={rule.method === 'tls-alpn-01' ? 'rules.tlsalpn01' : 'rules.client'} />
+          </div>
+        )}
+        {showAdvanced && (
+          <Button type="button" variant="ghost" size="sm" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
+            Advanced
+          </Button>
+        )}
         <Button type="button" variant="ghost" size="icon" aria-label={`Remove rule ${n}`} onClick={onRemove}>
           <X className="size-4" aria-hidden />
         </Button>
@@ -102,7 +153,7 @@ function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onM
           {matchErr}
         </p>
       )}
-      {advanced && (
+      {advanced && showAdvanced && (rule.method === 'dns-01' || rule.method === 'manual-dns') && (
         <div className="grid gap-3 md:pl-11 lg:grid-cols-3">
           <Field id={`${id}-prop`} label="Propagation" help="rules.propagation" optional>
             <Input
@@ -117,11 +168,24 @@ function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onM
           <Field id={`${id}-res`} label="Resolvers" help="defaults.resolvers" optional>
             <ListInput id={`${id}-res`} value={rule.resolvers ?? []} onChange={(v) => onUpdate({ resolvers: v.length ? v : undefined })} placeholder="1.1.1.1:53" />
           </Field>
-          {method === 'dns-01' && (
+          {rule.method === 'dns-01' && (
             <Field id={`${id}-cname`} label="CNAME alias zone" help="rules.cnameAlias" optional>
               <Input id={`${id}-cname`} className="font-mono text-xs" placeholder="acme.example.net" value={rule.cnameAliasZone ?? ''} onChange={(e) => onUpdate({ cnameAliasZone: e.target.value || undefined })} />
             </Field>
           )}
+        </div>
+      )}
+      {advanced && showAdvanced && rule.method === 'http-01' && via === 'agent' && (
+        <div className="grid gap-3 md:pl-11 lg:grid-cols-3">
+          <Field id={`${id}-webroot`} label="Webroot" help="rules.webroot" error={rule.webroot ? webrootError(rule.webroot) : null} optional>
+            <Input
+              id={`${id}-webroot`}
+              className="font-mono text-xs"
+              placeholder="/var/www/html"
+              value={rule.webroot ?? ''}
+              onChange={(e) => onUpdate({ webroot: e.target.value || undefined })}
+            />
+          </Field>
         </div>
       )}
     </li>
@@ -131,18 +195,19 @@ function RuleRow({ id, index, rule, method, credentials, onUpdate, onRemove, onM
 type Props = {
   rules: VerificationRule[];
   onChange: (rules: VerificationRule[]) => void;
-  method: VerificationMethod;
-  onMethodChange: (m: VerificationMethod) => void;
   credentials: DnsCredential[];
+  clients: Client[];
   onAddCredential?: (ruleIndex: number) => void;
 };
 
-export function VerificationRulesEditor({ rules, onChange, method, onMethodChange, credentials, onAddCredential }: Props) {
+export function VerificationRulesEditor({ rules, onChange, credentials, clients, onAddCredential }: Props) {
   const keys = useRef<string[]>([]);
   while (keys.current.length < rules.length) keys.current.push(newKey());
   keys.current.length = rules.length;
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const update = (i: number, patch: Partial<VerificationRule>) => onChange(rules.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const setMethod = (i: number, m: VerificationMethod) => onChange(rules.map((r, j) => (j === i ? withMethod(r, m) : r)));
+  const setVia = (i: number, v: ChallengeVia) => onChange(rules.map((r, j) => (j === i ? withVia(r, v) : r)));
   const move = (i: number, delta: -1 | 1) => {
     const to = i + delta;
     if (to < 0 || to >= rules.length) return;
@@ -152,23 +217,10 @@ export function VerificationRulesEditor({ rules, onChange, method, onMethodChang
 
   return (
     <div className="grid gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold">Method</span>
-        <HelpTip id="rules.method" />
-        <SegmentedControl<VerificationMethod | 'http-01'>
-          aria-label="Verification method"
-          value={method}
-          onChange={(m) => m !== 'http-01' && onMethodChange(m)}
-          options={[
-            { value: 'dns-01', label: 'DNS-01' },
-            { value: 'manual-dns', label: 'Manual DNS' },
-            { value: 'http-01', label: 'HTTP-01', disabled: true, hint: LATER },
-          ]}
-        />
-      </div>
       {/* Fix round 1 (review, item 4): column headers, hidden below md
-          (the row becomes a stacked card there), wiring the previously
-          unused rules.match / rules.credential help entries. */}
+          (the row becomes a stacked card there), wiring rules.match /
+          rules.method. Task 3: the method moved into each row, so this
+          header no longer names a fixed set of per-method columns. */}
       <div className="hidden items-center gap-2 px-1 text-xs font-medium text-ink-muted md:flex">
         <span className="w-6" aria-hidden />
         <span className="w-8" aria-hidden />
@@ -176,11 +228,10 @@ export function VerificationRulesEditor({ rules, onChange, method, onMethodChang
         <span className="flex w-56 items-center gap-1">
           Match <HelpTip id="rules.match" />
         </span>
-        {method === 'dns-01' && (
-          <span className="flex w-64 items-center gap-1">
-            Credential <HelpTip id="rules.credential" />
-          </span>
-        )}
+        <span className="flex items-center gap-1">
+          Method <HelpTip id="rules.method" />
+        </span>
+        <span>Details</span>
       </div>
       <DndContext
         sensors={sensors}
@@ -201,9 +252,11 @@ export function VerificationRulesEditor({ rules, onChange, method, onMethodChang
                 id={keys.current[i]!}
                 index={i}
                 rule={r}
-                method={method}
                 credentials={credentials}
+                clients={clients}
                 onUpdate={(p) => update(i, p)}
+                onSetMethod={(m) => setMethod(i, m)}
+                onSetVia={(v) => setVia(i, v)}
                 onRemove={() => {
                   keys.current.splice(i, 1);
                   onChange(rules.filter((_, j) => j !== i));
@@ -222,7 +275,11 @@ export function VerificationRulesEditor({ rules, onChange, method, onMethodChang
         variant="outline"
         size="sm"
         className="w-fit"
-        onClick={() => onChange([...rules, { match: '', method, via: 'server' as const }])}
+        onClick={() => {
+          // "Add rule" copies the last rule's method (dns-01 when there are none).
+          const method = rules.at(-1)?.method ?? 'dns-01';
+          onChange([...rules, withMethod({ match: '', method }, method)]);
+        }}
       >
         <Plus className="size-4" aria-hidden />
         Add rule

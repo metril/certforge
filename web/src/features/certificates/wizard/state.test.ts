@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { canContinueNames, initialWizard, toCertificateInput, wizardReducer as r } from './state';
+import { makeCert } from '@/test/fixtures';
+import { canContinueNames, fromCertificate, initialWizard, toCertificateInput, wizardReducer as r } from './state';
 
 it('adds names, dedupes, and makes the first one the CN and default name', () => {
   let s = r(initialWizard, { type: 'addNames', names: ['www.example.com', 'api.example.com'] });
@@ -20,10 +21,13 @@ it('moves the CN when it is removed or reassigned, and keeps a typed name', () =
   expect(s.name).toBe('Edge');
 });
 
-it('keeps rules in step with the method', () => {
-  let s = r(initialWizard, { type: 'setRules', rules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }] });
-  s = r(s, { type: 'setMethod', method: 'manual-dns' });
-  expect(s.rules).toEqual([{ match: 'example.com', method: 'manual-dns', via: 'server' }]);
+it('setRules marks rulesTouched, keeping whatever per-row methods the rules already carry', () => {
+  const rules = [
+    { match: 'example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+    { match: 'api.example.com', method: 'http-01' as const, via: 'server' as const },
+  ];
+  const s = r(initialWizard, { type: 'setRules', rules });
+  expect(s.rules).toEqual(rules);
   expect(s.rulesTouched).toBe(true);
 });
 
@@ -33,6 +37,16 @@ it('blocks Next on no names, invalid names, or more than 100 names', () => {
   const many = Array.from({ length: 101 }, (_, i) => `h${i}.example.com`);
   expect(canContinueNames(r(initialWizard, { type: 'addNames', names: many }))).toBe(false);
   expect(canContinueNames(r(initialWizard, { type: 'addNames', names: many.slice(0, 100) }))).toBe(true);
+});
+
+it('fromCertificate round-trips mixed per-rule methods unchanged', () => {
+  const rules = [
+    { match: 'example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+    { match: 'api.example.com', method: 'http-01' as const, via: 'agent' as const, clientId: 'c-1' },
+    { match: 'mail.example.com', method: 'tls-alpn-01' as const, clientId: 'c-2' },
+  ];
+  const s = fromCertificate(makeCert({ verificationRules: rules }));
+  expect(s.rules).toEqual(rules);
 });
 
 it('builds the create body with the CN inside sans', () => {

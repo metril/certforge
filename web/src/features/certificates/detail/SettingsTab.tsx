@@ -60,8 +60,8 @@ export function SettingsTab({ cert, orgId, orgSlug }: Props) {
         <h2 id="st-verification" className="text-base font-semibold">
           Verification
         </h2>
-        <p className="text-sm">{rulesSummary(cert.verificationRules, ctx.credentials)}</p>
-        <CoveragePanel items={coverage(names, cert.verificationRules, inherited)} credentials={ctx.credentials} />
+        <p className="text-sm">{rulesSummary(cert.verificationRules, ctx.credentials, ctx.clients)}</p>
+        <CoveragePanel items={coverage(names, cert.verificationRules, inherited)} credentials={ctx.credentials} clients={ctx.clients} />
       </section>
       <section aria-labelledby="st-options" className="grid gap-2">
         <h2 id="st-options" className="text-base font-semibold">

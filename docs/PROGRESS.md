@@ -241,8 +241,8 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | API layer, fixtures, helpers | done | 4972a7b |
-| 2 | Download sheet formats | done | pending |
-| 3 | Per-rule verification methods | not started | |
+| 2 | Download sheet formats | done | fef1cbe |
+| 3 | Per-rule verification methods | done | pending |
 | 4 | CAA and rate-ledger steps | not started | |
 | 5 | Upload screen and Import menu | not started | |
 | 6 | Import screen | not started | |

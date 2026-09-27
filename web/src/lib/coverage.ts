@@ -1,8 +1,9 @@
-import type { EffectiveMap, Source, VerificationMethod, VerificationRule } from '@/api/types';
+import type { EffectiveMap, Source, VerificationRule } from '@/api/types';
 import { classifyName } from './names';
+import { ruleUsable } from './rules';
 
 export type Inherited = { rules: VerificationRule[]; source: Source } | null;
-export type CoverageState = 'rule' | 'inherited' | 'missing-credential' | 'ip' | 'none';
+export type CoverageState = 'rule' | 'inherited' | 'incomplete' | 'wildcard-non-dns' | 'ip' | 'none';
 export type Coverage = {
   name: string;
   state: CoverageState;
@@ -94,27 +95,42 @@ export function matchError(pattern: string): string | null {
   return ok ? null : 'Letters, digits, hyphens and underscores only; "*" only as a leading "*.".';
 }
 
-const usable = (r: VerificationRule) => r.method !== 'dns-01' || !!r.dnsCredentialId;
-
 export function inheritedFrom(eff: EffectiveMap | undefined): Inherited {
   const e = eff?.verificationRules;
   return e && Array.isArray(e.value) && e.value.length ? { rules: e.value, source: e.source } : null;
 }
 
+// Server rule (challenge router): a wildcard name can never be proven with
+// http-01 or tls-alpn-01 — no ACME CA issues either for a wildcard
+// authorization — so a wildcard skips any rule of those methods, exactly as
+// if it hadn't matched, and falls through to the next rule in order.
+const skippableForWildcard = (r: VerificationRule) => r.method === 'http-01' || r.method === 'tls-alpn-01';
+
 function resolveName(name: string, rules: VerificationRule[], inherited: Inherited): Coverage {
   if (classifyName(name).kind === 'ip') return { name, state: 'ip' };
-  const i = rules.findIndex((r) => matchRule(name, r.match));
+  const isWildcard = name.startsWith('*.');
+  let skipped = false;
+  const find = (list: VerificationRule[]) =>
+    list.findIndex((r) => {
+      if (!matchRule(name, r.match)) return false;
+      if (isWildcard && skippableForWildcard(r)) {
+        skipped = true;
+        return false;
+      }
+      return true;
+    });
+  const i = find(rules);
   if (i >= 0) {
     const rule = rules[i]!;
-    return { name, state: usable(rule) ? 'rule' : 'missing-credential', ruleIndex: i, rule };
+    return { name, state: ruleUsable(rule) ? 'rule' : 'incomplete', ruleIndex: i, rule };
   }
   // Adaptation (preflight A31): the server takes the *first* matching
   // rule, full stop — it has no concept of "usable" to skip past. Take
   // only the first inherited match too, rather than searching past an
   // unusable one for a later match that the server would never reach.
-  const inh = inherited?.rules.find((r) => matchRule(name, r.match));
-  if (inh && inherited) return { name, state: usable(inh) ? 'inherited' : 'missing-credential', rule: inh, source: inherited.source };
-  return { name, state: 'none' };
+  const inh = inherited ? inherited.rules[find(inherited.rules)] : undefined;
+  if (inh && inherited) return { name, state: ruleUsable(inh) ? 'inherited' : 'incomplete', rule: inh, source: inherited.source };
+  return { name, state: skipped ? 'wildcard-non-dns' : 'none' };
 }
 
 export function coverage(names: string[], rules: VerificationRule[], inherited: Inherited): Coverage[] {
@@ -132,7 +148,16 @@ export function coverage(names: string[], rules: VerificationRule[], inherited: 
   return names.map((name): Coverage => {
     if (name.startsWith('*.')) {
       const apex = toAscii(name.slice(2));
-      if (present.has(apex)) return { ...resolveName(apex, rules, inherited), name, viaApex: true };
+      if (present.has(apex)) {
+        const apexCov = resolveName(apex, rules, inherited);
+        // The apex-sharing optimisation above only holds for dns-01/
+        // manual-dns (the same TXT record proves both); an http-01 or
+        // tls-alpn-01 rule can win the apex's own lookup (the apex isn't a
+        // wildcard, so it's never skipped there) but can never prove the
+        // wildcard itself, so fall back to resolving the wildcard directly
+        // instead of reporting it "covered" by a rule that can't cover it.
+        if (apexCov.rule?.method !== 'http-01' && apexCov.rule?.method !== 'tls-alpn-01') return { ...apexCov, name, viaApex: true };
+      }
     }
     return resolveName(name, rules, inherited);
   });
@@ -144,21 +169,20 @@ export function verificationReady(names: string[], rules: VerificationRule[], in
   return names.length > 0 && rules.every((r) => matchError(r.match) === null) && coverage(names, rules, inherited).every(isCovered);
 }
 
-export function prefillRules(
-  names: string[],
-  method: VerificationMethod,
-  suggest: (zone: string) => string | undefined,
-  inherited: Inherited,
-): VerificationRule[] {
+/** One dns-01 rule per registered domain, credited from `suggest` (last
+ * credential remembered for that zone) when one is known, otherwise left
+ * without a credential unless an inherited catch-all already covers it.
+ * Always dns-01 — the per-row method picker (VerificationRulesEditor)
+ * handles switching a rule to anything else. */
+export function prefillRules(names: string[], suggest: (zone: string) => string | undefined, inherited: Inherited): VerificationRule[] {
   const zones: string[] = [];
   for (const n of names) {
     const p = classifyName(n);
     if ((p.kind === 'dns' || p.kind === 'wildcard') && p.zone && !zones.includes(p.zone)) zones.push(p.zone);
   }
   return zones.flatMap((zone): VerificationRule[] => {
-    if (method === 'manual-dns') return [{ match: zone, method, via: 'server' as const }];
     const cred = suggest(zone);
-    if (cred) return [{ match: zone, method, dnsCredentialId: cred, via: 'server' as const }];
+    if (cred) return [{ match: zone, method: 'dns-01', dnsCredentialId: cred }];
     const inZone = names.filter((n) => classifyName(n).zone === zone);
     // Same first-match fix as coverage() above: a name is covered by the
     // catch-all only if the *first* inherited rule it matches is usable.
@@ -166,8 +190,8 @@ export function prefillRules(
       !!inherited &&
       inZone.every((n) => {
         const m = inherited.rules.find((r) => matchRule(n, r.match));
-        return !!m && usable(m);
+        return !!m && ruleUsable(m);
       });
-    return coveredByInherited ? [] : [{ match: zone, method, via: 'server' as const }];
+    return coveredByInherited ? [] : [{ match: zone, method: 'dns-01' }];
   });
 }
