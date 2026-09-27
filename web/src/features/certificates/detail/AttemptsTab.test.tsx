@@ -115,3 +115,43 @@ it('renders no ledger panel without a caId', async () => {
   expect(await screen.findByText('Rate limits')).toBeInTheDocument();
   expect(screen.queryByRole('list', { name: 'Rate limits' })).toBeNull();
 });
+
+// Fix round 1 (review): the "max 0 → No limit, no meter" branch had no
+// covering test.
+it('shows "No limit" with no meter for a limit with max 0', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => HttpResponse.json([failedRateLedger()])),
+    http.get(url('/orgs/org-1/rate-ledger'), () =>
+      HttpResponse.json(makeRateLedger({ items: [{ limit: 'newOrdersPer3Hours', scope: '', count: 3, max: 0, windowSeconds: 10_800, resetsAt: null }] })),
+    ),
+  );
+  const { container } = renderUI(<AttemptsTab orgId="org-1" certId="c-1" caId="ca-1" />);
+  expect(await screen.findByText('New orders, 3 hours')).toBeInTheDocument();
+  expect(screen.getByText('No limit')).toBeInTheDocument();
+  expect(screen.queryByText('3 / 0')).toBeNull();
+  expect(container.querySelector('.bg-valid, .bg-expiring, .bg-failed')).toBeNull();
+});
+
+// Fix round 1 (review): the meter's colour thresholds (>= 80% expiring, >=
+// 100% failed) had no covering test.
+it('colours the meter expiring at 80% and failed at 100%', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => HttpResponse.json([failedRateLedger()])),
+    http.get(url('/orgs/org-1/rate-ledger'), () =>
+      HttpResponse.json(
+        makeRateLedger({
+          items: [
+            { limit: 'certsPerRegisteredDomainPerWeek', scope: 'example.com', count: 4, max: 5, windowSeconds: 604_800, resetsAt: iso(1) },
+            { limit: 'duplicateCertsPerWeek', scope: 'www.example.com', count: 5, max: 5, windowSeconds: 604_800, resetsAt: iso(1) },
+          ],
+        }),
+      ),
+    ),
+  );
+  const { container } = renderUI(<AttemptsTab orgId="org-1" certId="c-1" caId="ca-1" />);
+  expect(await screen.findByText('4 / 5')).toBeInTheDocument();
+  expect(screen.getByText('5 / 5')).toBeInTheDocument();
+  expect(container.querySelector('.bg-expiring')).toBeInTheDocument();
+  expect(container.querySelector('.bg-failed')).toBeInTheDocument();
+  expect(container.querySelector('.bg-valid')).toBeNull();
+});

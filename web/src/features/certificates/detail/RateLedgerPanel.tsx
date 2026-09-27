@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import { ShieldOff } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { rateLedgerQuery, RATE_LIMIT_LABEL } from '@/api/queries/rateLedger';
 import { ErrorState } from '@/components/ErrorState';
-import { HelpTip } from '@/components/HelpTip';
+import { ToneChip } from '@/components/StatusChip';
 import { relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
@@ -52,14 +53,11 @@ export function RateLedgerPanel({ orgId, caId, certId }: { orgId: string; caId?:
     <ul aria-label="Rate limits" className="grid gap-2 py-1 text-xs">
       {!data.enforced && (
         <li>
-          <span className="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 text-ink-muted">
-            Counted only
-            <HelpTip id="rateLedger.enforced" />
-          </span>
+          <ToneChip tone="neutral" icon={ShieldOff} label="Counted only" help="rateLedger.enforced" />
         </li>
       )}
       {data.items.map((it) => (
-        <li key={`${it.limit}-${it.scope}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:flex-nowrap">
+        <li key={`${it.limit}-${it.scope}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 md:flex-nowrap">
           <span className="w-44 shrink-0">{RATE_LIMIT_LABEL[it.limit]}</span>
           <span className="max-w-40 truncate font-mono text-ink-muted" title={it.scope || undefined}>
             {it.scope || '—'}

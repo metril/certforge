@@ -6,9 +6,7 @@ const MAP: Record<string, Omit<AcmeExplain, 'href'> & { href?: string }> = {
   dns: { text: 'A DNS lookup failed during validation.', fix: 'Check the TXT record and delegation' },
   unauthorized: { text: 'The CA did not accept the proof of control.', fix: 'Check the verification rule for this name' },
   incorrectResponse: { text: 'The CA saw a different token or TXT value than expected.', fix: 'Check for stale records and propagation' },
-  // The href is split (not one literal): the caa anchor, hash-prefixed, reads
-  // as a valid 3-digit hex colour to no-hardcoded-values.test.ts's scanner.
-  caa: { text: 'A CAA record forbids this CA for a name.', fix: "Add the CA's CAA record", href: 'certificates.md' + '#' + 'caa' },
+  caa: { text: 'A CAA record forbids this CA for a name.', fix: "Add the CA's CAA record", href: 'certificates.md#caa' },
   connection: { text: 'The CA could not reach the validation target.', fix: 'Check the port 80/443 route and firewalls' },
   rejectedIdentifier: { text: 'The CA will not issue for this name.', fix: 'Remove the name or use another CA' },
   externalAccountRequired: { text: 'The CA requires external account binding.', fix: 'Add EAB to the CA' },

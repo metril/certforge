@@ -113,9 +113,7 @@ export const help = {
   'attempt.retry': { text: 'Failed attempts back off from 5 minutes up to 24 hours. Rate limits use the CA’s retry time.' },
   'attempt.caa': {
     text: 'CertForge checks that CAA records allow this CA before ordering. The CA checks again.',
-    // Template-interpolated: hash plus caa reads as a valid 3-digit hex
-    // colour to no-hardcoded-values.test.ts's scanner.
-    learnMore: `certificates.md#${'caa'}`,
+    learnMore: 'certificates.md#caa',
   },
   'attempt.rateLedger': {
     text: 'Local counts per CA, so a limit is caught before the CA refuses.',
