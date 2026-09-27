@@ -273,16 +273,28 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 	}
 
 	push := map[uuid.UUID]bool{}
-	materials := map[uuid.UUID]render.Material{}
+	// Keyed on (version id, withKey): the same version can be loaded twice
+	// in one batch, once as a grant's own certificate (withKey=true) and
+	// once as another grant's extra certificate (withKey=false) — rows come
+	// from GrantSources with no ORDER BY, so either request can run first.
+	// Keying on version id alone let whichever ran first answer the other's
+	// request too, either failing a key-bearing render with ErrNoKey or
+	// handing an extra a key-bearing copy it never asked for.
+	type materialKey struct {
+		versionID uuid.UUID
+		withKey   bool
+	}
+	materials := map[materialKey]render.Material{}
 	loadMaterial := func(certID, versionID uuid.UUID, withKey bool) (render.Material, error) {
-		if m, ok := materials[versionID]; ok {
+		k := materialKey{versionID, withKey}
+		if m, ok := materials[k]; ok {
 			return m, nil
 		}
 		m, err := s.Certs.Material(ctx, certID, versionID, withKey)
 		if err != nil {
 			return render.Material{}, err
 		}
-		materials[versionID] = m
+		materials[k] = m
 		return m, nil
 	}
 	for _, r := range rows {

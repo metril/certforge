@@ -16,7 +16,32 @@ import (
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/render"
 )
+
+// maxLayoutPasswordLen is the contract's LayoutInput.password maxLength;
+// enforced here too, not only by the OpenAPI request-validation middleware,
+// since a caller of the strict-server methods directly (as every handler
+// test in this package does) never goes through that middleware.
+const maxLayoutPasswordLen = 128
+
+// checkLayoutPassword validates a freshly provided (never "__unchanged__")
+// layout password: the contract's max length, and, when needsJKS, the exact
+// rule render.CheckJKSPassword itself enforces (ASCII, at least 6 Unicode
+// characters) — not a looser check that would let a password through
+// storage only to fail every later render (CreateGrant, Resync, OnVersion,
+// the sweep).
+func checkLayoutPassword(plain string, needsJKS bool) error {
+	if len(plain) > maxLayoutPasswordLen {
+		return unprocessable("password", "must be at most 128 characters")
+	}
+	if needsJKS {
+		if err := render.CheckJKSPassword(plain); err != nil {
+			return unprocessable("password", "must be ASCII and at least 6 characters when any file is jks")
+		}
+	}
+	return nil
+}
 
 // mapDeliveryErr turns a delivery.FieldError into a 422.
 func mapDeliveryErr(err error) error {
@@ -300,8 +325,10 @@ func (s *Server) CreateLayout(ctx context.Context, r gen.CreateLayoutRequestObje
 	if needsPassword && plain == "" {
 		return nil, unprocessable("password", "required when any file is p12 or jks")
 	}
-	if needsJKS && len(plain) < 6 {
-		return nil, unprocessable("password", "must be at least 6 characters when any file is jks")
+	if plain != "" {
+		if err := checkLayoutPassword(plain, needsJKS); err != nil {
+			return nil, err
+		}
 	}
 	var sealed []byte
 	if plain != "" {
@@ -371,18 +398,22 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 			return nil, unprocessable("password", "no stored password to keep; provide one")
 		}
 		sealed = cur.Password
+		// The file list can change in the same update (a file could become
+		// jks here for the first time), so the stored password — valid
+		// under whatever rule applied when it was last written — must be
+		// re-checked against jks's rule now, not assumed to still satisfy it.
 		if needsJKS {
-			plain, err := s.d.Box.Open(ctx, sealed)
+			plainBytes, err := s.d.Box.Open(ctx, sealed)
 			if err != nil {
 				return nil, err
 			}
-			if len(plain) < 6 {
-				return nil, unprocessable("password", "must be at least 6 characters when any file is jks")
+			if err := render.CheckJKSPassword(string(plainBytes)); err != nil {
+				return nil, unprocessable("password", "the stored password does not satisfy jks's rule (ASCII, at least 6 characters); provide a new one")
 			}
 		}
 	case li.password != nil && *li.password != "":
-		if needsJKS && len(*li.password) < 6 {
-			return nil, unprocessable("password", "must be at least 6 characters when any file is jks")
+		if err := checkLayoutPassword(*li.password, needsJKS); err != nil {
+			return nil, err
 		}
 		if sealed, err = s.d.Box.Seal(ctx, []byte(*li.password)); err != nil {
 			return nil, err

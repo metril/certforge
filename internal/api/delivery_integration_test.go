@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -173,6 +174,10 @@ func TestLayoutPasswordWriteOnly(t *testing.T) {
 	_, err := f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: p12LayoutInput(nil)})
 	wantStatus(t, err, 422)
 
+	// "__unchanged__" on create is 422 (nothing stored yet to keep).
+	_, err = f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: p12LayoutInput(strPtr(challenge.Unchanged))})
+	wantStatus(t, err, 422)
+
 	res, err := f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: p12LayoutInput(strPtr("hunter2222"))})
 	if err != nil {
 		t.Fatal(err)
@@ -219,6 +224,13 @@ func TestLayoutPasswordWriteOnly(t *testing.T) {
 	}
 	if !upRes.(gen.UpdateLayout200JSONResponse).PasswordSet {
 		t.Fatal("passwordSet lost across an __unchanged__ update")
+	}
+	var updateDetails string
+	if err := f.pool.QueryRow(context.Background(), `SELECT details::text FROM audit_events WHERE action = 'layout.update'`).Scan(&updateDetails); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(updateDetails, "hunter2222") || !strings.Contains(updateDetails, `"passwordSet": true`) {
+		t.Fatalf("update audit leaks the password or drops passwordSet: %s", updateDetails)
 	}
 	list, err := f.srv.ListClientGrants(op, gen.ListClientGrantsRequestObject{OrgId: f.org, Id: c.ID})
 	if err != nil {
@@ -282,4 +294,37 @@ func TestLayoutExtraCertChecks(t *testing.T) {
 
 	_, err = f.srv.DeleteCertificate(op, gen.DeleteCertificateRequestObject{OrgId: f.org, Id: extraCertID})
 	wantStatus(t, err, 409)
+	var he *HTTPError
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, "extra") {
+		t.Fatalf("409 detail does not name the layout: %v", err)
+	}
+}
+
+func jksLayoutInput(password *string) *gen.LayoutInput {
+	return &gen.LayoutInput{Name: "jks", Files: []gen.OutputFile{{Path: "/etc/ssl/web.jks", Format: gen.OutputFormat("jks"), Mode: "0600"}}, Password: password}
+}
+
+// Review Focus: a jks password must pass the exact same rule the renderer
+// itself enforces (render.CheckJKSPassword: ASCII, at least 6 Unicode
+// characters) before it is stored — not a looser byte-length check that
+// lets a bad password through storage only to fail every later render
+// (CreateGrant, Resync, OnVersion, the sweep).
+func TestLayoutJKSPasswordASCII(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+
+	_, err := f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: jksLayoutInput(strPtr("hüntér2"))})
+	wantStatus(t, err, 422)
+
+	res, err := f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: jksLayoutInput(strPtr("hunter22"))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := res.(gen.CreateLayout201JSONResponse)
+
+	// Non-ASCII is also rejected on update, including when the file only
+	// becomes jks in this same update (the stored password from a prior,
+	// non-jks-validated write might not satisfy jks's rule).
+	_, err = f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l.Id, Body: jksLayoutInput(strPtr("hüntér2"))})
+	wantStatus(t, err, 422)
 }

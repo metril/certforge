@@ -22,12 +22,14 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 
 	"github.com/metril/certforge/internal/agentca"
+	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/crypto/cryptotest"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/signer"
 )
 
@@ -179,6 +181,20 @@ func (f *syncFixture) expected(t *testing.T, grantID uuid.UUID) []byte {
 	return b
 }
 
+// expectedDigest returns a grant's single expected file's sha256; it fails
+// the test if the deployment does not have exactly one expected file.
+func (f *syncFixture) expectedDigest(t *testing.T, grantID uuid.UUID) string {
+	t.Helper()
+	var specs []agentproto.FileSpec
+	if err := json.Unmarshal(f.expected(t, grantID), &specs); err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("grant %s: expected 1 file, got %d: %+v", grantID, len(specs), specs)
+	}
+	return specs[0].SHA256
+}
+
 // Review Focus: a new version of a certificate used as another layout's
 // extra certificate re-renders that layout's grants too (OnVersion), and
 // the hourly sweep catches a skipped OnVersion the same way.
@@ -325,5 +341,80 @@ func TestBundleUsesRenderedExtraVersions(t *testing.T) {
 	}
 	if delivery.Digest(after.Files[0].Content) != asg.Grants[0].Files[0].SHA256 {
 		t.Fatal("bundle digest no longer matches the assignment's expected digest")
+	}
+}
+
+// Review Focus: render()'s per-batch material cache must key on (version
+// id, withKey), not version id alone. A certificate used directly by one
+// grant (its key rendered) and as another grant's extra certificate (keyless)
+// can land in the same OnVersion/sweep batch when both grants share a
+// client (GrantSources has no ORDER BY, so either row can be processed
+// first): keying the cache on version id alone lets whichever request
+// (with or without the key) runs first silently answer the other's
+// request too, either failing the key-bearing grant with ErrNoKey or
+// handing the extra a key-bearing copy it never asked for.
+func TestBatchRenderKeyedByVersionAndKeyFlag(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+
+	certA := f.cert(t, "shared-a")
+	vidA1 := f.version(t, certA, 40, true)
+	f.setCurrent(t, certA, vidA1)
+	keyLayout := f.layout(t, "key-layout",
+		[]delivery.OutputFile{{Path: "/etc/ssl/a-key.pem", Format: "pem", Parts: []string{"key"}, Mode: "0600"}}, "", nil)
+
+	certB := f.cert(t, "shared-b")
+	vidB := f.version(t, certB, 41, true)
+	f.setCurrent(t, certB, vidB)
+	extraLayout := f.layout(t, "extra-layout",
+		[]delivery.OutputFile{{Path: "/etc/ssl/b-extra.pem", Format: "pem", Parts: []string{"extra"}, Mode: "0644"}}, "", []uuid.UUID{certA})
+
+	c := f.client(t, "shared-client")
+	// gB (extra references A) is created before gA (A's own key-bearing
+	// grant): client_cert_grants has no secondary index GrantSources could
+	// use besides the primary key, so a plain sequential scan for
+	// `id = ANY($1)` returns rows in heap/insertion order for a table this
+	// small, making gB's row (and its withKey=false load of A) the one
+	// processed first.
+	gB, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certB, Delivery: "pull", LayoutID: &extraLayout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gA, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certA, Delivery: "pull", LayoutID: &keyLayout})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A new version of A must re-render both grants, in one batch (OnVersion
+	// unions LiveGrantIDsForCert(A) = {gA} and LiveGrantIDsForExtraCert(A) =
+	// {gB}, and both share client c, so resyncGrants renders them together).
+	vidA2 := f.version(t, certA, 42, true)
+	f.setCurrent(t, certA, vidA2)
+	f.svc.OnVersion(ctx, certA, vidA2)
+
+	mA2, err := f.certs.Material(ctx, certA, vidA2, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKeyFiles, err := render.PEM{}.Render(mA2, render.OutputOpts{Parts: []string{"key"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKeyDigest := delivery.Digest(wantKeyFiles[0].Data)
+	if got := f.expectedDigest(t, gA); got != wantKeyDigest {
+		t.Fatalf("gA's key-bearing file did not re-render onto A's new version (ErrNoKey from a shared-key-flag cache entry?): got %s, want %s", got, wantKeyDigest)
+	}
+
+	mA2Keyless, err := f.certs.Material(ctx, certA, vidA2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantExtraFiles, err := render.PEM{}.Render(render.Material{}, render.OutputOpts{Parts: []string{"extra"}, Extras: []render.Material{mA2Keyless}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantExtraDigest := delivery.Digest(wantExtraFiles[0].Data)
+	if got := f.expectedDigest(t, gB); got != wantExtraDigest {
+		t.Fatalf("gB's extra part did not re-render onto A's new version: got %s, want %s", got, wantExtraDigest)
 	}
 }
