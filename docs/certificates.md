@@ -194,7 +194,7 @@ When useAri is on and the certificate is renewing a version this CertForge insta
 
 Each attempt records a step timeline: `caa`, `rate_ledger`, `account`, `order`, `challenge <name>`, `finalize`, `store`, each `running`, `success`, `failed`, `skipped` or `waiting_manual`, plus a log, the ACME error type (for example `urn:ietf:params:acme:error:rateLimited`) and `retryAfter`.
 
-The certificate's **Attempts** tab shows every attempt, newest first, as a step timeline. The failing step (if any) opens by default with its message; the raw log is collapsed behind **Raw log**, which adds a search box and a copy button once opened. While an attempt is `running` the tab polls every 2 seconds; once none is, it slows to 30 seconds, and never polls while the tab is hidden.
+The certificate's **Attempts** tab shows every attempt, newest first, as a step timeline. The failing step (if any) opens by default with its message; the raw log is collapsed behind **Raw log**, which adds a search box and a copy button once opened. While an attempt is `running` the tab polls every 2 seconds; once none is, it slows to 30 seconds, and never polls while the tab is hidden. `caa` and `rate_ledger` show as **CAA check** and **Rate limits**; a skipped step's reason (for example "disabled in settings") is shown muted inline. A failed **Rate limits** step also shows the current [rate-ledger](#rate-limits) usage for the certificate's CA: one row per limit, with its scope, a `count/max` meter, and when it resets; a limit with no maximum reads "No limit", and a staging (unenforced) CA shows a **Counted only** chip instead of blocking.
 
 ### Troubleshooting
 

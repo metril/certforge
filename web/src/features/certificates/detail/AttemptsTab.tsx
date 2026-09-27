@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { errorMessage } from '@/api/errors';
 import { attemptsQuery } from '@/api/queries/certificates';
+import type { AttemptStep } from '@/api/types';
 import { AttemptLogViewer } from '@/components/AttemptLogViewer';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { Button } from '@/components/ui/button';
+import { RateLedgerPanel } from './RateLedgerPanel';
 
-export function AttemptsTab({ orgId, certId, onRenew }: { orgId: string; certId: string; onRenew?: () => void }) {
+export function AttemptsTab({ orgId, certId, caId, onRenew }: { orgId: string; certId: string; caId?: string | null; onRenew?: () => void }) {
   const { data, isPending, isError, error, refetch } = useQuery(attemptsQuery(orgId, certId));
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   // Fix round 1 (review, Important): a failed fetch (403/500) used to fall
@@ -22,10 +24,13 @@ export function AttemptsTab({ orgId, certId, onRenew }: { orgId: string; certId:
       </EmptyState>
     );
   }
+  const renderStepExtra = caId
+    ? (step: AttemptStep) => (step.name === 'rate_ledger' && step.status === 'failed' ? <RateLedgerPanel orgId={orgId} caId={caId} certId={certId} /> : null)
+    : undefined;
   return (
     <section aria-label="Attempts">
       {attempts.map((a, i) => (
-        <AttemptLogViewer key={a.id} attempt={a} defaultOpen={i === 0} />
+        <AttemptLogViewer key={a.id} attempt={a} defaultOpen={i === 0} renderStepExtra={renderStepExtra} />
       ))}
     </section>
   );

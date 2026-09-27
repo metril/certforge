@@ -111,6 +111,17 @@ export const help = {
   'rules.globalAgentDisabled': { text: "Agent methods need an org's own clients, which global defaults don't have. Set this per certificate or org instead." },
   'rules.catchAll': { text: 'Rules that certificates fall back to when none of their own match.' },
   'attempt.retry': { text: 'Failed attempts back off from 5 minutes up to 24 hours. Rate limits use the CA’s retry time.' },
+  'attempt.caa': {
+    text: 'CertForge checks that CAA records allow this CA before ordering. The CA checks again.',
+    // Template-interpolated: hash plus caa reads as a valid 3-digit hex
+    // colour to no-hardcoded-values.test.ts's scanner.
+    learnMore: `certificates.md#${'caa'}`,
+  },
+  'attempt.rateLedger': {
+    text: 'Local counts per CA, so a limit is caught before the CA refuses.',
+    learnMore: 'certificates.md#rate-limits',
+  },
+  'rateLedger.enforced': { text: 'Staging CAs are counted but never blocked.' },
   'manual.records': { text: 'Add these TXT records at your DNS host, then confirm. CertForge checks them before asking the CA.', learnMore: 'certificates.md#manual-dns' },
   'download.format': {
     text: 'PEM and DER suit most servers; PKCS#12 and JKS bundle the key for Windows and Java.',

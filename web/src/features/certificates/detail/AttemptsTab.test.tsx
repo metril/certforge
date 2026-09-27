@@ -3,9 +3,15 @@ import { act, screen } from '@testing-library/react';
 import { focusManager } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { makeAttempt, NOW, problem, url } from '@/test/fixtures';
+import { iso, makeAttempt, makeRateLedger, NOW, problem, url } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { AttemptsTab } from './AttemptsTab';
+
+const failedRateLedger = () =>
+  makeAttempt({
+    acmeErrorType: 'urn:ietf:params:acme:error:rateLimited',
+    steps: [{ name: 'rate_ledger', status: 'failed', startedAt: iso(-0.01), finishedAt: iso(-0.0099), message: 'rate limit: duplicateCertsPerWeek, 5/5, retry at ' + iso(0.1) }],
+  });
 
 afterEach(() => focusManager.setFocused(undefined));
 
@@ -62,4 +68,50 @@ it('shows an error state, not the empty state, when the attempts fetch fails', a
   expect(await screen.findByText(/Couldn't load attempts\..*boom/)).toBeInTheDocument();
   expect(screen.queryByText('No attempts yet.')).toBeNull();
   expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+});
+
+// Task 4: a failed rate_ledger step shows the current ledger usage under it,
+// scoped by the certificate's CA and its own id.
+it('shows ledger usage under a failed rate_ledger step', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => HttpResponse.json([failedRateLedger()])),
+    http.get(url('/orgs/org-1/rate-ledger'), ({ request }) => {
+      const q = new URL(request.url).searchParams;
+      expect(q.get('ca')).toBe('ca-1');
+      expect(q.get('certificate')).toBe('c-1');
+      return HttpResponse.json(
+        makeRateLedger({ items: [{ limit: 'duplicateCertsPerWeek', scope: 'www.example.com', count: 5, max: 5, windowSeconds: 604_800, resetsAt: iso(0.1) }] }),
+      );
+    }),
+  );
+  renderUI(<AttemptsTab orgId="org-1" certId="c-1" caId="ca-1" />);
+  expect(await screen.findByText('Duplicate certificates, 7 days')).toBeInTheDocument();
+  expect(screen.getByText('5 / 5')).toBeInTheDocument();
+  expect(screen.getByText(/resets in/)).toBeInTheDocument();
+});
+
+it('shows a Counted only chip for a staging (unenforced) CA', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => HttpResponse.json([failedRateLedger()])),
+    http.get(url('/orgs/org-1/rate-ledger'), () => HttpResponse.json(makeRateLedger({ enforced: false }))),
+  );
+  renderUI(<AttemptsTab orgId="org-1" certId="c-1" caId="ca-1" />);
+  expect(await screen.findByText('Counted only')).toBeInTheDocument();
+});
+
+it('shows an error state with retry when the ledger fetch fails', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => HttpResponse.json([failedRateLedger()])),
+    http.get(url('/orgs/org-1/rate-ledger'), () => problem(500, 'boom')),
+  );
+  renderUI(<AttemptsTab orgId="org-1" certId="c-1" caId="ca-1" />);
+  expect(await screen.findByText(/Couldn't load rate limits\..*boom/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+});
+
+it('renders no ledger panel without a caId', async () => {
+  server.use(http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => HttpResponse.json([failedRateLedger()])));
+  renderUI(<AttemptsTab orgId="org-1" certId="c-1" />);
+  expect(await screen.findByText('Rate limits')).toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Rate limits' })).toBeNull();
 });

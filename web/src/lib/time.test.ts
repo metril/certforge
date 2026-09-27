@@ -37,9 +37,18 @@ it('handles the just-now / minute and hour / day boundaries', () => {
   expect(relTime(new Date(now - 24 * HOUR).toISOString(), now)).toBe('1 d ago');
 });
 
-// A future timestamp (clock skew, or `now` not yet advanced past a
-// just-received event) clamps to 0 s elapsed rather than going negative.
+// A future timestamp within the just-now threshold (clock skew, or `now` not
+// yet advanced past a just-received event) still reads as "just now".
 it('clamps a future timestamp to "just now"', () => {
   const now = Date.parse('2026-09-24T12:00:00Z');
   expect(relTime(new Date(now + 5_000).toISOString(), now)).toBe('just now');
+});
+
+// Rate-ledger reset times are in the future by minutes, hours or days — used
+// as `resets ${relTime(resetsAt)}`, e.g. "resets in 2 h".
+it('formats a future timestamp as "in ..."', () => {
+  const now = Date.parse('2026-09-24T12:00:00Z');
+  expect(relTime(new Date(now + 5 * 60_000).toISOString(), now)).toBe('in 5 min');
+  expect(relTime(new Date(now + 2 * HOUR).toISOString(), now)).toBe('in 2 h');
+  expect(relTime(new Date(now + 3 * DAY).toISOString(), now)).toBe('in 3 d');
 });

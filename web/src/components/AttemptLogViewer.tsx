@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Check, ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, CircleX, Copy, Loader2, TriangleAlert, type LucideIcon } from 'lucide-react';
 import type { Attempt, AttemptStep } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { explainAcmeError } from '@/lib/acmeErrors';
-import { docsHref } from '@/lib/help';
+import { docsHref, type HelpKey } from '@/lib/help';
 import type { Tone } from '@/lib/status';
 import { fmtDateTime, fmtDuration } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -27,7 +27,19 @@ const STEP: Record<string, { icon: LucideIcon; cls: string; label: string }> = {
   waiting_manual: { icon: Circle, cls: 'text-expiring', label: 'Waiting on you' },
 };
 
-function StepRow({ step, expanded }: { step: AttemptStep; expanded: boolean }) {
+// The server's real step names (`caa`, `rate_ledger` since 4A) get readable
+// labels; every other step name passes through as-is.
+export const STEP_LABEL: Record<string, string> = {
+  caa: 'CAA check',
+  rate_ledger: 'Rate limits',
+};
+
+const STEP_HELP: Partial<Record<string, HelpKey>> = {
+  caa: 'attempt.caa',
+  rate_ledger: 'attempt.rateLedger',
+};
+
+function StepRow({ step, expanded, extra }: { step: AttemptStep; expanded: boolean; extra?: ReactNode }) {
   // Fix round 1 (review, Important): `useState(expanded)` only reads `expanded`
   // on first mount, so a step that turns from running to failed on a later
   // poll (same StepRow instance — same key) kept its message hidden forever,
@@ -39,25 +51,44 @@ function StepRow({ step, expanded }: { step: AttemptStep; expanded: boolean }) {
   const m = STEP[step.status] ?? STEP.pending!;
   const Icon = m.icon;
   const dur = step.finishedAt ? fmtDuration(Date.parse(step.finishedAt) - Date.parse(step.startedAt)) : null;
+  const label = STEP_LABEL[step.name] ?? step.name;
+  const helpId = STEP_HELP[step.name];
+  // Task 4: a skipped step's reason (e.g. "disabled in settings") is shown
+  // inline and muted, with no toggle — it's already a settled outcome, not
+  // something worth a click to reveal.
+  const skipped = step.status === 'skipped';
   return (
     <li className="grid gap-1">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Icon className={cn('size-4', m.cls)} aria-hidden />
         <span className="sr-only">{m.label}:</span>
-        <span className={step.status === 'failed' ? 'font-semibold' : undefined}>{step.name}</span>
+        <span className={step.status === 'failed' ? 'font-semibold' : undefined}>{label}</span>
+        {helpId && <HelpTip id={helpId} />}
         {dur && <span className="text-xs text-ink-muted">{dur}</span>}
-        {step.message && !expanded && (
+        {step.message && !skipped && !expanded && (
           <Button variant="link" size="sm" className="h-auto px-0" aria-expanded={open} onClick={() => setOverride(!open)}>
             {open ? 'Hide details' : 'Details'}
           </Button>
         )}
       </div>
-      {step.message && open && <p className="ml-6 whitespace-pre-wrap font-mono text-xs text-ink-muted">{step.message}</p>}
+      {step.message && skipped && <p className="ml-6 text-xs text-ink-muted">{step.message}</p>}
+      {step.message && !skipped && open && <p className="ml-6 whitespace-pre-wrap font-mono text-xs text-ink-muted">{step.message}</p>}
+      {extra && <div className="ml-6">{extra}</div>}
     </li>
   );
 }
 
-export function AttemptLogViewer({ attempt, defaultOpen = false }: { attempt: Attempt; defaultOpen?: boolean }) {
+export function AttemptLogViewer({
+  attempt,
+  defaultOpen = false,
+  renderStepExtra,
+}: {
+  attempt: Attempt;
+  defaultOpen?: boolean;
+  /** Extra content under a step row (e.g. the rate-ledger usage panel under
+   * a failed `rate_ledger` step) — the caller decides which step, if any. */
+  renderStepExtra?: (step: AttemptStep) => ReactNode;
+}) {
   const [open, setOpen] = useState(defaultOpen);
   const [logOpen, setLogOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -106,7 +137,7 @@ export function AttemptLogViewer({ attempt, defaultOpen = false }: { attempt: At
         )}
         <ol aria-label="Steps" className="grid gap-1">
           {attempt.steps.map((s, i) => (
-            <StepRow key={`${s.name}-${i}`} step={s} expanded={i === failing} />
+            <StepRow key={`${s.name}-${i}`} step={s} expanded={i === failing} extra={renderStepExtra?.(s)} />
           ))}
         </ol>
         <Collapsible open={logOpen} onOpenChange={setLogOpen}>

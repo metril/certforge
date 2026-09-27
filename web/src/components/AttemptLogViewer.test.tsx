@@ -56,6 +56,66 @@ it("shows a step's message once it turns from running to failed on a later rende
   expect(screen.getByText('NXDOMAIN looking up TXT for _acme-challenge.www.example.com')).toBeInTheDocument();
 });
 
+// Task 4: the server's real step names, `caa` and `rate_ledger`, get
+// readable labels; every other step name passes through unchanged.
+it('labels caa and rate limits', () => {
+  renderUI(
+    <AttemptLogViewer
+      attempt={makeAttempt({
+        steps: [
+          { name: 'caa', status: 'success', startedAt: iso(-0.01), finishedAt: iso(-0.0099) },
+          { name: 'rate_ledger', status: 'success', startedAt: iso(-0.0099), finishedAt: iso(-0.0098) },
+          { name: 'account', status: 'success', startedAt: iso(-0.0098), finishedAt: iso(-0.0097) },
+        ],
+      })}
+      defaultOpen
+    />,
+  );
+  expect(screen.getByText('CAA check')).toBeInTheDocument();
+  expect(screen.getByText('Rate limits')).toBeInTheDocument();
+  expect(screen.getByText('account')).toBeInTheDocument();
+  expect(screen.queryByText('caa')).toBeNull();
+  expect(screen.queryByText('rate_ledger')).toBeNull();
+});
+
+it('skipped caa shows its reason inline, without a details toggle', () => {
+  renderUI(
+    <AttemptLogViewer
+      attempt={makeAttempt({
+        outcome: 'success',
+        acmeErrorType: undefined,
+        retryAfter: undefined,
+        steps: [{ name: 'caa', status: 'skipped', startedAt: iso(-0.01), finishedAt: iso(-0.0099), message: 'disabled in settings' }],
+      })}
+      defaultOpen
+    />,
+  );
+  expect(screen.getByText('disabled in settings')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
+});
+
+it('failed caa stays expanded with its detail text', () => {
+  renderUI(
+    <AttemptLogViewer
+      attempt={makeAttempt({
+        acmeErrorType: 'urn:ietf:params:acme:error:caa',
+        steps: [
+          {
+            name: 'caa',
+            status: 'failed',
+            startedAt: iso(-0.01),
+            finishedAt: iso(-0.0099),
+            message: 'CAA at example.com allows other-ca.example; the CA identifies as letsencrypt.org. Add: example.com CAA 0 issue "letsencrypt.org"',
+          },
+        ],
+      })}
+      defaultOpen
+    />,
+  );
+  expect(screen.getByText('CAA check')).toBeInTheDocument();
+  expect(screen.getByText(/CAA at example\.com allows other-ca\.example/)).toBeInTheDocument();
+});
+
 it('guards Copy log when the Clipboard API is unavailable', async () => {
   const original = navigator.clipboard;
   try {

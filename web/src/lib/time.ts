@@ -24,13 +24,20 @@ export function fmtDateTime(t: string): string {
   return new Date(t).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/** Short relative time for activity lists (`just now`, `N min ago`, `N h ago`, `N d ago`). */
+/** Short relative time for activity lists (`just now`, `N min ago`, `N h ago`,
+ * `N d ago`) and, for a future `t` (`in N min`, `in N h`, `in N d`) — used for
+ * example by the rate-ledger panel's "resets in 2 h". Both directions share
+ * the same just-now threshold, so a few seconds of clock skew either way
+ * still reads as `just now`. */
 export function relTime(t: string, now = Date.now()): string {
-  const s = Math.max(0, (now - Date.parse(t)) / 1000);
+  const diff = Date.parse(t) - now;
+  const past = diff <= 0;
+  const s = Math.abs(diff) / 1000;
   if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86_400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86_400)} d ago`;
+  if (s < 3600) { const m = Math.floor(s / 60); return past ? `${m} min ago` : `in ${m} min`; }
+  if (s < 86_400) { const h = Math.floor(s / 3600); return past ? `${h} h ago` : `in ${h} h`; }
+  const d = Math.floor(s / 86_400);
+  return past ? `${d} d ago` : `in ${d} d`;
 }
 
 export function fmtDuration(ms: number): string {

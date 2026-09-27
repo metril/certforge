@@ -112,7 +112,7 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
           />
         </TabsContent>
         <TabsContent value="attempts" className="pt-4">
-          <AttemptsTab orgId={org.id} certId={cert.id} onRenew={renewNow} />
+          <AttemptsTab orgId={org.id} certId={cert.id} caId={cert.effective?.caId?.value} onRenew={renewNow} />
         </TabsContent>
         <TabsContent value="deployments" className="pt-4">
           <DeploymentsTab cert={cert} orgId={org.id} orgSlug={org.slug} />
