@@ -18,6 +18,8 @@ type Type string
 const (
 	DNS01     Type = "dns-01"
 	ManualDNS Type = "manual-dns"
+	HTTP01    Type = "http-01"
+	TLSALPN01 Type = "tls-alpn-01"
 )
 
 // ChallengeProvider is CertForge's challenge interface (spec "Interfaces").

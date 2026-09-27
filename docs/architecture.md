@@ -91,7 +91,7 @@ Blob bytes: `0x01 | len(kek_id) | kek_id | u16 len(wrapped) | wrapped | len(nonc
 
 ## Routing challenge provider
 
-lego sees one DNS-01 provider per issuance: `challenge.Router`. It is built per attempt from the certificate's verification rules followed by the inherited catch-all rules (certificate overrides, then org, then global defaults). See [ADR 0005](adr/0005-routing-challenge-provider.md).
+`challenge.Router` is built per attempt from the certificate's verification rules followed by the inherited catch-all rules (certificate overrides, then org, then global defaults). See [ADR 0005](adr/0005-routing-challenge-provider.md).
 
 ```mermaid
 flowchart LR
@@ -105,9 +105,15 @@ flowchart LR
 ```
 
 - Match patterns: `*`, `*.zone` (one label below zone, or `*.zone` itself), `zone` (zone and everything below). First match wins. The UI's coverage panel uses the same rules.
-- `Router.Validate` rejects uncovered names and IP addresses before an order exists.
+- `Router.Validate` rejects uncovered names, IP addresses, and a wildcard name routed to anything other than dns-01/manual-dns, before an order exists.
 - lego providers are built by `challenge.Build` under a global mutex with an isolated environment (`internal/challenge/lego_env.go`).
 - Provider schemas are generated from lego's TOML metadata by `tools/gen-lego-schemas` into `internal/challenge/schemas/` and published to the meta registry by `challenge.AddToMeta` and served under `dnsProviders` in `GET /api/v1/meta/schemas`.
+
+### Type-aware routing (Phase 4A)
+
+A rule's challenge type comes from its provider's `Type()` (manual-dns counts as dns-01, since both use the TXT record). `Router.For(t)` returns a view scoped to one type: its `Present`/`CleanUp`/`PreCheck` resolve a lego callback's bare authorization domain to the rule of type `t` that covers it (`routeForType`), rather than to whichever rule the domain would otherwise resolve to. This matters because lego's `SolverManager.chooseSolver` picks a registered solver per authorization by a fixed type preference, never by domain — with two providers registered (say dns-01 and http-01) every authorization of an order would otherwise reach the same one, regardless of which rule actually names it. `acme.Signer.Issue` registers exactly one type's view (`solver.For(type)`) as the matching lego provider (`SetDNS01Provider`, `SetHTTP01Provider`, `SetTLSALPN01Provider`); a certificate whose rules span more than one type is rejected until the mixed-method order flow (Task 9) drives more than one lego provider through a single `Obtain` call.
+
+http-01 rules with `via: server` (the default) are served by this process itself: `challenge.HTTPTokens` holds each pending token's key authorization in memory (10-minute TTL) for `GET /.well-known/acme-challenge/{token}` on the main listener (see [docs/api.md](api.md)) to answer. `via: agent` and every tls-alpn-01 rule are served by a client over its agent connection (Task 7's relay); until then they validate but fail issuance with "agent challenge relay not configured".
 
 ## Issuance flow
 

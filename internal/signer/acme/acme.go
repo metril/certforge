@@ -200,12 +200,7 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 	if err != nil {
 		return nil, err
 	}
-	solver := req.Challenge
-	err = cl.Challenge.SetDNS01Provider(solver, dns01.WrapPreCheck(
-		func(domain, fqdn, value string, check dns01.PreCheckFunc) (bool, error) {
-			return solver.PreCheck(domain, fqdn, value, check)
-		}))
-	if err != nil {
+	if err := registerChallengeSolver(cl, req.Challenge); err != nil {
 		return nil, err
 	}
 	or := certificate.ObtainRequest{
@@ -226,6 +221,34 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 		return nil, classify(err, rt)
 	}
 	return signer.IssuedFromPEM(res.Certificate, res.PrivateKey)
+}
+
+// registerChallengeSolver registers solver's single challenge type as the
+// matching lego provider (Task 6: a mixed-method certificate, more than one
+// type, is rejected until a later task adds order flow that can drive more
+// than one lego provider for one Obtain). For each type this registers
+// solver.For(type), not solver itself, so lego's SolverManager (which picks
+// a solver per authorization by fixed type preference, never by domain) can
+// only ever reach rules of that one type.
+func registerChallengeSolver(cl *lego.Client, solver signer.ChallengeSolver) error {
+	types := solver.ChallengeTypes()
+	if len(types) != 1 {
+		return fmt.Errorf("issuance across challenge types %v is not supported yet", types)
+	}
+	switch types[0] {
+	case "dns-01":
+		view := solver.For("dns-01")
+		return cl.Challenge.SetDNS01Provider(view, dns01.WrapPreCheck(
+			func(domain, fqdn, value string, check dns01.PreCheckFunc) (bool, error) {
+				return view.PreCheck(domain, fqdn, value, check)
+			}))
+	case "http-01":
+		return cl.Challenge.SetHTTP01Provider(solver.For("http-01"))
+	case "tls-alpn-01":
+		return cl.Challenge.SetTLSALPN01Provider(solver.For("tls-alpn-01"))
+	default:
+		return fmt.Errorf("unsupported challenge type %q", types[0])
+	}
 }
 
 // Revoke revokes cert with an RFC 5280 reason code using cfg.Account.

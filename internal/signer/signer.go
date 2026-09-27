@@ -40,12 +40,25 @@ type AccountMaterial struct {
 // ChallengeSolver is what a Signer needs to prove control of names.
 // challenge.Router implements it. Present/CleanUp/Timeout match lego's
 // challenge.Provider and challenge.ProviderTimeout; PreCheck is installed via
-// dns01.WrapPreCheck.
+// dns01.WrapPreCheck. ChallengeTypes/TypeFor/For make it type-aware
+// (Phase 4A): a single-method Issue registers For(the one type) with lego;
+// more than one type is rejected until mixed-method ordering arrives.
 type ChallengeSolver interface {
 	Present(domain, token, keyAuth string) error
 	CleanUp(domain, token, keyAuth string) error
 	Timeout() (timeout, interval time.Duration)
 	PreCheck(domain, fqdn, value string, check func(fqdn, value string) (bool, error)) (bool, error)
+
+	// ChallengeTypes lists the distinct challenge types ("dns-01", "http-01",
+	// "tls-alpn-01") this solver's rules use.
+	ChallengeTypes() []string
+	// TypeFor reports the challenge type used for name.
+	TypeFor(name string) (string, error)
+	// For returns the view of this solver restricted to challenge type t:
+	// its Present/CleanUp/PreCheck consider only rules of that type, so
+	// registering it as a single lego provider cannot reach a rule of a
+	// different type sharing the same bare authorization domain.
+	For(t string) ChallengeSolver
 }
 
 // IssueRequest asks a Signer for one certificate covering Names.

@@ -9,9 +9,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/meta"
 )
 
@@ -198,5 +200,53 @@ func TestSPAMounted(t *testing.T) {
 	rec := serve(t, http.MethodGet, "/o/home/overview", "", "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "CertForge") {
 		t.Fatalf("spa %d", rec.Code)
+	}
+}
+
+// TestWellKnownHandler: GET /.well-known/acme-challenge/{token} is public
+// (no session, not under /api/v1), returns the stored key authorization as
+// text/plain for a known token, 404 for an unknown one or a token
+// containing "." or "/" (the wildcard route also catches extra segments),
+// and 405 for a non-GET method.
+func TestWellKnownHandler(t *testing.T) {
+	tokens := challenge.NewHTTPTokens(time.Minute)
+	tokens.Put("tok123", "keyauth-value")
+	h := NewRouter(Deps{Meta: meta.NewRegistry(), HTTPTokens: tokens})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/.well-known/acme-challenge/tok123", nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "keyauth-value" {
+		t.Fatalf("known token: %d %q", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Fatalf("content type %q", ct)
+	}
+
+	for _, p := range []string{
+		"/.well-known/acme-challenge/nope",
+		"/.well-known/acme-challenge/a.b",
+		"/.well-known/acme-challenge/a/b",
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s: code %d", p, rec.Code)
+		}
+	}
+
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, httptest.NewRequest(http.MethodPost, "/.well-known/acme-challenge/tok123", nil))
+	if rec2.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("post code %d", rec2.Code)
+	}
+}
+
+// TestWellKnownHandlerNoTokenStore: with no HTTPTokens configured (the
+// default zero Deps), the route still answers 404 instead of falling
+// through to the SPA (200) or panicking on a nil store.
+func TestWellKnownHandlerNoTokenStore(t *testing.T) {
+	rec := serve(t, http.MethodGet, "/.well-known/acme-challenge/tok123", "", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("code %d", rec.Code)
 	}
 }

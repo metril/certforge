@@ -17,12 +17,18 @@ var routerTestNow = time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
 
 type recProvider struct {
 	name    string
+	typ     Type // zero value means DNS01
 	mu      sync.Mutex
 	present []string
 	timeout time.Duration
 }
 
-func (p *recProvider) Type() Type { return DNS01 }
+func (p *recProvider) Type() Type {
+	if p.typ == "" {
+		return DNS01
+	}
+	return p.typ
+}
 func (p *recProvider) Present(_ context.Context, d, _, _ string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -322,5 +328,86 @@ func TestRouterPreCheckUsesRuleResolvers(t *testing.T) {
 	ok, err = r.PreCheck("example.com", "_acme-challenge.example.com.", "other", legoCheck)
 	if ok || err != nil {
 		t.Fatalf("not propagated: %v %v", ok, err)
+	}
+}
+
+// TestRouterChallengeTypes: dns-01 + manual-dns both count as dns-01
+// (manual-dns shares the TXT mechanism); a distinct http-01 rule adds to the
+// set. TypeFor reports the type per name.
+func TestRouterChallengeTypes(t *testing.T) {
+	store := &memManual{}
+	mp := NewManual(store, uuid.New(), uuid.New())
+	r := NewRouter(context.Background(), []string{"a.example.com", "b.example.com"},
+		[]Rule{rule(t, "a.example.com", &recProvider{}), rule(t, "b.example.com", mp)}, nil)
+	got := r.ChallengeTypes()
+	if len(got) != 1 || got[0] != string(DNS01) {
+		t.Fatalf("dns-01+manual-dns ChallengeTypes = %v, want [dns-01]", got)
+	}
+	if typ, err := r.TypeFor("a.example.com"); err != nil || typ != string(DNS01) {
+		t.Fatalf("TypeFor(a) = %q, %v", typ, err)
+	}
+
+	r2 := NewRouter(context.Background(), []string{"a.example.com", "b.example.com"},
+		[]Rule{rule(t, "a.example.com", &recProvider{typ: HTTP01}), rule(t, "b.example.com", &recProvider{})}, nil)
+	got2 := r2.ChallengeTypes()
+	if len(got2) != 2 {
+		t.Fatalf("http-01+dns-01 ChallengeTypes = %v, want both", got2)
+	}
+	if typ, err := r2.TypeFor("a.example.com"); err != nil || typ != string(HTTP01) {
+		t.Fatalf("TypeFor(a) = %q, %v", typ, err)
+	}
+	if typ, err := r2.TypeFor("b.example.com"); err != nil || typ != string(DNS01) {
+		t.Fatalf("TypeFor(b) = %q, %v", typ, err)
+	}
+}
+
+// TestRouterMixedApexWildcard: an apex rule using http-01 and a wildcard
+// rule using dns-01 for the same zone. Validate must pass (the wildcard name
+// itself is routed to dns-01, which is all Validate requires), TypeFor must
+// report the wildcard name's own (unstripped) type, and For(type) must let
+// each type's view reach only its own provider for the shared bare domain.
+func TestRouterMixedApexWildcard(t *testing.T) {
+	httpProv := &recProvider{typ: HTTP01}
+	dnsProv := &recProvider{typ: DNS01}
+	// The more specific (wildcard) matcher must be listed first: "first
+	// match wins" is how an operator picks the wildcard over the zone rule
+	// for the wildcard name itself; see TestRouterOverlappingZonesFirstMatchWins.
+	rules := []Rule{rule(t, "*.example.com", dnsProv), rule(t, "example.com", httpProv)}
+	r := NewRouter(context.Background(), []string{"example.com", "*.example.com"}, rules, nil)
+
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+	if typ, err := r.TypeFor("*.example.com"); err != nil || typ != string(DNS01) {
+		t.Fatalf("TypeFor(*.example.com) = %q, %v", typ, err)
+	}
+	if typ, err := r.TypeFor("example.com"); err != nil || typ != string(HTTP01) {
+		t.Fatalf("TypeFor(example.com) = %q, %v", typ, err)
+	}
+
+	if err := r.For(string(DNS01)).Present("example.com", "t", "k"); err != nil {
+		t.Fatal(err)
+	}
+	if len(dnsProv.present) != 1 || len(httpProv.present) != 0 {
+		t.Fatalf("dns-01 view must reach the wildcard rule's provider: dns=%v http=%v", dnsProv.present, httpProv.present)
+	}
+	if err := r.For(string(HTTP01)).Present("example.com", "t", "k"); err != nil {
+		t.Fatal(err)
+	}
+	if len(httpProv.present) != 1 || len(dnsProv.present) != 1 {
+		t.Fatalf("http-01 view must reach the apex rule's provider: dns=%v http=%v", dnsProv.present, httpProv.present)
+	}
+}
+
+// TestRouterRejectsWildcardNonDNS: a wildcard name cannot be proven with
+// http-01 or tls-alpn-01 (the CA never offers those challenges for a
+// wildcard authorization), so Validate must reject it even though the name
+// is otherwise covered.
+func TestRouterRejectsWildcardNonDNS(t *testing.T) {
+	r := NewRouter(context.Background(), []string{"*.example.com"},
+		[]Rule{rule(t, "*.example.com", &recProvider{typ: HTTP01})}, nil)
+	err := r.Validate()
+	if err == nil || !strings.Contains(err.Error(), "*.example.com") {
+		t.Fatalf("Validate() = %v, want a wildcard/http-01 error", err)
 	}
 }

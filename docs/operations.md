@@ -27,6 +27,18 @@ On SIGINT/SIGTERM, `serve` drains in order:
 
 That is up to ~55s end to end, so a deploy's stop timeout must allow at least that: the server's container in `deploy/compose.yaml` sets `stop_grace_period: 60s` (Docker's default is 10s, which would SIGKILL the process mid-drain and abandon whatever issuance attempts were still running instead of letting them fail cleanly and retry). A Kubernetes deployment needs the equivalent `terminationGracePeriodSeconds: 60` on the pod spec.
 
+## http-01 challenges
+
+A `http-01` rule with `via: server` (the default) is answered by CertForge itself at `GET /.well-known/acme-challenge/{token}` on the main HTTP listener — unauthenticated, plain text, not under `/api/v1` (see [docs/api.md](api.md)). The ACME CA connects to the certificate's own names on port 80, so route that path to CertForge from whatever already terminates port 80 there. With nginx in front of CertForge:
+
+```nginx
+location /.well-known/acme-challenge/ {
+    proxy_pass http://certforge:8080;
+}
+```
+
+Do this for every name a `via: server` http-01 rule covers; a name with nothing listening on port 80 for it will fail that rule's challenge. See [docs/certificates.md#http-01](certificates.md#http-01).
+
 ## Migrations
 
 `serve` and `migrate` apply embedded goose migrations on startup; this is safe to run repeatedly and from several processes at once. Migration `00005` reserves the org slug `all` for the web UI's All orgs route (`/o/all/...`). If an org already has that slug, the migration fails before altering the schema, with:

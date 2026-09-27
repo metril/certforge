@@ -69,7 +69,7 @@ A certificate has a common name plus any number of SANs: wildcards (`*.example.c
 In the web UI, paste names into the wizard's multi-line box separated by commas, spaces, semicolons, or new lines; each becomes a chip, grouped by registered domain (for example `a.example.co.uk` groups under `example.co.uk`; a private zone like `lab.local` groups under itself).
 
 - `*.example.com` is a wildcard and is marked **DNS only**: wildcards can only be proven with DNS verification (dns-01 or manual-dns), never HTTP-01. A wildcard under a registrable "private" zone such as `*.github.io` groups and validates the same way; a wildcard directly on an ICANN suffix such as `*.co.uk` is invalid, since nobody controls that whole zone.
-- IP addresses are marked **IP**. Phase 1 cannot validate IP names (dns-01 and manual-dns only), so the certificate will fail until HTTP-01 lands.
+- IP addresses are marked **IP**. CertForge cannot validate an IP name with any of its methods yet, so the certificate will fail.
 - Invalid names get a red outline; hover the icon for the reason. Remove them to continue.
 - The first valid name is the common name. Drag another chip onto the Common name box, or use its crown button, to change it.
 - A certificate holds at most 100 names.
@@ -86,19 +86,27 @@ Each certificate carries an ordered list of rules. For every name the first matc
 
 To give one name its own credential, put a rule for exactly that name first: `a.example.com` above `example.com`.
 
+### Verification methods
+
 | `method` | Needs | Who acts |
 |---|---|---|
 | `dns-01` | `dnsCredentialId` | CertForge, via the lego provider of that credential |
 | `manual-dns` | nothing | an operator adds TXT records and confirms |
+| `http-01` | `via` (`server`, the default, or `agent`); `clientId` and, optionally, `webroot` when `via: agent` | `via: server`: CertForge itself — see [http-01](#http-01). `via: agent`: the named client, over its agent connection (Phase 4A Task 7/8). |
+| `tls-alpn-01` | `clientId` | the named client, on its own TLS listener (Phase 4A Task 7/8); there is no server mode |
 
-Optional per rule: `propagationSeconds`, `resolvers`, `cnameAliasZone`.
+Optional per `dns-01`/`manual-dns` rule: `propagationSeconds`, `resolvers`, `cnameAliasZone`. `http-01` and `tls-alpn-01` rules take none of those (they have no TXT propagation to wait on).
 
 - **Propagation budget**: each name gets its own propagation-check budget (its rule's `propagationSeconds`, or its provider's default) once past any manual-dns wait; it fails within that budget regardless of how long another name of the same certificate is still allowed to run (for example a `manual-dns` name's hour-long wait does not extend a `dns-01` name's much shorter budget).
 - **Ordering with overlapping zones**: put the narrow rule first. With `dev.example.com → B` above `example.com → A`, `x.dev.example.com` uses B; reversed, A shadows B.
 - **Uncovered names**: if a name matches no rule and no catch-all exists, the attempt fails before contacting the CA: `no verification rule matches <name> and no catch-all rule is configured`. Add a rule or a catch-all in the defaults.
-- **Apex and wildcard** (`example.com` + `*.example.com`) share `_acme-challenge.example.com`; the rule matching the apex serves both.
+- **Apex and wildcard** (`example.com` + `*.example.com`) share `_acme-challenge.example.com` under dns-01/manual-dns; the rule matching the apex serves both. A wildcard name can only ever be proven with dns-01 or manual-dns — no ACME CA offers http-01 or tls-alpn-01 for a wildcard authorization — so routing `*.example.com` to either is rejected when the certificate is created or updated, and again (for a catch-all picked up only at issuance time) when the attempt's router is built.
 - **CNAME delegation**: point `_acme-challenge.<name>` at a record in a zone your credential controls. lego follows the CNAME automatically. Set `cnameAliasZone` to that zone; a mismatched or missing CNAME fails that name with a clear message on its first propagation check, within its own per-name propagation budget — not necessarily "early", and independent of how long any other name of the same certificate is still allowed to wait.
-- Phase 1 supports DNS methods only; HTTP-01 and TLS-ALPN-01 arrive in Phase 4.
+- A certificate's rules must resolve to a single challenge type across all its names until Phase 4A's mixed-method order flow lands (Task 9); an agent-served rule (`via: agent`, or any `tls-alpn-01` rule) validates now but fails issuance with "agent challenge relay not configured" until Task 7.
+
+#### http-01
+
+With `via: server` (the default), CertForge answers the ACME CA's http-01 validation request itself: it stores the token's key authorization in memory for up to 10 minutes and serves it at `GET /.well-known/acme-challenge/{token}` on the main HTTP listener — unauthenticated, plain text, not under `/api/v1` (see [docs/api.md](api.md)). The CA must be able to reach that path over plain HTTP on port 80 for the certificate's names, so put CertForge's main listener behind (or route port 80 directly to) whatever serves those names; see [docs/operations.md](operations.md) for a reverse-proxy example.
 
 ### The verification rules step (web UI)
 

@@ -222,8 +222,8 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 | 2 | OpenAPI contract | done | 2dfd7ff |
 | 3 | Renderers | done | d30c359 |
 | 4 | Download and export API | done | 1583834 |
-| 5 | Layout formats, password, extra certificates | done | pending |
-| 6 | http-01 and tls-alpn-01 rules, server http-01 | planned | – |
+| 5 | Layout formats, password, extra certificates | done | bdf51e4 |
+| 6 | http-01 and tls-alpn-01 rules, server http-01 | done | pending |
 | 7 | Agent challenge relay (server) | planned | – |
 | 8 | Agent challenge serving and Traefik ACME router | planned | – |
 | 9 | Mixed-method order flow | planned | – |

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/go-acme/lego/v4/challenge/dns01"
+
+	"github.com/metril/certforge/internal/signer"
 )
 
 // failFastTimeout and failFastInterval are what Router.Timeout returns once
@@ -66,16 +68,25 @@ func NewRouter(ctx context.Context, names []string, rules []Rule, sink StepSink)
 	return &Router{ctx: ctx, names: ns, rules: slices.Clone(rules), sink: sink, now: time.Now}
 }
 
-// Validate fails when a name is an IP address or no rule matches it, so an
-// uncovered name is reported before any order is placed at the CA.
+// Validate fails when a name is an IP address, no rule matches it, or a
+// wildcard name is routed to a method other than dns-01/manual-dns (a CA
+// never offers http-01 or tls-alpn-01 for a wildcard authorization), so an
+// uncoverable name is reported before any order is placed at the CA.
 func (r *Router) Validate() error {
 	var bad []string
 	for _, n := range r.names {
 		if net.ParseIP(n) != nil {
 			return fmt.Errorf("IP address %s cannot be validated with DNS-01", n)
 		}
-		if _, ok := r.ruleFor(n); !ok {
+		rule, ok := r.ruleFor(n)
+		if !ok {
 			bad = append(bad, n)
+			continue
+		}
+		if strings.HasPrefix(n, "*.") {
+			if t := ruleType(rule.Provider); t != DNS01 {
+				return fmt.Errorf("wildcard name %s cannot use %s; only dns-01 (or manual-dns) can prove a wildcard", n, t)
+			}
 		}
 	}
 	if len(bad) > 0 {
@@ -83,6 +94,109 @@ func (r *Router) Validate() error {
 	}
 	return nil
 }
+
+// ruleType is a rule's effective challenge type: manual-dns counts as
+// dns-01 (same TXT-record mechanism, just operator-confirmed).
+func ruleType(p ChallengeProvider) Type {
+	if p.Type() == ManualDNS {
+		return DNS01
+	}
+	return p.Type()
+}
+
+// ChallengeTypes returns the distinct challenge types in use across every
+// rule (manual-dns counts as dns-01), in first-seen order.
+func (r *Router) ChallengeTypes() []string {
+	seen := map[Type]bool{}
+	var out []string
+	for _, ru := range r.rules {
+		t := ruleType(ru.Provider)
+		if !seen[t] {
+			seen[t] = true
+			out = append(out, string(t))
+		}
+	}
+	return out
+}
+
+// TypeFor returns the challenge type used for name, matched as given
+// (unstripped): "*.example.com" stays a wildcard, so it reports the
+// wildcard rule's own type rather than falling back to its apex.
+func (r *Router) TypeFor(name string) (string, error) {
+	rule, ok := r.ruleFor(normalize(name))
+	if !ok {
+		return "", fmt.Errorf("no verification rule matches %s", name)
+	}
+	return string(ruleType(rule.Provider)), nil
+}
+
+// For returns the view of the router restricted to challenge type t: its
+// Present/CleanUp/PreCheck resolve a bare authorization domain to the rule
+// of type t that covers it (see routeForType), rather than to whichever
+// rule nameFor's apex-wins tie-break would otherwise pick — so a single
+// registered lego provider (SetHTTP01Provider, SetDNS01Provider, ...) can
+// never reach a rule of a different type sharing the same bare domain.
+func (r *Router) For(t string) signer.ChallengeSolver {
+	return &solverView{r: r, t: Type(t)}
+}
+
+// routeForType resolves domain to the rule of type t that covers it,
+// checking both certificate names that could share domain as their bare
+// ACME authorization identifier: domain itself, and "*."+domain (see
+// nameFor/routingKey). This is what lets a type-scoped view reach the
+// wildcard rule when the apex shares the same bare domain but uses a
+// different type, and vice versa.
+func (r *Router) routeForType(domain string, t Type) (string, *Rule, error) {
+	base := strings.TrimPrefix(normalize(domain), "*.")
+	for _, name := range []string{base, "*." + base} {
+		if !slices.Contains(r.names, name) {
+			continue
+		}
+		if rule, ok := r.ruleFor(name); ok && ruleType(rule.Provider) == t {
+			return name, rule, nil
+		}
+	}
+	return base, nil, fmt.Errorf("no %s verification rule matches %s", t, domain)
+}
+
+// solverView is the per-type ChallengeSolver returned by Router.For.
+type solverView struct {
+	r *Router
+	t Type
+}
+
+func (v *solverView) Present(domain, token, keyAuth string) error {
+	name, rule, err := v.r.routeForType(domain, v.t)
+	if err != nil {
+		return err
+	}
+	return v.r.present(name, rule, domain, token, keyAuth)
+}
+
+func (v *solverView) CleanUp(domain, token, keyAuth string) error {
+	_, rule, err := v.r.routeForType(domain, v.t)
+	if err != nil {
+		return err
+	}
+	return rule.Provider.CleanUp(v.r.ctx, domain, token, keyAuth)
+}
+
+func (v *solverView) Timeout() (time.Duration, time.Duration) { return v.r.Timeout() }
+
+func (v *solverView) PreCheck(domain, fqdn, value string, check func(fqdn, value string) (bool, error)) (bool, error) {
+	return v.r.PreCheck(domain, fqdn, value, check)
+}
+
+func (v *solverView) ChallengeTypes() []string { return []string{string(v.t)} }
+
+func (v *solverView) TypeFor(domain string) (string, error) {
+	if _, _, err := v.r.routeForType(domain, v.t); err != nil {
+		return "", err
+	}
+	return string(v.t), nil
+}
+
+func (v *solverView) For(t string) signer.ChallengeSolver { return v.r.For(t) }
 
 func (r *Router) ruleFor(name string) (*Rule, bool) {
 	for i := range r.rules {
@@ -152,8 +266,15 @@ func (r *Router) Present(domain, token, keyAuth string) error {
 	if err != nil {
 		return err
 	}
+	return r.present(name, rule, domain, token, keyAuth)
+}
+
+// present runs rule's Provider.Present for name/domain, recording timeline
+// steps with a message appropriate to the rule's challenge type. Shared by
+// the unfiltered Router and its per-type views (solverView).
+func (r *Router) present(name string, rule *Rule, domain, token, keyAuth string) error {
 	step := "challenge " + name
-	r.sink.Step(step, StepRunning, "presenting TXT via "+rule.Label)
+	r.sink.Step(step, StepRunning, presentMessage(rule))
 	if err := rule.Provider.Present(r.ctx, domain, token, keyAuth); err != nil {
 		r.sink.Step(step, StepFailed, err.Error())
 		return err
@@ -161,9 +282,35 @@ func (r *Router) Present(domain, token, keyAuth string) error {
 	if _, ok := rule.Provider.(Waiter); ok {
 		r.sink.Step(step, StepWaitingManual, "waiting for the TXT records to be added and confirmed")
 	} else {
-		r.sink.Step(step, StepRunning, "TXT presented; checking propagation")
+		r.sink.Step(step, StepRunning, doneMessage(rule))
 	}
 	return nil
+}
+
+// presentMessage is the "presenting" timeline message for rule, per its
+// challenge type.
+func presentMessage(rule *Rule) string {
+	switch ruleType(rule.Provider) {
+	case HTTP01:
+		return "serving http-01 token via " + rule.Label
+	case TLSALPN01:
+		return "serving tls-alpn-01 certificate via " + rule.Label
+	default:
+		return "presenting TXT via " + rule.Label
+	}
+}
+
+// doneMessage is the timeline message once Present has succeeded for a
+// non-Waiter provider, per rule's challenge type.
+func doneMessage(rule *Rule) string {
+	switch ruleType(rule.Provider) {
+	case HTTP01:
+		return "http-01 token served"
+	case TLSALPN01:
+		return "tls-alpn-01 certificate served"
+	default:
+		return "TXT presented; checking propagation"
+	}
 }
 
 // CleanUp implements lego challenge.Provider.

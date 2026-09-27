@@ -21,6 +21,7 @@ import (
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/config"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -49,6 +50,10 @@ type Deps struct {
 	Issuance      *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
 	Certs         *certstore.Store  // certificate versions (Task 14)
 	Box           crypto.Box        // seals a layout's export password (Phase 4A Task 5)
+	// HTTPTokens backs the public GET /.well-known/acme-challenge/{token}
+	// route (Phase 4A Task 6); nil answers 404 for every token. Shared with
+	// issuance.IssueWorker.HTTPTokens; see cmd/certforge/serve.go.
+	HTTPTokens *challenge.HTTPTokens
 
 	Agents        *agents.Service        // clients, grants, sync (Phase 3)
 	AgentSettings *agents.SettingsSource // agents settings section; PUT invalidates it

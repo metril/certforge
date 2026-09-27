@@ -34,6 +34,12 @@ func NewRouter(d Deps) http.Handler {
 	s := &Server{d: d}
 	r := chi.NewRouter()
 	r.Use(recoverer(d.Log), securityHeaders)
+	// Public, unauthenticated, outside /api/v1 and out of the OpenAPI
+	// document (docs/api.md instead); registered before the SPA fallback so
+	// it never falls through to index.html. A wildcard, not {token}, so a
+	// token containing "/" (or any other extra path segment) reaches the
+	// handler to be rejected as 404 rather than being routed to the SPA.
+	r.Get("/.well-known/acme-challenge/*", wellKnownACMEChallenge(d.HTTPTokens))
 	webHandler := webui.Handler()
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {

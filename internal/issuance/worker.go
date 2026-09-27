@@ -66,6 +66,11 @@ type IssueWorker struct {
 	ManualPoll time.Duration // 0 = 2s
 	Log        *slog.Logger
 	Listeners  []VersionListener // called after a version commits
+
+	// HTTPTokens backs a server http-01 rule (via: server, the default):
+	// nil means server http-01 is not wired up, so such a rule fails.
+	// Shared with api.Deps.HTTPTokens; see cmd/certforge/serve.go.
+	HTTPTokens *challenge.HTTPTokens
 }
 
 // NewIssueWorker wires production defaults.
@@ -262,7 +267,8 @@ func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Eff
 		m, _ := challenge.ParseMatch(sp.Match)
 		var p challenge.ChallengeProvider
 		label := sp.Match + " → " + string(sp.Method)
-		if sp.Method == challenge.MethodManualDNS {
+		switch sp.Method {
+		case challenge.MethodManualDNS:
 			if manual == nil {
 				manual = challenge.NewManual(w.Store, attemptID, cert.ID)
 				if w.ManualWait > 0 {
@@ -273,7 +279,21 @@ func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Eff
 				}
 			}
 			p = manual
-		} else {
+		case challenge.MethodHTTP01:
+			if sp.EffectiveVia() != challenge.ViaServer {
+				// via: agent. Task 7 wires challenge.AgentRelay here.
+				return nil, nil, errors.New("agent challenge relay not configured")
+			}
+			if w.HTTPTokens == nil {
+				return nil, nil, fmt.Errorf("rule %q: server http-01 is not configured", sp.Match)
+			}
+			p = challenge.NewServerHTTP01(w.HTTPTokens)
+			label = sp.Match + " → http-01 (server)"
+		case challenge.MethodTLSALPN01:
+			// tls-alpn-01 is always served by an agent. Task 7 wires
+			// challenge.AgentRelay here.
+			return nil, nil, errors.New("agent challenge relay not configured")
+		default: // dns-01
 			id := *sp.DNSCredentialID
 			b, ok := cache[id]
 			if !ok {

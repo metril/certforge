@@ -104,6 +104,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
 	issueWorker.Log = log
 	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc)
+	// Shared with api.Deps.HTTPTokens below; set on the worker before
+	// riverClient.Start so a server http-01 rule can already be served by
+	// the time the first job runs.
+	httpTokens := challenge.NewHTTPTokens(0)
+	issueWorker.HTTPTokens = httpTokens
 	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log, agentListener.RegisterRiver, agentSvc.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)
@@ -132,6 +137,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
+		HTTPTokens: httpTokens,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

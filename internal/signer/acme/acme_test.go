@@ -59,6 +59,9 @@ func (nopSolver) Timeout() (time.Duration, time.Duration) { return time.Second, 
 func (nopSolver) PreCheck(string, string, string, func(string, string) (bool, error)) (bool, error) {
 	return true, nil
 }
+func (nopSolver) ChallengeTypes() []string          { return []string{"dns-01"} }
+func (nopSolver) TypeFor(string) (string, error)    { return "dns-01", nil }
+func (nopSolver) For(string) signer.ChallengeSolver { return nopSolver{} }
 
 // fakeRateLimitedCA serves just enough ACME for lego to reach newOrder, which
 // answers 429 rateLimited with Retry-After.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	legochallenge "github.com/go-acme/lego/v4/challenge"
@@ -115,10 +116,51 @@ func (s *Service) RegisterAccount(ctx context.Context, orgID, caID uuid.UUID, em
 	return s.Store.InsertAccount(ctx, orgID, caID, m)
 }
 
+// validateWildcardMethods rejects a certificate whose own rules (its Rules
+// plus any cert-level VerificationRules override, the same two sources
+// buildRouter combines at issuance time) route one of its wildcard SANs to
+// http-01 or tls-alpn-01: no ACME CA ever offers those challenges for a
+// wildcard authorization (challenge.Router.Validate enforces the same rule
+// once a real Router is built). A wildcard name matched by none of these
+// rules is not flagged: it may still be covered by an org/global catch-all
+// rule, only resolved (and checked) at issuance time. in.CommonName/SANs
+// are normalized the same way Store.prepareCertTx normalizes them; a
+// malformed name surfaces from there instead, so a normalization error here
+// is silently ignored.
+func validateWildcardMethods(in CertInput) error {
+	names, err := NormalizeNames(in.CommonName, in.SANs)
+	if err != nil {
+		return nil
+	}
+	rules := in.Rules
+	if in.Overrides.VerificationRules != nil {
+		rules = append(append([]challenge.RuleSpec{}, rules...), *in.Overrides.VerificationRules...)
+	}
+	for _, n := range names {
+		if !strings.HasPrefix(n, "*.") {
+			continue
+		}
+		for _, r := range rules {
+			m, err := challenge.ParseMatch(r.Match)
+			if err != nil || !m.Matches(n) {
+				continue
+			}
+			if t := r.Method.Type(); t != challenge.DNS01 {
+				return &ValidationError{"verificationRules", fmt.Sprintf("wildcard name %s cannot use %s", n, t)}
+			}
+			break // first match wins
+		}
+	}
+	return nil
+}
+
 // CreateCertificate stores the definition, audits the write, and enqueues
 // the first issuance. A failed enqueue does not fail the call; see
 // enqueueBestEffort.
 func (s *Service) CreateCertificate(ctx context.Context, orgID uuid.UUID, in CertInput) (Certificate, error) {
+	if err := validateWildcardMethods(in); err != nil {
+		return Certificate{}, err
+	}
 	c, err := s.Store.CreateCertificate(ctx, orgID, in)
 	if err != nil {
 		return c, err
@@ -132,6 +174,9 @@ func (s *Service) CreateCertificate(ctx context.Context, orgID uuid.UUID, in Cer
 // when names changed. A failed enqueue does not fail the call; see
 // enqueueBestEffort.
 func (s *Service) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in CertInput) (Certificate, error) {
+	if err := validateWildcardMethods(in); err != nil {
+		return Certificate{}, err
+	}
 	c, reissue, err := s.Store.UpdateCertificate(ctx, orgID, id, in, s.RenameHook)
 	if err != nil {
 		return c, err
