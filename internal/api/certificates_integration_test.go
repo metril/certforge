@@ -578,6 +578,57 @@ func TestCreateCertificateRejectsWildcardHTTP01(t *testing.T) {
 	}
 }
 
+// insertClient adds a client row directly (bypassing internal/agents,
+// which certificate creation must not need for this check).
+func insertClient(t *testing.T, pool *pgxpool.Pool, org uuid.UUID, name string, capabilities []string) uuid.UUID {
+	t.Helper()
+	if capabilities == nil {
+		capabilities = []string{}
+	}
+	var id uuid.UUID
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO clients (org_id, name, status, capabilities) VALUES ($1, $2, 'active', $3) RETURNING id`,
+		org, name, capabilities).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// TestRuleClientChecks (Task 7): a rule's clientId must belong to the
+// caller's org and, unless it is an http-01 rule with its own webroot, the
+// client must report the rule's challenge capability — Task 6 only parsed
+// via/clientId/webroot; nothing yet stopped an operator writing via: agent
+// or tls-alpn-01 against a client that could never serve it.
+func TestRuleClientChecks(t *testing.T) {
+	f := newAPIFixture(t)
+	otherOrg := dbtest.Org(t, f.pool)
+	foreign := insertClient(t, f.pool, otherOrg, "foreign", []string{"http-01"})
+	noCap := insertClient(t, f.pool, f.org, "web-1", nil)
+	hasTLS := insertClient(t, f.pool, f.org, "web-2", []string{"tls-alpn-01"})
+	via := gen.ChallengeViaAgent
+
+	create := func(name string, r gen.VerificationRule) error {
+		_, err := f.srv.CreateCertificate(f.as("operator"), gen.CreateCertificateRequestObject{OrgId: f.org,
+			Body: &gen.CertificateInput{Name: name, CommonName: name + ".example.test", VerificationRules: &[]gen.VerificationRule{r}}})
+		return err
+	}
+
+	err := create("a", gen.VerificationRule{Match: "a.example.test", Method: "http-01", Via: &via, ClientId: &foreign})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	err = create("b", gen.VerificationRule{Match: "b.example.test", Method: "http-01", Via: &via, ClientId: &noCap})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	webroot := "/var/www/.well-known/acme-challenge"
+	if err := create("c", gen.VerificationRule{Match: "c.example.test", Method: "http-01", Via: &via, ClientId: &noCap, Webroot: &webroot}); err != nil {
+		t.Fatalf("http-01 with its own webroot: %v", err)
+	}
+
+	if err := create("d", gen.VerificationRule{Match: "d.example.test", Method: "tls-alpn-01", ClientId: &hasTLS}); err != nil {
+		t.Fatalf("tls-alpn-01 with the capability: %v", err)
+	}
+}
+
 // TestListCertificatesPagesAndFilters exercises the list endpoint's paging,
 // status filter and sort, and is also the Review Focus for the N+1 fix: it
 // only asserts on shape and ordering, but a regression back to one query

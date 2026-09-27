@@ -2,6 +2,7 @@ package issuance
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -91,25 +92,78 @@ func TestWorkerHTTP01ServerRule(t *testing.T) {
 	}
 }
 
-// TestWorkerAgentModeRulesFailUntilRelay: a via-agent http-01 rule and a
-// tls-alpn-01 rule both validate (RuleSpec.Validate passes), but buildRouter
-// refuses them with the exact message the brief promises until Task 7 wires
-// the agent relay.
-func TestWorkerAgentModeRulesFailUntilRelay(t *testing.T) {
+// fakeRelay is a minimal challenge.AgentRelay recording its last call.
+type fakeRelay struct {
+	orgID, clientID uuid.UUID
+	method          challenge.Method
+	webroot         string
+	err             error
+}
+
+func (f *fakeRelay) Provider(_ context.Context, orgID, clientID uuid.UUID, m challenge.Method, webroot string) (challenge.ChallengeProvider, error) {
+	f.orgID, f.clientID, f.method, f.webroot = orgID, clientID, m, webroot
+	if f.err != nil {
+		return nil, f.err
+	}
+	return fakeAgentProvider{t: m.Type()}, nil
+}
+
+type fakeAgentProvider struct{ t challenge.Type }
+
+func (p fakeAgentProvider) Type() challenge.Type                                  { return p.t }
+func (p fakeAgentProvider) Present(context.Context, string, string, string) error { return nil }
+func (p fakeAgentProvider) CleanUp(context.Context, string, string, string) error { return nil }
+func (p fakeAgentProvider) Timeout() (time.Duration, time.Duration)               { return time.Second, time.Second }
+
+// TestWorkerAgentModeRulesNeedRelay: a via-agent http-01 rule and a
+// tls-alpn-01 rule both validate (RuleSpec.Validate passes); buildRouter
+// refuses them while Relay is nil, and calls Relay.Provider with the
+// rule's org, client, method and webroot once one is wired up (Task 7).
+func TestWorkerAgentModeRulesNeedRelay(t *testing.T) {
 	clientID := uuid.New()
-	for _, spec := range []challenge.RuleSpec{
-		{Match: "*", Method: challenge.MethodHTTP01, Via: challenge.ViaAgent, ClientID: &clientID},
+	specs := []challenge.RuleSpec{
+		{Match: "*", Method: challenge.MethodHTTP01, Via: challenge.ViaAgent, ClientID: &clientID, Webroot: "/var/www/acme"},
 		{Match: "*", Method: challenge.MethodTLSALPN01, ClientID: &clientID},
-	} {
+	}
+	for _, spec := range specs {
 		if err := spec.Validate(); err != nil {
 			t.Fatalf("%+v: Validate() = %v, want it to pass at the rule-shape level", spec, err)
 		}
 		w := &IssueWorker{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 		cert := Certificate{ID: uuid.New(), OrgID: uuid.New(), CommonName: "example.com", Rules: []challenge.RuleSpec{spec}}
 		tl := NewTimeline(time.Now, nil)
-		_, _, err := w.buildRouter(context.Background(), cert, Effective{}, CA{}, uuid.New(), tl)
-		if err == nil || !strings.Contains(err.Error(), "agent challenge relay not configured") {
+		if _, _, err := w.buildRouter(context.Background(), cert, Effective{}, CA{}, uuid.New(), tl); err == nil ||
+			!strings.Contains(err.Error(), "agent challenge relay is not configured") {
+			t.Fatalf("%+v: nil Relay buildRouter error = %v", spec, err)
+		}
+	}
+	for _, spec := range specs {
+		relay := &fakeRelay{}
+		w := &IssueWorker{Relay: relay, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		orgID := uuid.New()
+		cert := Certificate{ID: uuid.New(), OrgID: orgID, CommonName: "example.com", Rules: []challenge.RuleSpec{spec}}
+		tl := NewTimeline(time.Now, nil)
+		router, _, err := w.buildRouter(context.Background(), cert, Effective{}, CA{}, uuid.New(), tl)
+		if err != nil {
 			t.Fatalf("%+v: buildRouter error = %v", spec, err)
 		}
+		if got := router.ChallengeTypes(); len(got) != 1 || got[0] != string(spec.Method.Type()) {
+			t.Fatalf("%+v: ChallengeTypes = %v", spec, got)
+		}
+		if relay.orgID != orgID || relay.clientID != clientID || relay.method != spec.Method || relay.webroot != spec.Webroot {
+			t.Fatalf("%+v: Relay.Provider called with org=%s client=%s method=%s webroot=%q",
+				spec, relay.orgID, relay.clientID, relay.method, relay.webroot)
+		}
+	}
+	// A relay rejection (client offline, capability gone since the rule was
+	// written) is wrapped with the rule's match for the attempt log.
+	spec := specs[1]
+	relay := &fakeRelay{err: errors.New("client web-1 is offline or cannot serve challenges")}
+	w := &IssueWorker{Relay: relay, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	cert := Certificate{ID: uuid.New(), OrgID: uuid.New(), CommonName: "example.com", Rules: []challenge.RuleSpec{spec}}
+	tl := NewTimeline(time.Now, nil)
+	_, _, err := w.buildRouter(context.Background(), cert, Effective{}, CA{}, uuid.New(), tl)
+	if err == nil || !strings.Contains(err.Error(), `rule "*": client web-1 is offline`) {
+		t.Fatalf("relay rejection not wrapped with the rule: %v", err)
 	}
 }

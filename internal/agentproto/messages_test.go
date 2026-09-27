@@ -47,11 +47,36 @@ func TestMarshalAddsType(t *testing.T) {
 }
 
 func TestUnmarshalUnknownType(t *testing.T) {
-	if _, err := Unmarshal([]byte(`{"type":"challenge_present"}`)); !errors.Is(err, ErrUnknownType) {
+	if _, err := Unmarshal([]byte(`{"type":"nonexistent_type"}`)); !errors.Is(err, ErrUnknownType) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err := Unmarshal([]byte(`not json`)); err == nil {
 		t.Fatal("garbage accepted")
+	}
+}
+
+// TestChallengeMessagesRoundTrip: the agent challenge relay's three
+// messages (Task 7) Marshal and Unmarshal with their own "type", the same
+// as every other Message.
+func TestChallengeMessagesRoundTrip(t *testing.T) {
+	for _, m := range []Message{
+		ChallengePresent{Token: "tok", KeyAuth: "tok.thumb", Domain: "example.test", Method: "http-01", Webroot: "/var/www/acme"},
+		ChallengePresent{Token: "tok2", KeyAuth: "tok2.thumb", Domain: "example.test", Method: "tls-alpn-01"},
+		ChallengeCleanup{Token: "tok"},
+		ChallengeReady{Token: "tok"},
+		ChallengeReady{Token: "tok", Error: "listener not configured"},
+	} {
+		b, err := Marshal(m)
+		if err != nil {
+			t.Fatalf("%s: %v", m.MsgType(), err)
+		}
+		got, err := Unmarshal(b)
+		if err != nil {
+			t.Fatalf("%s: %v (%s)", m.MsgType(), err, b)
+		}
+		if !reflect.DeepEqual(got, m) {
+			t.Fatalf("%s: %#v != %#v", m.MsgType(), got, m)
+		}
 	}
 }
 

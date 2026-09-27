@@ -12,6 +12,49 @@ import (
 	"github.com/google/uuid"
 )
 
+const certificatesUsingClient = `-- name: CertificatesUsingClient :many
+SELECT name FROM (
+  SELECT c.name AS name FROM certificates c
+  WHERE c.org_id = $1
+    AND (c.verification_rules @> jsonb_build_array(jsonb_build_object('clientId', $2::uuid::text))
+      OR c.overrides->'verificationRules' @> jsonb_build_array(jsonb_build_object('clientId', $2::uuid::text)))
+  UNION ALL
+  SELECT 'org default rules' AS name
+  WHERE EXISTS (SELECT 1 FROM issuance_defaults d WHERE d.org_id = $1
+    AND d.config->'verificationRules' @> jsonb_build_array(jsonb_build_object('clientId', $2::uuid::text)))
+) u ORDER BY lower(name) LIMIT 6
+`
+
+type CertificatesUsingClientParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	ClientID uuid.UUID `json:"client_id"`
+}
+
+// Certificates whose own verification rules reference clientId, plus the
+// literal "org default rules" when this org's issuance_defaults rules do
+// (a default rule names no single certificate of its own); DeleteClient
+// 409s naming these instead of deleting a client an http-01/tls-alpn-01
+// rule still relies on.
+func (q *Queries) CertificatesUsingClient(ctx context.Context, arg CertificatesUsingClientParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, certificatesUsingClient, arg.OrgID, arg.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createCertificate = `-- name: CreateCertificate :one
 INSERT INTO certificates (org_id, name, common_name, sans, verification_rules, overrides, next_renew_at)
 VALUES ($1, $2, $3, $4, $5, $6, now())

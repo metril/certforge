@@ -49,6 +49,14 @@ Each file picks a format:
 
 The agent only writes or removes files under a directory listed in `CF_WRITE_ALLOW` (colon-separated absolute prefixes). A compromised or misconfigured server could otherwise push a layout or target pointing anywhere on the host; with `CF_WRITE_ALLOW` empty every deploy fails at once, per grant, with a clear error, and the agent logs a startup warning. Set it to the same directories you mount into the container — for example `CF_WRITE_ALLOW=/etc/ssl:/etc/traefik/dynamic`. Each write is checked against the allowlist after resolving symlinks on the deepest existing parent directory, so a symlink cannot be used to point an allowed path outside the allowed directory.
 
+## Challenge serving
+
+A verification rule with `method: http-01, via: agent` or `method: tls-alpn-01` names a `clientId`: instead of this server answering the ACME challenge itself, the named client's agent does. Over the agent's WebSocket, the server sends `challenge_present{token, keyAuth, domain, method, webroot?}` when an issuance attempt needs the challenge served, and the agent replies `challenge_ready{token, error?}` once it has done so (or could not). The server sends `challenge_cleanup{token}` once the CA has validated (or the attempt has otherwise finished); the agent's cleanup is best-effort and the server does not wait for a reply. `method` is `http-01` or `tls-alpn-01`; `webroot`, when set, is an absolute path an http-01 rule wrote for the operator to serve some other way (a running web server on that host, for example) instead of the agent's own listener.
+
+The server waits up to 30 seconds for `challenge_ready` after sending `challenge_present`; a client whose socket is not open, or whose agent never answers within that bound, fails the attempt with `client <name> is offline or cannot serve challenges` or `client <name> did not confirm the challenge within 30s` respectively, and an error the agent itself reports surfaces as `client <name>: <error>`. A rule's `clientId` is checked when the rule is saved (same org, and the client reports the method's capability, unless it is an http-01 rule with its own `webroot`), not only when an attempt runs.
+
+Serving the challenge itself — a listener on the agent for http-01, or a self-signed tls-alpn-01 certificate, and writing a webroot file under [`CF_WRITE_ALLOW`](#write-allowlist) — is the agent's own job; see `CF_AGENT_HTTP01_LISTEN` and `CF_AGENT_TLSALPN_LISTEN`.
+
 ## Traefik integration
 
 Share Traefik's file-provider directory with the agent and grant the certificate with a Traefik target (see [deploy-targets.md](deploy-targets.md#traefik)):

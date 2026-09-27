@@ -126,6 +126,10 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	agentSvc.Listener = agentListener
 	hub := agenthub.New(log)
 	agentSvc.Hub = hub
+	// agentSvc implements challenge.AgentRelay: an agent-mode http-01 or
+	// tls-alpn-01 rule relays Present/CleanUp through it. Set before
+	// riverClient.Start, same as HTTPTokens above.
+	issueWorker.Relay = agentSvc
 	if err := riverClient.Start(context.Background()); err != nil {
 		return fmt.Errorf("start river: %w", err)
 	}

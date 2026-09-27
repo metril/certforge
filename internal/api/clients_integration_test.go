@@ -161,6 +161,32 @@ func TestListAllClientsNeedsReadableOrg(t *testing.T) {
 	wantStatus(t, err, 403)
 }
 
+// TestDeleteClientReferencedByRule (Task 7): a client still named by a
+// certificate's verification rule cannot be deleted until the rule is
+// changed, the same protection DeleteDNSCredential and DeleteCA already
+// have for their own referenced rows.
+func TestDeleteClientReferencedByRule(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	en := f.newClient(t, "web-1") // pending: deletable but for the rule reference
+	if _, err := f.pool.Exec(context.Background(), `UPDATE clients SET capabilities = '{tls-alpn-01}' WHERE id = $1`, en.Client.ID); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.srv.CreateCertificate(op, gen.CreateCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateInput{Name: "web", CommonName: "web.example.test",
+			VerificationRules: &[]gen.VerificationRule{{Match: "web.example.test", Method: "tls-alpn-01", ClientId: &en.Client.ID}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := res.(gen.CreateCertificate201JSONResponse)
+	_, err = f.srv.DeleteClient(op, gen.DeleteClientRequestObject{OrgId: f.org, Id: en.Client.ID})
+	wantStatus(t, err, 409)
+	var he *HTTPError
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, cert.Name) {
+		t.Fatalf("conflict does not name the certificate: %v", err)
+	}
+}
+
 func TestRevokeReenrollDelete(t *testing.T) {
 	f := newAgentFixture(t)
 	op := f.as("operator")

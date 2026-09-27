@@ -10,6 +10,7 @@ import (
 
 	legochallenge "github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
+	"github.com/google/uuid"
 )
 
 // Type is a challenge type.
@@ -35,6 +36,15 @@ type ChallengeProvider interface {
 type Waiter interface {
 	WaitReady(ctx context.Context) error
 	WaitBudget() time.Duration
+}
+
+// AgentRelay resolves an http-01 (via: agent) or tls-alpn-01 rule's client
+// to the ChallengeProvider that relays Present/CleanUp to it over its
+// WebSocket. internal/agents.Service implements it; challenge itself stays
+// a leaf domain package (no internal/agents import, which in turn pulls in
+// internal/certstore, internal/audit, ...).
+type AgentRelay interface {
+	Provider(ctx context.Context, orgID, clientID uuid.UUID, m Method, webroot string) (ChallengeProvider, error)
 }
 
 // Step statuses written to the attempt timeline.

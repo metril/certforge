@@ -223,8 +223,8 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 | 3 | Renderers | done | d30c359 |
 | 4 | Download and export API | done | 1583834 |
 | 5 | Layout formats, password, extra certificates | done | bdf51e4 |
-| 6 | http-01 and tls-alpn-01 rules, server http-01 | done | pending |
-| 7 | Agent challenge relay (server) | planned | – |
+| 6 | http-01 and tls-alpn-01 rules, server http-01 | done | bd702e5 |
+| 7 | Agent challenge relay (server) | done | pending |
 | 8 | Agent challenge serving and Traefik ACME router | planned | – |
 | 9 | Mixed-method order flow | planned | – |
 | 10 | CAA pre-check | planned | – |
@@ -363,6 +363,7 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 - 4A: when the CA directory publishes no `meta.caaIdentities` (empty or absent), step `caa` succeeds with the detail "CA publishes no caaIdentities; CAA not evaluated" rather than failing every record set.
 - 4A: `caaCheck` and `rateLimits` live in a new global settings section `issuance`, not in `issuance_defaults`, whose fields inherit down to orgs and certificates.
 - 4A Task 1: Pebble facts verified at pre-flight, recorded here rather than re-probed by later tasks: the `ghcr.io/letsencrypt/pebble:2.10.1` image's workdir is `/`; its bundled `/test/config/pebble-config.json` sets `httpPort` 5002 and `tlsPort` 5001; `/dir` serves `renewalInfo` and `meta.caaIdentities: ["pebble.letsencrypt.org"]`. Task 15's `caa` success case holds because challtestsrv serves no CAA records.
+- 4A Task 7: `agents.Service` implements `challenge.AgentRelay`; a rule's clientId is validated by the same `validateRulesOrgTx` a rule's dnsCredentialId already goes through (same-org FOR KEY SHARE lock, then a capability check — `http-01`/`tls-alpn-01` — skipped only for an http-01 rule with its own `webroot`), so a certificate's own rules and org default rules are checked identically. `DeleteClient`'s 409 names certificates via `CertificatesUsingClient` (own rules, or the literal "org default rules" when only an org default rule references it).
 
 ## Known gaps
 

@@ -264,6 +264,18 @@ func (s *Service) DeleteClient(ctx context.Context, orgID, id uuid.UUID) error {
 	if cur.Status == "active" {
 		return conflict("Revoke the client before deleting it.")
 	}
+	// lockClient already took the client's row FOR UPDATE, which blocks (and
+	// is blocked by) any certificate or org-defaults write that first takes
+	// a FOR KEY SHARE lock on it (issuance.Store.validateRuleClientTx), so
+	// this reference check reads the current, committed truth: nothing can
+	// add a new rule referencing id between it and DeleteClient below.
+	names, err := q.CertificatesUsingClient(ctx, sqlcgen.CertificatesUsingClientParams{OrgID: orgID, ClientID: id})
+	if err != nil {
+		return err
+	}
+	if len(names) > 0 {
+		return conflict("This client is used by verification rules on: %s. Change or remove those rules first.", strings.Join(names, ", "))
+	}
 	if _, err := q.DeleteClient(ctx, sqlcgen.DeleteClientParams{ID: id, OrgID: orgID}); err != nil {
 		return err
 	}

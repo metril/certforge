@@ -13,6 +13,13 @@ SELECT * FROM clients WHERE id = $1 AND org_id = $2 FOR UPDATE;
 -- name: LockClientByID :one
 SELECT * FROM clients WHERE id = $1 FOR UPDATE;
 
+-- name: LockClientKeyShare :one
+-- FOR KEY SHARE counterpart to LockClient; see LockDNSCredentialKeyShare.
+-- A certificate or org-defaults write referencing this client as a rule's
+-- clientId takes this lock first, so DeleteClient's FOR UPDATE lock on the
+-- same row blocks until that transaction ends.
+SELECT id FROM clients WHERE id = $1 FOR KEY SHARE;
+
 -- name: LockClientsByID :many
 -- Locks the given clients FOR UPDATE in id order (a fixed order across
 -- every caller, regardless of the order ids arrive in), before any

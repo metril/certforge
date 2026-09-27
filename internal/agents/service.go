@@ -44,9 +44,17 @@ type Service struct {
 	Log      *slog.Logger
 	Now      func() time.Time
 
+	// ChallengeReadyTimeout bounds how long Provider's Present waits for the
+	// agent's challenge_ready reply after sending challenge_present; zero
+	// means DefaultChallengeReadyTimeout. A field, not a const, so tests can
+	// shorten it (see challenge.go).
+	ChallengeReadyTimeout time.Duration
+
 	seenMu     sync.Mutex
 	seen       map[uuid.UUID]time.Time // last_seen write coalescing; touch writes at most once per touchEvery.
 	seenPruned time.Time               // last time markSeen dropped idle entries.
+
+	waiters challengeWaiters // keyed by (clientID, token); see challenge.go
 }
 
 func (s *Service) now() time.Time {

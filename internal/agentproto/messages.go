@@ -15,6 +15,9 @@ const (
 	TypeRevoked           = "revoked"
 	TypeHeartbeat         = "heartbeat"
 	TypeDeployResult      = "deploy_result"
+	TypeChallengePresent  = "challenge_present"
+	TypeChallengeCleanup  = "challenge_cleanup"
+	TypeChallengeReady    = "challenge_ready"
 )
 
 // WebSocket close codes the server uses (4000-4999 are application codes).
@@ -74,6 +77,30 @@ type DeployResult struct {
 	Report
 }
 
+// ChallengePresent asks a client's agent to serve an http-01 or
+// tls-alpn-01 challenge: publish keyAuth at the http-01 well-known path (or
+// under webroot, when set) or in a tls-alpn-01 self-signed certificate for
+// domain. Method is "http-01" or "tls-alpn-01".
+type ChallengePresent struct {
+	Token   string `json:"token"`
+	KeyAuth string `json:"keyAuth"`
+	Domain  string `json:"domain"`
+	Method  string `json:"method"`
+	Webroot string `json:"webroot,omitempty"`
+}
+
+// ChallengeCleanup asks the agent to stop serving token.
+type ChallengeCleanup struct {
+	Token string `json:"token"`
+}
+
+// ChallengeReady is the agent's reply to ChallengePresent; Error is set
+// when the agent could not serve the challenge.
+type ChallengeReady struct {
+	Token string `json:"token"`
+	Error string `json:"error,omitempty"`
+}
+
 // MsgType implementations.
 func (Hello) MsgType() string             { return TypeHello }
 func (HelloAck) MsgType() string          { return TypeHelloAck }
@@ -82,6 +109,9 @@ func (TrustBundleUpdate) MsgType() string { return TypeTrustBundleUpdate }
 func (Revoked) MsgType() string           { return TypeRevoked }
 func (Heartbeat) MsgType() string         { return TypeHeartbeat }
 func (DeployResult) MsgType() string      { return TypeDeployResult }
+func (ChallengePresent) MsgType() string  { return TypeChallengePresent }
+func (ChallengeCleanup) MsgType() string  { return TypeChallengeCleanup }
+func (ChallengeReady) MsgType() string    { return TypeChallengeReady }
 
 // Marshal encodes m as one JSON object with a leading "type" field.
 func Marshal(m Message) ([]byte, error) {
@@ -125,6 +155,12 @@ func Unmarshal(b []byte) (Message, error) {
 		return decode[Heartbeat](b)
 	case TypeDeployResult:
 		return decode[DeployResult](b)
+	case TypeChallengePresent:
+		return decode[ChallengePresent](b)
+	case TypeChallengeCleanup:
+		return decode[ChallengeCleanup](b)
+	case TypeChallengeReady:
+		return decode[ChallengeReady](b)
 	}
 	return nil, fmt.Errorf("%w %q", ErrUnknownType, head.Type)
 }

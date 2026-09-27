@@ -62,6 +62,23 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
+// client inserts an active client row directly (this package must not
+// import internal/agents), for a rule's clientId.
+func (f *fixture) client(t *testing.T, org uuid.UUID, name string, capabilities []string) uuid.UUID {
+	t.Helper()
+	if capabilities == nil {
+		capabilities = []string{}
+	}
+	var id uuid.UUID
+	err := f.pool.QueryRow(context.Background(),
+		`INSERT INTO clients (org_id, name, status, capabilities) VALUES ($1, $2, 'active', $3) RETURNING id`,
+		org, name, capabilities).Scan(&id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 func (f *fixture) credential(t *testing.T, name string) uuid.UUID {
 	t.Helper()
 	c, err := f.store.CreateDNSCredential(context.Background(), f.org, name, "cloudflare", map[string]string{"CF_DNS_API_TOKEN": "tok-" + name})

@@ -321,6 +321,42 @@ func TestOrgDefaultsRejectForeignReferences(t *testing.T) {
 	}
 }
 
+// Review Focus (Task 7): an org default rule's clientId is validated
+// exactly like a certificate's own rule (validateRulesOrgTx serves both):
+// another org's client is rejected as not found, and a same-org client
+// missing the rule's method capability is rejected too, unless the rule is
+// http-01 with its own webroot.
+func TestOrgDefaultsRuleClientMustBeInOrg(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	var ve *ValidationError
+
+	otherOrg := dbtest.Org(t, f.pool)
+	foreign := f.client(t, otherOrg, "foreign", []string{"tls-alpn-01"})
+	rules := []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodTLSALPN01, ClientID: &foreign}}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{VerificationRules: &rules}); !errors.As(err, &ve) || ve.Field != "verificationRules" {
+		t.Fatalf("foreign client: %v", err)
+	}
+
+	noCap := f.client(t, f.org, "web-1", nil)
+	rules = []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodTLSALPN01, ClientID: &noCap}}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{VerificationRules: &rules}); !errors.As(err, &ve) || ve.Field != "verificationRules" {
+		t.Fatalf("missing capability: %v", err)
+	}
+
+	rules = []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodHTTP01, Via: challenge.ViaAgent,
+		ClientID: &noCap, Webroot: "/var/www/.well-known/acme-challenge"}}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{VerificationRules: &rules}); err != nil {
+		t.Fatalf("http-01 with its own webroot: %v", err)
+	}
+
+	hasCap := f.client(t, f.org, "web-2", []string{"tls-alpn-01"})
+	rules = []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodTLSALPN01, ClientID: &hasCap}}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{VerificationRules: &rules}); err != nil {
+		t.Fatalf("client with the capability: %v", err)
+	}
+}
+
 // Review Focus (P34): ValidateGlobalDefaults (used by the settings write
 // path for PUT /settings/issuance_defaults) verifies that any referenced
 // caId, accountId or rule dnsCredentialId row exists, and that an account

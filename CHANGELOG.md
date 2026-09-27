@@ -108,6 +108,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - DER downloads and PKCS#12/JKS exports with audited key export.
 - Layouts render DER, PKCS#12 and JKS files with a stored password and extra certificates.
 - http-01 verification served by CertForge, and tls-alpn-01 rules.
+- Agents can be asked to serve http-01 and tls-alpn-01 challenges.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

@@ -53,6 +53,8 @@ func (s *Service) OnMessage(ctx context.Context, clientID uuid.UUID, m agentprot
 		return nil, s.Heartbeat(ctx, c, v)
 	case agentproto.DeployResult:
 		return nil, s.Report(ctx, c, v.Report)
+	case agentproto.ChallengeReady:
+		return nil, s.ChallengeReady(ctx, c.ID, v)
 	}
 	return nil, fmt.Errorf("agents: agents do not send %s messages", m.MsgType())
 }

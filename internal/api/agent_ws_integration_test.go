@@ -19,6 +19,7 @@ import (
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/challenge"
 )
 
 func TestWebSocketHelloSyncRevoke(t *testing.T) {
@@ -241,5 +242,42 @@ func TestWebSocketNonActiveClientMessageRejected(t *testing.T) {
 			t.Fatal("still connected after a message from a non-active client")
 		case <-time.After(10 * time.Millisecond):
 		}
+	}
+}
+
+// TestAgentChallengeOverWebSocket (Task 7): Service.Provider's Present
+// sends challenge_present over the client's real socket, and the agent's
+// challenge_ready reply (sent here by hand, standing in for Task 8's agent
+// challenge server) resolves it.
+func TestAgentChallengeOverWebSocket(t *testing.T) {
+	hub := agenthub.New(slog.Default())
+	t.Cleanup(hub.Shutdown)
+	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
+	e.svc.Hub = hub
+	en := e.newClient(t, "web-1")
+	cert, _, _ := e.enroll(t, en.Token)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ws := dialWS(ctx, t, e, cert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1", Capabilities: []string{"tls-alpn-01"}})
+	if _, ok := recvWS(ctx, t, ws).(agentproto.HelloAck); !ok {
+		t.Fatal("expected hello_ack")
+	}
+
+	p, err := e.svc.Provider(ctx, e.org, en.Client.ID, challenge.MethodTLSALPN01, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	present := make(chan error, 1)
+	go func() { present <- p.Present(ctx, "example.test", "tok", "keyauth") }()
+
+	m := recvWS(ctx, t, ws)
+	cp, ok := m.(agentproto.ChallengePresent)
+	if !ok || cp.Token != "tok" || cp.KeyAuth != "keyauth" || cp.Domain != "example.test" || cp.Method != "tls-alpn-01" {
+		t.Fatalf("challenge_present %#v", m)
+	}
+	sendWS(ctx, t, ws, agentproto.ChallengeReady{Token: "tok"})
+	if err := <-present; err != nil {
+		t.Fatalf("present: %v", err)
 	}
 }

@@ -439,6 +439,20 @@ func (q *Queries) LockClientByID(ctx context.Context, id uuid.UUID) (Client, err
 	return i, err
 }
 
+const lockClientKeyShare = `-- name: LockClientKeyShare :one
+SELECT id FROM clients WHERE id = $1 FOR KEY SHARE
+`
+
+// FOR KEY SHARE counterpart to LockClient; see LockDNSCredentialKeyShare.
+// A certificate or org-defaults write referencing this client as a rule's
+// clientId takes this lock first, so DeleteClient's FOR UPDATE lock on the
+// same row blocks until that transaction ends.
+func (q *Queries) LockClientKeyShare(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockClientKeyShare, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const lockClientsByID = `-- name: LockClientsByID :many
 SELECT id FROM clients WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE
 `
