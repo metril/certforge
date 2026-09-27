@@ -20,6 +20,8 @@ The agent renews its certificate at two thirds of its lifetime (90 days by defau
 | `CF_HOOK_ALLOW` | empty (hooks off) | Colon-separated absolute paths of executables hooks may run. See [Hooks and the allowlist](#hooks-and-the-allowlist). |
 | `CF_WRITE_ALLOW` | empty (every deploy fails) | Colon-separated absolute directory prefixes the agent may write or remove files under. See [File layouts](#file-layouts). |
 | `CF_AGENT_PULL_INTERVAL` | `0` | Also reconcile on this schedule (for example `15m`, at least `1m`), whether or not the WebSocket is up; while it is down, `run` pulls over REST. `0` means only on server nudges and at connect. Set it when any grant for this client uses `pull` delivery. |
+| `CF_AGENT_HTTP01_LISTEN` | empty (http-01 off) | `host:port` for the agent's own http-01 listener, for example `:8080`. Empty disables it; a `method: http-01, via: agent` rule with no `webroot` then fails. See [Challenge serving](#challenge-serving). |
+| `CF_AGENT_TLSALPN_LISTEN` | empty (tls-alpn-01 off) | `host:port` for the agent's tls-alpn-01 listener, for example `:5001`. Empty disables it; a `method: tls-alpn-01` rule naming this client then fails. See [Challenge serving](#challenge-serving). |
 
 ## Commands
 
@@ -55,7 +57,13 @@ A verification rule with `method: http-01, via: agent` or `method: tls-alpn-01` 
 
 The server waits up to 30 seconds for `challenge_ready` after sending `challenge_present`; a client whose socket is not open, or whose agent never answers within that bound, fails the attempt with `client <name> is offline or cannot serve challenges` or `client <name> did not confirm the challenge within 30s` respectively, and an error the agent itself reports surfaces as `client <name>: <error>`. A rule's `clientId` is checked when the rule is saved (same org, and the client reports the method's capability, unless it is an http-01 rule with its own `webroot`), not only when an attempt runs.
 
-Serving the challenge itself — a listener on the agent for http-01, or a self-signed tls-alpn-01 certificate, and writing a webroot file under [`CF_WRITE_ALLOW`](#write-allowlist) — is the agent's own job; see `CF_AGENT_HTTP01_LISTEN` and `CF_AGENT_TLSALPN_LISTEN`.
+Serving the challenge itself is the agent's own job, reported to the server as the `http-01`/`tls-alpn-01` capabilities in `hello` whenever the matching listener is configured:
+
+- **http-01**, no `webroot`: `CF_AGENT_HTTP01_LISTEN` (`host:port`, for example `:8080`) binds a listener that answers `GET /.well-known/acme-challenge/<token>` with the key authorization, and 404s otherwise. It needs no root privilege for a port above 1024; a port below it needs `CAP_NET_BIND_SERVICE` or running as root.
+- **http-01**, with `webroot`: the agent writes `<webroot>/.well-known/acme-challenge/<token>` (mode 0644) through the same confined, atomic writer as layout files, and removes it once the CA is done. `webroot` must resolve under [`CF_WRITE_ALLOW`](#write-allowlist), exactly like any layout or target path; a rule using an agent's webroot needs no `CF_AGENT_HTTP01_LISTEN`, since some other web server on that host serves the file.
+- **tls-alpn-01**: `CF_AGENT_TLSALPN_LISTEN` (`host:port`, for example `:5001`) binds a TLS listener advertising only the `acme-tls/1` ALPN protocol; a handshake that does not request it is refused. For the domain named in `challenge_present`, it serves a self-signed certificate built with lego's `tlsalpn01.ChallengeCert`, looked up by the SNI the CA dials with.
+
+A method the agent has no listener (and, for http-01, no webroot) for replies `challenge_ready` with an error, which the server reports as `client <name>: this agent has no <method> listener configured...`.
 
 ## Traefik integration
 
@@ -86,6 +94,8 @@ Share Traefik's file-provider directory with the agent and grant the certificate
         file: ./cf_agent_token
 
 Target config: `dir: /etc/traefik/dynamic` (same path in both containers, so `pathPrefix` stays empty). Renewals overwrite the same files and rewrite the YAML, which Traefik's watcher picks up. No Docker socket, no reload command.
+
+Set `acmeServiceUrl` (an absolute `http://` or `https://` URL reaching this agent's [`CF_AGENT_HTTP01_LISTEN`](#challenge-serving)) to also route ACME traffic through Traefik: the target writes a per-grant `certforge-acme-<SafeName>.yml` forwarding `PathPrefix(`/.well-known/acme-challenge/`)` to that URL. It is rendered even before the grant's certificate has a first version, so a `method: http-01, via: agent` rule behind Traefik can issue its very first certificate; see [deploy-targets.md#traefik](deploy-targets.md#traefik).
 
 ## Hooks and the allowlist
 

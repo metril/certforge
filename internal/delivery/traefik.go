@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
 	"strconv"
@@ -22,16 +23,18 @@ const TraefikSchema = `{
     "dir": {"type": "string", "title": "Directory on the agent", "description": "Traefik's file-provider directory as the agent sees it; the agent writes certforge-<name>.yml and certs/<name>/ here.", "pattern": "^/", "examples": ["/etc/traefik/dynamic"]},
     "pathPrefix": {"type": "string", "title": "Directory as Traefik sees it", "description": "Prefix for certFile and keyFile in the generated YAML when Traefik mounts the directory elsewhere. Empty means the same as the directory.", "pattern": "^(/.*)?$"},
     "defaultCert": {"type": "boolean", "title": "Default certificate", "description": "Also serve this certificate when no SNI matches (tls.stores.<store>.defaultCertificate).", "default": false},
-    "stores": {"type": "array", "title": "TLS stores", "description": "Traefik TLS stores for the certificate. Empty means default.", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}, "default": ["default"]}
+    "stores": {"type": "array", "title": "TLS stores", "description": "Traefik TLS stores for the certificate. Empty means default.", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}, "default": ["default"]},
+    "acmeServiceUrl": {"type": "string", "format": "uri", "title": "ACME service URL", "description": "Absolute http or https URL of the agent's http-01/tls-alpn-01 listener. When set, the agent also writes a per-grant certforge-acme-<name>.yml routing /.well-known/acme-challenge/ requests here."}
   }
 }`
 
 // TraefikConfig is a traefik target's config.
 type TraefikConfig struct {
-	Dir         string   `json:"dir"`
-	PathPrefix  string   `json:"pathPrefix,omitempty"`
-	DefaultCert bool     `json:"defaultCert,omitempty"`
-	Stores      []string `json:"stores,omitempty"`
+	Dir            string   `json:"dir"`
+	PathPrefix     string   `json:"pathPrefix,omitempty"`
+	DefaultCert    bool     `json:"defaultCert,omitempty"`
+	Stores         []string `json:"stores,omitempty"`
+	AcmeServiceURL string   `json:"acmeServiceUrl,omitempty"`
 }
 
 var storeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -60,6 +63,12 @@ func ParseTarget(typ string, raw json.RawMessage) (TraefikConfig, error) {
 			return c, &FieldError{"config.stores", fmt.Sprintf("store %q must be 1 to 64 letters, digits, - or _", s)}
 		}
 	}
+	if c.AcmeServiceURL != "" {
+		u, uerr := url.Parse(c.AcmeServiceURL)
+		if uerr != nil || !u.IsAbs() || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return c, &FieldError{"config.acmeServiceUrl", "must be an absolute http or https URL"}
+		}
+	}
 	return c, nil
 }
 
@@ -79,8 +88,33 @@ func SafeName(s string) string {
 	return n
 }
 
+// AcmeRouterFile returns the per-grant Traefik dynamic-config file that
+// routes ACME http-01 requests (PathPrefix /.well-known/acme-challenge/) to
+// cfg.AcmeServiceURL, or nil when it is unset. It is unrelated to any
+// certificate material, so it renders the same way whether or not the
+// grant's certificate has a version yet (C3): GrantFiles emits only this
+// file for a version-less grant, letting the very first issuance validate
+// through Traefik. Deviation R4: per grant (certforge-acme-<SafeName>.yml,
+// router and service certforge-acme-<SafeName>), not a single shared file,
+// so it disappears with its grant like every other per-grant file.
+func AcmeRouterFile(certName string, cfg TraefikConfig) *File {
+	if cfg.AcmeServiceURL == "" {
+		return nil
+	}
+	router := "certforge-acme-" + SafeName(certName)
+	var y strings.Builder
+	y.WriteString("# Managed by CertForge. Do not edit; changes are overwritten.\n")
+	y.WriteString("http:\n  routers:\n")
+	fmt.Fprintf(&y, "    %s:\n      rule: PathPrefix(`/.well-known/acme-challenge/`)\n      entryPoints:\n        - web\n      service: %s\n      priority: 1000\n",
+		router, router)
+	y.WriteString("  services:\n")
+	fmt.Fprintf(&y, "    %s:\n      loadBalancer:\n        servers:\n          - url: %s\n", router, strconv.Quote(cfg.AcmeServiceURL))
+	return &File{Path: path.Join(cfg.Dir, router+".yml"), Mode: "0644", Data: []byte(y.String())}
+}
+
 // RenderTraefik returns the files the target writes, in write order:
-// fullchain.pem, privkey.pem, then certforge-<name>.yml. Removal deletes in
+// fullchain.pem, privkey.pem, certforge-<name>.yml, then (when
+// cfg.AcmeServiceURL is set) the ACME router file. Removal deletes in
 // reverse order, so Traefik drops the certificate before its files vanish.
 func RenderTraefik(certName string, cfg TraefikConfig, fullchain, key []byte) []File {
 	name := SafeName(certName)
@@ -109,9 +143,13 @@ func RenderTraefik(certName string, cfg TraefikConfig, fullchain, key []byte) []
 			fmt.Fprintf(&y, "    %s:\n      defaultCertificate:\n        certFile: %s\n        keyFile: %s\n", strconv.Quote(s), certFile, keyFile)
 		}
 	}
-	return []File{
+	out := []File{
 		{Path: path.Join(cfg.Dir, certRel), Mode: "0644", Data: fullchain},
 		{Path: path.Join(cfg.Dir, keyRel), Mode: "0600", Data: key},
 		{Path: path.Join(cfg.Dir, "certforge-"+name+".yml"), Mode: "0644", Data: []byte(y.String())},
 	}
+	if f := AcmeRouterFile(certName, cfg); f != nil {
+		out = append(out, *f)
+	}
+	return out
 }

@@ -1,0 +1,14 @@
+# Managed by CertForge. Do not edit; changes are overwritten.
+http:
+  routers:
+    certforge-acme-web-frontend:
+      rule: PathPrefix(`/.well-known/acme-challenge/`)
+      entryPoints:
+        - web
+      service: certforge-acme-web-frontend
+      priority: 1000
+  services:
+    certforge-acme-web-frontend:
+      loadBalancer:
+        servers:
+          - url: "http://agent:8080"

@@ -38,6 +38,28 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfigChallengeListen(t *testing.T) {
+	c, err := LoadConfig(env(map[string]string{"CF_AGENT_HTTP01_LISTEN": ":8080", "CF_AGENT_TLSALPN_LISTEN": "0.0.0.0:5001"}), "dev")
+	if err != nil || c.HTTP01Listen != ":8080" || c.TLSALPNListen != "0.0.0.0:5001" {
+		t.Fatalf("valid %+v %v", c, err)
+	}
+	c, err = LoadConfig(env(nil), "dev")
+	if err != nil || c.HTTP01Listen != "" || c.TLSALPNListen != "" {
+		t.Fatalf("defaults %+v %v", c, err)
+	}
+	for name, m := range map[string]map[string]string{
+		"http01 no port":     {"CF_AGENT_HTTP01_LISTEN": "8080"},
+		"http01 bad port":    {"CF_AGENT_HTTP01_LISTEN": ":abc"},
+		"http01 zero port":   {"CF_AGENT_HTTP01_LISTEN": ":0"},
+		"tlsalpn no colon":   {"CF_AGENT_TLSALPN_LISTEN": "localhost"},
+		"tlsalpn empty port": {"CF_AGENT_TLSALPN_LISTEN": "localhost:"},
+	} {
+		if _, err := LoadConfig(env(m), "dev"); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+}
+
 func TestResolveToken(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "token")

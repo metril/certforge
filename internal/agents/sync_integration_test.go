@@ -163,6 +163,20 @@ func (f *syncFixture) client(t *testing.T, name string) sqlcgen.Client {
 	return e.Client
 }
 
+// target stores a Traefik deploy target.
+func (f *syncFixture) target(t *testing.T, name string, cfg delivery.TraefikConfig) uuid.UUID {
+	t.Helper()
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dt, err := f.q.CreateDeployTarget(context.Background(), sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: name, Type: delivery.TargetTraefik, Config: b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dt.ID
+}
+
 func (f *syncFixture) desiredRevision(t *testing.T, clientID uuid.UUID) int64 {
 	t.Helper()
 	var rev int64
@@ -193,6 +207,42 @@ func (f *syncFixture) expectedDigest(t *testing.T, grantID uuid.UUID) string {
 		t.Fatalf("grant %s: expected 1 file, got %d: %+v", grantID, len(specs), specs)
 	}
 	return specs[0].SHA256
+}
+
+// Review Focus (C3): a grant on a certificate with no version yet still
+// gets its Traefik ACME router file rendered as its expected file set, so
+// the very first issuance can validate through Traefik. Without
+// acmeServiceUrl, expected stays [] exactly as before this task.
+func TestRenderGrantWithoutVersionWritesACMEFile(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-3")
+
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var specs []agentproto.FileSpec
+	if err := json.Unmarshal(f.expected(t, gid), &specs); err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) != 1 || specs[0].Path != "/etc/traefik/dynamic/certforge-acme-web.yml" {
+		t.Fatalf("expected %+v", specs)
+	}
+
+	// Without acmeServiceUrl, a version-less grant still expects nothing.
+	certID2 := f.cert(t, "web2")
+	targetID2 := f.target(t, "traefik2", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic"})
+	gid2, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID2, Delivery: "pull", TargetID: &targetID2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(f.expected(t, gid2)); got != "[]" {
+		t.Fatalf("expected %s, want []", got)
+	}
 }
 
 // Review Focus: a new version of a certificate used as another layout's

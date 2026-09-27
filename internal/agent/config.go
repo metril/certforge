@@ -6,21 +6,25 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // Config is read from CF_AGENT_*, CF_HOOK_ALLOW and CF_WRITE_ALLOW.
 type Config struct {
-	DataDir      string        // CF_AGENT_DATA, default /data
-	Token        string        // CF_AGENT_TOKEN
-	TokenFile    string        // CF_AGENT_TOKEN_FILE
-	HookAllow    []string      // CF_HOOK_ALLOW, colon-separated absolute paths; empty disables hooks
-	WriteAllow   []string      // CF_WRITE_ALLOW, colon-separated absolute directory prefixes; empty disables every write
-	PullInterval time.Duration // CF_AGENT_PULL_INTERVAL, 0 = socket only
-	Version      string
+	DataDir       string        // CF_AGENT_DATA, default /data
+	Token         string        // CF_AGENT_TOKEN
+	TokenFile     string        // CF_AGENT_TOKEN_FILE
+	HookAllow     []string      // CF_HOOK_ALLOW, colon-separated absolute paths; empty disables hooks
+	WriteAllow    []string      // CF_WRITE_ALLOW, colon-separated absolute directory prefixes; empty disables every write
+	PullInterval  time.Duration // CF_AGENT_PULL_INTERVAL, 0 = socket only
+	HTTP01Listen  string        // CF_AGENT_HTTP01_LISTEN, host:port; empty disables serving http-01
+	TLSALPNListen string        // CF_AGENT_TLSALPN_LISTEN, host:port; empty disables serving tls-alpn-01
+	Version       string
 }
 
 // parseColonPaths splits s on ':', trims blanks, drops empty entries and
@@ -38,6 +42,24 @@ func parseColonPaths(name, s string) ([]string, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// validateListen accepts "" (disabled) or a host:port with a numeric port
+// from 1 to 65535 (the host may be empty, as in ":8080").
+func validateListen(name, addr string) (string, error) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return "", nil
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("%s: %q must be host:port: %w", name, addr, err)
+	}
+	p, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || p == 0 {
+		return "", fmt.Errorf("%s: %q must have a port from 1 to 65535", name, addr)
+	}
+	return addr, nil
 }
 
 // LoadConfig reads the environment through getenv.
@@ -70,6 +92,16 @@ func LoadConfig(getenv func(string) string, version string) (Config, error) {
 		}
 		c.PullInterval = d
 	}
+	http01, err := validateListen("CF_AGENT_HTTP01_LISTEN", getenv("CF_AGENT_HTTP01_LISTEN"))
+	if err != nil {
+		return c, err
+	}
+	c.HTTP01Listen = http01
+	tlsAlpn, err := validateListen("CF_AGENT_TLSALPN_LISTEN", getenv("CF_AGENT_TLSALPN_LISTEN"))
+	if err != nil {
+		return c, err
+	}
+	c.TLSALPNListen = tlsAlpn
 	return c, nil
 }
 

@@ -80,10 +80,20 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			return fail("target: %v", err)
 		}
 		if b.Material == nil {
-			return fail("the bundle has no key material for the %s target", a.Target.Type)
+			// C3: a grant on a certificate with no version yet has nothing
+			// to render its certificate files from, but the target's ACME
+			// router file needs no material at all — write that alone
+			// instead of failing, so the very first issuance can validate
+			// through Traefik.
+			f := delivery.AcmeRouterFile(a.CertificateName, cfg)
+			if f == nil {
+				return fail("the bundle has no key material for the %s target", a.Target.Type)
+			}
+			files = append(files, *f)
+		} else {
+			files = append(files, delivery.RenderTraefik(a.CertificateName, cfg, b.Material.Fullchain, b.Material.Key)...)
+			certsDir = path.Join(cfg.Dir, "certs", delivery.SafeName(a.CertificateName))
 		}
-		files = append(files, delivery.RenderTraefik(a.CertificateName, cfg, b.Material.Fullchain, b.Material.Key)...)
-		certsDir = path.Join(cfg.Dir, "certs", delivery.SafeName(a.CertificateName))
 	}
 	// A first pass fails fast, before any hook runs, on a path that is
 	// unclean or outside CF_WRITE_ALLOW right now.

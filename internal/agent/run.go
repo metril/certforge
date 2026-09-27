@@ -76,17 +76,38 @@ func (b *backoff) reset() { b.cur = 0 }
 
 // Agent is a running certforge-agent.
 type Agent struct {
-	Cfg      Config
-	Log      *slog.Logger
-	ID       *Identity
-	Deployer *Deployer
-	Now      func() time.Time
+	Cfg       Config
+	Log       *slog.Logger
+	ID        *Identity
+	Deployer  *Deployer
+	Challenge *ChallengeServer
+	Now       func() time.Time
 }
 
-// NewAgent wires the production file writer and hook runner.
+// NewAgent wires the production file writer, hook runner and challenge
+// server.
 func NewAgent(cfg Config, log *slog.Logger, id *Identity) *Agent {
+	files := NewFileWriter(log)
 	return &Agent{Cfg: cfg, Log: log, ID: id, Now: time.Now,
-		Deployer: &Deployer{Files: NewFileWriter(log), Hooks: &HookRunner{Allow: cfg.HookAllow}, Log: log, WriteAllow: cfg.WriteAllow}}
+		Deployer:  &Deployer{Files: files, Hooks: &HookRunner{Allow: cfg.HookAllow}, Log: log, WriteAllow: cfg.WriteAllow},
+		Challenge: NewChallengeServer(cfg, files, log)}
+}
+
+// capabilities lists what this agent tells the server it can do: traefik
+// always, hooks when CF_HOOK_ALLOW is set, and http-01/tls-alpn-01 when the
+// matching challenge listener is configured.
+func capabilities(cfg Config) []string {
+	caps := []string{"traefik"}
+	if len(cfg.HookAllow) > 0 {
+		caps = append(caps, "hooks")
+	}
+	if cfg.HTTP01Listen != "" {
+		caps = append(caps, "http-01")
+	}
+	if cfg.TLSALPNListen != "" {
+		caps = append(caps, "tls-alpn-01")
+	}
+	return caps
 }
 
 // renewDue reads the live certificate through the identity's lock: it can
@@ -158,6 +179,9 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return err
 	}
 	a := NewAgent(cfg, log, id)
+	if err := a.Challenge.Start(ctx); err != nil {
+		return err
+	}
 	var pull <-chan time.Time
 	if cfg.PullInterval > 0 {
 		t := time.NewTicker(cfg.PullInterval)
@@ -228,12 +252,8 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 		defer wcancel()
 		return ws.WriteMsg(wctx, b)
 	}
-	caps := []string{"traefik"}
-	if len(a.Cfg.HookAllow) > 0 {
-		caps = append(caps, "hooks")
-	}
 	f := Facts(a.Cfg.Version)
-	if err := send(agentproto.Hello{AgentVersion: f.AgentVersion, Hostname: f.Hostname, OS: f.OS, Arch: f.Arch, Capabilities: caps}); err != nil {
+	if err := send(agentproto.Hello{AgentVersion: f.AgentVersion, Hostname: f.Hostname, OS: f.OS, Arch: f.Arch, Capabilities: capabilities(a.Cfg)}); err != nil {
 		return err
 	}
 	msgs, readErr := make(chan agentproto.Message, 8), make(chan error, 1)
@@ -307,6 +327,12 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 				return errReconnect
 			case agentproto.Revoked:
 				return ErrRevoked
+			case agentproto.ChallengePresent:
+				if err := send(a.Challenge.Present(v)); err != nil {
+					a.Log.Warn("challenge_ready not sent", "err", err)
+				}
+			case agentproto.ChallengeCleanup:
+				a.Challenge.CleanUp(v)
 			}
 		case <-heartbeat.C:
 			if err := send(agentproto.Heartbeat{Installed: a.ID.State.Installed()}); err != nil {

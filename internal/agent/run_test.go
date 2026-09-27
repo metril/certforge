@@ -7,12 +7,28 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/metril/certforge/internal/agentca"
 	"github.com/metril/certforge/internal/agentproto"
 )
+
+func TestHelloCapabilities(t *testing.T) {
+	if got := capabilities(Config{}); !slices.Equal(got, []string{"traefik"}) {
+		t.Fatalf("defaults %v", got)
+	}
+	if got := capabilities(Config{HookAllow: []string{"/bin/sh"}}); !slices.Equal(got, []string{"traefik", "hooks"}) {
+		t.Fatalf("hooks %v", got)
+	}
+	if got := capabilities(Config{HTTP01Listen: ":8080", TLSALPNListen: ":5001"}); !slices.Equal(got, []string{"traefik", "http-01", "tls-alpn-01"}) {
+		t.Fatalf("challenge listeners %v", got)
+	}
+	if got := capabilities(Config{HookAllow: []string{"/bin/sh"}, HTTP01Listen: ":8080"}); !slices.Equal(got, []string{"traefik", "hooks", "http-01"}) {
+		t.Fatalf("combined %v", got)
+	}
+}
 
 func TestBackoffBounds(t *testing.T) {
 	b := backoff{min: time.Second, max: time.Minute}

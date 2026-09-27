@@ -335,7 +335,22 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 					extras[eid] = em
 				}
 			}
-			files, err := delivery.GrantFiles(m, extras, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName)
+			files, err := delivery.GrantFiles(&m, extras, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName)
+			if err != nil {
+				return nil, nil, err
+			}
+			if expected, err = json.Marshal(delivery.Specs(files)); err != nil {
+				return nil, nil, err
+			}
+		} else if target := targetOf(r.TargetType, r.TargetConfig); target != nil {
+			// C3: no version yet, so no key material to render a layout or a
+			// target's certificate files from, but the Traefik ACME router
+			// file (GrantFiles with nil material) needs no material at all —
+			// render and expect it now so the first issuance can validate
+			// through Traefik. checkPaths (grantPaths) picks up the same
+			// path unconditionally, so this changes only what gets written,
+			// never what collision detection already saw.
+			files, err := delivery.GrantFiles(nil, nil, nil, target, r.CertificateName)
 			if err != nil {
 				return nil, nil, err
 			}

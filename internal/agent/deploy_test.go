@@ -98,6 +98,32 @@ func TestDeployerTargetWithoutMaterialFails(t *testing.T) {
 	}
 }
 
+// Review Focus (C3): a grant on a certificate with no version yet still
+// carries a Target, but the bundle has no key material to render its
+// certificate files from; with acmeServiceUrl set, Deploy still writes the
+// target's material-independent ACME router file instead of failing.
+func TestDeployerTargetWithoutMaterialWritesACMEFile(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := json.Marshal(delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik"), AcmeServiceURL: "http://agent:8080"})
+	versionID := uuid.New()
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
+	b := agentproto.Bundle{VersionID: versionID}
+	res, written, certsDir := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
+	if res.State != agentproto.StateOK || len(written) != 1 || certsDir != "" {
+		t.Fatalf("res %+v written %d certsDir %q", res, len(written), certsDir)
+	}
+	yml := filepath.Join(dir, "traefik", "certforge-acme-web.yml")
+	if written[0].Path != yml {
+		t.Fatalf("written %+v", written)
+	}
+	if _, err := os.Stat(yml); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "traefik", "certs", "web")); !os.IsNotExist(err) {
+		t.Fatal("certs/<name> directory created without material")
+	}
+}
+
 // Review Focus: a mismatched bundle version is never installed.
 func TestDeployerVersionMismatchFails(t *testing.T) {
 	dir := t.TempDir()

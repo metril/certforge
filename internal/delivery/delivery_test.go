@@ -285,7 +285,7 @@ func TestParseTarget(t *testing.T) {
 
 func TestGrantFilesOrderAndDigests(t *testing.T) {
 	target := &agentproto.Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`)}
-	files, err := GrantFiles(material, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}, target, "Web")
+	files, err := GrantFiles(&material, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}, target, "Web")
 	if err != nil {
 		t.Fatal(err)
 	}
