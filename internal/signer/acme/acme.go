@@ -15,6 +15,7 @@ import (
 	"time"
 
 	legoacme "github.com/go-acme/lego/v4/acme"
+	"github.com/go-acme/lego/v4/acme/api"
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/dns01"
@@ -264,6 +265,25 @@ func registerChallengeSolver(cl *lego.Client, solver signer.ChallengeSolver) err
 	default:
 		return fmt.Errorf("unsupported challenge type %q", types[0])
 	}
+}
+
+// CAAIdentities implements signer.DirectoryInfo: it fetches the ACME
+// directory and returns the caaIdentities it publishes (RFC 8555 §7.1.1),
+// used by the CAA pre-check before any order. No account key is needed to
+// read the directory, so this works even before an account is registered.
+func (s *Signer) CAAIdentities(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	hc, rt, err := s.httpClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	core, err := api.New(hc, s.cfg.UserAgent, s.cfg.DirectoryURL, "", nil)
+	if err != nil {
+		return nil, classify(err, rt)
+	}
+	return core.GetDirectory().Meta.CaaIdentities, nil
 }
 
 // Revoke revokes cert with an RFC 5280 reason code using cfg.Account.

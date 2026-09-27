@@ -109,6 +109,14 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// the time the first job runs.
 	httpTokens := challenge.NewHTTPTokens(0)
 	issueWorker.HTTPTokens = httpTokens
+	// CAA and Settings back the caa step: a fresh DNS lookup per attempt and
+	// the global "issuance" section (caaCheck, rate limits) reloaded fresh
+	// each time so a settings change takes effect on the next attempt
+	// without a restart. Set before riverClient.Start, same as HTTPTokens.
+	issueWorker.CAA = issuance.DNSCAAResolver{}
+	issueWorker.Settings = func(ctx context.Context) (issuance.IssuanceSettings, error) {
+		return issuance.LoadIssuanceSettings(ctx, store)
+	}
 	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log, agentListener.RegisterRiver, agentSvc.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)

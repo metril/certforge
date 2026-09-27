@@ -172,7 +172,10 @@ func TestIssueSuccess(t *testing.T) {
 	}
 	a := lastAttempt(t, f, c.ID)
 	st := stepStatus(a)
-	for name, want := range map[string]string{"caa": "skipped", "rate_ledger": "skipped", "account": "success", "order": "success",
+	// caa is "success" (not "skipped"): fakeSigner does not implement
+	// signer.DirectoryInfo, so the step succeeds with "CA does not publish
+	// caaIdentities" — see Task 10.
+	for name, want := range map[string]string{"caa": "success", "rate_ledger": "skipped", "account": "success", "order": "success",
 		"challenge example.test": "success", "finalize": "success", "store": "success"} {
 		if st[name] != want {
 			t.Errorf("step %s = %q want %q (%v)", name, st[name], want, st)

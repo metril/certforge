@@ -77,6 +77,16 @@ type IssueWorker struct {
 	// the agents service (which implements challenge.AgentRelay) before
 	// riverClient.Start; see cmd/certforge/serve.go.
 	Relay challenge.AgentRelay
+
+	// CAA resolves CAA record sets for the caa step. nil means
+	// DNSCAAResolver, the production default; tests inject a fake.
+	CAA CAAResolver
+
+	// Settings loads the global "issuance" section fresh for each attempt
+	// (CAA checking, rate limits). nil means the built-in defaults (CAA
+	// checking on) — tests only; production sets this before
+	// riverClient.Start, see cmd/certforge/serve.go.
+	Settings func(ctx context.Context) (IssuanceSettings, error)
 }
 
 // NewIssueWorker wires production defaults.
@@ -164,9 +174,6 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 			panic(r)
 		}
 	}()
-	tl.Step("caa", challenge.StepSkipped, "CAA pre-check arrives in Phase 4")
-	tl.Step("rate_ledger", challenge.StepSkipped, "rate-limit ledger arrives in Phase 4")
-
 	iss, eff, err := w.run(ctx, cert, attemptID, tl)
 	if err != nil {
 		return w.fail(bg, cert, attemptID, tl, err)
@@ -189,7 +196,6 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 }
 
 func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline) (*signer.Issued, Effective, error) {
-	tl.Step("account", challenge.StepRunning, "")
 	eff, err := w.Store.EffectiveFor(ctx, cert)
 	if err != nil {
 		return nil, eff, err
@@ -201,6 +207,18 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	if err != nil {
 		return nil, eff, fmt.Errorf("CA %s: %w", *eff.CAID.Value, err)
 	}
+	sig := w.NewSigner(ca)
+
+	cfg, err := w.issuanceSettings(ctx)
+	if err != nil {
+		return nil, eff, err
+	}
+	if err := w.caaStep(ctx, tl, cert, ca, eff, sig, cfg); err != nil {
+		return nil, eff, err
+	}
+	tl.Step("rate_ledger", challenge.StepSkipped, "rate-limit ledger arrives in Phase 4")
+
+	tl.Step("account", challenge.StepRunning, "")
 	acct, material, err := w.Store.AccountMaterial(ctx, cert.OrgID, *eff.AccountID.Value)
 	if err != nil {
 		return nil, eff, fmt.Errorf("ACME account %s: %w", *eff.AccountID.Value, err)
@@ -228,7 +246,7 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 		}
 	}
 	tl.Step("order", challenge.StepRunning, strings.Join(req.Names, ", "))
-	iss, err := w.NewSigner(ca).Issue(ctx, req)
+	iss, err := sig.Issue(ctx, req)
 	if err != nil {
 		// PreCheck reports readiness (true, nil) to lego even after a
 		// manual-dns timeout, so lego proceeds to ask the CA to validate,
@@ -252,6 +270,65 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	tl.Finish(challenge.StepSuccess, "")
 	tl.Step("finalize", challenge.StepSuccess, "serial "+iss.Serial)
 	return iss, eff, nil
+}
+
+// issuanceSettings loads the global "issuance" section through w.Settings,
+// falling back to the built-in defaults (CAA checking on) when Settings is
+// nil — production always sets it (see cmd/certforge/serve.go); tests that
+// don't care about it may leave it unset.
+func (w *IssueWorker) issuanceSettings(ctx context.Context) (IssuanceSettings, error) {
+	if w.Settings == nil {
+		return defaultIssuanceSettings(), nil
+	}
+	return w.Settings(ctx)
+}
+
+// caaStep runs the CAA pre-check for cert's names before any order, and
+// records step "caa" with the outcome:
+//   - cfg.CAACheck false: skipped, "disabled in settings".
+//   - sig does not implement signer.DirectoryInfo (a CA kind with nothing to
+//     check, Phase 5): success, "CA does not publish caaIdentities".
+//   - the ACME directory could not be fetched: success (the CA still checks
+//     CAA itself during the real order).
+//   - the directory publishes no caaIdentities: success, the Deviations R6
+//     text ("CA publishes no caaIdentities; CAA not evaluated").
+//   - otherwise CheckCAA decides; a forbidding result ends the attempt by
+//     returning its *signer.Error, which the caller reports via fail.
+func (w *IssueWorker) caaStep(ctx context.Context, tl *Timeline, cert Certificate, ca CA, eff Effective, sig signer.Signer, cfg IssuanceSettings) error {
+	if !cfg.CAACheck {
+		tl.Step("caa", challenge.StepSkipped, "disabled in settings")
+		return nil
+	}
+	tl.Step("caa", challenge.StepRunning, "")
+	di, ok := sig.(signer.DirectoryInfo)
+	if !ok {
+		tl.Step("caa", challenge.StepSuccess, "CA does not publish caaIdentities")
+		return nil
+	}
+	identities, err := di.CAAIdentities(ctx)
+	if err != nil {
+		tl.Step("caa", challenge.StepSuccess, fmt.Sprintf("CA directory unreachable (%v); CAA not evaluated", err))
+		return nil
+	}
+	if len(identities) == 0 {
+		tl.Step("caa", challenge.StepSuccess, "CA publishes no caaIdentities; CAA not evaluated")
+		return nil
+	}
+	resolvers := eff.Resolvers.Value
+	if len(resolvers) == 0 {
+		resolvers = ca.Resolvers
+	}
+	r := w.CAA
+	if r == nil {
+		r = DNSCAAResolver{}
+	}
+	detail, err := CheckCAA(ctx, r, cert.Names(), identities, resolvers)
+	if err != nil {
+		tl.Step("caa", challenge.StepFailed, err.Error())
+		return err
+	}
+	tl.Step("caa", challenge.StepSuccess, detail)
+	return nil
 }
 
 // agentProvider builds the relay ChallengeProvider for a rule served by an

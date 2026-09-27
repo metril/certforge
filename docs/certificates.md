@@ -156,7 +156,13 @@ In the web UI, a pending certificate with records waiting shows an amber **Manua
 
 ### Failures and backoff
 
-A failed attempt sets `failureCount`, `lastError`, and the next try to `min(5 min · 2^(failures−1), 24 h)` ±20%. When the CA answers `rateLimited` with `Retry-After`, the next try is no earlier than that. A failed renewal leaves a still-valid certificate `active`. CAA checks and the rate-limit ledger appear as `skipped` steps until Phase 4.
+A failed attempt sets `failureCount`, `lastError`, and the next try to `min(5 min · 2^(failures−1), 24 h)` ±20%. When the CA answers `rateLimited` with `Retry-After`, the next try is no earlier than that. A failed renewal leaves a still-valid certificate `active`. The rate-limit ledger appears as a `skipped` step until Phase 4A Task 11.
+
+## CAA
+
+Before any order, CertForge checks each name's CAA records itself: for each SAN, strip a leading `*.`, then climb labels from the name up to and including its registered domain, stopping at the first label with any CAA records — exactly the lookup RFC 8659 §5.3 describes. If that record set does not permit the CA (via `issuewild` for a wildcard name, `issue` otherwise, or an unrecognised critical property), the attempt fails before contacting the CA at all, with `urn:ietf:params:acme:error:caa` and a message naming the record and a CAA line to add.
+
+This is a convenience only — **the CA always re-checks CAA itself during the real order**; disabling it here only saves a doomed order, it never lets an actually-forbidden name through. Turn it off with **Check CAA records** in [Settings → Issuance](configuration.md#issuance); a certificate has no per-certificate override. When the CA's directory publishes no `caaIdentities` (or a CA kind, Phase 5, that publishes none at all), the step succeeds without evaluating CAA — there is nothing to compare records against.
 
 ## Attempts
 

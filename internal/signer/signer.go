@@ -96,6 +96,15 @@ type Signer interface {
 	RenewalInfo(ctx context.Context, cert *x509.Certificate) (*Window, error)
 }
 
+// DirectoryInfo is implemented by a Signer that can report its ACME
+// directory's published caaIdentities (RFC 8555 §7.1.1 meta). The issuance
+// worker's CAA pre-check type-asserts a Signer against this; a Signer
+// without it (localca, vaultpki in Phase 5) has nothing to check against,
+// so the step succeeds without evaluating CAA.
+type DirectoryInfo interface {
+	CAAIdentities(ctx context.Context) ([]string, error)
+}
+
 // Error is a classified CA failure. Type is the full ACME problem URN when the
 // CA returned one; RetryAfter is the largest Retry-After seen on 429/503.
 type Error struct {

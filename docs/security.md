@@ -70,6 +70,10 @@ Every response, API and web UI alike, carries (`internal/api/router.go`'s `secur
 
 The client address comes from the TCP peer. X-Forwarded-For is used only when the peer is in Settings → Authentication → Trusted proxies; hops are read right to left and the first untrusted one wins, so a client cannot inject a fake address.
 
+## CAA pre-check
+
+The `caa` attempt step (Settings → Issuance → Check CAA records) is a local convenience, not a control: the issuing CA re-checks CAA itself during the real order regardless of this setting, per RFC 8659. Turning it off only lets a doomed order reach the CA instead of failing locally first — it can never cause a certificate to be issued that the CA's own CAA check would have refused. See [docs/certificates.md#caa](certificates.md#caa).
+
 ## First run
 
 Until setup completes, anyone who can reach the server can claim it through `POST /api/v1/setup/complete`. Complete setup right after the first start, or keep the port private until then. Completion is atomic (transaction plus advisory lock) and happens only once.

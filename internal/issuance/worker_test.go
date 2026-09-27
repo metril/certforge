@@ -2,6 +2,7 @@ package issuance
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/metril/certforge/internal/challenge"
+	"github.com/metril/certforge/internal/signer"
 )
 
 // TestTruncatedStackCap is the Review Focus for the fix-round bound on the
@@ -166,4 +168,80 @@ func TestWorkerAgentModeRulesNeedRelay(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `rule "*": client web-1 is offline`) {
 		t.Fatalf("relay rejection not wrapped with the rule: %v", err)
 	}
+}
+
+// caaSigner is a signer.Signer that also implements signer.DirectoryInfo
+// (as the real ACME signer does); Issue fails the test if ever called, so
+// TestWorkerCAAStep's forbidden case proves the worker never reaches an
+// order once caa fails the attempt.
+type caaSigner struct {
+	t           *testing.T
+	identities  []string
+	issueCalled bool
+}
+
+func (s *caaSigner) Kind() string { return "fake" }
+func (s *caaSigner) Issue(context.Context, signer.IssueRequest) (*signer.Issued, error) {
+	s.issueCalled = true
+	s.t.Fatal("signer.Issue must not be called when the caa step fails")
+	return nil, nil
+}
+func (s *caaSigner) Revoke(context.Context, *x509.Certificate, int) error { return nil }
+func (s *caaSigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.Window, error) {
+	return nil, nil
+}
+func (s *caaSigner) CAAIdentities(context.Context) ([]string, error) { return s.identities, nil }
+
+// TestWorkerCAAStep: a CAA record that forbids this CA fails the attempt
+// before any order (the step is "caa" failed, with a *signer.Error of type
+// caa, and signer.Issue is never called); caaCheck=false records the step
+// as skipped and does not touch the resolver at all.
+func TestWorkerCAAStep(t *testing.T) {
+	cert := Certificate{ID: uuid.New(), OrgID: uuid.New(), CommonName: "example.com"}
+
+	t.Run("forbidden", func(t *testing.T) {
+		sig := &caaSigner{t: t, identities: []string{"letsencrypt.org"}}
+		resolver := fakeCAAResolver{records: map[string][]CAARecord{
+			"example.com": {{Tag: "issue", Value: "other-ca.example"}},
+		}}
+		w := &IssueWorker{CAA: resolver, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		tl := NewTimeline(time.Now, nil)
+
+		err := w.caaStep(context.Background(), tl, cert, CA{}, Effective{}, sig, IssuanceSettings{CAACheck: true})
+
+		var se *signer.Error
+		if !errors.As(err, &se) || se.Type != "urn:ietf:params:acme:error:caa" {
+			t.Fatalf("err = %v, want a *signer.Error of type caa", err)
+		}
+		steps, _ := tl.Snapshot()
+		found := false
+		for _, s := range steps {
+			if s.Name == "caa" {
+				found = true
+				if s.Status != challenge.StepFailed {
+					t.Fatalf("caa step status = %q, want %q", s.Status, challenge.StepFailed)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("no caa step recorded")
+		}
+		if sig.issueCalled {
+			t.Fatal("signer.Issue was called")
+		}
+	})
+
+	t.Run("caaCheck disabled", func(t *testing.T) {
+		sig := &caaSigner{t: t, identities: []string{"letsencrypt.org"}}
+		w := &IssueWorker{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		tl := NewTimeline(time.Now, nil)
+
+		if err := w.caaStep(context.Background(), tl, cert, CA{}, Effective{}, sig, IssuanceSettings{CAACheck: false}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		steps, _ := tl.Snapshot()
+		if len(steps) != 1 || steps[0].Name != "caa" || steps[0].Status != challenge.StepSkipped {
+			t.Fatalf("steps = %+v, want one skipped caa step", steps)
+		}
+	})
 }
