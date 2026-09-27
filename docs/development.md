@@ -61,6 +61,7 @@ overridable, useful when the defaults are already taken:
 | `CF_AGENT_PORT` | `8443` | certforge agent listener |
 | `CF_PEBBLE_MGMT_PORT` | `15000` | Pebble management API (also sets `CF_E2E_PEBBLE_MGMT`; the issuance e2e independently verifies the issued chain against `/intermediates/0` here) |
 | `CF_DEX_PORT` | `5556` | dex (e2e OIDC provider; also sets `CF_E2E_DEX_ADDR`). Playwright maps the name `dex` to `127.0.0.1`, so keep `5556` when running the browser test. |
+| `CF_CHALLTESTSRV_PORT` | `18055` | pebble-challtestsrv management API (also sets `CF_E2E_CHALLTESTSRV`; the breadth e2e adds the A records Pebble's http-01/tls-alpn-01 validation resolves against here, and independently `docker inspect`s the certforge/traefik/agent containers' compose-network IPs to point them at) |
 
 The issuance e2e test drives the compose server through its own HTTP API
 (`CF_E2E_BASE_URL`), the same way a real client would; it never talks to
@@ -69,6 +70,19 @@ compose network (`pebble:14000`, `challtestsrv:8055`/`:8053`). Pebble's
 management port is the one exception, published to the host so the test can
 independently check the chain it got back through the API against Pebble's
 own roots/intermediates. Example: `CF_HTTP_PORT=18080 make e2e`.
+
+`test/e2e/issuance_breadth_test.go`'s `TestIssuanceBreadthAgainstCompose`
+(Phase 4A Task 15) proves the issuance breadth added across 4A end to end,
+against the same stack plus a `traefik` service (profile `e2e`, file
+provider only, no TLS serving): a certificate verified by the server's own
+http-01, one verified by the compose agent's http-01 listener and reached
+only through the per-grant Traefik ACME router file the agent writes
+(`certforge-acme-<name>.yml`), one verified by the agent's tls-alpn-01
+listener, a certificate mixing dns-01 and http-01 rules, a PKCS#12 export
+decoded with `go-pkcs12`, and a populated ACME Renewal Information window.
+It reaches pebble-challtestsrv directly (`CF_E2E_CHALLTESTSRV`) to add the
+A records Pebble's validation needs, and shares one enrolled agent
+(`enrolledAgent`, `test/e2e/agent_test.go`) with `TestAgentAgainstCompose`.
 
 The same stack and the same `CF_HTTP_PORT` override are used by the browser
 smoke test below (`web/e2e/`); it just drives the running server with a real

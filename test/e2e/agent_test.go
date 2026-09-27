@@ -12,8 +12,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type agentCertOut struct {
@@ -29,8 +32,63 @@ type agentCertOut struct {
 
 type clientOut struct {
 	ID        string `json:"id"`
+	Name      string `json:"name"`
 	Status    string `json:"status"`
 	Connected bool   `json:"connected"`
+}
+
+// agentOnce and agentClientID share the one compose agent container across
+// every e2e test that needs it (TestAgentAgainstCompose,
+// TestIssuanceBreadthAgainstCompose): the container enrols once, with
+// CF_AGENT_TOKEN_FILE pointed at .e2e/agent-data/token, and a second
+// enrolment attempt would just orphan an unused client.
+var (
+	agentOnce     sync.Once
+	agentClientID uuid.UUID
+)
+
+// enrolledAgent points the compose agent's settings at this server, enrols
+// it (or reuses an already-enrolled "e2e-agent" client, for a rerun against
+// a stack that was not torn down), and waits for it to report active and
+// connected. Safe to call from multiple tests: the actual enrolment work
+// runs at most once per test binary run.
+func enrolledAgent(ctx context.Context, t *testing.T, c *apiClient, orgID string) uuid.UUID {
+	t.Helper()
+	agentOnce.Do(func() {
+		// Agents reach the server as certforge:8443 on the compose network;
+		// the listener certificate gains that name when the section is saved.
+		c.call(ctx, t, http.MethodPut, "/api/v1/settings/agents", map[string]any{
+			"agentUrl": "https://certforge:8443", "heartbeatSeconds": 15, "offlineAfterSeconds": 60}, nil)
+
+		var existing struct {
+			Items []clientOut `json:"items"`
+		}
+		c.call(ctx, t, http.MethodGet, "/api/v1/orgs/"+orgID+"/clients", nil, &existing)
+		for _, cl := range existing.Items {
+			if cl.Name == "e2e-agent" {
+				agentClientID = uuid.MustParse(cl.ID)
+				return
+			}
+		}
+
+		dir := envOr("CF_E2E_AGENT_DIR", "../../.e2e")
+		var created struct {
+			Client clientOut `json:"client"`
+			Token  string    `json:"token"`
+		}
+		c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/clients", map[string]any{"name": "e2e-agent"}, &created)
+		if err := os.WriteFile(filepath.Join(dir, "agent-data", "token"), []byte(created.Token), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		agentClientID = uuid.MustParse(created.Client.ID)
+	})
+	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + agentClientID.String()
+	waitFor(ctx, t, "client active and connected", func() (clientOut, bool) {
+		var cl clientOut
+		c.call(ctx, t, http.MethodGet, clientPath, nil, &cl)
+		return cl, cl.Status == "active" && cl.Connected
+	})
+	return agentClientID
 }
 
 type grantListOut struct {
@@ -95,22 +153,11 @@ func TestAgentAgainstCompose(t *testing.T) {
 
 	c := newAPIClient(t)
 	orgID := c.authenticate(ctx, t)
-	// Agents reach the server as certforge:8443 on the compose network; the
-	// listener certificate gains that name when the section is saved.
-	c.call(ctx, t, http.MethodPut, "/api/v1/settings/agents", map[string]any{
-		"agentUrl": "https://certforge:8443", "heartbeatSeconds": 15, "offlineAfterSeconds": 60}, nil)
 	cert := issueForAgent(ctx, t, c, orgID, "agent-e2e")
 
-	// 1. Token → active and connected.
-	var created struct {
-		Client clientOut `json:"client"`
-		Token  string    `json:"token"`
-	}
-	c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/clients", map[string]any{"name": "e2e-agent"}, &created)
-	if err := os.WriteFile(filepath.Join(dir, "agent-data", "token"), []byte(created.Token), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + created.Client.ID
+	// 1. Enrol (or reuse) the compose agent → active and connected.
+	clientID := enrolledAgent(ctx, t, c, orgID)
+	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + clientID.String()
 	connected := func(what string) {
 		waitFor(ctx, t, what, func() (clientOut, bool) {
 			var cl clientOut
@@ -118,7 +165,6 @@ func TestAgentAgainstCompose(t *testing.T) {
 			return cl, cl.Status == "active" && cl.Connected
 		})
 	}
-	connected("client active and connected")
 
 	// 2. Grant → files on disk with the issued fingerprint and the Traefik YAML.
 	var layout, target, grant struct {

@@ -212,9 +212,9 @@ surfaced it.
 
 ### Phase 4: issuance breadth — in progress (started 2026-09-27)
 
-Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings, DER/P12/JKS renderers, download/export, layout passwords and extra certificates, HTTP-01/TLS-ALPN-01 with agent challenge serving, mixed-method orders, CAA, rate ledger, ARI, upload/unmanaged certificates, import from acme.sh/certbot) and 4B certificates web UI. Plan 4A: [issuance breadth](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) (in progress). Plan 4B: [certificates web UI](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) (planned).
+Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings, DER/P12/JKS renderers, download/export, layout passwords and extra certificates, HTTP-01/TLS-ALPN-01 with agent challenge serving, mixed-method orders, CAA, rate ledger, ARI, upload/unmanaged certificates, import from acme.sh/certbot) and 4B certificates web UI. Plan 4A: [issuance breadth](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) (done). Plan 4B: [certificates web UI](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) (planned).
 
-#### Phase 4A tasks
+#### Phase 4A tasks — done (finished 2026-09-27)
 
 | # | Task | Status | Commit |
 |---|---|---|---|
@@ -231,8 +231,10 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 | 11 | Rate ledger | done | e6bea07 |
 | 12 | ARI | done | 82ac7a1 |
 | 13 | Upload and unmanaged certificates | done | 85ad57b |
-| 14 | Import from acme.sh and certbot | done | pending |
-| 15 | Issuance breadth e2e | planned | – |
+| 14 | Import from acme.sh and certbot | done | 70d12de |
+| 15 | Issuance breadth e2e | done | pending |
+
+Phase 4A complete; 4B (certificates web UI) builds on it.
 
 ## Decisions made during implementation
 
@@ -362,12 +364,14 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 - 4A: a DER layout file holds exactly one part (`cert` or `key`), because one layout file is one path; `chain` (one file per chain cert) is download-only. P12/JKS layout files take `parts: []`, so `OutputFile.parts` drops `minItems: 1`; PEM still needs ≥ 1 through `ValidateFiles`.
 - 4A: when the CA directory publishes no `meta.caaIdentities` (empty or absent), step `caa` succeeds with the detail "CA publishes no caaIdentities; CAA not evaluated" rather than failing every record set.
 - 4A: `caaCheck` and `rateLimits` live in a new global settings section `issuance`, not in `issuance_defaults`, whose fields inherit down to orgs and certificates.
+- 4A Task 15: `test/e2e/issuance_breadth_test.go`'s `TestIssuanceBreadthAgainstCompose` proves the breadth added across 4A through the compose stack plus a new `traefik` service (profile `e2e`, file provider only): server http-01 (`api.e2e`), agent http-01 (`agent.e2e`, whose A record resolves to Traefik, not the agent, so the certificate's first issuance only succeeds once a grant with an `acmeServiceUrl` target exists and the agent has written `certforge-acme-agent-http01.yml` — the automatic attempt certificate creation itself triggers, before that file exists, is expected to fail and is retried with an explicit renew), agent tls-alpn-01 (`alpn.e2e`, resolved straight to the agent), a `mixed` certificate (dns-01 + http-01), a PKCS#12 export decoded with `go-pkcs12`, and an ARI window populated by the post-issuance best-effort poll (the 6h periodic job has `RunOnStart` false). `deploy/e2e/pebble-config.json` is Task 1's pre-flight copy with `httpPort` changed to 8080 (matching the agent's `CF_AGENT_HTTP01_LISTEN`/Traefik's entrypoint) and `tlsPort` left at 5001 (matching `CF_AGENT_TLSALPN_LISTEN`). challtestsrv's management API is published (`CF_CHALLTESTSRV_PORT`) so the test can add A records directly via `docker inspect`-resolved compose-network IPs; `TestAgentAgainstCompose`'s enrolment is now `enrolledAgent` (`sync.Once`, or finds an existing `e2e-agent` client), shared by both tests. Phase 4A is now complete; 4B (certificates web UI) follows.
 - 4A Task 1: Pebble facts verified at pre-flight, recorded here rather than re-probed by later tasks: the `ghcr.io/letsencrypt/pebble:2.10.1` image's workdir is `/`; its bundled `/test/config/pebble-config.json` sets `httpPort` 5002 and `tlsPort` 5001; `/dir` serves `renewalInfo` and `meta.caaIdentities: ["pebble.letsencrypt.org"]`. Task 15's `caa` success case holds because challtestsrv serves no CAA records.
 - 4A Task 7: `agents.Service` implements `challenge.AgentRelay`; a rule's clientId is validated by the same `validateRulesOrgTx` a rule's dnsCredentialId already goes through (same-org FOR KEY SHARE lock, then a capability check — `http-01`/`tls-alpn-01` — skipped only for an http-01 rule with its own `webroot`), so a certificate's own rules and org default rules are checked identically. `DeleteClient`'s 409 names certificates via `CertificatesUsingClient` (own rules, or the literal "org default rules" when only an org default rule references it).
 
 ## Known gaps
 
-- 3A Task 15: the e2e checks the Traefik YAML byte for byte but runs no Traefik container.
+- 3A Task 15: the e2e checks the Traefik YAML byte for byte, and 4A Task 15 now also runs a real Traefik container for ACME routing (`certforge-acme-<name>.yml`), but TLS serving of the deployed certificate (`certforge-<name>.yml`, the layout PEMs) is not checked.
+- 4A Task 15: Playwright download/import/upload specs for the new endpoints (export, upload, import) arrive with 4B; the breadth e2e covers them at the API level only.
 - 3B: `make e2e-web` (Playwright with the compose agent) is not in CI, like the rest of the browser suite.
 - Playwright coverage before 3B never clicked a schema-form Save, which is how the CSP validator bug shipped through Phases 1–2; keep at least one UI-driven save in the smoke suite.
 - 3B: the client header has no "Update available" badge; no endpoint reports the newest agent version.

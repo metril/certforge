@@ -55,6 +55,7 @@ e2e: deploy/secrets/kek
 	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} \
 	CF_E2E_PEBBLE_MGMT=https://localhost:$${CF_PEBBLE_MGMT_PORT:-15000} \
 	CF_E2E_DEX_ADDR=127.0.0.1:$${CF_DEX_PORT:-5556} \
+	CF_E2E_CHALLTESTSRV=http://localhost:$${CF_CHALLTESTSRV_PORT:-18055} \
 	CF_E2E_AGENT_DIR=$(CURDIR)/.e2e \
 	CF_E2E_COMPOSE="$(COMPOSE_TEST_ABS)" \
 	$(GO) test -tags e2e -count=1 -timeout 20m ./test/e2e/...; status=$$?; $(COMPOSE_TEST) --profile e2e down -v; exit $$status

@@ -29,6 +29,13 @@ services:
       # Disable authorization reuse so plan 1B's issuance e2e always sees a
       # fresh pending challenge instead of a cached valid authorization.
       PEBBLE_AUTHZREUSE: "0"
+    volumes:
+      # The bundled config with httpPort/tlsPort changed to match the
+      # breadth e2e's fixed ports (Task 15): httpPort 8080 (server http-01
+      # and the Traefik-routed agent http-01 both answer there) and tlsPort
+      # 5001 (the agent's own tls-alpn-01 listener), copied from the image
+      # via `docker create`/`docker cp` the same way Task 1's pre-flight did.
+      - ./e2e/pebble-config.json:/test/config/pebble-config.json:ro
     ports:
       # Published so the host-side `go test` process (make e2e runs it
       # outside the compose network) can independently verify the issued
@@ -42,6 +49,28 @@ services:
   challtestsrv:
     image: ghcr.io/letsencrypt/pebble-challtestsrv:2.10.1
     command: -defaultIPv6 "" -defaultIPv4 127.0.0.1
+    ports:
+      # Published so the host-side `go test` process can add the A records
+      # (Task 15) that route Pebble's http-01/tls-alpn-01 validation at
+      # api.e2e/agent.e2e/alpn.e2e to the right compose-network container;
+      # the server itself still reaches challtestsrv over the compose
+      # network (challtestsrv:8055) for its dns-01 TXT records.
+      - "${CF_CHALLTESTSRV_PORT:-18055}:8055"
+  # ACME http-01 routing only (Task 15): Pebble's http-01 validation for
+  # agent.e2e resolves to this container, not the agent's own IP, so the
+  # only way it succeeds is through the per-grant ACME router file the
+  # agent writes under .e2e/traefik (deviation R4) once a grant with an
+  # acmeServiceUrl target exists. TLS serving of the deployed certificate
+  # is not exercised; see docs/PROGRESS.md Known gaps.
+  traefik:
+    profiles: [e2e]
+    image: traefik:v3.1
+    command:
+      - --entrypoints.web.address=:8080
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+    volumes:
+      - ../.e2e/traefik:/etc/traefik/dynamic:ro
   agent:
     # Only started for `make e2e` (which passes --profile e2e): the dev
     # Playwright stack brings up this same compose.test.yaml file without
@@ -63,9 +92,16 @@ services:
       # The test writes the token here after creating the client; run waits.
       CF_AGENT_TOKEN_FILE: /data/token
       # Confines every file the agent writes or removes to the layout's
-      # /etc/ssl/certforge and the Traefik target's /etc/traefik/dynamic;
-      # required for any deploy (empty means every deploy fails).
-      CF_WRITE_ALLOW: /etc/ssl/certforge:/etc/traefik/dynamic
+      # /etc/ssl/certforge, the Traefik target's /etc/traefik/dynamic, and
+      # (Task 15) an http-01 webroot under /srv/www; required for any
+      # deploy or webroot write (empty means every write fails).
+      CF_WRITE_ALLOW: /etc/ssl/certforge:/etc/traefik/dynamic:/srv/www
+      # Task 15: the agent serves http-01 (reached only through Traefik's
+      # per-grant ACME router, not published directly) and tls-alpn-01
+      # (Pebble connects to this container directly on 5001, matching
+      # deploy/e2e/pebble-config.json's tlsPort) itself.
+      CF_AGENT_HTTP01_LISTEN: ":8080"
+      CF_AGENT_TLSALPN_LISTEN: ":5001"
     volumes:
       - ../.e2e/agent-data:/data
       - ../.e2e/traefik:/etc/traefik/dynamic
