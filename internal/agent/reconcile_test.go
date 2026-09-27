@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,12 +31,16 @@ func newTestIdentity(t *testing.T) *Identity {
 	return &Identity{Dir: t.TempDir(), State: State{Grants: map[uuid.UUID]GrantState{}}}
 }
 
+// verp returns a pointer to v, for Assignment.VersionID literals.
+func verp(v uuid.UUID) *uuid.UUID { return &v }
+
 func layoutGrant(dir, name string) (agentproto.Assignment, agentproto.Bundle) {
 	p := filepath.Join(dir, "out", name+".pem")
 	data := []byte("PEM-" + name)
-	a := agentproto.Assignment{ID: uuid.New(), CertificateName: name, VersionID: uuid.New(),
+	versionID := uuid.New()
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: name, VersionID: &versionID,
 		Files: []agentproto.FileSpec{{Path: p, Mode: "0644", SHA256: delivery.Digest(data)}}, Hooks: []agentproto.HookSpec{}}
-	return a, agentproto.Bundle{VersionID: a.VersionID, Files: []agentproto.BundleFile{{Path: p, Mode: "0644", Content: data}}}
+	return a, agentproto.Bundle{VersionID: versionID, Files: []agentproto.BundleFile{{Path: p, Mode: "0644", Content: data}}}
 }
 
 func TestReconcileDeploysThenReportsUnchanged(t *testing.T) {
@@ -50,7 +55,7 @@ func TestReconcileDeploysThenReportsUnchanged(t *testing.T) {
 			t.Fatal(err)
 		}
 		if rep.Revision != 4 || len(rep.Results) != 1 || rep.Results[0].State != agentproto.StateOK ||
-			rep.Results[0].Installed[0].SHA256 != a.Files[0].SHA256 || rep.Results[0].VersionID != a.VersionID {
+			rep.Results[0].Installed[0].SHA256 != a.Files[0].SHA256 || rep.Results[0].VersionID != *a.VersionID {
 			t.Fatalf("run %d report %+v", i, rep)
 		}
 	}
@@ -158,7 +163,7 @@ func TestReconcileKeepsOldFilesTrackedAfterFailedDeploy(t *testing.T) {
 	a2 := agentproto.Assignment{ID: a1.ID, CertificateName: "web", VersionID: a1.VersionID,
 		Files: []agentproto.FileSpec{{Path: newPath, Mode: "0644", SHA256: delivery.Digest(data)}},
 		Hooks: []agentproto.HookSpec{{ID: uuid.New(), Phase: "post_deploy", Argv: []string{"/bin/sh", "-c", "exit 1"}, TimeoutSeconds: 5}}}
-	b2 := agentproto.Bundle{VersionID: a1.VersionID, Files: []agentproto.BundleFile{{Path: newPath, Mode: "0644", Content: data}}}
+	b2 := agentproto.Bundle{VersionID: *a1.VersionID, Files: []agentproto.BundleFile{{Path: newPath, Mode: "0644", Content: data}}}
 	api.as = agentproto.Assignments{Revision: 2, Grants: []agentproto.Assignment{a2}}
 	api.bundles[a2.ID] = b2
 	rep, err := r.Reconcile(context.Background())
@@ -198,6 +203,56 @@ func TestReconcileKeepsOldFilesTrackedAfterFailedDeploy(t *testing.T) {
 	}
 	if gs := id.State.Grants[a1.ID]; gs.Pending {
 		t.Fatal("state still marked pending after a successful deploy")
+	}
+}
+
+// Review Focus (controller ruling on Task 8 concern 1, C3): an assignment
+// with VersionID nil (a certificate with no version yet) is deployed
+// straight from its Target's config — the Traefik ACME router file only —
+// and Reconcile never calls Bundle for it (Bundle 404s "no issued version
+// yet" server-side for exactly this case).
+func TestReconcileDeploysVersionlessACMEFileWithoutBundle(t *testing.T) {
+	dir := t.TempDir()
+	tc := delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik"), AcmeServiceURL: "http://agent:8080"}
+	cfg, err := json.Marshal(tc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acme := delivery.AcmeRouterFile("web", tc)
+	if acme == nil {
+		t.Fatal("setup: no ACME router file")
+	}
+	spec := agentproto.FileSpec{Path: acme.Path, Mode: acme.Mode, SHA256: delivery.Digest(acme.Data)}
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", VersionID: nil,
+		Files: []agentproto.FileSpec{spec}, Target: &agentproto.Target{Type: "traefik", Config: cfg}, Hooks: []agentproto.HookSpec{}}
+	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}}
+	id := newTestIdentity(t)
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}), ID: id, Log: discard}
+
+	rep, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if api.fetched != 0 {
+		t.Fatalf("bundle fetched %d times, want 0", api.fetched)
+	}
+	if len(rep.Results) != 1 || rep.Results[0].State != agentproto.StateOK || rep.Results[0].VersionID != uuid.Nil || len(rep.Results[0].Installed) != 1 {
+		t.Fatalf("report %+v", rep.Results)
+	}
+	if _, err := os.Stat(acme.Path); err != nil {
+		t.Fatalf("ACME file not written: %v", err)
+	}
+	gs, ok := id.State.Grants[a.ID]
+	if !ok || gs.VersionID != uuid.Nil || len(gs.Files) != 1 {
+		t.Fatalf("state %+v", gs)
+	}
+
+	// A second, unchanged reconcile still never calls Bundle.
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if api.fetched != 0 {
+		t.Fatalf("bundle fetched %d times on an unchanged reconcile, want 0", api.fetched)
 	}
 }
 
@@ -283,11 +338,11 @@ func TestReconcileNeverPrunesDirNamedLikeCertsFiles(t *testing.T) {
 	admin := filepath.Join(dir, "admin")
 	fullchain, privkey := filepath.Join(admin, "fullchain.pem"), filepath.Join(admin, "privkey.pem")
 	data1, data2 := []byte("FULL"), []byte("KEY")
-	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", VersionID: uuid.New(), Files: []agentproto.FileSpec{
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", VersionID: verp(uuid.New()), Files: []agentproto.FileSpec{
 		{Path: fullchain, Mode: "0644", SHA256: delivery.Digest(data1)},
 		{Path: privkey, Mode: "0600", SHA256: delivery.Digest(data2)},
 	}}
-	b := agentproto.Bundle{VersionID: a.VersionID, Files: []agentproto.BundleFile{
+	b := agentproto.Bundle{VersionID: *a.VersionID, Files: []agentproto.BundleFile{
 		{Path: fullchain, Mode: "0644", Content: data1},
 		{Path: privkey, Mode: "0600", Content: data2},
 	}}

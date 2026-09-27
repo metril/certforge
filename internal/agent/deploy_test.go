@@ -25,7 +25,7 @@ func testDeployer(writeAllow []string, hookAllow ...string) *Deployer {
 func traefikGrant(dir string) (agentproto.Assignment, agentproto.Bundle) {
 	cfg, _ := json.Marshal(map[string]string{"dir": filepath.Join(dir, "traefik")})
 	versionID := uuid.New()
-	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: &versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
 	b := agentproto.Bundle{VersionID: versionID,
 		Files:    []agentproto.BundleFile{{Path: filepath.Join(dir, "ssl", "web.pem"), Mode: "0644", Content: []byte("PEM")}},
 		Material: &agentproto.Material{Fullchain: []byte("FULL"), Key: []byte("KEY")}}
@@ -37,7 +37,7 @@ func TestDeployerLayoutTraefikAndRemove(t *testing.T) {
 	d := testDeployer([]string{dir})
 	a, b := traefikGrant(dir)
 	res, written, certsDir := d.Deploy(context.Background(), a, b)
-	if res.State != agentproto.StateOK || len(written) != 4 || len(res.Installed) != 4 || res.VersionID != a.VersionID {
+	if res.State != agentproto.StateOK || len(written) != 4 || len(res.Installed) != 4 || res.VersionID != *a.VersionID {
 		t.Fatalf("res %+v written %d", res, len(written))
 	}
 	yml := filepath.Join(dir, "traefik", "certforge-web.yml")
@@ -106,7 +106,7 @@ func TestDeployerTargetWithoutMaterialWritesACMEFile(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := json.Marshal(delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik"), AcmeServiceURL: "http://agent:8080"})
 	versionID := uuid.New()
-	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: &versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
 	b := agentproto.Bundle{VersionID: versionID}
 	res, written, certsDir := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
 	if res.State != agentproto.StateOK || len(written) != 1 || certsDir != "" {
@@ -220,7 +220,7 @@ func TestDeployerReConfinesAfterPreDeployHookSymlinkSwap(t *testing.T) {
 	d := testDeployer([]string{dir}, "/bin/sh")
 	versionID := uuid.New()
 	p := filepath.Join(sub, "web.pem")
-	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", VersionID: versionID,
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", VersionID: &versionID,
 		Hooks: []agentproto.HookSpec{{ID: uuid.New(), Phase: "pre_deploy",
 			Argv:           []string{"/bin/sh", "-c", fmt.Sprintf("rm -rf %s && ln -s %s %s", sub, outside, sub)},
 			TimeoutSeconds: 5}}}

@@ -85,7 +85,12 @@ type Assignment struct {
 	ID              uuid.UUID `json:"id"`
 	CertificateID   uuid.UUID `json:"certificateId"`
 	CertificateName string    `json:"certificateName"`
-	VersionID       uuid.UUID `json:"versionId"`
+	// VersionID is nil for a live grant whose certificate has no version
+	// yet (C3): Files then holds only the target's material-independent
+	// files (today, a Traefik ACME router file), and the agent must
+	// install those straight from Target's config, never by fetching
+	// Bundle (which 404s "no issued version yet" for such a grant).
+	VersionID *uuid.UUID `json:"versionId"`
 	// RedeploySeq is bumped by an explicit Redeploy and by server-side
 	// auto-remediation. The agent is level-triggered on the assignment: a
 	// grant needs redeploying when it has no saved state, or when

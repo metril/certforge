@@ -110,6 +110,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - http-01 verification served by CertForge, and tls-alpn-01 rules.
 - Agents can be asked to serve http-01 and tls-alpn-01 challenges.
 - certforge-agent serves http-01 and tls-alpn-01 challenges; Traefik target routes ACME requests to it.
+- A version-less grant's Traefik ACME router file reaches the agent through Assignments (`versionId: null`) and installs with no bundle fetch, so the first issuance can validate through Traefik.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

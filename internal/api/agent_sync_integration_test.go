@@ -50,7 +50,10 @@ func (e *agentEnv) deploymentState(t *testing.T, gid uuid.UUID) string {
 func okReport(as agentproto.Assignments) agentproto.Report {
 	rep := agentproto.Report{Revision: as.Revision}
 	for _, a := range as.Grants {
-		res := agentproto.GrantResult{GrantID: a.ID, VersionID: a.VersionID, State: agentproto.StateOK}
+		res := agentproto.GrantResult{GrantID: a.ID, State: agentproto.StateOK}
+		if a.VersionID != nil {
+			res.VersionID = *a.VersionID
+		}
 		for _, f := range a.Files {
 			res.Installed = append(res.Installed, agentproto.FileDigest{Path: f.Path, SHA256: f.SHA256})
 		}
@@ -68,11 +71,11 @@ func TestAssignmentsBundleReport(t *testing.T) {
 		t.Fatalf("assignments %d %+v", code, as)
 	}
 	a := as.Grants[0]
-	if a.ID != gid || a.CertificateName != "web-1-cert" || a.Fingerprint == "" || a.Target != nil || len(a.Files) != 1 || a.Files[0].Path != "/etc/ssl/web-1.pem" {
+	if a.ID != gid || a.CertificateName != "web-1-cert" || a.VersionID == nil || a.Fingerprint == "" || a.Target != nil || len(a.Files) != 1 || a.Files[0].Path != "/etc/ssl/web-1.pem" {
 		t.Fatalf("assignment %+v", a)
 	}
 	var b agentproto.Bundle
-	if code := e.get(t, hc, "/agent/v1/grants/"+gid.String()+"/bundle", &b); code != http.StatusOK || b.VersionID != a.VersionID ||
+	if code := e.get(t, hc, "/agent/v1/grants/"+gid.String()+"/bundle", &b); code != http.StatusOK || b.VersionID != *a.VersionID ||
 		len(b.Files) != 1 || delivery.Digest(b.Files[0].Content) != a.Files[0].SHA256 || b.Material != nil {
 		t.Fatalf("bundle %d %+v", code, b)
 	}
@@ -364,7 +367,7 @@ func TestReportFailedAndHookRuns(t *testing.T) {
 	hc := e.httpClient(t, &cert)
 	var as agentproto.Assignments
 	e.get(t, hc, "/agent/v1/assignments", &as)
-	rep := agentproto.Report{Revision: as.Revision, Results: []agentproto.GrantResult{{GrantID: gid, VersionID: as.Grants[0].VersionID,
+	rep := agentproto.Report{Revision: as.Revision, Results: []agentproto.GrantResult{{GrantID: gid, VersionID: *as.Grants[0].VersionID,
 		State: "failed", Error: "pre_deploy hook /bin/false exited 1; files were not written",
 		HookRuns: []agentproto.HookRun{{HookID: uuid.New(), Phase: "pre_deploy", Argv: []string{"/bin/false"}, ExitCode: 1,
 			DurationMS: 3, Stdout: strings.Repeat("x", 9000), Stderr: "bad\x00byte"}}}}}

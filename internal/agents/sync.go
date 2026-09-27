@@ -104,10 +104,15 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 			out.Removed = append(out.Removed, agentproto.Removal{ID: r.ID, Files: paths, Target: target})
 			continue
 		}
-		if r.VersionID == nil {
+		// A version-less certificate (C3) is still worth listing when its
+		// last render found target files to install (the Traefik ACME
+		// router file, gated on acmeServiceUrl by GrantFiles/agents.render);
+		// otherwise it is skipped exactly as before this grant could ever
+		// have anything to install.
+		if r.VersionID == nil && len(specs) == 0 {
 			continue
 		}
-		a := agentproto.Assignment{ID: r.ID, CertificateID: r.CertID, CertificateName: r.CertificateName, VersionID: *r.VersionID,
+		a := agentproto.Assignment{ID: r.ID, CertificateID: r.CertID, CertificateName: r.CertificateName, VersionID: r.VersionID,
 			RedeploySeq: r.RedeploySeq, Delivery: r.Delivery, Files: specs, Target: target, Hooks: []agentproto.HookSpec{}}
 		if r.Fingerprint != nil {
 			a.Fingerprint = *r.Fingerprint
@@ -249,8 +254,13 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 			continue
 		}
 		// A result for an older version changes no deployment state, but
-		// its hook runs still happened and are kept as history below.
-		if d.VersionID != nil && res.VersionID == *d.VersionID {
+		// its hook runs still happened and are kept as history below. A
+		// version-less deployment (C3) has no version to match: the agent
+		// reports it with a zero-value VersionID (it never fetches a
+		// Bundle for one), so it matches the same way uuid.Nil already
+		// signals "no version" for a removal's confirmation above.
+		sameVersion := (d.VersionID == nil && res.VersionID == uuid.Nil) || (d.VersionID != nil && res.VersionID == *d.VersionID)
+		if sameVersion {
 			expected, err := specsOf(d.Expected)
 			if err != nil {
 				return err
@@ -333,7 +343,11 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 	var remediateGrants []uuid.UUID
 	pushRemediate := false
 	for _, d := range rows {
-		if d.RemovedAt != nil || d.VersionID == nil {
+		// A version-less deployment (C3) is still compared: its expected
+		// file set (the ACME router file, or none) is version-independent,
+		// so HeartbeatState's cur/expected/installed comparison works the
+		// same as any other deployment.
+		if d.RemovedAt != nil {
 			continue
 		}
 		expected, err := specsOf(d.Expected)

@@ -35,12 +35,19 @@ type Reconciler struct {
 // not read here at all; it is reported through the heartbeat's installed
 // digests, and the server marks it drift (with auto-remediate, that bumps
 // redeploySeq, which is what actually forces the next redeploy here).
-func needsDeploy(gs GrantState, a agentproto.Assignment) bool {
-	return gs.Pending || gs.VersionID != a.VersionID || gs.RedeploySeq != a.RedeploySeq || !slices.Equal(gs.Files, a.Files)
+//
+// versionID is uuid.UUID{} for a version-less assignment (a.VersionID nil,
+// C3): GrantState.VersionID stores the same zero value then, so a later
+// reconcile still redeploys the instant a real version arrives.
+func needsDeploy(gs GrantState, versionID uuid.UUID, a agentproto.Assignment) bool {
+	return gs.Pending || gs.VersionID != versionID || gs.RedeploySeq != a.RedeploySeq || !slices.Equal(gs.Files, a.Files)
 }
 
 func installedResult(a agentproto.Assignment) agentproto.GrantResult {
-	res := agentproto.GrantResult{GrantID: a.ID, VersionID: a.VersionID, State: agentproto.StateOK, Installed: []agentproto.FileDigest{}}
+	res := agentproto.GrantResult{GrantID: a.ID, State: agentproto.StateOK, Installed: []agentproto.FileDigest{}}
+	if a.VersionID != nil {
+		res.VersionID = *a.VersionID
+	}
 	for _, f := range a.Files {
 		sum, _, _ := fileDigest(f.Path)
 		res.Installed = append(res.Installed, agentproto.FileDigest{Path: f.Path, SHA256: sum})
@@ -125,6 +132,41 @@ func certsDirFromTarget(t *agentproto.Target, files []string) string {
 	return ""
 }
 
+// recordDeployOutcome applies one grant's deploy result to state.json the
+// same way whether it came from Deploy (a real version) or DeployTargetOnly
+// (versionID zero, C3): on failure it only marks gs.Pending, keeping the
+// last confirmed state so stale/orphan cleanup still finds those files; on
+// success it removes files stale relative to written and saves the new
+// GrantState.
+func (r *Reconciler) recordDeployOutcome(st *State, live map[string]bool, a agentproto.Assignment, gs GrantState, had bool,
+	versionID uuid.UUID, res agentproto.GrantResult, written []agentproto.FileSpec, certsDir string) {
+	if res.State != agentproto.StateOK {
+		// A failed deploy never overwrites this grant's last successfully
+		// confirmed state; it is left exactly as it was, only marked
+		// Pending, so stale/orphan cleanup can still find and remove those
+		// old files once the assignment moves on, and so the next
+		// reconcile retries regardless of whether version/redeploySeq/files
+		// still match this stale state. A grant with no confirmed deploy
+		// yet has nothing to keep.
+		if had {
+			gs.Pending = true
+			st.Grants[a.ID] = gs
+		}
+		return
+	}
+	if len(written) == 0 {
+		return
+	}
+	if had {
+		stf := unclaimed(stale(gs.Files, written), live)
+		if _, err := r.Deployer.Remove(stf, gs.CertsDir); err != nil {
+			r.Log.Warn("old files not removed", "grant", a.ID, "err", err)
+		}
+	}
+	st.Grants[a.ID] = GrantState{VersionID: versionID, RedeploySeq: a.RedeploySeq, CertificateName: a.CertificateName,
+		Files: written, CertsDir: certsDir}
+}
+
 // Reconcile removes removed and orphaned grants' files first (never a path a
 // live assignment lists), then deploys new or changed grants, reports every
 // live grant (so the server always learns the current digests), and saves
@@ -176,8 +218,22 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 	}
 	for _, a := range as.Grants {
 		gs, had := st.Grants[a.ID]
-		if had && !needsDeploy(gs, a) {
+		var versionID uuid.UUID
+		if a.VersionID != nil {
+			versionID = *a.VersionID
+		}
+		if had && !needsDeploy(gs, versionID, a) {
 			rep.Results = append(rep.Results, installedResult(a))
+			continue
+		}
+		if a.VersionID == nil {
+			// C3: a certificate with no version yet has no bundle to fetch
+			// (Bundle 404s "no issued version yet" for it) — install the
+			// target's material-independent files (the Traefik ACME router
+			// file) straight from a.Target's config instead.
+			res, written, certsDir := r.Deployer.DeployTargetOnly(a)
+			r.recordDeployOutcome(st, live, a, gs, had, versionID, res, written, certsDir)
+			rep.Results = append(rep.Results, res)
 			continue
 		}
 		b, err := r.API.Bundle(ctx, a.ID)
@@ -186,33 +242,12 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 				gs.Pending = true
 				st.Grants[a.ID] = gs
 			}
-			rep.Results = append(rep.Results, agentproto.GrantResult{GrantID: a.ID, VersionID: a.VersionID,
+			rep.Results = append(rep.Results, agentproto.GrantResult{GrantID: a.ID, VersionID: versionID,
 				State: agentproto.StateFailed, Error: "bundle: " + err.Error()})
 			continue
 		}
 		res, written, certsDir := r.Deployer.Deploy(ctx, a, b)
-		if res.State != agentproto.StateOK {
-			// A failed deploy never overwrites this grant's last
-			// successfully confirmed state; it is left exactly as it was,
-			// only marked Pending, so stale/orphan cleanup can still find
-			// and remove those old files once the assignment moves on,
-			// and so the next reconcile retries regardless of whether
-			// version/redeploySeq/files still match this stale state. A
-			// grant with no confirmed deploy yet has nothing to keep.
-			if had {
-				gs.Pending = true
-				st.Grants[a.ID] = gs
-			}
-		} else if len(written) > 0 {
-			if had {
-				stf := unclaimed(stale(gs.Files, written), live)
-				if _, err := r.Deployer.Remove(stf, gs.CertsDir); err != nil {
-					r.Log.Warn("old files not removed", "grant", a.ID, "err", err)
-				}
-			}
-			st.Grants[a.ID] = GrantState{VersionID: a.VersionID, RedeploySeq: a.RedeploySeq, CertificateName: a.CertificateName,
-				Files: written, CertsDir: certsDir}
-		}
+		r.recordDeployOutcome(st, live, a, gs, had, versionID, res, written, certsDir)
 		rep.Results = append(rep.Results, res)
 	}
 	st.Revision = as.Revision

@@ -186,6 +186,16 @@ func (f *syncFixture) desiredRevision(t *testing.T, clientID uuid.UUID) int64 {
 	return rev
 }
 
+// state returns a grant's deployment state.
+func (f *syncFixture) state(t *testing.T, grantID uuid.UUID) string {
+	t.Helper()
+	var s string
+	if err := f.pool.QueryRow(context.Background(), `SELECT state FROM deployments WHERE grant_id = $1`, grantID).Scan(&s); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func (f *syncFixture) expected(t *testing.T, grantID uuid.UUID) []byte {
 	t.Helper()
 	var b []byte
@@ -242,6 +252,79 @@ func TestRenderGrantWithoutVersionWritesACMEFile(t *testing.T) {
 	}
 	if got := string(f.expected(t, gid2)); got != "[]" {
 		t.Fatalf("expected %s, want []", got)
+	}
+}
+
+// Review Focus (controller ruling on Task 8 concern 1): a live grant on a
+// version-less certificate with acmeServiceUrl is served to the agent by
+// Assignments (versionId: null, fingerprint empty, files = the ACME router
+// file spec only) and never through Bundle (which still 404s "no issued
+// version yet"), and a deploy_result for it (zero-value VersionID, matching
+// the assignment's nil) marks the deployment ok.
+func TestAssignmentsServeVersionlessACMEGrantAndReportMarksOK(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-4")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(asg.Grants) != 1 {
+		t.Fatalf("grants %+v", asg.Grants)
+	}
+	a := asg.Grants[0]
+	if a.VersionID != nil || a.Fingerprint != "" || len(a.Files) != 1 || a.Files[0].Path != "/etc/traefik/dynamic/certforge-acme-web.yml" {
+		t.Fatalf("assignment %+v", a)
+	}
+
+	// The agent never calls Bundle for this grant; confirm the server side
+	// of that contract still refuses it (no version to bundle).
+	if _, err := f.svc.Bundle(ctx, cl, gid); err == nil {
+		t.Fatal("bundle for a version-less grant accepted")
+	}
+
+	if err := f.svc.Report(ctx, cl, agentproto.Report{Revision: asg.Revision, Results: []agentproto.GrantResult{
+		{GrantID: gid, State: agentproto.StateOK, Installed: []agentproto.FileDigest{{Path: a.Files[0].Path, SHA256: a.Files[0].SHA256}}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.state(t, gid); got != "ok" {
+		t.Fatalf("deployment state = %q, want ok", got)
+	}
+
+	// Heartbeat drift comparison also runs for a version-less deployment:
+	// a mismatched digest still marks it drift.
+	if err := f.svc.Heartbeat(ctx, cl, agentproto.Heartbeat{Installed: []agentproto.InstalledFile{{GrantID: gid, Path: a.Files[0].Path, SHA256: "0000"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.state(t, gid); got != "drift" {
+		t.Fatalf("deployment state after a mismatched heartbeat = %q, want drift", got)
+	}
+
+	// Without acmeServiceUrl, a version-less grant is still not listed at all.
+	certID2 := f.cert(t, "web2")
+	targetID2 := f.target(t, "traefik2", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic"})
+	if _, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID2, Delivery: "pull", TargetID: &targetID2}); err != nil {
+		t.Fatal(err)
+	}
+	asg2, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(asg2.Grants) != 1 {
+		t.Fatalf("grants %+v, want only the acmeServiceUrl grant", asg2.Grants)
 	}
 }
 

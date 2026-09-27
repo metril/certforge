@@ -37,8 +37,12 @@ func hookEnv(a agentproto.Assignment, files []delivery.File) []string {
 	for _, f := range files {
 		paths = append(paths, f.Path)
 	}
+	var versionID string
+	if a.VersionID != nil {
+		versionID = a.VersionID.String()
+	}
 	return []string{"CF_GRANT_ID=" + a.ID.String(), "CF_CERTIFICATE_NAME=" + a.CertificateName,
-		"CF_VERSION_ID=" + a.VersionID.String(), "CF_FINGERPRINT=" + a.Fingerprint, "CF_FILES=" + strings.Join(paths, ":")}
+		"CF_VERSION_ID=" + versionID, "CF_FINGERPRINT=" + a.Fingerprint, "CF_FILES=" + strings.Join(paths, ":")}
 }
 
 // parseMode parses an octal mode and refuses one that is world-writable,
@@ -66,8 +70,11 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		res.State, res.Error = agentproto.StateFailed, fmt.Sprintf(format, args...)
 		return res, written, ""
 	}
-	if b.VersionID != a.VersionID {
-		return fail("bundle version %s does not match assignment version %s", b.VersionID, a.VersionID)
+	if a.VersionID == nil {
+		return fail("assignment %s has no version; nothing to deploy against a bundle", a.ID)
+	}
+	if b.VersionID != *a.VersionID {
+		return fail("bundle version %s does not match assignment version %s", b.VersionID, *a.VersionID)
 	}
 	files := make([]delivery.File, 0, len(b.Files)+3)
 	for _, f := range b.Files {
@@ -146,6 +153,52 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		}
 	}
 	return res, written, certsDir
+}
+
+// DeployTargetOnly installs a version-less grant's target-only files —
+// today, only the Traefik ACME router file (delivery.AcmeRouterFile) when
+// acmeServiceUrl is set — straight from a.Target's config, with no bundle
+// fetch and no certificate material at all (C3: a grant on a certificate
+// with no version yet, reported by Assignments with VersionID nil). Hooks
+// do not run here: they are about the certificate's own lifecycle (for
+// example reloading a consumer), which has nothing to react to before a
+// first version exists; the normal Deploy path runs them once one does.
+func (d *Deployer) DeployTargetOnly(a agentproto.Assignment) (agentproto.GrantResult, []agentproto.FileSpec, string) {
+	res := agentproto.GrantResult{GrantID: a.ID, State: agentproto.StateOK, Installed: []agentproto.FileDigest{}}
+	var written []agentproto.FileSpec
+	fail := func(format string, args ...any) (agentproto.GrantResult, []agentproto.FileSpec, string) {
+		res.State, res.Error = agentproto.StateFailed, fmt.Sprintf(format, args...)
+		return res, written, ""
+	}
+	if a.Target == nil {
+		return res, written, ""
+	}
+	cfg, err := delivery.ParseTarget(a.Target.Type, a.Target.Config)
+	if err != nil {
+		return fail("target: %v", err)
+	}
+	f := delivery.AcmeRouterFile(a.CertificateName, cfg)
+	if f == nil {
+		return res, written, ""
+	}
+	if err := delivery.CleanPath("path", f.Path); err != nil {
+		return fail("refusing to write %q: %v", f.Path, err)
+	}
+	real, err := confine(d.WriteAllow, f.Path)
+	if err != nil {
+		return fail("%v", err)
+	}
+	mode, err := parseMode(f.Mode)
+	if err != nil {
+		return fail("%s: %v", f.Path, err)
+	}
+	if err := d.Files.Write(real, f.Data, mode, f.Owner, f.Group); err != nil {
+		return fail("write %s: %v", f.Path, err)
+	}
+	sum := delivery.Digest(f.Data)
+	written = append(written, agentproto.FileSpec{Path: f.Path, Owner: f.Owner, Group: f.Group, Mode: f.Mode, SHA256: sum})
+	res.Installed = append(res.Installed, agentproto.FileDigest{Path: f.Path, SHA256: sum})
+	return res, written, ""
 }
 
 // Remove deletes files in reverse write order, so a Traefik YAML goes
