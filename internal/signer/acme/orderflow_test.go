@@ -446,16 +446,19 @@ func TestObtainRequest(t *testing.T) {
 
 	// Task 12: Replaces turns into ReplacesCertID (RFC 9773 §4.1: AKI +
 	// serial, base64url, joined with "."), and a nil Replaces leaves it "".
+	// The literal is asserted directly (fix round 1), not by calling
+	// certificate.MakeARICertID again: that would only prove obtainRequest
+	// calls the same function, not that the function computes the id RFC
+	// 9773 actually specifies. AuthorityKeyId {1,2,3,4} base64url-encodes to
+	// "AQIDBA"; SerialNumber 12345 DER-encodes to 0x30,0x39 (tag+length
+	// stripped), which base64url-encodes to "MDk".
 	leaf := &x509.Certificate{SerialNumber: big.NewInt(12345), AuthorityKeyId: []byte{1, 2, 3, 4}}
 	or, err = obtainRequest(signer.IssueRequest{Names: []string{"a.example.test"}, Replaces: leaf})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantID, err := certificate.MakeARICertID(leaf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if or.ReplacesCertID != wantID || wantID == "" {
+	const wantID = "AQIDBA.MDk"
+	if or.ReplacesCertID != wantID {
 		t.Fatalf("ReplacesCertID = %q, want %q", or.ReplacesCertID, wantID)
 	}
 	or, err = obtainRequest(signer.IssueRequest{Names: []string{"a.example.test"}})

@@ -584,3 +584,132 @@ func TestIssueSuccessNotifiesListeners(t *testing.T) {
 		t.Fatalf("listener got %v, current %v", rec.got, got.CurrentVersionID)
 	}
 }
+
+// replacesCapturingSigner captures IssueRequest.Replaces for
+// TestWorkerSetsReplaces (fix round 1: replacesEligible was unit-tested in
+// isolation in worker_test.go, but run()'s actual wiring of req.Replaces
+// through the whole worker had no coverage of its own).
+type replacesCapturingSigner struct {
+	fakeSigner
+	got *x509.Certificate
+}
+
+func (s *replacesCapturingSigner) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Issued, error) {
+	s.got = req.Replaces
+	return s.fakeSigner.Issue(ctx, req)
+}
+
+// TestWorkerSetsReplaces: set only for a renewal (not the first issuance),
+// against the same CA the current version was actually issued by, with
+// useAri on.
+func TestWorkerSetsReplaces(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	useAri := RenewPolicy{Mode: RenewPercent, Value: 33, UseARI: true}
+	c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+		Name: "replaces-test", CommonName: "replaces-test.example.test",
+		Rules:     []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+		Overrides: Defaults{RenewPolicy: &useAri},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First issuance: no current version yet, so Replaces must be nil even
+	// with useAri on.
+	first := issuedFor(t, c.Names(), now0)
+	fs1 := &replacesCapturingSigner{fakeSigner: fakeSigner{issued: first}}
+	w := newWorker(f, &fs1.fakeSigner)
+	w.NewSigner = func(CA) signer.Signer { return fs1 }
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fs1.got != nil {
+		t.Fatalf("first issuance: Replaces = %v, want nil (no prior version)", fs1.got)
+	}
+
+	// Renewal against the same CA: Replaces is the first version's leaf.
+	fs2 := &replacesCapturingSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0.Add(time.Hour))}}
+	w.NewSigner = func(CA) signer.Signer { return fs2 }
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	firstLeaf, err := x509.ParseCertificate(first.LeafDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fs2.got == nil || fs2.got.SerialNumber.Cmp(firstLeaf.SerialNumber) != 0 {
+		t.Fatalf("renewal: Replaces = %v, want the first version's leaf (serial %v)", fs2.got, firstLeaf.SerialNumber)
+	}
+
+	// A renewal against a different CA must not set Replaces.
+	otherCA, err := f.store.CreateCA(context.Background(), f.org, CAInput{Name: "Other CA", Preset: "custom", DirectoryURL: "https://other.test/dir", Resolvers: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherAcct := f.account(t, otherCA.ID)
+	cur, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.store.UpdateCertificate(context.Background(), f.org, c.ID, CertInput{
+		Name: cur.Name, CommonName: cur.CommonName, SANs: cur.SANs, Rules: cur.Rules,
+		Overrides: Defaults{RenewPolicy: &useAri, CAID: &otherCA.ID, AccountID: &otherAcct},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	fs3 := &replacesCapturingSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0.Add(2*time.Hour))}}
+	w.NewSigner = func(CA) signer.Signer { return fs3 }
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fs3.got != nil {
+		t.Fatalf("different CA: Replaces = %v, want nil", fs3.got)
+	}
+}
+
+// erroringRenewalInfoSigner errors on every RenewalInfo call, standing in
+// for a CA the ARI poll cannot reach.
+type erroringRenewalInfoSigner struct {
+	fakeSigner
+}
+
+func (*erroringRenewalInfoSigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.Window, error) {
+	return nil, errors.New("ari boom")
+}
+
+// TestSucceedAppendsARIPollErrorToAttemptLog is fix round 1's review
+// finding: a post-issuance ARI poll failure used to go only to the server
+// log; the brief requires it in the attempt's own log too.
+func TestSucceedAppendsARIPollErrorToAttemptLog(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	useAri := RenewPolicy{Mode: RenewPercent, Value: 33, UseARI: true}
+	c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+		Name: "ari-log-test", CommonName: "ari-log-test.example.test",
+		Rules:     []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+		Overrides: Defaults{RenewPolicy: &useAri},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs := &erroringRenewalInfoSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0)}}
+	w := newWorker(f, &fs.fakeSigner)
+
+	ari := NewARIPollWorker(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}))
+	ari.NewSigner = func(CA) signer.Signer { return fs }
+	ari.Now = func() time.Time { return now0 }
+	ari.Rand = func() float64 { return 0.5 }
+	w.ARI = ari
+
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	a := lastAttempt(t, f, c.ID)
+	if a.Outcome != OutcomeSuccess {
+		t.Fatalf("outcome = %v, want success (an ARI poll failure must not fail an already-committed issuance)", a.Outcome)
+	}
+	if !strings.Contains(a.Log, "ari boom") {
+		t.Fatalf("attempt log = %q, want it to mention the ari poll error", a.Log)
+	}
+}

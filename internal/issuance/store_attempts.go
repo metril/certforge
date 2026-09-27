@@ -81,6 +81,16 @@ func (s *Store) FinishAttempt(ctx context.Context, tx pgx.Tx, id uuid.UUID, outc
 	return err
 }
 
+// AppendAttemptLog appends line (with a trailing newline) to id's log after
+// it has already finished (fix round 1): used by the post-issuance ARI
+// poll, which runs after succeed's own transaction — and so after
+// FinishAttempt — has already committed, so any failure there can only
+// ever be appended, not folded into the timeline snapshot FinishAttempt
+// already wrote.
+func (s *Store) AppendAttemptLog(ctx context.Context, id uuid.UUID, line string) error {
+	return s.q.AppendAttemptLog(ctx, sqlcgen.AppendAttemptLogParams{ID: id, Log: line + "\n"})
+}
+
 // FailStaleAttempts closes attempts left running by a crash or timeout.
 func (s *Store) FailStaleAttempts(ctx context.Context, olderThan time.Duration) (int64, error) {
 	return s.q.FailStaleAttempts(ctx, time.Now().Add(-olderThan))

@@ -12,6 +12,25 @@ import (
 	"github.com/google/uuid"
 )
 
+const appendAttemptLog = `-- name: AppendAttemptLog :exec
+UPDATE issuance_attempts SET log = log || $2 WHERE id = $1
+`
+
+type AppendAttemptLogParams struct {
+	ID  uuid.UUID `json:"id"`
+	Log string    `json:"log"`
+}
+
+// Appends one line to an attempt's log after it has already finished (fix
+// round 1): the post-issuance ARI poll runs after succeed's own
+// transaction commits, and so after FinishAttempt already wrote the
+// timeline snapshot, so a failure there can only ever be appended, not
+// folded into that snapshot.
+func (q *Queries) AppendAttemptLog(ctx context.Context, arg AppendAttemptLogParams) error {
+	_, err := q.db.Exec(ctx, appendAttemptLog, arg.ID, arg.Log)
+	return err
+}
+
 const confirmManualPending = `-- name: ConfirmManualPending :execrows
 UPDATE manual_dns_pending SET confirmed_at = now()
 WHERE cert_id = $1 AND confirmed_at IS NULL AND expires_at > now()

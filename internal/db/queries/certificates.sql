@@ -203,10 +203,16 @@ LIMIT $1;
 -- lifetime. The comparison and the write happen in one statement (no
 -- separate FOR UPDATE read) so there is no window for a concurrent name
 -- change to race between reading and writing.
+-- ari_window_start/end/checked_at/retry_after are cleared here too (fix
+-- round 1): they cache ARI for the version that was current before this
+-- write, so a new current_version_id must not keep showing that stale
+-- window on the API until the next poll happens to overwrite it (up to 6h
+-- away).
 UPDATE certificates SET status = 'active', current_version_id = $2,
     next_renew_at = CASE WHEN common_name = sqlc.arg(issued_common_name) AND sans = sqlc.arg(issued_sans)
                           THEN sqlc.arg(next_renew_at)::timestamptz ELSE now() END,
-    failure_count = 0, last_error = '', updated_at = now()
+    failure_count = 0, last_error = '', updated_at = now(),
+    ari_window_start = NULL, ari_window_end = NULL, ari_checked_at = NULL, ari_retry_after = NULL
 WHERE id = $1
 RETURNING next_renew_at;
 
@@ -217,14 +223,20 @@ WHERE id = $1;
 -- name: ListARIDue :many
 -- Certificates due for an ACME Renewal Information poll (ARIPollWorker):
 -- managed, with a stored current version, status active, and either never
--- polled or past their ari_retry_after. Whether the certificate's
--- effective renewPolicy.useAri is actually set is resolved separately in
--- Go (Store.EffectiveFor merges three JSON levels, not expressible here).
+-- polled or past their ari_retry_after. Paginated with a plain id keyset
+-- (fix round 1): PollDue walks every page in one run, not just a single
+-- LIMIT — a certificate skipped (useAri off, no CA recorded) or erroring
+-- also gets its own ari_retry_after bumped (BumpARIRetryAfter), so it
+-- cannot crowd out certificates ordered after it on the next page, or on
+-- the next run. Whether the certificate's effective renewPolicy.useAri is
+-- actually set is resolved separately in Go (Store.EffectiveFor merges
+-- three JSON levels, not expressible here).
 SELECT * FROM certificates
 WHERE managed AND current_version_id IS NOT NULL AND status = 'active'
   AND (ari_retry_after IS NULL OR ari_retry_after <= now())
+  AND (NOT sqlc.arg(has_cursor)::bool OR id > sqlc.arg(last_id)::uuid)
 ORDER BY id
-LIMIT $1;
+LIMIT sqlc.arg(page_limit)::int;
 
 -- name: SetARIWindow :exec
 -- Stores a freshly fetched ARI window, conditional on current_version_id
@@ -232,6 +244,16 @@ LIMIT $1;
 -- reissue mid-poll must not attach a stale window to the certificate's new
 -- version.
 UPDATE certificates SET ari_window_start = $3, ari_window_end = $4, ari_checked_at = $5, ari_retry_after = $6
+WHERE id = $1 AND current_version_id = $2;
+
+-- name: BumpARIRetryAfter :exec
+-- Sets only ari_retry_after, leaving any cached window untouched (fix
+-- round 1): used when a poll is skipped (useAri off, no CA recorded for
+-- the current version) or errors before a window was actually fetched, so
+-- the certificate does not occupy ListARIDue's next page, or the next
+-- run's first page, forever. Conditional on current_version_id, same as
+-- SetARIWindow.
+UPDATE certificates SET ari_retry_after = $3
 WHERE id = $1 AND current_version_id = $2;
 
 -- name: LowerNextRenewAt :exec

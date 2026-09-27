@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -123,6 +125,55 @@ func fakeBlockingCA(t *testing.T) (srv *httptest.Server, reached chan struct{}) 
 	base = srv.URL
 	t.Cleanup(srv.Close)
 	return srv, reached
+}
+
+// fakeRenewalInfoCA serves a directory publishing renewalInfo and a
+// renewalInfo endpoint that always answers the same suggested window;
+// dirHits counts how many times the directory endpoint was actually hit,
+// for TestRenewalInfoCachesDirectory (fix round 1).
+func fakeRenewalInfoCA(t *testing.T) (srv *httptest.Server, dirHits *int32) {
+	t.Helper()
+	var hits int32
+	mux := http.NewServeMux()
+	var base string
+	mux.HandleFunc("/dir", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"newNonce":%q,"newAccount":%q,"newOrder":%q,"revokeCert":%q,"keyChange":%q,"renewalInfo":%q}`,
+			base+"/nonce", base+"/acct", base+"/order", base+"/revoke", base+"/key", base+"/renewal-info")
+	})
+	mux.HandleFunc("/renewal-info/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"suggestedWindow":{"start":"2026-09-25T00:00:00Z","end":"2026-09-26T00:00:00Z"}}`)
+	})
+	srv = httptest.NewTLSServer(mux)
+	base = srv.URL
+	t.Cleanup(srv.Close)
+	return srv, &hits
+}
+
+// TestRenewalInfoCachesDirectory is fix round 1's review finding
+// ("fetch each CA's directory once per run"): ARIPollWorker reuses one
+// Signer per CA across many certificates in a poll run, so the directory
+// must be fetched once per Signer instance, not once per RenewalInfo call.
+func TestRenewalInfoCachesDirectory(t *testing.T) {
+	srv, dirHits := fakeRenewalInfoCA(t)
+	bundle := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	s := New(Config{DirectoryURL: srv.URL + "/dir", TrustBundlePEM: string(bundle)})
+
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(1), AuthorityKeyId: []byte{1, 2, 3, 4}}
+	for i := 0; i < 3; i++ {
+		win, err := s.RenewalInfo(context.Background(), leaf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if win == nil {
+			t.Fatal("nil window")
+		}
+	}
+	if got := atomic.LoadInt32(dirHits); got != 1 {
+		t.Fatalf("directory fetched %d times, want 1 (cached per Signer instance)", got)
+	}
 }
 
 func testAccount(t *testing.T) signer.AccountMaterial {

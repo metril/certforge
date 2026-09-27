@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	legoacme "github.com/go-acme/lego/v4/acme"
@@ -37,10 +38,20 @@ type Config struct {
 // EAB is External Account Binding material (kid + base64url HMAC key).
 type EAB struct{ KID, HMAC string }
 
-// Signer talks to one ACME directory. It is cheap; build one per job.
+// Signer talks to one ACME directory. It is cheap to build; the ACME
+// directory itself is fetched from the network the first time a call
+// actually needs it, and (for RenewalInfo only — fix round 1, "fetch each
+// CA's directory once per run") cached on the instance from then on, so a
+// caller polling many certificates of the same CA through one Signer
+// instance (ARIPollWorker) fetches it once, not once per certificate.
 type Signer struct {
 	cfg Config
 	now func() time.Time
+
+	riOnce   sync.Once
+	riClient *lego.Client
+	riRT     *retryAfterTransport
+	riErr    error
 }
 
 // New returns a Signer for cfg.
@@ -337,11 +348,7 @@ func (s *Signer) RenewalInfo(ctx context.Context, cert *x509.Certificate) (*sign
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	u, err := s.renewalInfoUser()
-	if err != nil {
-		return nil, err
-	}
-	cl, rt, err := s.client(ctx, u, certcrypto.EC256)
+	cl, rt, err := s.renewalInfoClient(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -350,6 +357,28 @@ func (s *Signer) RenewalInfo(ctx context.Context, cert *x509.Certificate) (*sign
 		return nil, classify(err, rt)
 	}
 	return &signer.Window{Start: ri.SuggestedWindow.Start, End: ri.SuggestedWindow.End, RetryAfter: ri.RetryAfter}, nil
+}
+
+// renewalInfoClient builds the lego client (and so fetches the ACME
+// directory) at most once per Signer instance (fix round 1): every
+// subsequent RenewalInfo call on the same instance reuses it.
+// ARIPollWorker caches one Signer per CA across a whole poll run
+// (internal/issuance/ari.go's signerFor), so many certificates on the same
+// CA no longer each pay for their own directory fetch. GetRenewalInfo
+// itself is an unauthenticated GET (RFC 9773), so reusing the same
+// ctx-bound client is safe as long as the caller threads one ctx through
+// the whole run it wants cached — true of both callers here (one ctx per
+// river Work call, one ctx per ad-hoc post-issuance poll).
+func (s *Signer) renewalInfoClient(ctx context.Context) (*lego.Client, *retryAfterTransport, error) {
+	s.riOnce.Do(func() {
+		u, err := s.renewalInfoUser()
+		if err != nil {
+			s.riErr = err
+			return
+		}
+		s.riClient, s.riRT, s.riErr = s.client(ctx, u, certcrypto.EC256)
+	})
+	return s.riClient, s.riRT, s.riErr
 }
 
 func classify(err error, rt *retryAfterTransport) error {

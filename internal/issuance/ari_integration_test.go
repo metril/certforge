@@ -5,6 +5,9 @@ package issuance
 import (
 	"context"
 	"crypto/x509"
+	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -73,7 +76,7 @@ func TestARIPollNeverLater(t *testing.T) {
 	earlier := &signer.Window{Start: now0.Add(24 * time.Hour), End: now0.Add(48 * time.Hour)}
 	ws := &windowSigner{win: earlier}
 	aw := newARIWorker(f, ws)
-	if err := aw.pollOne(context.Background(), got); err != nil {
+	if err := aw.pollOne(context.Background(), got, map[uuid.UUID]signer.Signer{}); err != nil {
 		t.Fatal(err)
 	}
 	got, err = f.store.GetCertificate(context.Background(), f.org, c.ID)
@@ -95,7 +98,7 @@ func TestARIPollNeverLater(t *testing.T) {
 	// next_renew_at where it is; the cached window itself still refreshes.
 	later := &signer.Window{Start: now0.Add(80 * 24 * time.Hour), End: now0.Add(85 * 24 * time.Hour)}
 	ws.win = later
-	if err := aw.pollOne(context.Background(), got); err != nil {
+	if err := aw.pollOne(context.Background(), got, map[uuid.UUID]signer.Signer{}); err != nil {
 		t.Fatal(err)
 	}
 	got, err = f.store.GetCertificate(context.Background(), f.org, c.ID)
@@ -170,7 +173,7 @@ func TestARIPollNeverLater(t *testing.T) {
 		t.Fatal(err)
 	}
 	ws.win = &signer.Window{Start: now0.Add(time.Minute), End: now0.Add(2 * time.Minute)}
-	if err := aw.pollOne(context.Background(), got); err != nil {
+	if err := aw.pollOne(context.Background(), got, map[uuid.UUID]signer.Signer{}); err != nil {
 		t.Fatal(err)
 	}
 	got, err = f.store.GetCertificate(context.Background(), f.org, c.ID)
@@ -207,7 +210,7 @@ func TestARIPollSkipsUnmanagedAndNoUseAri(t *testing.T) {
 	aw := newARIWorker(f, ws)
 
 	// useAri unset (BuiltinDefaults): no-op.
-	if err := aw.pollOne(context.Background(), got); err != nil {
+	if err := aw.pollOne(context.Background(), got, map[uuid.UUID]signer.Signer{}); err != nil {
 		t.Fatal(err)
 	}
 	still, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
@@ -225,7 +228,7 @@ func TestARIPollSkipsUnmanagedAndNoUseAri(t *testing.T) {
 	unmanaged := still
 	unmanaged.Managed = false
 	unmanaged.Overrides = Defaults{RenewPolicy: &useAri}
-	if err := aw.pollOne(context.Background(), unmanaged); err != nil {
+	if err := aw.pollOne(context.Background(), unmanaged, map[uuid.UUID]signer.Signer{}); err != nil {
 		t.Fatal(err)
 	}
 	still, err = f.store.GetCertificate(context.Background(), f.org, c.ID)
@@ -234,5 +237,180 @@ func TestARIPollSkipsUnmanagedAndNoUseAri(t *testing.T) {
 	}
 	if still.AriWindowStart != nil {
 		t.Fatalf("unmanaged: window was written: %v", still.AriWindowStart)
+	}
+}
+
+// countingWindowSigner tracks (by leaf serial number) every distinct
+// certificate it was asked to poll, and always errors for one designated
+// "permanently broken" serial — standing in for a CA call that never
+// succeeds for a particular certificate (a bad cached order id, a CA-side
+// data problem, etc).
+type countingWindowSigner struct {
+	fakeSigner
+	mu        sync.Mutex
+	seen      map[string]bool
+	badSerial string
+	win       *signer.Window
+}
+
+func (s *countingWindowSigner) RenewalInfo(_ context.Context, cert *x509.Certificate) (*signer.Window, error) {
+	s.mu.Lock()
+	if s.seen == nil {
+		s.seen = map[string]bool{}
+	}
+	s.seen[cert.SerialNumber.String()] = true
+	s.mu.Unlock()
+	if cert.SerialNumber.String() == s.badSerial {
+		return nil, errors.New("permanently broken CA call")
+	}
+	return s.win, nil
+}
+
+func (s *countingWindowSigner) seenCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.seen)
+}
+
+// TestARIPollDuePaginatesPastFirstPage is fix round 1's review finding:
+// ListARIDue's old single LIMIT page, combined with a skipped or erroring
+// certificate never getting its own ari_retry_after set, meant such a
+// certificate (sorted first by id) occupied a page slot on every run
+// forever, and anything after the first page was never reached. PollDue
+// now walks every due certificate with a keyset cursor in one run, and
+// bumps ari_retry_after even when a certificate errors, so five
+// certificates over a page size of two (three pages) are every one polled
+// in a single PollDue call, the one that always errors still ends up with
+// a future ari_retry_after (so it does not occupy a slot on the next run
+// either), and an immediate second call re-polls nothing.
+func TestARIPollDuePaginatesPastFirstPage(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	useAri := RenewPolicy{Mode: RenewPercent, Value: 33, UseARI: true}
+	start := time.Now()
+	win := &signer.Window{Start: start.Add(time.Hour).Truncate(time.Microsecond), End: start.Add(2 * time.Hour).Truncate(time.Microsecond)}
+	cs := &countingWindowSigner{win: win}
+
+	const n = 5
+	const badIndex = 2
+	certs := make([]Certificate, n)
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("page-%d.example.test", i)
+		c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+			Name: name, CommonName: name,
+			Rules:     []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+			Overrides: Defaults{RenewPolicy: &useAri},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		iss := issuedFor(t, c.Names(), now0.Add(time.Duration(i)*time.Second))
+		w := newWorker(f, &fakeSigner{issued: iss})
+		if err := w.Issue(context.Background(), c.ID); err != nil {
+			t.Fatal(err)
+		}
+		got, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		certs[i] = got
+		if i == badIndex {
+			leaf, err := x509.ParseCertificate(iss.LeafDER)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cs.badSerial = leaf.SerialNumber.String()
+		}
+	}
+
+	aw := NewARIPollWorker(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}))
+	aw.NewSigner = func(CA) signer.Signer { return cs }
+	aw.Now = time.Now
+	aw.Rand = func() float64 { return 0.5 }
+
+	if err := aw.PollDue(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	if got := cs.seenCount(); got != n {
+		t.Fatalf("RenewalInfo was called for %d of %d certificates, want %d (pagination stopped short)", got, n, n)
+	}
+	for i, c := range certs {
+		got, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == badIndex {
+			if got.AriWindowStart != nil {
+				t.Fatalf("bad cert: window = %v, want nil (RenewalInfo always errors for it)", got.AriWindowStart)
+			}
+		} else if got.AriWindowStart == nil || !got.AriWindowStart.Equal(win.Start) {
+			t.Fatalf("cert %d: window = %v, want %v", i, got.AriWindowStart, win.Start)
+		}
+		if got.AriRetryAfter == nil || !got.AriRetryAfter.After(start) {
+			t.Fatalf("cert %d: ari_retry_after = %v, want set to an instant after %v (fix round 1: even a skipped/erroring certificate must not stay due forever)", i, got.AriRetryAfter, start)
+		}
+	}
+
+	// Every certificate's ari_retry_after is now in the future: an
+	// immediate second call must not re-poll any of them, including the
+	// permanently erroring one.
+	if err := aw.PollDue(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	if got := cs.seenCount(); got != n {
+		t.Fatalf("a second call changed the seen count to %d, want unchanged %d (nothing should be due yet)", got, n)
+	}
+}
+
+// TestMarkCertificateIssuedClearsStaleARIWindow: fix round 1. A stale ARI
+// window from a previous version must not survive a reissue — the API
+// would otherwise show a window that has nothing to do with the
+// certificate's actual current version until the next poll happens to
+// overwrite it, which can be up to 6 hours away.
+func TestMarkCertificateIssuedClearsStaleARIWindow(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	useAri := RenewPolicy{Mode: RenewPercent, Value: 33, UseARI: true}
+	c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+		Name: "stale-window", CommonName: "stale-window.example.test",
+		Rules:     []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+		Overrides: Defaults{RenewPolicy: &useAri},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := newWorker(f, &fakeSigner{issued: issuedFor(t, c.Names(), now0)})
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stamp a window as if a poll had already run for this (first) version.
+	if err := f.store.SetARIWindow(context.Background(), c.ID, *got.CurrentVersionID,
+		now0, now0.Add(time.Hour), now0, now0.Add(ariDefaultRetryAfter)); err != nil {
+		t.Fatal(err)
+	}
+	got, err = f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AriWindowStart == nil {
+		t.Fatal("window was not stamped; test setup is broken")
+	}
+
+	// Reissue: a second version becomes current.
+	w.NewSigner = func(CA) signer.Signer { return &fakeSigner{issued: issuedFor(t, c.Names(), now0.Add(time.Hour))} }
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err = f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AriWindowStart != nil || got.AriWindowEnd != nil || got.AriCheckedAt != nil || got.AriRetryAfter != nil {
+		t.Fatalf("stale window survived reissue: %+v", got)
 	}
 }

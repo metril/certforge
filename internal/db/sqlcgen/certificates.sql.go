@@ -12,6 +12,28 @@ import (
 	"github.com/google/uuid"
 )
 
+const bumpARIRetryAfter = `-- name: BumpARIRetryAfter :exec
+UPDATE certificates SET ari_retry_after = $3
+WHERE id = $1 AND current_version_id = $2
+`
+
+type BumpARIRetryAfterParams struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+	AriRetryAfter    *time.Time `json:"ari_retry_after"`
+}
+
+// Sets only ari_retry_after, leaving any cached window untouched (fix
+// round 1): used when a poll is skipped (useAri off, no CA recorded for
+// the current version) or errors before a window was actually fetched, so
+// the certificate does not occupy ListARIDue's next page, or the next
+// run's first page, forever. Conditional on current_version_id, same as
+// SetARIWindow.
+func (q *Queries) BumpARIRetryAfter(ctx context.Context, arg BumpARIRetryAfterParams) error {
+	_, err := q.db.Exec(ctx, bumpARIRetryAfter, arg.ID, arg.CurrentVersionID, arg.AriRetryAfter)
+	return err
+}
+
 const certificatesUsingClient = `-- name: CertificatesUsingClient :many
 SELECT name FROM (
   SELECT c.name AS name FROM certificates c
@@ -383,17 +405,29 @@ const listARIDue = `-- name: ListARIDue :many
 SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after FROM certificates
 WHERE managed AND current_version_id IS NOT NULL AND status = 'active'
   AND (ari_retry_after IS NULL OR ari_retry_after <= now())
+  AND (NOT $1::bool OR id > $2::uuid)
 ORDER BY id
-LIMIT $1
+LIMIT $3::int
 `
+
+type ListARIDueParams struct {
+	HasCursor bool      `json:"has_cursor"`
+	LastID    uuid.UUID `json:"last_id"`
+	PageLimit int32     `json:"page_limit"`
+}
 
 // Certificates due for an ACME Renewal Information poll (ARIPollWorker):
 // managed, with a stored current version, status active, and either never
-// polled or past their ari_retry_after. Whether the certificate's
-// effective renewPolicy.useAri is actually set is resolved separately in
-// Go (Store.EffectiveFor merges three JSON levels, not expressible here).
-func (q *Queries) ListARIDue(ctx context.Context, limit int32) ([]Certificate, error) {
-	rows, err := q.db.Query(ctx, listARIDue, limit)
+// polled or past their ari_retry_after. Paginated with a plain id keyset
+// (fix round 1): PollDue walks every page in one run, not just a single
+// LIMIT — a certificate skipped (useAri off, no CA recorded) or erroring
+// also gets its own ari_retry_after bumped (BumpARIRetryAfter), so it
+// cannot crowd out certificates ordered after it on the next page, or on
+// the next run. Whether the certificate's effective renewPolicy.useAri is
+// actually set is resolved separately in Go (Store.EffectiveFor merges
+// three JSON levels, not expressible here).
+func (q *Queries) ListARIDue(ctx context.Context, arg ListARIDueParams) ([]Certificate, error) {
+	rows, err := q.db.Query(ctx, listARIDue, arg.HasCursor, arg.LastID, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -1405,7 +1439,8 @@ const markCertificateIssued = `-- name: MarkCertificateIssued :one
 UPDATE certificates SET status = 'active', current_version_id = $2,
     next_renew_at = CASE WHEN common_name = $3 AND sans = $4
                           THEN $5::timestamptz ELSE now() END,
-    failure_count = 0, last_error = '', updated_at = now()
+    failure_count = 0, last_error = '', updated_at = now(),
+    ari_window_start = NULL, ari_window_end = NULL, ari_checked_at = NULL, ari_retry_after = NULL
 WHERE id = $1
 RETURNING next_renew_at
 `
@@ -1428,6 +1463,11 @@ type MarkCertificateIssuedParams struct {
 // lifetime. The comparison and the write happen in one statement (no
 // separate FOR UPDATE read) so there is no window for a concurrent name
 // change to race between reading and writing.
+// ari_window_start/end/checked_at/retry_after are cleared here too (fix
+// round 1): they cache ARI for the version that was current before this
+// write, so a new current_version_id must not keep showing that stale
+// window on the API until the next poll happens to overwrite it (up to 6h
+// away).
 func (q *Queries) MarkCertificateIssued(ctx context.Context, arg MarkCertificateIssuedParams) (*time.Time, error) {
 	row := q.db.QueryRow(ctx, markCertificateIssued,
 		arg.ID,

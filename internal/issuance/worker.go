@@ -245,10 +245,7 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	if err != nil {
 		return nil, eff, err
 	}
-	replaces, err := w.replacesCert(ctx, cert, eff, ca)
-	if err != nil {
-		return nil, eff, err
-	}
+	replaces := w.replacesCert(ctx, cert, eff, ca, tl)
 	req := signer.IssueRequest{Names: cert.Names(), KeyType: eff.KeyType.Value, PreferredChain: eff.PreferredChain.Value,
 		MustStaple: eff.MustStaple.Value, Account: material, Challenge: router, Replaces: replaces}
 	if eff.ReuseKey.Value && cert.CurrentVersionID != nil {
@@ -407,22 +404,36 @@ func replacesEligible(useAri bool, v certstore.Version, caID uuid.UUID) bool {
 // a non-nil result into ReplacesCertID (certificate.MakeARICertID); lego's
 // own Orders.New already strips replaces and retries when the CA answers
 // alreadyReplaced (acme/api/order.go), so nothing here needs its own retry.
-func (w *IssueWorker) replacesCert(ctx context.Context, cert Certificate, eff Effective, ca CA) (*x509.Certificate, error) {
-	if cert.CurrentVersionID == nil {
-		return nil, nil
+//
+// useAri is checked first (fix round 1), before any store call: a
+// certificate that has not opted into ARI never pays for the extra
+// Certs.Get/Material round trip. Once useAri is on, Replaces is only ever
+// an optional hint — a failure reading the stored version, its material, or
+// parsing its leaf must not fail the whole renewal over it, so any such
+// error is logged to the attempt timeline and Replaces is simply omitted.
+func (w *IssueWorker) replacesCert(ctx context.Context, cert Certificate, eff Effective, ca CA, tl *Timeline) *x509.Certificate {
+	if !eff.RenewPolicy.Value.UseARI || cert.CurrentVersionID == nil {
+		return nil
 	}
 	v, err := w.Certs.Get(ctx, cert.ID, *cert.CurrentVersionID)
 	if err != nil {
-		return nil, err
+		tl.Logf("ari replaces: could not read the current version (%v); issuing without it", err)
+		return nil
 	}
 	if !replacesEligible(eff.RenewPolicy.Value.UseARI, v, ca.ID) {
-		return nil, nil
+		return nil
 	}
 	m, err := w.Certs.Material(ctx, cert.ID, *cert.CurrentVersionID, false)
 	if err != nil {
-		return nil, err
+		tl.Logf("ari replaces: could not read the current version's material (%v); issuing without it", err)
+		return nil
 	}
-	return x509.ParseCertificate(m.LeafDER)
+	leaf, err := x509.ParseCertificate(m.LeafDER)
+	if err != nil {
+		tl.Logf("ari replaces: could not parse the current version's leaf (%v); issuing without it", err)
+		return nil
+	}
+	return leaf
 }
 
 // agentProvider builds the relay ChallengeProvider for a rule served by an
@@ -592,17 +603,26 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 // pollARIBestEffort polls the ACME Renewal Information window for the
 // version succeed just committed (Task 12), right after that commit: a
 // failure (including a CA that does not support ARI at all, the common
-// case today) is logged and never turns an issuance that already committed
-// into a failure. cert.CurrentVersionID/NextRenewAt/FailureCount already
-// reflect what succeed just wrote (not the stale values read at the start
-// of this attempt); pollOne itself re-checks managed/useAri and is a no-op
-// when either does not apply.
+// case today) never turns an issuance that already committed into a
+// failure. It is logged to the server log and, since the attempt itself
+// already finished and committed by the time this runs (so the failure
+// cannot be folded into the timeline snapshot FinishAttempt already
+// wrote), appended as its own line to the attempt's log (fix round 1: the
+// brief requires it there, not only in the server log). A single ad-hoc
+// call needs no cross-certificate signer cache, hence nil.
+// cert.CurrentVersionID/NextRenewAt/FailureCount already reflect what
+// succeed just wrote (not the stale values read at the start of this
+// attempt); pollOne itself re-checks managed/useAri and is a no-op when
+// either does not apply.
 func (w *IssueWorker) pollARIBestEffort(ctx context.Context, cert Certificate, attemptID uuid.UUID) {
 	if w.ARI == nil {
 		return
 	}
-	if err := w.ARI.pollOne(ctx, cert); err != nil {
+	if err := w.ARI.pollOne(ctx, cert, nil); err != nil {
 		w.Log.Warn("ari poll after issuance", "attempt", attemptID, "certificate", cert.ID, "err", err)
+		if lerr := w.Store.AppendAttemptLog(ctx, attemptID, fmt.Sprintf("ari poll: %v", err)); lerr != nil {
+			w.Log.Warn("append ari poll error to attempt log", "attempt", attemptID, "err", lerr)
+		}
 	}
 }
 

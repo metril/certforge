@@ -9,6 +9,14 @@ UPDATE issuance_attempts SET outcome = $2, acme_error_type = $3, retry_after = $
     steps = $5, log = $6, finished_at = now()
 WHERE id = $1 AND outcome = 'running';
 
+-- name: AppendAttemptLog :exec
+-- Appends one line to an attempt's log after it has already finished (fix
+-- round 1): the post-issuance ARI poll runs after succeed's own
+-- transaction commits, and so after FinishAttempt already wrote the
+-- timeline snapshot, so a failure there can only ever be appended, not
+-- folded into that snapshot.
+UPDATE issuance_attempts SET log = log || $2 WHERE id = $1;
+
 -- name: ListAttempts :many
 SELECT * FROM issuance_attempts WHERE cert_id = $1 ORDER BY started_at DESC LIMIT $2;
 
