@@ -78,7 +78,7 @@ func (q *Queries) CreateHook(ctx context.Context, arg CreateHookParams) (Hook, e
 }
 
 const createLayout = `-- name: CreateLayout :one
-INSERT INTO output_specs (org_id, name, files) VALUES ($1, $2, $3) RETURNING id, org_id, name, files, created_at, updated_at
+INSERT INTO output_specs (org_id, name, files) VALUES ($1, $2, $3) RETURNING id, org_id, name, files, created_at, updated_at, password, extra_cert_ids
 `
 
 type CreateLayoutParams struct {
@@ -97,6 +97,8 @@ func (q *Queries) CreateLayout(ctx context.Context, arg CreateLayoutParams) (Out
 		&i.Files,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Password,
+		&i.ExtraCertIds,
 	)
 	return i, err
 }
@@ -275,7 +277,7 @@ func (q *Queries) GetHook(ctx context.Context, arg GetHookParams) (Hook, error) 
 }
 
 const getLayout = `-- name: GetLayout :one
-SELECT id, org_id, name, files, created_at, updated_at FROM output_specs WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, files, created_at, updated_at, password, extra_cert_ids FROM output_specs WHERE id = $1 AND org_id = $2
 `
 
 type GetLayoutParams struct {
@@ -293,6 +295,8 @@ func (q *Queries) GetLayout(ctx context.Context, arg GetLayoutParams) (OutputSpe
 		&i.Files,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Password,
+		&i.ExtraCertIds,
 	)
 	return i, err
 }
@@ -506,7 +510,7 @@ func (q *Queries) ListHooks(ctx context.Context, orgID uuid.UUID) ([]Hook, error
 }
 
 const listLayouts = `-- name: ListLayouts :many
-SELECT id, org_id, name, files, created_at, updated_at FROM output_specs WHERE org_id = $1 ORDER BY lower(name), id
+SELECT id, org_id, name, files, created_at, updated_at, password, extra_cert_ids FROM output_specs WHERE org_id = $1 ORDER BY lower(name), id
 `
 
 func (q *Queries) ListLayouts(ctx context.Context, orgID uuid.UUID) ([]OutputSpec, error) {
@@ -525,6 +529,8 @@ func (q *Queries) ListLayouts(ctx context.Context, orgID uuid.UUID) ([]OutputSpe
 			&i.Files,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Password,
+			&i.ExtraCertIds,
 		); err != nil {
 			return nil, err
 		}
@@ -638,7 +644,7 @@ func (q *Queries) UpdateHook(ctx context.Context, arg UpdateHookParams) (Hook, e
 
 const updateLayout = `-- name: UpdateLayout :one
 UPDATE output_specs SET name = $1, files = $2, updated_at = now()
-WHERE id = $3 AND org_id = $4 RETURNING id, org_id, name, files, created_at, updated_at
+WHERE id = $3 AND org_id = $4 RETURNING id, org_id, name, files, created_at, updated_at, password, extra_cert_ids
 `
 
 type UpdateLayoutParams struct {
@@ -663,6 +669,8 @@ func (q *Queries) UpdateLayout(ctx context.Context, arg UpdateLayoutParams) (Out
 		&i.Files,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Password,
+		&i.ExtraCertIds,
 	)
 	return i, err
 }

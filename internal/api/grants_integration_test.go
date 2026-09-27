@@ -16,6 +16,7 @@ import (
 
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
@@ -381,7 +382,7 @@ func TestOnVersionUpdatesDeployments(t *testing.T) {
 	}
 	tx, _ := f.store.Begin(ctx)
 	v2, err := f.certs.Insert(ctx, tx, certID, &signer.Issued{LeafDER: []byte("leaf2"), ChainDER: [][]byte{[]byte("int")},
-		PrivateKeyPKCS8: []byte("secret-key-2"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "02"}, "ec256")
+		PrivateKeyPKCS8: []byte("secret-key-2"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "02"}, "ec256", certstore.InsertOpts{Source: "issued"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +401,7 @@ func TestOnVersionUpdatesDeployments(t *testing.T) {
 	// A version whose OnVersion never ran is picked up by the hourly sweep.
 	tx, _ = f.store.Begin(ctx)
 	v3, err := f.certs.Insert(ctx, tx, certID, &signer.Issued{LeafDER: []byte("leaf3"), ChainDER: [][]byte{[]byte("int")},
-		PrivateKeyPKCS8: []byte("secret-key-3"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "03"}, "ec256")
+		PrivateKeyPKCS8: []byte("secret-key-3"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "03"}, "ec256", certstore.InsertOpts{Source: "issued"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,7 +659,7 @@ func TestOnVersionIsolatesPerClientRenderFailure(t *testing.T) {
 	}
 	tx, _ := f.store.Begin(ctx)
 	v2, err := f.certs.Insert(ctx, tx, certID, &signer.Issued{LeafDER: []byte("leaf2"), ChainDER: [][]byte{[]byte("int")},
-		PrivateKeyPKCS8: []byte("secret-key-2"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "02"}, "ec256")
+		PrivateKeyPKCS8: []byte("secret-key-2"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "02"}, "ec256", certstore.InsertOpts{Source: "issued"})
 	if err != nil {
 		t.Fatal(err)
 	}

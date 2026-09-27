@@ -82,6 +82,20 @@ Two tabs: **Global** and your organization. Each field shows the value in effect
 
 Changing a default takes effect at the next renewal of every certificate that inherits it.
 
+### Issuance
+
+Global CAA checking and a local record of the CA's own ACME rate limits (section `issuance`; unlike Issuance defaults, above, these do not inherit down to orgs or certificates).
+
+| Field | Default | Meaning |
+|---|---|---|
+| Check CAA records (`caaCheck`) | on | Walk each name's CAA record set before ordering; fail fast when none authorizes the CA. |
+| Certificates per registered domain per week (`rateLimits.certsPerRegisteredDomainPerWeek`) | 50 | Counted per registered domain across every certificate. 0 disables the limit. |
+| Duplicate certificates per week (`rateLimits.duplicateCertsPerWeek`) | 5 | Counted per exact set of names. 0 disables the limit. |
+| Failed validations per hour (`rateLimits.failedValidationsPerHour`) | 5 | Counted per registered domain. 0 disables the limit. |
+| New orders per 3 hours (`rateLimits.newOrdersPer3Hours`) | 300 | Counted per CA account. 0 disables the limit. |
+
+The defaults match Let's Encrypt's own published limits; a custom or staging CA may need different values. `enforced` reports as false for a staging preset.
+
 ### Agents
 
 Global settings for certforge-agent (Settings → Agents).

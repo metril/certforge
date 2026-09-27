@@ -190,12 +190,15 @@ FROM certificate_versions v
 WHERE v.id = c.current_version_id AND c.status IN ('active', 'failed') AND v.not_after < now();
 
 -- name: InsertCertificateVersion :one
-INSERT INTO certificate_versions (cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, chain_der, private_key)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, revoked_at, created_at;
+-- private_key is nullable (a keyless import/upload stores NULL); has_key
+-- reports whether one is stored without ever selecting the sealed bytes
+-- themselves into a metadata-only row.
+INSERT INTO certificate_versions (cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, chain_der, private_key, source, ca_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at;
 
 -- name: ListCertificateVersions :many
-SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, revoked_at, created_at
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 FROM certificate_versions WHERE cert_id = $1 ORDER BY created_at DESC;
 
 -- name: GetCertificateVersion :one
@@ -205,5 +208,5 @@ SELECT * FROM certificate_versions WHERE id = $1 AND cert_id = $2;
 -- Batch-loads version metadata for a set of ids in one round trip, so a
 -- certificate list page can render every item's currentVersion without one
 -- query per certificate.
-SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, revoked_at, created_at
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 FROM certificate_versions WHERE id = ANY($1::uuid[]);

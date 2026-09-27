@@ -54,6 +54,9 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	if err := issuance.RegisterSettings(sections); err != nil {
 		return err
 	}
+	if err := issuance.RegisterIssuanceSettings(sections); err != nil {
+		return err
+	}
 	if err := authn.RegisterSettings(sections); err != nil {
 		return err
 	}

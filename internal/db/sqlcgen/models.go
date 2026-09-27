@@ -92,6 +92,11 @@ type Certificate struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 }
 
 type CertificateVersion struct {
@@ -109,6 +114,7 @@ type CertificateVersion struct {
 	AriWindow  []byte     `json:"ari_window"`
 	RevokedAt  *time.Time `json:"revoked_at"`
 	CreatedAt  time.Time  `json:"created_at"`
+	CaID       *uuid.UUID `json:"ca_id"`
 }
 
 type Client struct {
@@ -159,15 +165,16 @@ type DeployTarget struct {
 }
 
 type Deployment struct {
-	ID         uuid.UUID  `json:"id"`
-	GrantID    uuid.UUID  `json:"grant_id"`
-	VersionID  *uuid.UUID `json:"version_id"`
-	State      string     `json:"state"`
-	Expected   []byte     `json:"expected"`
-	Installed  []byte     `json:"installed"`
-	Error      string     `json:"error"`
-	ReportedAt *time.Time `json:"reported_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID              uuid.UUID   `json:"id"`
+	GrantID         uuid.UUID   `json:"grant_id"`
+	VersionID       *uuid.UUID  `json:"version_id"`
+	State           string      `json:"state"`
+	Expected        []byte      `json:"expected"`
+	Installed       []byte      `json:"installed"`
+	Error           string      `json:"error"`
+	ReportedAt      *time.Time  `json:"reported_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	ExtraVersionIds []uuid.UUID `json:"extra_version_ids"`
 }
 
 type DnsProviderCredential struct {
@@ -255,12 +262,24 @@ type Org struct {
 }
 
 type OutputSpec struct {
-	ID        uuid.UUID `json:"id"`
-	OrgID     uuid.UUID `json:"org_id"`
-	Name      string    `json:"name"`
-	Files     []byte    `json:"files"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           uuid.UUID   `json:"id"`
+	OrgID        uuid.UUID   `json:"org_id"`
+	Name         string      `json:"name"`
+	Files        []byte      `json:"files"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+	Password     []byte      `json:"password"`
+	ExtraCertIds []uuid.UUID `json:"extra_cert_ids"`
+}
+
+type RateLedger struct {
+	ID               uuid.UUID  `json:"id"`
+	CaID             uuid.UUID  `json:"ca_id"`
+	Kind             string     `json:"kind"`
+	RegisteredDomain string     `json:"registered_domain"`
+	NamesHash        string     `json:"names_hash"`
+	CertID           *uuid.UUID `json:"cert_id"`
+	At               time.Time  `json:"at"`
 }
 
 type RoleBinding struct {

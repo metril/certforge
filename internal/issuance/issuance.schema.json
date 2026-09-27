@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Issuance",
+  "description": "Global CAA checking and a local record of the CA's own ACME rate limits, applied to every certificate.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "caaCheck": {
+      "type": "boolean",
+      "title": "Check CAA records",
+      "description": "Walk each name's CAA record set before ordering; fail fast when none authorizes the CA.",
+      "default": true
+    },
+    "rateLimits": {
+      "type": "object",
+      "title": "Rate limits",
+      "description": "Local tracking of the CA's own ACME rate limits, enforced before an order is placed. Set a limit to 0 to disable it.",
+      "additionalProperties": false,
+      "properties": {
+        "certsPerRegisteredDomainPerWeek": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000,
+          "title": "Certificates per registered domain per week",
+          "description": "Counted per registered domain across every certificate. 0 disables the limit.",
+          "default": 50
+        },
+        "duplicateCertsPerWeek": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000,
+          "title": "Duplicate certificates per week",
+          "description": "Counted per exact set of names. 0 disables the limit.",
+          "default": 5
+        },
+        "failedValidationsPerHour": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000,
+          "title": "Failed validations per hour",
+          "description": "Counted per registered domain. 0 disables the limit.",
+          "default": 5
+        },
+        "newOrdersPer3Hours": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000,
+          "title": "New orders per 3 hours",
+          "description": "Counted per CA account. 0 disables the limit.",
+          "default": 300
+        }
+      }
+    }
+  }
+}

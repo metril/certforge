@@ -328,7 +328,7 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 		}
 	})
 	defer restore()
-	v, err := w.Certs.Insert(ctx, tx, cert.ID, iss, string(eff.KeyType.Value))
+	v, err := w.Certs.Insert(ctx, tx, cert.ID, iss, string(eff.KeyType.Value), certstore.InsertOpts{Source: "issued", CAID: eff.CAID.Value})
 	if err != nil {
 		return err
 	}

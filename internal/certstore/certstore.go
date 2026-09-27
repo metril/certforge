@@ -29,8 +29,18 @@ type Version struct {
 	NotBefore, NotAfter time.Time
 	SHA256              string // hex of the leaf DER
 	KeyType, Source     string
+	HasKey              bool
+	CAID                *uuid.UUID
 	RevokedAt           *time.Time
 	CreatedAt           time.Time
+}
+
+// InsertOpts records a stored version's provenance: how it entered
+// CertForge (issued, imported, or uploaded) and, when known, which CA it
+// was issued or last renewed against (used by the rate ledger).
+type InsertOpts struct {
+	Source string // issued, imported, uploaded
+	CAID   *uuid.UUID
 }
 
 // Store reads and writes certificate_versions.
@@ -44,26 +54,37 @@ func New(pool *pgxpool.Pool, box crypto.Box) *Store {
 	return &Store{q: sqlcgen.New(pool), box: box}
 }
 
-// Insert stores issued material inside tx.
-func (s *Store) Insert(ctx context.Context, tx pgx.Tx, certID uuid.UUID, iss *signer.Issued, keyType string) (Version, error) {
-	sealed, err := s.box.Seal(ctx, iss.PrivateKeyPKCS8)
-	if err != nil {
-		return Version{}, err
+// Insert stores issued, imported, or uploaded material inside tx. A nil
+// iss.PrivateKeyPKCS8 stores no key (a keyless version); o.Source defaults
+// to "issued" when empty.
+func (s *Store) Insert(ctx context.Context, tx pgx.Tx, certID uuid.UUID, iss *signer.Issued, keyType string, o InsertOpts) (Version, error) {
+	var sealed []byte
+	if iss.PrivateKeyPKCS8 != nil {
+		var err error
+		if sealed, err = s.box.Seal(ctx, iss.PrivateKeyPKCS8); err != nil {
+			return Version{}, err
+		}
 	}
 	fp := sha256.Sum256(iss.LeafDER)
 	chain := iss.ChainDER
 	if chain == nil {
 		chain = [][]byte{}
 	}
+	source := o.Source
+	if source == "" {
+		source = "issued"
+	}
 	r, err := s.q.WithTx(tx).InsertCertificateVersion(ctx, sqlcgen.InsertCertificateVersionParams{
 		CertID: certID, Serial: iss.Serial, NotBefore: iss.NotBefore, NotAfter: iss.NotAfter,
-		Sha256Fp: hex.EncodeToString(fp[:]), KeyType: keyType, LeafDer: iss.LeafDER, ChainDer: chain, PrivateKey: sealed,
+		Sha256Fp: hex.EncodeToString(fp[:]), KeyType: keyType, LeafDer: iss.LeafDER, ChainDer: chain,
+		PrivateKey: sealed, Source: source, CaID: o.CAID,
 	})
 	if err != nil {
 		return Version{}, err
 	}
 	return Version{ID: r.ID, CertID: r.CertID, Serial: r.Serial, NotBefore: r.NotBefore, NotAfter: r.NotAfter,
-		SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}, nil
+		SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, HasKey: r.HasKey, CAID: r.CaID,
+		RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}, nil
 }
 
 // List returns a certificate's versions, newest first.
@@ -75,7 +96,8 @@ func (s *Store) List(ctx context.Context, certID uuid.UUID) ([]Version, error) {
 	out := make([]Version, len(rows))
 	for i, r := range rows {
 		out[i] = Version{ID: r.ID, CertID: r.CertID, Serial: r.Serial, NotBefore: r.NotBefore, NotAfter: r.NotAfter,
-			SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}
+			SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, HasKey: r.HasKey, CAID: r.CaID,
+			RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}
 	}
 	return out, nil
 }
@@ -94,7 +116,8 @@ func (s *Store) Versions(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]Ve
 	}
 	for _, r := range rows {
 		out[r.ID] = Version{ID: r.ID, CertID: r.CertID, Serial: r.Serial, NotBefore: r.NotBefore, NotAfter: r.NotAfter,
-			SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}
+			SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, HasKey: r.HasKey, CAID: r.CaID,
+			RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}
 	}
 	return out, nil
 }
@@ -114,17 +137,21 @@ func (s *Store) Get(ctx context.Context, certID, versionID uuid.UUID) (Version, 
 		return Version{}, err
 	}
 	return Version{ID: r.ID, CertID: r.CertID, Serial: r.Serial, NotBefore: r.NotBefore, NotAfter: r.NotAfter,
-		SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}, nil
+		SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, HasKey: r.PrivateKey != nil, CAID: r.CaID,
+		RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}, nil
 }
 
-// Material returns render input; the key is decrypted only when withKey.
+// Material returns render input; the key is decrypted only when withKey and
+// one is actually stored. A keyless version (r.PrivateKey nil) leaves
+// PrivateKeyPKCS8 nil with no error even when withKey is set; render.Render
+// only raises render.ErrNoKey once a key-bearing part is actually requested.
 func (s *Store) Material(ctx context.Context, certID, versionID uuid.UUID, withKey bool) (render.Material, error) {
 	r, err := s.row(ctx, certID, versionID)
 	if err != nil {
 		return render.Material{}, err
 	}
 	m := render.Material{LeafDER: r.LeafDer, ChainDER: r.ChainDer}
-	if withKey {
+	if withKey && r.PrivateKey != nil {
 		if m.PrivateKeyPKCS8, err = s.box.Open(ctx, r.PrivateKey); err != nil {
 			return render.Material{}, err
 		}
@@ -133,10 +160,14 @@ func (s *Store) Material(ctx context.Context, certID, versionID uuid.UUID, withK
 }
 
 // PrivateKey returns the decrypted PKCS#8 key and its key type (reuseKey).
+// render.ErrNoKey when the version has no stored key.
 func (s *Store) PrivateKey(ctx context.Context, certID, versionID uuid.UUID) ([]byte, string, error) {
 	r, err := s.row(ctx, certID, versionID)
 	if err != nil {
 		return nil, "", err
+	}
+	if r.PrivateKey == nil {
+		return nil, "", render.ErrNoKey
 	}
 	k, err := s.box.Open(ctx, r.PrivateKey)
 	return k, r.KeyType, err

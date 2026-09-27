@@ -9,7 +9,7 @@ Single status file. Updated in every commit that completes a task.
 | 1 | Core issuance slice | done | [design](design.md) | [1A](superpowers/plans/2026-09-24-phase-1a-backend-foundation.md) · [1B](superpowers/plans/2026-09-24-phase-1b-issuance-engine.md) · [1C](superpowers/plans/2026-09-24-phase-1c-web-ui.md) | 2026-09-24 | 2026-09-24 |
 | 2 | Identity and tenancy | done | [design](design.md) | [2A](superpowers/plans/2026-09-25-phase-2a-identity-backend.md) · [2B](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md) | 2026-09-25 | 2026-09-25 |
 | 3 | Agent | done | [design](design.md) | [3A](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) · [3B](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md) | 2026-09-25 | 2026-09-26 |
-| 4 | Issuance breadth and formats | planned | [design](design.md) | – | – | – |
+| 4 | Issuance breadth and formats | in progress | [design](design.md) | [4A](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) · [4B](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) | 2026-09-27 | – |
 | 5 | Vault and private CA | planned | [design](design.md) | – | – | – |
 | 6 | Ops | planned | [design](design.md) | – | – | – |
 | 7 | Deploy targets | planned | [design](design.md) | – | – | – |
@@ -210,6 +210,30 @@ silently no-opped outside of tests; Task 12's own new `clients.spec.ts`, the
 first Playwright spec to ever click Save on one of these forms, is what
 surfaced it.
 
+### Phase 4: issuance breadth — in progress (started 2026-09-27)
+
+Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings, DER/P12/JKS renderers, download/export, layout passwords and extra certificates, HTTP-01/TLS-ALPN-01 with agent challenge serving, mixed-method orders, CAA, rate ledger, ARI, upload/unmanaged certificates, import from acme.sh/certbot) and 4B certificates web UI. Plan 4A: [issuance breadth](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) (in progress). Plan 4B: [certificates web UI](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) (planned).
+
+#### Phase 4A tasks
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Schema, settings, keyless versions | done | pending |
+| 2 | OpenAPI contract | planned | – |
+| 3 | Renderers | planned | – |
+| 4 | Download and export API | planned | – |
+| 5 | Layout formats, password, extra certificates | planned | – |
+| 6 | http-01 and tls-alpn-01 rules, server http-01 | planned | – |
+| 7 | Agent challenge relay (server) | planned | – |
+| 8 | Agent challenge serving and Traefik ACME router | planned | – |
+| 9 | Mixed-method order flow | planned | – |
+| 10 | CAA pre-check | planned | – |
+| 11 | Rate ledger | planned | – |
+| 12 | ARI | planned | – |
+| 13 | Upload and unmanaged certificates | planned | – |
+| 14 | Import from acme.sh and certbot | planned | – |
+| 15 | Issuance breadth e2e | planned | – |
+
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.
@@ -329,6 +353,16 @@ surfaced it.
 - 2A: "All orgs" reads are `GET /certificates` (cross-org, filtered by `certs:read`) and `GET /audit` without `orgId`, not a magic `orgId=all` path value (R6). `{orgId}` is `format: uuid` in every path, so a sentinel would break the generated types.
 - 2A: CI already fails on untracked generated files (ci.yml runs test -z "$(git status --porcelain)" after make generate); R8's drift requirement needed no change.
 - 2A Task 3: every operation's problem responses (`components.responses`, applied per the rules table) are enforced by `TestSpecDocumentsProblems`, which reads the compiled spec via `gen.GetSwagger()`; `npm --prefix web run typecheck` and the vitest suite needed no call-site changes since openapi-fetch's narrowed error types already matched existing usage.
+- 4A: mixed-method certificates do not hand-roll `Orders.New → UpdateForCSR → poll → chain fetch`. `certificate.NewCertifier(core, resolver, opts)` (lego v4.24.0 `certificate/certificates.go:120-139`) accepts any value with `Solve([]acme.Authorization) error`. `orderflow.go` passes a CertForge resolver that picks each authorization's method from the rule and drives lego's exported `dns01/http01/tlsalpn01.NewChallenge(core, validate, provider)` with our own `validate`. lego's `Obtain` then does order, finalize, preferred chain, must-staple and `ReplacesCertID` unchanged. `core` comes from `api.New(...)` because `lego.Client.core` is unexported. Single-method certificates keep `lego.Client` + `SetXXXProvider` + `Obtain`.
+- 4A: the Traefik ACME router file is per grant, `certforge-acme-<SafeName>.yml` (router and service `certforge-acme-<SafeName>`), not a shared `certforge-acme.yml`. 3A forbids two grants on one client from writing the same path (409), and removal is per grant; a per-grant file disappears with its grant.
+- 4A: `certificates` has no `ca_id` column (the CA lives in `overrides` jsonb), so the unmanaged constraint is `CHECK (managed OR next_renew_at IS NULL)`, and an unmanaged certificate needs no effective CA. `certificate_versions.private_key` is nullable so keyless uploads can be stored.
+- 4A: `cas` has no `staging` column. Staging comes from the preset (`acmesigner.Preset.Staging`, true only for `letsencrypt-staging`). Custom directories (Pebble) are enforced, so the e2e raises limits through settings.
+- 4A: ledger rows older than 30 days are pruned by issuance's own 5-minute `certforge_schedule` job; issuance must not depend on `internal/agents`' separate hourly sweep.
+- 4A: `golang.org/x/net` (already v0.42.0, indirect) becomes direct for `publicsuffix.EffectiveTLDPlusOne`, which the CAA walk and the ledger need to find the registered domain. No new module and no version change.
+- 4A: a DER layout file holds exactly one part (`cert` or `key`), because one layout file is one path; `chain` (one file per chain cert) is download-only. P12/JKS layout files take `parts: []`, so `OutputFile.parts` drops `minItems: 1`; PEM still needs ≥ 1 through `ValidateFiles`.
+- 4A: when the CA directory publishes no `meta.caaIdentities` (empty or absent), step `caa` succeeds with the detail "CA publishes no caaIdentities; CAA not evaluated" rather than failing every record set.
+- 4A: `caaCheck` and `rateLimits` live in a new global settings section `issuance`, not in `issuance_defaults`, whose fields inherit down to orgs and certificates.
+- 4A Task 1: Pebble facts verified at pre-flight, recorded here rather than re-probed by later tasks: the `ghcr.io/letsencrypt/pebble:2.10.1` image's workdir is `/`; its bundled `/test/config/pebble-config.json` sets `httpPort` 5002 and `tlsPort` 5001; `/dir` serves `renewalInfo` and `meta.caaIdentities: ["pebble.letsencrypt.org"]`. Task 15's `caa` success case holds because challtestsrv serves no CAA records.
 
 ## Known gaps
 

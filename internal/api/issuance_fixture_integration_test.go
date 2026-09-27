@@ -105,7 +105,7 @@ func (f *apiFixture) issuedCert(t *testing.T, name string) (issuance.Certificate
 		t.Fatal(err)
 	}
 	v, err := f.certs.Insert(ctx, tx, c.ID, &signer.Issued{LeafDER: []byte("leaf"), ChainDER: [][]byte{[]byte("int")},
-		PrivateKeyPKCS8: []byte("secret-key"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "01"}, "ec256")
+		PrivateKeyPKCS8: []byte("secret-key"), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: "01"}, "ec256", certstore.InsertOpts{Source: "issued"})
 	if err != nil {
 		t.Fatal(err)
 	}

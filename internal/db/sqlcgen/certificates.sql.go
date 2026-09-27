@@ -15,7 +15,7 @@ import (
 const createCertificate = `-- name: CreateCertificate :one
 INSERT INTO certificates (org_id, name, common_name, sans, verification_rules, overrides, next_renew_at)
 VALUES ($1, $2, $3, $4, $5, $6, now())
-RETURNING id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at
+RETURNING id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after
 `
 
 type CreateCertificateParams struct {
@@ -52,6 +52,11 @@ func (q *Queries) CreateCertificate(ctx context.Context, arg CreateCertificatePa
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Managed,
+		&i.AriWindowStart,
+		&i.AriWindowEnd,
+		&i.AriCheckedAt,
+		&i.AriRetryAfter,
 	)
 	return i, err
 }
@@ -74,7 +79,7 @@ func (q *Queries) DeleteCertificate(ctx context.Context, arg DeleteCertificatePa
 }
 
 const getCertificate = `-- name: GetCertificate :one
-SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at FROM certificates WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after FROM certificates WHERE id = $1 AND org_id = $2
 `
 
 type GetCertificateParams struct {
@@ -100,12 +105,17 @@ func (q *Queries) GetCertificate(ctx context.Context, arg GetCertificateParams) 
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Managed,
+		&i.AriWindowStart,
+		&i.AriWindowEnd,
+		&i.AriCheckedAt,
+		&i.AriRetryAfter,
 	)
 	return i, err
 }
 
 const getCertificateByID = `-- name: GetCertificateByID :one
-SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at FROM certificates WHERE id = $1
+SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after FROM certificates WHERE id = $1
 `
 
 func (q *Queries) GetCertificateByID(ctx context.Context, id uuid.UUID) (Certificate, error) {
@@ -126,12 +136,17 @@ func (q *Queries) GetCertificateByID(ctx context.Context, id uuid.UUID) (Certifi
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Managed,
+		&i.AriWindowStart,
+		&i.AriWindowEnd,
+		&i.AriCheckedAt,
+		&i.AriRetryAfter,
 	)
 	return i, err
 }
 
 const getCertificateForUpdate = `-- name: GetCertificateForUpdate :one
-SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at FROM certificates WHERE id = $1 AND org_id = $2 FOR UPDATE
+SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after FROM certificates WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
 
 type GetCertificateForUpdateParams struct {
@@ -160,12 +175,17 @@ func (q *Queries) GetCertificateForUpdate(ctx context.Context, arg GetCertificat
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Managed,
+		&i.AriWindowStart,
+		&i.AriWindowEnd,
+		&i.AriCheckedAt,
+		&i.AriRetryAfter,
 	)
 	return i, err
 }
 
 const getCertificateVersion = `-- name: GetCertificateVersion :one
-SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, chain_der, private_key, source, ari_window, revoked_at, created_at FROM certificate_versions WHERE id = $1 AND cert_id = $2
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, chain_der, private_key, source, ari_window, revoked_at, created_at, ca_id FROM certificate_versions WHERE id = $1 AND cert_id = $2
 `
 
 type GetCertificateVersionParams struct {
@@ -191,6 +211,7 @@ func (q *Queries) GetCertificateVersion(ctx context.Context, arg GetCertificateV
 		&i.AriWindow,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.CaID,
 	)
 	return i, err
 }
@@ -207,21 +228,23 @@ func (q *Queries) GetOrgIssuanceDefaults(ctx context.Context, orgID uuid.UUID) (
 }
 
 const insertCertificateVersion = `-- name: InsertCertificateVersion :one
-INSERT INTO certificate_versions (cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, chain_der, private_key)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, revoked_at, created_at
+INSERT INTO certificate_versions (cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, chain_der, private_key, source, ca_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 `
 
 type InsertCertificateVersionParams struct {
-	CertID     uuid.UUID `json:"cert_id"`
-	Serial     string    `json:"serial"`
-	NotBefore  time.Time `json:"not_before"`
-	NotAfter   time.Time `json:"not_after"`
-	Sha256Fp   string    `json:"sha256_fp"`
-	KeyType    string    `json:"key_type"`
-	LeafDer    []byte    `json:"leaf_der"`
-	ChainDer   [][]byte  `json:"chain_der"`
-	PrivateKey []byte    `json:"private_key"`
+	CertID     uuid.UUID  `json:"cert_id"`
+	Serial     string     `json:"serial"`
+	NotBefore  time.Time  `json:"not_before"`
+	NotAfter   time.Time  `json:"not_after"`
+	Sha256Fp   string     `json:"sha256_fp"`
+	KeyType    string     `json:"key_type"`
+	LeafDer    []byte     `json:"leaf_der"`
+	ChainDer   [][]byte   `json:"chain_der"`
+	PrivateKey []byte     `json:"private_key"`
+	Source     string     `json:"source"`
+	CaID       *uuid.UUID `json:"ca_id"`
 }
 
 type InsertCertificateVersionRow struct {
@@ -233,10 +256,15 @@ type InsertCertificateVersionRow struct {
 	Sha256Fp  string     `json:"sha256_fp"`
 	KeyType   string     `json:"key_type"`
 	Source    string     `json:"source"`
+	CaID      *uuid.UUID `json:"ca_id"`
+	HasKey    bool       `json:"has_key"`
 	RevokedAt *time.Time `json:"revoked_at"`
 	CreatedAt time.Time  `json:"created_at"`
 }
 
+// private_key is nullable (a keyless import/upload stores NULL); has_key
+// reports whether one is stored without ever selecting the sealed bytes
+// themselves into a metadata-only row.
 func (q *Queries) InsertCertificateVersion(ctx context.Context, arg InsertCertificateVersionParams) (InsertCertificateVersionRow, error) {
 	row := q.db.QueryRow(ctx, insertCertificateVersion,
 		arg.CertID,
@@ -248,6 +276,8 @@ func (q *Queries) InsertCertificateVersion(ctx context.Context, arg InsertCertif
 		arg.LeafDer,
 		arg.ChainDer,
 		arg.PrivateKey,
+		arg.Source,
+		arg.CaID,
 	)
 	var i InsertCertificateVersionRow
 	err := row.Scan(
@@ -259,6 +289,8 @@ func (q *Queries) InsertCertificateVersion(ctx context.Context, arg InsertCertif
 		&i.Sha256Fp,
 		&i.KeyType,
 		&i.Source,
+		&i.CaID,
+		&i.HasKey,
 		&i.RevokedAt,
 		&i.CreatedAt,
 	)
@@ -266,7 +298,7 @@ func (q *Queries) InsertCertificateVersion(ctx context.Context, arg InsertCertif
 }
 
 const listCertificateVersions = `-- name: ListCertificateVersions :many
-SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, revoked_at, created_at
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 FROM certificate_versions WHERE cert_id = $1 ORDER BY created_at DESC
 `
 
@@ -279,6 +311,8 @@ type ListCertificateVersionsRow struct {
 	Sha256Fp  string     `json:"sha256_fp"`
 	KeyType   string     `json:"key_type"`
 	Source    string     `json:"source"`
+	CaID      *uuid.UUID `json:"ca_id"`
+	HasKey    bool       `json:"has_key"`
 	RevokedAt *time.Time `json:"revoked_at"`
 	CreatedAt time.Time  `json:"created_at"`
 }
@@ -301,6 +335,8 @@ func (q *Queries) ListCertificateVersions(ctx context.Context, certID uuid.UUID)
 			&i.Sha256Fp,
 			&i.KeyType,
 			&i.Source,
+			&i.CaID,
+			&i.HasKey,
 			&i.RevokedAt,
 			&i.CreatedAt,
 		); err != nil {
@@ -315,7 +351,7 @@ func (q *Queries) ListCertificateVersions(ctx context.Context, certID uuid.UUID)
 }
 
 const listCertificateVersionsByIDs = `-- name: ListCertificateVersionsByIDs :many
-SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, revoked_at, created_at
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 FROM certificate_versions WHERE id = ANY($1::uuid[])
 `
 
@@ -328,6 +364,8 @@ type ListCertificateVersionsByIDsRow struct {
 	Sha256Fp  string     `json:"sha256_fp"`
 	KeyType   string     `json:"key_type"`
 	Source    string     `json:"source"`
+	CaID      *uuid.UUID `json:"ca_id"`
+	HasKey    bool       `json:"has_key"`
 	RevokedAt *time.Time `json:"revoked_at"`
 	CreatedAt time.Time  `json:"created_at"`
 }
@@ -353,6 +391,8 @@ func (q *Queries) ListCertificateVersionsByIDs(ctx context.Context, dollar_1 []u
 			&i.Sha256Fp,
 			&i.KeyType,
 			&i.Source,
+			&i.CaID,
+			&i.HasKey,
 			&i.RevokedAt,
 			&i.CreatedAt,
 		); err != nil {
@@ -368,7 +408,7 @@ func (q *Queries) ListCertificateVersionsByIDs(ctx context.Context, dollar_1 []u
 
 const listCertificatesPageByNameAsc = `-- name: ListCertificatesPageByNameAsc :many
 
-SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.name AS sort_key FROM certificates c
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, c.name AS sort_key FROM certificates c
 WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
@@ -405,6 +445,11 @@ type ListCertificatesPageByNameAscRow struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 	SortKey           string     `json:"sort_key"`
 }
 
@@ -460,6 +505,11 @@ func (q *Queries) ListCertificatesPageByNameAsc(ctx context.Context, arg ListCer
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
 			&i.SortKey,
 		); err != nil {
 			return nil, err
@@ -473,7 +523,7 @@ func (q *Queries) ListCertificatesPageByNameAsc(ctx context.Context, arg ListCer
 }
 
 const listCertificatesPageByNameDesc = `-- name: ListCertificatesPageByNameDesc :many
-SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.name AS sort_key FROM certificates c
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, c.name AS sort_key FROM certificates c
 WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
@@ -510,6 +560,11 @@ type ListCertificatesPageByNameDescRow struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 	SortKey           string     `json:"sort_key"`
 }
 
@@ -545,6 +600,11 @@ func (q *Queries) ListCertificatesPageByNameDesc(ctx context.Context, arg ListCe
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
 			&i.SortKey,
 		); err != nil {
 			return nil, err
@@ -558,7 +618,7 @@ func (q *Queries) ListCertificatesPageByNameDesc(ctx context.Context, arg ListCe
 }
 
 const listCertificatesPageByNextRenewAtAsc = `-- name: ListCertificatesPageByNextRenewAtAsc :many
-SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
 WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
@@ -596,6 +656,11 @@ type ListCertificatesPageByNextRenewAtAscRow struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 	SortKey           *time.Time `json:"sort_key"`
 }
 
@@ -631,6 +696,11 @@ func (q *Queries) ListCertificatesPageByNextRenewAtAsc(ctx context.Context, arg 
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
 			&i.SortKey,
 		); err != nil {
 			return nil, err
@@ -644,7 +714,7 @@ func (q *Queries) ListCertificatesPageByNextRenewAtAsc(ctx context.Context, arg 
 }
 
 const listCertificatesPageByNextRenewAtDesc = `-- name: ListCertificatesPageByNextRenewAtDesc :many
-SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, COALESCE(c.next_renew_at, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key FROM certificates c
 WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
@@ -682,6 +752,11 @@ type ListCertificatesPageByNextRenewAtDescRow struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 	SortKey           *time.Time `json:"sort_key"`
 }
 
@@ -717,6 +792,11 @@ func (q *Queries) ListCertificatesPageByNextRenewAtDesc(ctx context.Context, arg
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
 			&i.SortKey,
 		); err != nil {
 			return nil, err
@@ -730,7 +810,7 @@ func (q *Queries) ListCertificatesPageByNextRenewAtDesc(ctx context.Context, arg
 }
 
 const listCertificatesPageByNotAfterAsc = `-- name: ListCertificatesPageByNotAfterAsc :many
-SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
 FROM certificates c
 LEFT JOIN certificate_versions v ON v.id = c.current_version_id
 WHERE c.org_id = ANY($1::uuid[])
@@ -770,6 +850,11 @@ type ListCertificatesPageByNotAfterAscRow struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 	SortKey           time.Time  `json:"sort_key"`
 }
 
@@ -805,6 +890,11 @@ func (q *Queries) ListCertificatesPageByNotAfterAsc(ctx context.Context, arg Lis
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
 			&i.SortKey,
 		); err != nil {
 			return nil, err
@@ -818,7 +908,7 @@ func (q *Queries) ListCertificatesPageByNotAfterAsc(ctx context.Context, arg Lis
 }
 
 const listCertificatesPageByNotAfterDesc = `-- name: ListCertificatesPageByNotAfterDesc :many
-SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, COALESCE(v.not_after, TIMESTAMPTZ '9999-12-31 23:59:59+00') AS sort_key
 FROM certificates c
 LEFT JOIN certificate_versions v ON v.id = c.current_version_id
 WHERE c.org_id = ANY($1::uuid[])
@@ -858,6 +948,11 @@ type ListCertificatesPageByNotAfterDescRow struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 	SortKey           time.Time  `json:"sort_key"`
 }
 
@@ -893,6 +988,11 @@ func (q *Queries) ListCertificatesPageByNotAfterDesc(ctx context.Context, arg Li
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
 			&i.SortKey,
 		); err != nil {
 			return nil, err
@@ -906,7 +1006,7 @@ func (q *Queries) ListCertificatesPageByNotAfterDesc(ctx context.Context, arg Li
 }
 
 const listCertificatesPageByStatusAsc = `-- name: ListCertificatesPageByStatusAsc :many
-SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.status AS sort_key FROM certificates c
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, c.status AS sort_key FROM certificates c
 WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
@@ -943,6 +1043,11 @@ type ListCertificatesPageByStatusAscRow struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 	SortKey           string     `json:"sort_key"`
 }
 
@@ -978,6 +1083,11 @@ func (q *Queries) ListCertificatesPageByStatusAsc(ctx context.Context, arg ListC
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
 			&i.SortKey,
 		); err != nil {
 			return nil, err
@@ -991,7 +1101,7 @@ func (q *Queries) ListCertificatesPageByStatusAsc(ctx context.Context, arg ListC
 }
 
 const listCertificatesPageByStatusDesc = `-- name: ListCertificatesPageByStatusDesc :many
-SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.status AS sort_key FROM certificates c
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, c.status AS sort_key FROM certificates c
 WHERE c.org_id = ANY($1::uuid[])
   AND ($2::text = '' OR c.status = $2)
   AND ($3::text = ''
@@ -1028,6 +1138,11 @@ type ListCertificatesPageByStatusDescRow struct {
 	LastError         string     `json:"last_error"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	Managed           bool       `json:"managed"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	AriRetryAfter     *time.Time `json:"ari_retry_after"`
 	SortKey           string     `json:"sort_key"`
 }
 
@@ -1063,6 +1178,11 @@ func (q *Queries) ListCertificatesPageByStatusDesc(ctx context.Context, arg List
 			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
 			&i.SortKey,
 		); err != nil {
 			return nil, err
@@ -1185,7 +1305,7 @@ UPDATE certificates SET name = $3, common_name = $4, sans = $5, verification_rul
     overrides = $7, next_renew_at = CASE WHEN $8::bool THEN now() ELSE next_renew_at END,
     updated_at = now()
 WHERE id = $1 AND org_id = $2
-RETURNING id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at
+RETURNING id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after
 `
 
 type UpdateCertificateParams struct {
@@ -1226,6 +1346,11 @@ func (q *Queries) UpdateCertificate(ctx context.Context, arg UpdateCertificatePa
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Managed,
+		&i.AriWindowStart,
+		&i.AriWindowEnd,
+		&i.AriCheckedAt,
+		&i.AriRetryAfter,
 	)
 	return i, err
 }
