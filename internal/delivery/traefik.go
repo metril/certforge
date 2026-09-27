@@ -111,13 +111,31 @@ func AcmeRouterFile(certName string, names []string, cfg TraefikConfig) *File {
 		return nil
 	}
 	router := "certforge-acme-" + SafeName(certName)
+	// Wildcard names can never be validated over http-01 (no ACME CA
+	// offers that challenge for a wildcard authorization) and Traefik v3
+	// rejects Host(`*.example.test`) outright (its host matcher does not
+	// accept wildcards), so they are dropped from the Host() chain
+	// entirely rather than quoted in — a mixed apex + wildcard
+	// certificate's router then claims only the apex (and any other
+	// non-wildcard SANs). When every name is a wildcard, nothing is left
+	// to route at all: return nil, the same as an unset acmeServiceUrl,
+	// instead of a router with an empty or invalid Host().
+	var hostNames []string
+	for _, n := range names {
+		if !strings.HasPrefix(n, "*.") {
+			hostNames = append(hostNames, n)
+		}
+	}
+	if len(hostNames) == 0 {
+		return nil
+	}
 	// Host() takes exactly one argument on Traefik v3: Host(`a`,`b`) is
 	// invalid (rejects the whole router), not an OR of a and b the way it
 	// was on v2. Two or more names need one Host() call per name, OR'd
 	// together and parenthesized so the trailing && PathPrefix(...) binds
 	// the whole disjunction rather than just its last term.
-	hosts := make([]string, len(names))
-	for i, n := range names {
+	hosts := make([]string, len(hostNames))
+	for i, n := range hostNames {
 		hosts[i] = "Host(`" + n + "`)"
 	}
 	hostExpr := strings.Join(hosts, " || ")

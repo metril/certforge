@@ -55,7 +55,10 @@ func TestRenderTraefikGolden(t *testing.T) {
 
 func TestRenderTraefikACME(t *testing.T) {
 	cfg := TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"}
-	names := []string{"web-frontend.example.test", "www.web-frontend.example.test"}
+	// A wildcard SAN alongside the two ordinary names: it must not appear
+	// in the router at all (Traefik v3 rejects Host(`*...`), and no ACME
+	// challenge type validates a wildcard over http-01 anyway).
+	names := []string{"web-frontend.example.test", "www.web-frontend.example.test", "*.web-frontend.example.test"}
 	files := RenderTraefik("Web Frontend", names, cfg, []byte("FULLCHAIN"), []byte("KEY"))
 	if len(files) != 4 {
 		t.Fatalf("%d files", len(files))
@@ -63,6 +66,9 @@ func TestRenderTraefikACME(t *testing.T) {
 	acme := files[3]
 	if acme.Path != "/etc/traefik/dynamic/certforge-acme-web-frontend.yml" || acme.Mode != "0644" {
 		t.Fatalf("acme file %+v", acme)
+	}
+	if bytes.Contains(acme.Data, []byte("*.")) {
+		t.Fatalf("wildcard leaked into the router file:\n%s", acme.Data)
 	}
 	path := filepath.Join("testdata", "traefik-acme.yml")
 	if *update {
@@ -115,6 +121,14 @@ func TestAcmeRouterFileHostRule(t *testing.T) {
 			"(Host(`web.example.test`) || Host(`www.web.example.test`)) && PathPrefix(`/.well-known/acme-challenge/`)"},
 		{"three names", []string{"a.test", "b.test", "c.test"},
 			"(Host(`a.test`) || Host(`b.test`) || Host(`c.test`)) && PathPrefix(`/.well-known/acme-challenge/`)"},
+		// Traefik v3 rejects Host(`*.example.test`) outright (host
+		// matching does not accept wildcards there), and no ACME challenge
+		// type validates a wildcard name over http-01 anyway — the router
+		// only needs to claim requests for names it could ever prove
+		// control of. A mixed apex + wildcard certificate (a common shape:
+		// CommonName the apex, one SAN its wildcard) keeps the apex only.
+		{"mixed apex and wildcard", []string{"apex.example.test", "*.apex.example.test"},
+			"Host(`apex.example.test`) && PathPrefix(`/.well-known/acme-challenge/`)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,7 +140,25 @@ func TestAcmeRouterFileHostRule(t *testing.T) {
 			if !bytes.Contains(f.Data, []byte(want)) {
 				t.Errorf("rule line not found; want %q in:\n%s", want, f.Data)
 			}
+			if bytes.Contains(f.Data, []byte("*.")) {
+				t.Errorf("wildcard leaked into the router file:\n%s", f.Data)
+			}
 		})
+	}
+}
+
+// TestAcmeRouterFileAllWildcardOmitsFile (fix-wave re-review): a
+// certificate whose every name is a wildcard has nothing an http-01 router
+// could ever validate — Host(`*.example.test`) is also invalid Traefik v3
+// syntax — so AcmeRouterFile renders no file at all, the same as an unset
+// acmeServiceUrl, rather than a router with an empty or invalid Host().
+func TestAcmeRouterFileAllWildcardOmitsFile(t *testing.T) {
+	cfg := TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"}
+	if f := AcmeRouterFile("web", []string{"*.example.test"}, cfg); f != nil {
+		t.Fatalf("all-wildcard: got a file, want nil: %+v", f)
+	}
+	if f := AcmeRouterFile("web", []string{"*.example.test", "*.other.test"}, cfg); f != nil {
+		t.Fatalf("all-wildcard (multiple): got a file, want nil: %+v", f)
 	}
 }
 

@@ -96,6 +96,18 @@ func (f *syncFixture) cert(t *testing.T, name string) uuid.UUID {
 	return id
 }
 
+// certWildcard inserts a certificate row whose only name is a wildcard
+// common name — no version, no current_version_id, same as cert.
+func (f *syncFixture) certWildcard(t *testing.T, name string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := f.pool.QueryRow(context.Background(), `INSERT INTO certificates (org_id, name, common_name) VALUES ($1, $2, $3) RETURNING id`,
+		f.org, name, "*."+name+".example.test").Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 // version inserts a real, x509-parseable version of certID.
 func (f *syncFixture) version(t *testing.T, certID uuid.UUID, serial int64, withKey bool) uuid.UUID {
 	t.Helper()
@@ -281,6 +293,30 @@ func TestRenderGrantWithoutVersionWritesACMEFile(t *testing.T) {
 	}
 	if got := string(f.expected(t, gid2)); got != "[]" {
 		t.Fatalf("expected %s, want []", got)
+	}
+}
+
+// TestRenderGrantAllWildcardNamesOmitsACMEFile (fix-wave re-review):
+// Host(`*.example.test`) is invalid Traefik v3 syntax, and no ACME
+// challenge type validates a wildcard name over http-01 anyway, so
+// delivery.AcmeRouterFile omits wildcard names from the Host() chain and
+// returns nil when none are left. A certificate whose only name is a
+// wildcard therefore expects no files at all for a version-less grant with
+// acmeServiceUrl set — not a router entry Traefik would refuse to load.
+func TestRenderGrantAllWildcardNamesOmitsACMEFile(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+
+	certID := f.certWildcard(t, "wild")
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-wild")
+
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(f.expected(t, gid)); got != "[]" {
+		t.Fatalf("expected %s, want [] (every name is a wildcard)", got)
 	}
 }
 
