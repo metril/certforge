@@ -27,7 +27,7 @@ import (
 func versionOut(v certstore.Version) gen.CertificateVersion {
 	return gen.CertificateVersion{Id: v.ID, Serial: v.Serial, NotBefore: v.NotBefore, NotAfter: v.NotAfter,
 		Sha256Fingerprint: v.SHA256, KeyType: ptr(gen.KeyType(v.KeyType)), Source: gen.CertificateVersionSource(v.Source),
-		RevokedAt: v.RevokedAt, CreatedAt: ptr(v.CreatedAt)}
+		HasKey: v.HasKey, RevokedAt: v.RevokedAt, CreatedAt: ptr(v.CreatedAt)}
 }
 
 // certRender builds the API shape from a domain certificate, its
@@ -50,8 +50,10 @@ func (s *Server) certRender(c issuance.Certificate, eff issuance.Effective, v *c
 	if err != nil {
 		return gen.Certificate{}, err
 	}
+	// AriWindow stays nil (always null in the response) until Task 12 wires
+	// ACME Renewal Information; Managed reflects the stored column for real.
 	out := gen.Certificate{Id: c.ID, OrgId: ptr(c.OrgID), Name: c.Name, CommonName: c.CommonName, Sans: c.SANs,
-		VerificationRules: rules, Overrides: over, Status: gen.CertificateStatus(c.Status), NextRenewAt: c.NextRenewAt,
+		VerificationRules: rules, Overrides: over, Status: gen.CertificateStatus(c.Status), Managed: c.Managed, NextRenewAt: c.NextRenewAt,
 		FailureCount: c.FailureCount, Effective: effOut, CreatedAt: ptr(c.CreatedAt), UpdatedAt: ptr(c.UpdatedAt)}
 	if c.LastError != "" {
 		out.LastError = ptr(c.LastError)
@@ -389,7 +391,7 @@ func (s *Server) DownloadCertificateVersion(ctx context.Context, r gen.DownloadC
 		return nil, err
 	}
 	if r.Params.Format != nil && string(*r.Params.Format) != "pem" {
-		return nil, unprocessable("format", "Phase 1 supports pem only")
+		return nil, unprocessable("format", "pem is supported now; der is not implemented yet")
 	}
 	var parts []string
 	for _, p := range strings.Split(r.Params.Parts, ",") {

@@ -99,3 +99,45 @@ func TestPhase3OperationsDeclared(t *testing.T) {
 		t.Error("Certificate.grantCount missing")
 	}
 }
+
+func TestPhase4OperationsDeclared(t *testing.T) {
+	sw, err := gen.GetSwagger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, id := range []string{"exportCertificateVersion", "uploadCertificate", "uploadCertificateVersion",
+		"importCertificates", "getRateLedger"} {
+		want[id] = false
+	}
+	// See TestPhase3OperationsDeclared for why the operationId is lower-cased
+	// back before comparing against api/openapi.yaml.
+	for _, item := range sw.Paths.Map() {
+		for _, op := range item.Operations() {
+			id := op.OperationID
+			if id != "" {
+				id = strings.ToLower(id[:1]) + id[1:]
+			}
+			if _, ok := want[id]; ok {
+				want[id] = true
+			}
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Errorf("operation %s missing", id)
+		}
+	}
+	if got := len(sw.Components.Schemas["OutputFormat"].Value.Enum); got != 4 {
+		t.Errorf("OutputFormat has %d values, want 4", got)
+	}
+	if got := len(sw.Components.Schemas["VerificationRule"].Value.Properties["method"].Value.Enum); got != 4 {
+		t.Errorf("VerificationRule.method has %d values, want 4", got)
+	}
+	if !slices.Contains(sw.Components.Schemas["Certificate"].Value.Required, "managed") {
+		t.Error("Certificate.required missing managed")
+	}
+	if !slices.Contains(sw.Components.Schemas["CertificateVersion"].Value.Required, "hasKey") {
+		t.Error("CertificateVersion.required missing hasKey")
+	}
+}

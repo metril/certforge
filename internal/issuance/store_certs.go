@@ -25,7 +25,10 @@ const (
 	StatusRevoked = "revoked"
 )
 
-// Certificate is a managed certificate definition.
+// Certificate is a managed certificate definition. Managed is false for an
+// imported or uploaded certificate: CertForge stores and can deploy it, but
+// never renews it (NextRenewAt is always nil), and renew/most edits are
+// refused.
 type Certificate struct {
 	ID, OrgID            uuid.UUID
 	Name, CommonName     string
@@ -33,6 +36,7 @@ type Certificate struct {
 	Rules                []challenge.RuleSpec
 	Overrides            Defaults
 	Status               string
+	Managed              bool
 	CurrentVersionID     *uuid.UUID
 	NextRenewAt          *time.Time
 	FailureCount         int
@@ -53,7 +57,7 @@ type CertInput struct {
 
 func certFromRow(r sqlcgen.Certificate) (Certificate, error) {
 	c := Certificate{ID: r.ID, OrgID: r.OrgID, Name: r.Name, CommonName: r.CommonName, SANs: r.Sans,
-		Status: r.Status, CurrentVersionID: r.CurrentVersionID, NextRenewAt: r.NextRenewAt,
+		Status: r.Status, Managed: r.Managed, CurrentVersionID: r.CurrentVersionID, NextRenewAt: r.NextRenewAt,
 		FailureCount: int(r.FailureCount), LastError: r.LastError, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 	if err := json.Unmarshal(r.VerificationRules, &c.Rules); err != nil {
 		return c, err
@@ -617,12 +621,14 @@ type certListRow struct {
 	LastError         string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	Managed           bool
 }
 
 func (r certListRow) toCertificate() (Certificate, error) {
 	return certFromRow(sqlcgen.Certificate{ID: r.ID, OrgID: r.OrgID, Name: r.Name, CommonName: r.CommonName, Sans: r.Sans,
 		VerificationRules: r.VerificationRules, Overrides: r.Overrides, Status: r.Status, CurrentVersionID: r.CurrentVersionID,
-		NextRenewAt: r.NextRenewAt, FailureCount: r.FailureCount, LastError: r.LastError, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt})
+		NextRenewAt: r.NextRenewAt, FailureCount: r.FailureCount, LastError: r.LastError, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Managed: r.Managed})
 }
 
 func formatCursorTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
@@ -691,7 +697,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 		}
 		for _, r := range rows {
 			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
-				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt, r.Managed}
 			if err := appendRow(row, r.SortKey); err != nil {
 				return ListPage{}, err
 			}
@@ -704,7 +710,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 		}
 		for _, r := range rows {
 			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
-				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt, r.Managed}
 			if err := appendRow(row, r.SortKey); err != nil {
 				return ListPage{}, err
 			}
@@ -717,7 +723,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 		}
 		for _, r := range rows {
 			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
-				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt, r.Managed}
 			if err := appendRow(row, r.SortKey); err != nil {
 				return ListPage{}, err
 			}
@@ -730,7 +736,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 		}
 		for _, r := range rows {
 			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
-				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt, r.Managed}
 			if err := appendRow(row, r.SortKey); err != nil {
 				return ListPage{}, err
 			}
@@ -743,7 +749,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 		}
 		for _, r := range rows {
 			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
-				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt, r.Managed}
 			var key time.Time
 			if r.SortKey != nil {
 				key = *r.SortKey
@@ -760,7 +766,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 		}
 		for _, r := range rows {
 			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
-				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt, r.Managed}
 			var key time.Time
 			if r.SortKey != nil {
 				key = *r.SortKey
@@ -777,7 +783,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 		}
 		for _, r := range rows {
 			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
-				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt, r.Managed}
 			if err := appendRow(row, formatCursorTime(r.SortKey)); err != nil {
 				return ListPage{}, err
 			}
@@ -790,7 +796,7 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 		}
 		for _, r := range rows {
 			row := certListRow{r.ID, r.OrgID, r.Name, r.CommonName, r.Sans, r.VerificationRules, r.Overrides, r.Status,
-				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt}
+				r.CurrentVersionID, r.NextRenewAt, r.FailureCount, r.LastError, r.CreatedAt, r.UpdatedAt, r.Managed}
 			if err := appendRow(row, formatCursorTime(r.SortKey)); err != nil {
 				return ListPage{}, err
 			}

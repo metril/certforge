@@ -656,6 +656,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/certificates/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Store an existing certificate as unmanaged
+         * @description Needs certs:write; a stored private key also needs keys:export, audited as certificate.key_exported before it is stored. Creates an unmanaged certificate (managed false): CertForge never renews it.
+         */
+        post: operations["uploadCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/certificates/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import certificates from an acme.sh or certbot archive
+         * @description Needs certs:write; a stored private key also needs keys:export, audited per certificate as certificate.key_exported before it is stored, plus one certificate.import summarizing the run. dryRun (default true) previews without storing anything. Creates unmanaged certificates (managed false).
+         */
+        post: operations["importCertificates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/certificates/{id}": {
         parameters: {
             query?: never;
@@ -675,13 +721,13 @@ export interface paths {
         get: operations["getCertificate"];
         /**
          * Replace a certificate definition
-         * @description Needs certs:write. Changing names queues a new issuance; other changes apply at the next renewal.
+         * @description Needs certs:write. Changing names queues a new issuance; other changes apply at the next renewal. 409 "managed externally" for an unmanaged certificate (managed false).
          */
         put: operations["updateCertificate"];
         post?: never;
         /**
          * Delete a certificate
-         * @description Deletes the definition with all versions and attempts; does not revoke. Needs certs:write.
+         * @description Deletes the definition with all versions and attempts; does not revoke. Needs certs:write. 409, naming up to five layouts, when a layout lists it as an extra certificate.
          */
         delete: operations["deleteCertificate"];
         options?: never;
@@ -705,7 +751,7 @@ export interface paths {
         put?: never;
         /**
          * Issue now
-         * @description Queues an issuance. enqueued is false when one is already queued or running. Needs certs:issue.
+         * @description Queues an issuance. enqueued is false when one is already queued or running. Needs certs:issue. 409 "managed externally" for an unmanaged certificate (managed false).
          */
         post: operations["renewCertificate"];
         delete?: never;
@@ -733,6 +779,31 @@ export interface paths {
         get: operations["listCertificateVersions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/certificates/{id}/versions/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add an uploaded version to an unmanaged certificate
+         * @description Needs certs:write; a stored private key also needs keys:export, audited as certificate.key_exported before it is stored. 409 when the certificate is managed.
+         */
+        post: operations["uploadCertificateVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -780,11 +851,38 @@ export interface paths {
         };
         /**
          * Download a version
-         * @description Needs certs:read; the key and combined parts also need keys:export and are recorded in the audit log before anything is sent. One part returns a PEM file, several a zip.
+         * @description Needs certs:read; the key and combined parts also need keys:export and are recorded in the audit log before anything is sent. One file returns its raw bytes, several a zip. der supports only cert, chain and key parts, one per file; fullchain and combined are 422 ("not available as DER").
          */
         get: operations["downloadCertificateVersion"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/certificates/{id}/versions/{vid}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+                /** @description Certificate version id. */
+                vid: components["parameters"]["VersionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export a version as PKCS#12 or JKS
+         * @description Needs certs:read and keys:export; recorded as certificate.key_exported in the audit log before anything is sent, even when the version has no key. The password is never logged, audited, put in a URL, or returned by any read.
+         */
+        post: operations["exportCertificateVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -866,6 +964,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/rate-ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the CA's current rate-limit usage
+         * @description Needs certs:read. certificate narrows duplicateCertsPerWeek to that certificate's own names; without it, that item is omitted.
+         */
+        get: operations["getRateLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/clients": {
         parameters: {
             query?: never;
@@ -934,7 +1055,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a client
-         * @description Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and hook runs go with them.
+         * @description Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and hook runs go with them. 409, naming up to five certificates, when a verification rule's clientId still points at it.
          */
         delete: operations["deleteClient"];
         options?: never;
@@ -1016,7 +1137,7 @@ export interface paths {
         put?: never;
         /**
          * Grant a certificate to a client
-         * @description Needs clients:write. The certificate, layout, deploy target and hooks must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409). Bumps the client's desired revision.
+         * @description Needs clients:write. The certificate, layout, deploy target and hooks must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409). 422 when the certificate's current version has no key and the layout or target needs one. Bumps the client's desired revision.
          */
         post: operations["createGrant"];
         delete?: never;
@@ -1074,7 +1195,7 @@ export interface paths {
         head?: never;
         /**
          * Change a grant
-         * @description Needs clients:write. Replaces delivery, layout, deploy target, hooks and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths.
+         * @description Needs clients:write. Replaces delivery, layout, deploy target, hooks and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths. 422 when the certificate's current version has no key and the layout or target needs one.
          */
         patch: operations["updateGrant"];
         trace?: never;
@@ -1981,9 +2102,14 @@ export interface components {
             mode: "days" | "percent";
             /** @description Days (1-365) or percent (1-99). */
             value: number;
-            /** @description Stored now; ACME Renewal Information is used from Phase 4. */
+            /** @description Use the CA's ACME Renewal Information window when it is earlier. */
             useAri: boolean;
         };
+        /**
+         * @description Who serves an http-01 challenge; server (this host) or agent (a client, over webroot).
+         * @enum {string}
+         */
+        ChallengeVia: "server" | "agent";
         /** @description How to prove control of the names this rule matches. First match wins. */
         VerificationRule: {
             /**
@@ -1995,7 +2121,7 @@ export interface components {
              * @description Verification method.
              * @enum {string}
              */
-            method: "dns-01" | "manual-dns";
+            method: "dns-01" | "manual-dns" | "http-01" | "tls-alpn-01";
             /**
              * Format: uuid
              * @description DNS credential; required for dns-01.
@@ -2007,6 +2133,15 @@ export interface components {
             resolvers?: string[];
             /** @description Zone that _acme-challenge is CNAMEd into; checked before validation. */
             cnameAliasZone?: string;
+            /** @description http-01 only; default server. */
+            via?: components["schemas"]["ChallengeVia"];
+            /**
+             * Format: uuid
+             * @description Client that serves the challenge; required for tls-alpn-01, or for http-01 with via agent.
+             */
+            clientId?: string;
+            /** @description Absolute path on the agent host the challenge file is written under; http-01 via agent only. */
+            webroot?: string;
         };
         /** @description One level of issuance settings (org defaults or certificate overrides). Null or omitted inherits from the level above. */
         IssuanceDefaults: {
@@ -2117,6 +2252,24 @@ export interface components {
             /** @description Resolved resolvers and their source. */
             resolvers?: components["schemas"]["EffectiveStrings"];
         };
+        /** @description The CA's cached ACME Renewal Information window for a certificate's current version. */
+        AriWindow: {
+            /**
+             * Format: date-time
+             * @description Earliest suggested renewal time.
+             */
+            start: string;
+            /**
+             * Format: date-time
+             * @description Latest suggested renewal time.
+             */
+            end: string;
+            /**
+             * Format: date-time
+             * @description When this window was last fetched from the CA.
+             */
+            checkedAt: string;
+        };
         /** @description One issued certificate. */
         CertificateVersion: {
             /**
@@ -2145,6 +2298,8 @@ export interface components {
              * @enum {string}
              */
             source: "issued" | "imported" | "uploaded";
+            /** @description Whether a private key is stored for this version; false for a keyless import or upload. */
+            hasKey: boolean;
             /**
              * Format: date-time
              * @description Revocation time.
@@ -2183,6 +2338,8 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "active" | "failed" | "expired" | "revoked";
+            /** @description false for an imported or uploaded certificate: CertForge tracks it but never renews it, and renew/most edits are refused (409). */
+            managed: boolean;
             /** @description Newest issued version. */
             currentVersion?: components["schemas"]["CertificateVersion"] | null;
             /**
@@ -2196,6 +2353,8 @@ export interface components {
             lastError?: string | null;
             /** @description Resolved issuance settings for this certificate. */
             effective: components["schemas"]["EffectiveIssuanceDefaults"];
+            /** @description The CA's cached ACME Renewal Information window, when the CA supports it and one has been fetched. */
+            ariWindow?: components["schemas"]["AriWindow"] | null;
             /**
              * Format: date-time
              * @description Creation time.
@@ -2322,6 +2481,139 @@ export interface components {
         RenewResult: {
             /** @description False when an issuance was already queued or running. */
             enqueued: boolean;
+        };
+        /**
+         * @description Export container format.
+         * @enum {string}
+         */
+        ExportFormat: "p12" | "jks";
+        /** @description How to package a version's certificate and key for export. */
+        ExportRequest: {
+            format: components["schemas"]["ExportFormat"];
+            /** @description Export password; at least 6 characters for jks. Never logged, audited, or returned. */
+            password: string;
+            /** @description p12 only; default modern. */
+            encoding?: components["schemas"]["P12Encoding"];
+            /** @description jks only; default SafeName(cert name). */
+            alias?: string;
+        };
+        /** @description An existing certificate and (optionally) its key, stored as an unmanaged certificate. Exactly one of certificatePem or pkcs12Base64 is required. keys:export is checked and certificate.key_exported audited before a key already in the request is stored, same as any other read of a private key. */
+        CertificateUpload: {
+            /** @description Unique name in the org. */
+            name: string;
+            /** @description PEM leaf certificate, optionally followed by its chain. */
+            certificatePem?: string;
+            /** @description PEM private key matching certificatePem; omit for a keyless certificate. */
+            privateKeyPem?: string;
+            /**
+             * Format: byte
+             * @description Base64 PKCS#12 bundle (certificate, chain and optionally a key).
+             */
+            pkcs12Base64?: string;
+            /** @description Password for pkcs12Base64; omit if it has none. */
+            password?: string;
+        };
+        /** @description A version to add to an existing unmanaged certificate; the same shape as CertificateUpload without a name. 409 when the certificate is managed. */
+        CertificateVersionUpload: {
+            /** @description PEM leaf certificate, optionally followed by its chain. */
+            certificatePem?: string;
+            /** @description PEM private key matching certificatePem; omit for a keyless version. */
+            privateKeyPem?: string;
+            /**
+             * Format: byte
+             * @description Base64 PKCS#12 bundle (certificate, chain and optionally a key).
+             */
+            pkcs12Base64?: string;
+            /** @description Password for pkcs12Base64; omit if it has none. */
+            password?: string;
+        };
+        /**
+         * @description Tool whose on-disk layout the archive was detected as.
+         * @enum {string}
+         */
+        ImportSource: "acmesh" | "certbot";
+        /**
+         * @description What importCertificates did or would do with this entry.
+         * @enum {string}
+         */
+        ImportAction: "create" | "skip";
+        /** @description One certificate found in an import archive. */
+        ImportItem: {
+            /** @description Certificate name, derived from the archive. */
+            name: string;
+            /** @description Common name and SANs. */
+            names: string[];
+            /**
+             * Format: date-time
+             * @description End of validity.
+             */
+            notAfter: string;
+            /** @description Issuer common name. */
+            issuer: string;
+            /** @description Whether a private key was found alongside the certificate. */
+            hasKey: boolean;
+            source: components["schemas"]["ImportSource"];
+            action: components["schemas"]["ImportAction"];
+            /** @description Why: created, or why skipped (for example a name collision). */
+            reason: string;
+            /**
+             * Format: uuid
+             * @description The stored certificate's id; set when action is create and dryRun is false.
+             */
+            certificateId?: string;
+        };
+        /** @description Result of importCertificates, or a preview when dryRun is true. */
+        ImportResult: {
+            /** @description True when nothing was stored; items shows what would happen. */
+            dryRun: boolean;
+            /** @description One entry per certificate found in the archive. */
+            items: components["schemas"]["ImportItem"][];
+        };
+        /**
+         * @description Which of the CA's rate limits this is.
+         * @enum {string}
+         */
+        RateLimitName: "certsPerRegisteredDomainPerWeek" | "duplicateCertsPerWeek" | "failedValidationsPerHour" | "newOrdersPer3Hours";
+        /** @description The CA's own ACME rate limits, enforced locally before the CA rejects a request. 0 means no limit. */
+        RateLimits: {
+            /** @description Certificates per registered domain per week. */
+            certsPerRegisteredDomainPerWeek: number;
+            /** @description Identical-name-set certificates per week. */
+            duplicateCertsPerWeek: number;
+            /** @description Failed challenge validations per account per hour. */
+            failedValidationsPerHour: number;
+            /** @description New orders per account per 3 hours. */
+            newOrdersPer3Hours: number;
+        };
+        /** @description Current usage of one rate limit, against its window. */
+        RateLedgerItem: {
+            limit: components["schemas"]["RateLimitName"];
+            /** @description What the count is scoped to (a registered domain, joined certificate names, or empty for a per-CA limit). */
+            scope: string;
+            /** @description Current usage in the window. */
+            count: number;
+            /** @description The limit; 0 means unlimited. */
+            max: number;
+            /** @description Window length in seconds. */
+            windowSeconds: number;
+            /**
+             * Format: date-time
+             * @description When the oldest counted event leaves the window; null when count is 0.
+             */
+            resetsAt: string | null;
+        };
+        /** @description A CA's current rate-limit usage, optionally narrowed to one certificate's duplicate-cert usage. */
+        RateLedger: {
+            /**
+             * Format: uuid
+             * @description CA these limits apply to.
+             */
+            caId: string;
+            /** @description False for a staging CA preset, where the CA itself does not enforce limits. */
+            enforced: boolean;
+            limits: components["schemas"]["RateLimits"];
+            /** @description One entry per rate limit. */
+            items: components["schemas"]["RateLedgerItem"][];
         };
         /** @description A user as shown in Settings → Access. */
         UserDetail: {
@@ -2733,21 +3025,26 @@ export interface components {
             listener: components["schemas"]["AgentListener"];
         };
         /**
-         * @description File format; Phase 4 adds der, p12 and jks.
+         * @description File format.
          * @enum {string}
          */
-        OutputFormat: "pem";
+        OutputFormat: "pem" | "der" | "p12" | "jks";
         /**
-         * @description PEM part; a file concatenates its parts in order.
+         * @description PEM part; a file concatenates its parts in order. extra (PEM only) is the leaf and chain of each of the layout's extra certificates, in order.
          * @enum {string}
          */
-        OutputPart: "cert" | "chain" | "fullchain" | "key" | "combined";
+        OutputPart: "cert" | "chain" | "fullchain" | "key" | "combined" | "extra";
+        /**
+         * @description PKCS#12 encryption; modern (AES) or legacy (RC2/3DES, for old consumers).
+         * @enum {string}
+         */
+        P12Encoding: "modern" | "legacy";
         /** @description One file of a layout, written on the agent host. */
         OutputFile: {
             /** @description Absolute clean path on the agent host. */
             path: string;
             format: components["schemas"]["OutputFormat"];
-            /** @description Parts concatenated into the file. */
+            /** @description Parts concatenated into the file. PEM needs at least one; a DER file holds exactly one (cert or key; chain is download-only); p12 and jks files take no parts. */
             parts: components["schemas"]["OutputPart"][];
             /** @description User name or numeric uid; empty keeps the agent's user. Applied only when the agent runs as root. */
             owner: string;
@@ -2755,6 +3052,10 @@ export interface components {
             group: string;
             /** @description Octal permissions */
             mode: string;
+            /** @description p12 only; default modern. */
+            encoding?: components["schemas"]["P12Encoding"];
+            /** @description jks only; default the layout's SafeName(cert name). */
+            alias?: string;
         };
         /** @description An output layout (files built from PEM parts). */
         Layout: {
@@ -2774,6 +3075,10 @@ export interface components {
             files: components["schemas"]["OutputFile"][];
             /** @description Live grants using it. */
             grantCount: number;
+            /** @description Whether an export password is stored for this layout's p12/jks files; the password itself is never returned. */
+            passwordSet: boolean;
+            /** @description Extra certificates this layout bundles alongside its own, rendered as the extra part. */
+            extraCertificateIds: string[];
             /**
              * Format: date-time
              * @description Creation time.
@@ -2791,6 +3096,10 @@ export interface components {
             name: string;
             /** @description Files in write order; paths are unique. */
             files: components["schemas"]["OutputFile"][];
+            /** @description Export password for this layout's p12/jks files. Send "__unchanged__" or omit to keep the stored value on update, "" to clear it, or any other string to replace it. Required when any file is p12 or jks; must be at least 6 characters when any file is jks. */
+            password?: string;
+            /** @description Extra certificates to bundle alongside this layout's own, rendered as the extra part; must be in the same org, each with a current version. */
+            extraCertificateIds?: string[];
         };
         /** @description An org's layouts. */
         LayoutList: {
@@ -4570,6 +4879,93 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    uploadCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificateUpload"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Certificate"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    importCertificates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description tar or zip archive of an acme.sh or certbot state directory. Limits: 32 MiB compressed, 128 MiB uncompressed, 2,000 entries.
+                     */
+                    archive: string;
+                    /**
+                     * Format: uuid
+                     * @description CA to record each imported version against, for the rate ledger and future renewal.
+                     */
+                    caId: string;
+                    /**
+                     * @description Preview only; nothing is stored when true.
+                     * @default true
+                     */
+                    dryRun?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Result, or preview when dryRun is true. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     getCertificate: {
         parameters: {
             query?: never;
@@ -4724,6 +5120,44 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    uploadCertificateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificateVersionUpload"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateVersion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     listIssuanceAttempts: {
         parameters: {
             query?: never;
@@ -4756,8 +5190,8 @@ export interface operations {
     downloadCertificateVersion: {
         parameters: {
             query: {
-                /** @description Output format; Phase 1 supports pem. */
-                format?: "pem";
+                /** @description Output format. */
+                format?: "pem" | "der";
                 /** @description Comma-separated parts from cert, chain, fullchain, key, combined (fullchain plus key). */
                 parts: string;
             };
@@ -4783,6 +5217,7 @@ export interface operations {
                 };
                 content: {
                     "application/x-pem-file": string;
+                    "application/octet-stream": string;
                     "application/zip": string;
                 };
             };
@@ -4790,6 +5225,49 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    exportCertificateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+                /** @description Certificate version id. */
+                vid: components["parameters"]["VersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description The container file. */
+            200: {
+                headers: {
+                    /** @description Attachment file name: "<SafeName>.p12" or "<SafeName>.jks". */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-pkcs12": string;
+                    "application/x-java-keystore": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -4875,6 +5353,39 @@ export interface operations {
                     "application/json": components["schemas"]["CertificateDeploymentList"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getRateLedger: {
+        parameters: {
+            query: {
+                /** @description CA to read usage for. */
+                ca: string;
+                /** @description Certificate to narrow duplicateCertsPerWeek to, in this CA's org. */
+                certificate?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current usage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLedger"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

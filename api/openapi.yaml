@@ -904,6 +904,73 @@ paths:
         "415": {$ref: "#/components/responses/UnsupportedMediaType"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/upload:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    post:
+      operationId: uploadCertificate
+      tags: [certificates]
+      summary: Store an existing certificate as unmanaged
+      description: >-
+        Needs certs:write; a stored private key also needs keys:export, audited as
+        certificate.key_exported before it is stored. Creates an unmanaged certificate (managed
+        false): CertForge never renews it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CertificateUpload"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Certificate"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/import:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    post:
+      operationId: importCertificates
+      tags: [certificates]
+      summary: Import certificates from an acme.sh or certbot archive
+      description: >-
+        Needs certs:write; a stored private key also needs keys:export, audited per certificate as
+        certificate.key_exported before it is stored, plus one certificate.import summarizing the
+        run. dryRun (default true) previews without storing anything. Creates unmanaged
+        certificates (managed false).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              description: Import archive and options.
+              required: [archive, caId]
+              properties:
+                archive: {type: string, format: binary, description: "tar or zip archive of an acme.sh or certbot state directory. Limits: 32 MiB compressed, 128 MiB uncompressed, 2,000 entries."}
+                caId: {type: string, format: uuid, description: "CA to record each imported version against, for the rate ledger and future renewal."}
+                dryRun: {type: boolean, default: true, description: Preview only; nothing is stored when true.}
+      responses:
+        "200":
+          description: Result, or preview when dryRun is true.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ImportResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -925,7 +992,7 @@ paths:
       operationId: updateCertificate
       tags: [certificates]
       summary: Replace a certificate definition
-      description: Needs certs:write. Changing names queues a new issuance; other changes apply at the next renewal.
+      description: Needs certs:write. Changing names queues a new issuance; other changes apply at the next renewal. 409 "managed externally" for an unmanaged certificate (managed false).
       requestBody:
         required: true
         content:
@@ -950,7 +1017,7 @@ paths:
       operationId: deleteCertificate
       tags: [certificates]
       summary: Delete a certificate
-      description: Deletes the definition with all versions and attempts; does not revoke. Needs certs:write.
+      description: Deletes the definition with all versions and attempts; does not revoke. Needs certs:write. 409, naming up to five layouts, when a layout lists it as an extra certificate.
       responses:
         "204":
           description: Deleted.
@@ -965,7 +1032,7 @@ paths:
       operationId: renewCertificate
       tags: [certificates]
       summary: Issue now
-      description: Queues an issuance. enqueued is false when one is already queued or running. Needs certs:issue.
+      description: Queues an issuance. enqueued is false when one is already queued or running. Needs certs:issue. 409 "managed externally" for an unmanaged certificate (managed false).
       responses:
         "202":
           description: Accepted.
@@ -997,6 +1064,35 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/{id}/versions/upload:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: uploadCertificateVersion
+      tags: [certificates]
+      summary: Add an uploaded version to an unmanaged certificate
+      description: >-
+        Needs certs:write; a stored private key also needs keys:export, audited as
+        certificate.key_exported before it is stored. 409 when the certificate is managed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CertificateVersionUpload"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateVersion"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}/attempts:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -1026,13 +1122,17 @@ paths:
       operationId: downloadCertificateVersion
       tags: [certificates]
       summary: Download a version
-      description: Needs certs:read; the key and combined parts also need keys:export and are recorded in the audit log before anything is sent. One part returns a PEM file, several a zip.
+      description: >-
+        Needs certs:read; the key and combined parts also need keys:export and are recorded in the
+        audit log before anything is sent. One file returns its raw bytes, several a zip. der
+        supports only cert, chain and key parts, one per file; fullchain and combined are 422
+        ("not available as DER").
       parameters:
         - name: format
           in: query
           required: false
-          description: Output format; Phase 1 supports pem.
-          schema: {type: string, enum: [pem], default: pem}
+          description: Output format.
+          schema: {type: string, enum: [pem, der], default: pem}
         - name: parts
           in: query
           required: true
@@ -1048,12 +1148,53 @@ paths:
           content:
             application/x-pem-file:
               schema: {type: string, format: binary, description: PEM file.}
+            application/octet-stream:
+              schema: {type: string, format: binary, description: DER file.}
             application/zip:
-              schema: {type: string, format: binary, description: Zip of PEM files.}
+              schema: {type: string, format: binary, description: Zip of files.}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/{id}/versions/{vid}/export:
+    parameters:
+      - {$ref: "#/components/parameters/OrgId"}
+      - {$ref: "#/components/parameters/Id"}
+      - {$ref: "#/components/parameters/VersionId"}
+    post:
+      operationId: exportCertificateVersion
+      tags: [certificates]
+      summary: Export a version as PKCS#12 or JKS
+      description: >-
+        Needs certs:read and keys:export; recorded as certificate.key_exported in the audit log
+        before anything is sent, even when the version has no key. The password is never logged,
+        audited, put in a URL, or returned by any read.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExportRequest"}
+      responses:
+        "200":
+          description: The container file.
+          headers:
+            Content-Disposition:
+              description: 'Attachment file name: "<SafeName>.p12" or "<SafeName>.jks".'
+              schema: {type: string}
+          content:
+            application/x-pkcs12:
+              schema: {type: string, format: binary, description: PKCS#12 file.}
+            application/x-java-keystore:
+              schema: {type: string, format: binary, description: JKS file.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}/manual-dns:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
@@ -1106,6 +1247,35 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CertificateDeploymentList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/rate-ledger:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: getRateLedger
+      tags: [certificates]
+      summary: Read the CA's current rate-limit usage
+      description: Needs certs:read. certificate narrows duplicateCertsPerWeek to that certificate's own names; without it, that item is omitted.
+      parameters:
+        - name: ca
+          in: query
+          required: true
+          description: CA to read usage for.
+          schema: {type: string, format: uuid}
+        - name: certificate
+          in: query
+          required: false
+          description: Certificate to narrow duplicateCertsPerWeek to, in this CA's org.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Current usage.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RateLedger"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -1231,7 +1401,7 @@ paths:
       operationId: deleteClient
       tags: [clients]
       summary: Delete a client
-      description: Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and hook runs go with them.
+      description: Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and hook runs go with them. 409, naming up to five certificates, when a verification rule's clientId still points at it.
       responses:
         "204": {description: Deleted.}
         "401": {$ref: "#/components/responses/Unauthorized"}
@@ -1295,7 +1465,13 @@ paths:
       operationId: createGrant
       tags: [clients]
       summary: Grant a certificate to a client
-      description: Needs clients:write. The certificate, layout, deploy target and hooks must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409). Bumps the client's desired revision.
+      description: >-
+        Needs clients:write. The certificate, layout, deploy target and hooks must be in the
+        client's org (422 otherwise); a layout or a deploy target is required. One grant per
+        client and certificate (409). Two grants on one client never write the same path, counting
+        Traefik `certs/<name>` files and grants awaiting agent removal (409). 422 when the
+        certificate's current version has no key and the layout or target needs one. Bumps the
+        client's desired revision.
       requestBody:
         required: true
         content:
@@ -1344,7 +1520,12 @@ paths:
       operationId: updateGrant
       tags: [clients]
       summary: Change a grant
-      description: Needs clients:write. Replaces delivery, layout, deploy target, hooks and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths.
+      description: >-
+        Needs clients:write. Replaces delivery, layout, deploy target, hooks and
+        auto-remediation; the certificate cannot change. Re-renders the deployment and bumps
+        the client's revision. 409 when another of the client's grants (including one awaiting
+        agent removal) would write one of the same file paths. 422 when the certificate's
+        current version has no key and the layout or target needs one.
       requestBody:
         required: true
         content:
@@ -2519,18 +2700,25 @@ components:
       properties:
         mode: {type: string, enum: [days, percent], description: "days: renew value days before expiry. percent: renew when value percent of the lifetime remains."}
         value: {type: integer, minimum: 1, maximum: 365, description: Days (1-365) or percent (1-99).}
-        useAri: {type: boolean, description: Stored now; ACME Renewal Information is used from Phase 4.}
+        useAri: {type: boolean, description: Use the CA's ACME Renewal Information window when it is earlier.}
+    ChallengeVia:
+      type: string
+      enum: [server, agent]
+      description: Who serves an http-01 challenge; server (this host) or agent (a client, over webroot).
     VerificationRule:
       type: object
       description: How to prove control of the names this rule matches. First match wins.
       required: [match, method]
       properties:
         match: {type: string, example: "*.example.com", description: "* (every name), *.zone (names one label below zone, and *.zone itself), or zone (the zone, its subdomains and wildcards)."}
-        method: {type: string, enum: [dns-01, manual-dns], description: Verification method.}
+        method: {type: string, enum: [dns-01, manual-dns, http-01, tls-alpn-01], description: Verification method.}
         dnsCredentialId: {type: string, format: uuid, description: DNS credential; required for dns-01.}
         propagationSeconds: {type: integer, minimum: 0, maximum: 3600, description: Propagation timeout override.}
         resolvers: {type: array, items: {type: string}, description: Resolvers for propagation checks.}
         cnameAliasZone: {type: string, description: Zone that _acme-challenge is CNAMEd into; checked before validation.}
+        via: {allOf: [{$ref: "#/components/schemas/ChallengeVia"}], description: "http-01 only; default server."}
+        clientId: {type: string, format: uuid, description: "Client that serves the challenge; required for tls-alpn-01, or for http-01 with via agent."}
+        webroot: {type: string, description: Absolute path on the agent host the challenge file is written under; http-01 via agent only.}
     IssuanceDefaults:
       type: object
       description: One level of issuance settings (org defaults or certificate overrides). Null or omitted inherits from the level above.
@@ -2666,10 +2854,18 @@ components:
           description: Resolved resolvers and their source.
           allOf:
             - $ref: "#/components/schemas/EffectiveStrings"
+    AriWindow:
+      type: object
+      description: The CA's cached ACME Renewal Information window for a certificate's current version.
+      required: [start, end, checkedAt]
+      properties:
+        start: {type: string, format: date-time, description: Earliest suggested renewal time.}
+        end: {type: string, format: date-time, description: Latest suggested renewal time.}
+        checkedAt: {type: string, format: date-time, description: When this window was last fetched from the CA.}
     CertificateVersion:
       type: object
       description: One issued certificate.
-      required: [id, serial, notBefore, notAfter, sha256Fingerprint, source]
+      required: [id, serial, notBefore, notAfter, sha256Fingerprint, source, hasKey]
       properties:
         id: {type: string, format: uuid, description: Version id.}
         serial: {type: string, description: Serial number, lower-case hex.}
@@ -2681,12 +2877,13 @@ components:
           allOf:
             - $ref: "#/components/schemas/KeyType"
         source: {type: string, enum: [issued, imported, uploaded], description: How the version was obtained.}
+        hasKey: {type: boolean, description: Whether a private key is stored for this version; false for a keyless import or upload.}
         revokedAt: {type: string, format: date-time, nullable: true, description: Revocation time.}
         createdAt: {type: string, format: date-time, description: When it was stored.}
     Certificate:
       type: object
       description: A managed certificate.
-      required: [id, name, commonName, sans, verificationRules, overrides, status, failureCount, effective]
+      required: [id, name, commonName, sans, verificationRules, overrides, status, failureCount, effective, managed]
       properties:
         id: {type: string, format: uuid, description: Certificate id.}
         orgId: {type: string, format: uuid, description: Owning org.}
@@ -2702,6 +2899,7 @@ components:
           allOf:
             - $ref: "#/components/schemas/IssuanceDefaults"
         status: {type: string, enum: [pending, active, failed, expired, revoked], description: "pending until first issued; active while a valid version exists."}
+        managed: {type: boolean, description: "false for an imported or uploaded certificate: CertForge tracks it but never renews it, and renew/most edits are refused (409)."}
         currentVersion:
           description: Newest issued version.
           nullable: true
@@ -2714,6 +2912,11 @@ components:
           description: Resolved issuance settings for this certificate.
           allOf:
             - $ref: "#/components/schemas/EffectiveIssuanceDefaults"
+        ariWindow:
+          description: The CA's cached ACME Renewal Information window, when the CA supports it and one has been fetched.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AriWindow"
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
         grantCount: {type: integer, description: Live grants of this certificate to clients; set on list responses.}
@@ -2791,6 +2994,108 @@ components:
       required: [enqueued]
       properties:
         enqueued: {type: boolean, description: False when an issuance was already queued or running.}
+    ExportFormat:
+      type: string
+      enum: [p12, jks]
+      description: Export container format.
+    ExportRequest:
+      type: object
+      description: How to package a version's certificate and key for export.
+      required: [format, password]
+      properties:
+        format: {$ref: "#/components/schemas/ExportFormat"}
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          writeOnly: true
+          description: Export password; at least 6 characters for jks. Never logged, audited, or returned.
+        encoding: {allOf: [{$ref: "#/components/schemas/P12Encoding"}], description: "p12 only; default modern."}
+        alias: {type: string, pattern: "^[A-Za-z0-9._-]{1,64}$", description: "jks only; default SafeName(cert name)."}
+    CertificateUpload:
+      type: object
+      description: >-
+        An existing certificate and (optionally) its key, stored as an unmanaged certificate.
+        Exactly one of certificatePem or pkcs12Base64 is required. keys:export is checked and
+        certificate.key_exported audited before a key already in the request is stored, same
+        as any other read of a private key.
+      required: [name]
+      properties:
+        name: {type: string, description: Unique name in the org.}
+        certificatePem: {type: string, description: "PEM leaf certificate, optionally followed by its chain."}
+        privateKeyPem: {type: string, writeOnly: true, description: PEM private key matching certificatePem; omit for a keyless certificate.}
+        pkcs12Base64: {type: string, writeOnly: true, format: byte, description: "Base64 PKCS#12 bundle (certificate, chain and optionally a key)."}
+        password: {type: string, writeOnly: true, description: Password for pkcs12Base64; omit if it has none.}
+    CertificateVersionUpload:
+      type: object
+      description: A version to add to an existing unmanaged certificate; the same shape as CertificateUpload without a name. 409 when the certificate is managed.
+      properties:
+        certificatePem: {type: string, description: "PEM leaf certificate, optionally followed by its chain."}
+        privateKeyPem: {type: string, writeOnly: true, description: PEM private key matching certificatePem; omit for a keyless version.}
+        pkcs12Base64: {type: string, writeOnly: true, format: byte, description: "Base64 PKCS#12 bundle (certificate, chain and optionally a key)."}
+        password: {type: string, writeOnly: true, description: Password for pkcs12Base64; omit if it has none.}
+    ImportSource:
+      type: string
+      enum: [acmesh, certbot]
+      description: Tool whose on-disk layout the archive was detected as.
+    ImportAction:
+      type: string
+      enum: [create, skip]
+      description: What importCertificates did or would do with this entry.
+    ImportItem:
+      type: object
+      description: One certificate found in an import archive.
+      required: [name, names, notAfter, issuer, hasKey, source, action, reason]
+      properties:
+        name: {type: string, description: "Certificate name, derived from the archive."}
+        names: {type: array, items: {type: string}, description: Common name and SANs.}
+        notAfter: {type: string, format: date-time, description: End of validity.}
+        issuer: {type: string, description: Issuer common name.}
+        hasKey: {type: boolean, description: Whether a private key was found alongside the certificate.}
+        source: {$ref: "#/components/schemas/ImportSource"}
+        action: {$ref: "#/components/schemas/ImportAction"}
+        reason: {type: string, description: "Why: created, or why skipped (for example a name collision)."}
+        certificateId: {type: string, format: uuid, description: The stored certificate's id; set when action is create and dryRun is false.}
+    ImportResult:
+      type: object
+      description: Result of importCertificates, or a preview when dryRun is true.
+      required: [dryRun, items]
+      properties:
+        dryRun: {type: boolean, description: True when nothing was stored; items shows what would happen.}
+        items: {type: array, items: {$ref: "#/components/schemas/ImportItem"}, description: One entry per certificate found in the archive.}
+    RateLimitName:
+      type: string
+      enum: [certsPerRegisteredDomainPerWeek, duplicateCertsPerWeek, failedValidationsPerHour, newOrdersPer3Hours]
+      description: Which of the CA's rate limits this is.
+    RateLimits:
+      type: object
+      description: The CA's own ACME rate limits, enforced locally before the CA rejects a request. 0 means no limit.
+      required: [certsPerRegisteredDomainPerWeek, duplicateCertsPerWeek, failedValidationsPerHour, newOrdersPer3Hours]
+      properties:
+        certsPerRegisteredDomainPerWeek: {type: integer, minimum: 0, maximum: 100000, description: Certificates per registered domain per week.}
+        duplicateCertsPerWeek: {type: integer, minimum: 0, maximum: 100000, description: Identical-name-set certificates per week.}
+        failedValidationsPerHour: {type: integer, minimum: 0, maximum: 100000, description: Failed challenge validations per account per hour.}
+        newOrdersPer3Hours: {type: integer, minimum: 0, maximum: 100000, description: New orders per account per 3 hours.}
+    RateLedgerItem:
+      type: object
+      description: Current usage of one rate limit, against its window.
+      required: [limit, scope, count, max, windowSeconds, resetsAt]
+      properties:
+        limit: {$ref: "#/components/schemas/RateLimitName"}
+        scope: {type: string, description: "What the count is scoped to (a registered domain, joined certificate names, or empty for a per-CA limit)."}
+        count: {type: integer, description: Current usage in the window.}
+        max: {type: integer, description: The limit; 0 means unlimited.}
+        windowSeconds: {type: integer, description: Window length in seconds.}
+        resetsAt: {type: string, format: date-time, nullable: true, description: When the oldest counted event leaves the window; null when count is 0.}
+    RateLedger:
+      type: object
+      description: A CA's current rate-limit usage, optionally narrowed to one certificate's duplicate-cert usage.
+      required: [caId, enforced, limits, items]
+      properties:
+        caId: {type: string, format: uuid, description: CA these limits apply to.}
+        enforced: {type: boolean, description: "False for a staging CA preset, where the CA itself does not enforce limits."}
+        limits: {$ref: "#/components/schemas/RateLimits"}
+        items: {type: array, items: {$ref: "#/components/schemas/RateLedgerItem"}, description: One entry per rate limit.}
     UserDetail:
       type: object
       description: A user as shown in Settings → Access.
@@ -3022,12 +3327,16 @@ components:
         listener: {$ref: "#/components/schemas/AgentListener"}
     OutputFormat:
       type: string
-      enum: [pem]
-      description: File format; Phase 4 adds der, p12 and jks.
+      enum: [pem, der, p12, jks]
+      description: File format.
     OutputPart:
       type: string
-      enum: [cert, chain, fullchain, key, combined]
-      description: PEM part; a file concatenates its parts in order.
+      enum: [cert, chain, fullchain, key, combined, extra]
+      description: PEM part; a file concatenates its parts in order. extra (PEM only) is the leaf and chain of each of the layout's extra certificates, in order.
+    P12Encoding:
+      type: string
+      enum: [modern, legacy]
+      description: PKCS#12 encryption; modern (AES) or legacy (RC2/3DES, for old consumers).
     OutputFile:
       type: object
       description: One file of a layout, written on the agent host.
@@ -3035,20 +3344,24 @@ components:
       properties:
         path: {type: string, description: Absolute clean path on the agent host.}
         format: {$ref: "#/components/schemas/OutputFormat"}
-        parts: {type: array, minItems: 1, items: {$ref: "#/components/schemas/OutputPart"}, description: Parts concatenated into the file.}
+        parts: {type: array, items: {$ref: "#/components/schemas/OutputPart"}, description: "Parts concatenated into the file. PEM needs at least one; a DER file holds exactly one (cert or key; chain is download-only); p12 and jks files take no parts."}
         owner: {type: string, description: User name or numeric uid; empty keeps the agent's user. Applied only when the agent runs as root.}
         group: {type: string, description: Group name or numeric gid; empty keeps the agent's group.}
         mode: {type: string, pattern: "^0?[0-7]{3}$", description: Octal permissions, for example 0640.}
+        encoding: {allOf: [{$ref: "#/components/schemas/P12Encoding"}], description: "p12 only; default modern."}
+        alias: {type: string, pattern: "^[A-Za-z0-9._-]{1,64}$", description: "jks only; default the layout's SafeName(cert name)."}
     Layout:
       type: object
       description: An output layout (files built from PEM parts).
-      required: [id, orgId, name, files, grantCount, createdAt, updatedAt]
+      required: [id, orgId, name, files, grantCount, createdAt, updatedAt, passwordSet, extraCertificateIds]
       properties:
         id: {type: string, format: uuid, description: Layout id.}
         orgId: {type: string, format: uuid, description: Owning org.}
         name: {type: string, description: Name, unique in the org.}
         files: {type: array, items: {$ref: "#/components/schemas/OutputFile"}, description: Files in write order.}
         grantCount: {type: integer, description: Live grants using it.}
+        passwordSet: {type: boolean, description: Whether an export password is stored for this layout's p12/jks files; the password itself is never returned.}
+        extraCertificateIds: {type: array, items: {type: string, format: uuid}, description: "Extra certificates this layout bundles alongside its own, rendered as the extra part."}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
     LayoutInput:
@@ -3058,6 +3371,19 @@ components:
       properties:
         name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
         files: {type: array, minItems: 1, maxItems: 20, items: {$ref: "#/components/schemas/OutputFile"}, description: Files in write order; paths are unique.}
+        password:
+          type: string
+          maxLength: 128
+          writeOnly: true
+          description: >-
+            Export password for this layout's p12/jks files. Send "__unchanged__" or omit to keep
+            the stored value on update, "" to clear it, or any other string to replace it.
+            Required when any file is p12 or jks; must be at least 6 characters when any file is jks.
+        extraCertificateIds:
+          type: array
+          maxItems: 10
+          items: {type: string, format: uuid}
+          description: Extra certificates to bundle alongside this layout's own, rendered as the extra part; must be in the same org, each with a current version.
     LayoutList:
       type: object
       description: An org's layouts.

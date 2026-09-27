@@ -89,6 +89,7 @@ export function makeCert(p: Partial<Certificate> = {}): Certificate {
     verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }],
     overrides: {},
     status: 'active',
+    managed: true,
     currentVersion: {
       id: 'v-1',
       serial: '04ab19f2',
@@ -96,6 +97,7 @@ export function makeCert(p: Partial<Certificate> = {}): Certificate {
       notAfter: iso(60),
       sha256Fingerprint: 'ab'.repeat(32),
       source: 'issued',
+      hasKey: true,
     },
     nextRenewAt: iso(30),
     failureCount: 0,
@@ -231,6 +233,7 @@ export function makeGrant(p: Partial<Grant> = {}): Grant {
 export function makeLayout(p: Partial<Layout> = {}): Layout {
   return {
     id: 'l-1', orgId: org.id, name: 'nginx', grantCount: 1, createdAt: iso(-5), updatedAt: iso(-5),
+    passwordSet: false, extraCertificateIds: [],
     files: [{ path: '/etc/ssl/www.pem', format: 'pem', parts: ['fullchain'], owner: 'root', group: 'www-data', mode: '0640' }],
     ...p,
   };

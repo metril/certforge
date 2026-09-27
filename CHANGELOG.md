@@ -103,6 +103,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web: Settings → Agents with the agents section, listener certificate, and agent CA rotation and retirement.
 - Web: certificate Deployments tab, a real Grants column, client problems in Overview's attention queue and a listener certificate warning.
 - Issuance settings section and schema for formats, challenges, CAA, rate ledger and ARI.
+- OpenAPI contract for exports, uploads, imports, rate ledger and new challenge methods.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

@@ -396,3 +396,34 @@ func TestListCertificatesStatusFilterAndSort(t *testing.T) {
 		t.Fatalf("sort=-nextRenewAt = %+v", byRenew)
 	}
 }
+
+// TestCertificateManagedAndHasKey checks the Phase 4A contract fields
+// mapped for real in Task 2: every certificate CreateCertificate makes is
+// managed (the managed column defaults true), and ariWindow stays null
+// until Task 12 wires ACME Renewal Information; a stored version reports
+// hasKey true.
+func TestCertificateManagedAndHasKey(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.issuedCert(t, "web")
+
+	res, err := f.srv.GetCertificate(f.as("operator"), gen.GetCertificateRequestObject{OrgId: f.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := res.(gen.GetCertificate200JSONResponse)
+	if !got.Managed {
+		t.Errorf("managed = %v, want true", got.Managed)
+	}
+	if got.AriWindow != nil {
+		t.Errorf("ariWindow = %+v, want nil", got.AriWindow)
+	}
+
+	vs, err := f.srv.ListCertificateVersions(f.as("operator"), gen.ListCertificateVersionsRequestObject{OrgId: f.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := vs.(gen.ListCertificateVersions200JSONResponse)
+	if len(list) != 1 || list[0].Id != v.ID || !list[0].HasKey {
+		t.Fatalf("versions response = %+v", list)
+	}
+}

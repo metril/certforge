@@ -62,13 +62,18 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET, PUT, DELETE /orgs/{orgId}/dns-credentials/{id}` | read, replace, delete a credential |
 | `POST /orgs/{orgId}/dns-credentials/{id}/test` | create and remove a test TXT record |
 | `GET, POST /orgs/{orgId}/certificates` | list, create (issues immediately) |
+| `POST /orgs/{orgId}/certificates/upload` | store an existing certificate as unmanaged (arriving in Phase 4A) |
+| `POST /orgs/{orgId}/certificates/import` | import an acme.sh or certbot archive (arriving in Phase 4A) |
 | `GET, PUT, DELETE /orgs/{orgId}/certificates/{id}` | read, replace, delete |
 | `POST /orgs/{orgId}/certificates/{id}/renew` | issue now |
 | `GET /orgs/{orgId}/certificates/{id}/versions` | issued versions |
-| `GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download` | PEM file or zip; `key` needs `keys:export` |
+| `POST /orgs/{orgId}/certificates/{id}/versions/upload` | add an uploaded version to an unmanaged certificate (arriving in Phase 4A) |
+| `GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download` | PEM or DER file, or zip; `key` needs `keys:export` |
+| `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/export` | PKCS#12 or JKS export; needs `keys:export` (arriving in Phase 4A) |
 | `GET /orgs/{orgId}/certificates/{id}/attempts` | attempts with step timeline and log |
 | `GET /orgs/{orgId}/certificates/{id}/manual-dns` | TXT records waiting for an operator |
 | `POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm` | resume the waiting attempt |
+| `GET /orgs/{orgId}/rate-ledger` | the CA's current rate-limit usage (arriving in Phase 4A) |
 | `GET /users` | list users |
 | `PATCH /users/{id}` | disable or re-enable a user, revoking sessions |
 | `GET, POST /api-keys` | list, create API keys (token shown once) |
@@ -98,6 +103,10 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET /agents/ca` | list agent CAs and the listener certificate |
 | `POST /agents/ca/rotate` | rotate the agent CA |
 | `POST /agents/ca/{id}/retire` | retire an agent CA |
+
+The five endpoints marked "arriving in Phase 4A" above are in the OpenAPI contract now (Task 2) but answer 501 until their own task lands: export (Task 4), upload and import (Task 13, 14), rate ledger (Task 11).
+
+`GET /.well-known/acme-challenge/{token}` (not under `/api/v1`, on the main listener, unauthenticated) serves an http-01 key authorization as `text/plain` for a token this server is currently waiting on (`^[A-Za-z0-9_-]{1,128}$`), or 404 otherwise. It is not in the OpenAPI document.
 
 ### Clients
 
