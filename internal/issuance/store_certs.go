@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -949,6 +951,42 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 	}
 
 	return buildListPage(certs, keys, q.Limit), nil
+}
+
+// CreateExternalCertificate stores an unmanaged (imported or uploaded)
+// certificate definition inside tx (the caller's transaction, shared with
+// certstore.Insert and SetCurrentVersion — see Service.UploadCertificate).
+// next_renew_at is always NULL. A duplicate (org_id, name) is a
+// ConflictError (409), not the ValidationError (422) CreateCertificate's
+// own duplicate-name path gives: R10's upload endpoint calls for 409.
+func (s *Store) CreateExternalCertificate(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, name, commonName string, sans []string, over Defaults, status string) (Certificate, error) {
+	overB, err := json.Marshal(over)
+	if err != nil {
+		return Certificate{}, err
+	}
+	row, err := s.q.WithTx(tx).CreateExternalCertificate(ctx, sqlcgen.CreateExternalCertificateParams{
+		OrgID: orgID, Name: name, CommonName: commonName, Sans: sans, Overrides: overB,
+		Managed: false, Status: status, NextRenewAt: nil})
+	if err != nil {
+		var pe *pgconn.PgError
+		if errors.As(err, &pe) && pe.Code == "23505" {
+			return Certificate{}, &ConflictError{Msg: fmt.Sprintf("a certificate named %q already exists", name)}
+		}
+		return Certificate{}, err
+	}
+	return certFromRow(row)
+}
+
+// SetCurrentVersion attaches versionID as certID's current version and
+// refreshes its derived fields (names, status, next_renew_at) inside tx;
+// see CreateExternalCertificate.
+func (s *Store) SetCurrentVersion(ctx context.Context, tx pgx.Tx, certID, versionID uuid.UUID, commonName string, sans []string, status string, nextRenewAt *time.Time) (Certificate, error) {
+	row, err := s.q.WithTx(tx).SetCurrentVersion(ctx, sqlcgen.SetCurrentVersionParams{
+		ID: certID, CurrentVersionID: &versionID, CommonName: commonName, Sans: sans, Status: status, NextRenewAt: nextRenewAt})
+	if err != nil {
+		return Certificate{}, notFound(err)
+	}
+	return certFromRow(row)
 }
 
 // DueCertificateIDs returns certificates whose next_renew_at has passed.

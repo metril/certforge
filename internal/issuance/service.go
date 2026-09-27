@@ -49,6 +49,28 @@ type Service struct {
 	// (certs/<SafeName>) fails the rename itself, and grants otherwise
 	// re-render with the new name in the same transaction as the rename.
 	RenameHook RenameHook
+
+	// Listeners hears about every version UploadCertificate/UploadVersion
+	// stores, exactly like IssueWorker.Listeners does for an ordinary
+	// issuance; wired to the same agents.Service in production (see
+	// cmd/certforge/serve.go), so a grant already on a certificate re-
+	// renders once its uploaded version commits.
+	Listeners []VersionListener
+}
+
+// notifyVersion calls every listener; a panicking listener is logged and
+// never stops the others or the caller (matches IssueWorker.notifyVersion).
+func (s *Service) notifyVersion(ctx context.Context, certID, versionID uuid.UUID) {
+	for _, l := range s.Listeners {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger().Error("version listener panicked", "cert", certID, "version", versionID, "panic", r)
+				}
+			}()
+			l.OnVersion(ctx, certID, versionID)
+		}()
+	}
 }
 
 // NewService wires production defaults.

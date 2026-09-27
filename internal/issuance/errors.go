@@ -23,6 +23,14 @@ func (e *InUseError) Error() string {
 	return fmt.Sprintf("still referenced by %d certificates, accounts or defaults", e.Users)
 }
 
+// ConflictError is a 409: a write collides with existing state (a
+// certificate name already used by an upload) or a certificate's managed
+// state blocks the operation (uploading a version onto a certificate
+// CertForge still issues and renews itself).
+type ConflictError struct{ Msg string }
+
+func (e *ConflictError) Error() string { return e.Msg }
+
 func notFound(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound

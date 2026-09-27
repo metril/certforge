@@ -84,6 +84,10 @@ func newAgentFixture(t *testing.T) *agentFixture {
 	f.srv.d.Queries = q
 	f.srv.d.Agents = svc
 	f.srv.d.Issuance.RenameHook = svc.ResyncCertificateRename
+	// Same as issuanceSvc.Listeners in cmd/certforge/serve.go: a stored
+	// version (issued, or Task 13's UploadCertificate/UploadVersion)
+	// re-renders any grant already on the certificate.
+	f.srv.d.Issuance.Listeners = append(f.srv.d.Issuance.Listeners, svc)
 	return &agentFixture{apiFixture: f, svc: svc, ca: ca, q: q, hub: hub}
 }
 

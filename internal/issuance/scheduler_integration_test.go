@@ -45,6 +45,35 @@ func TestEnqueueDue(t *testing.T) {
 	}
 }
 
+// TestSchedulerSkipsUnmanaged is R10: an unmanaged (uploaded/imported)
+// certificate never appears in ListDueCertificateIDs/EnqueueDue, whatever
+// it might otherwise look due for (the certificates_unmanaged_no_renewal
+// CHECK constraint already keeps its next_renew_at NULL; this exercises
+// the explicit ListDueCertificateIDs "AND managed" defense in depth end to
+// end, through EnqueueDue itself).
+func TestSchedulerSkipsUnmanaged(t *testing.T) {
+	f := newFixture(t)
+	rules := []challenge.RuleSpec{{Match: "*", Method: challenge.MethodManualDNS}}
+	due := f.cert(t, []string{"a.example.test"}, rules)
+
+	tx, err := f.store.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.CreateExternalCertificate(context.Background(), tx, f.org, "unmanaged", "u.example.test", []string{}, Defaults{}, StatusActive); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	ins := &fakeInserter{seen: map[string]bool{}}
+	n, err := EnqueueDue(context.Background(), f.store, ins, 100)
+	if err != nil || n != 1 || len(ins.args) != 1 || ins.args[0].CertID != due.ID {
+		t.Fatalf("n=%d args=%v err=%v", n, ins.args, err)
+	}
+}
+
 func TestIssueArgsUniqueExcludesCompleted(t *testing.T) {
 	o := IssueArgs{}.InsertOpts()
 	if !o.UniqueOpts.ByArgs || slices.Contains(o.UniqueOpts.ByState, rivertype.JobStateCompleted) {

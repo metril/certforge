@@ -131,6 +131,10 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
 	issuanceSvc.RenameHook = agentSvc.ResyncCertificateRename
+	// Same listener as issueWorker.Listeners above: an uploaded version
+	// (Task 13) re-renders any grant already on the certificate exactly
+	// like a freshly issued one does.
+	issuanceSvc.Listeners = append(issuanceSvc.Listeners, agentSvc)
 	// Started with a context independent of the shutdown signal: cancelling
 	// the context passed to Start aborts running jobs immediately (river's
 	// contract), which would race the graceful drain stopRiver performs below.

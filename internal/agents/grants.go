@@ -114,11 +114,20 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	// with FOR NO KEY UPDATE), so a layout/target PATCH and a grant
 	// create/update referencing the same row always serialize instead of
 	// each proceeding unaware of the other.
+	needsKey := in.TargetID != nil
 	if in.LayoutID != nil {
-		if _, err := q.LockLayoutForGrant(ctx, sqlcgen.LockLayoutForGrantParams{ID: *in.LayoutID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
+		lo, err := q.LockLayoutForGrant(ctx, sqlcgen.LockLayoutForGrantParams{ID: *in.LayoutID, OrgID: orgID})
+		if errors.Is(err, pgx.ErrNoRows) {
 			return invalid("layoutId", "layout %s is not in this org", *in.LayoutID)
 		} else if err != nil {
 			return err
+		}
+		if !needsKey {
+			var files []delivery.OutputFile
+			if err := json.Unmarshal(lo.Files, &files); err != nil {
+				return err
+			}
+			needsKey = delivery.NeedsKey(files)
 		}
 	}
 	if in.TargetID != nil {
@@ -128,7 +137,57 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 			return err
 		}
 	}
+	// R10: a layout that needs a key, or any deploy target (Traefik always
+	// renders fullchain + key), cannot be granted against a certificate
+	// whose current version has no stored key (a keyless upload/import).
+	// Nothing to check yet (has_version false, C3) is not refused: the
+	// grant is created ahead of the certificate's first version the same
+	// way it already can be for a brand-new managed certificate.
+	if needsKey {
+		st, err := q.CertificateCurrentHasKey(ctx, in.CertID)
+		if err != nil {
+			return err
+		}
+		if st.HasVersion && !st.HasKey {
+			return invalid("certificateId", "certificate %s has no stored private key; its layout or deploy target needs one", in.CertID)
+		}
+	}
 	return nil
+}
+
+// LiveGrantsNeedKey reports whether any live grant of certID has a layout
+// that needs a key or a deploy target (Traefik always renders fullchain +
+// key) — the check uploadCertificateVersion runs before accepting a
+// keyless version, so it never strands a live grant that createGrant/
+// updateGrant would have refused in the other direction (see checkRefs).
+// Lives here, not in internal/issuance, because that package must not
+// import internal/agents (R7); the API handler calls this before calling
+// into issuance.Service.UploadVersion.
+func (s *Service) LiveGrantsNeedKey(ctx context.Context, certID uuid.UUID) (bool, error) {
+	ids, err := s.Q.LiveGrantIDsForCert(ctx, certID)
+	if err != nil || len(ids) == 0 {
+		return false, err
+	}
+	rows, err := s.Q.GrantSources(ctx, ids)
+	if err != nil {
+		return false, err
+	}
+	for _, r := range rows {
+		if r.TargetType != nil {
+			return true, nil
+		}
+		if len(r.LayoutFiles) == 0 {
+			continue
+		}
+		var files []delivery.OutputFile
+		if err := json.Unmarshal(r.LayoutFiles, &files); err != nil {
+			return false, err
+		}
+		if delivery.NeedsKey(files) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func targetOf(typ *string, cfg []byte) *agentproto.Target {

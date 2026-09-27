@@ -15,13 +15,3 @@ var notImplemented = &HTTPError{Status: http.StatusNotImplemented, Title: "Not i
 func (s *Server) ImportCertificates(_ context.Context, _ gen.ImportCertificatesRequestObject) (gen.ImportCertificatesResponseObject, error) {
 	return nil, notImplemented
 }
-
-// UploadCertificate lands in Task 13 (upload and unmanaged certificates).
-func (s *Server) UploadCertificate(_ context.Context, _ gen.UploadCertificateRequestObject) (gen.UploadCertificateResponseObject, error) {
-	return nil, notImplemented
-}
-
-// UploadCertificateVersion lands in Task 13 (upload and unmanaged certificates).
-func (s *Server) UploadCertificateVersion(_ context.Context, _ gen.UploadCertificateVersionRequestObject) (gen.UploadCertificateVersionResponseObject, error) {
-	return nil, notImplemented
-}

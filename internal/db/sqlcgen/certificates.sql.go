@@ -133,6 +133,72 @@ func (q *Queries) CreateCertificate(ctx context.Context, arg CreateCertificatePa
 	return i, err
 }
 
+const createExternalCertificate = `-- name: CreateExternalCertificate :one
+INSERT INTO certificates (org_id, name, common_name, sans, overrides, managed, status, next_renew_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after
+`
+
+type CreateExternalCertificateParams struct {
+	OrgID       uuid.UUID  `json:"org_id"`
+	Name        string     `json:"name"`
+	CommonName  string     `json:"common_name"`
+	Sans        []string   `json:"sans"`
+	Overrides   []byte     `json:"overrides"`
+	Managed     bool       `json:"managed"`
+	Status      string     `json:"status"`
+	NextRenewAt *time.Time `json:"next_renew_at"`
+}
+
+// Creates an unmanaged (imported or uploaded) certificate row: no CA, no
+// verification rules of its own, and next_renew_at left to the caller
+// (NULL for every unmanaged certificate; the certificates_unmanaged_no_renewal
+// CHECK constraint enforces it). Unlike CreateCertificate this does not
+// hard-code next_renew_at to now(): a managed certificate is always due
+// immediately, but an unmanaged one is never due at all. The caller passes
+// the same common_name/sans/status it is about to write again via
+// SetCurrentVersion right after (this insert must satisfy the row's own
+// NOT NULL columns), and SetCurrentVersion is also the query used for
+// every later uploadCertificateVersion, so the two stay in step. A
+// duplicate (org_id, name) is the same unique_violation CreateCertificate
+// can raise; the caller (issuance.Service.UploadCertificate) maps it to a
+// 409, not CreateCertificate's usual 422.
+func (q *Queries) CreateExternalCertificate(ctx context.Context, arg CreateExternalCertificateParams) (Certificate, error) {
+	row := q.db.QueryRow(ctx, createExternalCertificate,
+		arg.OrgID,
+		arg.Name,
+		arg.CommonName,
+		arg.Sans,
+		arg.Overrides,
+		arg.Managed,
+		arg.Status,
+		arg.NextRenewAt,
+	)
+	var i Certificate
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.CommonName,
+		&i.Sans,
+		&i.VerificationRules,
+		&i.Overrides,
+		&i.Status,
+		&i.CurrentVersionID,
+		&i.NextRenewAt,
+		&i.FailureCount,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Managed,
+		&i.AriWindowStart,
+		&i.AriWindowEnd,
+		&i.AriCheckedAt,
+		&i.AriRetryAfter,
+	)
+	return i, err
+}
+
 const currentVersionsForCerts = `-- name: CurrentVersionsForCerts :many
 SELECT id, current_version_id FROM certificates WHERE id = ANY($1::uuid[])
 `
@@ -1366,11 +1432,15 @@ func (q *Queries) ListCertificatesPageByStatusDesc(ctx context.Context, arg List
 
 const listDueCertificateIDs = `-- name: ListDueCertificateIDs :many
 SELECT id FROM certificates
-WHERE next_renew_at IS NOT NULL AND next_renew_at <= now()
+WHERE managed AND next_renew_at IS NOT NULL AND next_renew_at <= now()
 ORDER BY next_renew_at
 LIMIT $1
 `
 
+// managed is redundant with next_renew_at IS NOT NULL (the
+// certificates_unmanaged_no_renewal CHECK constraint keeps an unmanaged
+// row's next_renew_at NULL), but it says outright, at the query that
+// decides what gets (re)issued, that an unmanaged certificate is never due.
 func (q *Queries) ListDueCertificateIDs(ctx context.Context, limit int32) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listDueCertificateIDs, limit)
 	if err != nil {
@@ -1523,6 +1593,64 @@ func (q *Queries) SetARIWindow(ctx context.Context, arg SetARIWindowParams) erro
 		arg.AriRetryAfter,
 	)
 	return err
+}
+
+const setCurrentVersion = `-- name: SetCurrentVersion :one
+UPDATE certificates SET common_name = $3, sans = $4, current_version_id = $2,
+    status = $5, next_renew_at = $6, updated_at = now()
+WHERE id = $1
+RETURNING id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after
+`
+
+type SetCurrentVersionParams struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+	CommonName       string     `json:"common_name"`
+	Sans             []string   `json:"sans"`
+	Status           string     `json:"status"`
+	NextRenewAt      *time.Time `json:"next_renew_at"`
+}
+
+// Attaches a newly stored version to a certificate and refreshes the
+// fields that follow from it: names (an uploaded/imported version can
+// cover different names than the certificate's current definition),
+// status (active or expired, by the new version's own validity) and
+// next_renew_at (always NULL for an unmanaged certificate; UploadCertificate/
+// UploadVersion always pass NULL). Used both right after
+// CreateExternalCertificate (the certificate's first version) and for
+// every later uploadCertificateVersion on the same certificate.
+func (q *Queries) SetCurrentVersion(ctx context.Context, arg SetCurrentVersionParams) (Certificate, error) {
+	row := q.db.QueryRow(ctx, setCurrentVersion,
+		arg.ID,
+		arg.CurrentVersionID,
+		arg.CommonName,
+		arg.Sans,
+		arg.Status,
+		arg.NextRenewAt,
+	)
+	var i Certificate
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.CommonName,
+		&i.Sans,
+		&i.VerificationRules,
+		&i.Overrides,
+		&i.Status,
+		&i.CurrentVersionID,
+		&i.NextRenewAt,
+		&i.FailureCount,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Managed,
+		&i.AriWindowStart,
+		&i.AriWindowEnd,
+		&i.AriCheckedAt,
+		&i.AriRetryAfter,
+	)
+	return i, err
 }
 
 const updateCertificate = `-- name: UpdateCertificate :one

@@ -23,6 +23,7 @@ import (
 func mapErr(err error) error {
 	var ve *issuance.ValidationError
 	var iu *issuance.InUseError
+	var ce *issuance.ConflictError
 	var se *signer.Error
 	var ae *agents.Error
 	switch {
@@ -34,6 +35,8 @@ func mapErr(err error) error {
 		return &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid " + ve.Field, Detail: ve.Msg}
 	case errors.As(err, &iu):
 		return &HTTPError{Status: http.StatusConflict, Title: "In use", Detail: iu.Error()}
+	case errors.As(err, &ce):
+		return &HTTPError{Status: http.StatusConflict, Title: "Conflict", Detail: ce.Msg}
 	case errors.As(err, &se):
 		return &HTTPError{Status: http.StatusBadGateway, Title: "CA error", Detail: se.Error()}
 	case errors.As(err, &ae):

@@ -227,3 +227,19 @@ Four output formats:
 Export (`POST .../export`) takes its password in the JSON request body instead of a query parameter, unlike download's `format`/`parts`: a GET's query string routinely ends up in proxy and browser history, access logs, and `Referer` headers, so a query-string password would leak far more readily than one that never leaves the body of a POST. The password is validated (1 to 128 characters; at least 6, ASCII-only, for JKS) but never stored, logged, put in a URL, returned by any read, or included in the `certificate.key_exported` audit event the export records — that event's `details` carries only `certificateId` and `format`.
 
 A one-off export is not the only way to get PKCS#12 or JKS files: a layout can render a `p12`/`jks` file on every issuance, with its own stored password and up to 10 extra certificates bundled in — see [agent.md#file-layouts](agent.md#file-layouts).
+
+## Upload
+
+`POST /orgs/{orgId}/certificates/upload` stores an existing certificate — one you got some other way, not through CertForge's own issuance — as a certificate CertForge can deploy through the same grants, layouts and exports as any other. Send exactly one of:
+
+- `certificatePem`: a PEM leaf certificate, optionally followed by its chain, plus an optional `privateKeyPem` (PKCS#1, SEC1 or PKCS#8; CertForge normalises whichever you send). A key you provide must match the leaf's public key.
+- `pkcs12Base64`: a base64-encoded PKCS#12 bundle, plus its `password` if it has one.
+
+Omitting the key (both `privateKeyPem` and any key inside the PKCS#12 bundle) stores the certificate keyless — useful for a certificate whose key lives somewhere CertForge should not hold it, deployed through a layout that only ever needs `fullchain` (never `key`, `combined`, or a p12/jks file). The name and SANs come from the leaf certificate's own DNS names, not from any field you send. `POST .../certificates/{id}/versions/upload` adds a further uploaded version to the same certificate later (a renewal you did yourself, for example) — see [Unmanaged certificates](#unmanaged-certificates) for why this only ever works on a certificate upload created in the first place.
+
+## Unmanaged certificates
+
+An uploaded (or imported — arriving in Phase 4A Task 14) certificate is **unmanaged**: CertForge stores it, can deploy it, and shows it in the same certificate list as everything else, but never renews it and never picks a CA, account or verification rule for it. `managed: false` on the certificate marks this; `nextRenewAt` is always `null`. **Renew now** and editing the certificate's definition both 409 "managed externally" — CertForge has nothing to renew or re-verify against, so both would be a no-op wearing the clothes of a real action. The one write CertForge accepts on an unmanaged certificate's material is `versions/upload`: add a version you renewed yourself, the same shape as the original upload. `versions/upload` in turn 409s on a still-managed certificate — it is not a way to hand CertForge a certificate you made outside of it while CertForge is still trying to renew the same names itself.
+
+A grant, layout and deploy target work on an unmanaged certificate exactly as they do on a managed one, with one rule: a layout that renders a key (any part `key`/`combined`, or a p12/jks file), or a Traefik deploy target (which always renders `fullchain` + `key`), cannot be granted against a certificate whose current version has no stored key — 422 on `certificateId` if you try. Uploading a keyless version onto a certificate that already has such a grant is refused the same way (409), so a grant never silently starts failing to deploy because a later upload dropped the key it depended on.
+

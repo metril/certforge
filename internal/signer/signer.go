@@ -4,6 +4,10 @@ package signer
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rsa"
 	"crypto/x509"
 	"fmt"
 	"strings"
@@ -28,6 +32,37 @@ func (k KeyType) Valid() bool {
 		return true
 	}
 	return false
+}
+
+// KeyTypeOf classifies pub as one of the supported KeyType values (an
+// uploaded certificate's leaf or key, Phase 4A). An RSA key of any size
+// other than 2048/3072/4096, an EC key on any curve other than P-256/P-384,
+// or any other key type (ed25519, for example) is not supported.
+func KeyTypeOf(pub crypto.PublicKey) (KeyType, error) {
+	switch k := pub.(type) {
+	case *rsa.PublicKey:
+		switch k.N.BitLen() {
+		case 2048:
+			return RSA2048, nil
+		case 3072:
+			return RSA3072, nil
+		case 4096:
+			return RSA4096, nil
+		default:
+			return "", fmt.Errorf("unsupported RSA key size %d", k.N.BitLen())
+		}
+	case *ecdsa.PublicKey:
+		switch k.Curve {
+		case elliptic.P256():
+			return EC256, nil
+		case elliptic.P384():
+			return EC384, nil
+		default:
+			return "", fmt.Errorf("unsupported EC curve %s", k.Curve.Params().Name)
+		}
+	default:
+		return "", fmt.Errorf("unsupported key type %T", pub)
+	}
 }
 
 // AccountMaterial is a decrypted ACME account: contact, PKCS#8 key and kid.

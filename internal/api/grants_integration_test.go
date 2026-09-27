@@ -937,3 +937,87 @@ func TestConcurrentCertificateRenameVsCreateGrantNoDeadlock(t *testing.T) {
 		t.Fatalf("certificate not renamed by the last iteration: %s", name)
 	}
 }
+
+// TestGrantKeylessCert is Task 13's keyless-grant rule (R10): a layout that
+// needs a key, or any deploy target, cannot be granted against a keyless
+// current version (422 certificateId); a cert-only layout can, and its
+// deployment survives a second keyless uploadCertificateVersion plus the
+// OnVersion re-render it triggers.
+func TestGrantKeylessCert(t *testing.T) {
+	f := newAgentFixture(t)
+	op, ctx := f.as("operator"), context.Background()
+	c := f.activeClient(t, "web-1")
+
+	leafDER, _, _ := realCert(t, "keyless.example.test", 9001)
+	body := pemCert(leafDER)
+	res, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateUpload{Name: "keyless", CertificatePem: &body}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	certID := res.(gen.UploadCertificate201JSONResponse).Id
+
+	// A layout rendering the key: 422 on certificateId.
+	keyFiles, err := json.Marshal([]delivery.OutputFile{{Path: "/etc/ssl/keyless.key", Format: "pem", Parts: []string{"key"}, Mode: "0600"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyLayout, err := f.q.CreateLayout(ctx, sqlcgen.CreateLayoutParams{OrgID: f.org, Name: "key-layout", Files: keyFiles, ExtraCertIds: []uuid.UUID{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &keyLayout.ID}})
+	wantStatus(t, err, 422)
+
+	// A deploy target (Traefik always renders fullchain + key): 422.
+	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik",
+		Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), DeployTargetId: &tg.ID}})
+	wantStatus(t, err, 422)
+
+	// A cert-only (fullchain) layout renders fine against a keyless version.
+	certLayout := f.layout(t, "cert-only", "/etc/ssl/keyless.pem")
+	res2, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &certLayout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := res2.(gen.CreateGrant201JSONResponse).Id
+
+	var expected []byte
+	if err := f.pool.QueryRow(ctx, `SELECT expected FROM deployments WHERE grant_id = $1`, gid).Scan(&expected); err != nil {
+		t.Fatal(err)
+	}
+	var specs []agentproto.FileSpec
+	if err := json.Unmarshal(expected, &specs); err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) == 0 {
+		t.Fatal("expected no files rendered for the cert-only layout")
+	}
+
+	// A second keyless version survives: the only live grant needs no key,
+	// and OnVersion re-renders its deployment.
+	leaf2DER, _, _ := realCert(t, "keyless.example.test", 9002)
+	body2 := pemCert(leaf2DER)
+	if _, err := f.srv.UploadCertificateVersion(op, gen.UploadCertificateVersionRequestObject{OrgId: f.org, Id: certID,
+		Body: &gen.CertificateVersionUpload{CertificatePem: &body2}}); err != nil {
+		t.Fatal(err)
+	}
+	var versionID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `SELECT current_version_id FROM certificates WHERE id = $1`, certID).Scan(&versionID); err != nil {
+		t.Fatal(err)
+	}
+	var afterVersionID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `SELECT version_id FROM deployments WHERE grant_id = $1`, gid).Scan(&afterVersionID); err != nil {
+		t.Fatal(err)
+	}
+	if afterVersionID != versionID {
+		t.Fatalf("deployment not re-rendered onto the new version: deployment=%s certificate=%s", afterVersionID, versionID)
+	}
+}

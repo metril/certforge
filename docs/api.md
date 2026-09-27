@@ -62,12 +62,12 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET, PUT, DELETE /orgs/{orgId}/dns-credentials/{id}` | read, replace, delete a credential |
 | `POST /orgs/{orgId}/dns-credentials/{id}/test` | create and remove a test TXT record |
 | `GET, POST /orgs/{orgId}/certificates` | list, create (issues immediately) |
-| `POST /orgs/{orgId}/certificates/upload` | store an existing certificate as unmanaged (arriving in Phase 4A) |
+| `POST /orgs/{orgId}/certificates/upload` | store an existing certificate (PEM or PKCS#12) as unmanaged |
 | `POST /orgs/{orgId}/certificates/import` | import an acme.sh or certbot archive (arriving in Phase 4A) |
-| `GET, PUT, DELETE /orgs/{orgId}/certificates/{id}` | read, replace, delete |
-| `POST /orgs/{orgId}/certificates/{id}/renew` | issue now |
+| `GET, PUT, DELETE /orgs/{orgId}/certificates/{id}` | read, replace (409 if unmanaged), delete |
+| `POST /orgs/{orgId}/certificates/{id}/renew` | issue now (409 if unmanaged) |
 | `GET /orgs/{orgId}/certificates/{id}/versions` | issued versions |
-| `POST /orgs/{orgId}/certificates/{id}/versions/upload` | add an uploaded version to an unmanaged certificate (arriving in Phase 4A) |
+| `POST /orgs/{orgId}/certificates/{id}/versions/upload` | add an uploaded version to an unmanaged certificate (409 if managed) |
 | `GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download` | PEM or DER file, or zip; `key` needs `keys:export` |
 | `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/export` | PKCS#12 or JKS export (password in the body); needs `certs:read` and `keys:export` |
 | `GET /orgs/{orgId}/certificates/{id}/attempts` | attempts with step timeline and log |

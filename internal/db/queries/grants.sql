@@ -135,8 +135,23 @@ SELECT id FROM certificates WHERE id = $1 AND org_id = $2 FOR KEY SHARE;
 -- racing a CreateGrant referencing the same layout could each proceed
 -- without seeing the other, leaving the grant rendered from a pre-update
 -- layout that the PATCH's own Resync had already read past. See the
--- package-level lock-order comment in internal/agents.
-SELECT id FROM output_specs WHERE id = $1 AND org_id = $2 FOR SHARE;
+-- package-level lock-order comment in internal/agents. files rides along so
+-- checkRefs's keyless-grant rule (delivery.NeedsKey) needs no second
+-- round trip to the same now-locked row.
+SELECT id, files FROM output_specs WHERE id = $1 AND org_id = $2 FOR SHARE;
+
+-- name: CertificateCurrentHasKey :one
+-- Reports whether cert_id's current version (if any) has a stored key, for
+-- the keyless-grant rule (createGrant/updateGrant, R10): a layout that
+-- needs a key, or any deploy target (Traefik always renders fullchain +
+-- key), cannot be granted against a keyless current version. has_version
+-- is false only when the certificate has no current version yet (C3:
+-- nothing to check against yet, so nothing is refused).
+SELECT (c.current_version_id IS NOT NULL)::bool AS has_version,
+       COALESCE(v.private_key IS NOT NULL, false)::bool AS has_key
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.id = sqlc.arg(cert_id)::uuid;
 
 -- name: LockTargetForGrant :one
 -- Locks the deploy target FOR SHARE before a grant references it, for the

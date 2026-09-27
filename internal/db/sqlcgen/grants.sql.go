@@ -42,6 +42,32 @@ func (q *Queries) BumpClientRevisions(ctx context.Context, ids []uuid.UUID) ([]B
 	return items, nil
 }
 
+const certificateCurrentHasKey = `-- name: CertificateCurrentHasKey :one
+SELECT (c.current_version_id IS NOT NULL)::bool AS has_version,
+       COALESCE(v.private_key IS NOT NULL, false)::bool AS has_key
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.id = $1::uuid
+`
+
+type CertificateCurrentHasKeyRow struct {
+	HasVersion bool `json:"has_version"`
+	HasKey     bool `json:"has_key"`
+}
+
+// Reports whether cert_id's current version (if any) has a stored key, for
+// the keyless-grant rule (createGrant/updateGrant, R10): a layout that
+// needs a key, or any deploy target (Traefik always renders fullchain +
+// key), cannot be granted against a keyless current version. has_version
+// is false only when the certificate has no current version yet (C3:
+// nothing to check against yet, so nothing is refused).
+func (q *Queries) CertificateCurrentHasKey(ctx context.Context, certID uuid.UUID) (CertificateCurrentHasKeyRow, error) {
+	row := q.db.QueryRow(ctx, certificateCurrentHasKey, certID)
+	var i CertificateCurrentHasKeyRow
+	err := row.Scan(&i.HasVersion, &i.HasKey)
+	return i, err
+}
+
 const certificateDeployments = `-- name: CertificateDeployments :many
 SELECT g.id AS grant_id, g.client_id, c.name AS client_name, c.status AS client_status, c.last_seen AS client_last_seen, c.site_id, g.delivery,
        g.output_spec_id AS layout_id, o.name AS layout_name, g.deploy_target_id, t.name AS deploy_target_name,
@@ -771,12 +797,17 @@ func (q *Queries) LockHooksInOrg(ctx context.Context, arg LockHooksInOrgParams) 
 }
 
 const lockLayoutForGrant = `-- name: LockLayoutForGrant :one
-SELECT id FROM output_specs WHERE id = $1 AND org_id = $2 FOR SHARE
+SELECT id, files FROM output_specs WHERE id = $1 AND org_id = $2 FOR SHARE
 `
 
 type LockLayoutForGrantParams struct {
 	ID    uuid.UUID `json:"id"`
 	OrgID uuid.UUID `json:"org_id"`
+}
+
+type LockLayoutForGrantRow struct {
+	ID    uuid.UUID `json:"id"`
+	Files []byte    `json:"files"`
 }
 
 // Locks the layout FOR SHARE before a grant references it (output_spec_id
@@ -789,12 +820,14 @@ type LockLayoutForGrantParams struct {
 // racing a CreateGrant referencing the same layout could each proceed
 // without seeing the other, leaving the grant rendered from a pre-update
 // layout that the PATCH's own Resync had already read past. See the
-// package-level lock-order comment in internal/agents.
-func (q *Queries) LockLayoutForGrant(ctx context.Context, arg LockLayoutForGrantParams) (uuid.UUID, error) {
+// package-level lock-order comment in internal/agents. files rides along so
+// checkRefs's keyless-grant rule (delivery.NeedsKey) needs no second
+// round trip to the same now-locked row.
+func (q *Queries) LockLayoutForGrant(ctx context.Context, arg LockLayoutForGrantParams) (LockLayoutForGrantRow, error) {
 	row := q.db.QueryRow(ctx, lockLayoutForGrant, arg.ID, arg.OrgID)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
+	var i LockLayoutForGrantRow
+	err := row.Scan(&i.ID, &i.Files)
+	return i, err
 }
 
 const lockTargetForGrant = `-- name: LockTargetForGrant :one

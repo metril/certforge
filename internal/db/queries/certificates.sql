@@ -187,10 +187,46 @@ DELETE FROM certificates WHERE id = $1 AND org_id = $2;
 SELECT id, current_version_id FROM certificates WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: ListDueCertificateIDs :many
+-- managed is redundant with next_renew_at IS NOT NULL (the
+-- certificates_unmanaged_no_renewal CHECK constraint keeps an unmanaged
+-- row's next_renew_at NULL), but it says outright, at the query that
+-- decides what gets (re)issued, that an unmanaged certificate is never due.
 SELECT id FROM certificates
-WHERE next_renew_at IS NOT NULL AND next_renew_at <= now()
+WHERE managed AND next_renew_at IS NOT NULL AND next_renew_at <= now()
 ORDER BY next_renew_at
 LIMIT $1;
+
+-- name: CreateExternalCertificate :one
+-- Creates an unmanaged (imported or uploaded) certificate row: no CA, no
+-- verification rules of its own, and next_renew_at left to the caller
+-- (NULL for every unmanaged certificate; the certificates_unmanaged_no_renewal
+-- CHECK constraint enforces it). Unlike CreateCertificate this does not
+-- hard-code next_renew_at to now(): a managed certificate is always due
+-- immediately, but an unmanaged one is never due at all. The caller passes
+-- the same common_name/sans/status it is about to write again via
+-- SetCurrentVersion right after (this insert must satisfy the row's own
+-- NOT NULL columns), and SetCurrentVersion is also the query used for
+-- every later uploadCertificateVersion, so the two stay in step. A
+-- duplicate (org_id, name) is the same unique_violation CreateCertificate
+-- can raise; the caller (issuance.Service.UploadCertificate) maps it to a
+-- 409, not CreateCertificate's usual 422.
+INSERT INTO certificates (org_id, name, common_name, sans, overrides, managed, status, next_renew_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING *;
+
+-- name: SetCurrentVersion :one
+-- Attaches a newly stored version to a certificate and refreshes the
+-- fields that follow from it: names (an uploaded/imported version can
+-- cover different names than the certificate's current definition),
+-- status (active or expired, by the new version's own validity) and
+-- next_renew_at (always NULL for an unmanaged certificate; UploadCertificate/
+-- UploadVersion always pass NULL). Used both right after
+-- CreateExternalCertificate (the certificate's first version) and for
+-- every later uploadCertificateVersion on the same certificate.
+UPDATE certificates SET common_name = $3, sans = $4, current_version_id = $2,
+    status = $5, next_renew_at = $6, updated_at = now()
+WHERE id = $1
+RETURNING *;
 
 -- name: MarkCertificateIssued :one
 -- issued_common_name/issued_sans are the names the version being stored

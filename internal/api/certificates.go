@@ -255,12 +255,22 @@ func (s *Server) GetCertificate(ctx context.Context, r gen.GetCertificateRequest
 }
 
 // UpdateCertificate replaces a definition; changing names queues a new
-// issuance, other changes apply at the next renewal. The audit event and
-// the (best-effort) enqueue happen inside Issuance.UpdateCertificate, right
+// issuance, other changes apply at the next renewal. 409 "managed
+// externally" for an unmanaged certificate (managed false): CertForge
+// never edits a certificate it does not renew itself, only uploads a new
+// version onto it (uploadCertificateVersion). The audit event and the
+// (best-effort) enqueue happen inside Issuance.UpdateCertificate, right
 // after the write commits; see CreateCertificate.
 func (s *Server) UpdateCertificate(ctx context.Context, r gen.UpdateCertificateRequestObject) (gen.UpdateCertificateResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
+	}
+	cur, err := s.d.Issuance.Store.GetCertificate(ctx, r.OrgId, r.Id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if !cur.Managed {
+		return nil, conflict("managed externally")
 	}
 	in, err := certIn(r.Body)
 	if err != nil {
@@ -336,12 +346,18 @@ func (s *Server) DeleteCertificate(ctx context.Context, r gen.DeleteCertificateR
 
 // RenewCertificate queues an issuance now; enqueued is false when one is
 // already queued or running (the unique issue job then just keeps going).
+// 409 "managed externally" for an unmanaged certificate (managed false):
+// CertForge never renews a certificate it did not issue itself.
 func (s *Server) RenewCertificate(ctx context.Context, r gen.RenewCertificateRequestObject) (gen.RenewCertificateResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsIssue, &r.OrgId); err != nil {
 		return nil, err
 	}
-	if _, err := s.d.Issuance.Store.GetCertificate(ctx, r.OrgId, r.Id); err != nil {
+	c, err := s.d.Issuance.Store.GetCertificate(ctx, r.OrgId, r.Id)
+	if err != nil {
 		return nil, mapErr(err)
+	}
+	if !c.Managed {
+		return nil, conflict("managed externally")
 	}
 	ok, err := s.d.Issuance.EnqueueIssue(ctx, r.Id)
 	if err != nil {
