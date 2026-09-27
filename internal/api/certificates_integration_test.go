@@ -830,8 +830,8 @@ func TestListCertificatesStatusFilterAndSort(t *testing.T) {
 // TestCertificateManagedAndHasKey checks the Phase 4A contract fields
 // mapped for real in Task 2: every certificate CreateCertificate makes is
 // managed (the managed column defaults true), and ariWindow stays null
-// until Task 12 wires ACME Renewal Information; a stored version reports
-// hasKey true.
+// until a poll has actually fetched one (TestCertificateARIWindowAPI,
+// Task 12); a stored version reports hasKey true.
 func TestCertificateManagedAndHasKey(t *testing.T) {
 	f := newAPIFixture(t)
 	c, v := f.issuedCert(t, "web")
@@ -872,5 +872,88 @@ func TestCertificateManagedAndHasKey(t *testing.T) {
 	got2 := res2.(gen.GetCertificate200JSONResponse)
 	if got2.Managed {
 		t.Errorf("managed = %v, want false", got2.Managed)
+	}
+}
+
+// ariAPISigner is a minimal signer.Signer standing in for the real ACME
+// signer, so TestCertificateARIWindowAPI can drive a real ARIPollWorker
+// without a live CA.
+type ariAPISigner struct{ win *signer.Window }
+
+func (ariAPISigner) Kind() string { return "fake" }
+func (ariAPISigner) Issue(context.Context, signer.IssueRequest) (*signer.Issued, error) {
+	return nil, errors.New("Issue must not be called")
+}
+func (ariAPISigner) Revoke(context.Context, *x509.Certificate, int) error { return nil }
+func (s ariAPISigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.Window, error) {
+	return s.win, nil
+}
+
+// TestCertificateARIWindowAPI: ariWindow is populated (start, end,
+// checkedAt) on the certificate response once ARIPollWorker has actually
+// polled it, wiring together the SetARIWindow write (ari.go) and
+// certRender's ariWindowOut (certificates.go).
+func TestCertificateARIWindowAPI(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	ca, err := f.store.CreateCA(ctx, f.org, issuance.CAInput{Name: "ari-ca", Preset: "custom", DirectoryURL: "https://ca.test/dir", Resolvers: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	useAri := issuance.RenewPolicy{Mode: issuance.RenewPercent, Value: 33, UseARI: true}
+	c, err := f.store.CreateCertificate(ctx, f.org, issuance.CertInput{
+		Name: "ari-api", CommonName: "ari-api.example.test", Overrides: issuance.Defaults{RenewPolicy: &useAri},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafDER, chainDER, pkcs8 := realCert(t, "ari-api.example.test", time.Now().UnixNano())
+	iss := &signer.Issued{LeafDER: leafDER, ChainDER: chainDER, PrivateKeyPKCS8: pkcs8,
+		NotBefore: time.Now(), NotAfter: time.Now().Add(90 * 24 * time.Hour), Serial: "0c"}
+	tx, err := f.store.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := f.certs.Insert(ctx, tx, c.ID, iss, "ec256", certstore.InsertOpts{Source: "issued", CAID: &ca.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET current_version_id = $2, status = 'active', next_renew_at = $3 WHERE id = $1`,
+		c.ID, v.ID, time.Now().Add(90*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Before any poll: ariWindow stays null.
+	res, err := f.srv.GetCertificate(f.as("operator"), gen.GetCertificateRequestObject{OrgId: f.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.(gen.GetCertificate200JSONResponse); got.AriWindow != nil {
+		t.Fatalf("ariWindow before any poll = %+v, want nil", got.AriWindow)
+	}
+
+	win := &signer.Window{Start: time.Now().Add(24 * time.Hour).Truncate(time.Microsecond), End: time.Now().Add(48 * time.Hour).Truncate(time.Microsecond)}
+	aw := issuance.NewARIPollWorker(f.store, f.certs)
+	aw.NewSigner = func(issuance.CA) signer.Signer { return ariAPISigner{win: win} }
+	if err := aw.PollDue(ctx, 500); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err = f.srv.GetCertificate(f.as("operator"), gen.GetCertificateRequestObject{OrgId: f.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := res.(gen.GetCertificate200JSONResponse)
+	if got.AriWindow == nil {
+		t.Fatal("ariWindow after poll = nil, want populated")
+	}
+	if !got.AriWindow.Start.Equal(win.Start) || !got.AriWindow.End.Equal(win.End) {
+		t.Fatalf("ariWindow = %+v, want start=%v end=%v", got.AriWindow, win.Start, win.End)
+	}
+	if got.AriWindow.CheckedAt.IsZero() {
+		t.Fatal("ariWindow.checkedAt is zero")
 	}
 }

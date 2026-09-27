@@ -112,8 +112,10 @@ func TestTestDNSCredential(t *testing.T) {
 
 func TestNewRiverConfigIsValid(t *testing.T) {
 	f := newFixture(t)
-	w := NewIssueWorker(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}))
-	if _, err := NewRiver(f.pool, w, f.store, nil); err != nil {
+	certs := certstore.New(f.pool, cryptotest.PrefixBox{})
+	w := NewIssueWorker(f.store, certs)
+	ari := NewARIPollWorker(f.store, certs)
+	if _, err := NewRiver(f.pool, w, ari, f.store, nil); err != nil {
 		t.Fatal(err)
 	}
 }

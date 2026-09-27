@@ -174,6 +174,16 @@ When a limit is reached, the attempt fails at the `rate_ledger` step with `urn:i
 
 `GET /orgs/{orgId}/rate-ledger?ca=<id>` (also shown on the CA's page) reports the current count, limit and reset time for each: one `certsPerRegisteredDomainPerWeek` and one `failedValidationsPerHour` entry per registered domain the org has a certificate for against this CA (whether it has ever issued there or only ever failed), one `newOrdersPer3Hours` entry for the CA as a whole, and — only when `certificate=<id>` is also given — one `duplicateCertsPerWeek` entry for that certificate's exact name set. Every count is CA-wide (it is the CA's own limit, shared by every org using that CA entry); only which registered domains are shown is scoped to the calling org's own certificates.
 
+## ARI
+
+Turn on **Use ARI** in a certificate's renewal policy (or its inherited default) to let the CA itself suggest when to renew, via [ACME Renewal Information](https://www.rfc-editor.org/rfc/rfc9773.html) (RFC 9773). CertForge fetches the window (`start`, `end`) for a managed certificate's current version right after it issues, and again every 6 hours for every certificate that has ARI on; the CA's own `Retry-After` (or 6 hours, when it gives none) paces how often a certificate is actually polled.
+
+A fetched window only ever moves the certificate's scheduled renewal **earlier**, never later: when the window's end is before the date the ordinary renewal policy (days/percent of lifetime) already picked, the certificate renews at a uniformly random instant inside the window instead; otherwise the ordinary policy date stands. A certificate whose last attempt failed is left on its backoff schedule — the window is still fetched and shown, but does not move `nextRenewAt` until the certificate succeeds again. The CA's directory not publishing a `renewalInfo` endpoint at all (still common) is not an error shown anywhere; the certificate simply keeps its ordinary renewal schedule.
+
+The fetched window is shown on the certificate as `ariWindow` (`start`, `end`, `checkedAt`), `null` until a poll has actually run. Only a managed certificate is ever polled; an unmanaged (imported or uploaded) certificate never has ARI applied.
+
+When useAri is on and the certificate is renewing a version this CertForge instance actually issued (not an import or upload) against the very CA the new order is going to, the order also names it as the certificate being replaced (`replaces`), so the CA can waive rate limits that apply to a renewal. If the CA disagrees (`alreadyReplaced`, most often because a different order already claimed it), lego drops `replaces` and retries the order once on its own; CertForge does not retry this itself.
+
 ## Attempts
 
 Each attempt records a step timeline: `caa`, `rate_ledger`, `account`, `order`, `challenge <name>`, `finalize`, `store`, each `running`, `success`, `failed`, `skipped` or `waiting_manual`, plus a log, the ACME error type (for example `urn:ietf:params:acme:error:rateLimited`) and `retryAfter`.

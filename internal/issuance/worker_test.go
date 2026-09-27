@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/signer"
 )
@@ -202,5 +203,33 @@ func TestWorkerCAAStepDisabled(t *testing.T) {
 	steps, _ := tl.Snapshot()
 	if len(steps) != 1 || steps[0].Name != "caa" || steps[0].Status != challenge.StepSkipped {
 		t.Fatalf("steps = %+v, want one skipped caa step", steps)
+	}
+}
+
+// TestReplacesEligible: signer.IssueRequest.Replaces (Task 12, RFC 9773 §5)
+// is only worth setting when useAri is on and the current version was
+// actually issued by the very CA this attempt is going to — an imported or
+// uploaded version, or one issued elsewhere, has nothing this CA would
+// recognise as ReplacesCertID.
+func TestReplacesEligible(t *testing.T) {
+	ca := uuid.New()
+	other := uuid.New()
+	cases := []struct {
+		name   string
+		useAri bool
+		v      certstore.Version
+		want   bool
+	}{
+		{"issued, same CA, useAri", true, certstore.Version{Source: "issued", CAID: &ca}, true},
+		{"useAri off", false, certstore.Version{Source: "issued", CAID: &ca}, false},
+		{"imported", true, certstore.Version{Source: "imported", CAID: &ca}, false},
+		{"uploaded", true, certstore.Version{Source: "uploaded", CAID: &ca}, false},
+		{"different CA", true, certstore.Version{Source: "issued", CAID: &other}, false},
+		{"no CA recorded", true, certstore.Version{Source: "issued"}, false},
+	}
+	for _, c := range cases {
+		if got := replacesEligible(c.useAri, c.v, ca); got != c.want {
+			t.Errorf("%s: got %v want %v", c.name, got, c.want)
+		}
 	}
 }

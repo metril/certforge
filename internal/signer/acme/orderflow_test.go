@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -441,5 +442,24 @@ func TestObtainRequest(t *testing.T) {
 
 	if _, err := obtainRequest(signer.IssueRequest{Names: []string{"a.example.test"}, ReuseKeyPKCS8: []byte("not a key")}); err == nil {
 		t.Fatal("want an error for a malformed reused key")
+	}
+
+	// Task 12: Replaces turns into ReplacesCertID (RFC 9773 §4.1: AKI +
+	// serial, base64url, joined with "."), and a nil Replaces leaves it "".
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(12345), AuthorityKeyId: []byte{1, 2, 3, 4}}
+	or, err = obtainRequest(signer.IssueRequest{Names: []string{"a.example.test"}, Replaces: leaf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantID, err := certificate.MakeARICertID(leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if or.ReplacesCertID != wantID || wantID == "" {
+		t.Fatalf("ReplacesCertID = %q, want %q", or.ReplacesCertID, wantID)
+	}
+	or, err = obtainRequest(signer.IssueRequest{Names: []string{"a.example.test"}})
+	if err != nil || or.ReplacesCertID != "" {
+		t.Fatalf("no Replaces: ReplacesCertID = %q, err = %v", or.ReplacesCertID, err)
 	}
 }

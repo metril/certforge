@@ -214,6 +214,34 @@ RETURNING next_renew_at;
 UPDATE certificates SET status = $2, failure_count = $3, last_error = $4, next_renew_at = $5, updated_at = now()
 WHERE id = $1;
 
+-- name: ListARIDue :many
+-- Certificates due for an ACME Renewal Information poll (ARIPollWorker):
+-- managed, with a stored current version, status active, and either never
+-- polled or past their ari_retry_after. Whether the certificate's
+-- effective renewPolicy.useAri is actually set is resolved separately in
+-- Go (Store.EffectiveFor merges three JSON levels, not expressible here).
+SELECT * FROM certificates
+WHERE managed AND current_version_id IS NOT NULL AND status = 'active'
+  AND (ari_retry_after IS NULL OR ari_retry_after <= now())
+ORDER BY id
+LIMIT $1;
+
+-- name: SetARIWindow :exec
+-- Stores a freshly fetched ARI window, conditional on current_version_id
+-- still matching the version the window was fetched for: a concurrent
+-- reissue mid-poll must not attach a stale window to the certificate's new
+-- version.
+UPDATE certificates SET ari_window_start = $3, ari_window_end = $4, ari_checked_at = $5, ari_retry_after = $6
+WHERE id = $1 AND current_version_id = $2;
+
+-- name: LowerNextRenewAt :exec
+-- Moves next_renew_at earlier only (LEAST(), so a later ARI window can
+-- never move it back out), only for a certificate whose last attempt did
+-- not fail, and only while current_version_id still matches (see
+-- SetARIWindow's comment).
+UPDATE certificates SET next_renew_at = LEAST(next_renew_at, $3), updated_at = now()
+WHERE id = $1 AND current_version_id = $2 AND failure_count = 0;
+
 -- name: MarkExpiredCertificates :execrows
 UPDATE certificates c SET status = 'expired', updated_at = now()
 FROM certificate_versions v

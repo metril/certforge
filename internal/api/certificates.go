@@ -26,6 +26,16 @@ import (
 	"github.com/metril/certforge/internal/render"
 )
 
+// ariWindowOut renders the ARI window cached on c (Task 12), nil until a
+// poll has stored one (all three fields, ari.go's SetARIWindow, are always
+// written together).
+func ariWindowOut(c issuance.Certificate) *gen.AriWindow {
+	if c.AriWindowStart == nil || c.AriWindowEnd == nil || c.AriCheckedAt == nil {
+		return nil
+	}
+	return &gen.AriWindow{Start: *c.AriWindowStart, End: *c.AriWindowEnd, CheckedAt: *c.AriCheckedAt}
+}
+
 func versionOut(v certstore.Version) gen.CertificateVersion {
 	return gen.CertificateVersion{Id: v.ID, Serial: v.Serial, NotBefore: v.NotBefore, NotAfter: v.NotAfter,
 		Sha256Fingerprint: v.SHA256, KeyType: ptr(gen.KeyType(v.KeyType)), Source: gen.CertificateVersionSource(v.Source),
@@ -52,11 +62,9 @@ func (s *Server) certRender(c issuance.Certificate, eff issuance.Effective, v *c
 	if err != nil {
 		return gen.Certificate{}, err
 	}
-	// AriWindow stays nil (always null in the response) until Task 12 wires
-	// ACME Renewal Information; Managed reflects the stored column for real.
 	out := gen.Certificate{Id: c.ID, OrgId: ptr(c.OrgID), Name: c.Name, CommonName: c.CommonName, Sans: c.SANs,
 		VerificationRules: rules, Overrides: over, Status: gen.CertificateStatus(c.Status), Managed: c.Managed, NextRenewAt: c.NextRenewAt,
-		FailureCount: c.FailureCount, Effective: effOut, CreatedAt: ptr(c.CreatedAt), UpdatedAt: ptr(c.UpdatedAt)}
+		FailureCount: c.FailureCount, Effective: effOut, AriWindow: ariWindowOut(c), CreatedAt: ptr(c.CreatedAt), UpdatedAt: ptr(c.UpdatedAt)}
 	if c.LastError != "" {
 		out.LastError = ptr(c.LastError)
 	}

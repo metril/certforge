@@ -2,6 +2,7 @@ package issuance
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -87,6 +88,12 @@ type IssueWorker struct {
 	// checking on) — tests only; production sets this before
 	// riverClient.Start, see cmd/certforge/serve.go.
 	Settings func(ctx context.Context) (IssuanceSettings, error)
+
+	// ARI polls the ACME Renewal Information window right after a
+	// successful issuance commits (Task 12): nil skips the post-issuance
+	// poll entirely (tests only); production sets this before
+	// riverClient.Start, same as HTTPTokens/Relay/CAA/Settings above.
+	ARI *ARIPollWorker
 }
 
 // NewIssueWorker wires production defaults.
@@ -238,8 +245,12 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	if err != nil {
 		return nil, eff, err
 	}
+	replaces, err := w.replacesCert(ctx, cert, eff, ca)
+	if err != nil {
+		return nil, eff, err
+	}
 	req := signer.IssueRequest{Names: cert.Names(), KeyType: eff.KeyType.Value, PreferredChain: eff.PreferredChain.Value,
-		MustStaple: eff.MustStaple.Value, Account: material, Challenge: router}
+		MustStaple: eff.MustStaple.Value, Account: material, Challenge: router, Replaces: replaces}
 	if eff.ReuseKey.Value && cert.CurrentVersionID != nil {
 		key, kt, err := w.Certs.PrivateKey(ctx, cert.ID, *cert.CurrentVersionID)
 		switch {
@@ -379,6 +390,39 @@ func (w *IssueWorker) rateLedgerStep(ctx context.Context, tl *Timeline, cert Cer
 	}
 	tl.Step("rate_ledger", challenge.StepSuccess, "recorded only (staging CA)")
 	return nil
+}
+
+// replacesEligible reports whether v (cert's current version) qualifies as
+// the certificate signer.IssueRequest.Replaces names for this attempt (Task
+// 12, RFC 9773 §5): useAri is set, and v was actually issued (not imported
+// or uploaded) by the very CA (caID) this attempt is going to — an
+// imported/uploaded version, or one issued against a different CA, has
+// nothing this CA would recognise as a ReplacesCertID.
+func replacesEligible(useAri bool, v certstore.Version, caID uuid.UUID) bool {
+	return useAri && v.Source == "issued" && v.CAID != nil && *v.CAID == caID
+}
+
+// replacesCert resolves signer.IssueRequest.Replaces: cert's current
+// version's leaf, when replacesEligible, else nil. acme.obtainRequest turns
+// a non-nil result into ReplacesCertID (certificate.MakeARICertID); lego's
+// own Orders.New already strips replaces and retries when the CA answers
+// alreadyReplaced (acme/api/order.go), so nothing here needs its own retry.
+func (w *IssueWorker) replacesCert(ctx context.Context, cert Certificate, eff Effective, ca CA) (*x509.Certificate, error) {
+	if cert.CurrentVersionID == nil {
+		return nil, nil
+	}
+	v, err := w.Certs.Get(ctx, cert.ID, *cert.CurrentVersionID)
+	if err != nil {
+		return nil, err
+	}
+	if !replacesEligible(eff.RenewPolicy.Value.UseARI, v, ca.ID) {
+		return nil, nil
+	}
+	m, err := w.Certs.Material(ctx, cert.ID, *cert.CurrentVersionID, false)
+	if err != nil {
+		return nil, err
+	}
+	return x509.ParseCertificate(m.LeafDER)
 }
 
 // agentProvider builds the relay ChallengeProvider for a rule served by an
@@ -539,7 +583,27 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 		return err
 	}
 	w.notifyVersion(ctx, cert.ID, v.ID)
+	polled := cert
+	polled.CurrentVersionID, polled.NextRenewAt, polled.FailureCount = &v.ID, &next, 0
+	w.pollARIBestEffort(ctx, polled, attemptID)
 	return nil
+}
+
+// pollARIBestEffort polls the ACME Renewal Information window for the
+// version succeed just committed (Task 12), right after that commit: a
+// failure (including a CA that does not support ARI at all, the common
+// case today) is logged and never turns an issuance that already committed
+// into a failure. cert.CurrentVersionID/NextRenewAt/FailureCount already
+// reflect what succeed just wrote (not the stale values read at the start
+// of this attempt); pollOne itself re-checks managed/useAri and is a no-op
+// when either does not apply.
+func (w *IssueWorker) pollARIBestEffort(ctx context.Context, cert Certificate, attemptID uuid.UUID) {
+	if w.ARI == nil {
+		return
+	}
+	if err := w.ARI.pollOne(ctx, cert); err != nil {
+		w.Log.Warn("ari poll after issuance", "attempt", attemptID, "certificate", cert.ID, "err", err)
+	}
 }
 
 // notifyVersion calls every listener; a panicking listener is logged and

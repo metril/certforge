@@ -379,6 +379,59 @@ func (q *Queries) InsertCertificateVersion(ctx context.Context, arg InsertCertif
 	return i, err
 }
 
+const listARIDue = `-- name: ListARIDue :many
+SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after FROM certificates
+WHERE managed AND current_version_id IS NOT NULL AND status = 'active'
+  AND (ari_retry_after IS NULL OR ari_retry_after <= now())
+ORDER BY id
+LIMIT $1
+`
+
+// Certificates due for an ACME Renewal Information poll (ARIPollWorker):
+// managed, with a stored current version, status active, and either never
+// polled or past their ari_retry_after. Whether the certificate's
+// effective renewPolicy.useAri is actually set is resolved separately in
+// Go (Store.EffectiveFor merges three JSON levels, not expressible here).
+func (q *Queries) ListARIDue(ctx context.Context, limit int32) ([]Certificate, error) {
+	rows, err := q.db.Query(ctx, listARIDue, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Certificate{}
+	for rows.Next() {
+		var i Certificate
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.CommonName,
+			&i.Sans,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.Status,
+			&i.CurrentVersionID,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Managed,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.AriRetryAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCertificateVersions = `-- name: ListCertificateVersions :many
 SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 FROM certificate_versions WHERE cert_id = $1 ORDER BY created_at DESC
@@ -1304,6 +1357,26 @@ func (q *Queries) ListDueCertificateIDs(ctx context.Context, limit int32) ([]uui
 	return items, nil
 }
 
+const lowerNextRenewAt = `-- name: LowerNextRenewAt :exec
+UPDATE certificates SET next_renew_at = LEAST(next_renew_at, $3), updated_at = now()
+WHERE id = $1 AND current_version_id = $2 AND failure_count = 0
+`
+
+type LowerNextRenewAtParams struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+	NextRenewAt      *time.Time `json:"next_renew_at"`
+}
+
+// Moves next_renew_at earlier only (LEAST(), so a later ARI window can
+// never move it back out), only for a certificate whose last attempt did
+// not fail, and only while current_version_id still matches (see
+// SetARIWindow's comment).
+func (q *Queries) LowerNextRenewAt(ctx context.Context, arg LowerNextRenewAtParams) error {
+	_, err := q.db.Exec(ctx, lowerNextRenewAt, arg.ID, arg.CurrentVersionID, arg.NextRenewAt)
+	return err
+}
+
 const markCertificateFailed = `-- name: MarkCertificateFailed :exec
 UPDATE certificates SET status = $2, failure_count = $3, last_error = $4, next_renew_at = $5, updated_at = now()
 WHERE id = $1
@@ -1380,6 +1453,36 @@ func (q *Queries) MarkExpiredCertificates(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setARIWindow = `-- name: SetARIWindow :exec
+UPDATE certificates SET ari_window_start = $3, ari_window_end = $4, ari_checked_at = $5, ari_retry_after = $6
+WHERE id = $1 AND current_version_id = $2
+`
+
+type SetARIWindowParams struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+	AriWindowStart   *time.Time `json:"ari_window_start"`
+	AriWindowEnd     *time.Time `json:"ari_window_end"`
+	AriCheckedAt     *time.Time `json:"ari_checked_at"`
+	AriRetryAfter    *time.Time `json:"ari_retry_after"`
+}
+
+// Stores a freshly fetched ARI window, conditional on current_version_id
+// still matching the version the window was fetched for: a concurrent
+// reissue mid-poll must not attach a stale window to the certificate's new
+// version.
+func (q *Queries) SetARIWindow(ctx context.Context, arg SetARIWindowParams) error {
+	_, err := q.db.Exec(ctx, setARIWindow,
+		arg.ID,
+		arg.CurrentVersionID,
+		arg.AriWindowStart,
+		arg.AriWindowEnd,
+		arg.AriCheckedAt,
+		arg.AriRetryAfter,
+	)
+	return err
 }
 
 const updateCertificate = `-- name: UpdateCertificate :one

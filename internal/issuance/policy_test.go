@@ -56,6 +56,43 @@ func TestBackoff(t *testing.T) {
 	}
 }
 
+func TestNextRenewAtARI(t *testing.T) {
+	hour := time.Hour
+	policyAt := t0.Add(10 * hour)
+	mid := func() float64 { return 0.5 } // deterministic midpoint
+
+	// Window before policy: inside the window.
+	w := &signer.Window{Start: t0.Add(2 * hour), End: t0.Add(4 * hour)}
+	if got := NextRenewAtARI(policyAt, w, t0, mid); got.Before(w.Start) || got.After(w.End) {
+		t.Errorf("before: got %v, want inside [%v,%v]", got, w.Start, w.End)
+	}
+	if got := NextRenewAtARI(policyAt, w, t0, mid); !got.Equal(w.Start.Add(w.End.Sub(w.Start) / 2)) {
+		t.Errorf("before (midpoint): got %v, want %v", got, w.Start.Add(w.End.Sub(w.Start)/2))
+	}
+
+	// Window ending at or after policy: policy unchanged.
+	after := &signer.Window{Start: t0.Add(9 * hour), End: t0.Add(11 * hour)}
+	if got := NextRenewAtARI(policyAt, after, t0, mid); !got.Equal(policyAt) {
+		t.Errorf("after: got %v, want %v", got, policyAt)
+	}
+	same := &signer.Window{Start: t0.Add(9 * hour), End: policyAt}
+	if got := NextRenewAtARI(policyAt, same, t0, mid); !got.Equal(policyAt) {
+		t.Errorf("end == policy: got %v, want %v", got, policyAt)
+	}
+
+	// Nil window: policy unchanged.
+	if got := NextRenewAtARI(policyAt, nil, t0, mid); !got.Equal(policyAt) {
+		t.Errorf("nil: got %v, want %v", got, policyAt)
+	}
+
+	// A window that has fully passed collapses to now.
+	past := &signer.Window{Start: t0.Add(-2 * hour), End: t0.Add(-hour)}
+	now := t0.Add(5 * hour)
+	if got := NextRenewAtARI(policyAt, past, now, mid); !got.Equal(now) {
+		t.Errorf("past: got %v, want now %v", got, now)
+	}
+}
+
 func TestResolveSources(t *testing.T) {
 	ca := uuid.New()
 	orgKT := signer.RSA2048

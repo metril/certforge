@@ -17,7 +17,7 @@
       "properties": {
         "mode": {"type": "string", "enum": ["days", "percent"], "title": "Mode"},
         "value": {"type": "integer", "minimum": 1, "maximum": 365, "title": "Value"},
-        "useAri": {"type": "boolean", "title": "Use ARI", "description": "Stored now; ARI scheduling arrives in Phase 4."}
+        "useAri": {"type": "boolean", "title": "Use ARI", "description": "Use the CA's ACME Renewal Information window when it is earlier."}
       },
       "if": {"properties": {"mode": {"const": "percent"}}, "required": ["mode"]},
       "then": {"properties": {"value": {"maximum": 99}}}

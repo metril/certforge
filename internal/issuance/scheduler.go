@@ -79,20 +79,30 @@ func EnqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, er
 // SchedulePeriod is how often due certificates are scanned.
 const SchedulePeriod = 5 * time.Minute
 
+// ARIPollPeriod is how often the ACME Renewal Information poll runs.
+const ARIPollPeriod = 6 * time.Hour
+
 // RiverExtra registers another package's workers and returns its periodic
 // jobs (for example the agent listener certificate renewal).
 type RiverExtra func(workers *river.Workers) []*river.PeriodicJob
 
-// NewRiver builds the river client with the issuance workers, the 5-minute
-// periodic scan, and any extras. The caller starts and stops it.
-func NewRiver(pool *pgxpool.Pool, issue *IssueWorker, store *Store, logger *slog.Logger, extras ...RiverExtra) (*river.Client[pgx.Tx], error) {
+// NewRiver builds the river client with the issuance workers (issue, the
+// 5-minute periodic scan, and the 6-hourly ARI poll), and any extras. Every
+// field ari needs (Store, Certs, NewSigner, Now, Rand, Log) must already be
+// set, same as issue's own fields (cmd/certforge/serve.go, before
+// riverClient.Start). The caller starts and stops the returned client.
+func NewRiver(pool *pgxpool.Pool, issue *IssueWorker, ari *ARIPollWorker, store *Store, logger *slog.Logger, extras ...RiverExtra) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, issue)
 	river.AddWorker(workers, &ScheduleWorker{Store: store})
+	river.AddWorker(workers, ari)
 	periodic := []*river.PeriodicJob{
 		river.NewPeriodicJob(river.PeriodicInterval(SchedulePeriod),
 			func() (river.JobArgs, *river.InsertOpts) { return ScheduleArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true}),
+		river.NewPeriodicJob(river.PeriodicInterval(ARIPollPeriod),
+			func() (river.JobArgs, *river.InsertOpts) { return ARIPollArgs{}, nil },
+			&river.PeriodicJobOpts{RunOnStart: false}),
 	}
 	for _, x := range extras {
 		periodic = append(periodic, x(workers)...)

@@ -114,6 +114,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - One certificate can mix dns-01, http-01 and tls-alpn-01 per rule.
 - CAA pre-check before ordering.
 - Local rate-limit ledger with Let's Encrypt defaults.
+- ACME Renewal Information schedules renewals and marks replacements.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

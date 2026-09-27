@@ -117,7 +117,13 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	issueWorker.Settings = func(ctx context.Context) (issuance.IssuanceSettings, error) {
 		return issuance.LoadIssuanceSettings(ctx, store)
 	}
-	riverClient, err := issuance.NewRiver(pool, issueWorker, issuanceStore, log, agentListener.RegisterRiver, agentSvc.RegisterRiver)
+	// The ARI poll worker: post-issuance (issueWorker.ARI) and the 6-hourly
+	// periodic job NewRiver registers. Its fields are all set here, before
+	// riverClient.Start, same as issueWorker's own.
+	ariWorker := issuance.NewARIPollWorker(issuanceStore, certStore)
+	ariWorker.Log = log
+	issueWorker.ARI = ariWorker
+	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log, agentListener.RegisterRiver, agentSvc.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)
 	}

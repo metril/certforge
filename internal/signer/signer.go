@@ -70,6 +70,14 @@ type IssueRequest struct {
 	ReuseKeyPKCS8  []byte // nil = generate a fresh key
 	Account        AccountMaterial
 	Challenge      ChallengeSolver
+
+	// Replaces is the certificate this order renews, when known (ARI,
+	// RFC 9773 §5): non-nil tells the CA which previously-issued
+	// certificate this order supersedes, via its serial number and
+	// authority key id. Set only when the CA that issued it is the one
+	// this order is going to (acme.obtainRequest turns it into
+	// ReplacesCertID); a mismatched or nil value simply omits the hint.
+	Replaces *x509.Certificate
 }
 
 // Issued is canonical certificate material: leaf DER, chain DER, PKCS#8 key.

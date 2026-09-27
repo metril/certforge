@@ -236,6 +236,13 @@ func obtainRequest(req signer.IssueRequest) (certificate.ObtainRequest, error) {
 		}
 		or.PrivateKey = pk
 	}
+	if req.Replaces != nil {
+		id, err := certificate.MakeARICertID(req.Replaces)
+		if err != nil {
+			return certificate.ObtainRequest{}, fmt.Errorf("ari replaces cert id: %w", err)
+		}
+		or.ReplacesCertID = id
+	}
 	return or, nil
 }
 
@@ -306,12 +313,31 @@ func (s *Signer) Revoke(ctx context.Context, cert *x509.Certificate, reason int)
 	return nil
 }
 
-// RenewalInfo fetches the ARI window (stored for Phase 4; unused in Phase 1).
+// renewalInfoUser returns the user RenewalInfo builds its lego client with.
+// GetRenewalInfo is an unauthenticated GET per RFC 9773 (no JWS is ever
+// sent), but lego.NewClient still requires a private key to construct its
+// JWS signer regardless. cfg.Account is used when the caller has one (the
+// post-issuance poll, run alongside a real Issue); an empty Account (the
+// periodic ARIPollWorker, which never loads or decrypts an ACME account
+// key just to poll a window) falls back to a fresh ephemeral P-256 key.
+func (s *Signer) renewalInfoUser() (*user, error) {
+	if len(s.cfg.Account.KeyPKCS8) == 0 {
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		return &user{email: s.cfg.Account.Email, key: key}, nil
+	}
+	return accountUser(s.cfg.Account)
+}
+
+// RenewalInfo fetches the ARI window (Task 12: the post-issuance poll and
+// the periodic ARIPollWorker, internal/issuance/ari.go).
 func (s *Signer) RenewalInfo(ctx context.Context, cert *x509.Certificate) (*signer.Window, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	u, err := accountUser(s.cfg.Account)
+	u, err := s.renewalInfoUser()
 	if err != nil {
 		return nil, err
 	}
