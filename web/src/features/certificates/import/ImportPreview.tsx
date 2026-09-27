@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { createColumnHelper } from '@tanstack/react-table';
-import { CircleMinus, Key, Plus } from 'lucide-react';
+import { CircleMinus, KeyRound, Plus, ShieldOff } from 'lucide-react';
 import type { ImportItem, ImportSource } from '@/api/types';
 import { DataTable } from '@/components/DataTable';
 import { ToneChip } from '@/components/StatusChip';
@@ -22,15 +22,7 @@ function namesSummary(names: string[]): string {
 }
 
 function ActionChip({ item }: { item: ImportItem }) {
-  if (item.action === 'create') {
-    return (
-      <span className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-sm border border-primary/40 bg-primary/12 px-2 text-xs font-semibold text-ink">
-        <Plus className="size-3.5 text-primary" aria-hidden />
-        Create
-      </span>
-    );
-  }
-  return <ToneChip tone="neutral" icon={CircleMinus} label="Skip" />;
+  return item.action === 'create' ? <ToneChip tone="valid" icon={Plus} label="Create" /> : <ToneChip tone="neutral" icon={CircleMinus} label="Skip" />;
 }
 
 function NameCell({ item, orgSlug }: { item: ImportItem; orgSlug: string }) {
@@ -78,7 +70,7 @@ function columns(orgSlug: string) {
     col.accessor('hasKey', {
       header: 'Key',
       meta: { help: 'import.hasKey' },
-      cell: ({ getValue }) => (getValue() ? <ToneChip tone="valid" icon={Key} label="Key" /> : <ToneChip tone="neutral" icon={Key} label="No key" />),
+      cell: ({ getValue }) => (getValue() ? <ToneChip tone="valid" icon={KeyRound} label="Key" /> : <ToneChip tone="neutral" icon={ShieldOff} label="No key" />),
     }),
     col.accessor('source', { header: 'Source', cell: ({ getValue }) => SOURCE_LABEL[getValue()] }),
     col.display({
@@ -88,7 +80,9 @@ function columns(orgSlug: string) {
       cell: ({ row }) => (
         <div className="flex flex-wrap items-center gap-2">
           <ActionChip item={row.original} />
-          <span className="truncate text-xs text-ink-muted">{row.original.reason}</span>
+          <span className="truncate text-xs text-ink-muted" title={row.original.reason}>
+            {row.original.reason}
+          </span>
         </div>
       ),
     }),
@@ -117,7 +111,9 @@ function ImportCard({ item, orgSlug }: { item: ImportItem; orgSlug: string }) {
         <dt>Source</dt>
         <dd>{SOURCE_LABEL[item.source]}</dd>
         <dt>Reason</dt>
-        <dd className="truncate">{item.reason}</dd>
+        <dd className="truncate" title={item.reason}>
+          {item.reason}
+        </dd>
       </dl>
     </div>
   );

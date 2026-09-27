@@ -26,6 +26,11 @@ export function useImportCertificates(orgId: string) {
   return useMutation({
     mutationFn: (body: ImportBody) => importCertificates(orgId, body),
     meta: { silent: true },
+    // Fix round 1 (review, Important): the mutation's variables (the
+    // archive `File`, which can hold a private key) would otherwise sit in
+    // the MutationCache for the default 5-minute gcTime, matching
+    // useSaveCa's own EAB-HMAC exposure fix.
+    gcTime: 0,
     onSuccess: (_data, vars) => {
       if (!vars.dryRun) qc.invalidateQueries({ queryKey: ['certs', orgId] });
     },

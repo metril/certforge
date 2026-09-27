@@ -110,6 +110,11 @@ it('import sends dryRun false and links created rows', async () => {
   await waitFor(() => expect(seen.dryRun).toBe('false'));
   const link = screen.getByRole('link', { name: 'www' });
   expect(link).toHaveAttribute('href', '/o/acme/certificates/c-new/overview');
+  // Fix round 1: re-clicking Import after a real run already landed would
+  // diverge from the identical dry-run/real-run contract (names now exist,
+  // so a second run would show them as skips) — the button stays disabled
+  // once `result` is itself a real (non-dry) one.
+  expect(screen.getByRole('button', { name: 'Import 2 certificates' })).toBeDisabled();
 });
 
 it('changing the file or CA clears the preview', async () => {
@@ -158,10 +163,17 @@ it('empty archive', async () => {
 
 it('viewer: controls are disabled behind a permission tooltip', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
-  renderRoute('/o/acme/certificates/import');
+  const { user } = renderRoute('/o/acme/certificates/import');
   expect(await screen.findByLabelText('Archive')).toBeDisabled();
   expect(screen.getByRole('combobox', { name: 'CA' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled();
+  const preview = screen.getByRole('button', { name: 'Preview' });
+  expect(preview).toBeDisabled();
+  // Fix round 1: a disabled control alone doesn't prove PermissionTip wraps
+  // it (it would also be disabled by `!ready`) — hover the wrapping span
+  // and see the "Needs the certs:write permission" tooltip PermissionTip
+  // renders, the same way list.test.tsx proves Import's own gating.
+  await user.hover(preview.closest('span')!);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the certs:write permission');
 });
 
 it('375px: card rows instead of a table', async () => {
@@ -178,4 +190,72 @@ it('375px: card rows instead of a table', async () => {
   expect(screen.queryByRole('table', { name: 'Import preview' })).not.toBeInTheDocument();
   expect(screen.getByText('www')).toBeInTheDocument();
   expect(screen.getByText('api')).toBeInTheDocument();
+  // One card per item: each ImportCard's own `dl` has exactly one "Names"
+  // term, so its count is the card count, not just "some card rendered".
+  expect(screen.getAllByText('Names')).toHaveLength(2);
+});
+
+// Fix round 1 (review, Important): the archive File (private keys, for a
+// managed import that includes a key) must not linger in the MutationCache
+// after the page is done with it — `gcTime: 0` on useImportCertificates,
+// matching useSaveCa's own EAB-HMAC fix.
+it('drops the mutation (and its archive File) from the cache once nothing observes it', async () => {
+  server.use(http.post(url('/orgs/org-1/certificates/import'), () => HttpResponse.json(makeImportResult())));
+  const { user, queryClient, unmount } = renderRoute('/o/acme/certificates/import');
+  await pickArchiveAndCa(user);
+  await user.click(screen.getByRole('button', { name: 'Preview' }));
+  await screen.findByRole('table', { name: 'Import preview' });
+  unmount();
+  await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
+});
+
+// Fix round 1 (review, Important): the sr-only file input had no visible
+// focus indicator of its own; the wrapper must show one so a keyboard user
+// tabbing to it can see where focus is, in both the empty and file-chosen
+// states (input.tsx's own focus-visible ring tokens).
+it('both dropzone states carry a focus ring for the hidden input', async () => {
+  renderRoute('/o/acme/certificates/import');
+  const input = await screen.findByLabelText('Archive');
+  expect(input.parentElement).toHaveClass('focus-within:border-ring', 'focus-within:ring-[3px]', 'focus-within:ring-ring/50');
+});
+
+it('a chosen archive keeps the focus ring on its own wrapper', async () => {
+  const { user } = renderRoute('/o/acme/certificates/import');
+  await user.upload(await screen.findByLabelText('Archive'), new File(['zip-bytes'], 'site.zip', { type: 'application/zip' }));
+  const input = screen.getByLabelText('Archive');
+  expect(input.parentElement).toHaveClass('focus-within:border-ring', 'focus-within:ring-[3px]', 'focus-within:ring-ring/50');
+});
+
+it('a 413 from the server (not just the client precheck) shows under Archive', async () => {
+  server.use(http.post(url('/orgs/org-1/certificates/import'), () => problem(413, 'Payload too large.')));
+  const { user } = renderRoute('/o/acme/certificates/import');
+  await pickArchiveAndCa(user);
+  await user.click(screen.getByRole('button', { name: 'Preview' }));
+  expect(await screen.findByText('Larger than 32 MiB.')).toBeInTheDocument();
+});
+
+it('a 415 shows under Archive', async () => {
+  server.use(http.post(url('/orgs/org-1/certificates/import'), () => problem(415, 'Not a zip or tar.gz archive.')));
+  const { user } = renderRoute('/o/acme/certificates/import');
+  await pickArchiveAndCa(user);
+  await user.click(screen.getByRole('button', { name: 'Preview' }));
+  expect(await screen.findByText('Not a zip or tar.gz archive.')).toBeInTheDocument();
+});
+
+it('a generic error shows ErrorState with Retry', async () => {
+  let calls = 0;
+  server.use(
+    http.post(url('/orgs/org-1/certificates/import'), () => {
+      calls++;
+      return calls === 1 ? problem(500, 'Something went wrong.') : HttpResponse.json(makeImportResult());
+    }),
+  );
+  const { user } = renderRoute('/o/acme/certificates/import');
+  await pickArchiveAndCa(user);
+  await user.click(screen.getByRole('button', { name: 'Preview' }));
+  expect(await screen.findByText('Something went wrong.')).toBeInTheDocument();
+  const retry = screen.getByRole('button', { name: 'Retry' });
+  await user.click(retry);
+  await screen.findByRole('table', { name: 'Import preview' });
+  expect(calls).toBe(2);
 });
