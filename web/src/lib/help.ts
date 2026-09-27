@@ -245,6 +245,13 @@ export const help = {
   },
   'upload.pkcs12': { text: 'A .p12 or .pfx file with the certificate, chain and usually the key. Up to 768 KiB.' },
   'upload.password': { text: 'The password the PKCS#12 file was exported with.' },
+  'import.archive': {
+    text: 'A zip or tar.gz of ~/.acme.sh or /etc/letsencrypt, up to 32 MiB.',
+    learnMore: 'certificates.md#import',
+  },
+  'import.ca': { text: 'The CA that renews these certificates from now on. It needs an ACME account in this org.' },
+  'import.action': { text: 'Create adds the certificate. Skip gives the reason, such as a name already in use.' },
+  'import.hasKey': { text: "Without a key the certificate can't be deployed with key files until its first renewal." },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

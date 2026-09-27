@@ -120,6 +120,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Verification rules choose DNS, manual DNS, HTTP or TLS-ALPN per rule.
 - Attempts explain CAA and rate-limit failures and show rate-limit usage.
 - Upload PEM or PKCS#12 certificates from the web UI.
+- Import certificates from acme.sh or certbot archives with a preview.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

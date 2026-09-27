@@ -244,8 +244,8 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 | 2 | Download sheet formats | done | fef1cbe |
 | 3 | Per-rule verification methods | done | 045d591 |
 | 4 | CAA and rate-ledger steps | done | a60ccb3 |
-| 5 | Upload screen and Import menu | done | pending |
-| 6 | Import screen | not started | |
+| 5 | Upload screen and Import menu | done | 434c383 |
+| 6 | Import screen | done | pending |
 | 7 | Unmanaged detail, version upload, ARI marker | not started | |
 | 8 | Layout formats, password, extra certificates | not started | |
 | 9 | Settings: CAA and rate limits | not started | |

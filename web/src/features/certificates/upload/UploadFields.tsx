@@ -1,9 +1,9 @@
 import { Field } from '@/components/Field';
 import { SegmentedControl } from '@/components/SegmentedControl';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { fmtBytes } from '@/lib/files';
+import { Dropzone } from '@/features/certificates/import/Dropzone';
+import { MAX_P12_BYTES } from '@/lib/files';
 import { p12TooLarge, type UploadValue } from './uploadBody';
 
 export type UploadFieldErrors = Partial<Record<'certificatePem' | 'privateKeyPem' | 'pkcs12Base64' | 'password', string>>;
@@ -68,32 +68,15 @@ export function UploadFields({ value, onChange, errors = {}, disabled }: Props) 
               file was chosen, taking the `upload-file` id with it — the
               Label's `htmlFor` then pointed at nothing, and (per RTL) a
               `<label for>` targeting the summary `<div>` that replaced it
-              would be invalid HTML anyway (a div isn't labellable). The
-              Input now stays mounted (so Field's own aria-describedby/
-              aria-invalid cloning keeps landing on it, keeping the
-              too-large/422 error described) and is only visually hidden
-              once a file is picked; the name/size/Remove summary renders
-              as a sibling, not a replacement. */}
+              would be invalid HTML anyway (a div isn't labellable). Task 6:
+              Dropzone owns this itself now (its internal input stays
+              mounted, id/aria-* forwarded, so Field's aria-describedby/
+              aria-invalid cloning still lands on it and the too-large/422
+              error stays described; the file-chosen summary is Dropzone's
+              own, not a sibling this component renders separately). */}
           <Field id="upload-file" label="File" help="upload.pkcs12" error={fileError}>
-            <Input
-              id="upload-file"
-              type="file"
-              accept=".p12,.pfx"
-              disabled={disabled}
-              className={value.file ? 'sr-only' : 'cursor-pointer border-dashed'}
-              onChange={(e) => set('file', e.target.files?.[0] ?? null)}
-            />
+            <Dropzone id="upload-file" accept=".p12,.pfx" maxBytes={MAX_P12_BYTES} value={value.file} onChange={(f) => set('file', f)} error={fileError} disabled={disabled} />
           </Field>
-          {value.file && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border p-3 text-sm">
-              <span className="min-w-0 truncate">
-                {value.file.name} <span className="text-ink-muted">· {fmtBytes(value.file.size)}</span>
-              </span>
-              <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => set('file', null)}>
-                Remove
-              </Button>
-            </div>
-          )}
           <Field id="upload-password" label="Password" help="upload.password" error={errors.password}>
             <Input
               id="upload-password"

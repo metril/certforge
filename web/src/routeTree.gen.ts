@@ -23,6 +23,7 @@ import { Route as AppOOrgDeliveryRouteRouteImport } from './routes/_app/o/$org/d
 import { Route as AppOOrgIssuersRouteRouteImport } from './routes/_app/o/$org/issuers/route'
 import { Route as AppOOrgOverviewRouteImport } from './routes/_app/o/$org/overview'
 import { Route as AppOOrgCertificatesIndexRouteImport } from './routes/_app/o/$org/certificates/index'
+import { Route as AppOOrgCertificatesImportRouteImport } from './routes/_app/o/$org/certificates/import'
 import { Route as AppOOrgCertificatesNewRouteImport } from './routes/_app/o/$org/certificates/new'
 import { Route as AppOOrgCertificatesUploadRouteImport } from './routes/_app/o/$org/certificates/upload'
 import { Route as AppOOrgClientsIndexRouteImport } from './routes/_app/o/$org/clients/index'
@@ -109,6 +110,12 @@ const AppOOrgCertificatesIndexRoute =
   AppOOrgCertificatesIndexRouteImport.update({
     id: '/certificates/',
     path: '/certificates/',
+    getParentRoute: () => AppOOrgRouteRoute,
+  } as any)
+const AppOOrgCertificatesImportRoute =
+  AppOOrgCertificatesImportRouteImport.update({
+    id: '/certificates/import',
+    path: '/certificates/import',
     getParentRoute: () => AppOOrgRouteRoute,
   } as any)
 const AppOOrgCertificatesNewRoute = AppOOrgCertificatesNewRouteImport.update({
@@ -214,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/o/$org/audit': typeof AppOOrgAuditRoute
   '/o/$org/overview': typeof AppOOrgOverviewRoute
   '/o/$org/': typeof AppOOrgIndexRoute
+  '/o/$org/certificates/import': typeof AppOOrgCertificatesImportRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
@@ -243,6 +251,7 @@ export interface FileRoutesByTo {
   '/o/$org/audit': typeof AppOOrgAuditRoute
   '/o/$org/overview': typeof AppOOrgOverviewRoute
   '/o/$org': typeof AppOOrgIndexRoute
+  '/o/$org/certificates/import': typeof AppOOrgCertificatesImportRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
@@ -277,6 +286,7 @@ export interface FileRoutesById {
   '/_app/o/$org/audit': typeof AppOOrgAuditRoute
   '/_app/o/$org/overview': typeof AppOOrgOverviewRoute
   '/_app/o/$org/': typeof AppOOrgIndexRoute
+  '/_app/o/$org/certificates/import': typeof AppOOrgCertificatesImportRoute
   '/_app/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/_app/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/_app/o/$org/clients/new': typeof AppOOrgClientsNewRoute
@@ -311,6 +321,7 @@ export interface FileRouteTypes {
     | '/o/$org/audit'
     | '/o/$org/overview'
     | '/o/$org/'
+    | '/o/$org/certificates/import'
     | '/o/$org/certificates/new'
     | '/o/$org/certificates/upload'
     | '/o/$org/clients/new'
@@ -340,6 +351,7 @@ export interface FileRouteTypes {
     | '/o/$org/audit'
     | '/o/$org/overview'
     | '/o/$org'
+    | '/o/$org/certificates/import'
     | '/o/$org/certificates/new'
     | '/o/$org/certificates/upload'
     | '/o/$org/clients/new'
@@ -373,6 +385,7 @@ export interface FileRouteTypes {
     | '/_app/o/$org/audit'
     | '/_app/o/$org/overview'
     | '/_app/o/$org/'
+    | '/_app/o/$org/certificates/import'
     | '/_app/o/$org/certificates/new'
     | '/_app/o/$org/certificates/upload'
     | '/_app/o/$org/clients/new'
@@ -497,6 +510,13 @@ declare module '@tanstack/react-router' {
       path: '/certificates'
       fullPath: '/o/$org/certificates/'
       preLoaderRoute: typeof AppOOrgCertificatesIndexRouteImport
+      parentRoute: typeof AppOOrgRouteRoute
+    }
+    '/_app/o/$org/certificates/import': {
+      id: '/_app/o/$org/certificates/import'
+      path: '/certificates/import'
+      fullPath: '/o/$org/certificates/import'
+      preLoaderRoute: typeof AppOOrgCertificatesImportRouteImport
       parentRoute: typeof AppOOrgRouteRoute
     }
     '/_app/o/$org/certificates/new': {
@@ -661,6 +681,7 @@ interface AppOOrgRouteRouteChildren {
   AppOOrgAuditRoute: typeof AppOOrgAuditRoute
   AppOOrgOverviewRoute: typeof AppOOrgOverviewRoute
   AppOOrgIndexRoute: typeof AppOOrgIndexRoute
+  AppOOrgCertificatesImportRoute: typeof AppOOrgCertificatesImportRoute
   AppOOrgCertificatesNewRoute: typeof AppOOrgCertificatesNewRoute
   AppOOrgCertificatesUploadRoute: typeof AppOOrgCertificatesUploadRoute
   AppOOrgClientsNewRoute: typeof AppOOrgClientsNewRoute
@@ -679,6 +700,7 @@ const AppOOrgRouteRouteChildren: AppOOrgRouteRouteChildren = {
   AppOOrgAuditRoute: AppOOrgAuditRoute,
   AppOOrgOverviewRoute: AppOOrgOverviewRoute,
   AppOOrgIndexRoute: AppOOrgIndexRoute,
+  AppOOrgCertificatesImportRoute: AppOOrgCertificatesImportRoute,
   AppOOrgCertificatesNewRoute: AppOOrgCertificatesNewRoute,
   AppOOrgCertificatesUploadRoute: AppOOrgCertificatesUploadRoute,
   AppOOrgClientsNewRoute: AppOOrgClientsNewRoute,

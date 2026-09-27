@@ -9,9 +9,7 @@ type Props = { orgSlug: string; canWrite: boolean };
 
 /** Next to New certificate on the certificates list. Collapses to an
  * icon-only button below `sm`, matching TabLabel's aria-hidden-both-spans
- * pattern (the button itself carries the accessible name). The "From
- * acme.sh or certbot" item is a plain anchor, not a typed `Link`: Task 6
- * adds the `/import` route this points at, which doesn't exist yet. */
+ * pattern (the button itself carries the accessible name). */
 export function ImportMenu({ orgSlug, canWrite }: Props) {
   const trigger = (
     <Button variant="outline" aria-label="Import" disabled={!canWrite}>
@@ -42,10 +40,10 @@ export function ImportMenu({ orgSlug, canWrite }: Props) {
         <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem asChild>
-            <a href={`/o/${orgSlug}/certificates/import`} className="flex items-center gap-2">
+            <Link to="/o/$org/certificates/import" params={{ org: orgSlug }} className="flex items-center gap-2">
               <FolderInput className="size-4" aria-hidden />
               From acme.sh or certbot
-            </a>
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/o/$org/certificates/upload" params={{ org: orgSlug }} className="flex items-center gap-2">
