@@ -115,7 +115,7 @@ func (s *Store) PutOrgDefaults(ctx context.Context, orgID uuid.UUID, d Defaults)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
-	if err := s.validateDefaultsTx(ctx, q, orgID, d, false); err != nil {
+	if err := s.validateDefaultsTx(ctx, q, orgID, d, false, nil); err != nil {
 		return err
 	}
 	b, err := json.Marshal(d)
@@ -267,8 +267,11 @@ func validateDefaultsShape(d Defaults) error {
 // every writer (PutOrgDefaults, certificate create/update) that must be
 // safe against a concurrent delete racing the write, not just against a
 // delete that has already committed. renaming is passed straight through
-// to validateRulesOrgTx; see prepareCertTx.
-func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults, renaming bool) error {
+// to validateRulesOrgTx; see prepareCertTx. preLocked is nil except from
+// prepareCertTx, which locks d.VerificationRules's clients together with
+// in.Rules's own in one combined pass (see prepareCertTx) rather than
+// leaving this call to lock them again separately.
+func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults, renaming bool, preLocked map[uuid.UUID]sqlcgen.Client) error {
 	if err := validateDefaultsShape(d); err != nil {
 		return err
 	}
@@ -305,7 +308,7 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 		}
 	}
 	if d.VerificationRules != nil {
-		return s.validateRulesOrgTx(ctx, q, orgID, *d.VerificationRules, renaming)
+		return s.validateRulesOrgTx(ctx, q, orgID, *d.VerificationRules, renaming, preLocked)
 	}
 	return nil
 }
@@ -451,7 +454,16 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 // own rules and org-level default rules (PutOrgDefaults), so a rule's
 // clientId is validated identically at either level. renaming is passed
 // straight through to lockRuleClientsInIDOrder; see prepareCertTx.
-func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, rules []challenge.RuleSpec, renaming bool) error {
+// preLocked, when non-nil, is used instead of locking rules's own clients
+// again: prepareCertTx passes the one combined, deduplicated, id-ordered
+// lock pass it already took over in.Rules and in.Overrides.VerificationRules
+// together (fix-wave re-review, minor: two separate id-ordered passes over
+// the same certificate write could interleave with a concurrent write's
+// own two passes in the opposite order, reintroducing the AB-BA risk
+// lockRuleClientsInIDOrder's single-pass ordering exists to rule out). Any
+// other caller (PutOrgDefaults, ValidateGlobalDefaultsTx by way of
+// validateDefaultsTx) passes nil and this locks its own single rule set.
+func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, rules []challenge.RuleSpec, renaming bool, preLocked map[uuid.UUID]sqlcgen.Client) error {
 	for _, r := range rules {
 		if r.DNSCredentialID == nil {
 			continue
@@ -469,9 +481,13 @@ func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgI
 			return err
 		}
 	}
-	clients, err := lockRuleClientsInIDOrder(ctx, q, orgID, true, renaming, rules)
-	if err != nil {
-		return err
+	clients := preLocked
+	if clients == nil {
+		var err error
+		clients, err = lockRuleClientsInIDOrder(ctx, q, orgID, true, renaming, rules)
+		if err != nil {
+			return err
+		}
 	}
 	for _, r := range rules {
 		if r.ClientID == nil {
@@ -612,10 +628,26 @@ func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uui
 			return &ValidationError{"verificationRules", err.Error()}
 		}
 	}
-	if err := s.validateRulesOrgTx(ctx, q, orgID, in.Rules, renaming); err != nil {
+	// Lock every client either rule set (the certificate's own rules and
+	// its overrides' catch-all rules) references in one combined,
+	// deduplicated, id-ordered pass, rather than letting validateRulesOrgTx
+	// and validateDefaultsTx each lock their own set separately: two
+	// separate id-ordered passes over the same certificate write can still
+	// interleave with a concurrent write's own two passes taken in the
+	// opposite order, reintroducing the AB-BA deadlock risk a single
+	// ordered pass exists to rule out (fix-wave re-review, minor).
+	combined := in.Rules
+	if in.Overrides.VerificationRules != nil {
+		combined = append(append([]challenge.RuleSpec{}, in.Rules...), *in.Overrides.VerificationRules...)
+	}
+	clients, err := lockRuleClientsInIDOrder(ctx, q, orgID, true, renaming, combined)
+	if err != nil {
 		return err
 	}
-	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides, renaming)
+	if err := s.validateRulesOrgTx(ctx, q, orgID, in.Rules, renaming, clients); err != nil {
+		return err
+	}
+	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides, renaming, clients)
 }
 
 // CreateCertificate stores a definition, due for issuance now. Runs inside

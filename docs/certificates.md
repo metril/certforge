@@ -116,7 +116,7 @@ Internally, a certificate whose names resolve to more than one challenge type is
 
 ### The verification rules step (web UI)
 
-Pick a **Method** first: **DNS-01** (a DNS credential writes the TXT record) or **Manual DNS** (you add the records by hand; see [manual-dns](#manual-dns)). One method per certificate in this version; a per-rule method selector arrives in Phase 4.
+Pick a **Method** first: **DNS-01** (a DNS credential writes the TXT record) or **Manual DNS** (you add the records by hand; see [manual-dns](#manual-dns)). The API already supports a per-rule method (including http-01 and tls-alpn-01, and mixing them — see [Mixing methods](#mixing-methods)); the wizard's own per-rule method selector arrives with the certificates web UI work (Phase 4B), so this version picks one method for the whole certificate.
 
 Rules are an ordered list; drag a row's grip to reorder, or use its **Move up**/**Move down** buttons. The wizard pre-fills one rule per registered domain with the credential you last used for that zone (remembered locally) or, failing that, a credential an existing certificate already uses there. If no credential is known and your organization's catch-all rule already covers the name, no rule is added; otherwise the rule is added without a credential, and the **Coverage** list shows **No credential** — issuing stays blocked until you pick one or use **Add credential**, which opens the provider picker and the credential form without leaving the wizard. **Advanced** per rule: propagation wait, resolvers, and a CNAME alias zone.
 

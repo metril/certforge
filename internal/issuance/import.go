@@ -250,7 +250,7 @@ func (s *Service) importOne(ctx context.Context, orgID uuid.UUID, over Defaults,
 	// CreateCertificate. Unlike a business-level skip, this failing means
 	// caID itself has gone missing from under the whole request, so it
 	// propagates as a real error rather than skipping just this one item.
-	if err := s.Store.validateDefaultsTx(ctx, s.Store.q.WithTx(tx), orgID, over, false); err != nil {
+	if err := s.Store.validateDefaultsTx(ctx, s.Store.q.WithTx(tx), orgID, over, false, nil); err != nil {
 		return ImportItem{}, err
 	}
 

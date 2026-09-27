@@ -111,15 +111,24 @@ func AcmeRouterFile(certName string, names []string, cfg TraefikConfig) *File {
 		return nil
 	}
 	router := "certforge-acme-" + SafeName(certName)
+	// Host() takes exactly one argument on Traefik v3: Host(`a`,`b`) is
+	// invalid (rejects the whole router), not an OR of a and b the way it
+	// was on v2. Two or more names need one Host() call per name, OR'd
+	// together and parenthesized so the trailing && PathPrefix(...) binds
+	// the whole disjunction rather than just its last term.
 	hosts := make([]string, len(names))
 	for i, n := range names {
-		hosts[i] = "`" + n + "`"
+		hosts[i] = "Host(`" + n + "`)"
+	}
+	hostExpr := strings.Join(hosts, " || ")
+	if len(hosts) > 1 {
+		hostExpr = "(" + hostExpr + ")"
 	}
 	var y strings.Builder
 	y.WriteString("# Managed by CertForge. Do not edit; changes are overwritten.\n")
 	y.WriteString("http:\n  routers:\n")
-	fmt.Fprintf(&y, "    %s:\n      rule: Host(%s) && PathPrefix(`/.well-known/acme-challenge/`)\n      service: %s\n      priority: 1000\n",
-		router, strings.Join(hosts, ","), router)
+	fmt.Fprintf(&y, "    %s:\n      rule: %s && PathPrefix(`/.well-known/acme-challenge/`)\n      service: %s\n      priority: 1000\n",
+		router, hostExpr, router)
 	y.WriteString("  services:\n")
 	fmt.Fprintf(&y, "    %s:\n      loadBalancer:\n        servers:\n          - url: %s\n", router, strconv.Quote(cfg.AcmeServiceURL))
 	return &File{Path: path.Join(cfg.Dir, router+".yml"), Mode: "0644", Data: []byte(y.String())}

@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -91,6 +92,41 @@ func TestRenderTraefikACME(t *testing.T) {
 		if _, err := ParseTarget("traefik", json.RawMessage(raw)); !errors.As(err, &fe) || fe.Field != "config.acmeServiceUrl" {
 			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+}
+
+// TestAcmeRouterFileHostRule (fix-wave re-review): Host() takes exactly one
+// argument on Traefik v3 (the version compose.test.yaml and docs/agent.md
+// use) — `Host(`a`,`b`)` is invalid and the whole router is rejected, not
+// just under-matched. A single name still renders a plain `Host(`a`) &&
+// PathPrefix(...)`; two or more render an OR chain of one-argument Host()
+// calls, parenthesized so `&&` binds the whole disjunction, not just its
+// last term.
+func TestAcmeRouterFileHostRule(t *testing.T) {
+	cfg := TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"}
+	cases := []struct {
+		name  string
+		names []string
+		rule  string
+	}{
+		{"single name", []string{"web.example.test"},
+			"Host(`web.example.test`) && PathPrefix(`/.well-known/acme-challenge/`)"},
+		{"two names", []string{"web.example.test", "www.web.example.test"},
+			"(Host(`web.example.test`) || Host(`www.web.example.test`)) && PathPrefix(`/.well-known/acme-challenge/`)"},
+		{"three names", []string{"a.test", "b.test", "c.test"},
+			"(Host(`a.test`) || Host(`b.test`) || Host(`c.test`)) && PathPrefix(`/.well-known/acme-challenge/`)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := AcmeRouterFile("web", tc.names, cfg)
+			if f == nil {
+				t.Fatal("no ACME router file")
+			}
+			want := "      rule: " + tc.rule + "\n"
+			if !bytes.Contains(f.Data, []byte(want)) {
+				t.Errorf("rule line not found; want %q in:\n%s", want, f.Data)
+			}
+		})
 	}
 }
 
