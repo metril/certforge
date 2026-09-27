@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { hooksQuery, useDeleteHook } from '@/api/queries/delivery';
 import type { Hook } from '@/api/types';
@@ -33,6 +34,17 @@ export function HooksPage() {
   const [deleting, setDeleting] = useState<Hook | null>(null);
   const openSheet = (id: string | undefined) => void navigate({ search: { edit: id }, replace: id === undefined });
   const hooks = q.data ?? [];
+  // A hand-edited or stale `?edit=<id>` that no longer resolves (deleted
+  // elsewhere) must not leave the page silently doing nothing — drop it
+  // from the URL and say why, once the list has actually loaded.
+  useEffect(() => {
+    if (q.isPending || !edit || edit === 'new') return;
+    if (!hooks.some((h) => h.id === edit)) {
+      openSheet(undefined);
+      toast.error('Hook not found.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit, q.isPending, hooks.map((h) => h.id).join(',')]);
   const editing = hooks.find((h) => h.id === edit);
   const add = (
     <PermissionTip allowed={canWrite} action="delivery:write">

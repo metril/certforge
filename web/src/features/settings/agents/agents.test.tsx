@@ -122,10 +122,12 @@ it('rotates by typing rotate, and retires only an unused retiring CA', async () 
   expect(within(active!).queryByRole('button', { name: 'Retire' })).not.toBeInTheDocument();
   expect(within(retired!).getByText('Retired')).toBeInTheDocument();
   await user.click(within(retiring!).getByRole('button', { name: 'Retire' }));
+  await waitFor(() => expect(screen.getByLabelText(/to confirm/)).toHaveFocus());
   await user.type(screen.getByLabelText(/to confirm/), 'retire');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Retire' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   await user.click(screen.getByRole('button', { name: 'Rotate' }));
+  await waitFor(() => expect(screen.getByLabelText(/to confirm/)).toHaveFocus());
   await user.type(screen.getByLabelText(/to confirm/), 'rotate');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Rotate' }));
   await waitFor(() => expect(calls).toEqual(['retire aca-1', 'rotate']));
@@ -155,11 +157,13 @@ it('is read-only without settings:write', async () => {
   expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
 });
 
-it('says when the listener is not running, and to restart the server', async () => {
+it('says when the listener is not running, with the restart advice in a tooltip', async () => {
   listenerNotAfter = null;
-  renderRoute('/settings/agents');
-  expect(await screen.findByText('The agent listener is not running.')).toBeInTheDocument();
-  expect(screen.getByText('Restart the server after fixing the cause.')).toBeInTheDocument();
+  const { user } = renderRoute('/settings/agents');
+  const line = (await screen.findByText('The agent listener is not running.')).closest('p')!;
+  expect(screen.queryByText('Restart the server after fixing the cause.')).not.toBeInTheDocument();
+  await user.hover(within(line).getByRole('button', { name: 'Help' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Restart the server after fixing the cause.');
 });
 
 it('warns that the Agent URL only reaches new enrolments', async () => {

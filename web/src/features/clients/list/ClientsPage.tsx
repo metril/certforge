@@ -96,6 +96,18 @@ export function ClientsPage() {
 
   useEffect(() => setCursorNotice(false), [search.status, search.site, search.q, search.sort, allOrgs]);
 
+  // A background refetch (the list polls) can also hit a stale cursor, not
+  // only a Load more click: show the same notice and reset either way, and
+  // keep whatever rows are already on screen rather than replacing them
+  // with an error state.
+  useEffect(() => {
+    if (list.error instanceof ApiError && list.error.status === 422) {
+      setCursorNotice(true);
+      void qc.resetQueries({ queryKey: clientListKey(allOrgs ? 'all' : org.id, query) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.error]);
+
   const chips = [
     ...(search.status ? [{ key: 'status', label: `Status: ${CLIENT_STATUS_LABEL[search.status]}` }] : []),
     ...(search.site && !allOrgs ? [{ key: 'site', label: `Site: ${sites.find((s) => s.id === search.site)?.name ?? search.site}` }] : []),

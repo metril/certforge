@@ -118,18 +118,20 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
             </div>
           ) : (
             <Field id="grant-certs" label="Certificates" help="grant.certificates" error={errors.certs}>
-              <MultiCombobox
-                id="grant-certs"
-                aria-label="Certificates"
-                value={certIds}
-                onChange={(v) => {
-                  setCertIds(v);
-                  setErrors((e) => ({ ...e, certs: undefined }));
-                }}
-                options={certOptions}
-                placeholder="Pick certificates"
-                emptyText={certs.isPending ? 'Loading…' : 'No certificate to grant.'}
-              />
+              <QueryField label="certificates" q={certs}>
+                <MultiCombobox
+                  id="grant-certs"
+                  aria-label="Certificates"
+                  value={certIds}
+                  onChange={(v) => {
+                    setCertIds(v);
+                    setErrors((e) => ({ ...e, certs: undefined }));
+                  }}
+                  options={certOptions}
+                  placeholder="Pick certificates"
+                  emptyText="No certificate to grant."
+                />
+              </QueryField>
             </Field>
           )}
           <Field id="grant-delivery" label="Delivery" help="grant.delivery">

@@ -69,12 +69,10 @@ export function AgentCaPanel() {
             <dd className="font-mono text-xs">{shortHash(issuer?.fingerprint ?? null)}</dd>
           </dl>
         ) : (
-          <div className="grid gap-1">
-            <p className="text-sm text-ink-muted">The agent listener is not running.</p>
-            {/* Fix round 1 (review, Important #2; 3a-facts: "if the listener
-                failed to start at boot, the server needs a restart"). */}
-            <p className="text-sm text-ink-muted">Restart the server after fixing the cause.</p>
-          </div>
+          <p className="flex items-center gap-1.5 text-sm text-ink-muted">
+            The agent listener is not running.
+            <HelpTip id="agents.listenerNotRunning" />
+          </p>
         )}
       </section>
       <section aria-label="Agent certificate authorities" className="grid gap-3">

@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, FileDiff, Hourglass, type LucideIcon } from 'lucide-react';
+import { Ban, CircleAlert, CircleCheck, FileDiff, Hourglass, type LucideIcon } from 'lucide-react';
 import type { Client, Deployment, DeploymentState, GrantDelivery, HookPhase } from '@/api/types';
 import type { HelpKey } from './help';
 import { EXPIRING_DAYS, type Tone } from './status';
@@ -29,6 +29,16 @@ export function headerConnectionLabel(c: Pick<Client, 'status' | 'connected' | '
   if (k === 'online') return c.connected ? 'Connected' : 'Online (pull)';
   return k === 'offline' ? `Offline since ${fmtDateTime(c.lastSeen!)}` : CONNECTION_META[k].label;
 }
+
+// The client's own lifecycle status (Pending/Active/Revoked) — a separate,
+// sortable column from ConnectionDot's connection reading (I2: the two used
+// to share one "Connection" column sorted by `status`, conflating enrolment
+// state with reachability).
+export const CLIENT_STATUS_META: Record<Client['status'], { label: string; tone: Tone; icon: LucideIcon }> = {
+  pending: { label: 'Pending', tone: 'pending', icon: Hourglass },
+  active: { label: 'Active', tone: 'valid', icon: CircleCheck },
+  revoked: { label: 'Revoked', tone: 'failed', icon: Ban },
+};
 
 export const DEPLOY_META: Record<DeploymentState, { label: string; tone: Tone; icon: LucideIcon; help: HelpKey }> = {
   pending: { label: 'Pending', tone: 'pending', icon: Hourglass, help: 'deploy.pending' },

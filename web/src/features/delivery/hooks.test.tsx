@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { server } from '@/test/server';
 import { authHandlers, makeHook, meWith, org, problem, url } from '@/test/fixtures';
@@ -118,18 +118,17 @@ it('removes an argument row and moves focus to the nearest remaining row', async
   await waitFor(() => expect(remaining).toHaveFocus());
 });
 
-it(
-  'caps the command at 64 entries',
-  async () => {
-    const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
-    const sheet = await screen.findByRole('dialog', { name: 'New hook' });
-    const add = within(sheet).getByRole('button', { name: 'Add argument' });
-    for (let i = 0; i < 63; i++) await user.click(add);
-    expect(within(sheet).getByLabelText('Argument 63')).toBeInTheDocument();
-    expect(add).toBeDisabled();
-  },
-  20000,
-);
+it('caps the command at 64 entries', async () => {
+  renderRoute('/o/acme/delivery/hooks?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
+  const add = within(sheet).getByRole('button', { name: 'Add argument' });
+  // fireEvent (not userEvent): userEvent's full pointer simulation is
+  // wasted on a plain click loop with no hover/focus behaviour under test.
+  // 63 re-renders of the sheet still take several seconds under vitest.
+  for (let i = 0; i < 63; i++) fireEvent.click(add);
+  expect(within(sheet).getByLabelText('Argument 63')).toBeInTheDocument();
+  expect(add).toBeDisabled();
+}, 20000);
 
 it('edits a hook with a PATCH carrying the full body', async () => {
   const { user } = renderRoute('/o/acme/delivery/hooks?edit=h-1');
@@ -187,4 +186,11 @@ it('is read-only for a viewer, even with ?edit=new', async () => {
   const sheet = await screen.findByRole('dialog', { name: 'reload nginx' });
   expect(within(sheet).getByLabelText('Name')).toBeDisabled();
   expect(within(sheet).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+});
+
+it('clears an unknown ?edit= id and reports it', async () => {
+  renderRoute('/o/acme/delivery/hooks?edit=nope');
+  await screen.findByRole('table', { name: 'Hooks' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(await screen.findByText('Hook not found.')).toBeInTheDocument();
 });

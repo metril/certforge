@@ -9,16 +9,21 @@ import { renderRoute } from '@/test/render';
 let client: Client;
 let patched: unknown;
 let calls: string[];
+let grantsFetches: number;
 
 beforeEach(() => {
   client = makeClient({ siteId: 's-1', agentCertNotAfter: iso(5) });
   patched = undefined;
   calls = [];
+  grantsFetches = 0;
   server.use(
     ...authHandlers({ authed: true }),
     http.get(url('/orgs/org-1/sites'), () => HttpResponse.json({ items: [makeSite({ id: 's-1', name: 'Rack A' }), makeSite({ id: 's-2', name: 'Rack B' })] })),
     http.get(url('/orgs/org-1/clients/cl-1'), () => HttpResponse.json(client)),
-    http.get(url('/orgs/org-1/clients/cl-1/grants'), () => HttpResponse.json({ items: [] })),
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () => {
+      grantsFetches += 1;
+      return HttpResponse.json({ items: [] });
+    }),
     http.patch(url('/orgs/org-1/clients/cl-1'), async ({ request }) => {
       patched = await request.json();
       client = { ...client, ...(patched as Partial<Client>) };
@@ -53,6 +58,22 @@ it('shows the header facts', async () => {
   expect(within(within(header).getByRole('list', { name: 'Capabilities' })).getAllByRole('listitem').map((l) => l.textContent)).toEqual(['traefik', 'hooks']);
 });
 
+it('shows an error state with Retry when a later refetch fails', async () => {
+  // The route's own loader `ensureQueryData`s the client, so a failure on
+  // the very first load is caught by the router's own error boundary
+  // before `ClientDetail` ever mounts; `ClientDetail`'s own `error` branch
+  // is reached by a later refetch instead (matching `CertificateDetail`'s
+  // identical pattern).
+  const { user, queryClient } = renderRoute('/o/acme/clients/cl-1/settings');
+  expect(await screen.findByRole('heading', { name: 'web-1' })).toBeInTheDocument();
+  server.use(http.get(url('/orgs/org-1/clients/cl-1'), () => problem(500, 'boom')));
+  await queryClient.refetchQueries({ queryKey: ['clients', 'org-1', 'one', 'cl-1'] });
+  expect(await screen.findByText("Couldn't load the client. boom")).toBeInTheDocument();
+  server.use(http.get(url('/orgs/org-1/clients/cl-1'), () => HttpResponse.json(client)));
+  await user.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(await screen.findByRole('heading', { name: 'web-1' })).toBeInTheDocument();
+});
+
 it('labels a pull-only client Online (pull)', async () => {
   client = makeClient({ connected: false, online: true });
   renderRoute('/o/acme/clients/cl-1/settings');
@@ -74,6 +95,10 @@ it('renames and moves the client, showing a duplicate name inline', async () => 
   await user.click(await screen.findByRole('option', { name: 'Rack B' }));
   await user.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toEqual({ name: 'web-2', siteId: 's-2' }));
+  // M3: a rename also invalidates ['grants', orgId] and ['deployments', orgId]
+  // (Grant.clientName/CertificateDeployment.clientName are denormalised)
+  // — the always-mounted grants query (ClientDetail) refetches once more.
+  await waitFor(() => expect(grantsFetches).toBeGreaterThanOrEqual(2));
   server.use(http.patch(url('/orgs/org-1/clients/cl-1'), () => problem(409, 'A client named db-1 already exists.')));
   await user.clear(screen.getByLabelText('Name'));
   await user.type(screen.getByLabelText('Name'), 'db-1');

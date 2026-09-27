@@ -5,7 +5,7 @@ import { FileText, Plus, RotateCw, Server, ShieldCheck } from 'lucide-react';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ALL_ORGS_SLUG, useMe } from '@/lib/org';
+import { ALL_ORGS_SLUG, useMe, useOrgSlugOf } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { keywordFilter } from '@/lib/utils';
@@ -57,7 +57,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const canWriteClients = !!org && can(me, 'clients:write', org.id);
   const canReadDelivery = !!org && can(me, 'delivery:read', org.id);
   const { data: certs = [] } = useQuery({ ...allCertificatesQuery(org?.id ?? ''), enabled: open && !!org && (canReadCerts || canIssue) });
-  const { data: clientsData } = useQuery({ ...allClientsQuery(org?.id ?? ''), enabled: open && !!org && canReadClients });
+  // M7: under All orgs there's no single org to scope the request to, but the
+  // GET /clients cross-org listing (already used by the clients list's own
+  // All orgs view) covers it — read-only navigation only, matching every
+  // other All orgs entry point here.
+  const orgSlugOf = useOrgSlugOf();
+  const { data: clientsData } = useQuery({ ...allClientsQuery(allOrgs ? 'all' : (org?.id ?? '')), enabled: open && (allOrgs || !!org) && canReadClients });
   const clients = clientsData?.items ?? [];
   const [search, setSearch] = useState('');
 
@@ -155,14 +160,14 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             ))}
           </CommandGroup>
         )}
-        {org && canReadClients && clients.length > 0 && (
+        {(org || allOrgs) && canReadClients && clients.length > 0 && (
           <CommandGroup heading="Clients">
             {clients.map((c) => (
               <CommandItem
                 key={c.id}
                 value={`client:${c.id}`}
                 keywords={[c.name, c.hostname]}
-                onSelect={() => run(() => void navigate({ to: '/o/$org/clients/$id', params: { org: org.slug, id: c.id } }))}
+                onSelect={() => run(() => void navigate({ to: '/o/$org/clients/$id', params: { org: allOrgs ? orgSlugOf(c.orgId) : org!.slug, id: c.id } }))}
               >
                 <Server className="size-4" aria-hidden />
                 <span>{c.name}</span>

@@ -118,6 +118,28 @@ it('drops org-bound actions and pages under All orgs, and never requests the fir
   expect(calledOrgCerts).toBe(false);
 });
 
+// M7: under All orgs there's no single org to request /orgs/{orgId}/clients
+// against — the cross-org GET /clients listing (already used by the clients
+// list's own All orgs view) covers search here, navigating read-only to the
+// client's own org.
+it('searches clients across every org under All orgs and navigates read-only', async () => {
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'admin', orgId: null }], [org, org2]))),
+    http.get(url('/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
+    http.get(url('/clients'), () => HttpResponse.json({ items: [makeClient({ id: 'cl-9', orgId: org2.id, name: 'lab-agent', hostname: 'lab.lan' })], nextCursor: null })),
+    http.get(url('/orgs/org-2/clients/cl-9'), () => HttpResponse.json(makeClient({ id: 'cl-9', orgId: org2.id, name: 'lab-agent' }))),
+    http.get(url('/orgs/org-2/clients/cl-9/grants'), () => HttpResponse.json({ items: [] })),
+  );
+  const { router, user } = renderRoute('/o/all/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'lab-agent');
+  await user.click(await within(dialog).findByRole('option', { name: /^lab-agent/ }));
+  await waitFor(() => expect(router.state.location.pathname).toBe(`/o/${org2.slug}/clients/cl-9/certificates`));
+});
+
 // Fix round 2 (Important #1): a viewer can read certificates but has
 // neither certs:write nor certs:issue — the Actions group's New
 // certificate and Renew <name> entries must not appear, even with a

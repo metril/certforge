@@ -105,6 +105,9 @@ it('removes a grant after the certificate name is typed', async () => {
   const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
   await findLoadedTable();
   await user.click(screen.getByRole('button', { name: 'Remove www' }));
+  // I4: the confirm input gets focus on open, not the force switch above it
+  // or the consequence's HelpTip, so typing the certificate name works at once.
+  await waitFor(() => expect(screen.getByLabelText(/to confirm/)).toHaveFocus());
   await user.type(screen.getByLabelText(/to confirm/), 'www');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
   await waitFor(() => expect(screen.queryByRole('link', { name: 'www' })).not.toBeInTheDocument());

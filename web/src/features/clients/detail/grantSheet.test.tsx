@@ -42,17 +42,34 @@ type User = ReturnType<typeof renderRoute>['user'];
 // An option's accessible name includes its hint ("apiapi.example.com",
 // "nginx1 file", "edge traefikTraefik (file provider)"), so match the start.
 async function pick(user: User, combobox: string, option: RegExp) {
-  await user.click(screen.getByRole('combobox', { name: combobox }));
+  await user.click(await screen.findByRole('combobox', { name: combobox }));
   await user.click(await screen.findByRole('option', { name: option }));
 }
 
-/** The multi-lookup stays open while picking; `absent` must not be offered. */
+/** The multi-lookup stays open while picking; `absent` must not be offered.
+ * Certificates renders behind `QueryField` (M2), so its combobox appears
+ * only once the certificates list has actually loaded. */
 async function pickMany(user: User, options: RegExp[], absent?: RegExp) {
-  await user.click(screen.getByRole('combobox', { name: 'Certificates' }));
+  await user.click(await screen.findByRole('combobox', { name: 'Certificates' }));
   for (const o of options) await user.click(await screen.findByRole('option', { name: o }));
   if (absent) expect(screen.queryByRole('option', { name: absent })).not.toBeInTheDocument();
   await user.keyboard('{Escape}');
 }
+
+it('shows an inline error with retry when certificates fail to load', async () => {
+  let calls = 0;
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), () => {
+      calls += 1;
+      return calls === 1 ? problem(500, 'boom') : HttpResponse.json({ items: [makeCert({ id: 'c-1', name: 'www' })], nextCursor: null });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  expect(await within(sheet).findByText("Couldn't load certificates. boom")).toBeInTheDocument();
+  await user.click(within(sheet).getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(within(sheet).getByRole('combobox', { name: 'Certificates' })).toBeInTheDocument());
+});
 
 it('grants several certificates with one layout and closes', async () => {
   const { user, router } = renderRoute('/o/acme/clients/cl-1/certificates');

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Ban, ChevronDown, CircleAlert, CircleCheck } from 'lucide-react';
+import { Ban, ChevronDown, CircleAlert, CircleCheck, Clock } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { hookRunsInfinite } from '@/api/queries/clients';
 import type { HookRun } from '@/api/types';
@@ -18,12 +18,18 @@ import { cn } from '@/lib/utils';
 
 const COLS = 'md:grid-cols-[96px_minmax(0,140px)_96px_minmax(0,1fr)_80px_72px_28px]';
 
-function ExitChip({ code }: { code: number }) {
+// The agent (internal/agent/hooks.go) appends this exact marker to stderr
+// when it kills the hook at its timeout; exitCode -1 otherwise means it was
+// never allowed to run (empty argv, or argv[0] not in CF_HOOK_ALLOW) or
+// failed to start.
+const TIMED_OUT = /\[certforge-agent: killed after /;
+
+function ExitChip({ code, stderr }: { code: number; stderr: string }) {
   const chip =
     code === 0 ? (
       <ToneChip tone="valid" icon={CircleCheck} label="0" />
     ) : code === -1 ? (
-      <ToneChip tone="failed" icon={Ban} label="Not run" />
+      TIMED_OUT.test(stderr) ? <ToneChip tone="failed" icon={Clock} label="Timed out" /> : <ToneChip tone="failed" icon={Ban} label="Not run" />
     ) : (
       <ToneChip tone="failed" icon={CircleAlert} label={String(code)} />
     );
@@ -105,7 +111,7 @@ export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: st
                     {command}
                   </TooltipContent>
                 </Tooltip>
-                <ExitChip code={r.exitCode} />
+                <ExitChip code={r.exitCode} stderr={r.stderr} />
                 <span className="text-xs tabular-nums">{fmtDuration(r.durationMs)}</span>
                 <Button
                   variant="ghost"

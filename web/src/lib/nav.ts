@@ -13,9 +13,9 @@ export function targetNeedsOrg(target: NavTarget): boolean {
 }
 
 // Spec "Web UI design" navigation table: three groups, eight items. Phase 1
-// enabled Overview, Certificates, Issuers, and Settings; Phase 2B adds
-// Audit log (`target` set on each). Phase 3B adds Clients; Delivery follows
-// in Task 7. Alerts remains disabled with the LATER tooltip, never hidden.
+// enabled Overview, Certificates, Issuers, and Settings; Phase 2B added
+// Audit log; Phase 3B added Clients and Delivery (`target` set on each).
+// Alerts remains disabled with the LATER tooltip, never hidden.
 export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Operate',

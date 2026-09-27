@@ -3,6 +3,8 @@ import { Link } from '@tanstack/react-router';
 import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { DeploymentCounts } from '@/components/DeploymentChip';
+import { ToneChip } from '@/components/StatusChip';
+import { CLIENT_STATUS_META } from '@/lib/clientStatus';
 import { fmtDateTime, relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
@@ -40,8 +42,17 @@ export function clientColumns({ slugOf, siteName, orgName }: { slugOf: (c: Clien
         ]
       : []),
     col.accessor('status', {
+      header: 'Status',
+      meta: { sortKey: 'status', help: 'client.status', className: 'w-28' },
+      cell: ({ getValue }) => {
+        const m = CLIENT_STATUS_META[getValue()];
+        return <ToneChip tone={m.tone} icon={m.icon} label={m.label} />;
+      },
+    }),
+    col.display({
+      id: 'connection',
       header: 'Connection',
-      meta: { sortKey: 'status', help: 'client.connection', className: 'w-40' },
+      meta: { help: 'client.connection', className: 'w-36' },
       cell: ({ row }) => <ConnectionDot client={row.original} />,
     }),
     ...(siteName

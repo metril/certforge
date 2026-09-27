@@ -7,6 +7,7 @@ import { errorMessage } from '@/api/errors';
 import { clientQuery } from '@/api/queries/clients';
 import { grantsQuery } from '@/api/queries/grants';
 import { sitesQuery } from '@/api/queries/sites';
+import { ErrorState } from '@/components/ErrorState';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMe, useOrg } from '@/lib/org';
@@ -25,7 +26,8 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
   const me = useMe();
   const navigate = useNavigate();
   const search = useSearch({ from: '/_app/o/$org/clients/$id/$tab' });
-  const { data: client, isPending, error } = useQuery(clientQuery(org.id, id));
+  const clientQ = useQuery(clientQuery(org.id, id));
+  const { data: client, isPending, error } = clientQ;
   const { data: sites = [] } = useQuery(sitesQuery(org.id));
   const grantsQ = useQuery(grantsQuery(org.id, id));
   const grants = grantsQ.data ?? [];
@@ -43,7 +45,7 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.grant, grantsQ.isPending, grants.map((g) => g.id).join(',')]);
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
-  if (error) return <p role="alert">{errorMessage(error)}</p>;
+  if (error) return <ErrorState message={`Couldn't load the client. ${errorMessage(error)}`} onRetry={() => void clientQ.refetch()} />;
   const canWrite = can(me, 'clients:write', org.id);
   const siteName = sites.find((s) => s.id === client.siteId)?.name;
   const goTab = (t: ClientTab) => void navigate({ to: '/o/$org/clients/$id/$tab', params: { org: org.slug, id, tab: t }, search: {} });

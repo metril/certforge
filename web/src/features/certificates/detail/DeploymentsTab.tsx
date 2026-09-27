@@ -10,12 +10,12 @@ import { DeploymentChip } from '@/components/DeploymentChip';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
-import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
-import { DELIVERY_LABEL, fileRows } from '@/lib/clientStatus';
+import { DELIVERY_LABEL, fileRows, type Connection } from '@/lib/clientStatus';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
+import { ClientWriteTip } from '@/features/clients/detail/ClientWriteTip';
 
 const COLS = 'md:grid-cols-[minmax(0,1fr)_minmax(0,112px)_56px_minmax(0,120px)_minmax(0,120px)_minmax(0,120px)_minmax(0,180px)_112px]';
 
@@ -27,12 +27,11 @@ function installedNote(d: CertificateDeployment, cert: Certificate): string {
   return `${version} · ${ok}/${d.deployment.expected.length} files match`;
 }
 
-// The row carries no real lastSeen (the deployment's updatedAt is not the
-// client's last-seen time): pass null and let an explicit label carry the
-// Offline/Online word for an active client, falling back to
-// ConnectionDot's own Never connected/Revoked reading otherwise.
-const connectionOf = (d: CertificateDeployment) => ({ status: d.clientStatus, online: d.clientOnline, lastSeen: null });
-const connectionLabel = (d: CertificateDeployment) => (d.clientStatus === 'active' && !d.clientOnline ? 'Offline' : undefined);
+// CertificateDeployment carries no lastSeen, so `connection()` can't tell
+// "offline" from "never connected" here — state the reading directly
+// instead (revoked wins, then the server's own online/offline verdict),
+// matching what the list/detail/Overview show for the same client.
+const connectionKind = (d: CertificateDeployment): Connection => (d.clientStatus === 'revoked' ? 'revoked' : d.clientOnline ? 'online' : 'offline');
 
 /** A layout or target name linking to its Delivery sheet; "–" when the grant has none. */
 function DeliveryRef({ orgSlug, kind, id, name }: { orgSlug: string; kind: 'layouts' | 'targets'; id: string | null; name: string | null }) {
@@ -101,7 +100,7 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
               >
                 {d.clientName}
               </Link>
-              <ConnectionDot client={connectionOf(d)} label={connectionLabel(d)} />
+              <ConnectionDot client={{ status: d.clientStatus, online: d.clientOnline, lastSeen: null }} kind={connectionKind(d)} />
             </span>
             <span className="truncate">{siteName(d.siteId)}</span>
             <span>{DELIVERY_LABEL[d.delivery]}</span>
@@ -109,7 +108,7 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
             <DeliveryRef orgSlug={orgSlug} kind="targets" id={d.deployTargetId} name={d.deployTargetName} />
             <DeploymentChip state={d.deployment.state} withHelp />
             <span className="truncate text-xs text-ink-muted">{installedNote(d, cert)}</span>
-            <PermissionTip allowed={canWrite} action="clients:write" side="left">
+            <ClientWriteTip canWrite={canWrite} revoked={d.clientStatus === 'revoked'} side="left">
               <Button
                 size="sm"
                 variant="outline"
@@ -119,7 +118,7 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
                 <RotateCw className="size-3.5" aria-hidden />
                 Redeploy
               </Button>
-            </PermissionTip>
+            </ClientWriteTip>
           </li>
         ))}
       </ul>

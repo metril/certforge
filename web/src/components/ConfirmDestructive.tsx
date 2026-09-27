@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CircleAlert } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,8 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
   const [typed, setTyped] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const actionRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -49,7 +51,16 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent
+        onOpenAutoFocus={(e) => {
+          // Radix's own default (first focusable descendant) would land on
+          // the consequence's HelpTip button, since it comes before the
+          // confirm input in DOM order — focus the input (or the primary
+          // action when the caller asks for no typed confirmation) instead.
+          e.preventDefault();
+          (confirmText ? inputRef.current : actionRef.current)?.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="flex items-start gap-1.5">
@@ -62,7 +73,7 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
           <Label htmlFor="confirm-destructive">
             Type <span className="font-mono">{confirmText}</span> to confirm
           </Label>
-          <Input id="confirm-destructive" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+          <Input ref={inputRef} id="confirm-destructive" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
         </div>
         {error && (
           <p role="alert" className="flex items-center gap-1 text-sm">
@@ -74,7 +85,7 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" disabled={typed !== confirmText || busy} onClick={() => void run()}>
+          <Button ref={actionRef} variant="destructive" disabled={typed !== confirmText || busy} onClick={() => void run()}>
             {actionLabel}
           </Button>
         </DialogFooter>

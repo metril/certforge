@@ -205,3 +205,10 @@ it('never opens the add sheet for a viewer, even with ?edit=new', async () => {
   await screen.findByRole('table', { name: 'File layouts' });
   expect(screen.queryByRole('dialog', { name: 'New layout' })).not.toBeInTheDocument();
 });
+
+it('clears an unknown ?edit= id and reports it', async () => {
+  renderRoute('/o/acme/delivery/layouts?edit=nope');
+  await screen.findByRole('table', { name: 'File layouts' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(await screen.findByText('File layout not found.')).toBeInTheDocument();
+});
