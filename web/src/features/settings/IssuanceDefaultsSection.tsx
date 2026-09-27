@@ -12,6 +12,21 @@ import { NO_ORG } from '@/lib/nav';
 import { useMe } from '@/lib/org';
 import { can, type Action } from '@/lib/permissions';
 import { chainFor, fieldFromTitle, fromBuiltin, fromEffective, fullPayload, IssuanceDefaultsForm, useFieldCtx, type FieldKey } from './issuanceFields';
+import { SchemaSection } from './SchemaSection';
+
+// Task 9: placeholders for the four rate-limit inputs; the fields themselves
+// (title, description/tooltip, min/max) come straight from the server's
+// `issuance` schema.
+const RATE_LIMIT_UI = { 'ui:placeholder': '0' };
+const ISSUANCE_UI_OVERRIDES = {
+  rateLimits: {
+    'ui:classNames': 'grid gap-3 sm:grid-cols-2',
+    certsPerRegisteredDomainPerWeek: RATE_LIMIT_UI,
+    duplicateCertsPerWeek: RATE_LIMIT_UI,
+    failedValidationsPerHour: RATE_LIMIT_UI,
+    newOrdersPer3Hours: RATE_LIMIT_UI,
+  },
+};
 
 type ServerError = { field: FieldKey | null; message: string } | null;
 
@@ -158,6 +173,7 @@ export function IssuanceDefaultsSection() {
             setGlobalError(null);
           }}
         />
+        <SchemaSection section="issuance" title="Checks and limits" help="settings.issuanceChecks" uiSchemaOverrides={ISSUANCE_UI_OVERRIDES} />
       </TabsContent>
       <TabsContent value="org">
         <IssuanceDefaultsForm

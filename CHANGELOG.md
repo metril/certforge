@@ -197,3 +197,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - End-to-end coverage for http-01, tls-alpn-01, mixed methods, PKCS#12 export and ARI.
 - Certificate detail marks externally managed certificates, uploads new versions and shows the ARI window.
 - Layout editor supports DER, PKCS#12 and JKS files, a stored password and extra certificates.
+- Settings edit the CAA check and local rate limits.

@@ -51,6 +51,10 @@ export const help = {
     text: 'Organizations separate certificates, credentials and access. Sites are filters inside an org.',
     learnMore: 'configuration.md#general',
   },
+  'settings.issuanceChecks': {
+    text: 'Apply to every org. Staging CAs are counted but never blocked.',
+    learnMore: 'configuration.md#issuance',
+  },
   'org.slugPermanent': { text: 'Slugs are part of every URL, so they never change.' },
   'org.deleteCascade': { text: 'Its issuance defaults and revoked-key history are removed with it.' },
   'backup.kek': {

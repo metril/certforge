@@ -86,6 +86,41 @@ it('extracts missingProperty and the field property path from a required error',
   expect(errors[0]).toMatchObject({ name: 'required', property: 'name', params: { missingProperty: 'name' } });
 });
 
+// Task 9 (Issuance's rateLimits): additionalProperties: false at a nested
+// level, with a failing sibling, used to leak a redundant "False boolean
+// schema." error onto the failing property (and again one level up, onto
+// its parent object) — cfworker's own additionalProperties handling
+// re-validates a property against `false` whenever it wasn't marked
+// evaluated, which includes one that's declared in `properties` but simply
+// failed its own schema (validate.js only marks it evaluated on success).
+describe('additionalProperties: false does not leak a redundant "False boolean schema." unit', () => {
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      rateLimits: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { failedValidationsPerHour: { type: 'integer', minimum: 0 } },
+      },
+    },
+  } as RJSFSchema;
+
+  it('a failing nested property reports only its own real error, not a "false" companion at its own or its parent\'s location', () => {
+    const validator = createValidator();
+    const { errors } = validator.validateFormData({ rateLimits: { failedValidationsPerHour: -1 } }, schema);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ property: '.rateLimits.failedValidationsPerHour', message: 'Must be at least 0.' });
+  });
+
+  it('a genuinely unknown property still fails additionalProperties: false', () => {
+    const validator = createValidator();
+    const { errors } = validator.validateFormData({ rateLimits: { failedValidationsPerHour: 0 }, extraneous: 'x' }, schema);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ name: 'false', property: '.extraneous' });
+  });
+});
+
 describe('reworded messages for the common keywords', () => {
   it('pattern includes the pattern text', () => {
     const validator = createValidator();

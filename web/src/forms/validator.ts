@@ -89,6 +89,26 @@ function isWrapperUnit(unit: OutputUnit, all: OutputUnit[]): boolean {
   if (INSTANCE_LOCATION_NESTED_WRAPPERS.has(unit.keyword)) {
     return all.some((v) => v !== unit && isStrictDescendantPointer(v.instanceLocation, unit.instanceLocation));
   }
+  // Task 9 (Issuance's `rateLimits`, `additionalProperties: false` nested
+  // two levels deep): cfworker's `additionalProperties`/`unevaluatedProperties:
+  // false` re-validates ANY property against the literal schema `false`
+  // whenever that property didn't come back marked "evaluated" — which
+  // includes a property that IS declared in `properties` but simply failed
+  // its own schema (validate.js only sets `thisEvaluated[key]` on success).
+  // That produces a redundant `keyword: 'false'` unit ("False boolean
+  // schema.") at the failing property's own instance location, and another
+  // one level up at its parent object's location if that ancestor also
+  // declares `additionalProperties: false` — cascading past the existing
+  // `KEYWORD_LOCATION_NESTED_WRAPPERS`/`INSTANCE_LOCATION_NESTED_WRAPPERS`
+  // checks above, since this synthetic unit's own `keyword` is `'false'`,
+  // not `'additionalProperties'`. Drop it whenever any other unit's
+  // `instanceLocation` is the same location or nested under it — a real
+  // leaf failure (e.g. `minimum`) already explains that instance; a `false`
+  // unit is genuine only when nothing else does (an actually-disallowed
+  // extra property with no schema of its own to fail).
+  if (unit.keyword === 'false') {
+    return all.some((v) => v !== unit && (v.instanceLocation === unit.instanceLocation || isStrictDescendantPointer(v.instanceLocation, unit.instanceLocation)));
+  }
   return false;
 }
 

@@ -6,6 +6,8 @@ import { errorMessage } from '@/api/errors';
 import { Button } from '@/components/ui/button';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage, withSecretSentinels } from '@/forms/uiSchema';
+import { HelpTip } from '@/components/HelpTip';
+import type { HelpKey } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 
@@ -15,13 +17,22 @@ import { can } from '@/lib/permissions';
  * and are sent back as "__unchanged__" unless replaced. `actions` renders
  * extra buttons (Authentication's "Test connection") next to Save, given
  * the form's current (possibly unsaved) value. Read-only, with no Save,
- * unless the caller holds settings:write. */
+ * unless the caller holds settings:write.
+ *
+ * `title`/`help` (Task 9): renders a small heading with a top border above
+ * the form when a caller mounts this as its own sub-block rather than the
+ * whole section — IssuanceDefaultsSection's Global-tab "Checks and limits"
+ * block, under the `issuance` section. */
 export function SchemaSection({
   section,
+  title,
+  help,
   actions,
   uiSchemaOverrides,
 }: {
   section: SectionId;
+  title?: string;
+  help?: HelpKey;
   actions?: (value: Record<string, unknown>) => ReactNode;
   /** Forwarded to `SchemaForm` (fix round 1, Task 10: Agent URL's extra tooltip caveat). */
   uiSchemaOverrides?: UiSchema;
@@ -42,6 +53,12 @@ export function SchemaSection({
 
   return (
     <div className="grid max-w-[720px] gap-6">
+      {title && (
+        <div className="flex items-center gap-1.5 border-t pt-4">
+          <h3 className="text-sm font-medium">{title}</h3>
+          {help && <HelpTip id={help} />}
+        </div>
+      )}
       <SchemaForm
         ref={formRef}
         schema={schema}

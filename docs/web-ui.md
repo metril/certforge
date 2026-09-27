@@ -68,6 +68,12 @@ Three tabs, kept in the URL (`?tab=users|bindings|keys`). **Users** lists everyo
 
 The redirect URI to register (copy button), the single sign-on form rendered from the section schema (the client secret shows Stored with Replace), **Test connection** for the issuer currently in the form, and **Group mappings**: group-to-role bindings, the same rows as group bindings in Access.
 
+## Settings → Issuance defaults
+
+Two tabs: **Global** (built-in, server-wide defaults) and the current org. Each org field shows a badge for where its value comes from (Default, Global or the org's own Override) with a hover chain listing every level; an unset field inherits from the level above and a change applies at each certificate's next renewal. Global and org each save independently.
+
+The Global tab also carries a **Checks and limits** block, rendered straight from the server's `issuance` settings schema: a **Check CAA records** switch and a two-column grid of four rate limits (certificates per registered domain per week, duplicate certificates per week, failed validations per hour, new orders per 3 hours — 0 disables a limit). This section is global only and has its own Save; it does not appear on the org tab.
+
 ## Settings → Agents
 
 The agents settings (the URL agents dial, extra listener names, token and agent certificate lifetimes, heartbeat and offline thresholds), then the **listener certificate** (its names, expiry and issuing CA) and the **agent CAs**. **Rotate** creates a new CA that signs new agent certificates; agents move over as they renew, and unused enrolment tokens keep working until the old CA is retired. A retiring CA can be **retired** once no agent still uses it; the listener certificate then switches to the newer CA and tokens pinned to the retired one are refused. Only global admins can change anything here.
