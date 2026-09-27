@@ -153,6 +153,111 @@ func TestDownloadDER(t *testing.T) {
 
 	_, err = f.downloadFormat(f.as("operator"), c.ID, v.ID, "der", "fullchain")
 	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	// Review fix round 1: the der key part is audited with format "der",
+	// same as pem's key/combined parts are audited with format "pem"
+	// (TestDownloadKeyAuditedForAdmin).
+	res, err = f.downloadFormat(f.as("admin"), c.ID, v.ID, "der", "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := res.(gen.DownloadCertificateVersion200ApplicationoctetStreamResponse); !ok {
+		t.Fatalf("key response type = %T", res)
+	}
+	var format string
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT details->>'format' FROM audit_events WHERE action = 'certificate.key_exported' ORDER BY id DESC LIMIT 1`).Scan(&format); err != nil {
+		t.Fatal(err)
+	}
+	if format != "der" {
+		t.Fatalf("audit format = %q, want der", format)
+	}
+}
+
+// TestDownloadRejectsContainerFormats is the review fix-round-1 coverage for
+// the critical finding: DownloadCertificateVersion must reject format=p12
+// and format=jks itself (422) rather than pass them to render.For, which
+// would otherwise accept them, decrypt the stored key for a request that
+// can never succeed (the download endpoint has no password field), and
+// only then fail inside the renderer. Rejected up front, no audit row is
+// ever written for these.
+func TestDownloadRejectsContainerFormats(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-container", true)
+	for _, format := range []string{"p12", "jks"} {
+		_, err := f.downloadFormat(f.as("admin"), c.ID, v.ID, format, "key")
+		wantStatus(t, err, http.StatusUnprocessableEntity)
+		// The rejection must be format-level (rejected before ever calling
+		// render.For/Material), not a password/parts error surfacing later
+		// from inside the p12/jks renderer.
+		if !strings.Contains(err.Error(), "Invalid format") {
+			t.Fatalf("format=%s error = %v, want an Invalid format problem", format, err)
+		}
+	}
+	if n := f.auditCount(t, "certificate.key_exported"); n != 0 {
+		t.Fatalf("rejected container-format download recorded %d exports", n)
+	}
+}
+
+// TestExportDeniedWritesNoAudit is the review fix-round-1 coverage: a
+// caller without keys:export is refused before Material or Auditor.Record
+// is ever reached, so a denied export leaves no certificate.key_exported
+// row.
+func TestExportDeniedWritesNoAudit(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-denied", true)
+	pw := "hunter22"
+	_, err := f.export(f.as("viewer"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatP12, Password: &pw})
+	wantStatus(t, err, http.StatusForbidden)
+	if n := f.auditCount(t, "certificate.key_exported"); n != 0 {
+		t.Fatalf("denied export recorded %d exports", n)
+	}
+}
+
+// TestExportEncodingAndAliasFieldRestrictions is the review fix-round-1
+// coverage for the two Minor findings: encoding only applies to p12, alias
+// only to jks (each 422 on the offending field otherwise), and an unknown
+// encoding value is 422 encoding rather than a raw renderer error.
+func TestExportEncodingAndAliasFieldRestrictions(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-fields", true)
+	pw := "hunter22"
+
+	legacy := gen.P12Encoding("legacy")
+	_, err := f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatJks, Password: &pw, Encoding: &legacy})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	alias := "my-alias"
+	_, err = f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatP12, Password: &pw, Alias: &alias})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	bogus := gen.P12Encoding("bogus")
+	_, err = f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatP12, Password: &pw, Encoding: &bogus})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+}
+
+// TestExportCorruptMaterialIs500 is the review fix-round-1 coverage for the
+// other half of the encoding-validation Minor finding: once encoding is
+// validated in the handler, a renderer failure that isn't ErrNoKey or
+// ErrPassword (here, stored leaf DER that fails to parse — corrupt stored
+// material, not caller input) must surface as 500, not 422.
+func TestExportCorruptMaterialIs500(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-corrupt", true)
+	if _, err := f.pool.Exec(context.Background(),
+		`UPDATE certificate_versions SET leaf_der = 'not-a-certificate' WHERE id = $1`, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	pw := "hunter22"
+	// A plain (non-HTTPError) error here is what s.responseError turns into
+	// a 500 at the real HTTP layer (TestDownloadKeyAuditedForAdmin's broken-
+	// auditor case checks the same way, calling the handler directly rather
+	// than through HTTP); problemStatus returns 0 for anything that isn't
+	// an *HTTPError.
+	_, err := f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatP12, Password: &pw})
+	if err == nil || problemStatus(err) != 0 {
+		t.Fatalf("want a plain (500) error, got %v", err)
+	}
 }
 
 // TestExportP12 is the Task 4 brief's PKCS#12 export coverage: a caller
@@ -302,6 +407,14 @@ func TestDownloadKeyAuditedForAdmin(t *testing.T) {
 	}
 	if n := f.auditCount(t, "certificate.key_exported"); n != 1 {
 		t.Fatalf("audit rows = %d", n)
+	}
+	var format string
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT details->>'format' FROM audit_events WHERE action = 'certificate.key_exported' ORDER BY id DESC LIMIT 1`).Scan(&format); err != nil {
+		t.Fatal(err)
+	}
+	if format != "pem" {
+		t.Fatalf("audit format = %q, want pem", format)
 	}
 	broken, err := pgxpool.New(context.Background(), dbtest.URL(t))
 	if err != nil {

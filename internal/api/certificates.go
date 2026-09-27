@@ -398,10 +398,17 @@ func (s *Server) DownloadCertificateVersion(ctx context.Context, r gen.DownloadC
 	if r.Params.Format != nil {
 		format = string(*r.Params.Format)
 	}
-	renderer, ok := render.For(format)
-	if !ok {
-		return nil, unprocessable("format", fmt.Sprintf("unknown format %q; valid: %s", format, strings.Join(render.Formats, ", ")))
+	// Download only ever produces pem or der: p12/jks always need a
+	// password, which this endpoint has no field for, so they can never
+	// succeed here. Rejecting them by name before render.For (rather than
+	// letting them reach the renderer and fail there) avoids decrypting the
+	// stored key for a request that can never complete, and keeps the error
+	// about format, not a password/parts message that would otherwise
+	// surface from deep inside the p12/jks renderer.
+	if format != "pem" && format != "der" {
+		return nil, unprocessable("format", fmt.Sprintf("unknown format %q; valid: pem, der", format))
 	}
+	renderer, _ := render.For(format)
 	var parts []string
 	for _, p := range strings.Split(r.Params.Parts, ",") {
 		if p = strings.TrimSpace(p); p != "" {
@@ -489,13 +496,23 @@ func (s *Server) ExportCertificateVersion(ctx context.Context, r gen.ExportCerti
 	}
 	opts := render.OutputOpts{Password: password}
 	if r.Body.Alias != nil {
+		if format != "jks" {
+			return nil, unprocessable("alias", "only valid for jks")
+		}
 		if !exportAliasRE.MatchString(*r.Body.Alias) {
 			return nil, unprocessable("alias", `must match ^[A-Za-z0-9._-]{1,64}$`)
 		}
 		opts.Alias = *r.Body.Alias
 	}
 	if r.Body.Encoding != nil {
-		opts.Encoding = string(*r.Body.Encoding)
+		if format != "p12" {
+			return nil, unprocessable("encoding", "only valid for p12")
+		}
+		enc := string(*r.Body.Encoding)
+		if enc != "modern" && enc != "legacy" {
+			return nil, unprocessable("encoding", fmt.Sprintf("unknown encoding %q; valid: modern, legacy", enc))
+		}
+		opts.Encoding = enc
 	}
 	c, err := s.d.Issuance.Store.GetCertificate(ctx, r.OrgId, r.Id)
 	if err != nil {
@@ -514,7 +531,10 @@ func (s *Server) ExportCertificateVersion(ctx context.Context, r gen.ExportCerti
 		if errors.Is(err, render.ErrPassword) {
 			return nil, unprocessable("password", err.Error())
 		}
-		return nil, unprocessable("format", err.Error())
+		// encoding is already validated above, and password/alias/format are
+		// all valid at this point, so anything else here is unexpected —
+		// most likely corrupt stored leaf/chain DER — not caller error.
+		return nil, err
 	}
 	org := r.OrgId
 	if err := s.d.Auditor.Record(ctx, audit.Event{Action: "certificate.key_exported", ResourceType: "certificate_version",
