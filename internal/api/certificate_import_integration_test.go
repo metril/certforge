@@ -213,6 +213,21 @@ func TestImportDryRunThenCreate(t *testing.T) {
 	if n := f.auditCount(t, "certificate.import"); n != 1 {
 		t.Fatalf("certificate.import audit rows = %d, want 1", n)
 	}
+	var createdCount, skippedCount, namesJSON string
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT details->>'created', details->>'skipped', details->'names'::text FROM audit_events WHERE action = 'certificate.import' ORDER BY id DESC LIMIT 1`,
+	).Scan(&createdCount, &skippedCount, &namesJSON); err != nil {
+		t.Fatal(err)
+	}
+	if createdCount != "1" {
+		t.Fatalf("audit details.created = %q, want 1", createdCount)
+	}
+	if skippedCount != "0" {
+		t.Fatalf("audit details.skipped = %q, want 0", skippedCount)
+	}
+	if namesJSON != `["imported.example.test"]` {
+		t.Fatalf("audit details.names = %q, want [\"imported.example.test\"]", namesJSON)
+	}
 }
 
 // TestImportNoAccount covers the 422 when the org has a CA but no ACME

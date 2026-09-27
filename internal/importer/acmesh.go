@@ -41,7 +41,17 @@ func (acmeSh) Import(_ context.Context, fsys fs.FS) ([]ImportedCert, error) {
 		}
 		var key []byte
 		if b, err := fs.ReadFile(root, dir+"/"+domain+".key"); err == nil {
-			key, _ = normalizeKeyPEM(b)
+			if der, ok := normalizeKeyPEM(b); ok {
+				key = der
+			} else {
+				// A key file exists but could not be decoded: pass the raw
+				// bytes through rather than silently reporting this
+				// certificate as keyless. issuance.ImportCertificates
+				// parses KeyPKCS8 itself and reports a "cannot parse key"
+				// skip when that fails, so the caller learns a key file
+				// was found and is unusable, not that none exists.
+				key = b
+			}
 		}
 		out = append(out, ImportedCert{Name: domain, Source: SourceAcmeSh, LeafDER: leafDER, ChainDER: chainDER, KeyPKCS8: key})
 	}
@@ -51,14 +61,20 @@ func (acmeSh) Import(_ context.Context, fsys fs.FS) ([]ImportedCert, error) {
 // acmeShCertFiles reads dir's certificate material: fullchain.cer when
 // present (leaf is its first CERTIFICATE block, the chain is the rest), or
 // <domain>.cer for the leaf plus ca.cer for the chain (ca.cer is optional;
-// its absence is not itself a reason to drop the certificate).
+// its absence is not itself a reason to drop the certificate). ok is false
+// only when dir has neither file at all — not a certificate directory, so
+// Import silently passes over it. When a recognized file is present but
+// decodes to no CERTIFICATE block at all, ok is still true and leafDER is
+// that file's own raw bytes: issuance.ImportCertificates' x509.
+// ParseCertificate then fails on it with a real reason, and the caller
+// sees a "cannot parse leaf" skip instead of this certificate silently
+// vanishing from the results.
 func acmeShCertFiles(fsys fs.FS, dir, domain string) (leafDER []byte, chainDER [][]byte, ok bool) {
 	if b, err := fs.ReadFile(fsys, dir+"/fullchain.cer"); err == nil {
-		certs := decodeCertPEMs(b)
-		if len(certs) == 0 {
-			return nil, nil, false
+		if certs := decodeCertPEMs(b); len(certs) > 0 {
+			return certs[0], certs[1:], true
 		}
-		return certs[0], certs[1:], true
+		return b, nil, true
 	}
 	b, err := fs.ReadFile(fsys, dir+"/"+domain+".cer")
 	if err != nil {
@@ -66,7 +82,7 @@ func acmeShCertFiles(fsys fs.FS, dir, domain string) (leafDER []byte, chainDER [
 	}
 	certs := decodeCertPEMs(b)
 	if len(certs) == 0 {
-		return nil, nil, false
+		return b, nil, true
 	}
 	if cb, err := fs.ReadFile(fsys, dir+"/ca.cer"); err == nil {
 		chainDER = decodeCertPEMs(cb)

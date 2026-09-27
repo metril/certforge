@@ -2,8 +2,10 @@ package issuance
 
 import (
 	"context"
+	"crypto"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"time"
@@ -90,8 +92,16 @@ func (s *Service) importOverrides(ctx context.Context, orgID, caID uuid.UUID) (D
 // dry-run and create paths share importOne's single code path exactly
 // (rolling the transaction back instead of committing it), so a preview
 // can never claim something would succeed that create would in fact
-// refuse — including a name collision, caught the same way either mode
-// finds out about it: the unique (org_id, name) constraint itself.
+// refuse — including a name collision against an already-stored
+// certificate, caught the same way either mode finds out about it: the
+// unique (org_id, name) constraint itself. A collision between two entries
+// of the *same* archive (acme.sh's <domain>/ and <domain>_ecc/ both name
+// themselves <domain>) is different: each entry's transaction commits or
+// rolls back on its own, so the second one would never actually observe
+// the first's uncommitted-then-rolled-back row in dry-run mode — this
+// loop tracks names claimed within the run itself (claimed), in memory,
+// so dry-run and create report the exact same second entry as a skipped
+// duplicate, not "would create".
 func (s *Service) ImportCertificates(ctx context.Context, orgID, caID uuid.UUID, fsys fs.FS, dryRun bool) (ImportResult, error) {
 	if _, err := s.Store.GetCA(ctx, orgID, caID); err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -116,11 +126,22 @@ func (s *Service) ImportCertificates(ctx context.Context, orgID, caID uuid.UUID,
 	}
 
 	result := ImportResult{DryRun: dryRun}
+	claimed := map[string]bool{}
 	var created, skipped []string
 	for _, ic := range found {
-		item, err := s.importOne(ctx, orgID, over, policy, ic, dryRun)
-		if err != nil {
-			return ImportResult{}, err
+		name := strings.TrimSpace(ic.Name)
+		var item ImportItem
+		if name != "" && claimed[name] {
+			item = ImportItem{Name: name, Names: []string{}, Source: string(ic.Source), HasKey: len(ic.KeyPKCS8) > 0,
+				Action: "skip", Reason: "duplicate name in archive"}
+		} else {
+			item, err = s.importOne(ctx, orgID, over, policy, ic, dryRun)
+			if err != nil {
+				return ImportResult{}, err
+			}
+			if item.Action == "create" {
+				claimed[name] = true
+			}
 		}
 		result.Items = append(result.Items, item)
 		if item.Action == "create" {
@@ -135,23 +156,33 @@ func (s *Service) ImportCertificates(ctx context.Context, orgID, caID uuid.UUID,
 	return result, nil
 }
 
+// maxImportNameLen mirrors the 1–100 length rule every other named
+// resource's own DB CHECK constraint enforces (clients, sites, api keys, ...);
+// certificates.name has no such constraint (Task 13's upload never needed
+// one — a caller chooses that name deliberately), but an imported name is
+// derived from an archive entry, so it needs the same defensive bound
+// applied here instead.
+const maxImportNameLen = 100
+
 // importOne runs CreateExternalCertificate, certstore.Insert and
 // SetCurrentVersion inside one transaction for a single archive entry,
 // exactly as UploadCertificate does for an uploaded one, then either
 // commits (create mode) or rolls back (dry-run mode). Every business-level
-// reason to skip this entry (an empty name, an unparseable leaf, a chain
+// reason to skip this entry (an invalid name, an unparseable leaf, a chain
 // that does not lead back to the leaf, a leaf key type CertForge does not
-// support, or a name already taken by another certificate in this org)
-// reports as ImportItem{Action: "skip"} rather than failing the whole
-// request; only an infrastructure error (the database itself) is returned.
+// support, a key that does not match the leaf, or a name already taken by
+// another certificate in this org) reports as ImportItem{Action: "skip"}
+// rather than failing the whole request; only an infrastructure error (the
+// database itself, or caID/accountId having gone missing from under this
+// request — see the validateDefaultsTx call below) is returned.
 func (s *Service) importOne(ctx context.Context, orgID uuid.UUID, over Defaults, policy RenewPolicy, ic importer.ImportedCert, dryRun bool) (ImportItem, error) {
-	item := ImportItem{Name: strings.TrimSpace(ic.Name), Source: string(ic.Source), HasKey: len(ic.KeyPKCS8) > 0}
+	item := ImportItem{Name: strings.TrimSpace(ic.Name), Names: []string{}, Source: string(ic.Source), HasKey: len(ic.KeyPKCS8) > 0}
 	skip := func(reason string) (ImportItem, error) {
 		item.Action, item.Reason = "skip", reason
 		return item, nil
 	}
-	if item.Name == "" {
-		return skip("the archive entry has no usable name")
+	if item.Name == "" || len(item.Name) > maxImportNameLen {
+		return skip("invalid name")
 	}
 	leaf, err := x509.ParseCertificate(ic.LeafDER)
 	if err != nil {
@@ -179,6 +210,23 @@ func (s *Service) importOne(ctx context.Context, orgID uuid.UUID, over Defaults,
 	if err != nil {
 		return skip(err.Error())
 	}
+	// A key was found alongside the certificate: it must actually be this
+	// leaf's key, the same check ParseUpload (upload.go) applies to an
+	// uploaded key — otherwise an imported certificate would silently seal
+	// and store a key that can never terminate TLS for it.
+	if len(ic.KeyPKCS8) > 0 {
+		key, kerr := x509.ParsePKCS8PrivateKey(ic.KeyPKCS8)
+		if kerr != nil {
+			return skip("cannot parse key: " + kerr.Error())
+		}
+		signerKey, ok := key.(crypto.Signer)
+		if !ok {
+			return skip(fmt.Sprintf("unsupported key type %T", key))
+		}
+		if !publicKeysEqual(leaf.PublicKey, signerKey.Public()) {
+			return skip("key does not match the certificate")
+		}
+	}
 	status := StatusActive
 	now := time.Now()
 	if !leaf.NotAfter.After(now) {
@@ -191,6 +239,20 @@ func (s *Service) importOne(ctx context.Context, orgID uuid.UUID, over Defaults,
 		return ImportItem{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	// over.CAID (and over.AccountID, when set) are about to go into this
+	// certificate's overrides jsonb; validateDefaultsTx both re-checks they
+	// still name a row of this org and takes the FOR KEY SHARE lock P34
+	// requires for any id held in jsonb, so a concurrent DeleteCA/
+	// DeleteAccount (FOR UPDATE on the same row) blocks until this
+	// transaction ends instead of racing this write into a dangling
+	// reference — the same guarantee prepareCertTx gives an ordinary
+	// CreateCertificate. Unlike a business-level skip, this failing means
+	// caID itself has gone missing from under the whole request, so it
+	// propagates as a real error rather than skipping just this one item.
+	if err := s.Store.validateDefaultsTx(ctx, s.Store.q.WithTx(tx), orgID, over); err != nil {
+		return ImportItem{}, err
+	}
 
 	c, err := s.Store.CreateExternalCertificate(ctx, tx, orgID, item.Name, cn, sans, over, true, status, &nextRenew)
 	if err != nil {

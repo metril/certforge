@@ -133,7 +133,17 @@ func extractTarGz(r io.Reader) (fs.FS, error) {
 			return nil, fmt.Errorf("%w: unsafe path %q", ErrArchive, hdr.Name)
 		}
 		if hdr.Typeflag != tar.TypeReg {
-			continue // directories, symlinks, hard links, devices, ...
+			// Directories, symlinks, hard links, devices, ... — never
+			// extracted, and (being typically zero-Size entries) not
+			// costly to skip. A crafted entry that lies and gives a
+			// non-regular type real data behind it still costs gzip a
+			// decompression pass to reach the next header, since tr.Next()
+			// must consume it regardless of Typeflag; that cost is not
+			// counted against maxUncompressedBytes here (only a TypeReg
+			// entry's own bytes are, in readWithinBudget below), but
+			// maxEntries above still bounds the number of such entries a
+			// single archive can force.
+			continue
 		}
 		data, n, err := readWithinBudget(tr, maxUncompressedBytes-total)
 		if err != nil {

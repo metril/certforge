@@ -132,25 +132,43 @@ func certbotFromLive(fsys fs.FS, name string) (ImportedCert, bool) {
 
 // certbotAssemble reads a certificate's four well-known files: fullchain
 // gives the leaf plus its chain when readable; cert alone supplies the leaf
-// otherwise (chain alone, if present, still supplies the chain). A key is
-// optional.
+// otherwise (chain alone, if present, still supplies the chain). ok is
+// false only when none of fullchain/cert exists at all — nothing here to
+// import. When one of them is readable but decodes to no CERTIFICATE block
+// at all, ok is still true and leafDER is that file's own raw bytes (the
+// same "surface it, don't vanish it" contract acmeShCertFiles follows): the
+// caller's x509.ParseCertificate then reports why, as a "cannot parse
+// leaf" skip. A key is optional; one that exists but cannot be decoded is
+// passed through the same way, so the caller reports "cannot parse key"
+// instead of silently treating this certificate as keyless.
 func certbotAssemble(fsys fs.FS, name, certPath, chainPath, fullchainPath, keyPath string) (ImportedCert, bool) {
 	var leafDER []byte
 	var chainDER [][]byte
+	var found bool
+	var undecodable []byte
 	if b, err := fs.ReadFile(fsys, fullchainPath); err == nil {
+		found = true
 		if certs := decodeCertPEMs(b); len(certs) > 0 {
 			leafDER, chainDER = certs[0], certs[1:]
+		} else {
+			undecodable = b
 		}
 	}
 	if leafDER == nil {
 		if b, err := fs.ReadFile(fsys, certPath); err == nil {
+			found = true
 			if certs := decodeCertPEMs(b); len(certs) > 0 {
 				leafDER = certs[0]
+			} else if undecodable == nil {
+				undecodable = b
 			}
 		}
 	}
 	if leafDER == nil {
-		return ImportedCert{}, false
+		if !found {
+			return ImportedCert{}, false
+		}
+		leafDER = undecodable
 	}
 	if chainDER == nil {
 		if b, err := fs.ReadFile(fsys, chainPath); err == nil {
@@ -159,7 +177,11 @@ func certbotAssemble(fsys fs.FS, name, certPath, chainPath, fullchainPath, keyPa
 	}
 	var key []byte
 	if b, err := fs.ReadFile(fsys, keyPath); err == nil {
-		key, _ = normalizeKeyPEM(b)
+		if der, ok := normalizeKeyPEM(b); ok {
+			key = der
+		} else {
+			key = b
+		}
 	}
 	return ImportedCert{Name: name, Source: SourceCertbot, LeafDER: leafDER, ChainDER: chainDER, KeyPKCS8: key}, true
 }
