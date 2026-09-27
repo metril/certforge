@@ -66,6 +66,12 @@ ALTER TABLE output_specs
     DROP COLUMN extra_cert_ids,
     DROP COLUMN password;
 
+-- A keyless (imported/uploaded) version stored after this migration's Up
+-- has no private_key at all, so re-imposing NOT NULL on the way down would
+-- fail against any such row; delete them first (there is no key to recover
+-- once downgraded anyway, since the older schema has nowhere to keep a
+-- keyless version).
+DELETE FROM certificate_versions WHERE private_key IS NULL;
 ALTER TABLE certificate_versions
     DROP COLUMN ca_id,
     ALTER COLUMN private_key SET NOT NULL;

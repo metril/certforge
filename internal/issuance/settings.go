@@ -71,9 +71,15 @@ func RegisterIssuanceSettings(r *settings.Registry) error {
 }
 
 // LoadIssuanceSettings reads the global "issuance" section, falling back to
-// its built-in defaults when it has never been saved.
+// its built-in defaults when it has never been saved. The schema has no
+// "required", and a PUT replaces the whole section, so a saved document
+// that omits a field (a partial {"rateLimits":{...}}, or a bare "{}") must
+// not decode as that field's zero value — decoding starts from the
+// built-in defaults so json.Unmarshal only overwrites the fields the
+// stored document actually names, matching agents.Settings' own
+// Resolve-from-defaults behaviour.
 func LoadIssuanceSettings(ctx context.Context, store *settings.Store) (IssuanceSettings, error) {
-	var s IssuanceSettings
+	s := defaultIssuanceSettings()
 	err := store.Get(ctx, settings.SectionKey(SettingsSectionIssuance), &s)
 	if errors.Is(err, settings.ErrNotFound) {
 		return defaultIssuanceSettings(), nil

@@ -54,12 +54,12 @@ func New(pool *pgxpool.Pool, box crypto.Box) *Store {
 	return &Store{q: sqlcgen.New(pool), box: box}
 }
 
-// Insert stores issued, imported, or uploaded material inside tx. A nil
-// iss.PrivateKeyPKCS8 stores no key (a keyless version); o.Source defaults
-// to "issued" when empty.
+// Insert stores issued, imported, or uploaded material inside tx. An empty
+// (nil or zero-length) iss.PrivateKeyPKCS8 stores no key (a keyless
+// version); o.Source defaults to "issued" when empty.
 func (s *Store) Insert(ctx context.Context, tx pgx.Tx, certID uuid.UUID, iss *signer.Issued, keyType string, o InsertOpts) (Version, error) {
 	var sealed []byte
-	if iss.PrivateKeyPKCS8 != nil {
+	if len(iss.PrivateKeyPKCS8) > 0 {
 		var err error
 		if sealed, err = s.box.Seal(ctx, iss.PrivateKeyPKCS8); err != nil {
 			return Version{}, err
