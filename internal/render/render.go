@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"time"
 )
@@ -25,11 +26,18 @@ type File struct {
 	Name        string
 	ContentType string
 	Data        []byte
+	Secret      bool // true for key-bearing files: 0600 in Zip, in place of name matching
 }
 
-// OutputOpts selects what to render.
+// OutputOpts selects what to render and, for DER/PKCS12/JKS, how.
 type OutputOpts struct {
-	Parts []string // cert, chain, fullchain, key, combined
+	Parts    []string // cert, chain, fullchain, key, combined, extra (PEM); cert, chain, key (DER)
+	Password string   // PKCS12, JKS
+	Encoding string   // PKCS12: modern (default), legacy
+	Alias    string   // JKS entry alias; default BaseName
+	BaseName string   // DER/PKCS12/JKS file base name (without extension)
+	Extras   []Material
+	Rand     io.Reader // nil uses crypto/rand
 }
 
 // Renderer is implemented per output format.
@@ -38,11 +46,39 @@ type Renderer interface {
 	Render(m Material, opts OutputOpts) ([]File, error)
 }
 
-// ErrNoKey is returned when "key" or "combined" is requested without a key.
+// ErrNoKey is returned when a key-bearing part or format is requested
+// without a stored private key: PEM "key"/"combined", DER "key", or any
+// PKCS12/JKS render.
 var ErrNoKey = errors.New("private key not available")
 
+// ErrNotDER is returned when a PEM-only part (fullchain, combined) is
+// requested from the DER renderer.
+var ErrNotDER = errors.New("not available as DER")
+
+// ErrPassword is returned for an empty PKCS12 password or a JKS password
+// shorter than 6 characters.
+var ErrPassword = errors.New("invalid export password")
+
 // Parts lists the valid PEM parts in canonical order.
-var Parts = []string{"cert", "chain", "fullchain", "key", "combined"}
+var Parts = []string{"cert", "chain", "fullchain", "key", "combined", "extra"}
+
+// Formats lists the valid output formats.
+var Formats = []string{"pem", "der", "p12", "jks"}
+
+// For returns the Renderer for format, or false if format is unknown.
+func For(format string) (Renderer, bool) {
+	switch format {
+	case "pem":
+		return PEM{}, true
+	case "der":
+		return DER{}, true
+	case "p12":
+		return PKCS12{}, true
+	case "jks":
+		return JKS{}, true
+	}
+	return nil, false
+}
 
 const pemType = "application/x-pem-file"
 
@@ -82,10 +118,15 @@ func (PEM) Render(m Material, opts OutputOpts) ([]File, error) {
 				return nil, ErrNoKey
 			}
 			data = append(append(certPEM(m.LeafDER), chainPEM(m.ChainDER)...), keyPEM(m.PrivateKeyPKCS8)...)
+		case "extra":
+			for _, ex := range opts.Extras {
+				data = append(data, certPEM(ex.LeafDER)...)
+				data = append(data, chainPEM(ex.ChainDER)...)
+			}
 		default:
 			return nil, fmt.Errorf("unknown part %q", p)
 		}
-		out = append(out, File{Name: fileName(p), ContentType: pemType, Data: data})
+		out = append(out, File{Name: fileName(p), ContentType: pemType, Data: data, Secret: p == "key" || p == "combined"})
 	}
 	return out, nil
 }
@@ -127,7 +168,7 @@ func Zip(files []File) ([]byte, error) {
 	zw := zip.NewWriter(&buf)
 	for _, f := range files {
 		mode := fs.FileMode(0o644)
-		if f.Name == "privkey.pem" || f.Name == "combined.pem" {
+		if f.Secret {
 			mode = 0o600
 		}
 		h := &zip.FileHeader{Name: f.Name, Method: zip.Deflate, Modified: zipTime}

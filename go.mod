@@ -14,6 +14,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/miekg/dns v1.1.64
 	github.com/oapi-codegen/runtime v1.1.1
+	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
 	github.com/pressly/goose/v3 v3.22.1
 	github.com/riverqueue/river v0.24.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.24.0
@@ -25,6 +26,7 @@ require (
 	golang.org/x/net v0.42.0
 	golang.org/x/oauth2 v0.28.0
 	golang.org/x/time v0.11.0
+	software.sslmate.com/src/go-pkcs12 v0.7.3
 )
 
 require (

@@ -63,6 +63,48 @@ func TestRenderRejects(t *testing.T) {
 	}
 }
 
+func TestPEMExtraPart(t *testing.T) {
+	extra1 := Material{LeafDER: []byte("extra1-leaf"), ChainDER: [][]byte{[]byte("extra1-chain")}}
+	extra2 := Material{LeafDER: []byte("extra2-leaf")}
+	files, err := PEM{}.Render(fixture, OutputOpts{Parts: []string{"extra"}, Extras: []Material{extra1, extra2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Name != "extra.pem" {
+		t.Fatalf("files = %+v", files)
+	}
+	want := append(append(certPEM(extra1.LeafDER), chainPEM(extra1.ChainDER)...), certPEM(extra2.LeafDER)...)
+	if !bytes.Equal(files[0].Data, want) {
+		t.Fatal("extra part does not concatenate leaf+chain of each extra in order")
+	}
+}
+
+func TestZipSecretMode(t *testing.T) {
+	files := []File{
+		{Name: "cert.pem", Data: []byte("cert")},
+		{Name: "privkey.pem", Data: []byte("key"), Secret: true},
+		{Name: "bundle.p12", Data: []byte("p12"), Secret: true},
+	}
+	z, err := Zip(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(z), int64(len(z)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	modes := map[string]os.FileMode{}
+	for _, f := range zr.File {
+		modes[f.Name] = f.Mode().Perm()
+	}
+	if modes["cert.pem"] != 0o644 {
+		t.Fatalf("cert.pem mode = %v", modes["cert.pem"])
+	}
+	if modes["privkey.pem"] != 0o600 || modes["bundle.p12"] != 0o600 {
+		t.Fatalf("secret modes = %v", modes)
+	}
+}
+
 func TestZipDeterministicAndReadable(t *testing.T) {
 	files, _ := Render(fixture, []string{"fullchain", "key"})
 	a, err := Zip(files)

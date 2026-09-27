@@ -219,8 +219,8 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Schema, settings, keyless versions | done | f376043 |
-| 2 | OpenAPI contract | done | pending |
-| 3 | Renderers | planned | – |
+| 2 | OpenAPI contract | done | 2dfd7ff |
+| 3 | Renderers | done | pending |
 | 4 | Download and export API | planned | – |
 | 5 | Layout formats, password, extra certificates | planned | – |
 | 6 | http-01 and tls-alpn-01 rules, server http-01 | planned | – |
