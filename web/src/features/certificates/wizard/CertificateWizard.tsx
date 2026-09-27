@@ -5,6 +5,7 @@ import { CircleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { useCreateCertificate, useUpdateCertificate } from '@/api/queries/certificates';
+import { allClientsQuery } from '@/api/queries/clients';
 import { effectiveDefaultsQuery } from '@/api/queries/defaults';
 import type { Certificate, VerificationRule } from '@/api/types';
 import { PageHeader } from '@/components/PageHeader';
@@ -89,12 +90,13 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
   const [submitError, setSubmitError] = useState<string | null>(null);
   const eff = useQuery(effectiveDefaultsQuery(org.id)).data;
   const inherited = useMemo(() => inheritedFrom(eff), [eff]);
+  const clients = useQuery(allClientsQuery(org.id)).data?.items ?? [];
   const create = useCreateCertificate(org.id);
   const update = useUpdateCertificate(org.id, edit?.id ?? '');
   const saving = edit ? update : create;
 
   const namesOk = canContinueNames(state);
-  const verOk = namesOk && verificationReady(state.names, state.rules, inherited);
+  const verOk = namesOk && verificationReady(state.names, state.rules, inherited, clients);
   const reachable = [true, namesOk, verOk, verOk];
 
   const originalNames = useMemo(() => (edit ? normalizeNames(edit.commonName, edit.sans) : []), [edit]);

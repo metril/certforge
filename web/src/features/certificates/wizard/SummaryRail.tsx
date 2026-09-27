@@ -22,7 +22,7 @@ function ruleSummary(rules: WizardState['rules']): string {
 export function SummaryRail({ orgId, state, inherited }: { orgId: string; state: WizardState; inherited: Inherited }) {
   const ctx = useFieldCtx(orgId);
   const eff = useQuery(effectiveDefaultsQuery(orgId)).data ?? {};
-  const cov = coverage(state.names, state.rules, inherited);
+  const cov = coverage(state.names, state.rules, inherited, ctx.clients);
   const covered = cov.filter(isCovered).length;
   const zones = new Set(state.names.map((n) => classifyName(n).zone).filter(Boolean)).size;
   const show = (k: keyof IssuanceDefaults) => {

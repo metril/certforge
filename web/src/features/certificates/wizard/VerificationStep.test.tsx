@@ -1,7 +1,9 @@
 import { useReducer } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
+import { allClientsQuery } from '@/api/queries/clients';
 import type { DnsCredential } from '@/api/types';
 import { server } from '@/test/server';
 import { makeCert, makeClient, providers, url } from '@/test/fixtures';
@@ -22,6 +24,7 @@ beforeEach(() => {
         items: [
           makeClient({ id: 'cl-http', name: 'web-1', status: 'active', capabilities: ['http-01'] }),
           makeClient({ id: 'cl-alpn', name: 'web-2', status: 'active', capabilities: ['tls-alpn-01'] }),
+          makeClient({ id: 'cl-none', name: 'web-3', status: 'active', capabilities: [] }),
         ],
         nextCursor: null,
       }),
@@ -37,10 +40,11 @@ beforeEach(() => {
 
 function H({ inherited }: { inherited: Inherited }) {
   const [state, dispatch] = useReducer(wizardReducer, wizardReducer(initialWizard, { type: 'addNames', names: ['www.example.com', '*.example.com', 'api.other.net'] }));
+  const clients = useQuery(allClientsQuery('org-1')).data?.items ?? [];
   return (
     <>
       <VerificationStep orgId="org-1" state={state} dispatch={dispatch} inherited={inherited} />
-      <output data-testid="ready">{String(verificationReady(state.names, state.rules, inherited))}</output>
+      <output data-testid="ready">{String(verificationReady(state.names, state.rules, inherited, clients))}</output>
       <output data-testid="rules">{JSON.stringify(state.rules)}</output>
     </>
   );
@@ -50,10 +54,11 @@ function H({ inherited }: { inherited: Inherited }) {
 // pre-filled zone rule to exercise first-match-wins under reordering.
 function HOne() {
   const [state, dispatch] = useReducer(wizardReducer, wizardReducer(initialWizard, { type: 'addNames', names: ['a.example.com'] }));
+  const clients = useQuery(allClientsQuery('org-1')).data?.items ?? [];
   return (
     <>
       <VerificationStep orgId="org-1" state={state} dispatch={dispatch} inherited={null} />
-      <output data-testid="ready">{String(verificationReady(state.names, state.rules, null))}</output>
+      <output data-testid="ready">{String(verificationReady(state.names, state.rules, null, clients))}</output>
     </>
   );
 }
@@ -138,6 +143,37 @@ it('only capable clients: a client without tls-alpn-01 is not offered on a TLS-A
   await user.click(screen.getByRole('combobox', { name: 'Rule 2 client' }));
   expect(await screen.findByRole('option', { name: 'web-2' })).toBeInTheDocument();
   expect(screen.queryByRole('option', { name: 'web-1' })).toBeNull();
+});
+
+// Controller ruling (review fix round 2): coverage()/verificationReady() now
+// check an agent-mode rule's client against the method's capability (or a
+// webroot), not just its clientId presence — end to end, through the
+// Coverage panel and the wizard's own Next/Issue gate.
+it('an agent client with no capability is incomplete; a webroot covers it; clearing the webroot makes it incomplete again', async () => {
+  const { user } = renderUI(<H inherited={null} />);
+  await waitFor(() => expect(screen.getByLabelText('Rule 1 match')).toHaveValue('example.com'));
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
+
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 method' })).getByRole('radio', { name: 'HTTP' }));
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 served by' })).getByRole('radio', { name: 'Agent' }));
+  const row2 = screen.getByRole('radiogroup', { name: 'Rule 2 method' }).closest('li')!;
+  await user.click(within(row2).getByRole('button', { name: 'Advanced' }));
+  const webroot = screen.getByLabelText('Webroot');
+  await user.type(webroot, '/srv/acme');
+
+  // A webroot lists every active client, capable or not — pick the one with no capability.
+  await user.click(screen.getByRole('combobox', { name: 'Rule 2 client' }));
+  await user.click(await screen.findByRole('option', { name: 'web-3' }));
+  let row = within(screen.getByRole('region', { name: 'Coverage' })).getByText('api.other.net').closest('li')!;
+  await waitFor(() => expect(row).toHaveTextContent('Rule 2: other.net → HTTP · web-3'));
+  expect(screen.getByTestId('ready')).toHaveTextContent('true');
+
+  // Clearing the webroot leaves the same, still-incapable client picked —
+  // the row must go back to incomplete, and block the wizard step.
+  await user.clear(webroot);
+  row = within(screen.getByRole('region', { name: 'Coverage' })).getByText('api.other.net').closest('li')!;
+  await waitFor(() => expect(row).toHaveTextContent('No client'));
+  expect(screen.getByTestId('ready')).toHaveTextContent('false');
 });
 
 it('coverage shows the method: DNS · credential, then HTTP · client once switched', async () => {

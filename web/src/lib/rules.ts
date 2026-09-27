@@ -54,22 +54,23 @@ export function withVia(rule: VerificationRule, via: ChallengeVia): Verification
  * credential for dns-01, a client for tls-alpn-01 or http-01 via agent.
  * Everything else (manual-dns, http-01 via server) needs nothing more.
  *
- * When `clients` is given, an agent-mode rule's `clientId` is also checked
- * against `clientOptions()` — the same membership the picker itself offers
- * — so a client kept from before a webroot was cleared, or one that never
- * reported the method's capability, is caught here too (review fix round
- * 1, Minor). Without `clients` (most callers, which don't have the list to
- * hand), this falls back to the plain clientId-presence check. */
-export function ruleUsable(r: VerificationRule, clients?: Client[]): boolean {
+ * An agent-mode rule's `clientId` is checked against `clientOptions()` —
+ * the same membership the picker itself offers — not just its presence, so
+ * a client kept from before a webroot was cleared, or one that never
+ * reported the method's capability, is caught too (review fix round 2,
+ * controller ruling: `clients` is no longer optional — coverage.ts and
+ * every one of its callers always has the list, via CoveragePanel's own
+ * `clients` prop from Task 3 B1). */
+export function ruleUsable(r: VerificationRule, clients: Client[]): boolean {
   if (r.method === 'dns-01') return !!r.dnsCredentialId;
   if (r.method === 'http-01') {
     if (r.via !== 'agent') return true;
     if (!r.clientId) return false;
-    return !clients || clientOptions(clients, 'http-01', r.webroot).some((c) => c.id === r.clientId);
+    return clientOptions(clients, 'http-01', r.webroot).some((c) => c.id === r.clientId);
   }
   if (r.method === 'tls-alpn-01') {
     if (!r.clientId) return false;
-    return !clients || clientOptions(clients, 'tls-alpn-01').some((c) => c.id === r.clientId);
+    return clientOptions(clients, 'tls-alpn-01').some((c) => c.id === r.clientId);
   }
   return true;
 }

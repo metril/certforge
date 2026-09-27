@@ -27,9 +27,9 @@ export function VerificationStep({ orgId, state, dispatch, inherited }: Props) {
   // Until the user edits the rules, keep them prefilled from the names (one dns-01 rule per zone).
   useEffect(() => {
     if (state.rulesTouched || !credsQ.isSuccess || !certsQ.isSuccess) return;
-    const rules = prefillRules(state.names, makeSuggester(certsQ.data, creds), inherited);
+    const rules = prefillRules(state.names, makeSuggester(certsQ.data, creds), inherited, clients);
     if (JSON.stringify(rules) !== JSON.stringify(state.rules)) dispatch({ type: 'prefillRules', rules });
-  }, [state.rulesTouched, state.names, state.rules, credsQ.isSuccess, certsQ.isSuccess, certsQ.data, creds, inherited, dispatch]);
+  }, [state.rulesTouched, state.names, state.rules, credsQ.isSuccess, certsQ.isSuccess, certsQ.data, creds, inherited, clients, dispatch]);
 
   // Fix round 1 (review): remembering a rule's credential per zone happens
   // once, after a certificate is actually created (Task 14, via
@@ -47,7 +47,7 @@ export function VerificationStep({ orgId, state, dispatch, inherited }: Props) {
         clients={clients}
         onAddCredential={setPickerFor}
       />
-      <CoveragePanel items={coverage(state.names, state.rules, inherited)} credentials={creds} clients={clients} />
+      <CoveragePanel items={coverage(state.names, state.rules, inherited, clients)} credentials={creds} clients={clients} />
       <ProviderPicker
         open={pickerFor !== null}
         onOpenChange={(o) => !o && setPickerFor(null)}

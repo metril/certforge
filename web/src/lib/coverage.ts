@@ -1,4 +1,4 @@
-import type { EffectiveMap, Source, VerificationRule } from '@/api/types';
+import type { Client, EffectiveMap, Source, VerificationRule } from '@/api/types';
 import { classifyName } from './names';
 import { ruleUsable } from './rules';
 
@@ -106,7 +106,7 @@ export function inheritedFrom(eff: EffectiveMap | undefined): Inherited {
 // if it hadn't matched, and falls through to the next rule in order.
 const skippableForWildcard = (r: VerificationRule) => r.method === 'http-01' || r.method === 'tls-alpn-01';
 
-function resolveName(name: string, rules: VerificationRule[], inherited: Inherited): Coverage {
+function resolveName(name: string, rules: VerificationRule[], inherited: Inherited, clients: Client[]): Coverage {
   if (classifyName(name).kind === 'ip') return { name, state: 'ip' };
   const isWildcard = name.startsWith('*.');
   let skipped = false;
@@ -122,18 +122,18 @@ function resolveName(name: string, rules: VerificationRule[], inherited: Inherit
   const i = find(rules);
   if (i >= 0) {
     const rule = rules[i]!;
-    return { name, state: ruleUsable(rule) ? 'rule' : 'incomplete', ruleIndex: i, rule };
+    return { name, state: ruleUsable(rule, clients) ? 'rule' : 'incomplete', ruleIndex: i, rule };
   }
   // Adaptation (preflight A31): the server takes the *first* matching
   // rule, full stop — it has no concept of "usable" to skip past. Take
   // only the first inherited match too, rather than searching past an
   // unusable one for a later match that the server would never reach.
   const inh = inherited ? inherited.rules[find(inherited.rules)] : undefined;
-  if (inh && inherited) return { name, state: ruleUsable(inh) ? 'inherited' : 'incomplete', rule: inh, source: inherited.source };
+  if (inh && inherited) return { name, state: ruleUsable(inh, clients) ? 'inherited' : 'incomplete', rule: inh, source: inherited.source };
   return { name, state: skipped ? 'wildcard-non-dns' : 'none' };
 }
 
-export function coverage(names: string[], rules: VerificationRule[], inherited: Inherited): Coverage[] {
+export function coverage(names: string[], rules: VerificationRule[], inherited: Inherited, clients: Client[]): Coverage[] {
   // Fix round 1 (review, Important): the challenge router strips a
   // wildcard name's "*." before routing (docs/certificates.md: "Apex and
   // wildcard ... share `_acme-challenge.example.com`; the rule matching
@@ -149,7 +149,7 @@ export function coverage(names: string[], rules: VerificationRule[], inherited: 
     if (name.startsWith('*.')) {
       const apex = toAscii(name.slice(2));
       if (present.has(apex)) {
-        const apexCov = resolveName(apex, rules, inherited);
+        const apexCov = resolveName(apex, rules, inherited, clients);
         // The apex-sharing optimisation above only holds for dns-01/
         // manual-dns (the same TXT record proves both); an http-01 or
         // tls-alpn-01 rule can win the apex's own lookup (the apex isn't a
@@ -159,22 +159,24 @@ export function coverage(names: string[], rules: VerificationRule[], inherited: 
         if (apexCov.rule?.method !== 'http-01' && apexCov.rule?.method !== 'tls-alpn-01') return { ...apexCov, name, viaApex: true };
       }
     }
-    return resolveName(name, rules, inherited);
+    return resolveName(name, rules, inherited, clients);
   });
 }
 
 export const isCovered = (c: Coverage) => c.state === 'rule' || c.state === 'inherited';
 
-export function verificationReady(names: string[], rules: VerificationRule[], inherited: Inherited): boolean {
-  return names.length > 0 && rules.every((r) => matchError(r.match) === null) && coverage(names, rules, inherited).every(isCovered);
+export function verificationReady(names: string[], rules: VerificationRule[], inherited: Inherited, clients: Client[]): boolean {
+  return names.length > 0 && rules.every((r) => matchError(r.match) === null) && coverage(names, rules, inherited, clients).every(isCovered);
 }
 
 /** One dns-01 rule per registered domain, credited from `suggest` (last
  * credential remembered for that zone) when one is known, otherwise left
  * without a credential unless an inherited catch-all already covers it.
  * Always dns-01 — the per-row method picker (VerificationRulesEditor)
- * handles switching a rule to anything else. */
-export function prefillRules(names: string[], suggest: (zone: string) => string | undefined, inherited: Inherited): VerificationRule[] {
+ * handles switching a rule to anything else. `clients` is only for the
+ * inherited catch-all's own `ruleUsable` check (an org/global catch-all
+ * could itself be an agent-mode rule). */
+export function prefillRules(names: string[], suggest: (zone: string) => string | undefined, inherited: Inherited, clients: Client[]): VerificationRule[] {
   const zones: string[] = [];
   for (const n of names) {
     const p = classifyName(n);
@@ -190,7 +192,7 @@ export function prefillRules(names: string[], suggest: (zone: string) => string 
       !!inherited &&
       inZone.every((n) => {
         const m = inherited.rules.find((r) => matchRule(n, r.match));
-        return !!m && ruleUsable(m);
+        return !!m && ruleUsable(m, clients);
       });
     return coveredByInherited ? [] : [{ match: zone, method: 'dns-01' }];
   });

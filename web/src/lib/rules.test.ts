@@ -58,30 +58,54 @@ describe('withVia', () => {
   });
 });
 
-describe('ruleUsable', () => {
-  it('dns-01 needs a credential', () => {
-    expect(ruleUsable({ match: '*', method: 'dns-01' })).toBe(false);
-    expect(ruleUsable({ match: '*', method: 'dns-01', dnsCredentialId: 'd-1' })).toBe(true);
-  });
-  it('manual-dns is always usable', () => {
-    expect(ruleUsable({ match: '*', method: 'manual-dns' })).toBe(true);
-  });
-  it('http-01 via server is always usable; via agent needs a client', () => {
-    expect(ruleUsable({ match: '*', method: 'http-01', via: 'server' })).toBe(true);
-    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent' })).toBe(false);
-    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' })).toBe(true);
-  });
-  it('tls-alpn-01 needs a client', () => {
-    expect(ruleUsable({ match: '*', method: 'tls-alpn-01' })).toBe(false);
-    expect(ruleUsable({ match: '*', method: 'tls-alpn-01', clientId: 'c-1' })).toBe(true);
-  });
-});
-
 const clients = [
   makeClient({ id: 'c-1', name: 'web-1', status: 'active', capabilities: ['http-01'] }),
   makeClient({ id: 'c-2', name: 'web-2', status: 'active', capabilities: ['tls-alpn-01'] }),
   makeClient({ id: 'c-3', name: 'web-3', status: 'pending', capabilities: ['http-01', 'tls-alpn-01'] }),
 ];
+
+describe('ruleUsable', () => {
+  it('dns-01 needs a credential', () => {
+    expect(ruleUsable({ match: '*', method: 'dns-01' }, [])).toBe(false);
+    expect(ruleUsable({ match: '*', method: 'dns-01', dnsCredentialId: 'd-1' }, [])).toBe(true);
+  });
+  it('manual-dns is always usable', () => {
+    expect(ruleUsable({ match: '*', method: 'manual-dns' }, [])).toBe(true);
+  });
+  it('http-01 via server is always usable; via agent needs a client that reports the capability', () => {
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'server' }, [])).toBe(true);
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent' }, clients)).toBe(false);
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' }, clients)).toBe(true);
+  });
+  it('tls-alpn-01 needs a client that reports the capability', () => {
+    expect(ruleUsable({ match: '*', method: 'tls-alpn-01' }, clients)).toBe(false);
+    expect(ruleUsable({ match: '*', method: 'tls-alpn-01', clientId: 'c-2' }, clients)).toBe(true);
+  });
+});
+
+// Review fix round 2 (controller ruling): ruleUsable's `clients` is no
+// longer an opt-in fallback — every real caller (coverage.ts, threaded
+// through to every CoveragePanel/wizard caller) always has the list, so a
+// client that lost the capability (or was only ever picked because a
+// webroot was set) is caught the same way everywhere, not just where a
+// caller happened to pass clients in.
+describe('ruleUsable catches a client that no longer qualifies (review fix round 2)', () => {
+  const noCap = [makeClient({ id: 'c-1', name: 'web-1', status: 'active', capabilities: [] })];
+  const capable = [makeClient({ id: 'c-1', name: 'web-1', status: 'active', capabilities: ['http-01'] })];
+
+  it('http-01 via agent: a client with no capability and no webroot is not usable', () => {
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' }, noCap)).toBe(false);
+  });
+  it('http-01 via agent: the same client becomes usable once a webroot is set', () => {
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1', webroot: '/srv/acme' }, noCap)).toBe(true);
+  });
+  it('http-01 via agent: a capable client is usable either way', () => {
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' }, capable)).toBe(true);
+  });
+  it('tls-alpn-01: a client with no capability is not usable', () => {
+    expect(ruleUsable({ match: '*', method: 'tls-alpn-01', clientId: 'c-1' }, noCap)).toBe(false);
+  });
+});
 
 describe('clientOptions', () => {
   it('filters by capability and active status', () => {
@@ -121,28 +145,3 @@ it('webrootError tolerates a trailing slash', () => {
   expect(webrootError('/')).not.toBeNull();
 });
 
-// Review fix round 1 (Minor): once a webroot is cleared, a client picked
-// while it was set (any active client, regardless of capability) must go
-// back to needing the method's own capability — ruleUsable, given the
-// client list, now checks the same membership clientOptions() would offer.
-describe('ruleUsable with a client list', () => {
-  const noCap = [makeClient({ id: 'c-1', name: 'web-1', status: 'active', capabilities: [] })];
-  const capable = [makeClient({ id: 'c-1', name: 'web-1', status: 'active', capabilities: ['http-01'] })];
-
-  it('http-01 via agent: a client with no capability and no webroot is not usable', () => {
-    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' }, noCap)).toBe(false);
-  });
-  it('http-01 via agent: the same client becomes usable once a webroot is set', () => {
-    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1', webroot: '/srv/acme' }, noCap)).toBe(true);
-  });
-  it('http-01 via agent: a capable client is usable either way', () => {
-    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' }, capable)).toBe(true);
-  });
-  it('tls-alpn-01: a client with no capability is not usable', () => {
-    expect(ruleUsable({ match: '*', method: 'tls-alpn-01', clientId: 'c-1' }, noCap)).toBe(false);
-  });
-  it('without a client list, falls back to the plain clientId-presence check', () => {
-    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' })).toBe(true);
-    expect(ruleUsable({ match: '*', method: 'tls-alpn-01', clientId: 'c-1' })).toBe(true);
-  });
-});

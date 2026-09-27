@@ -30,7 +30,7 @@ export function OverviewTab({ cert, orgId }: { cert: Certificate; orgId: string 
           </div>
         ))}
       </section>
-      <CoveragePanel items={coverage(names, cert.verificationRules, inherited)} credentials={ctx.credentials} clients={ctx.clients} />
+      <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
       <section aria-labelledby="ov-config" className="grid gap-2 lg:col-span-2">
         <h2 id="ov-config" className="text-base font-semibold">
           Effective configuration
