@@ -1,6 +1,6 @@
 // Package render turns canonical certificate material (leaf DER, chain DER,
-// PKCS#8 key) into files. Phase 1 ships PEM; DER, PKCS#12 and JKS renderers
-// implement the same Renderer interface in Phase 4.
+// PKCS#8 key) into files: PEM, DER, PKCS#12 and JKS renderers all implement
+// the same Renderer interface.
 package render
 
 import (

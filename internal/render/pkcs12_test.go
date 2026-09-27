@@ -64,6 +64,13 @@ func TestPKCS12NoKey(t *testing.T) {
 	}
 }
 
+func TestPKCS12UnknownEncoding(t *testing.T) {
+	m := realMaterial(t, "p12.example.test", 13)
+	if _, err := (PKCS12{}).Render(m, OutputOpts{Password: "hunter2", Encoding: "bogus", BaseName: "bundle"}); err == nil {
+		t.Fatal("unknown encoding accepted")
+	}
+}
+
 func containsRaw(certs []*x509.Certificate, raw []byte) bool {
 	for _, c := range certs {
 		if bytes.Equal(c.Raw, raw) {

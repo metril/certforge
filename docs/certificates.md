@@ -174,8 +174,8 @@ Any other ACME error type shows as "The CA returned `<type>`."; open **Raw log**
 Four output formats:
 
 - `pem`: `cert`, `chain`, `fullchain`, `combined` (fullchain + key), `key`, and `extra` (the leaf and chain of each layout's extra certificates, concatenated in order). One part returns a PEM file; several return a zip.
-- `der`: `cert` → `cert.der`; `chain` → one `chain-N.der` file per chain certificate; `key` → `privkey.der` (PKCS#8). `fullchain` and `combined` are not available as DER, since a DER file holds exactly one PEM block.
-- `p12`: one password-protected `<name>.p12` holding the leaf, its chain, any extra certificates (as CA certificates), and the key.
-- `jks`: one password-protected `<name>.jks` Java keystore holding a private-key entry (leaf, key, chain) and one trusted-certificate entry per extra certificate; the store password equals the key password and must be at least 6 characters.
+- `der`: `cert` → `cert.der`; `chain` → one `chain-N.der` file per chain certificate; `key` → `privkey.der` (PKCS#8). `fullchain` and `combined` are not available as DER, since each DER file holds exactly one certificate or key, not several concatenated together.
+- `p12`: one password-protected `<name>.p12` holding the leaf, its chain, any extra certificates (as CA certificates, leaf and chain), and the key.
+- `jks`: one password-protected `<name>.jks` Java keystore holding a private-key entry (leaf, key, chain) and a trusted-certificate entry per extra certificate and per extra chain certificate; the store password equals the key password, must be at least 6 characters, and must be ASCII (Java's own keystore format does not agree with this library on how a non-ASCII password hashes, so a non-ASCII password would produce a file Java/keytool cannot open with the same password).
 
 `key`, `combined`, and every p12/jks export need the `keys:export` permission (global admin only) and are written to the audit log before any byte is sent. DER, PKCS#12 and JKS downloads and exports land in a later Phase 4A task.

@@ -37,9 +37,14 @@ func (PKCS12) Render(m Material, opts OutputOpts) ([]File, error) {
 		return nil, err
 	}
 
-	enc := pkcs12.Modern2023
-	if opts.Encoding == "legacy" {
+	var enc *pkcs12.Encoder
+	switch opts.Encoding {
+	case "", "modern":
+		enc = pkcs12.Modern2023
+	case "legacy":
 		enc = pkcs12.Legacy
+	default:
+		return nil, fmt.Errorf("unknown pkcs12 encoding %q", opts.Encoding)
 	}
 	if opts.Rand != nil {
 		enc = enc.WithRand(opts.Rand)

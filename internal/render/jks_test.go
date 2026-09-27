@@ -55,6 +55,52 @@ func TestJKSShortPasswordRejected(t *testing.T) {
 	}
 }
 
+// TestJKSPasswordMustBeASCII: keystore-go's password hashing maps each
+// UTF-8 byte to one (0, byte) pair rather than one pair per UTF-16 code
+// unit, so a non-ASCII password produces a JKS Java/keytool cannot open
+// with the same password. Reject it instead of silently producing an
+// incompatible file.
+func TestJKSPasswordMustBeASCII(t *testing.T) {
+	m := realMaterial(t, "jks.example.test", 34)
+	if _, err := (JKS{}).Render(m, OutputOpts{Password: "hüntér2", BaseName: "bundle"}); !errors.Is(err, ErrPassword) {
+		t.Fatalf("non-ASCII password: %v", err)
+	}
+}
+
+func TestJKSSixCharASCIIPasswordOK(t *testing.T) {
+	m := realMaterial(t, "jks.example.test", 35)
+	if _, err := (JKS{}).Render(m, OutputOpts{Password: "abcdef", BaseName: "bundle"}); err != nil {
+		t.Fatalf("6-char ASCII password: %v", err)
+	}
+}
+
+// TestJKSExtraChainEntries: PEM's extra part and the PKCS12 renderer both
+// carry an extra certificate's chain, not just its leaf; JKS must match,
+// as extra-<n>-<m> trusted entries.
+func TestJKSExtraChainEntries(t *testing.T) {
+	m := realMaterial(t, "jks.example.test", 36)
+	extra := realMaterial(t, "extra.example.test", 37)
+
+	files, err := (JKS{}).Render(m, OutputOpts{Password: "hunter2", BaseName: "bundle", Extras: []Material{extra}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ks := keystore.New()
+	if err := ks.Load(bytes.NewReader(files[0].Data), []byte("hunter2")); err != nil {
+		t.Fatal(err)
+	}
+	if !ks.IsTrustedCertificateEntry("extra-1-1") {
+		t.Fatal("extra-1-1 not trusted")
+	}
+	tce, err := ks.GetTrustedCertificateEntry("extra-1-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(tce.Certificate.Content, extra.ChainDER[0]) {
+		t.Fatal("extra-1-1 content mismatch")
+	}
+}
+
 func TestJKSNoKey(t *testing.T) {
 	m := realMaterial(t, "jks.example.test", 32)
 	m.PrivateKeyPKCS8 = nil
