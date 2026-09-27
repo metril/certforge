@@ -70,6 +70,13 @@ it('disables Issuers in the sidebar', async () => {
   expect(within(nav).getByText('Issuers').closest('[aria-disabled="true"]')).not.toBeNull();
 });
 
+it('hides Import under All orgs', async () => {
+  as([{ role: 'admin', orgId: null }]);
+  renderRoute('/o/all/certificates');
+  await screen.findByRole('table', { name: 'Certificates' });
+  expect(screen.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument();
+});
+
 it('shows the org name on card rows below md', async () => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,

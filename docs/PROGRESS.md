@@ -243,8 +243,8 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 | 1 | API layer, fixtures, helpers | done | 4972a7b |
 | 2 | Download sheet formats | done | fef1cbe |
 | 3 | Per-rule verification methods | done | 045d591 |
-| 4 | CAA and rate-ledger steps | done | pending |
-| 5 | Upload screen and Import menu | not started | |
+| 4 | CAA and rate-ledger steps | done | a60ccb3 |
+| 5 | Upload screen and Import menu | done | pending |
 | 6 | Import screen | not started | |
 | 7 | Unmanaged detail, version upload, ARI marker | not started | |
 | 8 | Layout formats, password, extra certificates | not started | |
@@ -389,6 +389,7 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 - 4B: the `issuance` section renders under the Global tab of Settings → Issuance defaults as its own schema-driven form with its own Save (4A R11 deviation). The org tab does not show it, because it is global only.
 - 4B Task 1: jsdom's `Blob`/`File` have no working `stream()`; Node's native fetch, asked to fully read a multipart body built from a jsdom `File` (e.g. via an msw handler's `request.formData()`), gets exactly one chunk from the bridged stream and then hangs forever waiting for a `done` signal that never arrives. `imports.test.ts`'s multipart-body assertion moved to its own `imports.multipart.test.ts` under `// @vitest-environment node`, where `File`/`FormData`/`Request` stay fully native; `imports.test.ts` keeps the `useImportCertificates` invalidation test (needs `renderHook`/DOM) under the default jsdom environment.
 - 4B Task 2: `DownloadSheet` reads `hasKey` off the selected row in `versionsQuery` (not `cert.currentVersion`), since the sheet can target any historical version. Both `!canExportKey` and `hasKey === false` gate the same controls (`key`/`combined` chips, the PKCS#12/JKS segments), with the hint text picking between "Needs the keys:export permission" and `download.noKey` depending on which is false. A server 422 on export is routed to the Password or Alias field via the same "Invalid `<field>`" title convention `CertificateWizard.fieldOfTitle` already uses, duplicated locally since that helper isn't exported.
+- 4B Task 5: `ImportMenu`'s "From acme.sh or certbot" item is a plain `<a href>`, not a typed `Link`, since Task 6's `/o/$org/certificates/import` route doesn't exist yet and TanStack Router's generated route tree would fail `tsc` on an unknown `to`. Task 6 can switch it to `Link` once that route file exists. `UploadValue`/`emptyUploadValue`/`p12TooLarge`/`toUploadBody` live in `features/certificates/upload/uploadBody.ts` (not `UploadFields.tsx`) so `UploadFields` can import the size-check helper from the same module that defines its own value type, without a cycle; Task 7's version-upload sheet reuses all four plus `UploadFields`/`UploadFieldErrors`. `upload.test.tsx` stubs every query `CertificateDetail`'s overview tab fires (attempts, manual-dns, cas, acme-accounts, dns-credentials, clients, issuance-defaults/effective) unconditionally in `beforeEach`, not only in the test that asserts the post-navigation route: a successful upload always navigates there, and a background fetch from an unmounted previous test settling after handlers reset otherwise fails the next test via the global console.error assertion (same class of issue as wizard.test.tsx's Task 16 note).
 
 ## Known gaps
 

@@ -102,6 +102,28 @@ it('shows one sentence and one button when there are no certificates', async () 
   expect(screen.getAllByRole('link', { name: 'New certificate' })).toHaveLength(1);
 });
 
+it('Import menu items link to import and upload', async () => {
+  const { user } = renderRoute('/o/acme/certificates');
+  await rowOf('www');
+  await user.click(screen.getByRole('button', { name: 'Import' }));
+  const menu = screen.getByRole('menu');
+  expect(within(menu).getByRole('menuitem', { name: /acme\.sh or certbot/i })).toHaveAttribute('href', '/o/acme/certificates/import');
+  expect(within(menu).getByRole('menuitem', { name: /Upload PEM or PKCS#12/i })).toHaveAttribute('href', '/o/acme/certificates/upload');
+});
+
+it('disables Import without certs:write', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
+  renderRoute('/o/acme/certificates');
+  expect(await screen.findByRole('button', { name: 'Import' })).toBeDisabled();
+});
+
+it('shows Import in the header on the unfiltered empty state', async () => {
+  all = [];
+  renderRoute('/o/acme/certificates');
+  await screen.findByText('No certificates yet.');
+  expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument();
+});
+
 // Additional coverage beyond the brief's literal Step 1 tests, required by
 // the controller ruling (D9: card rows below md; the 422/stale-cursor and
 // blocked-storage rules under "Cross-cutting patterns" and "Saved views").

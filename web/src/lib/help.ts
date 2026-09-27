@@ -234,6 +234,17 @@ export const help = {
   'agents.activeCerts': { text: 'Unexpired certificates of active clients signed by this CA.' },
   'agents.rotate': { text: 'New agent certificates and renewals come from the new CA. Unused tokens keep working until the old CA is retired.', learnMore: 'operations.md#agent-ca-rotation' },
   'agents.retire': { text: 'Stops trusting this CA. Allowed once no agent certificate from it is still in use.', learnMore: 'operations.md#agent-ca-rotation' },
+  'import.menu': {
+    text: 'Import takes over renewal from acme.sh or certbot. Upload stores a certificate renewed elsewhere.',
+    learnMore: 'certificates.md#import',
+  },
+  'upload.certificate': { text: 'The leaf certificate first, then its chain, as PEM.' },
+  'upload.key': {
+    text: 'Optional. Without it the certificate can go only to layouts without key files.',
+    learnMore: 'certificates.md#upload',
+  },
+  'upload.pkcs12': { text: 'A .p12 or .pfx file with the certificate, chain and usually the key. Up to 768 KiB.' },
+  'upload.password': { text: 'The password the PKCS#12 file was exported with.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

@@ -119,6 +119,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Download sheet offers DER, PKCS#12 and JKS with generated passwords.
 - Verification rules choose DNS, manual DNS, HTTP or TLS-ALPN per rule.
 - Attempts explain CAA and rate-limit failures and show rate-limit usage.
+- Upload PEM or PKCS#12 certificates from the web UI.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

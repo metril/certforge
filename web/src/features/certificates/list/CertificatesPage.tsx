@@ -38,6 +38,7 @@ import { useRowSelection } from '@/lib/selection';
 import { STATUS_META } from '@/lib/status';
 import { relDays } from '@/lib/time';
 import { certColumns } from './columns';
+import { ImportMenu } from './ImportMenu';
 import { certListSearch, type CertListSearch } from './search';
 
 type StatusFilter = 'all' | 'active' | 'pending' | 'failed' | 'expired' | 'revoked';
@@ -238,9 +239,20 @@ export function CertificatesPage() {
     }
   };
 
+  // Import (C1): unlike New certificate, which moves into the empty state's
+  // own body, Import stays in the header even when the list is empty and
+  // unfiltered, so an org with no certificates yet can still reach it. Both
+  // are absent entirely under All orgs.
+  const headerActions = allOrgs ? undefined : (
+    <>
+      {!emptyUnfiltered && newLink}
+      <ImportMenu orgSlug={org.slug} canWrite={canCreate} />
+    </>
+  );
+
   return (
     <>
-      <PageHeader title="Certificates" actions={emptyUnfiltered || allOrgs ? undefined : newLink} />
+      <PageHeader title="Certificates" actions={headerActions} />
       {emptyUnfiltered ? (
         <EmptyState message="No certificates yet.">{!allOrgs && newLink}</EmptyState>
       ) : (
