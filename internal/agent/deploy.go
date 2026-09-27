@@ -60,6 +60,26 @@ func parseMode(s string) (os.FileMode, error) {
 	return m, nil
 }
 
+// writeFile parses f's mode, confines its path (re-resolved right here, not
+// a first pass's cached path: a pre_deploy hook runs arbitrary code and
+// could have swapped a symlink into the path since any earlier check), and
+// writes it atomically, returning the FileSpec Report/Installed and
+// state.json record. Shared by Deploy's per-file loop and DeployTargetOnly.
+func (d *Deployer) writeFile(f delivery.File) (agentproto.FileSpec, error) {
+	mode, err := parseMode(f.Mode)
+	if err != nil {
+		return agentproto.FileSpec{}, fmt.Errorf("%s: %w", f.Path, err)
+	}
+	real, err := confine(d.WriteAllow, f.Path)
+	if err != nil {
+		return agentproto.FileSpec{}, err
+	}
+	if err := d.Files.Write(real, f.Data, mode, f.Owner, f.Group); err != nil {
+		return agentproto.FileSpec{}, fmt.Errorf("write %s: %w", f.Path, err)
+	}
+	return agentproto.FileSpec{Path: f.Path, Owner: f.Owner, Group: f.Group, Mode: f.Mode, SHA256: delivery.Digest(f.Data)}, nil
+}
+
 // Deploy returns the result to report, the files written in write order,
 // and (only when the grant has a Traefik target) the certs/<name>
 // directory the target created, for Remove to prune once empty.
@@ -87,20 +107,19 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			return fail("target: %v", err)
 		}
 		if b.Material == nil {
-			// C3: a grant on a certificate with no version yet has nothing
-			// to render its certificate files from, but the target's ACME
-			// router file needs no material at all — write that alone
-			// instead of failing, so the very first issuance can validate
-			// through Traefik.
-			f := delivery.AcmeRouterFile(a.CertificateName, cfg)
-			if f == nil {
-				return fail("the bundle has no key material for the %s target", a.Target.Type)
-			}
-			files = append(files, *f)
-		} else {
-			files = append(files, delivery.RenderTraefik(a.CertificateName, cfg, b.Material.Fullchain, b.Material.Key)...)
-			certsDir = path.Join(cfg.Dir, "certs", delivery.SafeName(a.CertificateName))
+			// a.VersionID is non-nil here (checked above), so this is a
+			// genuinely versioned assignment whose bundle nonetheless has no
+			// material: never write only the target's ACME file and call it
+			// ok — the server's expected list for a versioned target always
+			// includes the certificate files too, so a partial write like
+			// that would report ok while the server's own digest comparison
+			// marks it drift. A version-less grant (C3) never reaches here
+			// at all: Reconcile routes it to DeployTargetOnly instead, which
+			// never fetches a bundle in the first place.
+			return fail("the bundle has no key material for the %s target", a.Target.Type)
 		}
+		files = append(files, delivery.RenderTraefik(a.CertificateName, cfg, b.Material.Fullchain, b.Material.Key)...)
+		certsDir = path.Join(cfg.Dir, "certs", delivery.SafeName(a.CertificateName))
 	}
 	// A first pass fails fast, before any hook runs, on a path that is
 	// unclean or outside CF_WRITE_ALLOW right now.
@@ -124,23 +143,12 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		}
 	}
 	for _, f := range files {
-		mode, err := parseMode(f.Mode)
-		if err != nil {
-			return fail("%s: %v", f.Path, err)
-		}
-		// Re-resolved right before the write, not the first pass's cached
-		// path: a pre_deploy hook runs arbitrary code and could have swapped
-		// a symlink into the path in between.
-		real, err := confine(d.WriteAllow, f.Path)
+		spec, err := d.writeFile(f)
 		if err != nil {
 			return fail("%v", err)
 		}
-		if err := d.Files.Write(real, f.Data, mode, f.Owner, f.Group); err != nil {
-			return fail("write %s: %v", f.Path, err)
-		}
-		sum := delivery.Digest(f.Data)
-		written = append(written, agentproto.FileSpec{Path: f.Path, Owner: f.Owner, Group: f.Group, Mode: f.Mode, SHA256: sum})
-		res.Installed = append(res.Installed, agentproto.FileDigest{Path: f.Path, SHA256: sum})
+		written = append(written, spec)
+		res.Installed = append(res.Installed, agentproto.FileDigest{Path: spec.Path, SHA256: spec.SHA256})
 	}
 	for _, h := range a.Hooks {
 		if h.Phase != "post_deploy" {
@@ -184,20 +192,12 @@ func (d *Deployer) DeployTargetOnly(a agentproto.Assignment) (agentproto.GrantRe
 	if err := delivery.CleanPath("path", f.Path); err != nil {
 		return fail("refusing to write %q: %v", f.Path, err)
 	}
-	real, err := confine(d.WriteAllow, f.Path)
+	spec, err := d.writeFile(*f)
 	if err != nil {
 		return fail("%v", err)
 	}
-	mode, err := parseMode(f.Mode)
-	if err != nil {
-		return fail("%s: %v", f.Path, err)
-	}
-	if err := d.Files.Write(real, f.Data, mode, f.Owner, f.Group); err != nil {
-		return fail("write %s: %v", f.Path, err)
-	}
-	sum := delivery.Digest(f.Data)
-	written = append(written, agentproto.FileSpec{Path: f.Path, Owner: f.Owner, Group: f.Group, Mode: f.Mode, SHA256: sum})
-	res.Installed = append(res.Installed, agentproto.FileDigest{Path: f.Path, SHA256: sum})
+	written = append(written, spec)
+	res.Installed = append(res.Installed, agentproto.FileDigest{Path: spec.Path, SHA256: spec.SHA256})
 	return res, written, ""
 }
 

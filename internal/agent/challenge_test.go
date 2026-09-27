@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,8 +34,22 @@ func freeAddr(t *testing.T) string {
 }
 
 func startChallengeServer(t *testing.T, cfg Config) *ChallengeServer {
+	return startChallengeServerNow(t, cfg, nil)
+}
+
+// fakeClock is a mutable clock for TTL tests: challengeTTL is 10 minutes,
+// too long to actually sleep through.
+type fakeClock struct{ t time.Time }
+
+func (c *fakeClock) now() time.Time          { return c.t }
+func (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
+
+// startChallengeServerNow is startChallengeServer with an injectable clock;
+// now == nil uses the real one.
+func startChallengeServerNow(t *testing.T, cfg Config, now func() time.Time) *ChallengeServer {
 	t.Helper()
 	c := NewChallengeServer(cfg, NewFileWriter(discard), discard)
+	c.Now = now
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	if err := c.Start(ctx); err != nil {
@@ -122,6 +137,138 @@ func TestChallengeServerTLSALPN(t *testing.T) {
 	_, err = tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true, ServerName: domain, NextProtos: []string{"http/1.1"}}) //nolint:gosec // test dial
 	if err == nil {
 		t.Fatal("dial without acme-tls/1 accepted")
+	}
+}
+
+// Review Focus (fix round 2, binding): a challenge_cleanup lost to a
+// dropped socket must not keep an http-01 token servable forever — it
+// expires after challengeTTL, the same TTL the server's own HTTPTokens use.
+func TestChallengeServerHTTP01TokenExpires(t *testing.T) {
+	addr := freeAddr(t)
+	clk := &fakeClock{t: time.Now()}
+	c := startChallengeServerNow(t, Config{HTTP01Listen: addr}, clk.now)
+	if ready := c.Present(agentproto.ChallengePresent{Token: "tok1", KeyAuth: "tok1.keyauth", Method: "http-01"}); ready.Error != "" {
+		t.Fatalf("present: %+v", ready)
+	}
+	get := func() int {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+addr+"/.well-known/acme-challenge/tok1", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := get(); code != http.StatusOK {
+		t.Fatalf("before TTL: %d", code)
+	}
+	clk.advance(challengeTTL + time.Second)
+	if code := get(); code != http.StatusNotFound {
+		t.Fatalf("after TTL: %d, want 404", code)
+	}
+}
+
+// Review Focus (fix round 2, binding): an expired webroot file is removed
+// by the sweep on the next Present, not left on disk until the agent
+// restarts.
+func TestChallengeWebrootFileRemovedAfterTTL(t *testing.T) {
+	dir := t.TempDir()
+	clk := &fakeClock{t: time.Now()}
+	c := NewChallengeServer(Config{WriteAllow: []string{dir}}, NewFileWriter(discard), discard)
+	c.Now = clk.now
+	if ready := c.Present(agentproto.ChallengePresent{Token: "t1", KeyAuth: "k1", Method: "http-01", Webroot: dir}); ready.Error != "" {
+		t.Fatalf("present: %+v", ready)
+	}
+	p := filepath.Join(dir, ".well-known", "acme-challenge", "t1")
+	if _, err := os.Stat(p); err != nil {
+		t.Fatal("setup: webroot file not written")
+	}
+	clk.advance(challengeTTL + time.Second)
+	// Any later Present sweeps expired entries, including removing the now
+	// stale webroot file, even though this Present is for a different token.
+	if ready := c.Present(agentproto.ChallengePresent{Token: "t2", KeyAuth: "k2", Method: "http-01", Webroot: dir}); ready.Error != "" {
+		t.Fatalf("present: %+v", ready)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatal("expired webroot file not removed on the sweep")
+	}
+}
+
+// Review Focus (fix round 2, binding): an expired tls-alpn-01 challenge
+// certificate is no longer served.
+func TestChallengeServerTLSALPNCertExpires(t *testing.T) {
+	addr := freeAddr(t)
+	clk := &fakeClock{t: time.Now()}
+	c := startChallengeServerNow(t, Config{TLSALPNListen: addr}, clk.now)
+	domain := "expire.test"
+	if ready := c.Present(agentproto.ChallengePresent{Token: "tok3", KeyAuth: "k3", Domain: domain, Method: "tls-alpn-01"}); ready.Error != "" {
+		t.Fatalf("present: %+v", ready)
+	}
+	dial := func() error {
+		conn, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true, ServerName: domain, NextProtos: []string{"acme-tls/1"}}) //nolint:gosec // test dial
+		if err == nil {
+			_ = conn.Close()
+		}
+		return err
+	}
+	if err := dial(); err != nil {
+		t.Fatalf("before TTL: %v", err)
+	}
+	clk.advance(challengeTTL + time.Second)
+	if err := dial(); err == nil {
+		t.Fatal("dial succeeded after TTL")
+	}
+}
+
+// Review Focus (fix round 2, Minor): a malformed token is rejected before
+// it could ever reach presentWebroot's path.Join.
+func TestChallengeInvalidTokenRejected(t *testing.T) {
+	c := NewChallengeServer(Config{HTTP01Listen: "127.0.0.1:0"}, NewFileWriter(discard), discard)
+	for name, tok := range map[string]string{
+		"empty":    "",
+		"slash":    "has/slash",
+		"dotdot":   "../escape",
+		"space":    "has space",
+		"too long": strings.Repeat("a", 129),
+	} {
+		if ready := c.Present(agentproto.ChallengePresent{Token: tok, KeyAuth: "k", Method: "http-01"}); ready.Error == "" {
+			t.Errorf("%s: token %q accepted", name, tok)
+		}
+	}
+}
+
+// Review Focus (fix round 2, Minor): a challenge_cleanup for a token a
+// newer Present has already superseded on the same domain must not delete
+// the newer certificate.
+func TestChallengeCleanUpDoesNotDeleteNewerCertForSameDomain(t *testing.T) {
+	addr := freeAddr(t)
+	c := startChallengeServer(t, Config{TLSALPNListen: addr})
+	domain := "reuse.test"
+	if ready := c.Present(agentproto.ChallengePresent{Token: "tokA", KeyAuth: "kA", Domain: domain, Method: "tls-alpn-01"}); ready.Error != "" {
+		t.Fatalf("present A: %+v", ready)
+	}
+	if ready := c.Present(agentproto.ChallengePresent{Token: "tokB", KeyAuth: "kB", Domain: domain, Method: "tls-alpn-01"}); ready.Error != "" {
+		t.Fatalf("present B: %+v", ready)
+	}
+	dial := func() error {
+		conn, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true, ServerName: domain, NextProtos: []string{"acme-tls/1"}}) //nolint:gosec // test dial
+		if err == nil {
+			_ = conn.Close()
+		}
+		return err
+	}
+	// A late cleanup for the superseded token must not remove tokB's cert.
+	c.CleanUp(agentproto.ChallengeCleanup{Token: "tokA"})
+	if err := dial(); err != nil {
+		t.Fatalf("dial after the superseded token's cleanup: %v", err)
+	}
+	// Cleaning up the current token does remove it.
+	c.CleanUp(agentproto.ChallengeCleanup{Token: "tokB"})
+	if err := dial(); err == nil {
+		t.Fatal("dial succeeded after the current token's cleanup")
 	}
 }
 

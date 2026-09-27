@@ -89,38 +89,26 @@ func TestDeployerPostHookFailureKeepsFiles(t *testing.T) {
 	}
 }
 
+// Review Focus (fix round 2, Minor): a versioned assignment (a.VersionID
+// set) whose bundle has no material must fail outright, even when the
+// target has acmeServiceUrl set — never silently write just the ACME file
+// and report ok, which would make the server's own digest comparison mark
+// it drift (the server's expected list for a versioned target always
+// includes the certificate files too). The version-less case (C3) never
+// reaches Deploy at all; see TestReconcileDeploysVersionlessACMEFileWithoutBundle.
 func TestDeployerTargetWithoutMaterialFails(t *testing.T) {
-	dir := t.TempDir()
-	a, b := traefikGrant(dir)
-	b.Material = nil
-	if res, _, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b); res.State != agentproto.StateFailed {
-		t.Fatalf("res %+v", res)
-	}
-}
-
-// Review Focus (C3): a grant on a certificate with no version yet still
-// carries a Target, but the bundle has no key material to render its
-// certificate files from; with acmeServiceUrl set, Deploy still writes the
-// target's material-independent ACME router file instead of failing.
-func TestDeployerTargetWithoutMaterialWritesACMEFile(t *testing.T) {
-	dir := t.TempDir()
-	cfg, _ := json.Marshal(delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik"), AcmeServiceURL: "http://agent:8080"})
-	versionID := uuid.New()
-	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: &versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
-	b := agentproto.Bundle{VersionID: versionID}
-	res, written, certsDir := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
-	if res.State != agentproto.StateOK || len(written) != 1 || certsDir != "" {
-		t.Fatalf("res %+v written %d certsDir %q", res, len(written), certsDir)
-	}
-	yml := filepath.Join(dir, "traefik", "certforge-acme-web.yml")
-	if written[0].Path != yml {
-		t.Fatalf("written %+v", written)
-	}
-	if _, err := os.Stat(yml); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "traefik", "certs", "web")); !os.IsNotExist(err) {
-		t.Fatal("certs/<name> directory created without material")
+	for name, acmeServiceURL := range map[string]string{"no acmeServiceUrl": "", "with acmeServiceUrl": "http://agent:8080"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfg, _ := json.Marshal(delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik"), AcmeServiceURL: acmeServiceURL})
+			versionID := uuid.New()
+			a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: &versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
+			b := agentproto.Bundle{VersionID: versionID}
+			res, written, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
+			if res.State != agentproto.StateFailed || len(written) != 0 {
+				t.Fatalf("res %+v written %d", res, len(written))
+			}
+		})
 	}
 }
 

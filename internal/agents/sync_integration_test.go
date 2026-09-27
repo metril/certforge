@@ -177,6 +177,35 @@ func (f *syncFixture) target(t *testing.T, name string, cfg delivery.TraefikConf
 	return dt.ID
 }
 
+// updateTarget changes a Traefik target's config and resyncs every live
+// grant using it, the same way internal/api's UpdateDeployTarget handler
+// does (agents.Service.Resync, RefTarget), inside one transaction.
+func (f *syncFixture) updateTarget(t *testing.T, targetID uuid.UUID, name string, cfg delivery.TraefikConfig) {
+	t.Helper()
+	ctx := context.Background()
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := f.q.WithTx(tx)
+	if _, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: name, Config: b, ID: targetID, OrgID: f.org}); err != nil {
+		t.Fatal(err)
+	}
+	nudge, err := f.svc.Resync(ctx, q, RefTarget, targetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	nudge()
+}
+
 func (f *syncFixture) desiredRevision(t *testing.T, clientID uuid.UUID) int64 {
 	t.Helper()
 	var rev int64
@@ -261,6 +290,52 @@ func TestRenderGrantWithoutVersionWritesACMEFile(t *testing.T) {
 // file spec only) and never through Bundle (which still 404s "no issued
 // version yet"), and a deploy_result for it (zero-value VersionID, matching
 // the assignment's nil) marks the deployment ok.
+// Review Focus (fix round 2, closes a reviewer question): editing a deploy
+// target to add or remove acmeServiceUrl re-renders every live grant using
+// it — including a version-less one, whose only expected file is the ACME
+// router — and bumps the client's desired revision, the same way any other
+// target edit does (agents.Service.Resync, RefTarget).
+func TestResyncTargetAcmeServiceURLRerendersVersionlessGrant(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic"})
+	c := f.client(t, "web-5")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(f.expected(t, gid)); got != "[]" {
+		t.Fatalf("expected before any edit = %s, want []", got)
+	}
+	revBefore := f.desiredRevision(t, c.ID)
+
+	// Add acmeServiceUrl.
+	f.updateTarget(t, targetID, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	var specs []agentproto.FileSpec
+	if err := json.Unmarshal(f.expected(t, gid), &specs); err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) != 1 || specs[0].Path != "/etc/traefik/dynamic/certforge-acme-web.yml" {
+		t.Fatalf("expected after adding acmeServiceUrl = %+v", specs)
+	}
+	revAfterAdd := f.desiredRevision(t, c.ID)
+	if revAfterAdd <= revBefore {
+		t.Fatalf("desired_revision not bumped after adding acmeServiceUrl: before %d after %d", revBefore, revAfterAdd)
+	}
+
+	// Remove it again.
+	f.updateTarget(t, targetID, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic"})
+	if got := string(f.expected(t, gid)); got != "[]" {
+		t.Fatalf("expected after removing acmeServiceUrl = %s, want []", got)
+	}
+	revAfterRemove := f.desiredRevision(t, c.ID)
+	if revAfterRemove <= revAfterAdd {
+		t.Fatalf("desired_revision not bumped after removing acmeServiceUrl: after-add %d after-remove %d", revAfterAdd, revAfterRemove)
+	}
+}
+
 func TestAssignmentsServeVersionlessACMEGrantAndReportMarksOK(t *testing.T) {
 	f := newSyncFixture(t)
 	ctx := context.Background()
