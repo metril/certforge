@@ -8,15 +8,15 @@ const creds = [
 ];
 
 it('prefers the credential last used for the zone, then existing certificates', () => {
-  const certs = [makeCert({ verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }] })];
+  const certs = [makeCert({ verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }] })];
   expect(makeSuggester(certs, creds)('example.com')).toBe('d-1');
-  rememberFromRules([{ match: '*.example.com', method: 'dns-01', dnsCredentialId: 'd-2' }]);
+  rememberFromRules([{ match: '*.example.com', method: 'dns-01', dnsCredentialId: 'd-2', via: 'server' }]);
   expect(makeSuggester(certs, creds)('example.com')).toBe('d-2');
   expect(makeSuggester(certs, creds)('other.net')).toBeUndefined();
 });
 
 it('ignores remembered credentials that no longer exist', () => {
-  rememberFromRules([{ match: 'gone.test', method: 'dns-01', dnsCredentialId: 'd-9' }]);
+  rememberFromRules([{ match: 'gone.test', method: 'dns-01', dnsCredentialId: 'd-9', via: 'server' }]);
   expect(makeSuggester([], creds)('gone.test')).toBeUndefined();
 });
 
@@ -26,6 +26,6 @@ it('ignores remembered credentials that no longer exist', () => {
 // (classifyName only ever hands makeSuggester an already-lowercase,
 // already-ASCII zone).
 it('remembers and looks up by normalised (lowercase, IDNA) zone', () => {
-  rememberFromRules([{ match: '*.EXAMPLE.NET.', method: 'dns-01', dnsCredentialId: 'd-1' }]);
+  rememberFromRules([{ match: '*.EXAMPLE.NET.', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }]);
   expect(makeSuggester([], creds)('example.net')).toBe('d-1');
 });

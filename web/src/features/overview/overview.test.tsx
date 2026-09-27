@@ -22,11 +22,11 @@ beforeEach(() => {
         items: [
           makeCert({ id: 'c-1', name: 'www', nextRenewAt: iso(3) }),
           makeCert({ id: 'c-2', name: 'api', status: 'failed', failureCount: 2, lastError: 'dns: NXDOMAIN' }),
-          makeCert({ id: 'c-3', name: 'lab', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'lab.local', method: 'manual-dns' }] }),
+          makeCert({ id: 'c-3', name: 'lab', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'lab.local', method: 'manual-dns', via: 'server' }] }),
           // Controller ruling: a certificate already `active` (not just a
           // first-issuance `pending` one) still gets a mounted ManualDnsCard
           // while it's renewing over manual-dns and waiting for TXT records.
-          makeCert({ id: 'c-4', name: 'proxy', status: 'active', verificationRules: [{ match: 'proxy.example.com', method: 'manual-dns' }] }),
+          makeCert({ id: 'c-4', name: 'proxy', status: 'active', verificationRules: [{ match: 'proxy.example.com', method: 'manual-dns', via: 'server' }] }),
         ],
         nextCursor: null,
       }),

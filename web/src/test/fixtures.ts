@@ -86,7 +86,7 @@ export function makeCert(p: Partial<Certificate> = {}): Certificate {
     // name) — a certificate with no additional SANs has an empty `sans`,
     // not `[commonName]`.
     sans: [],
-    verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }],
+    verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }],
     overrides: {},
     status: 'active',
     managed: true,

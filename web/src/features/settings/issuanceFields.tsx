@@ -208,7 +208,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     key: 'verificationRules',
     label: 'Verification rules',
     help: 'rules.catchAll',
-    initial: (c) => [{ match: '*', method: 'dns-01', dnsCredentialId: c.credentials[0]?.id }],
+    initial: (c) => [{ match: '*', method: 'dns-01', dnsCredentialId: c.credentials[0]?.id, via: 'server' as const }],
     display: (v, c) => rulesSummary(v, c.credentials),
     editor: (v, set, c) => (
       <div className="w-full">
@@ -216,7 +216,9 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
           rules={v}
           onChange={set}
           method={v[0]?.method ?? 'dns-01'}
-          onMethodChange={(m) => set(v.map((r) => (m === 'manual-dns' ? { match: r.match, method: m } : { ...r, method: m })))}
+          onMethodChange={(m) =>
+            set(v.map((r) => (m === 'manual-dns' ? { match: r.match, method: m, via: 'server' as const } : { ...r, method: m })))
+          }
           credentials={c.credentials}
         />
       </div>

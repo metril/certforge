@@ -217,7 +217,13 @@ export function VerificationRulesEditor({ rules, onChange, method, onMethodChang
           </ol>
         </SortableContext>
       </DndContext>
-      <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => onChange([...rules, { match: '', method }])}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-fit"
+        onClick={() => onChange([...rules, { match: '', method, via: 'server' as const }])}
+      >
         <Plus className="size-4" aria-hidden />
         Add rule
       </Button>

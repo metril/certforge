@@ -156,9 +156,9 @@ export function prefillRules(
     if ((p.kind === 'dns' || p.kind === 'wildcard') && p.zone && !zones.includes(p.zone)) zones.push(p.zone);
   }
   return zones.flatMap((zone): VerificationRule[] => {
-    if (method === 'manual-dns') return [{ match: zone, method }];
+    if (method === 'manual-dns') return [{ match: zone, method, via: 'server' as const }];
     const cred = suggest(zone);
-    if (cred) return [{ match: zone, method, dnsCredentialId: cred }];
+    if (cred) return [{ match: zone, method, dnsCredentialId: cred, via: 'server' as const }];
     const inZone = names.filter((n) => classifyName(n).zone === zone);
     // Same first-match fix as coverage() above: a name is covered by the
     // catch-all only if the *first* inherited rule it matches is usable.
@@ -168,6 +168,6 @@ export function prefillRules(
         const m = inherited.rules.find((r) => matchRule(n, r.match));
         return !!m && usable(m);
       });
-    return coveredByInherited ? [] : [{ match: zone, method }];
+    return coveredByInherited ? [] : [{ match: zone, method, via: 'server' as const }];
   });
 }

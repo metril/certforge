@@ -10,7 +10,7 @@ it('orders by severity, then time to impact, one item per certificate', () => {
     makeCert({ id: 'failed-late', status: 'failed', failureCount: 3, lastError: 'dns: NXDOMAIN\nmore', currentVersion: v(iso(40)) }),
     makeCert({ id: 'failed-soon', status: 'failed', failureCount: 1, lastError: 'caa', currentVersion: v(iso(5)) }),
     makeCert({ id: 'expired', status: 'expired', currentVersion: v(iso(-3)) }),
-    makeCert({ id: 'manual', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'lab.local', method: 'manual-dns' }] }),
+    makeCert({ id: 'manual', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'lab.local', method: 'manual-dns', via: 'server' }] }),
     makeCert({ id: 'fine' }),
   ];
   const items = attentionItems(certs, NOW);
@@ -32,8 +32,8 @@ it('counts statuses and lists renewals due within 7 days', () => {
 // flipping between runs/engines.
 it('orders two versionless certificates of the same kind deterministically by id', () => {
   const certs = [
-    makeCert({ id: 'z-cert', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'z.example.com', method: 'manual-dns' }] }),
-    makeCert({ id: 'a-cert', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'a.example.com', method: 'manual-dns' }] }),
+    makeCert({ id: 'z-cert', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'z.example.com', method: 'manual-dns', via: 'server' }] }),
+    makeCert({ id: 'a-cert', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'a.example.com', method: 'manual-dns', via: 'server' }] }),
   ];
   const items = attentionItems(certs, NOW);
   expect(items.map((i) => i.cert.id)).toEqual(['a-cert', 'z-cert']);

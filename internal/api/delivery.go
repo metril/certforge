@@ -83,7 +83,11 @@ func layoutOut(l sqlcgen.OutputSpec, grants int) (gen.Layout, error) {
 		}
 		out = append(out, gen.OutputFile{Path: f.Path, Format: gen.OutputFormat(f.Format), Parts: parts, Owner: f.Owner, Group: f.Group, Mode: f.Mode})
 	}
-	return gen.Layout{Id: l.ID, OrgId: l.OrgID, Name: l.Name, Files: out, GrantCount: grants, CreatedAt: l.CreatedAt, UpdatedAt: l.UpdatedAt}, nil
+	// ExtraCertificateIds is required and non-nullable; Task 5 fills it (and
+	// PasswordSet) for real, but an empty slice must go out now, not the nil
+	// slice's JSON null.
+	return gen.Layout{Id: l.ID, OrgId: l.OrgID, Name: l.Name, Files: out, GrantCount: grants,
+		ExtraCertificateIds: []uuid.UUID{}, CreatedAt: l.CreatedAt, UpdatedAt: l.UpdatedAt}, nil
 }
 
 func (s *Server) layoutsOut(ctx context.Context, rows []sqlcgen.OutputSpec) ([]gen.Layout, error) {

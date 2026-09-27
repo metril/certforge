@@ -49,7 +49,7 @@ it('fast path: paste names, credential pre-filled, Issue from step 2', async () 
       name: 'www.example.com',
       commonName: 'www.example.com',
       sans: ['www.example.com', '*.example.com'],
-      verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }],
+      verificationRules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }],
       overrides: {},
     }),
   );

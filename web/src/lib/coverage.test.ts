@@ -64,9 +64,16 @@ it('toAscii and matchRule still treat "*" as a wildcard under a Chromium-parity 
 const names = ['www.example.com', '*.example.com', 'api.other.net', '10.0.0.1'];
 
 it('reports first-match rules, missing credentials, inherited catch-all, and IPs', () => {
-  const c = coverage(names, [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }, { match: 'other.net', method: 'dns-01' }], null);
+  const c = coverage(
+    names,
+    [
+      { match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' as const },
+      { match: 'other.net', method: 'dns-01', via: 'server' as const },
+    ],
+    null,
+  );
   expect(c.map((x) => x.state)).toEqual(['rule', 'rule', 'missing-credential', 'ip']);
-  const inh = { rules: [{ match: '*', method: 'dns-01' as const, dnsCredentialId: 'd-2' }], source: 'org' as const };
+  const inh = { rules: [{ match: '*', method: 'dns-01' as const, dnsCredentialId: 'd-2', via: 'server' as const }], source: 'org' as const };
   expect(coverage(['api.other.net'], [], inh)[0]).toMatchObject({ state: 'inherited', source: 'org' });
   expect(verificationReady(['api.other.net'], [], inh)).toBe(true);
   expect(verificationReady(['api.other.net'], [], null)).toBe(false);
@@ -79,8 +86,8 @@ it('reports first-match rules, missing credentials, inherited catch-all, and IPs
 // happens to be.
 it('routes a wildcard through its apex rule when the apex is also on the certificate', () => {
   const rules = [
-    { match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-2' },
-    { match: 'example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+    { match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-2', via: 'server' as const },
+    { match: 'example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1', via: 'server' as const },
   ];
   const c = coverage(['example.com', '*.example.com'], rules, null);
   expect(c[0]).toMatchObject({ name: 'example.com', state: 'rule', ruleIndex: 1 });
@@ -90,8 +97,8 @@ it('routes a wildcard through its apex rule when the apex is also on the certifi
 
 it('a wildcard whose apex is NOT on the certificate uses its own rule', () => {
   const rules = [
-    { match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-2' },
-    { match: 'example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+    { match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-2', via: 'server' as const },
+    { match: 'example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1', via: 'server' as const },
   ];
   const c = coverage(['*.example.com'], rules, null);
   expect(c[0]).toMatchObject({ name: '*.example.com', state: 'rule', ruleIndex: 0 });
@@ -99,20 +106,20 @@ it('a wildcard whose apex is NOT on the certificate uses its own rule', () => {
 });
 
 it('an invalid match pattern blocks verificationReady even when coverage would otherwise pass', () => {
-  const rules = [{ match: 'example.com/oops', method: 'dns-01' as const, dnsCredentialId: 'd-1' }];
+  const rules = [{ match: 'example.com/oops', method: 'dns-01' as const, dnsCredentialId: 'd-1', via: 'server' as const }];
   expect(verificationReady(['a.example.com'], rules, null)).toBe(false);
 });
 
 it('prefills one rule per zone, never guesses a credential, and leans on a catch-all', () => {
   const suggest = (z: string) => (z === 'example.com' ? 'd-1' : undefined);
   expect(prefillRules(names, 'dns-01', suggest, null)).toEqual([
-    { match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' },
-    { match: 'other.net', method: 'dns-01' },
+    { match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' },
+    { match: 'other.net', method: 'dns-01', via: 'server' },
   ]);
-  const inh = { rules: [{ match: '*', method: 'dns-01' as const, dnsCredentialId: 'd-2' }], source: 'org' as const };
-  expect(prefillRules(names, 'dns-01', suggest, inh)).toEqual([{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }]);
+  const inh = { rules: [{ match: '*', method: 'dns-01' as const, dnsCredentialId: 'd-2', via: 'server' as const }], source: 'org' as const };
+  expect(prefillRules(names, 'dns-01', suggest, inh)).toEqual([{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }]);
   expect(prefillRules(names, 'manual-dns', suggest, null)).toEqual([
-    { match: 'example.com', method: 'manual-dns' },
-    { match: 'other.net', method: 'manual-dns' },
+    { match: 'example.com', method: 'manual-dns', via: 'server' },
+    { match: 'other.net', method: 'manual-dns', via: 'server' },
   ]);
 });

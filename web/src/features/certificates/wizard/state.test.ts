@@ -21,9 +21,9 @@ it('moves the CN when it is removed or reassigned, and keeps a typed name', () =
 });
 
 it('keeps rules in step with the method', () => {
-  let s = r(initialWizard, { type: 'setRules', rules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }] });
+  let s = r(initialWizard, { type: 'setRules', rules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }] });
   s = r(s, { type: 'setMethod', method: 'manual-dns' });
-  expect(s.rules).toEqual([{ match: 'example.com', method: 'manual-dns' }]);
+  expect(s.rules).toEqual([{ match: 'example.com', method: 'manual-dns', via: 'server' }]);
   expect(s.rulesTouched).toBe(true);
 });
 

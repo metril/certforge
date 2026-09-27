@@ -670,7 +670,7 @@ export interface paths {
         put?: never;
         /**
          * Store an existing certificate as unmanaged
-         * @description Needs certs:write; a stored private key also needs keys:export, audited as certificate.key_exported before it is stored. Creates an unmanaged certificate (managed false): CertForge never renews it.
+         * @description Needs certs:write. Creates an unmanaged certificate (managed false): CertForge never renews it. Recorded as certificate.upload in the audit log.
          */
         post: operations["uploadCertificate"];
         delete?: never;
@@ -693,7 +693,7 @@ export interface paths {
         put?: never;
         /**
          * Import certificates from an acme.sh or certbot archive
-         * @description Needs certs:write; a stored private key also needs keys:export, audited per certificate as certificate.key_exported before it is stored, plus one certificate.import summarizing the run. dryRun (default true) previews without storing anything. Creates unmanaged certificates (managed false).
+         * @description Needs certs:write. dryRun (default true) previews without storing anything. Creates managed certificates, renewed against caId with nextRenewAt set; recorded as one certificate.import per run (details: created, skipped, names).
          */
         post: operations["importCertificates"];
         delete?: never;
@@ -801,7 +801,7 @@ export interface paths {
         put?: never;
         /**
          * Add an uploaded version to an unmanaged certificate
-         * @description Needs certs:write; a stored private key also needs keys:export, audited as certificate.key_exported before it is stored. 409 when the certificate is managed.
+         * @description Needs certs:write. 409 when the certificate is managed. Recorded as certificate.version_uploaded in the audit log.
          */
         post: operations["uploadCertificateVersion"];
         delete?: never;
@@ -2106,7 +2106,7 @@ export interface components {
             useAri: boolean;
         };
         /**
-         * @description Who serves an http-01 challenge; server (this host) or agent (a client, over webroot).
+         * @description Who serves an http-01 challenge: server (this host, at /.well-known/acme-challenge) or agent (a client — its own http-01 listener when it has one, otherwise a file written into webroot for another web server to serve there; webroot is optional, needed only without a listener).
          * @enum {string}
          */
         ChallengeVia: "server" | "agent";
@@ -2133,8 +2133,11 @@ export interface components {
             resolvers?: string[];
             /** @description Zone that _acme-challenge is CNAMEd into; checked before validation. */
             cnameAliasZone?: string;
-            /** @description http-01 only; default server. */
-            via?: components["schemas"]["ChallengeVia"];
+            /**
+             * @description http-01 only; default server.
+             * @default server
+             */
+            via: components["schemas"]["ChallengeVia"];
             /**
              * Format: uuid
              * @description Client that serves the challenge; required for tls-alpn-01, or for http-01 with via agent.
@@ -2311,7 +2314,7 @@ export interface components {
              */
             createdAt?: string;
         };
-        /** @description A managed certificate. */
+        /** @description A certificate, managed (issued and renewed by CertForge) or unmanaged (imported or uploaded); see managed. */
         Certificate: {
             /**
              * Format: uuid
@@ -2497,7 +2500,7 @@ export interface components {
             /** @description jks only; default SafeName(cert name). */
             alias?: string;
         };
-        /** @description An existing certificate and (optionally) its key, stored as an unmanaged certificate. Exactly one of certificatePem or pkcs12Base64 is required. keys:export is checked and certificate.key_exported audited before a key already in the request is stored, same as any other read of a private key. */
+        /** @description An existing certificate and (optionally) its key, stored as an unmanaged certificate. Exactly one of certificatePem or pkcs12Base64 is required. Recorded as certificate.upload in the audit log. */
         CertificateUpload: {
             /** @description Unique name in the org. */
             name: string;
@@ -3096,7 +3099,7 @@ export interface components {
             name: string;
             /** @description Files in write order; paths are unique. */
             files: components["schemas"]["OutputFile"][];
-            /** @description Export password for this layout's p12/jks files. Send "__unchanged__" or omit to keep the stored value on update, "" to clear it, or any other string to replace it. Required when any file is p12 or jks; must be at least 6 characters when any file is jks. */
+            /** @description Export password for this layout's p12/jks files. "__unchanged__" keeps the stored value on update (422 on create, since there is nothing to keep); omitted or "" clears it; any other string replaces it. Required when any file is p12 or jks; must be at least 6 characters when any file is jks. */
             password?: string;
             /** @description Extra certificates to bundle alongside this layout's own, rendered as the extra part; must be in the same org, each with a current version. */
             extraCertificateIds?: string[];
@@ -5087,6 +5090,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
             502: components["responses"]["BadGateway"];
         };

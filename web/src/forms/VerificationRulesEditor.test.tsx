@@ -14,14 +14,14 @@ function Harness({ initial }: { initial: VerificationRule[] }) {
 // Fix round 1 (review, item 5): manual-dns needs no DNS credential, so
 // neither the row's combobox nor the column-header tooltip should appear.
 it('manual-dns hides the credential column and its header', () => {
-  renderUI(<Harness initial={[{ match: 'example.com', method: 'manual-dns' }]} />);
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'manual-dns', via: 'server' }]} />);
   expect(screen.queryByRole('combobox', { name: 'Rule 1 credential' })).toBeNull();
   expect(screen.queryByText('Credential')).toBeNull();
   expect(screen.getByText('Match')).toBeInTheDocument();
 });
 
 it('dns-01 shows the credential column and its header', () => {
-  renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01' }]} />);
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01', via: 'server' }]} />);
   expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toBeInTheDocument();
   expect(screen.getByText('Credential')).toBeInTheDocument();
 });
@@ -29,7 +29,7 @@ it('dns-01 shows the credential column and its header', () => {
 // Fix round 1 (review, item 2): a malformed match pattern (challenge/
 // match.go's ParseMatch/validZone grammar) shows a one-line inline error.
 it('shows a one-line inline error for a match pattern the server would reject', async () => {
-  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01' }]} />);
+  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01', via: 'server' }]} />);
   const input = screen.getByLabelText('Rule 1 match');
   await user.clear(input);
   await user.type(input, 'example.com/oops');
@@ -37,6 +37,6 @@ it('shows a one-line inline error for a match pattern the server would reject', 
 });
 
 it('shows no error for an empty freshly-added row', () => {
-  renderUI(<Harness initial={[{ match: '', method: 'dns-01' }]} />);
+  renderUI(<Harness initial={[{ match: '', method: 'dns-01', via: 'server' }]} />);
   expect(screen.queryByRole('alert')).toBeNull();
 });

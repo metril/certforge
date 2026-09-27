@@ -911,9 +911,8 @@ paths:
       tags: [certificates]
       summary: Store an existing certificate as unmanaged
       description: >-
-        Needs certs:write; a stored private key also needs keys:export, audited as
-        certificate.key_exported before it is stored. Creates an unmanaged certificate (managed
-        false): CertForge never renews it.
+        Needs certs:write. Creates an unmanaged certificate (managed false): CertForge never
+        renews it. Recorded as certificate.upload in the audit log.
       requestBody:
         required: true
         content:
@@ -941,10 +940,9 @@ paths:
       tags: [certificates]
       summary: Import certificates from an acme.sh or certbot archive
       description: >-
-        Needs certs:write; a stored private key also needs keys:export, audited per certificate as
-        certificate.key_exported before it is stored, plus one certificate.import summarizing the
-        run. dryRun (default true) previews without storing anything. Creates unmanaged
-        certificates (managed false).
+        Needs certs:write. dryRun (default true) previews without storing anything. Creates
+        managed certificates, renewed against caId with nextRenewAt set; recorded as one
+        certificate.import per run (details: created, skipped, names).
       requestBody:
         required: true
         content:
@@ -1042,6 +1040,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
         "502": {$ref: "#/components/responses/BadGateway"}
   /orgs/{orgId}/certificates/{id}/versions:
@@ -1071,8 +1070,8 @@ paths:
       tags: [certificates]
       summary: Add an uploaded version to an unmanaged certificate
       description: >-
-        Needs certs:write; a stored private key also needs keys:export, audited as
-        certificate.key_exported before it is stored. 409 when the certificate is managed.
+        Needs certs:write. 409 when the certificate is managed. Recorded as
+        certificate.version_uploaded in the audit log.
       requestBody:
         required: true
         content:
@@ -2704,7 +2703,11 @@ components:
     ChallengeVia:
       type: string
       enum: [server, agent]
-      description: Who serves an http-01 challenge; server (this host) or agent (a client, over webroot).
+      description: >-
+        Who serves an http-01 challenge: server (this host, at /.well-known/acme-challenge) or
+        agent (a client — its own http-01 listener when it has one, otherwise a file written into
+        webroot for another web server to serve there; webroot is optional, needed only without a
+        listener).
     VerificationRule:
       type: object
       description: How to prove control of the names this rule matches. First match wins.
@@ -2716,7 +2719,7 @@ components:
         propagationSeconds: {type: integer, minimum: 0, maximum: 3600, description: Propagation timeout override.}
         resolvers: {type: array, items: {type: string}, description: Resolvers for propagation checks.}
         cnameAliasZone: {type: string, description: Zone that _acme-challenge is CNAMEd into; checked before validation.}
-        via: {allOf: [{$ref: "#/components/schemas/ChallengeVia"}], description: "http-01 only; default server."}
+        via: {allOf: [{$ref: "#/components/schemas/ChallengeVia"}], default: server, description: "http-01 only; default server."}
         clientId: {type: string, format: uuid, description: "Client that serves the challenge; required for tls-alpn-01, or for http-01 with via agent."}
         webroot: {type: string, description: Absolute path on the agent host the challenge file is written under; http-01 via agent only.}
     IssuanceDefaults:
@@ -2882,7 +2885,7 @@ components:
         createdAt: {type: string, format: date-time, description: When it was stored.}
     Certificate:
       type: object
-      description: A managed certificate.
+      description: A certificate, managed (issued and renewed by CertForge) or unmanaged (imported or uploaded); see managed.
       required: [id, name, commonName, sans, verificationRules, overrides, status, failureCount, effective, managed]
       properties:
         id: {type: string, format: uuid, description: Certificate id.}
@@ -3016,9 +3019,8 @@ components:
       type: object
       description: >-
         An existing certificate and (optionally) its key, stored as an unmanaged certificate.
-        Exactly one of certificatePem or pkcs12Base64 is required. keys:export is checked and
-        certificate.key_exported audited before a key already in the request is stored, same
-        as any other read of a private key.
+        Exactly one of certificatePem or pkcs12Base64 is required. Recorded as certificate.upload
+        in the audit log.
       required: [name]
       properties:
         name: {type: string, description: Unique name in the org.}
@@ -3376,9 +3378,10 @@ components:
           maxLength: 128
           writeOnly: true
           description: >-
-            Export password for this layout's p12/jks files. Send "__unchanged__" or omit to keep
-            the stored value on update, "" to clear it, or any other string to replace it.
-            Required when any file is p12 or jks; must be at least 6 characters when any file is jks.
+            Export password for this layout's p12/jks files. "__unchanged__" keeps the stored
+            value on update (422 on create, since there is nothing to keep); omitted or "" clears
+            it; any other string replaces it. Required when any file is p12 or jks; must be at
+            least 6 characters when any file is jks.
         extraCertificateIds:
           type: array
           maxItems: 10

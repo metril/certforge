@@ -426,4 +426,21 @@ func TestCertificateManagedAndHasKey(t *testing.T) {
 	if len(list) != 1 || list[0].Id != v.ID || !list[0].HasKey {
 		t.Fatalf("versions response = %+v", list)
 	}
+
+	// An unmanaged certificate (Task 13 sets this through upload/import;
+	// direct SQL stands in until then) must round-trip managed=false, not a
+	// hard-coded true.
+	unmanaged, _ := f.issuedCert(t, "web-unmanaged")
+	if _, err := f.pool.Exec(context.Background(),
+		`UPDATE certificates SET managed = false, next_renew_at = NULL WHERE id = $1`, unmanaged.ID); err != nil {
+		t.Fatal(err)
+	}
+	res2, err := f.srv.GetCertificate(f.as("operator"), gen.GetCertificateRequestObject{OrgId: f.org, Id: unmanaged.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2 := res2.(gen.GetCertificate200JSONResponse)
+	if got2.Managed {
+		t.Errorf("managed = %v, want false", got2.Managed)
+	}
 }

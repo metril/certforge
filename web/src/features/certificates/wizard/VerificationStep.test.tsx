@@ -60,7 +60,7 @@ it('prefills per zone and marks a zone with no credential as blocked', async () 
 });
 
 it('lets an inherited catch-all cover the zone instead of adding an empty rule', async () => {
-  renderUI(<H inherited={{ rules: [{ match: '*', method: 'dns-01', dnsCredentialId: 'd-1' }], source: 'org' }} />);
+  renderUI(<H inherited={{ rules: [{ match: '*', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }], source: 'org' }} />);
   await waitFor(() => expect(screen.getByLabelText('Rule 1 match')).toHaveValue('example.com'));
   expect(screen.queryByLabelText('Rule 2 match')).toBeNull();
   const row = within(screen.getByRole('region', { name: 'Coverage' })).getByText('api.other.net').closest('li')!;

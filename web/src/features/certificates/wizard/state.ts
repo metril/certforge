@@ -56,7 +56,9 @@ export function wizardReducer(s: WizardState, a: WizardAction): WizardState {
         ...s,
         method: a.method,
         rulesTouched: true,
-        rules: s.rules.map((rule) => (a.method === 'manual-dns' ? { match: rule.match, method: a.method } : { ...rule, method: a.method })),
+        rules: s.rules.map((rule) =>
+          a.method === 'manual-dns' ? { match: rule.match, method: a.method, via: 'server' as const } : { ...rule, method: a.method },
+        ),
       };
     case 'setRules':
       return { ...s, rules: a.rules, rulesTouched: true };
