@@ -212,7 +212,7 @@ surfaced it.
 
 ### Phase 4: issuance breadth — in progress (started 2026-09-27)
 
-Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings, DER/P12/JKS renderers, download/export, layout passwords and extra certificates, HTTP-01/TLS-ALPN-01 with agent challenge serving, mixed-method orders, CAA, rate ledger, ARI, upload/unmanaged certificates, import from acme.sh/certbot) and 4B certificates web UI. Plan 4A: [issuance breadth](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) (done). Plan 4B: [certificates web UI](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) (planned).
+Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings, DER/P12/JKS renderers, download/export, layout passwords and extra certificates, HTTP-01/TLS-ALPN-01 with agent challenge serving, mixed-method orders, CAA, rate ledger, ARI, upload/unmanaged certificates, import from acme.sh/certbot) and 4B certificates web UI. Plan 4A: [issuance breadth](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) (done). Plan 4B: [certificates web UI](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) (in progress).
 
 #### Phase 4A tasks — done (finished 2026-09-27)
 
@@ -235,6 +235,21 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 | 15 | Issuance breadth e2e | done | aa9e334 |
 
 Phase 4A complete; 4B (certificates web UI) builds on it.
+
+#### Phase 4B tasks
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | API layer, fixtures, helpers | done | pending |
+| 2 | Download sheet formats | not started | |
+| 3 | Per-rule verification methods | not started | |
+| 4 | CAA and rate-ledger steps | not started | |
+| 5 | Upload screen and Import menu | not started | |
+| 6 | Import screen | not started | |
+| 7 | Unmanaged detail, version upload, ARI marker | not started | |
+| 8 | Layout formats, password, extra certificates | not started | |
+| 9 | Settings: CAA and rate limits | not started | |
+| 10 | Palette, docs, Playwright | not started | |
 
 ## Decisions made during implementation
 
@@ -368,6 +383,11 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 - 4A Task 1: Pebble facts verified at pre-flight, recorded here rather than re-probed by later tasks: the `ghcr.io/letsencrypt/pebble:2.10.1` image's workdir is `/`; its bundled `/test/config/pebble-config.json` sets `httpPort` 5002 and `tlsPort` 5001; `/dir` serves `renewalInfo` and `meta.caaIdentities: ["pebble.letsencrypt.org"]`. Task 15's `caa` success case holds because challtestsrv serves no CAA records.
 - 4A Task 7: `agents.Service` implements `challenge.AgentRelay`; a rule's clientId is validated by the same `validateRulesOrgTx` a rule's dnsCredentialId already goes through (same-org FOR KEY SHARE lock, then a capability check — `http-01`/`tls-alpn-01` — skipped only for an http-01 rule with its own `webroot`), so a certificate's own rules and org default rules are checked identically. `DeleteClient`'s 409 names certificates via `CertificatesUsingClient` (own rules, or the literal "org default rules" when only an org default rule references it).
 - 4A final fix wave: `updateLayout` now 422s (naming the certificate) when an update makes the layout need a key but one of its live grants' certificates is keyless, checked in the same transaction instead of failing opaquely later at render time; the Traefik ACME router file now matches `Host()` on the certificate's own names and carries no `entryPoints`, instead of claiming every host on the port 80 entrypoint; `via` is now optional in the OpenAPI schema and ignored (normalized to empty on store) for any method but http-01, so a stale `via: server` on a tls-alpn-01 rule no longer 422s; a certificate rename now locks its rule clients `FOR UPDATE` up front instead of `FOR KEY SHARE`, so two concurrent renames sharing a client no longer deadlock into a 500.
+- 4B: R7 mentions a CA screen for ledger counts, but R13 (the UI scope) does not. 4B shows the ledger only on the certificate's Attempts tab. A CA-level panel is recorded as a Known gap.
+- 4B: coverage for IP names stays "not covered". 4A adds no IP identifiers, so the coverage copy changes from "IP names need HTTP-01 (later phase)" to "IP names aren't supported", and this is recorded as a Known gap.
+- 4B: uploaded P12 files are capped at 768 KiB in the browser. The server caps the JSON body at 1 MiB, and base64 inflates the file by 4/3.
+- 4B: the `issuance` section renders under the Global tab of Settings → Issuance defaults as its own schema-driven form with its own Save (4A R11 deviation). The org tab does not show it, because it is global only.
+- 4B Task 1: jsdom's `Blob`/`File` have no working `stream()`; Node's native fetch, asked to fully read a multipart body built from a jsdom `File` (e.g. via an msw handler's `request.formData()`), gets exactly one chunk from the bridged stream and then hangs forever waiting for a `done` signal that never arrives. `imports.test.ts`'s multipart-body assertion moved to its own `imports.multipart.test.ts` under `// @vitest-environment node`, where `File`/`FormData`/`Request` stay fully native; `imports.test.ts` keeps the `useImportCertificates` invalidation test (needs `renderHook`/DOM) under the default jsdom environment.
 
 ## Known gaps
 

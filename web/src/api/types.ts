@@ -31,6 +31,23 @@ export type ManualDnsRecord = S['ManualDNSRecord'];
 export type ManualDnsConfirmResult = S['ManualDNSConfirmResult'];
 export type SettingsSection = S['SettingsSection'];
 
+// Phase 4B Task 1: exports, uploads, imports and the rate ledger.
+export type ExportRequest = S['ExportRequest'];
+export type ExportFormat = S['ExportFormat'];
+export type P12Encoding = S['P12Encoding'];
+export type CertificateUpload = S['CertificateUpload'];
+export type CertificateVersionUpload = S['CertificateVersionUpload'];
+export type ImportResult = S['ImportResult'];
+export type ImportItem = S['ImportItem'];
+export type ImportSource = S['ImportSource'];
+export type ImportAction = S['ImportAction'];
+export type RateLedger = S['RateLedger'];
+export type RateLedgerItem = S['RateLedgerItem'];
+export type RateLimits = S['RateLimits'];
+export type RateLimitName = S['RateLimitName'];
+export type AriWindow = S['AriWindow'];
+export type ChallengeVia = S['ChallengeVia'];
+
 export type CertStatus = Certificate['status'];
 export type KeyType = S['KeyType'];
 export type VerificationMethod = VerificationRule['method'];

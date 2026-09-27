@@ -3,7 +3,7 @@ import { filenameFrom, saveBlob } from '@/lib/download';
 import { livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
 import { ApiError } from '../errors';
-import type { Certificate, CertificateInput, CertStatus } from '../types';
+import type { Certificate, CertificateInput, CertificateUpload, CertificateVersionUpload, CertStatus, ExportRequest } from '../types';
 
 export const certificateQuery = (orgId: string, id: string) =>
   queryOptions({
@@ -213,14 +213,64 @@ export const versionsQuery = (orgId: string, id: string) =>
 // is fullchain + key in one file. `key` and `combined` both need
 // keys:export (DownloadSheet disables those chips without it).
 export type PemPart = 'cert' | 'chain' | 'fullchain' | 'key' | 'combined';
+// DER supports only cert, chain and key, one per file (fullchain/combined
+// are 422 "not available as DER").
+export type DerPart = 'cert' | 'chain' | 'key';
+export type Part = PemPart | DerPart;
+export type DownloadFormat = 'pem' | 'der';
 
-export async function downloadVersion(orgId: string, id: string, vid: string, parts: PemPart[], baseName: string): Promise<void> {
+export async function downloadVersion(
+  orgId: string,
+  id: string,
+  vid: string,
+  { format, parts }: { format: DownloadFormat; parts: Part[] },
+  baseName: string,
+): Promise<void> {
   const { data, error, response } = await api.GET('/orgs/{orgId}/certificates/{id}/versions/{vid}/download', {
-    params: { path: { orgId, id, vid }, query: { format: 'pem', parts: parts.join(',') } },
+    params: { path: { orgId, id, vid }, query: { format, parts: parts.join(',') } },
     parseAs: 'blob',
   });
   if (error !== undefined || !response.ok || !data) throw ApiError.from(response.status, error);
-  saveBlob(data, filenameFrom(response, `${baseName}${parts.length > 1 ? '.zip' : '.pem'}`));
+  const fallbackExt = parts.length > 1 ? 'zip' : format;
+  saveBlob(data, filenameFrom(response, `${baseName}.${fallbackExt}`));
+}
+
+// Direct api.POST (not a hook): the export password never touches the
+// mutation cache (global constraints, "Secrets").
+export async function exportVersion(orgId: string, id: string, vid: string, body: ExportRequest, baseName: string): Promise<void> {
+  const { data, error, response } = await api.POST('/orgs/{orgId}/certificates/{id}/versions/{vid}/export', {
+    params: { path: { orgId, id, vid } },
+    body,
+    parseAs: 'blob',
+  });
+  if (error !== undefined || !response.ok || !data) throw ApiError.from(response.status, error);
+  saveBlob(data, filenameFrom(response, `${baseName}.${body.format}`));
+}
+
+// gcTime: 0 — the mutation's variables (a certificate/private key) must not
+// linger in the mutation cache once it settles.
+export function useUploadCertificate(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CertificateUpload) => call(api.POST('/orgs/{orgId}/certificates/upload', { params: { path: { orgId } }, body })),
+    meta: { silent: true },
+    gcTime: 0,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['certs', orgId] }),
+  });
+}
+
+export function useUploadVersion(orgId: string, id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CertificateVersionUpload) =>
+      call(api.POST('/orgs/{orgId}/certificates/{id}/versions/upload', { params: { path: { orgId, id } }, body })),
+    meta: { silent: true },
+    gcTime: 0,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      qc.invalidateQueries({ queryKey: ['versions', orgId, id] });
+    },
+  });
 }
 
 // Adaptation (ruling): a 409 (nothing waiting, or the records expired) is an

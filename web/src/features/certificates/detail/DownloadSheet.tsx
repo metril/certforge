@@ -28,7 +28,7 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
     if (!versionId || parts.length === 0) return;
     setBusy(true);
     try {
-      await downloadVersion(orgId, cert.id, versionId, parts, cert.name);
+      await downloadVersion(orgId, cert.id, versionId, { format: 'pem', parts }, cert.name);
       onOpenChange(false);
     } catch (e) {
       toast.error(errorMessage(e));

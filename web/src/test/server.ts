@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { url } from './fixtures';
+import { issuanceSettingsSchema, makeImportResult, makeRateLedger, url } from './fixtures';
 
 // Adaptation (preflight C8): T4's AppShell test navigates to
 // `/o/acme/certificates` without mocking `/certificates` or `/cas`; once
@@ -55,4 +55,16 @@ export const server = setupServer(
   http.get(url('/orgs/:orgId/certificates/:id/deployments'), () => HttpResponse.json({ items: [] })),
   http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: null, names: [], notAfter: null } })),
   http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [], notifiers: [], signers: [] })),
+  // Task 1 (Phase 4B): the issuance settings section, the rate ledger, and a
+  // dry-run import preview — tests that merely navigate through these
+  // routes without caring about their data don't mock them themselves.
+  http.get(url('/settings/issuance'), () =>
+    HttpResponse.json({
+      schema: issuanceSettingsSchema,
+      value: { caaCheck: true, rateLimits: { certsPerRegisteredDomainPerWeek: 50, duplicateCertsPerWeek: 5, failedValidationsPerHour: 5, newOrdersPer3Hours: 300 } },
+      stored: null,
+    }),
+  ),
+  http.get(url('/orgs/:orgId/rate-ledger'), () => HttpResponse.json(makeRateLedger())),
+  http.post(url('/orgs/:orgId/certificates/import'), () => HttpResponse.json(makeImportResult())),
 );

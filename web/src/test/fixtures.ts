@@ -8,17 +8,21 @@ import type {
   CA,
   CAPreset,
   Certificate,
+  CertificateVersion,
   Client,
   Deployment,
   DeployTarget,
   Grant,
   Hook,
   HookRun,
+  ImportItem,
+  ImportResult,
   Layout,
   Me,
   MeBinding,
   Org,
   ProviderSchema,
+  RateLedger,
   RoleBinding,
   Site,
   UserDetail,
@@ -102,6 +106,20 @@ export function makeCert(p: Partial<Certificate> = {}): Certificate {
     nextRenewAt: iso(30),
     failureCount: 0,
     effective: {},
+    ariWindow: null,
+    ...p,
+  };
+}
+
+export function makeVersion(p: Partial<CertificateVersion> = {}): CertificateVersion {
+  return {
+    id: 'v-1',
+    serial: '04ab19f2',
+    notBefore: iso(-30),
+    notAfter: iso(60),
+    sha256Fingerprint: 'ab'.repeat(32),
+    source: 'issued',
+    hasKey: true,
     ...p,
   };
 }
@@ -281,6 +299,15 @@ export const traefikSchema = {
       pathPrefix: { type: 'string', title: 'Directory as Traefik sees it', description: 'Prefix for certFile and keyFile when Traefik mounts the directory elsewhere.', pattern: '^(/.*)?$' },
       defaultCert: { type: 'boolean', title: 'Default certificate', description: 'Also serve this certificate when no SNI matches.', default: false },
       stores: { type: 'array', title: 'TLS stores', description: 'Traefik TLS stores for the certificate. Empty means default.', items: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' }, default: ['default'] },
+      // Mirrors internal/delivery/traefik.go's TraefikSchema (4A Task 8: the
+      // agent's http-01/tls-alpn-01 listener, routed to by a per-grant ACME
+      // router file when set).
+      acmeServiceUrl: {
+        type: 'string',
+        format: 'uri',
+        title: 'ACME service URL',
+        description: "Absolute http or https URL of the agent's http-01/tls-alpn-01 listener.",
+      },
     },
   },
 } as ProviderSchema;
@@ -302,3 +329,83 @@ export function makeAttempt(p: Partial<Attempt> = {}): Attempt {
     ...p,
   };
 }
+
+export function makeImportItem(p: Partial<ImportItem> = {}): ImportItem {
+  return {
+    name: 'www',
+    names: ['www.example.com'],
+    notAfter: iso(60),
+    issuer: "Let's Encrypt",
+    hasKey: true,
+    source: 'acmesh',
+    action: 'create',
+    reason: 'new certificate',
+    ...p,
+  };
+}
+
+export function makeImportResult(p: Partial<ImportResult> = {}): ImportResult {
+  return { dryRun: true, items: [makeImportItem()], ...p };
+}
+
+export function makeRateLedger(p: Partial<RateLedger> = {}): RateLedger {
+  return {
+    caId: ca.id,
+    enforced: true,
+    limits: { certsPerRegisteredDomainPerWeek: 50, duplicateCertsPerWeek: 5, failedValidationsPerHour: 5, newOrdersPer3Hours: 300 },
+    items: [
+      { limit: 'certsPerRegisteredDomainPerWeek', scope: 'example.com', count: 1, max: 50, windowSeconds: 604_800, resetsAt: iso(6) },
+      { limit: 'duplicateCertsPerWeek', scope: 'www.example.com', count: 1, max: 5, windowSeconds: 604_800, resetsAt: iso(6) },
+      { limit: 'failedValidationsPerHour', scope: 'example.com', count: 0, max: 5, windowSeconds: 3_600, resetsAt: null },
+      { limit: 'newOrdersPer3Hours', scope: '', count: 1, max: 300, windowSeconds: 10_800, resetsAt: iso(0.1) },
+    ],
+    ...p,
+  };
+}
+
+// Mirrors internal/issuance/issuance.schema.json (4A: the global "issuance"
+// settings section — CAA checking and the local rate-limit ledger).
+export const issuanceSettingsSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    caaCheck: {
+      type: 'boolean',
+      title: 'Check CAA records',
+      description: "Walk each name's CAA record set before ordering; fail fast when none authorizes the CA.",
+      default: true,
+    },
+    rateLimits: {
+      type: 'object',
+      title: 'Rate limits',
+      description: "Local tracking of the CA's own ACME rate limits, enforced before an order is placed. Set a limit to 0 to disable it.",
+      additionalProperties: false,
+      properties: {
+        certsPerRegisteredDomainPerWeek: {
+          type: 'integer', minimum: 0, maximum: 100_000,
+          title: 'Certificates per registered domain per week',
+          description: 'Counted per registered domain across every certificate. 0 disables the limit.',
+          default: 50,
+        },
+        duplicateCertsPerWeek: {
+          type: 'integer', minimum: 0, maximum: 100_000,
+          title: 'Duplicate certificates per week',
+          description: 'Counted per exact set of names. 0 disables the limit.',
+          default: 5,
+        },
+        failedValidationsPerHour: {
+          type: 'integer', minimum: 0, maximum: 100_000,
+          title: 'Failed validations per hour',
+          description: 'Counted per registered domain. 0 disables the limit.',
+          default: 5,
+        },
+        newOrdersPer3Hours: {
+          type: 'integer', minimum: 0, maximum: 100_000,
+          title: 'New orders per 3 hours',
+          description: 'Counted per CA account. 0 disables the limit.',
+          default: 300,
+        },
+      },
+    },
+  },
+};

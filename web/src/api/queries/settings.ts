@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, call } from '../client';
 
-export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication' | 'agents';
+export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication' | 'agents' | 'issuance';
 
 export const settingsQuery = (section: SectionId) =>
   queryOptions({ queryKey: ['settings', section], queryFn: () => call(api.GET('/settings/{section}', { params: { path: { section } } })) });
