@@ -295,11 +295,14 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 
 // ValidateGlobalDefaults validates the global issuance_defaults settings
 // section: the shape, plus that any referenced caId, accountId or rule
-// dnsCredentialId names a row that exists (P34). The global section is not
-// org-scoped, so this checks existence only, not which org owns the row;
-// resolving a global default to an org (so it applies only in that org) is
-// Phase 2 cross-org work. Callers (the settings write path) should run this
-// before storing the section.
+// dnsCredentialId/clientId names a row that exists (P34) — a rule's
+// clientId is treated exactly like its dnsCredentialId, plus (unless the
+// rule is http-01 with its own webroot) that the client reports the rule's
+// method capability. The global section is not org-scoped, so this checks
+// existence only, not which org owns the row; resolving a global default to
+// an org (so it applies only in that org) is Phase 2 cross-org work.
+// Callers (the settings write path) should run this before storing the
+// section.
 func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
 	if err := validateDefaultsShape(d); err != nil {
 		return err
@@ -337,16 +340,31 @@ func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
 				return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential"}
 			}
 		}
+		for _, r := range *d.VerificationRules {
+			if r.ClientID == nil {
+				continue
+			}
+			c, err := s.q.GetClientByID(ctx, *r.ClientID)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return &ValidationError{"verificationRules", "rule " + r.Match + ": no such client"}
+				}
+				return err
+			}
+			if err := checkRuleClientCapability(r, c); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
 // ValidateGlobalDefaultsTx is ValidateGlobalDefaults run with tx-scoped
-// queries, taking a FOR KEY SHARE lock on any referenced CA or account
-// first so DeleteCA/DeleteAccount's FOR UPDATE lock on the same row blocks
-// until this transaction ends. The settings write path (PUT
-// /settings/issuance_defaults) uses this, not ValidateGlobalDefaults, and
-// writes the section through the same transaction, so the two can't
+// queries, taking a FOR KEY SHARE lock on any referenced CA, account or
+// client first so DeleteCA/DeleteAccount/DeleteClient's FOR UPDATE lock on
+// the same row blocks until this transaction ends. The settings write path
+// (PUT /settings/issuance_defaults) uses this, not ValidateGlobalDefaults,
+// and writes the section through the same transaction, so the two can't
 // interleave into a dangling reference.
 func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defaults) error {
 	if err := validateDefaultsShape(d); err != nil {
@@ -392,6 +410,18 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 				return err
 			}
 		}
+		clients, err := lockRuleClientsInIDOrder(ctx, q, uuid.Nil, false, *d.VerificationRules)
+		if err != nil {
+			return err
+		}
+		for _, r := range *d.VerificationRules {
+			if r.ClientID == nil {
+				continue
+			}
+			if err := checkRuleClientCapability(r, clients[*r.ClientID]); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -405,50 +435,106 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 // clientId is validated identically at either level.
 func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, rules []challenge.RuleSpec) error {
 	for _, r := range rules {
-		if r.DNSCredentialID != nil {
-			if _, err := q.LockDNSCredentialKeyShare(ctx, *r.DNSCredentialID); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
-				}
-				return err
-			}
-			if _, err := q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: *r.DNSCredentialID, OrgID: orgID}); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
-				}
-				return err
-			}
+		if r.DNSCredentialID == nil {
+			continue
 		}
-		if r.ClientID != nil {
-			if err := s.validateRuleClientTx(ctx, q, orgID, r); err != nil {
-				return err
+		if _, err := q.LockDNSCredentialKeyShare(ctx, *r.DNSCredentialID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
 			}
+			return err
+		}
+		if _, err := q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: *r.DNSCredentialID, OrgID: orgID}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return &ValidationError{"verificationRules", "rule " + r.Match + ": no such DNS credential in this org"}
+			}
+			return err
+		}
+	}
+	clients, err := lockRuleClientsInIDOrder(ctx, q, orgID, true, rules)
+	if err != nil {
+		return err
+	}
+	for _, r := range rules {
+		if r.ClientID == nil {
+			continue
+		}
+		if err := checkRuleClientCapability(r, clients[*r.ClientID]); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// validateRuleClientTx checks that r's clientId (http-01 via: agent, or
-// tls-alpn-01) names a client of orgID, taking a FOR KEY SHARE lock on it
-// first (see validateRulesOrgTx), and that the client reports the
-// capability r's method needs ("http-01" or "tls-alpn-01") — unless r is an
+// lockRuleClientsInIDOrder locks, in ascending id order, every client
+// distinctly referenced by rules' clientId, returning each locked row
+// keyed by id (fix round 1, Important finding). Locking every referenced
+// client up front, sorted by id rather than by rule order, matches the
+// global lock order every multi-client locker in this codebase follows:
+// render's LockClientsByID always locks clients FOR UPDATE in id order
+// (internal/agents/settings.go's global lock-order rule). Rule order is
+// caller-controlled and arbitrary; locking in that order instead risks
+// deadlocking against a concurrent render holding one of these same rows
+// FOR UPDATE and waiting on another (AB-BA: render locks A then waits on
+// B, this locks B then waits on A).
+//
+// orgScoped selects which existence check follows each lock: true (a
+// certificate's own rules, or an org's own default rules) scopes it to
+// orgID, the same as the dnsCredentialId check above it; false (the
+// cross-org global issuance_defaults settings section) checks existence
+// only, mirroring dnsCredentialId's own global-vs-org split elsewhere in
+// this file. orgID is ignored when orgScoped is false.
+func lockRuleClientsInIDOrder(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, orgScoped bool, rules []challenge.RuleSpec) (map[uuid.UUID]sqlcgen.Client, error) {
+	seen := map[uuid.UUID]bool{}
+	firstMatch := map[uuid.UUID]string{}
+	var ids []uuid.UUID
+	for _, r := range rules {
+		if r.ClientID == nil || seen[*r.ClientID] {
+			continue
+		}
+		seen[*r.ClientID] = true
+		firstMatch[*r.ClientID] = r.Match
+		ids = append(ids, *r.ClientID)
+	}
+	slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	notFound := func(id uuid.UUID) error {
+		if orgScoped {
+			return &ValidationError{"verificationRules", "rule " + firstMatch[id] + ": client not found in this org"}
+		}
+		return &ValidationError{"verificationRules", "rule " + firstMatch[id] + ": no such client"}
+	}
+	out := make(map[uuid.UUID]sqlcgen.Client, len(ids))
+	for _, id := range ids {
+		if _, err := q.LockClientKeyShare(ctx, id); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, notFound(id)
+			}
+			return nil, err
+		}
+		var c sqlcgen.Client
+		var err error
+		if orgScoped {
+			c, err = q.GetClient(ctx, sqlcgen.GetClientParams{ID: id, OrgID: orgID})
+		} else {
+			c, err = q.GetClientByID(ctx, id)
+		}
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, notFound(id)
+			}
+			return nil, err
+		}
+		out[id] = c
+	}
+	return out, nil
+}
+
+// checkRuleClientCapability checks that c (r's clientId) reports the
+// capability r's method needs ("http-01" or "tls-alpn-01"), unless r is an
 // http-01 rule with its own webroot, which needs no agent listener
 // capability at all (the agent just writes the token under a path the
 // operator named; see docs/agent.md#challenge-serving).
-func (s *Store) validateRuleClientTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, r challenge.RuleSpec) error {
-	if _, err := q.LockClientKeyShare(ctx, *r.ClientID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return &ValidationError{"verificationRules", "rule " + r.Match + ": client not found in this org"}
-		}
-		return err
-	}
-	c, err := q.GetClient(ctx, sqlcgen.GetClientParams{ID: *r.ClientID, OrgID: orgID})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return &ValidationError{"verificationRules", "rule " + r.Match + ": client not found in this org"}
-		}
-		return err
-	}
+func checkRuleClientCapability(r challenge.RuleSpec, c sqlcgen.Client) error {
 	if r.Method == challenge.MethodHTTP01 && r.Webroot != "" {
 		return nil
 	}

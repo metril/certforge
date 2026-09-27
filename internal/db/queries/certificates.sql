@@ -19,9 +19,12 @@ SELECT * FROM certificates WHERE id = $1;
 -- name: CertificatesUsingClient :many
 -- Certificates whose own verification rules reference clientId, plus the
 -- literal "org default rules" when this org's issuance_defaults rules do
--- (a default rule names no single certificate of its own); DeleteClient
--- 409s naming these instead of deleting a client an http-01/tls-alpn-01
--- rule still relies on.
+-- (a default rule names no single certificate of its own), plus "global
+-- default rules" when the cross-org global issuance_defaults settings
+-- section does (settings.key = 'section.issuance_defaults', the same JSON
+-- shape as issuance_defaults.config: see settings.SectionKey and
+-- issuance.SettingsKey); DeleteClient 409s naming these instead of
+-- deleting a client an http-01/tls-alpn-01 rule still relies on.
 SELECT name FROM (
   SELECT c.name AS name FROM certificates c
   WHERE c.org_id = sqlc.arg(org_id)
@@ -31,6 +34,10 @@ SELECT name FROM (
   SELECT 'org default rules' AS name
   WHERE EXISTS (SELECT 1 FROM issuance_defaults d WHERE d.org_id = sqlc.arg(org_id)
     AND d.config->'verificationRules' @> jsonb_build_array(jsonb_build_object('clientId', sqlc.arg(client_id)::uuid::text)))
+  UNION ALL
+  SELECT 'global default rules' AS name
+  WHERE EXISTS (SELECT 1 FROM settings s WHERE s.key = 'section.issuance_defaults'
+    AND s.value->'verificationRules' @> jsonb_build_array(jsonb_build_object('clientId', sqlc.arg(client_id)::uuid::text)))
 ) u ORDER BY lower(name) LIMIT 6;
 
 -- name: GetCertificateForUpdate :one

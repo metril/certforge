@@ -615,9 +615,16 @@ func TestRuleClientChecks(t *testing.T) {
 
 	err := create("a", gen.VerificationRule{Match: "a.example.test", Method: "http-01", Via: &via, ClientId: &foreign})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
+	var he *HTTPError
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, "client not found in this org") {
+		t.Fatalf("foreign client detail = %v", err)
+	}
 
 	err = create("b", gen.VerificationRule{Match: "b.example.test", Method: "http-01", Via: &via, ClientId: &noCap})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, "client web-1 does not serve http-01") {
+		t.Fatalf("missing capability detail = %v", err)
+	}
 
 	webroot := "/var/www/.well-known/acme-challenge"
 	if err := create("c", gen.VerificationRule{Match: "c.example.test", Method: "http-01", Via: &via, ClientId: &noCap, Webroot: &webroot}); err != nil {

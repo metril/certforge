@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -184,6 +185,32 @@ func TestDeleteClientReferencedByRule(t *testing.T) {
 	var he *HTTPError
 	if !errors.As(err, &he) || !strings.Contains(he.Detail, cert.Name) {
 		t.Fatalf("conflict does not name the certificate: %v", err)
+	}
+
+	// A client referenced only by the cross-org global issuance_defaults
+	// settings section (no certificate or org-default rule of its own) is
+	// blocked too (fix round 1, Minor finding): CertificatesUsingClient
+	// must also cover that section now that its rules may carry clientId.
+	en2 := f.newClient(t, "web-2")
+	if _, err := f.pool.Exec(context.Background(), `UPDATE clients SET capabilities = '{tls-alpn-01}' WHERE id = $1`, en2.Client.ID); err != nil {
+		t.Fatal(err)
+	}
+	global := map[string]any{"verificationRules": []map[string]any{
+		{"match": "*", "method": "tls-alpn-01", "clientId": en2.Client.ID.String()},
+	}}
+	value, err := json.Marshal(global)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(context.Background(),
+		`INSERT INTO settings (key, value) VALUES ('section.issuance_defaults', $1)
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, value); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.srv.DeleteClient(op, gen.DeleteClientRequestObject{OrgId: f.org, Id: en2.Client.ID})
+	wantStatus(t, err, 409)
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, "global default rules") {
+		t.Fatalf("conflict does not name the global default rules: %v", err)
 	}
 }
 

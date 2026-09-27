@@ -83,12 +83,12 @@ func (s *Service) challengeReadyTimeout() time.Duration {
 
 // Provider implements challenge.AgentRelay: it returns the ChallengeProvider
 // that relays Present/CleanUp for method to clientID's agent over its
-// WebSocket. Rule validation (issuance.Store.validateRuleClientTx) already
-// checked, when the rule was written, that clientID names an active,
-// same-org client with the method's capability (or, for http-01, its own
-// webroot); a client no longer found here (deleted since, or never
-// existed) is reported the same way as one whose agent is offline, since
-// neither can serve the challenge.
+// WebSocket. Rule validation (issuance.Store's lockRuleClientsInIDOrder and
+// checkRuleClientCapability) already checked, when the rule was written,
+// that clientID names an active, same-org client with the method's
+// capability (or, for http-01, its own webroot); a client no longer found
+// here (deleted since, or never existed) is reported the same way as one
+// whose agent is offline, since neither can serve the challenge.
 func (s *Service) Provider(ctx context.Context, orgID, clientID uuid.UUID, m challenge.Method, webroot string) (challenge.ChallengeProvider, error) {
 	c, err := s.Q.GetClient(ctx, sqlcgen.GetClientParams{ID: clientID, OrgID: orgID})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -122,9 +122,23 @@ type agentChallengeProvider struct {
 
 func (p *agentChallengeProvider) Type() challenge.Type { return p.method.Type() }
 
+// connectedPollInterval bounds how long a dropped socket can go unnoticed
+// while Present is waiting: without a poll, Present would only find out
+// once the full ChallengeReadyTimeout elapsed (fix round 1, Minor finding).
+const connectedPollInterval = 200 * time.Millisecond
+
 // Present sends challenge_present and waits for challenge_ready, up to
 // svc.ChallengeReadyTimeout (DefaultChallengeReadyTimeout unless a test
-// shortens it).
+// shortens it), polling Hub.Connected every connectedPollInterval so a
+// socket that drops mid-wait is noticed promptly instead of only once the
+// timeout elapses. lego's http01.Challenge.Solve (and tls-alpn-01's) calls
+// CleanUp only once Present has returned successfully, so once
+// challenge_present has actually reached the agent (Hub.Send below
+// succeeded), every other return path — a timeout, an error reply, a
+// dropped socket, or the context ending — best-effort sends
+// challenge_cleanup itself; otherwise a late or unlucky agent would keep
+// serving a token nothing is ever going to clean up (fix round 1, Important
+// finding).
 func (p *agentChallengeProvider) Present(ctx context.Context, domain, token, keyAuth string) error {
 	if !p.active || p.svc.Hub == nil || !p.svc.Hub.Connected(p.clientID) {
 		return fmt.Errorf("client %s is offline or cannot serve challenges", p.name)
@@ -138,25 +152,43 @@ func (p *agentChallengeProvider) Present(ctx context.Context, domain, token, key
 	timeout := p.svc.challengeReadyTimeout()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
-	select {
-	case reply := <-ch:
-		if reply.Error != "" {
-			return fmt.Errorf("client %s: %s", p.name, reply.Error)
+	poll := time.NewTicker(connectedPollInterval)
+	defer poll.Stop()
+	for {
+		select {
+		case reply := <-ch:
+			if reply.Error != "" {
+				p.cleanup(token)
+				return fmt.Errorf("client %s: %s", p.name, reply.Error)
+			}
+			return nil
+		case <-timer.C:
+			p.cleanup(token)
+			return fmt.Errorf("client %s did not confirm the challenge within %s", p.name, timeout)
+		case <-poll.C:
+			if !p.svc.Hub.Connected(p.clientID) {
+				p.cleanup(token)
+				return fmt.Errorf("client %s is offline or cannot serve challenges", p.name)
+			}
+		case <-ctx.Done():
+			p.cleanup(token)
+			return ctx.Err()
 		}
-		return nil
-	case <-timer.C:
-		return fmt.Errorf("client %s did not confirm the challenge within %s", p.name, timeout)
-	case <-ctx.Done():
-		return ctx.Err()
+	}
+}
+
+// cleanup sends challenge_cleanup for token; best-effort (no reply is
+// waited for), same as CleanUp.
+func (p *agentChallengeProvider) cleanup(token string) {
+	if p.svc.Hub != nil {
+		p.svc.Hub.Send(p.clientID, agentproto.ChallengeCleanup{Token: token})
 	}
 }
 
 // CleanUp asks the agent to stop serving token; best-effort, since the
 // order is already finishing (successfully or not) by the time this runs.
 func (p *agentChallengeProvider) CleanUp(_ context.Context, _, token, _ string) error {
-	if p.svc.Hub != nil {
-		p.svc.Hub.Send(p.clientID, agentproto.ChallengeCleanup{Token: token})
-	}
+	p.cleanup(token)
 	return nil
 }
 

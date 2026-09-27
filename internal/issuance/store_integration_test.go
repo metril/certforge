@@ -5,6 +5,7 @@ package issuance
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -357,6 +358,77 @@ func TestOrgDefaultsRuleClientMustBeInOrg(t *testing.T) {
 	}
 }
 
+// TestValidateRulesLocksClientsInIDOrder (fix round 1, Important finding):
+// validateRulesOrgTx must lock every distinct client referenced by a rule
+// in id order, not rule order. render's own LockClientsByID always locks
+// clients FOR UPDATE in id order (internal/agents/settings.go's global
+// lock-order rule), so a write whose rules name two clients in the
+// opposite order would otherwise deadlock against a concurrent render
+// holding one and waiting on the other.
+func TestValidateRulesLocksClientsInIDOrder(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	a := f.client(t, f.org, "a", []string{"tls-alpn-01"})
+	b := f.client(t, f.org, "b", []string{"tls-alpn-01"})
+	lo, hi := a, b
+	if strings.Compare(hi.String(), lo.String()) < 0 {
+		lo, hi = hi, lo
+	}
+
+	// tx1 mimics render: locks lo FOR UPDATE first, the ascending order
+	// every multi-client locker in this codebase uses.
+	tx1, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx1.Rollback(ctx) }()
+	q1 := f.store.q.WithTx(tx1)
+	if _, err := q1.LockClientByID(ctx, lo); err != nil {
+		t.Fatal(err)
+	}
+
+	// The write's own rules list hi before lo — the "wrong" order a
+	// per-rule lock loop would follow instead of sorting first.
+	rules := []challenge.RuleSpec{
+		{Match: "hi.example.test", Method: challenge.MethodTLSALPN01, ClientID: &hi},
+		{Match: "lo.example.test", Method: challenge.MethodTLSALPN01, ClientID: &lo},
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- f.store.PutOrgDefaults(context.Background(), f.org, Defaults{VerificationRules: &rules})
+	}()
+
+	// Give the write time to take its first lock. With the fix, that is lo
+	// (sorted ascending first), which blocks immediately behind tx1 — hi is
+	// never touched until lo is free. With the bug, it locks hi first (rule
+	// order) and only blocks on lo afterward.
+	time.Sleep(300 * time.Millisecond)
+
+	// tx1 now takes its second lock, hi, continuing its own ascending
+	// order. With the fix this is uncontended (the write is still blocked
+	// on lo and has never touched hi). With the bug the write already
+	// holds hi, and this forms the second half of an AB-BA deadlock:
+	// Postgres detects it and aborts one side within its deadlock_timeout
+	// (~1s), surfacing as an error either here or from the write below.
+	lockCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if _, err := q1.LockClientByID(lockCtx, hi); err != nil {
+		t.Fatalf("render-style lock on hi (clients must lock in id order): %v", err)
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("org-defaults write: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("org-defaults write never unblocked after tx1 committed")
+	}
+}
+
 // Review Focus (P34): ValidateGlobalDefaults (used by the settings write
 // path for PUT /settings/issuance_defaults) verifies that any referenced
 // caId, accountId or rule dnsCredentialId row exists, and that an account
@@ -388,6 +460,54 @@ func TestValidateGlobalDefaults(t *testing.T) {
 	badRules := []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodDNS01, DNSCredentialID: &missingCred}}
 	if err := f.store.ValidateGlobalDefaults(ctx, Defaults{VerificationRules: &badRules}); !errors.As(err, &ve) || ve.Field != "verificationRules" {
 		t.Fatalf("missing rule credential: %v", err)
+	}
+
+	// clientId is treated exactly like dnsCredentialId (fix round 1,
+	// Important finding): checked for existence, and (unless the rule is
+	// http-01 with its own webroot) that the client reports the rule's
+	// method capability. Checked through both ValidateGlobalDefaults and its
+	// transactional, lock-taking sibling ValidateGlobalDefaultsTx, which the
+	// settings write path actually uses.
+	capable := f.client(t, f.org, "capable", []string{"tls-alpn-01"})
+	noCap := f.client(t, f.org, "no-cap", nil)
+	missingClient := capable
+	missingClient[0] ^= 0xFF
+
+	okRules := []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodTLSALPN01, ClientID: &capable}}
+	missingClientRules := []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodTLSALPN01, ClientID: &missingClient}}
+	noCapRules := []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodTLSALPN01, ClientID: &noCap}}
+	webrootRules := []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodHTTP01, Via: challenge.ViaAgent,
+		ClientID: &noCap, Webroot: "/var/www/acme"}}
+
+	if err := f.store.ValidateGlobalDefaults(ctx, Defaults{VerificationRules: &okRules}); err != nil {
+		t.Fatalf("real rule client rejected: %v", err)
+	}
+	if err := f.store.ValidateGlobalDefaults(ctx, Defaults{VerificationRules: &missingClientRules}); !errors.As(err, &ve) || ve.Field != "verificationRules" {
+		t.Fatalf("missing rule client: %v", err)
+	}
+	if err := f.store.ValidateGlobalDefaults(ctx, Defaults{VerificationRules: &noCapRules}); !errors.As(err, &ve) || ve.Field != "verificationRules" {
+		t.Fatalf("missing capability: %v", err)
+	}
+	if err := f.store.ValidateGlobalDefaults(ctx, Defaults{VerificationRules: &webrootRules}); err != nil {
+		t.Fatalf("http-01 with its own webroot rejected: %v", err)
+	}
+
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := f.store.ValidateGlobalDefaultsTx(ctx, tx, Defaults{VerificationRules: &okRules}); err != nil {
+		t.Fatalf("tx: real rule client rejected: %v", err)
+	}
+	if err := f.store.ValidateGlobalDefaultsTx(ctx, tx, Defaults{VerificationRules: &missingClientRules}); !errors.As(err, &ve) || ve.Field != "verificationRules" {
+		t.Fatalf("tx: missing rule client: %v", err)
+	}
+	if err := f.store.ValidateGlobalDefaultsTx(ctx, tx, Defaults{VerificationRules: &noCapRules}); !errors.As(err, &ve) || ve.Field != "verificationRules" {
+		t.Fatalf("tx: missing capability: %v", err)
+	}
+	if err := f.store.ValidateGlobalDefaultsTx(ctx, tx, Defaults{VerificationRules: &webrootRules}); err != nil {
+		t.Fatalf("tx: http-01 with its own webroot rejected: %v", err)
 	}
 
 	// A CA that exists (in another org: the global section is not org-scoped,
