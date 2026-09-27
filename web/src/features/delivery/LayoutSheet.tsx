@@ -94,6 +94,18 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, file: withFormat(r.file, format) } : r)));
     if (serverError?.i === i) setServerError(null);
   };
+  // Review fix round 1: `extra` is only ever offered while there are extra
+  // certificates to bundle, but clearing the last one only disabled the
+  // chip going forward — a file that already had `extra` selected kept it
+  // in `parts` and it was saved anyway. Stripping it here, in the same
+  // handler that clears the last id, keeps every PEM file's parts in sync
+  // with there being nothing left for `extra` to render.
+  const changeExtras = (ids: string[]) => {
+    setExtraCertificateIds(ids);
+    if (ids.length === 0) {
+      setRows((rs) => rs.map((r) => (r.file.parts.includes('extra') ? { ...r, file: { ...r.file, parts: r.file.parts.filter((p) => p !== 'extra') } } : r)));
+    }
+  };
   const move = (i: number, d: -1 | 1) =>
     setRows((rs) => {
       const next = [...rs];
@@ -227,12 +239,13 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                         aria-label={`Parts of file ${n}`}
                         value={f.parts}
                         onChange={(parts) => setFile(i, { parts })}
-                        options={OUTPUT_PARTS.map((p) => ({
-                          value: p,
-                          label: p,
-                          disabled: readOnly || (p === 'extra' && extraCertificateIds.length === 0),
-                          hint: p === 'extra' && extraCertificateIds.length === 0 ? 'Add extra certificates first' : undefined,
-                        }))}
+                        options={OUTPUT_PARTS.map((p) => {
+                          // Belt and braces alongside changeExtras stripping
+                          // `extra` from parts the moment the list empties:
+                          // never show a chip as both disabled and selected.
+                          const noExtras = p === 'extra' && extraCertificateIds.length === 0 && !f.parts.includes('extra');
+                          return { value: p, label: p, disabled: readOnly || noExtras, hint: noExtras ? 'Add extra certificates first' : undefined };
+                        })}
                       />
                     </Field>
                   )}
@@ -272,7 +285,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                         placeholder="example.com"
                         value={f.alias ?? ''}
                         disabled={readOnly}
-                        onChange={(ev) => setFile(i, { alias: ev.target.value })}
+                        onChange={(ev) => setFile(i, { alias: ev.target.value === '' ? undefined : ev.target.value })}
                       />
                     </Field>
                   )}
@@ -354,7 +367,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
               id="layout-extras"
               aria-label="Extra certificates"
               value={extraCertificateIds}
-              onChange={setExtraCertificateIds}
+              onChange={changeExtras}
               options={certOptions}
               placeholder="Add certificates"
               emptyText="No certificate matches."

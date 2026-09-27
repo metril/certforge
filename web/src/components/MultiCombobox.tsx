@@ -3,9 +3,8 @@ import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn, keywordFilter } from '@/lib/utils';
-import type { ComboOption } from './Combobox';
+import { OptionWithHint, type ComboOption } from './Combobox';
 
 type Props = {
   id?: string;
@@ -48,10 +47,9 @@ export function MultiCombobox({ id, value, onChange, options, placeholder, empty
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>
-                {options.map((o) => {
-                  const item = (
+                {options.map((o) => (
+                  <OptionWithHint key={o.value} disabled={o.disabled} hint={o.hint}>
                     <CommandItem
-                      key={o.value}
                       value={o.value}
                       disabled={o.disabled}
                       keywords={[o.label, ...(o.keywords ?? [])]}
@@ -64,17 +62,8 @@ export function MultiCombobox({ id, value, onChange, options, placeholder, empty
                       <span className="truncate">{o.label}</span>
                       {o.hint && !o.disabled && <span className="ml-auto truncate text-xs text-ink-muted">{o.hint}</span>}
                     </CommandItem>
-                  );
-                  if (!o.disabled || !o.hint) return item;
-                  return (
-                    <Tooltip key={o.value}>
-                      <TooltipTrigger asChild>
-                        <span tabIndex={0}>{item}</span>
-                      </TooltipTrigger>
-                      <TooltipContent>{o.hint}</TooltipContent>
-                    </Tooltip>
-                  );
-                })}
+                  </OptionWithHint>
+                ))}
               </CommandGroup>
             </CommandList>
           </Command>

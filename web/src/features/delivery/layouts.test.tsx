@@ -5,7 +5,7 @@ import type { OutputFile } from '@/api/types';
 import { server } from '@/test/server';
 import { authHandlers, makeCert, makeLayout, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
-import { accountError, emptyFile, keyReadableByOthers, modeError, validateFiles } from './layoutFiles';
+import { accountError, emptyFile, keyReadableByOthers, layoutErrors, modeError, validateFiles } from './layoutFiles';
 
 const file = (p: Partial<OutputFile>): OutputFile => ({ ...emptyFile(), path: '/etc/ssl/a.pem', ...p });
 
@@ -62,6 +62,33 @@ describe('validateFiles', () => {
   ])('owner/group %j mirrors the server', (s, msg) => expect(accountError(s)).toBe(msg));
 });
 
+describe('layoutErrors', () => {
+  const p12Files = [{ ...emptyFile(), format: 'p12' as const, parts: [] }];
+  const jksFiles = [{ ...emptyFile(), format: 'jks' as const, parts: [] }];
+
+  // Review fix round 1: internal/api/delivery.go's checkLayoutPassword uses
+  // Go's len(string), which counts UTF-8 bytes, not runes — a password of
+  // multi-byte characters can be within the code-point count the old
+  // [...pw].length check used while still over the server's byte limit.
+  it('counts the password by UTF-8 bytes, not code points', () => {
+    const at128Bytes = 'é'.repeat(64); // 64 code points, 128 bytes (2 bytes each) — exactly at the limit.
+    expect(layoutErrors({ files: p12Files, password: at128Bytes, passwordSet: false, extraCertificateIds: [] })).toEqual({});
+    const over128Bytes = 'é'.repeat(65); // 65 code points, 130 bytes — over the server's byte limit.
+    expect(layoutErrors({ files: p12Files, password: over128Bytes, passwordSet: false, extraCertificateIds: [] }).password).toBe('At most 128 characters.');
+  });
+
+  // render.CheckJKSPassword requires ASCII *and* at least 6 characters, only
+  // when a file is jks; a non-ASCII password of 6+ code points must still
+  // fail, and an ASCII one under 6 must still fail.
+  it('requires ASCII and at least 6 characters only when a file is jks', () => {
+    expect(layoutErrors({ files: jksFiles, password: 'héllo1', passwordSet: false, extraCertificateIds: [] }).password).toBe('At least 6 characters.');
+    expect(layoutErrors({ files: jksFiles, password: 'ab', passwordSet: false, extraCertificateIds: [] }).password).toBe('At least 6 characters.');
+    expect(layoutErrors({ files: jksFiles, password: 'hello1', passwordSet: false, extraCertificateIds: [] })).toEqual({});
+    // A non-ASCII password is fine for a plain p12 file (no jks rule applies).
+    expect(layoutErrors({ files: p12Files, password: 'héllo1', passwordSet: false, extraCertificateIds: [] })).toEqual({});
+  });
+});
+
 let posted: unknown;
 let patched: unknown;
 let deleted: string[];
@@ -101,6 +128,7 @@ it('lists layouts with files and use', async () => {
   const row = within(table).getByText('nginx').closest('tr')!;
   expect(within(row).getByText('www.pem')).toBeInTheDocument();
   expect(within(row).getByText('+2 extra')).toBeInTheDocument();
+  expect(within(row).getByText('Password set')).toBeInTheDocument();
   expect(within(row).getByText('1 grant')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Delete nginx' })).toBeDisabled();
   expect(screen.getByRole('link', { name: 'File layouts' })).toHaveAttribute('aria-current', 'page');
@@ -269,12 +297,13 @@ it('layout password write-only: edit sends __unchanged__ unless replaced, and ne
       }),
     ),
   );
-  const { user } = renderRoute('/o/acme/delivery/layouts?edit=l-1');
+  const { user, queryClient } = renderRoute('/o/acme/delivery/layouts?edit=l-1');
   const sheet = await screen.findByRole('dialog', { name: 'Edit nginx' });
   expect(within(sheet).getByText('Stored')).toBeInTheDocument();
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ password: '__unchanged__' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
 
   patched = undefined;
   await user.click(screen.getByRole('button', { name: 'Edit nginx' }));
@@ -292,6 +321,62 @@ it('layout password write-only: edit sends __unchanged__ unless replaced, and ne
   await user.type(within(sheet3).getByLabelText('Password'), 'new-secret-1');
   await user.click(within(sheet3).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ password: 'new-secret-1' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
+});
+
+it('removes a stored password when no file needs one', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/layouts'), () =>
+      HttpResponse.json({
+        items: [makeLayout({ passwordSet: true, files: [{ path: '/etc/ssl/www.pem', format: 'pem', parts: ['fullchain'], owner: '', group: '', mode: '0640' }] })],
+      }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=l-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit nginx' });
+  expect(within(sheet).getByRole('button', { name: 'Remove Password' })).toBeInTheDocument();
+  await user.click(within(sheet).getByRole('button', { name: 'Remove Password' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ password: '' }));
+});
+
+it('clears a JKS alias to undefined instead of an empty string once cleared', async () => {
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New layout' });
+  await user.type(within(sheet).getByLabelText('Name'), 'jks-store');
+  const first = within(sheet).getByRole('listitem', { name: 'File 1' });
+  await user.type(within(first).getByLabelText('Path'), '/etc/ssl/keystore.jks');
+  await user.click(within(first).getByRole('radio', { name: 'JKS' }));
+  await user.type(within(first).getByLabelText('Alias'), 'tomcat');
+  await user.clear(within(first).getByLabelText('Alias'));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toBeDefined());
+  expect((posted as { files: { alias?: string }[] }).files[0]).not.toHaveProperty('alias');
+});
+
+it('clears the extra part from every PEM file once the last extra certificate is removed', async () => {
+  server.use(http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert({ id: 'c-2', name: 'api' })], nextCursor: null })));
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New layout' });
+  await user.type(within(sheet).getByLabelText('Name'), 'bundle');
+  const first = within(sheet).getByRole('listitem', { name: 'File 1' });
+  await user.type(within(first).getByLabelText('Path'), '/etc/ssl/all.pem');
+
+  await user.click(within(sheet).getByRole('combobox', { name: 'Extra certificates' }));
+  await user.click(await screen.findByRole('option', { name: 'api' }));
+  await user.keyboard('{Escape}');
+  await user.click(within(first).getByRole('button', { name: 'extra' }));
+  expect(within(first).getByRole('button', { name: 'extra' })).toBeEnabled();
+
+  await user.click(within(sheet).getByRole('button', { name: 'Remove api' }));
+  expect(within(first).getByRole('button', { name: 'extra' })).toBeDisabled();
+
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toBeDefined());
+  const savedParts = (posted as { files: { parts: string[] }[] }).files[0]!.parts;
+  expect(savedParts).not.toContain('extra');
+  expect(savedParts).toContain('fullchain');
 });
 
 it('SecretInput hides Remove for the layout password while a file is p12/jks', async () => {

@@ -113,10 +113,17 @@ export function keyReadableByOthers(f: OutputFile): boolean {
 
 export type LayoutErrors = Partial<Record<'password' | 'extraCertificateIds', string>>;
 
+// Mirrors render.CheckJKSPassword: printable ASCII only (space through ~).
+const ASCII = /^[\x20-\x7e]*$/;
+
 /** Layout-level validation: the password (required, length-checked) when
  * any file needs one, and the extra-certificates cap. Mirrors
  * internal/api/delivery.go's checkLayoutPassword/parseLayoutInput, with the
- * UI's own shorter wording. */
+ * UI's own shorter wording. checkLayoutPassword's 128-character cap is
+ * Go's `len(string)`, which counts UTF-8 bytes, not code points — a
+ * password of multi-byte characters must be measured the same way or a
+ * password the UI accepts as "128 characters" can still be rejected as a
+ * 422 for being over budget in bytes. */
 export function layoutErrors({
   files,
   password,
@@ -137,9 +144,12 @@ export function layoutErrors({
     if (!keepsStored && !provided) {
       e.password = 'Enter a password.';
     } else if (provided) {
-      const len = [...password!].length;
-      if (needsJKS && len < 6) e.password = 'At least 6 characters.';
-      else if (len > 128) e.password = 'At most 128 characters.';
+      const byteLen = new TextEncoder().encode(password!).length;
+      if (byteLen > 128) {
+        e.password = 'At most 128 characters.';
+      } else if (needsJKS && (!ASCII.test(password!) || [...password!].length < 6)) {
+        e.password = 'At least 6 characters.';
+      }
     }
   }
   if (extraCertificateIds.length > 10) e.extraCertificateIds = 'Up to 10.';

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -7,6 +7,22 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn, keywordFilter } from '@/lib/utils';
 
 export type ComboOption = { value: string; label: string; hint?: string; keywords?: string[]; disabled?: boolean };
+
+/** Shared by Combobox and MultiCombobox (B4): a disabled option with a
+ * `hint` gets a Tooltip showing it (the same wrap-in-a-tabbable-span
+ * pattern ChipSet/SegmentedControl already use for a disabled option with a
+ * reason); anything else renders as is. */
+export function OptionWithHint({ disabled, hint, children }: { disabled?: boolean; hint?: string; children: ReactElement }): ReactNode {
+  if (!disabled || !hint) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0}>{children}</span>
+      </TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 type Props = {
   id?: string;
@@ -49,10 +65,9 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>
-                {options.map((o) => {
-                  const item = (
+                {options.map((o) => (
+                  <OptionWithHint key={o.value} disabled={o.disabled} hint={o.hint}>
                     <CommandItem
-                      key={o.value}
                       value={o.value}
                       disabled={o.disabled}
                       keywords={[o.label, ...(o.keywords ?? [])]}
@@ -66,17 +81,8 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
                       <span className={cn('truncate', mono && 'font-mono text-xs')}>{o.label}</span>
                       {o.hint && !o.disabled && <span className="ml-auto truncate text-xs text-ink-muted">{o.hint}</span>}
                     </CommandItem>
-                  );
-                  if (!o.disabled || !o.hint) return item;
-                  return (
-                    <Tooltip key={o.value}>
-                      <TooltipTrigger asChild>
-                        <span tabIndex={0}>{item}</span>
-                      </TooltipTrigger>
-                      <TooltipContent>{o.hint}</TooltipContent>
-                    </Tooltip>
-                  );
-                })}
+                  </OptionWithHint>
+                ))}
               </CommandGroup>
             </CommandList>
             {footer && (

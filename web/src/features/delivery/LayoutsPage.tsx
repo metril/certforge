@@ -92,7 +92,12 @@ export function LayoutsPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span tabIndex={0} className="flex min-w-0 items-center gap-2">
-                          {l.passwordSet && <Lock className="size-3.5 shrink-0 text-ink-muted" aria-hidden />}
+                          {l.passwordSet && (
+                            <span className="inline-flex shrink-0 items-center">
+                              <Lock className="size-3.5 text-ink-muted" aria-hidden />
+                              <span className="sr-only">Password set</span>
+                            </span>
+                          )}
                           <span className="truncate font-mono text-xs">{l.files.map((f) => f.path.split('/').pop()).join(', ')}</span>
                           {l.extraCertificateIds.length > 0 && <span className="shrink-0 text-xs text-ink-muted">+{l.extraCertificateIds.length} extra</span>}
                         </span>
