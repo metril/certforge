@@ -34,12 +34,15 @@ it('export posts JSON, keeps the password out of the URL, and saves the name fro
   let requestUrl = '';
   let body: unknown;
   server.use(
+    // Content-Disposition names a different file than `${baseName}.p12`
+    // (the fallback saveBlob would use without a header) — proves the saved
+    // name comes from the header, not the fallback.
     http.post(url('/orgs/org-1/certificates/c-1/versions/v-1/export'), async ({ request }) => {
       method = request.method;
       requestUrl = request.url;
       body = await request.json();
       return new HttpResponse('PK', {
-        headers: { 'Content-Type': 'application/x-pkcs12', 'Content-Disposition': 'attachment; filename="www.p12"' },
+        headers: { 'Content-Type': 'application/x-pkcs12', 'Content-Disposition': 'attachment; filename="custom-name.p12"' },
       });
     }),
   );
@@ -49,7 +52,7 @@ it('export posts JSON, keeps the password out of the URL, and saves the name fro
   expect(new URL(requestUrl).search).toBe('');
   expect(new URL(requestUrl).pathname).not.toContain('password');
   expect(click).toHaveBeenCalled();
-  expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('www.p12');
+  expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('custom-name.p12');
 });
 
 it('export 422 throws an ApiError carrying problem.title', async () => {

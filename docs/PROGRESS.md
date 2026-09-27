@@ -240,8 +240,8 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | API layer, fixtures, helpers | done | pending |
-| 2 | Download sheet formats | not started | |
+| 1 | API layer, fixtures, helpers | done | 4972a7b |
+| 2 | Download sheet formats | done | pending |
 | 3 | Per-rule verification methods | not started | |
 | 4 | CAA and rate-ledger steps | not started | |
 | 5 | Upload screen and Import menu | not started | |
@@ -388,6 +388,7 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 - 4B: uploaded P12 files are capped at 768 KiB in the browser. The server caps the JSON body at 1 MiB, and base64 inflates the file by 4/3.
 - 4B: the `issuance` section renders under the Global tab of Settings → Issuance defaults as its own schema-driven form with its own Save (4A R11 deviation). The org tab does not show it, because it is global only.
 - 4B Task 1: jsdom's `Blob`/`File` have no working `stream()`; Node's native fetch, asked to fully read a multipart body built from a jsdom `File` (e.g. via an msw handler's `request.formData()`), gets exactly one chunk from the bridged stream and then hangs forever waiting for a `done` signal that never arrives. `imports.test.ts`'s multipart-body assertion moved to its own `imports.multipart.test.ts` under `// @vitest-environment node`, where `File`/`FormData`/`Request` stay fully native; `imports.test.ts` keeps the `useImportCertificates` invalidation test (needs `renderHook`/DOM) under the default jsdom environment.
+- 4B Task 2: `DownloadSheet` reads `hasKey` off the selected row in `versionsQuery` (not `cert.currentVersion`), since the sheet can target any historical version. Both `!canExportKey` and `hasKey === false` gate the same controls (`key`/`combined` chips, the PKCS#12/JKS segments), with the hint text picking between "Needs the keys:export permission" and `download.noKey` depending on which is false. A server 422 on export is routed to the Password or Alias field via the same "Invalid `<field>`" title convention `CertificateWizard.fieldOfTitle` already uses, duplicated locally since that helper isn't exported.
 
 ## Known gaps
 

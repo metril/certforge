@@ -106,9 +106,21 @@ export const help = {
   'rules.catchAll': { text: 'Rules that certificates fall back to when none of their own match.' },
   'attempt.retry': { text: 'Failed attempts back off from 5 minutes up to 24 hours. Rate limits use the CA’s retry time.' },
   'manual.records': { text: 'Add these TXT records at your DNS host, then confirm. CertForge checks them before asking the CA.', learnMore: 'certificates.md#manual-dns' },
-  'download.format': { text: 'PEM is text, used by most servers. Other formats arrive in a later phase.' },
+  'download.format': {
+    text: 'PEM and DER suit most servers; PKCS#12 and JKS bundle the key for Windows and Java.',
+    learnMore: 'certificates.md#downloads',
+  },
   'download.parts': { text: 'fullchain is the certificate plus intermediates, which most servers want.' },
+  'download.derParts': { text: 'DER holds one item per file. fullchain and combined exist only as PEM.' },
   'download.key': { text: 'Private key downloads are recorded in the audit log.' },
+  'download.password': {
+    text: 'Protects the file. It is never stored or logged, so copy it before downloading.',
+    learnMore: 'certificates.md#export-passwords',
+  },
+  'download.ownPassword': { text: 'Off generates a 24-character password. JKS needs at least 6 characters.' },
+  'download.encoding': { text: 'Modern uses AES and SHA-256. Legacy uses 3DES for old Windows and Java.' },
+  'download.alias': { text: 'Name of the key entry in the keystore. Empty uses the certificate name.' },
+  'download.noKey': { text: 'This version has no stored private key, so only certificate parts are available.' },
   'cert.versions': { text: 'Every certificate issued for this entry. The dashed segment is the successor.' },
   'overview.horizon': {
     text: 'One tick per certificate at its expiry, coloured by state. Drag across the strip to list a range.',

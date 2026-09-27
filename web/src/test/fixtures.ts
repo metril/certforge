@@ -306,7 +306,8 @@ export const traefikSchema = {
         type: 'string',
         format: 'uri',
         title: 'ACME service URL',
-        description: "Absolute http or https URL of the agent's http-01/tls-alpn-01 listener.",
+        description:
+          "Absolute http or https URL of the agent's http-01/tls-alpn-01 listener. When set, the agent also writes a per-grant certforge-acme-<name>.yml routing /.well-known/acme-challenge/ requests here.",
       },
     },
   },
@@ -366,6 +367,8 @@ export function makeRateLedger(p: Partial<RateLedger> = {}): RateLedger {
 // Mirrors internal/issuance/issuance.schema.json (4A: the global "issuance"
 // settings section — CAA checking and the local rate-limit ledger).
 export const issuanceSettingsSchema = {
+  title: 'Issuance',
+  description: "Global CAA checking and a local record of the CA's own ACME rate limits, applied to every certificate.",
   type: 'object',
   additionalProperties: false,
   properties: {

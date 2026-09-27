@@ -138,7 +138,7 @@ it('downloads chosen PEM parts as a zip; the key needs keys:export', async () =>
   const sheet = await screen.findByRole('dialog', { name: 'Download' });
   expect(within(sheet).getByRole('button', { name: 'key' })).toBeDisabled();
   expect(within(sheet).getByRole('button', { name: 'combined' })).toBeDisabled();
-  expect(within(sheet).getByRole('radio', { name: 'DER' })).toBeDisabled();
+  expect(within(sheet).getByRole('radio', { name: 'DER' })).toBeEnabled();
   await user.click(within(sheet).getByRole('button', { name: 'cert' }));
   await user.click(within(sheet).getByRole('button', { name: 'Download ZIP' }));
   await waitFor(() => expect(downloadQuery?.get('parts')).toBe('fullchain,cert'));

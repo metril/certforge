@@ -60,9 +60,11 @@ export const server = setupServer(
   // routes without caring about their data don't mock them themselves.
   http.get(url('/settings/issuance'), () =>
     HttpResponse.json({
+      section: 'issuance',
       schema: issuanceSettingsSchema,
       value: { caaCheck: true, rateLimits: { certsPerRegisteredDomainPerWeek: 50, duplicateCertsPerWeek: 5, failedValidationsPerHour: 5, newOrdersPer3Hours: 300 } },
       stored: null,
+      storedSecrets: [],
     }),
   ),
   http.get(url('/orgs/:orgId/rate-ledger'), () => HttpResponse.json(makeRateLedger())),

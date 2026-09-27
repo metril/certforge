@@ -211,6 +211,8 @@ Any other ACME error type shows as "The CA returned `<type>`."; open **Raw log**
 
 `POST .../versions/{vid}/export` packages a version as PKCS#12 or JKS instead, with the password (and, for `p12`, `encoding`, or for `jks`, `alias`) in the JSON request body — see [Export passwords](#export-passwords) for why. It needs `certs:read` and `keys:export`, the same as a key-bearing download.
 
+The web UI's Download sheet offers all four formats, starting each PKCS#12 or JKS export with a generated 24-character password (copy it before downloading, or turn on **Use my own password**); a key-bearing selection shows a reminder that the export is recorded in the audit log.
+
 ### Formats
 
 Four output formats:
