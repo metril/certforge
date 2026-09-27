@@ -75,6 +75,9 @@ it('P12 upload: sends the base64 of the uploaded bytes plus the password', async
   const file = new File([bytes], 'bundle.p12', { type: 'application/x-pkcs12' });
   await user.upload(screen.getByLabelText('File'), file);
   await user.type(screen.getByLabelText('Password'), 's3cret');
+  // Fix round 1 (review, Minor): a password manager must not offer to
+  // generate/save a password for an existing PKCS#12 file.
+  expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'off');
   await user.click(screen.getByRole('button', { name: 'Upload' }));
   await waitFor(() => expect(body?.pkcs12Base64).toBe(btoa(String.fromCharCode(...bytes))));
   expect(body?.password).toBe('s3cret');
@@ -92,6 +95,30 @@ it('p12 too large: shows the error and sends no request', async () => {
   expect(await screen.findByText('Larger than 768 KiB.')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
   expect(posted).toBe(false);
+});
+
+// Fix round 1 (review, Minor): once a file is chosen, the File field swaps
+// its Input for a name/size/Remove row — that row must keep the field's id
+// so the Label stays associated with it and the too-large/422 error's
+// aria-describedby still has a target to describe.
+it('keeps the File field labelled and described once a file is chosen', async () => {
+  const { user } = renderRoute('/o/acme/certificates/upload');
+  await user.type(await screen.findByLabelText('Name'), 'legacy-api');
+  await user.click(screen.getByRole('radio', { name: 'PKCS#12' }));
+  const big = new File([new Uint8Array(800 * 1024)], 'big.p12');
+  await user.upload(screen.getByLabelText('File'), big);
+  expect(screen.getByLabelText('File')).toHaveAccessibleDescription('Larger than 768 KiB.');
+});
+
+// Fix round 1 (review, Important): `ready` only checked the certificate
+// material, not the Name field — Upload stayed enabled with a blank Name
+// and `submit` silently no-opped (its own `if (!name.trim() ...) return`).
+it('Upload stays disabled until Name is filled', async () => {
+  const { user } = renderRoute('/o/acme/certificates/upload');
+  await user.type(await screen.findByLabelText('Certificate'), 'CERT-DATA');
+  expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
+  await user.type(screen.getByLabelText('Name'), 'legacy-api');
+  expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled();
 });
 
 it('422 maps to field: Invalid privateKeyPem shows under Private key', async () => {
@@ -122,5 +149,9 @@ it('viewer: fields and Upload are disabled', async () => {
   renderRoute('/o/acme/certificates/upload');
   expect(await screen.findByLabelText('Name')).toBeDisabled();
   expect(screen.getByLabelText('Certificate')).toBeDisabled();
+  // Fix round 1 (review, Minor): the Format segmented control was the one
+  // upload control a viewer could still operate.
+  expect(screen.getByRole('radio', { name: 'PEM' })).toBeDisabled();
+  expect(screen.getByRole('radio', { name: 'PKCS#12' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
 });

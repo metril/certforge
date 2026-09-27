@@ -32,7 +32,11 @@ export function UploadPage() {
   const [fieldErrors, setFieldErrors] = useState<UploadFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
 
-  const ready = value.format === 'pem' ? value.certificatePem.trim() !== '' : !!value.file && !p12TooLarge(value.file);
+  // Fix round 1 (review, Important): `ready` used to ignore `name`, so
+  // Upload stayed enabled with a blank Name and `submit`'s own guard
+  // silently no-opped on click instead of visibly refusing.
+  const ready =
+    name.trim() !== '' && (value.format === 'pem' ? value.certificatePem.trim() !== '' : !!value.file && !p12TooLarge(value.file));
 
   async function submit() {
     setNameError(null);

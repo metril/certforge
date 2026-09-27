@@ -111,6 +111,14 @@ it('Import menu items link to import and upload', async () => {
   expect(within(menu).getByRole('menuitem', { name: /Upload PEM or PKCS#12/i })).toHaveAttribute('href', '/o/acme/certificates/upload');
 });
 
+it('shows the Import help tip', async () => {
+  const { user } = renderRoute('/o/acme/certificates');
+  await rowOf('www');
+  const importGroup = screen.getByRole('button', { name: 'Import' }).closest('div')!;
+  await user.hover(within(importGroup).getByRole('button', { name: 'Help' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Import takes over renewal from acme.sh or certbot.');
+});
+
 it('disables Import without certs:write', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
   renderRoute('/o/acme/certificates');

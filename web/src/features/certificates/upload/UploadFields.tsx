@@ -32,8 +32,8 @@ export function UploadFields({ value, onChange, errors = {}, disabled }: Props) 
           value={value.format}
           onChange={(v) => set('format', v)}
           options={[
-            { value: 'pem', label: 'PEM' },
-            { value: 'p12', label: 'PKCS#12' },
+            { value: 'pem', label: 'PEM', disabled },
+            { value: 'p12', label: 'PKCS#12', disabled },
           ]}
         />
       </Field>
@@ -64,32 +64,44 @@ export function UploadFields({ value, onChange, errors = {}, disabled }: Props) 
         </>
       ) : (
         <>
+          {/* Fix round 1 (review, Minor): the Input used to unmount once a
+              file was chosen, taking the `upload-file` id with it — the
+              Label's `htmlFor` then pointed at nothing, and (per RTL) a
+              `<label for>` targeting the summary `<div>` that replaced it
+              would be invalid HTML anyway (a div isn't labellable). The
+              Input now stays mounted (so Field's own aria-describedby/
+              aria-invalid cloning keeps landing on it, keeping the
+              too-large/422 error described) and is only visually hidden
+              once a file is picked; the name/size/Remove summary renders
+              as a sibling, not a replacement. */}
           <Field id="upload-file" label="File" help="upload.pkcs12" error={fileError}>
-            {value.file ? (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border p-3 text-sm">
-                <span className="min-w-0 truncate">
-                  {value.file.name} <span className="text-ink-muted">· {fmtBytes(value.file.size)}</span>
-                </span>
-                <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => set('file', null)}>
-                  Remove
-                </Button>
-              </div>
-            ) : (
-              <Input
-                id="upload-file"
-                type="file"
-                accept=".p12,.pfx"
-                disabled={disabled}
-                className="cursor-pointer border-dashed"
-                onChange={(e) => set('file', e.target.files?.[0] ?? null)}
-              />
-            )}
+            <Input
+              id="upload-file"
+              type="file"
+              accept=".p12,.pfx"
+              disabled={disabled}
+              className={value.file ? 'sr-only' : 'cursor-pointer border-dashed'}
+              onChange={(e) => set('file', e.target.files?.[0] ?? null)}
+            />
           </Field>
+          {value.file && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border p-3 text-sm">
+              <span className="min-w-0 truncate">
+                {value.file.name} <span className="text-ink-muted">· {fmtBytes(value.file.size)}</span>
+              </span>
+              <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => set('file', null)}>
+                Remove
+              </Button>
+            </div>
+          )}
           <Field id="upload-password" label="Password" help="upload.password" error={errors.password}>
             <Input
               id="upload-password"
               type="password"
-              autoComplete="new-password"
+              // Fix round 1 (review, Minor): "new-password" invites a
+              // password manager to generate/save a password for what is
+              // an *existing* file's password, not a new credential.
+              autoComplete="off"
               className="font-mono text-xs"
               disabled={disabled}
               value={value.password}
