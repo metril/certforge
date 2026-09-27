@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { useUploadCertificate } from '@/api/queries/certificates';
 import { Field } from '@/components/Field';
 import { PageHeader } from '@/components/PageHeader';
@@ -12,12 +11,7 @@ import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { UploadFields, type UploadFieldErrors } from './UploadFields';
 import { emptyUploadValue, p12TooLarge, toUploadBody, type UploadValue } from './uploadBody';
-
-type UploadFieldName = keyof UploadFieldErrors;
-const FIELD_NAMES: readonly string[] = ['certificatePem', 'privateKeyPem', 'pkcs12Base64', 'password'];
-function isUploadFieldName(field: string): field is UploadFieldName {
-  return FIELD_NAMES.includes(field);
-}
+import { isUploadFieldName, uploadErrorOutcome } from './uploadErrors';
 
 export function UploadPage() {
   const org = useOrg();
@@ -48,27 +42,22 @@ export function UploadPage() {
       toast.success(`Uploaded ${cert.name}`);
       await navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id: cert.id, tab: 'overview' } });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 422) {
-        const field = fieldOfTitle(e.problem.title);
-        const detail = e.problem.detail ?? e.message;
-        if (field === 'name') {
-          setNameError(detail);
+      const outcome = uploadErrorOutcome(e);
+      if (outcome.kind === 'field') {
+        if (outcome.field === 'name') {
+          setNameError(outcome.message);
           return;
         }
-        if (field && isUploadFieldName(field)) {
-          setFieldErrors({ [field]: detail });
+        if (isUploadFieldName(outcome.field)) {
+          setFieldErrors({ [outcome.field]: outcome.message });
           return;
         }
       }
-      if (e instanceof ApiError && e.status === 409) {
-        setNameError(e.problem.detail ?? e.message);
+      if (outcome.kind === 'conflict') {
+        setNameError(outcome.message);
         return;
       }
-      if (e instanceof ApiError && e.status === 413) {
-        setFormError('Larger than 1 MiB.');
-        return;
-      }
-      setFormError(errorMessage(e));
+      setFormError(outcome.message);
     }
   }
 

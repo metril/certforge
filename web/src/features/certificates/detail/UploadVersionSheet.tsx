@@ -1,18 +1,12 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { useUploadVersion } from '@/api/queries/certificates';
 import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { UploadFields, type UploadFieldErrors } from '@/features/certificates/upload/UploadFields';
 import { emptyUploadValue, p12TooLarge, toUploadBody, type UploadValue } from '@/features/certificates/upload/uploadBody';
-
-type UploadFieldName = keyof UploadFieldErrors;
-const FIELD_NAMES: readonly string[] = ['certificatePem', 'privateKeyPem', 'pkcs12Base64', 'password'];
-function isUploadFieldName(field: string): field is UploadFieldName {
-  return FIELD_NAMES.includes(field);
-}
+import { isUploadFieldName, uploadErrorOutcome } from '@/features/certificates/upload/uploadErrors';
 
 type Props = { orgId: string; id: string; onOpenChange: (open: boolean) => void };
 
@@ -37,41 +31,28 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
       toast.success('New version uploaded');
       onOpenChange(false);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 422) {
-        const field = fieldOfTitle(e.problem.title);
-        const detail = e.problem.detail ?? e.message;
-        if (field && isUploadFieldName(field)) {
-          setFieldErrors({ [field]: detail });
-          return;
-        }
-      }
-      // 409: either the certificate is managed (raced) or a grant needing
-      // this certificate's key can't take a keyless version — either way
-      // the server's own message names the reason.
-      if (e instanceof ApiError && e.status === 409) {
-        setFormError(e.problem.detail ?? e.message);
+      const outcome = uploadErrorOutcome(e);
+      // A 409 here is either the certificate is managed (raced) or a grant
+      // needing this certificate's key can't take a keyless version — either
+      // way the server's own message names the reason, so `conflict` (like
+      // any field this sheet doesn't render) falls through to the form alert.
+      if (outcome.kind === 'field' && isUploadFieldName(outcome.field)) {
+        setFieldErrors({ [outcome.field]: outcome.message });
         return;
       }
-      if (e instanceof ApiError && e.status === 413) {
-        setFormError('Larger than 1 MiB.');
-        return;
-      }
-      setFormError(errorMessage(e));
+      setFormError(outcome.message);
     }
   }
 
   return (
     <Sheet open onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md">
-        <SheetHeader>
+        <SheetHeader className="flex-row items-center gap-1.5">
           <SheetTitle>Upload new version</SheetTitle>
+          <HelpTip id="cert.uploadVersion" />
           <SheetDescription className="sr-only">Add a new version to this certificate</SheetDescription>
         </SheetHeader>
         <div className="grid gap-5 px-4">
-          <div className="flex items-center gap-1.5 text-sm text-ink-muted">
-            Becomes the current version
-            <HelpTip id="cert.uploadVersion" />
-          </div>
           <UploadFields value={value} onChange={setValue} errors={fieldErrors} disabled={upload.isPending} />
           {formError && (
             <p role="alert" className="text-sm">

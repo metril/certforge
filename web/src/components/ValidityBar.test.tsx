@@ -147,6 +147,14 @@ it('computes the ARI window geometry: inside, clamped, and outside', () => {
   expect(validityGeometry({ notBefore: iso(-30), notAfter: iso(60), ari: null, now: NOW }).ari).toBeNull();
 });
 
+// Fix round 1 (review, Minor): the other clamped edge — a window that
+// starts inside the lifetime but runs past notAfter — must clamp `to` to
+// 100 instead of overshooting it.
+it('clamps the end of an ARI window that runs past notAfter', () => {
+  const g = validityGeometry({ notBefore: iso(-30), notAfter: iso(60), ari: { start: iso(10), end: iso(200), checkedAt: iso(0) }, now: NOW });
+  expect(g.ari).toEqual({ from: expect.closeTo(44.44, 1), to: 100 });
+});
+
 it("appends the ARI window to the bar's accessible label", () => {
   render(
     <TooltipProvider>
@@ -160,6 +168,25 @@ it("appends the ARI window to the bar's accessible label", () => {
     </TooltipProvider>,
   );
   expect(screen.getByRole('img')).toHaveAccessibleName(`Valid ${fmtDate(iso(-30))} to ${fmtDate(iso(60))}, expires in 60 d, ARI window ${fmtDate(iso(0))} to ${fmtDate(iso(20))}`);
+});
+
+// Fix round 1 (review, Minor): the label used to key on `p.ari` (the raw
+// prop) instead of the clamped geometry, so a window entirely outside the
+// lifetime — drawn nowhere on the bar — still got named in the accessible
+// text as if it were. Same fixture as the "outside" geometry case above.
+it('keeps an ARI window entirely outside the lifetime out of the accessible label', () => {
+  render(
+    <TooltipProvider>
+      <ValidityBar
+        notBefore={iso(-30)}
+        notAfter={iso(60)}
+        tone="valid"
+        now={NOW}
+        ari={{ start: iso(70), end: iso(90), checkedAt: iso(0) }}
+      />
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('img')).toHaveAccessibleName(`Valid ${fmtDate(iso(-30))} to ${fmtDate(iso(60))}, expires in 60 d`);
 });
 
 // Pre-flight C2: the ARI help must be reachable outside the decorative
@@ -183,4 +210,24 @@ it('keeps the ARI HelpTip reachable outside the role="img" bar and the aria-hidd
     expect(el.getAttribute('role')).not.toBe('img');
     expect(el.getAttribute('aria-hidden')).not.toBe('true');
   }
+});
+
+// Fix round 1 (review, Minor): the row used to render whenever `p.ari` was
+// merely present, so a window entirely outside the lifetime still drew a
+// help affordance for a bracket the bar never shows.
+it('renders no ARI row at all when the window is entirely outside the lifetime', () => {
+  render(
+    <TooltipProvider>
+      <ValidityBar
+        notBefore={iso(-30)}
+        notAfter={iso(60)}
+        tone="valid"
+        now={NOW}
+        size="full"
+        ari={{ start: iso(70), end: iso(90), checkedAt: iso(0) }}
+      />
+    </TooltipProvider>,
+  );
+  expect(screen.queryByRole('button', { name: 'Help' })).not.toBeInTheDocument();
+  expect(screen.queryByText(/ARI window/)).not.toBeInTheDocument();
 });

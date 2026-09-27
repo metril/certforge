@@ -3,7 +3,6 @@ import { validityTone, type Tone } from '@/lib/status';
 import { DAY, fmtDate, relDays, relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HelpTip } from './HelpTip';
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 type Span = { notBefore: string; notAfter: string };
 export type ValidityProps = Span & {
@@ -68,8 +67,12 @@ function renewPhrase(renewAt: string | null | undefined, now: number): string | 
   return Date.parse(renewAt) <= now ? 'renewal due' : `renews ${relDays(renewAt, now)}`;
 }
 
-/** The bar's text alternative, e.g. "Valid 12 Sep 2026 to 12 Nov 2026, expires in 23 d, renews in 9 d". */
-export function validityLabel(p: ValidityProps, now: number): string {
+/** The bar's text alternative, e.g. "Valid 12 Sep 2026 to 12 Nov 2026, expires in 23 d, renews in 9 d".
+ * `ariVisible` is the *clamped* geometry (`validityGeometry`'s own `ari`),
+ * not just whether `p.ari` was passed — fix round 1 (review, Minor): a
+ * window entirely outside the lifetime is drawn nowhere on the bar and must
+ * not be named in the accessible text either. */
+export function validityLabel(p: ValidityProps, now: number, ariVisible: boolean): string {
   const expired = Date.parse(p.notAfter) <= now;
   const parts = [`Valid ${fmtDate(p.notBefore)} to ${fmtDate(p.notAfter)}`, expired ? `expired ${relDays(p.notAfter, now)}` : `expires ${relDays(p.notAfter, now)}`];
   const renew = renewPhrase(p.renewAt, now);
@@ -79,7 +82,7 @@ export function validityLabel(p: ValidityProps, now: number): string {
   if (p.ghost && ghostValid({ notBefore: p.notBefore, notAfter: p.notAfter }, p.ghost)) {
     parts.push(`next version until ${fmtDate(p.ghost.notAfter)}`);
   }
-  if (p.ari) parts.push(`ARI window ${fmtDate(p.ari.start)} to ${fmtDate(p.ari.end)}`);
+  if (ariVisible && p.ari) parts.push(`ARI window ${fmtDate(p.ari.start)} to ${fmtDate(p.ari.end)}`);
   return parts.join(', ');
 }
 
@@ -108,7 +111,7 @@ export function ValidityBar(p: ValidityProps) {
   const fill = FILL[p.tone];
   const renew = renewPhrase(p.renewAt, now);
   const bar = (
-    <div role="img" aria-label={validityLabel(p, now)} className={cn('relative w-full', full ? 'my-1.5' : 'my-1', !full && p.className)}>
+    <div role="img" aria-label={validityLabel(p, now, !!g.ari)} className={cn('relative w-full', full ? 'my-1.5' : 'my-1', !full && p.className)}>
       {g.ari && <div className="absolute -top-1 h-0.5 bg-primary" style={{ left: `${g.ari.from}%`, width: `${Math.max(g.ari.to - g.ari.from, 0)}%` }} />}
       <div className={cn('relative w-full bg-subtle', full ? 'h-2.5' : 'h-1.5')}>
         <div className={cn('absolute inset-y-0 left-0 opacity-25', fill)} style={{ width: `${g.elapsed}%` }} />
@@ -151,17 +154,15 @@ export function ValidityBar(p: ValidityProps) {
       </div>
       {/* Pre-flight C2: sits outside both the role="img" bar above and the
           aria-hidden legend, so its HelpTip is reachable by keyboard/screen
-          reader instead of being flattened out of the accessible tree. */}
-      {p.ari && (
+          reader instead of being flattened out of the accessible tree.
+          Keyed on `g.ari` (fix round 1, review Minor), not just `p.ari`:
+          a window entirely outside the lifetime is drawn nowhere on the
+          bar and gets no row either. No separate Tooltip here — the row's
+          own visible text already states exactly what a tooltip would
+          have repeated (fix round 1, review Minor). */}
+      {g.ari && p.ari && (
         <div className="flex items-center gap-1.5 text-xs text-ink-muted">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span tabIndex={0}>{ariPhrase(p.ari, now)}</span>
-            </TooltipTrigger>
-            <TooltipContent>
-              {fmtDate(p.ari.start)} – {fmtDate(p.ari.end)}
-            </TooltipContent>
-          </Tooltip>
+          <span>{ariPhrase(p.ari, now)}</span>
           <HelpTip id="cert.ari" />
         </div>
       )}
