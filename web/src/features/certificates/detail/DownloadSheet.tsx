@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, Eye, EyeOff, Lock, RefreshCw, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { ApiError, errorMessage } from '@/api/errors';
+import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { downloadVersion, exportVersion, versionsQuery, type Part } from '@/api/queries/certificates';
 import type { Certificate, ExportFormat, ExportRequest, P12Encoding } from '@/api/types';
 import { ChipSet } from '@/components/ChipSet';
@@ -24,18 +24,17 @@ type Props = { orgId: string; cert: Certificate; initialVersionId?: string; canE
 
 const NEEDS_EXPORT = 'Needs the keys:export permission';
 
-// A 422's title is "Invalid <field>" (mapErr/unprocessable, internal/api) —
-// the same shape CertificateWizard's own fieldOfTitle reads; duplicated
-// locally since that helper lives in the wizard module and isn't exported.
-function fieldOfTitle(title?: string): string | null {
-  if (!title) return null;
-  return title.replace(/^Invalid\s+/, '').split('.')[0] || null;
-}
-
+// [...pw].length counts Unicode characters (code points), matching the
+// server's utf8.RuneCountInString — pw.length counts UTF-16 units and
+// over-counts any astral (surrogate-pair) character.
 function passwordError(format: Format, pw: string): string {
   if (pw === '') return 'Enter a password.';
-  if (pw.length > 128) return 'At most 128 characters.';
-  if (format === 'jks' && pw.length < 6) return 'At least 6 characters.';
+  if ([...pw].length > 128) return 'At most 128 characters.';
+  if (format === 'jks') {
+    // Mirrors internal/render/jks.go's CheckJKSPassword (ASCII, then length).
+    if (!/^[\x20-\x7e]*$/.test(pw)) return 'ASCII characters only.';
+    if ([...pw].length < 6) return 'At least 6 characters.';
+  }
   return '';
 }
 
@@ -103,7 +102,13 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
     }
   }
 
-  const disabled = !versionId || busy || (format === 'pem' || format === 'der' ? parts.length === 0 : !!pwError);
+  // canKey can flip false after a key/combined part or a P12/JKS format is
+  // already selected (switching to a keyless version, or versions still
+  // resolving when the sheet mounted) — the selection itself doesn't clear,
+  // so Download must stay disabled rather than submit a part/format the
+  // permission or the version no longer allows.
+  const disabled =
+    !versionId || busy || (!canKey && keyBearing) || (format === 'pem' || format === 'der' ? parts.length === 0 : !!pwError);
   const label =
     format === 'p12'
       ? 'Download PKCS#12'

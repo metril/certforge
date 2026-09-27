@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CircleAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { ApiError, errorMessage } from '@/api/errors';
+import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { useCreateCertificate, useUpdateCertificate } from '@/api/queries/certificates';
 import { effectiveDefaultsQuery } from '@/api/queries/defaults';
 import type { Certificate, VerificationRule } from '@/api/types';
@@ -29,17 +29,13 @@ const REVIEW_STEP = 3;
 
 const OPTIONS_KEYS = new Set<string>(ISSUANCE_FIELDS.filter((f) => f.key !== 'verificationRules').map((f) => f.key));
 
-// A 422's title is "Invalid <field>" or "Invalid <field>.<sub>" (mapErr /
-// unprocessable in internal/api and internal/issuance) — the same shape
-// issuanceFields.tsx's fieldFromTitle reads, but that helper also matches
-// 'verificationRules' as an *overrides* field (Options step); here the same
-// title names the certificate's own rules (Verification step), so this
-// wizard maps titles itself rather than reusing it.
-function fieldOfTitle(title?: string): string | null {
-  if (!title) return null;
-  const name = title.replace(/^Invalid\s+/, '').split('.')[0];
-  return name || null;
-}
+// fieldOfTitle (shared, @/api/errors) reads a 422's title, "Invalid <field>"
+// or "Invalid <field>.<sub>" (mapErr/unprocessable in internal/api and
+// internal/issuance). stepForField below maps that field to a step itself
+// rather than reusing issuanceFields.tsx's fieldFromTitle→FieldKey mapping,
+// since that helper matches 'verificationRules' as an *overrides* field
+// (Options step) while here the same title names the certificate's own
+// rules (Verification step).
 
 /** Which step owns a 422's named field (controller ruling: "a 422 lands the
  * user back on the step that owns the named field with the problem detail

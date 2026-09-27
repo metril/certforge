@@ -34,3 +34,13 @@ export function errorMessage(e: unknown): string {
   if (e instanceof Error && e.message) return e.message;
   return 'Request failed. Check the server log for details.';
 }
+
+/** A 422's title is "Invalid <field>" or "Invalid <field>.<sub>" (mapErr /
+ * unprocessable in internal/api and internal/issuance); returns the leaf
+ * field name, or null when the title doesn't match that shape. Shared by
+ * every caller that routes a 422 back to the field it names (the
+ * certificate wizard, DownloadSheet's export password/alias). */
+export function fieldOfTitle(title?: string): string | null {
+  if (!title) return null;
+  return title.replace(/^Invalid\s+/, '').split('.')[0] || null;
+}

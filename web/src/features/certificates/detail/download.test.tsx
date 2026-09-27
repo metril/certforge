@@ -122,6 +122,28 @@ it('keyless version: hasKey false disables key, combined, P12 and JKS', async ()
   expect(within(sheet).getByRole('radio', { name: 'JKS' })).toBeDisabled();
 });
 
+it('switching to a keyless version disables Download when key/combined parts are already selected', async () => {
+  const keyless = makeVersion({ id: 'v-2', serial: '03aa77', hasKey: false });
+  const { user } = setup({ versions: [cert.currentVersion!, keyless] });
+  const sheet = await screen.findByRole('dialog', { name: 'Download' });
+  await user.click(within(sheet).getByRole('button', { name: 'key' }));
+  await user.click(within(sheet).getByRole('combobox', { name: 'Version' }));
+  // The popover's option list is a Radix portal rendered outside the sheet
+  // element, the same as Combobox's own controls.test.tsx coverage.
+  await user.click(screen.getByRole('option', { name: /03aa77/ }));
+  expect(within(sheet).getByRole('button', { name: 'Download ZIP' })).toBeDisabled();
+});
+
+it('switching to a keyless version disables Download when a PKCS#12/JKS format is already selected', async () => {
+  const keyless = makeVersion({ id: 'v-2', serial: '03aa77', hasKey: false });
+  const { user } = setup({ versions: [cert.currentVersion!, keyless] });
+  const sheet = await screen.findByRole('dialog', { name: 'Download' });
+  await user.click(within(sheet).getByRole('radio', { name: 'PKCS#12' }));
+  await user.click(within(sheet).getByRole('combobox', { name: 'Version' }));
+  await user.click(screen.getByRole('option', { name: /03aa77/ }));
+  expect(within(sheet).getByRole('button', { name: 'Download PKCS#12' })).toBeDisabled();
+});
+
 it('export password stays out of caches, the mutation cache, and localStorage', async () => {
   let capturedPassword: string | undefined;
   server.use(
@@ -130,12 +152,16 @@ it('export password stays out of caches, the mutation cache, and localStorage', 
       return new HttpResponse('PK', { headers: { 'Content-Type': 'application/x-pkcs12', 'Content-Disposition': 'attachment; filename="www.p12"' } });
     }),
   );
-  const { user, queryClient, onOpenChange } = setup();
+  const { user, queryClient, onOpenChange, unmount } = setup();
   const sheet = await screen.findByRole('dialog', { name: 'Download' });
   await user.click(within(sheet).getByRole('radio', { name: 'PKCS#12' }));
   await user.click(within(sheet).getByRole('button', { name: 'Download PKCS#12' }));
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   expect(capturedPassword).toHaveLength(24);
+  // Global constraint: "passwords are dropped when the sheet unmounts" — the
+  // real caller (CertificateDetail) unmounts DownloadSheet on
+  // onOpenChange(false); do the same here before asserting nothing lingers.
+  unmount();
   const cacheStr = JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.state.data));
   expect(cacheStr).not.toContain(capturedPassword);
   const mutationStr = JSON.stringify(queryClient.getMutationCache().getAll().map((m) => m.state));
@@ -143,6 +169,34 @@ it('export password stays out of caches, the mutation cache, and localStorage', 
   for (let i = 0; i < localStorage.length; i++) {
     expect(localStorage.getItem(localStorage.key(i)!)).not.toContain(capturedPassword);
   }
+});
+
+it('use my own password: a non-ASCII JKS password is rejected client-side and disables Download', async () => {
+  const { user } = setup();
+  const sheet = await screen.findByRole('dialog', { name: 'Download' });
+  await user.click(within(sheet).getByRole('radio', { name: 'JKS' }));
+  await user.click(within(sheet).getByRole('switch', { name: 'Use my own password' }));
+  await user.click(within(sheet).getByLabelText('Password'));
+  await user.paste('pásswd1');
+  expect(await within(sheet).findByText('ASCII characters only.')).toBeInTheDocument();
+  expect(within(sheet).getByRole('button', { name: 'Download JKS' })).toBeDisabled();
+});
+
+// A 70-codepoint astral-character (surrogate-pair) password is 140 UTF-16
+// units long (String#length) but only 70 Unicode characters — the same
+// count the server's utf8.RuneCountInString uses. The max-length check must
+// count runes, not UTF-16 units, or a password under the server's real
+// 128-character cap gets wrongly rejected here.
+it('use my own password: length is counted in Unicode characters, not UTF-16 units', async () => {
+  const longButValid = '\u{1F600}'.repeat(70);
+  const { user } = setup();
+  const sheet = await screen.findByRole('dialog', { name: 'Download' });
+  await user.click(within(sheet).getByRole('radio', { name: 'PKCS#12' }));
+  await user.click(within(sheet).getByRole('switch', { name: 'Use my own password' }));
+  await user.click(within(sheet).getByLabelText('Password'));
+  await user.paste(longButValid);
+  expect(within(sheet).queryByText('At most 128 characters.')).not.toBeInTheDocument();
+  expect(within(sheet).getByRole('button', { name: 'Download PKCS#12' })).toBeEnabled();
 });
 
 it('server 422 on password shows inline', async () => {
