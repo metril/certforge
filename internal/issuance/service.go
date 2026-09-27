@@ -15,6 +15,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
+	"github.com/metril/certforge/internal/importer"
 	"github.com/metril/certforge/internal/signer"
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
 )
@@ -63,6 +64,10 @@ type Service struct {
 	// doc comment (upload.go) for why this is a plain function value, not
 	// a method on some agents type this package would have to import.
 	KeylessGrantHook KeylessGrantHook
+
+	// Importers overrides ImportCertificates' layout detection (tests
+	// only); nil uses defaultImporters (importer.AcmeSh, importer.Certbot).
+	Importers []importer.Importer
 }
 
 // notifyVersion calls every listener; a panicking listener is logged and

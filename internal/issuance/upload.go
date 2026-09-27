@@ -312,7 +312,7 @@ func (s *Service) UploadCertificate(ctx context.Context, orgID uuid.UUID, name s
 		return Certificate{}, certstore.Version{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	c, err := s.Store.CreateExternalCertificate(ctx, tx, orgID, strings.TrimSpace(name), cn, sans, Defaults{}, status)
+	c, err := s.Store.CreateExternalCertificate(ctx, tx, orgID, strings.TrimSpace(name), cn, sans, Defaults{}, false, status, nil)
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err
 	}

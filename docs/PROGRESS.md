@@ -230,8 +230,8 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 | 10 | CAA pre-check | done | 3fb5dcb |
 | 11 | Rate ledger | done | e6bea07 |
 | 12 | ARI | done | 82ac7a1 |
-| 13 | Upload and unmanaged certificates | done | pending |
-| 14 | Import from acme.sh and certbot | planned | – |
+| 13 | Upload and unmanaged certificates | done | 85ad57b |
+| 14 | Import from acme.sh and certbot | done | pending |
 | 15 | Issuance breadth e2e | planned | – |
 
 ## Decisions made during implementation

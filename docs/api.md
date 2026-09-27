@@ -63,7 +63,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `POST /orgs/{orgId}/dns-credentials/{id}/test` | create and remove a test TXT record |
 | `GET, POST /orgs/{orgId}/certificates` | list, create (issues immediately) |
 | `POST /orgs/{orgId}/certificates/upload` | store an existing certificate (PEM or PKCS#12) as unmanaged |
-| `POST /orgs/{orgId}/certificates/import` | import an acme.sh or certbot archive (arriving in Phase 4A) |
+| `POST /orgs/{orgId}/certificates/import` | import an acme.sh or certbot archive (`multipart/form-data`; `dryRun` defaults true) as managed certificates; see [certificates.md#import](certificates.md#import) |
 | `GET, PUT, DELETE /orgs/{orgId}/certificates/{id}` | read, replace (409 if unmanaged), delete |
 | `POST /orgs/{orgId}/certificates/{id}/renew` | issue now (409 if unmanaged) |
 | `GET /orgs/{orgId}/certificates/{id}/versions` | issued versions |
@@ -103,8 +103,6 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET /agents/ca` | list agent CAs and the listener certificate |
 | `POST /agents/ca/rotate` | rotate the agent CA |
 | `POST /agents/ca/{id}/retire` | retire an agent CA |
-
-The four endpoints marked "arriving in Phase 4A" above are in the OpenAPI contract now (Task 2) but answer 501 until their own task lands: upload and import (Task 13, 14), rate ledger (Task 11).
 
 `GET /.well-known/acme-challenge/{token}` (not under `/api/v1`, on the main listener, unauthenticated) serves an http-01 key authorization as `text/plain` for a token this server is currently waiting on (`^[A-Za-z0-9_-]{1,128}$`), or 404 otherwise. It is not in the OpenAPI document.
 

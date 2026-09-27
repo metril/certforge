@@ -953,20 +953,28 @@ func (s *Store) ListCertificatesPage(ctx context.Context, orgIDs []uuid.UUID, q 
 	return buildListPage(certs, keys, q.Limit), nil
 }
 
-// CreateExternalCertificate stores an unmanaged (imported or uploaded)
-// certificate definition inside tx (the caller's transaction, shared with
-// certstore.Insert and SetCurrentVersion — see Service.UploadCertificate).
-// next_renew_at is always NULL. A duplicate (org_id, name) is a
+// CreateExternalCertificate stores an unmanaged (uploaded) or managed
+// (imported) certificate definition inside tx (the caller's transaction,
+// shared with certstore.Insert and SetCurrentVersion — see
+// Service.UploadCertificate and Service.ImportCertificates). managed and
+// nextRenewAt are the caller's own choice: Service.UploadCertificate
+// always passes (false, nil) — the certificates_unmanaged_no_renewal CHECK
+// enforces that combination — while Service.ImportCertificates passes
+// (true, non-nil), since an imported certificate is managed (renewed by
+// CertForge from now on) even though this call, unlike CreateCertificate,
+// never itself enqueues an issuance. A duplicate (org_id, name) is a
 // ConflictError (409), not the ValidationError (422) CreateCertificate's
-// own duplicate-name path gives: R10's upload endpoint calls for 409.
-func (s *Store) CreateExternalCertificate(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, name, commonName string, sans []string, over Defaults, status string) (Certificate, error) {
+// own duplicate-name path gives: R10's upload endpoint calls for 409, and
+// ImportCertificates reuses the same signal to skip a taken name instead
+// of failing the whole import.
+func (s *Store) CreateExternalCertificate(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, name, commonName string, sans []string, over Defaults, managed bool, status string, nextRenewAt *time.Time) (Certificate, error) {
 	overB, err := json.Marshal(over)
 	if err != nil {
 		return Certificate{}, err
 	}
 	row, err := s.q.WithTx(tx).CreateExternalCertificate(ctx, sqlcgen.CreateExternalCertificateParams{
 		OrgID: orgID, Name: name, CommonName: commonName, Sans: sans, Overrides: overB,
-		Managed: false, Status: status, NextRenewAt: nil})
+		Managed: managed, Status: status, NextRenewAt: nextRenewAt})
 	if err != nil {
 		var pe *pgconn.PgError
 		if errors.As(err, &pe) && pe.Code == "23505" {

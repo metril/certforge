@@ -186,3 +186,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - End-to-end test of the agent through compose: enrolment, Traefik and layout deployment with fingerprint check, drift auto-remediation, server restart and grant removal.
 - Web: command palette entries for clients, delivery and Enrol client, and a Playwright run that enrols the compose agent and sees a deployment land.
 - Replaced the schema-form JSON Schema validator (`@rjsf/validator-ajv8`) with a CSP-safe pure-JS interpreter (`@cfworker/json-schema`): ajv compiled schemas via `new Function`, which the server's CSP blocks in a real browser, silently breaking every credential/settings form Save.
+- Import certificates from acme.sh and certbot directories.

@@ -6,6 +6,7 @@ import (
 	"math"
 	"mime"
 	"net/http"
+	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -191,13 +192,37 @@ func withClientIP(src *authn.SettingsSource) func(http.Handler) http.Handler {
 // or CPU with an oversized JSON payload.
 const maxRequestBody = 1 << 20 // 1 MiB
 
+// maxImportBody is importCertificates' own, larger cap (R9's archive
+// guard): an acme.sh or certbot tarball is bigger than any other request
+// body this API ever accepts.
+const maxImportBody = 32 << 20 // 32 MiB
+
+// importCertificatesPath matches exactly POST /api/v1/orgs/{orgId}/certificates/import,
+// requireJSON's one exception: this route needs multipart/form-data, not
+// JSON, and a larger body cap. r.URL.Path is matched literally (as chi
+// itself has not yet resolved {orgId}) since this middleware runs before
+// routing.
+var importCertificatesPath = regexp.MustCompile(`^/api/v1/orgs/[^/]+/certificates/import$`)
+
 // requireJSON rejects non-JSON bodies so cross-site HTML forms cannot reach
 // the API (they cannot send application/json without a CORS preflight), and
-// caps the body size read by any later handler.
+// caps the body size read by any later handler. importCertificates is the
+// one route that instead requires multipart/form-data (its own archive
+// upload cannot be JSON) with its own, larger cap; every other check here
+// (CSRF, session) is unaffected, since those run in later middleware.
 func requireJSON(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch:
+			if r.Method == http.MethodPost && importCertificatesPath.MatchString(r.URL.Path) {
+				r.Body = http.MaxBytesReader(w, r.Body, maxImportBody)
+				mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+				if err != nil || mt != "multipart/form-data" {
+					Write(w, http.StatusUnsupportedMediaType, "Unsupported media type", "Send the import request as multipart/form-data.")
+					return
+				}
+				break
+			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 			if r.ContentLength != 0 {
 				mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))

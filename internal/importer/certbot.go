@@ -1,0 +1,165 @@
+package importer
+
+import (
+	"context"
+	"io/fs"
+	"regexp"
+	"sort"
+	"strconv"
+)
+
+// Certbot parses an /etc/letsencrypt state directory: for each name,
+// archive/<name>/{cert,chain,fullchain,privkey}N.pem at the highest N;
+// when archive/<name> has none of those, live/<name>/{cert,chain,
+// fullchain,privkey}.pem (regular files: certbot normally symlinks these
+// into archive/, but ExtractArchive already drops symlinks, so what
+// remains under live/ after extraction is only ever a real copy).
+var Certbot Importer = certbot{}
+
+type certbot struct{}
+
+func (certbot) Detect(fsys fs.FS) bool {
+	_, ok := certbotRoot(fsys)
+	return ok
+}
+
+func (certbot) Import(_ context.Context, fsys fs.FS) ([]ImportedCert, error) {
+	root, ok := certbotRoot(fsys)
+	if !ok {
+		return nil, nil
+	}
+	var out []ImportedCert
+	for _, name := range certbotNames(root) {
+		if ic, ok := certbotImportOne(root, name); ok {
+			out = append(out, ic)
+		}
+	}
+	return out, nil
+}
+
+// certbotRoot returns the FS to search: fsys itself, or its letsencrypt
+// subdirectory (an archive of /etc rather than of /etc/letsencrypt itself).
+func certbotRoot(fsys fs.FS) (fs.FS, bool) {
+	if hasCertbotLayout(fsys) {
+		return fsys, true
+	}
+	if sub, err := fs.Sub(fsys, "letsencrypt"); err == nil && hasCertbotLayout(sub) {
+		return sub, true
+	}
+	return nil, false
+}
+
+func hasCertbotLayout(fsys fs.FS) bool {
+	for _, d := range [...]string{"archive", "live"} {
+		entries, err := fs.ReadDir(fsys, d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// certbotNames returns every name found under archive/ or live/, sorted
+// and de-duplicated (a name can appear under both).
+func certbotNames(fsys fs.FS) []string {
+	seen := map[string]bool{}
+	var names []string
+	for _, d := range [...]string{"archive", "live"} {
+		entries, err := fs.ReadDir(fsys, d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() && !seen[e.Name()] {
+				seen[e.Name()] = true
+				names = append(names, e.Name())
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+var certbotArchiveFileRe = regexp.MustCompile(`^(?:cert|chain|fullchain|privkey)(\d+)\.pem$`)
+
+func certbotImportOne(fsys fs.FS, name string) (ImportedCert, bool) {
+	if ic, ok := certbotFromArchive(fsys, name); ok {
+		return ic, true
+	}
+	return certbotFromLive(fsys, name)
+}
+
+// certbotFromArchive picks the highest-numbered generation under
+// archive/<name> (certbot renews by writing cert2.pem, chain2.pem, and so
+// on, alongside the originals; the highest N is the live one) and reads
+// its four files by that same suffix.
+func certbotFromArchive(fsys fs.FS, name string) (ImportedCert, bool) {
+	dir := "archive/" + name
+	entries, err := fs.ReadDir(fsys, dir)
+	if err != nil {
+		return ImportedCert{}, false
+	}
+	best := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		m := certbotArchiveFileRe.FindStringSubmatch(e.Name())
+		if m == nil {
+			continue
+		}
+		if n, err := strconv.Atoi(m[1]); err == nil && n > best {
+			best = n
+		}
+	}
+	if best == 0 {
+		return ImportedCert{}, false
+	}
+	suffix := strconv.Itoa(best)
+	return certbotAssemble(fsys, name, dir+"/cert"+suffix+".pem", dir+"/chain"+suffix+".pem",
+		dir+"/fullchain"+suffix+".pem", dir+"/privkey"+suffix+".pem")
+}
+
+func certbotFromLive(fsys fs.FS, name string) (ImportedCert, bool) {
+	dir := "live/" + name
+	return certbotAssemble(fsys, name, dir+"/cert.pem", dir+"/chain.pem", dir+"/fullchain.pem", dir+"/privkey.pem")
+}
+
+// certbotAssemble reads a certificate's four well-known files: fullchain
+// gives the leaf plus its chain when readable; cert alone supplies the leaf
+// otherwise (chain alone, if present, still supplies the chain). A key is
+// optional.
+func certbotAssemble(fsys fs.FS, name, certPath, chainPath, fullchainPath, keyPath string) (ImportedCert, bool) {
+	var leafDER []byte
+	var chainDER [][]byte
+	if b, err := fs.ReadFile(fsys, fullchainPath); err == nil {
+		if certs := decodeCertPEMs(b); len(certs) > 0 {
+			leafDER, chainDER = certs[0], certs[1:]
+		}
+	}
+	if leafDER == nil {
+		if b, err := fs.ReadFile(fsys, certPath); err == nil {
+			if certs := decodeCertPEMs(b); len(certs) > 0 {
+				leafDER = certs[0]
+			}
+		}
+	}
+	if leafDER == nil {
+		return ImportedCert{}, false
+	}
+	if chainDER == nil {
+		if b, err := fs.ReadFile(fsys, chainPath); err == nil {
+			chainDER = decodeCertPEMs(b)
+		}
+	}
+	var key []byte
+	if b, err := fs.ReadFile(fsys, keyPath); err == nil {
+		key, _ = normalizeKeyPEM(b)
+	}
+	return ImportedCert{Name: name, Source: SourceCertbot, LeafDER: leafDER, ChainDER: chainDER, KeyPKCS8: key}, true
+}

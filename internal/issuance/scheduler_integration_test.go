@@ -60,7 +60,7 @@ func TestSchedulerSkipsUnmanaged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.store.CreateExternalCertificate(context.Background(), tx, f.org, "unmanaged", "u.example.test", []string{}, Defaults{}, StatusActive); err != nil {
+	if _, err := f.store.CreateExternalCertificate(context.Background(), tx, f.org, "unmanaged", "u.example.test", []string{}, Defaults{}, false, StatusActive, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(context.Background()); err != nil {

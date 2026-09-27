@@ -61,7 +61,8 @@ Every response, API and web UI alike, carries (`internal/api/router.go`'s `secur
 
 ## Resource exhaustion on public routes
 
-- Request bodies on `POST`/`PUT`/`PATCH` under `/api/v1` are capped at 1 MiB (`http.MaxBytesReader`); an oversized body gets `413 Payload too large` as `problem+json` before it reaches a handler.
+- Request bodies on `POST`/`PUT`/`PATCH` under `/api/v1` are capped at 1 MiB (`http.MaxBytesReader`); an oversized body gets `413 Payload too large` as `problem+json` before it reaches a handler. `POST /orgs/{orgId}/certificates/import` is the one exception: it requires `multipart/form-data` (`415` for anything else) and raises the cap to 32 MiB for its archive upload.
+- The import archive itself (`internal/importer.ExtractArchive`) is extracted under further guards, all checked while it streams rather than trusted from the archive's own headers: at most 2,000 entries, at most 128 MiB of uncompressed data in total, and no entry whose path is absolute or contains a `..` component (zip-slip) — any of those is `422`. An entry that is not a regular file (a directory, a symlink, or anything else) is silently skipped rather than extracted, so an archive cannot plant a symlink for a later read to follow.
 - Passwords are capped at 1024 bytes in `POST /api/v1/auth/login` and `POST /api/v1/setup/complete` (`422` before any hashing), and `authn.HashPassword`/`VerifyPassword` enforce the same limit for any other caller.
 - argon2 hashing/verification is limited to 4 concurrent operations server-wide (`internal/authn`'s package-level semaphore); a login or setup-complete that arrives while all slots are held gets `503 Service busy` with `Retry-After: 1` instead of queuing behind unbounded argon2 work.
 - The HTTP server sets `ReadHeaderTimeout` (10s), `ReadTimeout` (30s), and `IdleTimeout` (120s), so a slow or idle client cannot hold a connection open indefinitely.
