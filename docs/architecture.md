@@ -104,6 +104,20 @@ flowchart LR
   R -->|none set| D[lego default propagation check]
 ```
 
+A mixed-method certificate (its names resolve to more than one challenge type) does not register with lego's `SolverManager` at all:
+
+```mermaid
+flowchart LR
+  O[mixedResolver.Solve] -->|per authorization: TypeFor + FindChallenge| Pick[pickChallenge]
+  Pick -->|dns-01| RD[Router.For&#40;dns-01&#41;]
+  Pick -->|http-01| RH[Router.For&#40;http-01&#41;]
+  Pick -->|tls-alpn-01| RT[Router.For&#40;tls-alpn-01&#41;]
+  RD --> DC[dns01.NewChallenge]
+  RH --> HC[http01.NewChallenge]
+  RT --> TC[tlsalpn01.NewChallenge]
+  DC & HC & TC -->|validate: hand-rolled poll| CA[(ACME CA)]
+```
+
 - Match patterns: `*`, `*.zone` (one label below zone, or `*.zone` itself), `zone` (zone and everything below). First match wins. The UI's coverage panel uses the same rules.
 - `Router.Validate` rejects uncovered names and IP addresses before an order exists. `ruleFor` — the single choke point every name-to-rule lookup goes through — skips an http-01/tls-alpn-01 rule for a wildcard name and tries the next matching rule in order (no ACME CA offers those challenges for a wildcard authorization), so such a name is "uncovered" only once every rule in its path has been skipped this way.
 - lego providers are built by `challenge.Build` under a global mutex with an isolated environment (`internal/challenge/lego_env.go`).
@@ -111,7 +125,7 @@ flowchart LR
 
 ### Type-aware routing (Phase 4A)
 
-A rule's challenge type comes from its provider's `Type()` (manual-dns counts as dns-01, since both use the TXT record). `Router.For(t)` returns a view scoped to one type: its `Present`/`CleanUp`/`PreCheck` resolve a lego callback's bare authorization domain to the rule of type `t` that covers it (`routeForType`), rather than to whichever rule the domain would otherwise resolve to. This matters because lego's `SolverManager.chooseSolver` picks a registered solver per authorization by a fixed type preference, never by domain — with two providers registered (say dns-01 and http-01) every authorization of an order would otherwise reach the same one, regardless of which rule actually names it. `acme.Signer.Issue` registers exactly one type's view (`solver.For(type)`) as the matching lego provider (`SetDNS01Provider`, `SetHTTP01Provider`, `SetTLSALPN01Provider`); a certificate whose rules span more than one type is rejected until the mixed-method order flow (Task 9) drives more than one lego provider through a single `Obtain` call.
+A rule's challenge type comes from its provider's `Type()` (manual-dns counts as dns-01, since both use the TXT record). `Router.For(t)` returns a view scoped to one type: its `Present`/`CleanUp`/`PreCheck` resolve a lego callback's bare authorization domain to the rule of type `t` that covers it (`routeForType`), rather than to whichever rule the domain would otherwise resolve to. This matters because lego's `SolverManager.chooseSolver` picks a registered solver per authorization by a fixed type preference, never by domain — with two providers registered (say dns-01 and http-01) every authorization of an order would otherwise reach the same one, regardless of which rule actually names it. `acme.Signer.Issue` registers exactly one type's view (`solver.For(type)`) as the matching lego provider (`SetDNS01Provider`, `SetHTTP01Provider`, `SetTLSALPN01Provider`) when `req.Challenge.ChallengeTypes()` names only one type. A certificate whose rules span more than one type goes through `issueMixed` instead (`internal/signer/acme/orderflow.go`, [ADR 0012](adr/0012-mixed-method-order-flow.md)): it builds the ACME core directly with the exported `api.New` (`lego.Client`'s own core is unexported) and drives `certificate.NewCertifier` with a `mixedResolver` that resolves each authorization's type from `solver.TypeFor` and its own `solver.For(t)` view, so one order can mix dns-01, http-01 and tls-alpn-01 across a certificate's names.
 
 http-01 rules with `via: server` (the default) are served by this process itself: `challenge.HTTPTokens` holds each pending token's key authorization in memory (10-minute TTL) for `GET /.well-known/acme-challenge/{token}` on the main listener (see [docs/api.md](api.md)) to answer. `via: agent` and every tls-alpn-01 rule are served by a client over its agent connection (Task 7's relay); until then they validate but fail issuance with "agent challenge relay not configured".
 

@@ -196,6 +196,9 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 	if err != nil {
 		return nil, err
 	}
+	if len(req.Challenge.ChallengeTypes()) > 1 {
+		return s.issueMixed(ctx, u, kt, req)
+	}
 	cl, rt, err := s.client(ctx, u, kt)
 	if err != nil {
 		return nil, err
@@ -224,16 +227,16 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 }
 
 // registerChallengeSolver registers solver's single challenge type as the
-// matching lego provider (Task 6: a mixed-method certificate, more than one
-// type, is rejected until a later task adds order flow that can drive more
-// than one lego provider for one Obtain). For each type this registers
-// solver.For(type), not solver itself, so lego's SolverManager (which picks
-// a solver per authorization by fixed type preference, never by domain) can
-// only ever reach rules of that one type.
+// matching lego provider. Issue only calls this once req.Challenge resolves
+// to exactly one type; a certificate whose names span more than one type
+// goes through issueMixed (orderflow.go, ADR 0012) instead, which drives
+// lego's SolverManager-free certificate.NewCertifier with a resolver of our
+// own. For each type this registers solver.For(type), not solver itself, so
+// a single lego provider can only ever reach rules of that one type.
 func registerChallengeSolver(cl *lego.Client, solver signer.ChallengeSolver) error {
 	types := solver.ChallengeTypes()
 	if len(types) != 1 {
-		return fmt.Errorf("issuance across challenge types %v is not supported yet", types)
+		return fmt.Errorf("registerChallengeSolver called with %d challenge types, want 1", len(types))
 	}
 	switch types[0] {
 	case "dns-01":
