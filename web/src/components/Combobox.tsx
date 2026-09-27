@@ -3,9 +3,10 @@ import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn, keywordFilter } from '@/lib/utils';
 
-export type ComboOption = { value: string; label: string; hint?: string; keywords?: string[] };
+export type ComboOption = { value: string; label: string; hint?: string; keywords?: string[]; disabled?: boolean };
 
 type Props = {
   id?: string;
@@ -48,21 +49,34 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>
-                {options.map((o) => (
-                  <CommandItem
-                    key={o.value}
-                    value={o.value}
-                    keywords={[o.label, ...(o.keywords ?? [])]}
-                    onSelect={() => {
-                      onChange(o.value);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check className={cn('size-4', o.value === value ? 'opacity-100' : 'opacity-0')} aria-hidden />
-                    <span className={cn('truncate', mono && 'font-mono text-xs')}>{o.label}</span>
-                    {o.hint && <span className="ml-auto truncate text-xs text-ink-muted">{o.hint}</span>}
-                  </CommandItem>
-                ))}
+                {options.map((o) => {
+                  const item = (
+                    <CommandItem
+                      key={o.value}
+                      value={o.value}
+                      disabled={o.disabled}
+                      keywords={[o.label, ...(o.keywords ?? [])]}
+                      onSelect={() => {
+                        if (o.disabled) return;
+                        onChange(o.value);
+                        setOpen(false);
+                      }}
+                    >
+                      <Check className={cn('size-4', o.value === value ? 'opacity-100' : 'opacity-0')} aria-hidden />
+                      <span className={cn('truncate', mono && 'font-mono text-xs')}>{o.label}</span>
+                      {o.hint && !o.disabled && <span className="ml-auto truncate text-xs text-ink-muted">{o.hint}</span>}
+                    </CommandItem>
+                  );
+                  if (!o.disabled || !o.hint) return item;
+                  return (
+                    <Tooltip key={o.value}>
+                      <TooltipTrigger asChild>
+                        <span tabIndex={0}>{item}</span>
+                      </TooltipTrigger>
+                      <TooltipContent>{o.hint}</TooltipContent>
+                    </Tooltip>
+                  );
+                })}
               </CommandGroup>
             </CommandList>
             {footer && (

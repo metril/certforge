@@ -13,6 +13,10 @@ type Props = {
   stored: boolean;
   placeholder?: string;
   disabled?: boolean;
+  /** Hides the field's own Remove button (default true). A caller sets this
+   * false when something else already requires the secret to stay set
+   * (Task 8: a layout password while any file is p12/jks). */
+  removable?: boolean;
 };
 
 /**
@@ -26,7 +30,7 @@ type Props = {
  * the Replace/Keep-stored buttons — there's nothing a disabled field can let
  * the caller do, so it shows only the static "Stored"/"Not set" state.
  */
-export function SecretInput({ id, label, value, onChange, stored, placeholder, disabled = false }: Props) {
+export function SecretInput({ id, label, value, onChange, stored, placeholder, disabled = false, removable = true }: Props) {
   const [editing, setEditing] = useState(!stored);
   // Fix round 1 (Take now #4): Replace and Remove both start editing with an
   // empty-looking input, but clearing back to "" afterward must mean
@@ -80,21 +84,23 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
         >
           Replace
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={`Remove ${label}`}
-          onClick={() => {
-            // The server clears the stored secret on an explicit "" (unlike
-            // UNCHANGED, which keeps it) — never sent unless the caller asks.
-            setEditing(true);
-            setRemoved(true);
-            onChange('');
-          }}
-        >
-          Remove
-        </Button>
+        {removable && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={`Remove ${label}`}
+            onClick={() => {
+              // The server clears the stored secret on an explicit "" (unlike
+              // UNCHANGED, which keeps it) — never sent unless the caller asks.
+              setEditing(true);
+              setRemoved(true);
+              onChange('');
+            }}
+          >
+            Remove
+          </Button>
+        )}
       </div>
     );
   }

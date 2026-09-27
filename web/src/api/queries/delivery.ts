@@ -19,6 +19,11 @@ export function useSaveLayout(orgId: string) {
     meta: { silent: true, success: 'Layout saved' },
     // A layout change re-renders every grant using it (new revision).
     onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['layouts', orgId] }), invalidateGrants(qc, orgId)]),
+    // B3: LayoutInput.body can carry a plaintext export password. Once the
+    // mutation settles and nothing observes it any more, it must not linger
+    // in the mutation cache holding that password — gcTime 0 removes it as
+    // soon as the sheet (its only observer) unmounts.
+    gcTime: 0,
   });
 }
 

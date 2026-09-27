@@ -97,6 +97,7 @@ export type HookRun = S['HookRun'];
 export type Layout = S['Layout'];
 export type LayoutInput = S['LayoutInput'];
 export type OutputFile = S['OutputFile'];
+export type OutputFormat = S['OutputFormat'];
 export type OutputPart = S['OutputPart'];
 export type DeployTarget = S['DeployTarget'];
 export type DeployTargetInput = S['DeployTargetInput'];

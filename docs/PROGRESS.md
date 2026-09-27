@@ -246,8 +246,8 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 | 4 | CAA and rate-ledger steps | done | a60ccb3 |
 | 5 | Upload screen and Import menu | done | 434c383 |
 | 6 | Import screen | done | 2e851aa |
-| 7 | Unmanaged detail, version upload, ARI marker | done | pending |
-| 8 | Layout formats, password, extra certificates | not started | |
+| 7 | Unmanaged detail, version upload, ARI marker | done | 89a7306 |
+| 8 | Layout formats, password, extra certificates | done | pending |
 | 9 | Settings: CAA and rate limits | not started | |
 | 10 | Palette, docs, Playwright | not started | |
 

@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { OutputFile } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, makeLayout, meWith, org, problem, url } from '@/test/fixtures';
+import { authHandlers, makeCert, makeLayout, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 import { accountError, emptyFile, keyReadableByOthers, modeError, validateFiles } from './layoutFiles';
 
@@ -72,6 +72,9 @@ beforeEach(() => {
   server.use(
     ...authHandlers({ authed: true }),
     http.get(url('/orgs/org-1/layouts'), () => HttpResponse.json({ items: [makeLayout(), makeLayout({ id: 'l-2', name: 'spare', grantCount: 0 })] })),
+    // Every LayoutSheet render fetches all-certificates for the extra
+    // certificates combobox; tests that care about its contents override this.
+    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
     http.post(url('/orgs/org-1/layouts'), async ({ request }) => {
       posted = await request.json();
       return HttpResponse.json(makeLayout({ id: 'l-3' }), { status: 201 });
@@ -88,10 +91,16 @@ beforeEach(() => {
 });
 
 it('lists layouts with files and use', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/layouts'), () =>
+      HttpResponse.json({ items: [makeLayout({ passwordSet: true, extraCertificateIds: ['c-2', 'c-3'] }), makeLayout({ id: 'l-2', name: 'spare', grantCount: 0 })] }),
+    ),
+  );
   renderRoute('/o/acme/delivery/layouts');
   const table = await screen.findByRole('table', { name: 'File layouts' });
   const row = within(table).getByText('nginx').closest('tr')!;
-  expect(within(row).getByText('/etc/ssl/www.pem')).toBeInTheDocument();
+  expect(within(row).getByText('www.pem')).toBeInTheDocument();
+  expect(within(row).getByText('+2 extra')).toBeInTheDocument();
   expect(within(row).getByText('1 grant')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Delete nginx' })).toBeDisabled();
   expect(screen.getByRole('link', { name: 'File layouts' })).toHaveAttribute('aria-current', 'page');
@@ -121,6 +130,7 @@ it('builds a two-file layout with ordered parts and moves a file up', async () =
         { path: '/etc/ssl/www-chain.pem', format: 'pem', parts: ['chain'], owner: '', group: '', mode: '0640' },
         { path: '/etc/haproxy/certs/www.pem', format: 'pem', parts: ['fullchain', 'key'], owner: '', group: '', mode: '0600' },
       ],
+      extraCertificateIds: [],
     }),
   );
 });
@@ -148,6 +158,7 @@ it('edits a layout with a PATCH carrying name and files', async () => {
     expect(patched).toEqual({
       name: 'spare',
       files: [{ path: '/etc/ssl/www.pem', format: 'pem', parts: ['fullchain'], owner: 'root', group: 'www-data', mode: '0640' }],
+      extraCertificateIds: [],
     }),
   );
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -196,7 +207,142 @@ it('is read-only for a viewer', async () => {
   await user.click(screen.getByRole('button', { name: 'View nginx' }));
   const sheet = await screen.findByRole('dialog', { name: 'nginx' });
   expect(within(sheet).getByLabelText('Name')).toBeDisabled();
+  expect(within(sheet).getByRole('radio', { name: 'PEM' })).toBeDisabled();
+  expect(within(sheet).getByRole('combobox', { name: 'Extra certificates' })).toBeDisabled();
   expect(within(sheet).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+});
+
+it('format switch adapts parts: DER shows Certificate/Key, PKCS#12 sends parts: [] with its encoding', async () => {
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New layout' });
+  await user.type(within(sheet).getByLabelText('Name'), 'store');
+  const first = within(sheet).getByRole('listitem', { name: 'File 1' });
+  await user.type(within(first).getByLabelText('Path'), '/etc/ssl/bundle.p12');
+  await user.click(within(first).getByRole('radio', { name: 'DER' }));
+  expect(within(first).getByRole('radio', { name: 'Certificate' })).toBeInTheDocument();
+  expect(within(first).getByRole('radio', { name: 'Key' })).toBeInTheDocument();
+  await user.click(within(first).getByRole('radio', { name: 'PKCS#12' }));
+  expect(within(first).queryByRole('radio', { name: 'Certificate' })).not.toBeInTheDocument();
+  expect(within(first).getByRole('radio', { name: 'Modern' })).toBeInTheDocument();
+  await user.click(within(first).getByRole('radio', { name: 'Legacy' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() =>
+    expect(posted).toMatchObject({ files: [expect.objectContaining({ format: 'p12', parts: [], encoding: 'legacy' })] }),
+  );
+});
+
+it('p12 needs password: Save is blocked with the inline error', async () => {
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New layout' });
+  await user.type(within(sheet).getByLabelText('Name'), 'store');
+  const first = within(sheet).getByRole('listitem', { name: 'File 1' });
+  await user.type(within(first).getByLabelText('Path'), '/etc/ssl/bundle.p12');
+  await user.click(within(first).getByRole('radio', { name: 'PKCS#12' }));
+  await user.clear(within(sheet).getByLabelText('Password'));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(within(sheet).getByText('Enter a password.')).toBeInTheDocument();
+  expect(posted).toBeUndefined();
+});
+
+it('layout password write-only: create sends a fresh password, cleared from the mutation cache after save', async () => {
+  const { user, queryClient } = renderRoute('/o/acme/delivery/layouts?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New layout' });
+  await user.type(within(sheet).getByLabelText('Name'), 'vault');
+  const first = within(sheet).getByRole('listitem', { name: 'File 1' });
+  await user.type(within(first).getByLabelText('Path'), '/etc/ssl/bundle.p12');
+  await user.click(within(first).getByRole('radio', { name: 'PKCS#12' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toBeDefined());
+  const sent = (posted as { password: string }).password;
+  expect(sent).not.toBe('');
+  expect(sent).not.toBe('__unchanged__');
+  expect(sent.length).toBeGreaterThanOrEqual(6);
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
+});
+
+it('layout password write-only: edit sends __unchanged__ unless replaced, and never keeps a typed value across reopens', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/layouts'), () =>
+      HttpResponse.json({
+        items: [makeLayout({ passwordSet: true, files: [{ path: '/etc/ssl/bundle.p12', format: 'p12', parts: [], owner: '', group: '', mode: '0600' }] })],
+      }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=l-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit nginx' });
+  expect(within(sheet).getByText('Stored')).toBeInTheDocument();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ password: '__unchanged__' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+  patched = undefined;
+  await user.click(screen.getByRole('button', { name: 'Edit nginx' }));
+  const sheet2 = await screen.findByRole('dialog', { name: 'Edit nginx' });
+  await user.click(within(sheet2).getByRole('button', { name: 'Replace Password' }));
+  await user.type(within(sheet2).getByLabelText('Password'), 'temporary-value');
+  await user.click(within(sheet2).getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+  await user.click(screen.getByRole('button', { name: 'Edit nginx' }));
+  const sheet3 = await screen.findByRole('dialog', { name: 'Edit nginx' });
+  expect(within(sheet3).getByText('Stored')).toBeInTheDocument();
+  expect(within(sheet3).queryByDisplayValue('temporary-value')).not.toBeInTheDocument();
+  await user.click(within(sheet3).getByRole('button', { name: 'Replace Password' }));
+  await user.type(within(sheet3).getByLabelText('Password'), 'new-secret-1');
+  await user.click(within(sheet3).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ password: 'new-secret-1' }));
+});
+
+it('SecretInput hides Remove for the layout password while a file is p12/jks', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/layouts'), () =>
+      HttpResponse.json({
+        items: [makeLayout({ passwordSet: true, files: [{ path: '/etc/ssl/bundle.p12', format: 'p12', parts: [], owner: '', group: '', mode: '0600' }] })],
+      }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=l-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit nginx' });
+  await user.hover(within(sheet).getByText('Stored'));
+  expect(within(sheet).queryByRole('button', { name: 'Remove Password' })).not.toBeInTheDocument();
+  expect(within(sheet).getByRole('button', { name: 'Replace Password' })).toBeInTheDocument();
+});
+
+it('extra certificates: picking 2 sends extraCertificateIds in order and enables the extra chip', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), () =>
+      HttpResponse.json({ items: [makeCert(), makeCert({ id: 'c-2', name: 'api' }), makeCert({ id: 'c-3', name: 'mail' })], nextCursor: null }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New layout' });
+  await user.type(within(sheet).getByLabelText('Name'), 'bundle');
+  const first = within(sheet).getByRole('listitem', { name: 'File 1' });
+  await user.type(within(first).getByLabelText('Path'), '/etc/ssl/all.pem');
+  expect(within(first).getByRole('button', { name: 'extra' })).toBeDisabled();
+
+  await user.click(within(sheet).getByRole('combobox', { name: 'Extra certificates' }));
+  await user.click(await screen.findByRole('option', { name: 'mail' }));
+  await user.click(screen.getByRole('option', { name: 'api' }));
+  await user.keyboard('{Escape}');
+
+  expect(within(first).getByRole('button', { name: 'extra' })).toBeEnabled();
+  await user.click(within(first).getByRole('button', { name: 'extra' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toMatchObject({ extraCertificateIds: ['c-3', 'c-2'] }));
+});
+
+it('server 422 on password maps to the layout-level field', async () => {
+  server.use(http.post(url('/orgs/org-1/layouts'), () => problem(422, 'must be ASCII and at least 6 characters when any file is jks', {}, 'Invalid password')));
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New layout' });
+  await user.type(within(sheet).getByLabelText('Name'), 'jks-store');
+  const first = within(sheet).getByRole('listitem', { name: 'File 1' });
+  await user.type(within(first).getByLabelText('Path'), '/etc/ssl/keystore.jks');
+  await user.click(within(first).getByRole('radio', { name: 'JKS' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(await within(sheet).findByText('must be ASCII and at least 6 characters when any file is jks')).toBeInTheDocument();
 });
 
 it('never opens the add sheet for a viewer, even with ?edit=new', async () => {

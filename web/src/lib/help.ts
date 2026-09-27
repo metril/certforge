@@ -227,8 +227,20 @@ export const help = {
   'target.runsOn': { text: 'Agent targets run on the client after it writes the grant’s files.', learnMore: 'agent.md#traefik-integration' },
   'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
   'layout.path': { text: 'Absolute path on the client host, one per file.', learnMore: 'agent.md#file-layouts' },
-  'layout.parts': { text: 'Joined in the order picked. fullchain is the certificate plus intermediates.' },
-  'layout.format': { text: 'PEM text. DER, PKCS#12 and JKS arrive in a later phase.' },
+  'layout.parts': { text: "Joined in the order picked. extra adds each extra certificate's leaf and chain." },
+  'layout.format': {
+    text: 'PEM joins parts. DER holds one part; PKCS#12 and JKS hold the certificate, chain and key.',
+    learnMore: 'agent.md#file-layouts',
+  },
+  'layout.derPart': { text: 'A DER file holds exactly one item: the certificate or the key.' },
+  'layout.password': {
+    text: 'Protects PKCS#12 and JKS files. Stored encrypted and never shown again.',
+    learnMore: 'certificates.md#export-passwords',
+  },
+  'layout.extraCerts': {
+    text: "Other certificates added to this layout's files, such as a partner CA. Up to 10.",
+    learnMore: 'agent.md#file-layouts',
+  },
   'layout.owner': { text: 'User name or uid. Applied only when the agent runs as root.' },
   'layout.group': { text: 'Group name or gid. Applied only when the agent runs as root.' },
   'layout.mode': { text: 'Octal permissions, such as 0640.' },

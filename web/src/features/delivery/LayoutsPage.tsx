@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { Lock, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { layoutsQuery, useDeleteLayout } from '@/api/queries/delivery';
@@ -92,8 +92,9 @@ export function LayoutsPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span tabIndex={0} className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 tabular-nums text-ink-muted">{l.files.length}</span>
-                          <span className="truncate font-mono text-xs">{l.files[0]?.path}</span>
+                          {l.passwordSet && <Lock className="size-3.5 shrink-0 text-ink-muted" aria-hidden />}
+                          <span className="truncate font-mono text-xs">{l.files.map((f) => f.path.split('/').pop()).join(', ')}</span>
+                          {l.extraCertificateIds.length > 0 && <span className="shrink-0 text-xs text-ink-muted">+{l.extraCertificateIds.length} extra</span>}
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-96 font-mono text-xs">

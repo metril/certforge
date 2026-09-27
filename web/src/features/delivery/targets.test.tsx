@@ -51,6 +51,16 @@ it('adds a Traefik target from its schema form', async () => {
   await waitFor(() => expect(router.state.location.search).not.toHaveProperty('edit'));
 });
 
+it('shows the Traefik ACME service URL field from its schema and saves it under config.acmeServiceUrl', async () => {
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  await user.type(within(sheet).getByLabelText('Name'), 'edge-3');
+  await user.type(within(sheet).getByLabelText('Directory on the agent'), '/etc/traefik/dynamic');
+  await user.type(within(sheet).getByLabelText('ACME service URL'), 'http://agent.internal:8080');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toMatchObject({ config: { dir: '/etc/traefik/dynamic', acmeServiceUrl: 'http://agent.internal:8080' } }));
+});
+
 it('refuses a relative directory before sending', async () => {
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
