@@ -2,8 +2,8 @@ package acme
 
 import (
 	"context"
-	"crypto/x509"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -20,9 +20,9 @@ import (
 )
 
 // certifierTimeout is certificate.CertifierOptions.Timeout for a
-// mixed-method order (order finalization/download polling, done by lego
-// itself). validate's own poll loop is bounded 30s past this via the
-// resolver's ctx (see issueMixed), independently of it.
+// mixed-method order: lego's own order finalization/download polling, once
+// Solve has returned. It has nothing to do with challenge validation: see
+// validate, which bounds each of its own poll loops independently.
 const certifierTimeout = 30 * time.Second
 
 // resolver mirrors certificate.resolver's method set (unexported in lego, so
@@ -50,6 +50,17 @@ var newCertifier = func(core *api.Core, res resolver, opts certificate.Certifier
 // directly with api.New because lego.Client's own core is unexported, and
 // drives certificate.NewCertifier with a mixedResolver that picks each
 // authorization's method from req.Challenge itself.
+//
+// mixedResolver.ctx is ctx itself, unwrapped: there is no order-wide
+// deadline layered on top of it here (fix round 1, Important). An earlier
+// version bounded it with context.WithTimeout(ctx, certifierTimeout+30s),
+// computed once before Solve ran; that one shared clock also covered every
+// PreSolve, DNS propagation wait and manual-dns WaitBudget Solve might do
+// first, so a slow rule could leave validate with little or none of that
+// budget left by the time it was finally called, failing "context deadline
+// exceeded" even for a challenge that would otherwise have validated
+// quickly. validate now derives its own fresh bound from ctx per call (see
+// validate) instead.
 func (s *Signer) issueMixed(ctx context.Context, u *user, kt certcrypto.KeyType, req signer.IssueRequest) (*signer.Issued, error) {
 	hc, rt, err := s.httpClient(ctx)
 	if err != nil {
@@ -60,28 +71,12 @@ func (s *Signer) issueMixed(ctx context.Context, u *user, kt certcrypto.KeyType,
 		return nil, classify(err, rt)
 	}
 
-	// The resolver's own poll loop (validate) has no timeout of its own
-	// otherwise: certifierTimeout only bounds lego's post-Solve order
-	// finalization/download polling, not our hand-rolled challenge
-	// validation. 30s past it is a generous but finite backstop.
-	solveCtx, cancel := context.WithTimeout(ctx, certifierTimeout+30*time.Second)
-	defer cancel()
-
-	res := &mixedResolver{core: core, solver: req.Challenge, ctx: solveCtx}
-	or := certificate.ObtainRequest{
-		Domains:        req.Names,
-		Bundle:         true,
-		MustStaple:     req.MustStaple,
-		PreferredChain: req.PreferredChain,
-	}
-	if len(req.ReuseKeyPKCS8) > 0 {
-		pk, err := x509.ParsePKCS8PrivateKey(req.ReuseKeyPKCS8)
-		if err != nil {
-			return nil, fmt.Errorf("parse reused key: %w", err)
-		}
-		or.PrivateKey = pk
+	or, err := obtainRequest(req)
+	if err != nil {
+		return nil, err
 	}
 
+	res := &mixedResolver{core: core, solver: req.Challenge, ctx: ctx}
 	certifier := newCertifier(core, res, certificate.CertifierOptions{KeyType: kt, Timeout: certifierTimeout})
 	out, err := certifier.Obtain(or)
 	if err != nil {
@@ -92,8 +87,10 @@ func (s *Signer) issueMixed(ctx context.Context, u *user, kt certcrypto.KeyType,
 
 // mixedResolver implements lego's certificate.resolver (Solve(authorizations
 // []acme.Authorization) error) for an order spanning more than one challenge
-// type. It never registers with lego's own SolverManager; ctx bounds
-// validate's poll loop (see issueMixed).
+// type. It never registers with lego's own SolverManager. ctx is the Issue
+// caller's own ctx, unwrapped (see issueMixed); validate derives its own
+// per-call bound from it rather than sharing one deadline across all of
+// Solve.
 type mixedResolver struct {
 	core   *api.Core
 	solver signer.ChallengeSolver
@@ -171,12 +168,22 @@ func (m *mixedResolver) Solve(authorizations []legoacme.Authorization) error {
 		}
 	}
 
+	// A real dns-01 rule's provider is always challenge.WrapLego-wrapped, so
+	// a live CleanUp failure below is already scrubbed of its rule's own
+	// secrets (WrapLego calls challenge.Scrub before the error ever reaches
+	// the Router, and therefore before it reaches this mixedResolver) by the
+	// time it gets here — safe to log as-is, the same non-fatal warning
+	// lego's own resolver.cleanUp logs for a failed CleanUp (fix round 1,
+	// Minor).
 	cleanupDNS := func() {
 		for _, e := range entries {
 			if e.dns == nil {
 				continue
 			}
-			_ = e.dns.CleanUp(e.authz)
+			if err := e.dns.CleanUp(e.authz); err != nil {
+				slog.Default().Warn("acme: dns-01 clean up failed",
+					"domain", legochallenge.GetTargetedDomain(e.authz), "err", err)
+			}
 		}
 	}
 
@@ -205,11 +212,16 @@ func (m *mixedResolver) Solve(authorizations []legoacme.Authorization) error {
 // challenge/resolver.validate: the global constraints forbid a new
 // cenkalti/backoff import (lego's own resolver package uses it, but that
 // package is not part of our dependency graph here), so this hand-rolls the
-// same POST-then-poll with a time.Timer and m.ctx instead. It posts
-// Challenges.New once; if the challenge is already decided, it returns
-// immediately. Otherwise it polls Authorizations.Get at the challenge's own
-// RetryAfter interval (else 5s) until the authorization is valid, invalid, or
-// m.ctx is done (bounded by issueMixed, 30s past the certifier timeout).
+// same POST-then-poll with a time.Timer instead. It posts Challenges.New
+// once; if the challenge is already decided, it returns immediately.
+// Otherwise it polls Authorizations.Get at the challenge's own RetryAfter
+// interval (else 5s) until the authorization is valid, invalid, or its own
+// per-call budget (100x that interval, the same multiple lego's own
+// validate bounds cenkalti/backoff's MaxElapsedTime by) elapses. That budget
+// is a fresh context.WithTimeout derived from m.ctx (the Issue caller's own
+// ctx) each time validate is called — not one deadline shared across all of
+// Solve (fix round 1, Important) — so a slow PreSolve or DNS propagation
+// wait elsewhere in Solve cannot eat into it.
 func (m *mixedResolver) validate(core *api.Core, domain string, chlg legoacme.Challenge) error {
 	chlng, err := core.Challenges.New(chlg.URL)
 	if err != nil {
@@ -227,12 +239,15 @@ func (m *mixedResolver) validate(core *api.Core, domain string, chlg legoacme.Ch
 		interval = time.Duration(ra) * time.Second
 	}
 
+	valCtx, cancel := context.WithTimeout(m.ctx, 100*interval)
+	defer cancel()
+
 	timer := time.NewTimer(interval)
 	defer timer.Stop()
 	for {
 		select {
-		case <-m.ctx.Done():
-			return fmt.Errorf("[%s] acme: %w", domain, m.ctx.Err())
+		case <-valCtx.Done():
+			return fmt.Errorf("[%s] acme: %w", domain, valCtx.Err())
 		case <-timer.C:
 		}
 

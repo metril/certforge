@@ -206,6 +206,22 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 	if err := registerChallengeSolver(cl, req.Challenge); err != nil {
 		return nil, err
 	}
+	or, err := obtainRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	res, err := cl.Certificate.Obtain(or)
+	if err != nil {
+		return nil, classify(err, rt)
+	}
+	return signer.IssuedFromPEM(res.Certificate, res.PrivateKey)
+}
+
+// obtainRequest builds the certificate.ObtainRequest shared by the
+// single-method path (Obtain, above) and the mixed-method path (issueMixed,
+// orderflow.go): domains, bundling, must-staple, preferred chain, and an
+// optional reused key parsed from PKCS#8.
+func obtainRequest(req signer.IssueRequest) (certificate.ObtainRequest, error) {
 	or := certificate.ObtainRequest{
 		Domains:        req.Names,
 		Bundle:         true,
@@ -215,15 +231,11 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 	if len(req.ReuseKeyPKCS8) > 0 {
 		pk, err := x509.ParsePKCS8PrivateKey(req.ReuseKeyPKCS8)
 		if err != nil {
-			return nil, fmt.Errorf("parse reused key: %w", err)
+			return certificate.ObtainRequest{}, fmt.Errorf("parse reused key: %w", err)
 		}
 		or.PrivateKey = pk
 	}
-	res, err := cl.Certificate.Obtain(or)
-	if err != nil {
-		return nil, classify(err, rt)
-	}
-	return signer.IssuedFromPEM(res.Certificate, res.PrivateKey)
+	return or, nil
 }
 
 // registerChallengeSolver registers solver's single challenge type as the
