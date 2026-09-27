@@ -100,7 +100,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		st, err := agentSettings.Get(ctx)
 		return st.Names(), err
 	}}
-	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Auditor: aud, Settings: agentSettings, Log: log}
+	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Box: box, Auditor: aud, Settings: agentSettings, Log: log}
 	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
 	issueWorker.Log = log
 	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc)
@@ -130,7 +130,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	deps := api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
-		Issuance: issuanceSvc, Certs: certStore, AuthSettings: authSettings, OIDC: oidcClient,
+		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 	}
 	handler := api.NewRouter(deps)

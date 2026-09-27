@@ -66,14 +66,15 @@ WHERE g.cert_id = sqlc.arg(cert_id) AND c.org_id = sqlc.arg(org_id) AND g.remove
 ORDER BY lower(c.name), g.id;
 
 -- name: UpsertDeployment :exec
-INSERT INTO deployments (grant_id, version_id, state, expected, error, updated_at)
-VALUES (sqlc.arg(grant_id), sqlc.narg(version_id), 'pending', sqlc.arg(expected), '', now())
+INSERT INTO deployments (grant_id, version_id, state, expected, error, extra_version_ids, updated_at)
+VALUES (sqlc.arg(grant_id), sqlc.narg(version_id), 'pending', sqlc.arg(expected), '', sqlc.arg(extra_version_ids)::uuid[], now())
 ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, state = 'pending',
-       expected = EXCLUDED.expected, error = '', updated_at = now();
+       expected = EXCLUDED.expected, error = '', extra_version_ids = EXCLUDED.extra_version_ids, updated_at = now();
 
 -- name: GrantSources :many
 SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name, ce.current_version_id,
-       o.files AS layout_files, t.type AS target_type, t.config AS target_config
+       o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
+       t.type AS target_type, t.config AS target_config
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id
@@ -82,6 +83,14 @@ WHERE g.id = ANY(sqlc.arg(ids)::uuid[]) AND g.removed_at IS NULL;
 
 -- name: LiveGrantIDsForCert :many
 SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL;
+
+-- name: LiveGrantIDsForExtraCert :many
+-- Live grants whose layout bundles cert_id as an extra certificate: a new
+-- version of an extra certificate must re-render these grants too, not
+-- only the grants of cert_id's own certificate.
+SELECT g.id FROM client_cert_grants g
+JOIN output_specs o ON o.id = g.output_spec_id
+WHERE g.removed_at IS NULL AND sqlc.arg(cert_id)::uuid = ANY(o.extra_cert_ids);
 
 -- name: LiveGrantIDsUsingLayout :many
 SELECT id FROM client_cert_grants WHERE output_spec_id = $1 AND removed_at IS NULL;
@@ -157,11 +166,23 @@ WHERE g.client_id = ANY(sqlc.arg(client_ids)::uuid[])
 ORDER BY g.created_at, g.id;
 
 -- name: StaleDeploymentGrantIDs :many
+-- A deployment is stale when its own version_id lags the certificate's
+-- current_version_id, or (for a grant with a layout that bundles extra
+-- certificates) when extra_version_ids no longer matches the extra
+-- certificates' own current_version_id, in the layout's extra_cert_ids
+-- order: a new version of an extra certificate makes this grant stale too,
+-- covering an OnVersion call the extra certificate's own render skipped.
 SELECT g.id FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
+LEFT JOIN output_specs o ON o.id = g.output_spec_id
 WHERE g.removed_at IS NULL AND ce.current_version_id IS NOT NULL
-  AND d.version_id IS DISTINCT FROM ce.current_version_id;
+  AND (d.version_id IS DISTINCT FROM ce.current_version_id
+       OR d.extra_version_ids IS DISTINCT FROM (
+            SELECT COALESCE(array_agg(ec.current_version_id ORDER BY x.ord), '{}'::uuid[])
+            FROM unnest(COALESCE(o.extra_cert_ids, '{}'::uuid[])) WITH ORDINALITY AS x(id, ord)
+            JOIN certificates ec ON ec.id = x.id
+          ));
 
 -- name: LockHooksInOrg :many
 -- Locks the org's hooks referenced by ids FOR SHARE, so a concurrent

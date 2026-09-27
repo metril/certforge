@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/render"
 )
 
 const (
@@ -140,15 +142,38 @@ func (s *Service) Bundle(ctx context.Context, c sqlcgen.Client, grantID uuid.UUI
 	}
 	b := agentproto.Bundle{VersionID: *r.VersionID, Files: []agentproto.BundleFile{}}
 	if len(r.LayoutFiles) > 0 {
-		var layout []delivery.OutputFile
-		if err := json.Unmarshal(r.LayoutFiles, &layout); err != nil {
+		var files []delivery.OutputFile
+		if err := json.Unmarshal(r.LayoutFiles, &files); err != nil {
 			return agentproto.Bundle{}, err
 		}
-		files, err := delivery.RenderLayout(m, layout)
+		password, err := s.openPassword(ctx, r.LayoutPassword)
 		if err != nil {
 			return agentproto.Bundle{}, err
 		}
-		for _, f := range files {
+		// Extras render from the deployment's own extra_version_ids (the
+		// versions actually last rendered into this grant's expected
+		// digests), never the extra certificates' current versions: a
+		// bundle must match what the server already told the agent to
+		// expect, even when an extra certificate has since gained a newer
+		// version that no resync has picked up yet.
+		if len(r.LayoutExtraCertIds) != len(r.ExtraVersionIds) {
+			return agentproto.Bundle{}, fmt.Errorf("agents: grant %s: layout has %d extra certificates but %d rendered versions",
+				grantID, len(r.LayoutExtraCertIds), len(r.ExtraVersionIds))
+		}
+		extras := map[uuid.UUID]render.Material{}
+		for i, eid := range r.LayoutExtraCertIds {
+			em, err := s.Certs.Material(ctx, eid, r.ExtraVersionIds[i], false)
+			if err != nil {
+				return agentproto.Bundle{}, err
+			}
+			extras[eid] = em
+		}
+		layout := delivery.Layout{Files: files, ExtraCertIDs: r.LayoutExtraCertIds, Password: password}
+		rendered, err := delivery.RenderLayout(m, extras, layout)
+		if err != nil {
+			return agentproto.Bundle{}, err
+		}
+		for _, f := range rendered {
 			b.Files = append(b.Files, agentproto.BundleFile{Path: f.Path, Owner: f.Owner, Group: f.Group, Mode: f.Mode, Content: f.Data})
 		}
 	}

@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -12,7 +13,9 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/authz"
+	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/issuance"
 )
 
 func layoutInput(name, path string) *gen.LayoutInput {
@@ -151,4 +154,132 @@ func TestDeliveryDeleteIsOrgScoped(t *testing.T) {
 	wantStatus(t, err, 404)
 	_, err = f.srv.DeleteHook(opB, gen.DeleteHookRequestObject{OrgId: orgB.ID, Id: h.Id})
 	wantStatus(t, err, 404)
+}
+
+func p12LayoutInput(password *string) *gen.LayoutInput {
+	return &gen.LayoutInput{Name: "p12", Files: []gen.OutputFile{{Path: "/etc/ssl/web.p12", Format: gen.OutputFormat("p12"), Mode: "0600"}}, Password: password}
+}
+
+func strPtr(s string) *string { return &s }
+
+// Review Focus: a layout's export password is write-only end to end: never
+// returned by GET, never audited, and "__unchanged__" keeps the stored
+// value (and the exact rendered bytes) across an update without it.
+func TestLayoutPasswordWriteOnly(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+
+	// A p12 file without a password is 422.
+	_, err := f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: p12LayoutInput(nil)})
+	wantStatus(t, err, 422)
+
+	res, err := f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: p12LayoutInput(strPtr("hunter2222"))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := res.(gen.CreateLayout201JSONResponse)
+	if !l.PasswordSet {
+		t.Fatalf("passwordSet = false, want true: %+v", l)
+	}
+
+	got, err := f.srv.GetLayout(op, gen.GetLayoutRequestObject{OrgId: f.org, Id: l.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "hunter2222") {
+		t.Fatal("GET response leaks the password")
+	}
+	var details string
+	if err := f.pool.QueryRow(context.Background(), `SELECT details::text FROM audit_events WHERE action = 'layout.create'`).Scan(&details); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(details, "hunter2222") || !strings.Contains(details, `"passwordSet": true`) {
+		t.Fatalf("audit does not carry passwordSet without the password: %s", details)
+	}
+
+	// Grant it to a client so the rendered p12 bytes (and their digest) can
+	// be compared across an __unchanged__ update.
+	c := f.activeClient(t, "web-p12")
+	certID, _ := f.realCurrentCert(t, "web-p12-cert", true)
+	gRes, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: gen.GrantDelivery("pull"), LayoutId: &l.Id}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := gRes.(gen.CreateGrant201JSONResponse).Deployment.Expected[0].Sha256
+
+	upRes, err := f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l.Id,
+		Body: &gen.LayoutInput{Name: "p12", Files: p12LayoutInput(nil).Files, Password: strPtr(challenge.Unchanged)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !upRes.(gen.UpdateLayout200JSONResponse).PasswordSet {
+		t.Fatal("passwordSet lost across an __unchanged__ update")
+	}
+	list, err := f.srv.ListClientGrants(op, gen.ListClientGrantsRequestObject{OrgId: f.org, Id: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := list.(gen.ListClientGrants200JSONResponse).Items
+	if len(items) != 1 || items[0].Deployment.Expected[0].Sha256 != digest {
+		t.Fatalf("rendered bundle changed across an __unchanged__ update: %+v", items)
+	}
+
+	// An omitted password with a p12 file is still 422 (it would clear the
+	// only password the file has).
+	_, err = f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l.Id,
+		Body: &gen.LayoutInput{Name: "p12", Files: p12LayoutInput(nil).Files}})
+	wantStatus(t, err, 422)
+}
+
+// Review Focus: extraCertificateIds is checked against the writing org and
+// against having a current version, and a certificate a layout still lists
+// cannot be deleted out from under it.
+func TestLayoutExtraCertChecks(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	ctx := context.Background()
+
+	noVersion, err := f.store.CreateCertificate(ctx, f.org, issuance.CertInput{Name: "no-version", CommonName: "no-version.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	orgB, err := f.q.CreateOrg(ctx, sqlcgen.CreateOrgParams{Slug: "org-extra", Name: "Org Extra"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var otherOrgCertID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO certificates (org_id, name, common_name) VALUES ($1, 'other', 'other.example.test') RETURNING id`,
+		orgB.ID).Scan(&otherOrgCertID); err != nil {
+		t.Fatal(err)
+	}
+
+	extraLayoutInput := func(ids []uuid.UUID) *gen.LayoutInput {
+		return &gen.LayoutInput{Name: "extra", Files: []gen.OutputFile{{Path: "/etc/ssl/extra.pem", Format: gen.OutputFormat("pem"),
+			Parts: []gen.OutputPart{gen.OutputPart("extra")}, Mode: "0644"}}, ExtraCertificateIds: &ids}
+	}
+
+	_, err = f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: extraLayoutInput([]uuid.UUID{otherOrgCertID})})
+	wantStatus(t, err, 422)
+
+	_, err = f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: extraLayoutInput([]uuid.UUID{noVersion.ID})})
+	wantStatus(t, err, 422)
+
+	extraCertID, _ := f.realCurrentCert(t, "extra-cert", true)
+	res, err := f.srv.CreateLayout(op, gen.CreateLayoutRequestObject{OrgId: f.org, Body: extraLayoutInput([]uuid.UUID{extraCertID})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := res.(gen.CreateLayout201JSONResponse)
+	if len(l.ExtraCertificateIds) != 1 || l.ExtraCertificateIds[0] != extraCertID {
+		t.Fatalf("extraCertificateIds = %v", l.ExtraCertificateIds)
+	}
+
+	_, err = f.srv.DeleteCertificate(op, gen.DeleteCertificateRequestObject{OrgId: f.org, Id: extraCertID})
+	wantStatus(t, err, 409)
 }

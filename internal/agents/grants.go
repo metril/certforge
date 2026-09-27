@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -253,28 +254,76 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 			return nil, nil, err
 		}
 	}
+	// Layouts among these grants may bundle extra certificates; fetch every
+	// distinct one's current_version_id in a single round trip rather than
+	// one query per grant.
+	var wantExtras []uuid.UUID
+	for _, r := range rows {
+		wantExtras = append(wantExtras, r.LayoutExtraCertIds...)
+	}
+	extraCurrent := map[uuid.UUID]*uuid.UUID{} // cert id -> current_version_id
+	if len(wantExtras) > 0 {
+		vrows, err := q.CurrentVersionsForCerts(ctx, uniq(wantExtras))
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, v := range vrows {
+			extraCurrent[v.ID] = v.CurrentVersionID
+		}
+	}
+
 	push := map[uuid.UUID]bool{}
 	materials := map[uuid.UUID]render.Material{}
+	loadMaterial := func(certID, versionID uuid.UUID, withKey bool) (render.Material, error) {
+		if m, ok := materials[versionID]; ok {
+			return m, nil
+		}
+		m, err := s.Certs.Material(ctx, certID, versionID, withKey)
+		if err != nil {
+			return render.Material{}, err
+		}
+		materials[versionID] = m
+		return m, nil
+	}
 	for _, r := range rows {
 		if r.Delivery == "push" {
 			push[r.ClientID] = true
 		}
 		expected := []byte("[]")
+		extraVersionIDs := []uuid.UUID{}
 		if r.CurrentVersionID != nil {
-			m, ok := materials[*r.CurrentVersionID]
-			if !ok {
-				if m, err = s.Certs.Material(ctx, r.CertID, *r.CurrentVersionID, true); err != nil {
-					return nil, nil, err
-				}
-				materials[*r.CurrentVersionID] = m
+			m, err := loadMaterial(r.CertID, *r.CurrentVersionID, true)
+			if err != nil {
+				return nil, nil, err
 			}
-			var layout []delivery.OutputFile
+			var layout *delivery.Layout
 			if len(r.LayoutFiles) > 0 {
-				if err := json.Unmarshal(r.LayoutFiles, &layout); err != nil {
+				var files []delivery.OutputFile
+				if err := json.Unmarshal(r.LayoutFiles, &files); err != nil {
 					return nil, nil, err
 				}
+				password, err := s.openPassword(ctx, r.LayoutPassword)
+				if err != nil {
+					return nil, nil, err
+				}
+				layout = &delivery.Layout{Files: files, ExtraCertIDs: r.LayoutExtraCertIds, Password: password}
 			}
-			files, err := delivery.GrantFiles(m, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName)
+			extras := map[uuid.UUID]render.Material{}
+			if layout != nil {
+				for _, eid := range layout.ExtraCertIDs {
+					vid := extraCurrent[eid]
+					if vid == nil {
+						return nil, nil, fmt.Errorf("agents: extra certificate %s has no current version", eid)
+					}
+					extraVersionIDs = append(extraVersionIDs, *vid)
+					em, err := loadMaterial(eid, *vid, false)
+					if err != nil {
+						return nil, nil, err
+					}
+					extras[eid] = em
+				}
+			}
+			files, err := delivery.GrantFiles(m, extras, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -282,7 +331,8 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 				return nil, nil, err
 			}
 		}
-		if err := q.UpsertDeployment(ctx, sqlcgen.UpsertDeploymentParams{GrantID: r.ID, VersionID: r.CurrentVersionID, Expected: expected}); err != nil {
+		if err := q.UpsertDeployment(ctx, sqlcgen.UpsertDeploymentParams{GrantID: r.ID, VersionID: r.CurrentVersionID,
+			Expected: expected, ExtraVersionIds: extraVersionIDs}); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -641,7 +691,10 @@ func (s *Service) ResyncCertificateRename(ctx context.Context, q *sqlcgen.Querie
 func (s *Service) OnVersion(ctx context.Context, certID, versionID uuid.UUID) {
 	ids, err := s.Q.LiveGrantIDsForCert(ctx, certID)
 	if err == nil {
-		err = s.resyncGrants(ctx, ids)
+		var extraIDs []uuid.UUID
+		if extraIDs, err = s.Q.LiveGrantIDsForExtraCert(ctx, certID); err == nil {
+			err = s.resyncGrants(ctx, uniq(append(ids, extraIDs...)))
+		}
 	}
 	if err != nil {
 		s.log().Error("agents: deployments not updated for a new certificate version; the hourly sweep retries", "cert", certID, "version", versionID, "err", err)

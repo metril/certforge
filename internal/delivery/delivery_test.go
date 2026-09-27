@@ -2,10 +2,20 @@ package delivery
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"software.sslmate.com/src/go-pkcs12"
 
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/render"
@@ -15,6 +25,38 @@ var material = render.Material{LeafDER: []byte("leaf"), ChainDER: [][]byte{[]byt
 
 func okFile(path string) OutputFile {
 	return OutputFile{Path: path, Format: "pem", Parts: []string{"fullchain"}, Mode: "0644"}
+}
+
+// selfSignedCert returns a real, x509-parseable self-signed certificate:
+// the DER/PKCS12/JKS renderers parse their input rather than treating it
+// as opaque bytes (unlike material, above, which PEM tests use).
+func selfSignedCert(t *testing.T, cn string, serial int64) ([]byte, *ecdsa.PrivateKey) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: cn},
+		NotBefore: now, NotAfter: now.AddDate(0, 3, 0), DNSNames: []string{cn}}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der, key
+}
+
+// realMaterial builds render.Material with a real, parseable self-signed
+// leaf, one chain cert, and a PKCS#8 key.
+func realMaterial(t *testing.T, cn string, serial int64) render.Material {
+	t.Helper()
+	leafDER, key := selfSignedCert(t, cn, serial)
+	chainDER, _ := selfSignedCert(t, "Test Intermediate", serial+1000)
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return render.Material{LeafDER: leafDER, ChainDER: [][]byte{chainDER}, PrivateKeyPKCS8: pkcs8}
 }
 
 // Review Focus: unsafe paths never reach an agent.
@@ -38,7 +80,7 @@ func TestValidateFilesRejectsUnsafePaths(t *testing.T) {
 		"root":           {okFile("/")},
 		"nul":            {okFile("/etc/x\x00.pem")},
 		"duplicate":      {okFile("/etc/x.pem"), okFile("/etc/x.pem")},
-		"format":         {{Path: "/etc/x.der", Format: "der", Parts: []string{"cert"}, Mode: "0644"}},
+		"format":         {{Path: "/etc/x.p7b", Format: "pkcs7", Parts: []string{"cert"}, Mode: "0644"}},
 		"no parts":       {{Path: "/etc/x.pem", Format: "pem", Mode: "0644"}},
 		"bad part":       {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"pfx"}, Mode: "0644"}},
 		"bad mode":       {{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert"}, Mode: "0999"}},
@@ -54,7 +96,8 @@ func TestValidateFilesRejectsUnsafePaths(t *testing.T) {
 }
 
 func TestRenderLayoutConcatenatesParts(t *testing.T) {
-	files, err := RenderLayout(material, []OutputFile{{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert", "key"}, Owner: "root", Mode: "640"}})
+	l := Layout{Files: []OutputFile{{Path: "/etc/x.pem", Format: "pem", Parts: []string{"cert", "key"}, Owner: "root", Mode: "640"}}}
+	files, err := RenderLayout(material, nil, l)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,8 +106,146 @@ func TestRenderLayoutConcatenatesParts(t *testing.T) {
 		files[0].Mode != "0640" || files[0].Owner != "root" {
 		t.Fatalf("files %+v", files)
 	}
-	if _, err := RenderLayout(render.Material{LeafDER: []byte("leaf")}, []OutputFile{{Path: "/k", Format: "pem", Parts: []string{"key"}, Mode: "0600"}}); !errors.Is(err, render.ErrNoKey) {
+	noKey := Layout{Files: []OutputFile{{Path: "/k", Format: "pem", Parts: []string{"key"}, Mode: "0600"}}}
+	if _, err := RenderLayout(render.Material{LeafDER: []byte("leaf")}, nil, noKey); !errors.Is(err, render.ErrNoKey) {
 		t.Fatalf("no key: %v", err)
+	}
+}
+
+// Review Focus: every ValidateFiles rule for der/p12/jks and encoding/alias.
+func TestValidateFilesFormats(t *testing.T) {
+	valid := map[string][]OutputFile{
+		"pem multi":    {{Path: "/a.pem", Format: "pem", Parts: []string{"cert", "chain"}, Mode: "0644"}},
+		"pem extra":    {{Path: "/a.pem", Format: "pem", Parts: []string{"extra"}, Mode: "0644"}},
+		"der cert":     {{Path: "/a.der", Format: "der", Parts: []string{"cert"}, Mode: "0644"}},
+		"der key":      {{Path: "/a.der", Format: "der", Parts: []string{"key"}, Mode: "0600"}},
+		"p12":          {{Path: "/a.p12", Format: "p12", Mode: "0600"}},
+		"p12 encoding": {{Path: "/a.p12", Format: "p12", Mode: "0600", Encoding: "legacy"}},
+		"jks":          {{Path: "/a.jks", Format: "jks", Mode: "0600"}},
+		"jks alias":    {{Path: "/a.jks", Format: "jks", Mode: "0600", Alias: "site-1"}},
+	}
+	for name, files := range valid {
+		if err := ValidateFiles(files); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	invalid := map[string][]OutputFile{
+		"unknown format":  {{Path: "/a.x", Format: "pkcs7", Mode: "0644"}},
+		"pem no parts":    {{Path: "/a.pem", Format: "pem", Mode: "0644"}},
+		"der no parts":    {{Path: "/a.der", Format: "der", Mode: "0644"}},
+		"der two parts":   {{Path: "/a.der", Format: "der", Parts: []string{"cert", "key"}, Mode: "0644"}},
+		"der chain":       {{Path: "/a.der", Format: "der", Parts: []string{"chain"}, Mode: "0644"}},
+		"der fullchain":   {{Path: "/a.der", Format: "der", Parts: []string{"fullchain"}, Mode: "0644"}},
+		"p12 with parts":  {{Path: "/a.p12", Format: "p12", Parts: []string{"cert"}, Mode: "0600"}},
+		"jks with parts":  {{Path: "/a.jks", Format: "jks", Parts: []string{"cert"}, Mode: "0600"}},
+		"encoding on pem": {{Path: "/a.pem", Format: "pem", Parts: []string{"cert"}, Mode: "0644", Encoding: "modern"}},
+		"encoding on jks": {{Path: "/a.jks", Format: "jks", Mode: "0600", Encoding: "modern"}},
+		"bad encoding":    {{Path: "/a.p12", Format: "p12", Mode: "0600", Encoding: "bogus"}},
+		"alias on pem":    {{Path: "/a.pem", Format: "pem", Parts: []string{"cert"}, Mode: "0644", Alias: "x"}},
+		"alias on p12":    {{Path: "/a.p12", Format: "p12", Mode: "0600", Alias: "x"}},
+		"bad alias":       {{Path: "/a.jks", Format: "jks", Mode: "0600", Alias: "bad alias!"}},
+	}
+	for name, files := range invalid {
+		var fe *FieldError
+		if err := ValidateFiles(files); !errors.As(err, &fe) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}
+
+// Review Focus: the ledger ruling that keystore randomness must be seeded
+// with secret material (the key and password), not public ids alone: two
+// renders of the same material/password/path are byte-identical, and a
+// changed password changes the bytes.
+func TestRenderLayoutKeystoresDeterministic(t *testing.T) {
+	m := realMaterial(t, "ks.example.test", 1)
+	l := Layout{Files: []OutputFile{{Path: "/etc/x.p12", Format: "p12", Mode: "0600"}}, Password: "hunter2"}
+	f1, err := RenderLayout(m, nil, l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f2, err := RenderLayout(m, nil, l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(f1[0].Data, f2[0].Data) {
+		t.Fatal("two renders of the same material, password and path differ")
+	}
+	l2 := l
+	l2.Password = "different-pw"
+	f3, err := RenderLayout(m, nil, l2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(f1[0].Data, f3[0].Data) {
+		t.Fatal("a changed password did not change the rendered bytes")
+	}
+}
+
+// Review Focus: the PEM extra part is the extra certificates' leaf+chain,
+// and a p12 file lists them as CA/trusted certificates.
+func TestRenderLayoutExtraPart(t *testing.T) {
+	m := realMaterial(t, "main.example.test", 2)
+	extraID := uuid.New()
+	extra := realMaterial(t, "extra.example.test", 3)
+	extras := map[uuid.UUID]render.Material{extraID: extra}
+
+	pemLayout := Layout{Files: []OutputFile{{Path: "/etc/extra.pem", Format: "pem", Parts: []string{"extra"}, Mode: "0644"}},
+		ExtraCertIDs: []uuid.UUID{extraID}}
+	files, err := RenderLayout(m, extras, pemLayout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := render.PEM{}.Render(m, render.OutputOpts{Parts: []string{"extra"}, Extras: []render.Material{extra}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(files[0].Data, want[0].Data) {
+		t.Fatal("extra part does not match render.PEM's own extra rendering")
+	}
+
+	p12Layout := Layout{Files: []OutputFile{{Path: "/etc/bundle.p12", Format: "p12", Mode: "0600"}},
+		ExtraCertIDs: []uuid.UUID{extraID}, Password: "hunter2"}
+	p12Files, err := RenderLayout(m, extras, p12Layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, leaf, caCerts, err := pkcs12.DecodeChain(p12Files[0].Data, "hunter2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(leaf.Raw, m.LeafDER) {
+		t.Fatal("p12 leaf mismatch")
+	}
+	found := false
+	for _, c := range caCerts {
+		if bytes.Equal(c.Raw, extra.LeafDER) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("p12 does not contain the extra certificate's leaf as a CA cert")
+	}
+}
+
+func TestNeedsKey(t *testing.T) {
+	cases := map[string]struct {
+		files []OutputFile
+		want  bool
+	}{
+		"pem cert only": {[]OutputFile{{Format: "pem", Parts: []string{"cert"}}}, false},
+		"pem key":       {[]OutputFile{{Format: "pem", Parts: []string{"key"}}}, true},
+		"pem combined":  {[]OutputFile{{Format: "pem", Parts: []string{"combined"}}}, true},
+		"der cert":      {[]OutputFile{{Format: "der", Parts: []string{"cert"}}}, false},
+		"der key":       {[]OutputFile{{Format: "der", Parts: []string{"key"}}}, true},
+		"p12":           {[]OutputFile{{Format: "p12"}}, true},
+		"jks":           {[]OutputFile{{Format: "jks"}}, true},
+		"mixed":         {[]OutputFile{{Format: "pem", Parts: []string{"cert"}}, {Format: "jks"}}, true},
+	}
+	for name, tc := range cases {
+		if got := NeedsKey(tc.files); got != tc.want {
+			t.Errorf("%s: NeedsKey = %v, want %v", name, got, tc.want)
+		}
 	}
 }
 
@@ -104,7 +285,7 @@ func TestParseTarget(t *testing.T) {
 
 func TestGrantFilesOrderAndDigests(t *testing.T) {
 	target := &agentproto.Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`)}
-	files, err := GrantFiles(material, []OutputFile{okFile("/etc/ssl/web.pem")}, target, "Web")
+	files, err := GrantFiles(material, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}, target, "Web")
 	if err != nil {
 		t.Fatal(err)
 	}

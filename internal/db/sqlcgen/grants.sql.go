@@ -381,7 +381,8 @@ func (q *Queries) GrantClientIDs(ctx context.Context, ids []uuid.UUID) ([]GrantC
 
 const grantSources = `-- name: GrantSources :many
 SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name, ce.current_version_id,
-       o.files AS layout_files, t.type AS target_type, t.config AS target_config
+       o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
+       t.type AS target_type, t.config AS target_config
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id
@@ -390,15 +391,17 @@ WHERE g.id = ANY($1::uuid[]) AND g.removed_at IS NULL
 `
 
 type GrantSourcesRow struct {
-	ID               uuid.UUID  `json:"id"`
-	ClientID         uuid.UUID  `json:"client_id"`
-	CertID           uuid.UUID  `json:"cert_id"`
-	Delivery         string     `json:"delivery"`
-	CertificateName  string     `json:"certificate_name"`
-	CurrentVersionID *uuid.UUID `json:"current_version_id"`
-	LayoutFiles      []byte     `json:"layout_files"`
-	TargetType       *string    `json:"target_type"`
-	TargetConfig     []byte     `json:"target_config"`
+	ID                 uuid.UUID   `json:"id"`
+	ClientID           uuid.UUID   `json:"client_id"`
+	CertID             uuid.UUID   `json:"cert_id"`
+	Delivery           string      `json:"delivery"`
+	CertificateName    string      `json:"certificate_name"`
+	CurrentVersionID   *uuid.UUID  `json:"current_version_id"`
+	LayoutFiles        []byte      `json:"layout_files"`
+	LayoutPassword     []byte      `json:"layout_password"`
+	LayoutExtraCertIds []uuid.UUID `json:"layout_extra_cert_ids"`
+	TargetType         *string     `json:"target_type"`
+	TargetConfig       []byte      `json:"target_config"`
 }
 
 func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSourcesRow, error) {
@@ -418,6 +421,8 @@ func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSou
 			&i.CertificateName,
 			&i.CurrentVersionID,
 			&i.LayoutFiles,
+			&i.LayoutPassword,
+			&i.LayoutExtraCertIds,
 			&i.TargetType,
 			&i.TargetConfig,
 		); err != nil {
@@ -519,6 +524,35 @@ SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL
 
 func (q *Queries) LiveGrantIDsForCert(ctx context.Context, certID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, liveGrantIDsForCert, certID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const liveGrantIDsForExtraCert = `-- name: LiveGrantIDsForExtraCert :many
+SELECT g.id FROM client_cert_grants g
+JOIN output_specs o ON o.id = g.output_spec_id
+WHERE g.removed_at IS NULL AND $1::uuid = ANY(o.extra_cert_ids)
+`
+
+// Live grants whose layout bundles cert_id as an extra certificate: a new
+// version of an extra certificate must re-render these grants too, not
+// only the grants of cert_id's own certificate.
+func (q *Queries) LiveGrantIDsForExtraCert(ctx context.Context, certID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, liveGrantIDsForExtraCert, certID)
 	if err != nil {
 		return nil, err
 	}
@@ -844,10 +878,22 @@ const staleDeploymentGrantIDs = `-- name: StaleDeploymentGrantIDs :many
 SELECT g.id FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
+LEFT JOIN output_specs o ON o.id = g.output_spec_id
 WHERE g.removed_at IS NULL AND ce.current_version_id IS NOT NULL
-  AND d.version_id IS DISTINCT FROM ce.current_version_id
+  AND (d.version_id IS DISTINCT FROM ce.current_version_id
+       OR d.extra_version_ids IS DISTINCT FROM (
+            SELECT COALESCE(array_agg(ec.current_version_id ORDER BY x.ord), '{}'::uuid[])
+            FROM unnest(COALESCE(o.extra_cert_ids, '{}'::uuid[])) WITH ORDINALITY AS x(id, ord)
+            JOIN certificates ec ON ec.id = x.id
+          ))
 `
 
+// A deployment is stale when its own version_id lags the certificate's
+// current_version_id, or (for a grant with a layout that bundles extra
+// certificates) when extra_version_ids no longer matches the extra
+// certificates' own current_version_id, in the layout's extra_cert_ids
+// order: a new version of an extra certificate makes this grant stale too,
+// covering an OnVersion call the extra certificate's own render skipped.
 func (q *Queries) StaleDeploymentGrantIDs(ctx context.Context) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, staleDeploymentGrantIDs)
 	if err != nil {
@@ -913,19 +959,25 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (Clien
 }
 
 const upsertDeployment = `-- name: UpsertDeployment :exec
-INSERT INTO deployments (grant_id, version_id, state, expected, error, updated_at)
-VALUES ($1, $2, 'pending', $3, '', now())
+INSERT INTO deployments (grant_id, version_id, state, expected, error, extra_version_ids, updated_at)
+VALUES ($1, $2, 'pending', $3, '', $4::uuid[], now())
 ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, state = 'pending',
-       expected = EXCLUDED.expected, error = '', updated_at = now()
+       expected = EXCLUDED.expected, error = '', extra_version_ids = EXCLUDED.extra_version_ids, updated_at = now()
 `
 
 type UpsertDeploymentParams struct {
-	GrantID   uuid.UUID  `json:"grant_id"`
-	VersionID *uuid.UUID `json:"version_id"`
-	Expected  []byte     `json:"expected"`
+	GrantID         uuid.UUID   `json:"grant_id"`
+	VersionID       *uuid.UUID  `json:"version_id"`
+	Expected        []byte      `json:"expected"`
+	ExtraVersionIds []uuid.UUID `json:"extra_version_ids"`
 }
 
 func (q *Queries) UpsertDeployment(ctx context.Context, arg UpsertDeploymentParams) error {
-	_, err := q.db.Exec(ctx, upsertDeployment, arg.GrantID, arg.VersionID, arg.Expected)
+	_, err := q.db.Exec(ctx, upsertDeployment,
+		arg.GrantID,
+		arg.VersionID,
+		arg.Expected,
+		arg.ExtraVersionIds,
+	)
 	return err
 }

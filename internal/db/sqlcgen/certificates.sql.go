@@ -61,6 +61,38 @@ func (q *Queries) CreateCertificate(ctx context.Context, arg CreateCertificatePa
 	return i, err
 }
 
+const currentVersionsForCerts = `-- name: CurrentVersionsForCerts :many
+SELECT id, current_version_id FROM certificates WHERE id = ANY($1::uuid[])
+`
+
+type CurrentVersionsForCertsRow struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+}
+
+// Cert id -> current_version_id for a layout's extra certificates, used to
+// render them (agents.Service.render) and to detect drift
+// (StaleDeploymentGrantIDs mirrors this same lookup in SQL).
+func (q *Queries) CurrentVersionsForCerts(ctx context.Context, ids []uuid.UUID) ([]CurrentVersionsForCertsRow, error) {
+	rows, err := q.db.Query(ctx, currentVersionsForCerts, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CurrentVersionsForCertsRow{}
+	for rows.Next() {
+		var i CurrentVersionsForCertsRow
+		if err := rows.Scan(&i.ID, &i.CurrentVersionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteCertificate = `-- name: DeleteCertificate :execrows
 DELETE FROM certificates WHERE id = $1 AND org_id = $2
 `

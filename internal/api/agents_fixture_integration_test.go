@@ -79,7 +79,7 @@ func newAgentFixture(t *testing.T) *agentFixture {
 	q := sqlcgen.New(f.pool)
 	ca := agentca.NewStore(f.pool, cryptotest.PrefixBox{})
 	hub := newFakeHub()
-	svc := &agents.Service{Pool: f.pool, Q: q, CA: ca, Certs: f.certs, Auditor: f.srv.d.Auditor, Hub: hub,
+	svc := &agents.Service{Pool: f.pool, Q: q, CA: ca, Certs: f.certs, Box: cryptotest.PrefixBox{}, Auditor: f.srv.d.Auditor, Hub: hub,
 		Settings: agents.StaticSettings(agents.Settings{}, "https://cf.example.test"), Log: slog.Default()}
 	f.srv.d.Queries = q
 	f.srv.d.Agents = svc
@@ -127,11 +127,24 @@ func (f *agentFixture) currentCert(t *testing.T, name string) (uuid.UUID, uuid.U
 	return c.ID, v.ID
 }
 
+// realCurrentCert is currentCert with real, x509-parseable material (see
+// realCert in certificates_integration_test.go), for p12/jks layout and
+// grant tests whose renderers parse the certificate rather than treating
+// it as opaque bytes.
+func (f *agentFixture) realCurrentCert(t *testing.T, name string, withKey bool) (uuid.UUID, uuid.UUID) {
+	t.Helper()
+	c, v := f.realIssuedCert(t, name, withKey)
+	if _, err := f.pool.Exec(context.Background(), `UPDATE certificates SET current_version_id = $2, status = 'active' WHERE id = $1`, c.ID, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	return c.ID, v.ID
+}
+
 // layout stores a one-file fullchain layout.
 func (f *agentFixture) layout(t *testing.T, name, path string) uuid.UUID {
 	t.Helper()
 	files, _ := json.Marshal([]delivery.OutputFile{{Path: path, Format: "pem", Parts: []string{"fullchain"}, Mode: "0644"}})
-	l, err := f.q.CreateLayout(context.Background(), sqlcgen.CreateLayoutParams{OrgID: f.org, Name: name, Files: files})
+	l, err := f.q.CreateLayout(context.Background(), sqlcgen.CreateLayoutParams{OrgID: f.org, Name: name, Files: files, ExtraCertIds: []uuid.UUID{}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
@@ -35,6 +36,7 @@ type Service struct {
 	Q        *sqlcgen.Queries
 	CA       *agentca.Store
 	Certs    *certstore.Store
+	Box      crypto.Box // opens a layout's sealed export password
 	Auditor  *audit.Auditor
 	Settings *SettingsSource
 	Hub      Hub
@@ -82,6 +84,19 @@ func (s *Service) Connected(id uuid.UUID) bool { return s.Hub != nil && s.Hub.Co
 // (now minus offlineAfterSeconds), so pull-only agents show online.
 func (s *Service) OnlineCutoff(ctx context.Context) time.Time {
 	return s.now().Add(-time.Duration(s.CurrentSettings(ctx).OfflineAfterSeconds) * time.Second)
+}
+
+// openPassword opens a layout's sealed export password; a nil/empty sealed
+// value (no password stored) returns "" without touching s.Box.
+func (s *Service) openPassword(ctx context.Context, sealed []byte) (string, error) {
+	if len(sealed) == 0 {
+		return "", nil
+	}
+	b, err := s.Box.Open(ctx, sealed)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func (s *Service) audit(ctx context.Context, e audit.Event) {

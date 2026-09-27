@@ -156,6 +156,12 @@ RETURNING *;
 -- name: DeleteCertificate :execrows
 DELETE FROM certificates WHERE id = $1 AND org_id = $2;
 
+-- name: CurrentVersionsForCerts :many
+-- Cert id -> current_version_id for a layout's extra certificates, used to
+-- render them (agents.Service.render) and to detect drift
+-- (StaleDeploymentGrantIDs mirrors this same lookup in SQL).
+SELECT id, current_version_id FROM certificates WHERE id = ANY(sqlc.arg(ids)::uuid[]);
+
 -- name: ListDueCertificateIDs :many
 SELECT id FROM certificates
 WHERE next_renew_at IS NOT NULL AND next_renew_at <= now()

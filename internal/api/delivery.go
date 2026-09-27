@@ -13,6 +13,7 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authz"
+	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 )
@@ -47,6 +48,20 @@ func dependentsConflict(kind string, deps []dependent) error {
 	return conflict("This %s is used by grants: %s. Change or delete those grants first.", kind, strings.Join(parts, ", "))
 }
 
+// extraCertConflict is DeleteCertificate's 409 when layoutNames (up to six,
+// from LayoutsListingExtraCert) still bundle this certificate as an extra.
+func extraCertConflict(layoutNames []string) error {
+	var parts []string
+	for i, name := range layoutNames {
+		if i == 5 {
+			parts = append(parts, "and more")
+			break
+		}
+		parts = append(parts, name)
+	}
+	return conflict("This certificate is listed as an extra certificate by layouts: %s. Remove it from those layouts first.", strings.Join(parts, ", "))
+}
+
 func countMap[T any](rows []T, key func(T) (uuid.UUID, int64)) map[uuid.UUID]int {
 	m := make(map[uuid.UUID]int, len(rows))
 	for _, r := range rows {
@@ -65,7 +80,14 @@ func layoutFilesIn(in []gen.OutputFile) []delivery.OutputFile {
 		for _, p := range f.Parts {
 			parts = append(parts, string(p))
 		}
-		out = append(out, delivery.OutputFile{Path: f.Path, Format: string(f.Format), Parts: parts, Owner: f.Owner, Group: f.Group, Mode: f.Mode})
+		of := delivery.OutputFile{Path: f.Path, Format: string(f.Format), Parts: parts, Owner: f.Owner, Group: f.Group, Mode: f.Mode}
+		if f.Encoding != nil {
+			of.Encoding = string(*f.Encoding)
+		}
+		if f.Alias != nil {
+			of.Alias = *f.Alias
+		}
+		out = append(out, of)
 	}
 	return out
 }
@@ -81,13 +103,23 @@ func layoutOut(l sqlcgen.OutputSpec, grants int) (gen.Layout, error) {
 		for _, p := range f.Parts {
 			parts = append(parts, gen.OutputPart(p))
 		}
-		out = append(out, gen.OutputFile{Path: f.Path, Format: gen.OutputFormat(f.Format), Parts: parts, Owner: f.Owner, Group: f.Group, Mode: f.Mode})
+		of := gen.OutputFile{Path: f.Path, Format: gen.OutputFormat(f.Format), Parts: parts, Owner: f.Owner, Group: f.Group, Mode: f.Mode}
+		if f.Encoding != "" {
+			enc := gen.P12Encoding(f.Encoding)
+			of.Encoding = &enc
+		}
+		if f.Alias != "" {
+			alias := f.Alias
+			of.Alias = &alias
+		}
+		out = append(out, of)
 	}
-	// ExtraCertificateIds is required and non-nullable; Task 5 fills it (and
-	// PasswordSet) for real, but an empty slice must go out now, not the nil
-	// slice's JSON null.
+	extraIDs := l.ExtraCertIds
+	if extraIDs == nil {
+		extraIDs = []uuid.UUID{}
+	}
 	return gen.Layout{Id: l.ID, OrgId: l.OrgID, Name: l.Name, Files: out, GrantCount: grants,
-		ExtraCertificateIds: []uuid.UUID{}, CreatedAt: l.CreatedAt, UpdatedAt: l.UpdatedAt}, nil
+		PasswordSet: len(l.Password) > 0, ExtraCertificateIds: extraIDs, CreatedAt: l.CreatedAt, UpdatedAt: l.UpdatedAt}, nil
 }
 
 func (s *Server) layoutsOut(ctx context.Context, rows []sqlcgen.OutputSpec) ([]gen.Layout, error) {
@@ -119,25 +151,91 @@ func (s *Server) layoutOne(ctx context.Context, l sqlcgen.OutputSpec) (gen.Layou
 	return out[0], nil
 }
 
-func validLayout(in *gen.LayoutInput) (string, []byte, error) {
+// layoutParsed is a LayoutInput's shape-validated fields, before the
+// password (needs Box, which may fail) and extraCertificateIds (needs a
+// DB round trip) are resolved.
+type layoutParsed struct {
+	name         string
+	files        []delivery.OutputFile
+	filesJSON    []byte
+	password     *string // nil: omitted; "": clear; challenge.Unchanged: keep stored
+	extraCertIDs []uuid.UUID
+}
+
+func parseLayoutInput(in *gen.LayoutInput) (layoutParsed, error) {
 	if in == nil {
-		return "", nil, badRequest("missing body")
+		return layoutParsed{}, badRequest("missing body")
 	}
 	name, err := cleanName("name", in.Name)
 	if err != nil {
-		return "", nil, err
+		return layoutParsed{}, err
 	}
 	files := layoutFilesIn(in.Files)
 	if err := delivery.ValidateFiles(files); err != nil {
-		return "", nil, mapDeliveryErr(err)
+		return layoutParsed{}, mapDeliveryErr(err)
 	}
 	for i := range files {
 		if len(files[i].Mode) == 3 {
 			files[i].Mode = "0" + files[i].Mode
 		}
 	}
-	b, err := json.Marshal(files)
-	return name, b, err
+	filesJSON, err := json.Marshal(files)
+	if err != nil {
+		return layoutParsed{}, err
+	}
+	extraIDs := []uuid.UUID{}
+	if in.ExtraCertificateIds != nil {
+		extraIDs = *in.ExtraCertificateIds
+	}
+	if len(extraIDs) > 10 {
+		return layoutParsed{}, unprocessable("extraCertificateIds", "at most 10 extra certificates")
+	}
+	seen := make(map[uuid.UUID]bool, len(extraIDs))
+	for _, id := range extraIDs {
+		if seen[id] {
+			return layoutParsed{}, unprocessable("extraCertificateIds", "each certificate may appear once")
+		}
+		seen[id] = true
+	}
+	return layoutParsed{name: name, files: files, filesJSON: filesJSON, password: in.Password, extraCertIDs: extraIDs}, nil
+}
+
+// layoutFormats reports whether any of files needs an export password
+// (p12 or jks) and whether any needs the stronger jks minimum length.
+func layoutFormats(files []delivery.OutputFile) (needsPassword, needsJKS bool) {
+	for _, f := range files {
+		if f.Format == "p12" || f.Format == "jks" {
+			needsPassword = true
+		}
+		if f.Format == "jks" {
+			needsJKS = true
+		}
+	}
+	return needsPassword, needsJKS
+}
+
+// checkLayoutExtraCerts locks (FOR KEY SHARE) and validates a layout's
+// candidate extra certificates: each must be a certificate of orgID with a
+// current version. Called inside the layout write's own transaction, so a
+// concurrent certificate delete (which locks the row FOR UPDATE) serializes
+// against it instead of racing a dangling reference into extra_cert_ids.
+func (s *Server) checkLayoutExtraCerts(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := q.LockCertsForExtra(ctx, sqlcgen.LockCertsForExtraParams{Ids: ids, OrgID: orgID})
+	if err != nil {
+		return err
+	}
+	if len(rows) != len(ids) {
+		return unprocessable("extraCertificateIds", "each must be a certificate in this org")
+	}
+	for _, row := range rows {
+		if row.CurrentVersionID == nil {
+			return unprocessable("extraCertificateIds", "each must have a current version")
+		}
+	}
+	return nil
 }
 
 // ListLayouts returns an org's output layouts.
@@ -175,27 +273,67 @@ func (s *Server) GetLayout(ctx context.Context, r gen.GetLayoutRequestObject) (g
 	return gen.GetLayout200JSONResponse(out), nil
 }
 
+// layoutAuditDetails is a layout row's create/update audit shape: the
+// files, whether a password is stored, and its extra certificates, never
+// the password itself.
+func layoutAuditDetails(name string, files []byte, password []byte, extraCertIDs []uuid.UUID) map[string]any {
+	return map[string]any{"name": name, "files": json.RawMessage(files), "passwordSet": len(password) > 0, "extraCertificateIds": extraCertIDs}
+}
+
 // CreateLayout adds a layout.
 func (s *Server) CreateLayout(ctx context.Context, r gen.CreateLayoutRequestObject) (gen.CreateLayoutResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	name, files, err := validLayout(r.Body)
+	li, err := parseLayoutInput(r.Body)
 	if err != nil {
 		return nil, err
 	}
-	l, err := s.queries().CreateLayout(ctx, sqlcgen.CreateLayoutParams{OrgID: r.OrgId, Name: name, Files: files})
+	needsPassword, needsJKS := layoutFormats(li.files)
+	var plain string
+	switch {
+	case li.password != nil && *li.password == challenge.Unchanged:
+		return nil, unprocessable("password", "no stored password to keep on create; provide one")
+	case li.password != nil:
+		plain = *li.password
+	}
+	if needsPassword && plain == "" {
+		return nil, unprocessable("password", "required when any file is p12 or jks")
+	}
+	if needsJKS && len(plain) < 6 {
+		return nil, unprocessable("password", "must be at least 6 characters when any file is jks")
+	}
+	var sealed []byte
+	if plain != "" {
+		if sealed, err = s.d.Box.Seal(ctx, []byte(plain)); err != nil {
+			return nil, err
+		}
+	}
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
+	if err := s.checkLayoutExtraCerts(ctx, q, r.OrgId, li.extraCertIDs); err != nil {
+		return nil, err
+	}
+	l, err := q.CreateLayout(ctx, sqlcgen.CreateLayoutParams{OrgID: r.OrgId, Name: li.name, Files: li.filesJSON,
+		Password: sealed, ExtraCertIds: li.extraCertIDs})
 	switch pgCode(err) {
 	case pgUniqueViolation:
-		return nil, conflict("A layout named %q exists in this org.", name)
+		return nil, conflict("A layout named %q exists in this org.", li.name)
 	case pgForeignKeyViolation:
 		return nil, notFound("org %s", r.OrgId)
 	}
 	if err != nil {
 		return nil, err
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 	s.audit(ctx, audit.Event{Action: "layout.create", ResourceType: "layout", ResourceID: l.ID.String(), OrgID: &l.OrgID,
-		Details: map[string]any{"name": l.Name, "files": json.RawMessage(l.Files)}})
+		Details: layoutAuditDetails(l.Name, l.Files, l.Password, l.ExtraCertIds)})
 	out, err := s.layoutOne(ctx, l)
 	if err != nil {
 		return nil, err
@@ -208,10 +346,11 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	name, files, err := validLayout(r.Body)
+	li, err := parseLayoutInput(r.Body)
 	if err != nil {
 		return nil, err
 	}
+	needsPassword, needsJKS := layoutFormats(li.files)
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -225,9 +364,43 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	if err != nil {
 		return nil, err
 	}
-	l, err := q.UpdateLayout(ctx, sqlcgen.UpdateLayoutParams{Name: name, Files: files, ID: r.Id, OrgID: r.OrgId})
+	var sealed []byte
+	switch {
+	case li.password != nil && *li.password == challenge.Unchanged:
+		if len(cur.Password) == 0 {
+			return nil, unprocessable("password", "no stored password to keep; provide one")
+		}
+		sealed = cur.Password
+		if needsJKS {
+			plain, err := s.d.Box.Open(ctx, sealed)
+			if err != nil {
+				return nil, err
+			}
+			if len(plain) < 6 {
+				return nil, unprocessable("password", "must be at least 6 characters when any file is jks")
+			}
+		}
+	case li.password != nil && *li.password != "":
+		if needsJKS && len(*li.password) < 6 {
+			return nil, unprocessable("password", "must be at least 6 characters when any file is jks")
+		}
+		if sealed, err = s.d.Box.Seal(ctx, []byte(*li.password)); err != nil {
+			return nil, err
+		}
+	default:
+		// li.password is nil (omitted) or "" (explicit clear).
+		sealed = nil
+	}
+	if needsPassword && len(sealed) == 0 {
+		return nil, unprocessable("password", "required when any file is p12 or jks")
+	}
+	if err := s.checkLayoutExtraCerts(ctx, q, r.OrgId, li.extraCertIDs); err != nil {
+		return nil, err
+	}
+	l, err := q.UpdateLayout(ctx, sqlcgen.UpdateLayoutParams{Name: li.name, Files: li.filesJSON, Password: sealed,
+		ExtraCertIds: li.extraCertIDs, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {
-		return nil, conflict("A layout named %q exists in this org.", name)
+		return nil, conflict("A layout named %q exists in this org.", li.name)
 	}
 	if err != nil {
 		return nil, err
@@ -241,8 +414,8 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	}
 	nudge()
 	s.audit(ctx, audit.Event{Action: "layout.update", ResourceType: "layout", ResourceID: l.ID.String(), OrgID: &l.OrgID,
-		Details: map[string]any{"before": map[string]any{"name": cur.Name, "files": json.RawMessage(cur.Files)},
-			"after": map[string]any{"name": l.Name, "files": json.RawMessage(l.Files)}}})
+		Details: map[string]any{"before": layoutAuditDetails(cur.Name, cur.Files, cur.Password, cur.ExtraCertIds),
+			"after": layoutAuditDetails(l.Name, l.Files, l.Password, l.ExtraCertIds)}})
 	out, err := s.layoutOne(ctx, l)
 	if err != nil {
 		return nil, err

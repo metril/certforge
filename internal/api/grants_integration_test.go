@@ -109,7 +109,7 @@ func TestGrantLifecycle(t *testing.T) {
 		t.Fatalf("deployment %+v", d)
 	}
 	m, _ := f.certs.Material(ctx, certID, vid, true)
-	files, _ := delivery.RenderLayout(m, []delivery.OutputFile{{Path: "/etc/ssl/web.pem", Format: "pem", Parts: []string{"fullchain"}, Mode: "0644"}})
+	files, _ := delivery.RenderLayout(m, nil, delivery.Layout{Files: []delivery.OutputFile{{Path: "/etc/ssl/web.pem", Format: "pem", Parts: []string{"fullchain"}, Mode: "0644"}}})
 	if d.Expected[0].Sha256 != delivery.Digest(files[0].Data) {
 		t.Fatal("expected digest differs from the rendered file")
 	}

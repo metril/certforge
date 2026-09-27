@@ -33,7 +33,17 @@ The agent renews its certificate at two thirds of its lifetime (90 days by defau
 
 ## File layouts
 
-A layout (Delivery → Layouts) lists files by absolute path on the agent host. Each file concatenates PEM parts in order: `cert`, `chain`, `fullchain`, `key`, `combined` (fullchain + key). Files are written atomically (temp file in the same directory, fsync, chmod, rename). `owner` and `group` accept names or numeric ids and apply only when the agent runs as root; otherwise the agent logs one warning and applies the mode only. In the distroless image only `root`, `nonroot` (65532) and `nobody` resolve by name, so prefer numeric ids. Paths must be absolute and clean; mount the target directories into the agent container.
+A layout (Delivery → Layouts) lists files by absolute path on the agent host. Files are written atomically (temp file in the same directory, fsync, chmod, rename). `owner` and `group` accept names or numeric ids and apply only when the agent runs as root; otherwise the agent logs one warning and applies the mode only. In the distroless image only `root`, `nonroot` (65532) and `nobody` resolve by name, so prefer numeric ids. Paths must be absolute and clean; mount the target directories into the agent container.
+
+Each file picks a format:
+
+- `pem` concatenates PEM parts in order: `cert`, `chain`, `fullchain`, `key`, `combined` (fullchain + key), `extra` (the leaf and chain of each extra certificate, in order).
+- `der` holds exactly one DER-encoded part, `cert` or `key` (one layout file is one path, and `chain` is one file per certificate, so it stays download-only).
+- `p12` and `jks` write one password-protected keystore holding the certificate, its chain, its key, and any extra certificates (as CA/trusted entries); they take no `parts`. `p12` accepts `encoding` (`modern`, the default, or `legacy` for old consumers); `jks` accepts `alias` (default the file's base name) and requires the layout password to be at least 6 characters.
+
+**Password.** A layout with any `p12`/`jks` file stores one export password, sealed the same way other secrets are (never logged, audited, returned by a read, or sent to an agent — only the rendered bytes are). `passwordSet` on the layout says whether one is stored, never the value. On update, send `__unchanged__` to keep the stored password, or omit the field (or send `""`) to clear it — clearing it is a 422 while a `p12`/`jks` file still needs one.
+
+**Extra certificates.** A layout can bundle up to 10 other certificates from the same org (each with a current version) alongside its own, rendered as the `extra` PEM part or as additional keystore entries. Deleting a certificate still listed by a layout is refused (409) until it is removed from that layout.
 
 ### Write allowlist
 

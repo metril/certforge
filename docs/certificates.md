@@ -185,3 +185,5 @@ Four output formats:
 ### Export passwords
 
 Export (`POST .../export`) takes its password in the JSON request body instead of a query parameter, unlike download's `format`/`parts`: a GET's query string routinely ends up in proxy and browser history, access logs, and `Referer` headers, so a query-string password would leak far more readily than one that never leaves the body of a POST. The password is validated (1 to 128 characters; at least 6, ASCII-only, for JKS) but never stored, logged, put in a URL, returned by any read, or included in the `certificate.key_exported` audit event the export records — that event's `details` carries only `certificateId` and `format`.
+
+A one-off export is not the only way to get PKCS#12 or JKS files: a layout can render a `p12`/`jks` file on every issuance, with its own stored password and up to 10 extra certificates bundled in — see [agent.md#file-layouts](agent.md#file-layouts).

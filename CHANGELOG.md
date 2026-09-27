@@ -106,6 +106,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - OpenAPI contract for exports, uploads, imports, rate ledger and new challenge methods.
 - DER, PKCS#12 and JKS renderers.
 - DER downloads and PKCS#12/JKS exports with audited key export.
+- Layouts render DER, PKCS#12 and JKS files with a stored password and extra certificates.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

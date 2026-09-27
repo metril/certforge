@@ -138,7 +138,9 @@ func (q *Queries) ClientDeployments(ctx context.Context, clientID uuid.UUID) ([]
 }
 
 const grantForBundle = `-- name: GrantForBundle :one
-SELECT g.id, g.cert_id, ce.name AS certificate_name, d.version_id, o.files AS layout_files, t.type AS target_type
+SELECT g.id, g.cert_id, ce.name AS certificate_name, d.version_id, o.files AS layout_files,
+       o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids, d.extra_version_ids,
+       t.type AS target_type
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
@@ -153,14 +155,21 @@ type GrantForBundleParams struct {
 }
 
 type GrantForBundleRow struct {
-	ID              uuid.UUID  `json:"id"`
-	CertID          uuid.UUID  `json:"cert_id"`
-	CertificateName string     `json:"certificate_name"`
-	VersionID       *uuid.UUID `json:"version_id"`
-	LayoutFiles     []byte     `json:"layout_files"`
-	TargetType      *string    `json:"target_type"`
+	ID                 uuid.UUID   `json:"id"`
+	CertID             uuid.UUID   `json:"cert_id"`
+	CertificateName    string      `json:"certificate_name"`
+	VersionID          *uuid.UUID  `json:"version_id"`
+	LayoutFiles        []byte      `json:"layout_files"`
+	LayoutPassword     []byte      `json:"layout_password"`
+	LayoutExtraCertIds []uuid.UUID `json:"layout_extra_cert_ids"`
+	ExtraVersionIds    []uuid.UUID `json:"extra_version_ids"`
+	TargetType         *string     `json:"target_type"`
 }
 
+// extra_version_ids (from the deployment, the last render) pairs with
+// layout_extra_cert_ids (from the layout, live) to render the bundle from
+// the versions actually last rendered, never the extra certificates'
+// current versions: see agents.Service.Bundle.
 func (q *Queries) GrantForBundle(ctx context.Context, arg GrantForBundleParams) (GrantForBundleRow, error) {
 	row := q.db.QueryRow(ctx, grantForBundle, arg.ID, arg.ClientID)
 	var i GrantForBundleRow
@@ -170,6 +179,9 @@ func (q *Queries) GrantForBundle(ctx context.Context, arg GrantForBundleParams) 
 		&i.CertificateName,
 		&i.VersionID,
 		&i.LayoutFiles,
+		&i.LayoutPassword,
+		&i.LayoutExtraCertIds,
+		&i.ExtraVersionIds,
 		&i.TargetType,
 	)
 	return i, err

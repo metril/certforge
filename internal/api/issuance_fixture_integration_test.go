@@ -74,7 +74,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	svc.NewRegistrar = func(issuance.CA) issuance.Registrar { return &fakeRegistrar{} }
 	svc.Auditor = aud
 	svc.Log = slog.Default()
-	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Auditor: aud, Issuance: svc, Certs: certs,
+	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
 		Settings: settingsStore, Sections: sections}}
 	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, org: dbtest.Org(t, pool)}
 }

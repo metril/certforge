@@ -13,7 +13,13 @@ ORDER BY g.created_at, g.id;
 SELECT id, phase, argv, timeout_seconds FROM hooks WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: GrantForBundle :one
-SELECT g.id, g.cert_id, ce.name AS certificate_name, d.version_id, o.files AS layout_files, t.type AS target_type
+-- extra_version_ids (from the deployment, the last render) pairs with
+-- layout_extra_cert_ids (from the layout, live) to render the bundle from
+-- the versions actually last rendered, never the extra certificates'
+-- current versions: see agents.Service.Bundle.
+SELECT g.id, g.cert_id, ce.name AS certificate_name, d.version_id, o.files AS layout_files,
+       o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids, d.extra_version_ids,
+       t.type AS target_type
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id

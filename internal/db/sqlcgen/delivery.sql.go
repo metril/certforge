@@ -78,17 +78,25 @@ func (q *Queries) CreateHook(ctx context.Context, arg CreateHookParams) (Hook, e
 }
 
 const createLayout = `-- name: CreateLayout :one
-INSERT INTO output_specs (org_id, name, files) VALUES ($1, $2, $3) RETURNING id, org_id, name, files, created_at, updated_at, password, extra_cert_ids
+INSERT INTO output_specs (org_id, name, files, password, extra_cert_ids) VALUES ($1, $2, $3, $4, $5) RETURNING id, org_id, name, files, created_at, updated_at, password, extra_cert_ids
 `
 
 type CreateLayoutParams struct {
-	OrgID uuid.UUID `json:"org_id"`
-	Name  string    `json:"name"`
-	Files []byte    `json:"files"`
+	OrgID        uuid.UUID   `json:"org_id"`
+	Name         string      `json:"name"`
+	Files        []byte      `json:"files"`
+	Password     []byte      `json:"password"`
+	ExtraCertIds []uuid.UUID `json:"extra_cert_ids"`
 }
 
 func (q *Queries) CreateLayout(ctx context.Context, arg CreateLayoutParams) (OutputSpec, error) {
-	row := q.db.QueryRow(ctx, createLayout, arg.OrgID, arg.Name, arg.Files)
+	row := q.db.QueryRow(ctx, createLayout,
+		arg.OrgID,
+		arg.Name,
+		arg.Files,
+		arg.Password,
+		arg.ExtraCertIds,
+	)
 	var i OutputSpec
 	err := row.Scan(
 		&i.ID,
@@ -443,6 +451,40 @@ func (q *Queries) LayoutGrantCounts(ctx context.Context, ids []uuid.UUID) ([]Lay
 	return items, nil
 }
 
+const layoutsListingExtraCert = `-- name: LayoutsListingExtraCert :many
+SELECT name FROM output_specs
+WHERE org_id = $1 AND $2::uuid = ANY(extra_cert_ids)
+ORDER BY lower(name) LIMIT 6
+`
+
+type LayoutsListingExtraCertParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	CertID uuid.UUID `json:"cert_id"`
+}
+
+// Layouts (any org, but callers scope by org_id) that bundle cert_id as an
+// extra certificate; DeleteCertificate 409s naming these instead of
+// deleting a certificate a layout still renders.
+func (q *Queries) LayoutsListingExtraCert(ctx context.Context, arg LayoutsListingExtraCertParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, layoutsListingExtraCert, arg.OrgID, arg.CertID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDeployTargets = `-- name: ListDeployTargets :many
 SELECT id, org_id, name, type, runs_on, config, created_at, updated_at FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id
 `
@@ -532,6 +574,48 @@ func (q *Queries) ListLayouts(ctx context.Context, orgID uuid.UUID) ([]OutputSpe
 			&i.Password,
 			&i.ExtraCertIds,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockCertsForExtra = `-- name: LockCertsForExtra :many
+SELECT id, current_version_id FROM certificates
+WHERE id = ANY($1::uuid[]) AND org_id = $2
+FOR KEY SHARE
+`
+
+type LockCertsForExtraParams struct {
+	Ids   []uuid.UUID `json:"ids"`
+	OrgID uuid.UUID   `json:"org_id"`
+}
+
+type LockCertsForExtraRow struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+}
+
+// Locks FOR KEY SHARE the candidate extra certificates a layout write
+// references (scoped to the org), so a concurrent certificate delete
+// (api.DeleteCertificate's FOR UPDATE lock) serializes against this layout
+// write instead of racing it into a dangling extra_cert_ids entry. Returns
+// current_version_id so the caller can also check each has one, in the
+// same round trip.
+func (q *Queries) LockCertsForExtra(ctx context.Context, arg LockCertsForExtraParams) ([]LockCertsForExtraRow, error) {
+	rows, err := q.db.Query(ctx, lockCertsForExtra, arg.Ids, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockCertsForExtraRow{}
+	for rows.Next() {
+		var i LockCertsForExtraRow
+		if err := rows.Scan(&i.ID, &i.CurrentVersionID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -643,21 +727,26 @@ func (q *Queries) UpdateHook(ctx context.Context, arg UpdateHookParams) (Hook, e
 }
 
 const updateLayout = `-- name: UpdateLayout :one
-UPDATE output_specs SET name = $1, files = $2, updated_at = now()
-WHERE id = $3 AND org_id = $4 RETURNING id, org_id, name, files, created_at, updated_at, password, extra_cert_ids
+UPDATE output_specs SET name = $1, files = $2, password = $3,
+       extra_cert_ids = $4, updated_at = now()
+WHERE id = $5 AND org_id = $6 RETURNING id, org_id, name, files, created_at, updated_at, password, extra_cert_ids
 `
 
 type UpdateLayoutParams struct {
-	Name  string    `json:"name"`
-	Files []byte    `json:"files"`
-	ID    uuid.UUID `json:"id"`
-	OrgID uuid.UUID `json:"org_id"`
+	Name         string      `json:"name"`
+	Files        []byte      `json:"files"`
+	Password     []byte      `json:"password"`
+	ExtraCertIds []uuid.UUID `json:"extra_cert_ids"`
+	ID           uuid.UUID   `json:"id"`
+	OrgID        uuid.UUID   `json:"org_id"`
 }
 
 func (q *Queries) UpdateLayout(ctx context.Context, arg UpdateLayoutParams) (OutputSpec, error) {
 	row := q.db.QueryRow(ctx, updateLayout,
 		arg.Name,
 		arg.Files,
+		arg.Password,
+		arg.ExtraCertIds,
 		arg.ID,
 		arg.OrgID,
 	)

@@ -279,7 +279,10 @@ func (s *Server) UpdateCertificate(ctx context.Context, r gen.UpdateCertificateR
 // mode) before inserting — see agents.Service.CreateGrant. The grant count
 // includes removal-pending grants (any row still present), not just live
 // ones, since cert_id is ON DELETE CASCADE and a removal-pending grant
-// still needs its agent to confirm the files are gone.
+// still needs its agent to confirm the files are gone. It also 409s when a
+// layout still lists this certificate as an extra certificate
+// (LayoutsListingExtraCert): output_specs.extra_cert_ids has no FK, so
+// deleting the certificate out from under it would leave a dangling id.
 func (s *Server) DeleteCertificate(ctx context.Context, r gen.DeleteCertificateRequestObject) (gen.DeleteCertificateResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
@@ -301,6 +304,13 @@ func (s *Server) DeleteCertificate(ctx context.Context, r gen.DeleteCertificateR
 	}
 	if len(rows) > 0 && rows[0].Grants > 0 {
 		return nil, conflict("This certificate is granted to %d client(s); remove and confirm those grants first.", rows[0].Grants)
+	}
+	layouts, err := q.LayoutsListingExtraCert(ctx, sqlcgen.LayoutsListingExtraCertParams{OrgID: r.OrgId, CertID: r.Id})
+	if err != nil {
+		return nil, err
+	}
+	if len(layouts) > 0 {
+		return nil, extraCertConflict(layouts)
 	}
 	n, err := q.DeleteCertificate(ctx, sqlcgen.DeleteCertificateParams{ID: r.Id, OrgID: r.OrgId})
 	if err != nil {
