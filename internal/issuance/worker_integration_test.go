@@ -228,6 +228,54 @@ func TestIssueRateLimitedHonoursRetryAfter(t *testing.T) {
 	}
 }
 
+// caaSigner adds signer.DirectoryInfo to fakeSigner, the way the real ACME
+// signer does, so a certificate's CAA step can be driven through the whole
+// worker.
+type caaSigner struct {
+	fakeSigner
+	identities []string
+}
+
+func (s *caaSigner) CAAIdentities(context.Context) ([]string, error) { return s.identities, nil }
+
+// TestIssueCAAForbidsBeforeOrder: review fix round 1 for Task 10.
+// TestWorkerCAAStep's old "forbidden" subtest called caaStep directly, so
+// its assertion that signer.Issue was never called proved nothing (the
+// test itself never called Issue either). This drives a forbidding CAA
+// record through the real Issue path — the attempt fails, the caa step is
+// recorded failed with the caa ACME error type, and the signer's Issue is
+// genuinely never invoked (fs.calls stays 0), proven by fakeSigner's own
+// call counter across the whole worker, not by trusting a narrower call.
+func TestIssueCAAForbidsBeforeOrder(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	fs := &caaSigner{identities: []string{"letsencrypt.org"}}
+	w := newWorker(f, &fs.fakeSigner)
+	w.NewSigner = func(CA) signer.Signer { return fs }
+	w.CAA = fakeCAAResolver{records: map[string][]CAARecord{
+		"example.test": {{Tag: "issue", Value: "other-ca.example"}},
+	}}
+
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fs.calls != 0 {
+		t.Fatalf("signer.Issue was called %d time(s)", fs.calls)
+	}
+	got, _ := f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if got.Status != StatusFailed {
+		t.Fatalf("cert status = %s, want %s", got.Status, StatusFailed)
+	}
+	a := lastAttempt(t, f, c.ID)
+	if a.Outcome != OutcomeFailed || a.ACMEErrorType != "urn:ietf:params:acme:error:caa" {
+		t.Fatalf("attempt = %+v", a)
+	}
+	if st := stepStatus(a)["caa"]; st != challenge.StepFailed {
+		t.Fatalf("caa step = %q, want %q", st, challenge.StepFailed)
+	}
+}
+
 // Review Focus: manual-dns timeout while the operator is away. Against a real
 // CA, PreCheck's masking means Issue fails with the CA's own validation
 // error (here fakeSigner's unauthorized signer.Error), not the timeout

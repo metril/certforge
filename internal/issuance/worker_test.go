@@ -170,78 +170,37 @@ func TestWorkerAgentModeRulesNeedRelay(t *testing.T) {
 	}
 }
 
-// caaSigner is a signer.Signer that also implements signer.DirectoryInfo
-// (as the real ACME signer does); Issue fails the test if ever called, so
-// TestWorkerCAAStep's forbidden case proves the worker never reaches an
-// order once caa fails the attempt.
-type caaSigner struct {
-	t           *testing.T
-	identities  []string
-	issueCalled bool
-}
+// caaTestSigner is a minimal signer.Signer for caaStep unit tests. It does
+// not implement signer.DirectoryInfo (caaStep's caaCheck=false path returns
+// before ever type-asserting sig, so this test never needs one); Issue
+// fails the test outright since caaStep must never reach an order itself —
+// see TestIssueCAAForbidsBeforeOrder (worker_integration_test.go) for the
+// real proof that Issue is never called on the forbidding path, which
+// requires driving the whole worker through a real Store.
+type caaTestSigner struct{ t *testing.T }
 
-func (s *caaSigner) Kind() string { return "fake" }
-func (s *caaSigner) Issue(context.Context, signer.IssueRequest) (*signer.Issued, error) {
-	s.issueCalled = true
-	s.t.Fatal("signer.Issue must not be called when the caa step fails")
+func (s caaTestSigner) Kind() string { return "fake" }
+func (s caaTestSigner) Issue(context.Context, signer.IssueRequest) (*signer.Issued, error) {
+	s.t.Fatal("Issue must not be called")
 	return nil, nil
 }
-func (s *caaSigner) Revoke(context.Context, *x509.Certificate, int) error { return nil }
-func (s *caaSigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.Window, error) {
+func (caaTestSigner) Revoke(context.Context, *x509.Certificate, int) error { return nil }
+func (caaTestSigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.Window, error) {
 	return nil, nil
 }
-func (s *caaSigner) CAAIdentities(context.Context) ([]string, error) { return s.identities, nil }
 
-// TestWorkerCAAStep: a CAA record that forbids this CA fails the attempt
-// before any order (the step is "caa" failed, with a *signer.Error of type
-// caa, and signer.Issue is never called); caaCheck=false records the step
-// as skipped and does not touch the resolver at all.
-func TestWorkerCAAStep(t *testing.T) {
+// TestWorkerCAAStepDisabled: caaCheck=false records the "caa" step as
+// skipped and never even looks at the signer.
+func TestWorkerCAAStepDisabled(t *testing.T) {
 	cert := Certificate{ID: uuid.New(), OrgID: uuid.New(), CommonName: "example.com"}
+	w := &IssueWorker{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	tl := NewTimeline(time.Now, nil)
 
-	t.Run("forbidden", func(t *testing.T) {
-		sig := &caaSigner{t: t, identities: []string{"letsencrypt.org"}}
-		resolver := fakeCAAResolver{records: map[string][]CAARecord{
-			"example.com": {{Tag: "issue", Value: "other-ca.example"}},
-		}}
-		w := &IssueWorker{CAA: resolver, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-		tl := NewTimeline(time.Now, nil)
-
-		err := w.caaStep(context.Background(), tl, cert, CA{}, Effective{}, sig, IssuanceSettings{CAACheck: true})
-
-		var se *signer.Error
-		if !errors.As(err, &se) || se.Type != "urn:ietf:params:acme:error:caa" {
-			t.Fatalf("err = %v, want a *signer.Error of type caa", err)
-		}
-		steps, _ := tl.Snapshot()
-		found := false
-		for _, s := range steps {
-			if s.Name == "caa" {
-				found = true
-				if s.Status != challenge.StepFailed {
-					t.Fatalf("caa step status = %q, want %q", s.Status, challenge.StepFailed)
-				}
-			}
-		}
-		if !found {
-			t.Fatal("no caa step recorded")
-		}
-		if sig.issueCalled {
-			t.Fatal("signer.Issue was called")
-		}
-	})
-
-	t.Run("caaCheck disabled", func(t *testing.T) {
-		sig := &caaSigner{t: t, identities: []string{"letsencrypt.org"}}
-		w := &IssueWorker{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-		tl := NewTimeline(time.Now, nil)
-
-		if err := w.caaStep(context.Background(), tl, cert, CA{}, Effective{}, sig, IssuanceSettings{CAACheck: false}); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		steps, _ := tl.Snapshot()
-		if len(steps) != 1 || steps[0].Name != "caa" || steps[0].Status != challenge.StepSkipped {
-			t.Fatalf("steps = %+v, want one skipped caa step", steps)
-		}
-	})
+	if err := w.caaStep(context.Background(), tl, cert, CA{}, Effective{}, caaTestSigner{t: t}, IssuanceSettings{CAACheck: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	steps, _ := tl.Snapshot()
+	if len(steps) != 1 || steps[0].Name != "caa" || steps[0].Status != challenge.StepSkipped {
+		t.Fatalf("steps = %+v, want one skipped caa step", steps)
+	}
 }

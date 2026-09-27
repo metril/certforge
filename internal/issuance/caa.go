@@ -62,7 +62,21 @@ func (DNSCAAResolver) LookupCAA(ctx context.Context, fqdn string, servers []stri
 			lastErr = err
 			continue
 		}
-		return caaFromAnswer(in.Answer), nil
+		// Rcode must be checked: an unchecked SERVFAIL (or any other
+		// failure rcode) has an empty Answer section, which would
+		// otherwise read as "no CAA records here" — the tree-climb would
+		// wrongly climb to a parent that could falsely forbid, or the
+		// whole check would wrongly report "issuance allowed" with
+		// nothing actually checked. NOERROR and NXDOMAIN both carry a
+		// (possibly empty) valid answer and are not errors.
+		switch in.Rcode {
+		case dns.RcodeSuccess, dns.RcodeNameError:
+			return caaFromAnswer(in.Answer), nil
+		case dns.RcodeServerFailure:
+			lastErr = fmt.Errorf("%s: SERVFAIL", addr)
+		default:
+			lastErr = fmt.Errorf("%s: %s", addr, dns.RcodeToString[in.Rcode])
+		}
 	}
 	return nil, lastErr
 }
@@ -118,15 +132,22 @@ func effectiveDNSServers(servers []string) ([]string, error) {
 // EffectiveTLDPlusOne), stopping at the first label with a non-empty CAA
 // record set (RFC 8659 §5.3). No record set anywhere in that climb means
 // CAA does not restrict the name, and the next name is checked. A lookup
-// error at any label aborts the whole check (not just that name) with a
-// "success" detail, since the CA will still evaluate CAA itself.
+// error at one name is remembered but does not stop the rest of names from
+// being checked, so a later name's forbidding record set still fails the
+// check; only once every name has been considered does an outstanding
+// lookup error fall back to a "success" detail, since the CA will still
+// evaluate CAA itself.
 func CheckCAA(ctx context.Context, r CAAResolver, names []string, identities []string, servers []string) (string, error) {
+	var lookupErr error
 	for _, name := range names {
 		wildcard := strings.HasPrefix(name, "*.")
 		base := strings.TrimPrefix(name, "*.")
 		owner, records, err := caaLookupChain(ctx, r, base, servers)
 		if err != nil {
-			return fmt.Sprintf("CAA lookup failed (%v); the CA will check", err), nil
+			if lookupErr == nil {
+				lookupErr = err
+			}
+			continue
 		}
 		if len(records) == 0 {
 			continue
@@ -134,6 +155,9 @@ func CheckCAA(ctx context.Context, r CAAResolver, names []string, identities []s
 		if err := evaluateCAA(owner, records, wildcard, identities); err != nil {
 			return "", err
 		}
+	}
+	if lookupErr != nil {
+		return fmt.Sprintf("CAA lookup failed (%v); the CA will check", lookupErr), nil
 	}
 	return "CAA checked; issuance allowed", nil
 }
@@ -168,9 +192,19 @@ func caaLookupChain(ctx context.Context, r CAAResolver, name string, servers []s
 }
 
 // evaluateCAA applies records (the non-empty set found at owner) to decide
-// whether this CA may issue for a name at owner, wild reporting whether
-// that name was a wildcard (relevant tag "issuewild" over "issue").
+// whether this CA may issue for a name at owner, wildcard reporting
+// whether that name was a wildcard (relevant tag "issuewild" over "issue").
 func evaluateCAA(owner string, records []CAARecord, wildcard bool, identities []string) error {
+	tag := "issue"
+	if wildcard {
+		for _, rec := range records {
+			if strings.EqualFold(rec.Tag, "issuewild") {
+				tag = "issuewild"
+				break
+			}
+		}
+	}
+
 	// An unrecognised tag with the critical flag set forbids issuance
 	// outright (RFC 8659 §4), regardless of what any issue/issuewild record
 	// says.
@@ -181,19 +215,10 @@ func evaluateCAA(owner string, records []CAARecord, wildcard bool, identities []
 		switch strings.ToLower(rec.Tag) {
 		case "issue", "issuewild", "iodef":
 		default:
-			return caaForbidden(owner, records, identities)
+			return caaForbidden(owner, tag, records, identities)
 		}
 	}
 
-	tag := "issue"
-	if wildcard {
-		for _, rec := range records {
-			if strings.EqualFold(rec.Tag, "issuewild") {
-				tag = "issuewild"
-				break
-			}
-		}
-	}
 	var relevant []CAARecord
 	for _, rec := range records {
 		if strings.EqualFold(rec.Tag, tag) {
@@ -219,17 +244,25 @@ func evaluateCAA(owner string, records []CAARecord, wildcard bool, identities []
 			}
 		}
 	}
-	return caaForbidden(owner, relevant, identities)
+	return caaForbidden(owner, tag, relevant, identities)
 }
 
 // caaForbidden builds the *signer.Error recorded on the attempt: the ACME
-// CAA problem type and the operator-facing fix.
-func caaForbidden(owner string, allow []CAARecord, identities []string) error {
+// CAA problem type and the operator-facing fix, naming tag ("issue" or
+// "issuewild", whichever evaluateCAA actually evaluated) so the suggested
+// record matches what the name needs. identities is normally non-empty
+// (caaStep never reaches here otherwise), but CheckCAA is exported and a
+// direct caller passing none must not panic indexing identities[0].
+func caaForbidden(owner, tag string, allow []CAARecord, identities []string) error {
 	vals := make([]string, len(allow))
 	for i, rec := range allow {
 		vals[i] = rec.Value
 	}
-	detail := fmt.Sprintf("CAA at %s allows %s; the CA identifies as %s. Add: %s CAA 0 issue %q",
-		owner, strings.Join(vals, ", "), strings.Join(identities, ", "), owner, identities[0])
+	add := "<no caaIdentities published>"
+	if len(identities) > 0 {
+		add = identities[0]
+	}
+	detail := fmt.Sprintf("CAA at %s allows %s; the CA identifies as %s. Add: %s CAA 0 %s %q",
+		owner, strings.Join(vals, ", "), strings.Join(identities, ", "), owner, tag, add)
 	return &signer.Error{Type: "urn:ietf:params:acme:error:caa", Detail: detail}
 }
