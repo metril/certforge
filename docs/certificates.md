@@ -269,3 +269,5 @@ An uploaded certificate is **unmanaged**: CertForge stores it, can deploy it, an
 
 A grant, layout and deploy target work on an unmanaged certificate exactly as they do on a managed one, with one rule: a layout that renders a key (any part `key`/`combined`, or a p12/jks file), or a Traefik deploy target (which always renders `fullchain` + `key`), cannot be granted against a certificate whose current version has no stored key — 422 on `certificateId` if you try. Uploading a keyless version onto a certificate that already has such a grant is refused the same way (409), so a grant never silently starts failing to deploy because a later upload dropped the key it depended on.
 
+The web UI marks an unmanaged certificate with a **Managed externally** chip, disables Renew now and Settings' Edit in favour of an **Upload new version** action, and shows "Not renewed here" in place of Next renewal.
+

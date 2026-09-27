@@ -17,6 +17,7 @@ import { DownloadSheet } from './DownloadSheet';
 import { OverviewTab } from './OverviewTab';
 import { SettingsTab } from './SettingsTab';
 import { TABS, type Tab } from './tabs';
+import { UploadVersionSheet } from './UploadVersionSheet';
 import { VersionsTab } from './VersionsTab';
 
 const LABEL: Record<Tab, string> = { overview: 'Overview', versions: 'Versions', attempts: 'Attempts', deployments: 'Deployments', settings: 'Settings' };
@@ -54,6 +55,7 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
     },
   });
   const [download, setDownload] = useState<{ open: boolean; versionId?: string }>({ open: false });
+  const [uploadVersionOpen, setUploadVersionOpen] = useState(false);
 
   if (isPending) return <p className="text-ink-muted">Loading…</p>;
   if (error) return <p role="alert">{errorMessage(error)}</p>;
@@ -81,11 +83,13 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
         orgSlug={org.slug}
         canRenew={can(me, 'certs:issue', org.id)}
         canDelete={can(me, 'certs:write', org.id)}
+        canWrite={can(me, 'certs:write', org.id)}
         onDownload={() => setDownload({ open: true })}
         onRenewed={() => {
           markLive();
           goTab('attempts');
         }}
+        onUploadVersion={() => setUploadVersionOpen(true)}
       />
       {/* Always mounted (controller ruling): it fetches its own manual-dns
           records and renders nothing when none are waiting, so there's no
@@ -130,6 +134,7 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
           onOpenChange={(o) => !o && setDownload({ open: false })}
         />
       )}
+      {uploadVersionOpen && <UploadVersionSheet orgId={org.id} id={cert.id} onOpenChange={setUploadVersionOpen} />}
     </div>
   );
 }

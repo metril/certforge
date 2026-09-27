@@ -96,6 +96,16 @@ export const help = {
   // (Task 12), not what a read-only SANs column means.
   'cert.namesColumn': { text: 'Subject alternative names besides the common name shown under Name.', learnMore: 'certificates.md#names' },
   'cert.nextRenew': { text: 'When CertForge next tries to renew. ARI can move it earlier.' },
+  'cert.managed': {
+    text: 'Renewed outside CertForge. Upload each new version yourself.',
+    learnMore: 'certificates.md#unmanaged-certificates',
+  },
+  'cert.renewUnmanaged': { text: "Managed externally, so CertForge doesn't renew or edit it. Upload a new version instead." },
+  'cert.uploadVersion': { text: 'Becomes the current version. Grants deploy it on their next sync.' },
+  'cert.ari': {
+    text: "The CA's suggested renewal window. CertForge renews inside it when that is earlier.",
+    learnMore: 'certificates.md#ari',
+  },
   'status.column': { text: 'State of the certificate itself, not of its last attempt.' },
   'rules.method': { text: 'How each rule proves control of its names. One certificate can mix methods.', learnMore: 'certificates.md#mixing-methods' },
   'rules.match': { text: 'Name pattern. The first matching rule wins; * matches everything.' },

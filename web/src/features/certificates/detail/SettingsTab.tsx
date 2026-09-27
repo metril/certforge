@@ -5,9 +5,11 @@ import { effectiveDefaultsQuery } from '@/api/queries/defaults';
 import type { Certificate, EffectiveMap } from '@/api/types';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { rulesSummary, useFieldCtx } from '@/features/settings/issuanceFields';
 import { CoveragePanel } from '@/forms/CoveragePanel';
 import { coverage, inheritedFrom } from '@/lib/coverage';
+import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { EffectiveConfigList, NameChipStatic } from './shared';
@@ -30,7 +32,19 @@ export function SettingsTab({ cert, orgId, orgSlug }: Props) {
   return (
     <div className="grid gap-8 pt-4">
       <div className="flex justify-end">
-        {canEdit ? (
+        {!cert.managed ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="inline-flex">
+                <Button variant="outline" disabled>
+                  <Pencil className="size-4" aria-hidden />
+                  Edit
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{help['cert.renewUnmanaged'].text}</TooltipContent>
+          </Tooltip>
+        ) : canEdit ? (
           <Button asChild variant="outline">
             <Link to="/o/$org/certificates/$id/edit" params={{ org: orgSlug, id: cert.id }}>
               <Pencil className="size-4" aria-hidden />

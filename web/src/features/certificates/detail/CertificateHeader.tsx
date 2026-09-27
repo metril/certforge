@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { CircleAlert, CopyPlus, Download, MoreHorizontal, RotateCw, Trash2 } from 'lucide-react';
+import { CircleAlert, CopyPlus, Download, ExternalLink, MoreHorizontal, RotateCw, Trash2, Upload } from 'lucide-react';
 import { accountsQuery } from '@/api/queries/accounts';
 import { casQuery } from '@/api/queries/cas';
 import { certificateQuery, useDeleteCertificates, useRenewCertificates } from '@/api/queries/certificates';
 import type { Certificate, EffectiveMap } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
-import { StatusChip } from '@/components/StatusChip';
+import { PermissionTip } from '@/components/PermissionTip';
+import { StatusChip, ToneChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { help } from '@/lib/help';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { relDays } from '@/lib/time';
 
@@ -21,8 +23,10 @@ type Props = {
   orgSlug: string;
   canRenew: boolean;
   canDelete: boolean;
+  canWrite: boolean;
   onDownload: () => void;
   onRenewed: () => void;
+  onUploadVersion: () => void;
 };
 
 // Header actions (controller ruling): Renew now, Download, and Duplicate
@@ -32,7 +36,7 @@ type Props = {
 // Delete needs certs:write in this certificate's org (fix round 1); both are
 // disabled with a tooltip rather than hidden, matching DownloadSheet's
 // keys:export-gated parts.
-export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, onDownload, onRenewed }: Props) {
+export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, canWrite, onDownload, onRenewed, onUploadVersion }: Props) {
   const renew = useRenewCertificates(orgId);
   const del = useDeleteCertificates(orgId);
   const qc = useQueryClient();
@@ -51,6 +55,7 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, o
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold">{cert.name}</h1>
             <StatusChip status={cert.status} withHelp />
+            {!cert.managed && <ToneChip tone="neutral" icon={ExternalLink} label="Managed externally" help="cert.managed" />}
           </div>
           <span className="truncate font-mono text-xs text-ink-muted">{cert.commonName}</span>
         </div>
@@ -58,7 +63,7 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, o
           {(() => {
             const renewButton = (
               <Button
-                disabled={renew.isPending || !canRenew}
+                disabled={renew.isPending || !canRenew || !cert.managed}
                 onClick={() => {
                   const toasts = renewToastHandlers(cert.name);
                   renew.mutate([cert.id], {
@@ -74,20 +79,35 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, o
                 Renew now
               </Button>
             );
-            if (canRenew) return renewButton;
-            return (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span tabIndex={0}>{renewButton}</span>
-                </TooltipTrigger>
-                <TooltipContent>Needs the certs:issue permission</TooltipContent>
-              </Tooltip>
-            );
+            // Unmanaged takes precedence over the permission tip (brief):
+            // even a caller with certs:issue can't renew a certificate
+            // CertForge doesn't own.
+            if (!cert.managed) {
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0} className="inline-flex">
+                      {renewButton}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{help['cert.renewUnmanaged'].text}</TooltipContent>
+                </Tooltip>
+              );
+            }
+            return <PermissionTip allowed={canRenew} action="certs:issue">{renewButton}</PermissionTip>;
           })()}
           <Button variant="outline" disabled={!cert.currentVersion} onClick={onDownload}>
             <Download className="size-4" aria-hidden />
             Download
           </Button>
+          {!cert.managed && (
+            <PermissionTip allowed={canWrite} action="certs:write">
+              <Button variant="outline" disabled={!canWrite} onClick={onUploadVersion}>
+                <Upload className="size-4" aria-hidden />
+                Upload new version
+              </Button>
+            </PermissionTip>
+          )}
           <Button variant="ghost" asChild>
             <Link to="/o/$org/certificates/new" params={{ org: orgSlug }} search={{ from: cert.id }}>
               <CopyPlus className="size-4" aria-hidden />
@@ -126,7 +146,7 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, o
       <dl className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
         <div className="flex gap-2">
           <dt className="text-ink-muted">CA</dt>
-          <dd>{caName ?? '–'}</dd>
+          <dd>{cert.managed ? (caName ?? '–') : '–'}</dd>
         </div>
         <div className="flex gap-2">
           <dt className="text-ink-muted">Account</dt>
@@ -134,7 +154,7 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, o
         </div>
         <div className="flex gap-2">
           <dt className="text-ink-muted">Next renewal</dt>
-          <dd>{cert.nextRenewAt ? relDays(cert.nextRenewAt) : '–'}</dd>
+          <dd>{cert.managed ? (cert.nextRenewAt ? relDays(cert.nextRenewAt) : '–') : 'Not renewed here'}</dd>
         </div>
         {cert.failureCount > 0 && (
           <div className="flex min-w-0 gap-2">

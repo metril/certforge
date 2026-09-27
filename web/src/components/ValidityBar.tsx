@@ -1,12 +1,15 @@
-import type { Certificate } from '@/api/types';
+import type { AriWindow, Certificate } from '@/api/types';
 import { validityTone, type Tone } from '@/lib/status';
-import { DAY, fmtDate, relDays } from '@/lib/time';
+import { DAY, fmtDate, relDays, relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { HelpTip } from './HelpTip';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 type Span = { notBefore: string; notAfter: string };
 export type ValidityProps = Span & {
   renewAt?: string | null;
   ghost?: Span | null;
+  ari?: AriWindow | null;
   tone: Tone;
   now?: number;
   size?: 'compact' | 'full';
@@ -29,19 +32,33 @@ function ghostValid(current: Span, ghost: Span): boolean {
 
 /** Percent positions of now/end/window/ghost along the notBefore..notAfter
  * lifetime (extended to cover a ghost successor's own notAfter, if later). */
-export function validityGeometry({ notBefore, notAfter, renewAt, ghost, now }: Span & { renewAt?: string | null; ghost?: Span | null; now: number }) {
+export function validityGeometry({
+  notBefore,
+  notAfter,
+  renewAt,
+  ghost,
+  ari,
+  now,
+}: Span & { renewAt?: string | null; ghost?: Span | null; ari?: AriWindow | null; now: number }) {
   const start = Date.parse(notBefore);
   const end = Date.parse(notAfter);
   const current = { notBefore, notAfter };
   const domainEnd = ghost && ghostValid(current, ghost) ? Math.max(end, Date.parse(ghost.notAfter)) : end;
   const span = Math.max(domainEnd - start, 1);
   const pct = (t: number) => clamp(((t - start) / span) * 100);
+  // Task 7: the ARI window is only drawn when it overlaps the lifetime at
+  // all — an ARI window the CA already moved past (or hasn't reached yet
+  // relative to a stale fixture) has nothing sensible to clamp onto.
+  const ariStart = ari ? Date.parse(ari.start) : NaN;
+  const ariEnd = ari ? Date.parse(ari.end) : NaN;
+  const ariOutside = !ari || !Number.isFinite(ariStart) || !Number.isFinite(ariEnd) || ariEnd < start || ariStart > domainEnd;
   return {
     end: pct(end),
     now: pct(now),
     elapsed: Math.min(pct(now), pct(end)),
     window: renewAt ? { from: pct(Date.parse(renewAt)), to: pct(end) } : null,
     ghost: ghost && ghostValid(current, ghost) ? { from: pct(Date.parse(ghost.notBefore)), to: pct(Date.parse(ghost.notAfter)) } : null,
+    ari: ariOutside ? null : { from: pct(ariStart), to: pct(ariEnd) },
     lifetimeDays: Math.round((end - start) / DAY),
   };
 }
@@ -62,7 +79,12 @@ export function validityLabel(p: ValidityProps, now: number): string {
   if (p.ghost && ghostValid({ notBefore: p.notBefore, notAfter: p.notAfter }, p.ghost)) {
     parts.push(`next version until ${fmtDate(p.ghost.notAfter)}`);
   }
+  if (p.ari) parts.push(`ARI window ${fmtDate(p.ari.start)} to ${fmtDate(p.ari.end)}`);
   return parts.join(', ');
+}
+
+function ariPhrase(ari: AriWindow, now: number): string {
+  return `ARI window ${fmtDate(ari.start)} to ${fmtDate(ari.end)}, checked ${relTime(ari.checkedAt, now)}`;
 }
 
 const FILL: Record<Tone, string> = {
@@ -87,6 +109,7 @@ export function ValidityBar(p: ValidityProps) {
   const renew = renewPhrase(p.renewAt, now);
   const bar = (
     <div role="img" aria-label={validityLabel(p, now)} className={cn('relative w-full', full ? 'my-1.5' : 'my-1', !full && p.className)}>
+      {g.ari && <div className="absolute -top-1 h-0.5 bg-primary" style={{ left: `${g.ari.from}%`, width: `${Math.max(g.ari.to - g.ari.from, 0)}%` }} />}
       <div className={cn('relative w-full bg-subtle', full ? 'h-2.5' : 'h-1.5')}>
         <div className={cn('absolute inset-y-0 left-0 opacity-25', fill)} style={{ width: `${g.elapsed}%` }} />
         <div className={cn('absolute inset-y-0', fill)} style={{ left: `${g.elapsed}%`, width: `${Math.max(g.end - g.elapsed, 0)}%` }} />
@@ -126,6 +149,22 @@ export function ValidityBar(p: ValidityProps) {
           Expires {fmtDate(p.notAfter)} ({relDays(p.notAfter, now)})
         </span>
       </div>
+      {/* Pre-flight C2: sits outside both the role="img" bar above and the
+          aria-hidden legend, so its HelpTip is reachable by keyboard/screen
+          reader instead of being flattened out of the accessible tree. */}
+      {p.ari && (
+        <div className="flex items-center gap-1.5 text-xs text-ink-muted">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>{ariPhrase(p.ari, now)}</span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {fmtDate(p.ari.start)} – {fmtDate(p.ari.end)}
+            </TooltipContent>
+          </Tooltip>
+          <HelpTip id="cert.ari" />
+        </div>
+      )}
     </div>
   );
 }
@@ -135,6 +174,15 @@ export function CertValidity({ cert, size = 'compact', now, className }: { cert:
   const v = cert.currentVersion;
   if (!v) return null;
   return (
-    <ValidityBar notBefore={v.notBefore} notAfter={v.notAfter} renewAt={cert.nextRenewAt} tone={validityTone(cert, now)} now={now} size={size} className={className} />
+    <ValidityBar
+      notBefore={v.notBefore}
+      notAfter={v.notAfter}
+      renewAt={cert.nextRenewAt}
+      ari={cert.ariWindow}
+      tone={validityTone(cert, now)}
+      now={now}
+      size={size}
+      className={className}
+    />
   );
 }

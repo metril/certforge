@@ -195,3 +195,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Replaced the schema-form JSON Schema validator (`@rjsf/validator-ajv8`) with a CSP-safe pure-JS interpreter (`@cfworker/json-schema`): ajv compiled schemas via `new Function`, which the server's CSP blocks in a real browser, silently breaking every credential/settings form Save.
 - Import certificates from acme.sh and certbot directories.
 - End-to-end coverage for http-01, tls-alpn-01, mixed methods, PKCS#12 export and ARI.
+- Certificate detail marks externally managed certificates, uploads new versions and shows the ARI window.

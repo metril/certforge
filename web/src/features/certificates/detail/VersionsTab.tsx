@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { Download } from 'lucide-react';
+import { Download, KeyRound } from 'lucide-react';
 import { versionsQuery } from '@/api/queries/certificates';
 import type { Certificate } from '@/api/types';
 import { CopyField } from '@/components/CopyField';
 import { EmptyState } from '@/components/EmptyState';
 import { HelpTip } from '@/components/HelpTip';
+import { ToneChip } from '@/components/StatusChip';
 import { ValidityBar } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -82,7 +83,12 @@ export function VersionsTab({
               <TableCell className="max-w-56">
                 <CopyField value={v.sha256Fingerprint} display={`${v.sha256Fingerprint.slice(0, 16)}…`} label="SHA-256 fingerprint" />
               </TableCell>
-              <TableCell className="capitalize">{v.source}</TableCell>
+              <TableCell className="capitalize">
+                <span className="inline-flex items-center gap-1.5">
+                  {v.source}
+                  {!v.hasKey && <ToneChip tone="neutral" icon={KeyRound} label="No key" help="download.noKey" />}
+                </span>
+              </TableCell>
               <TableCell>
                 <Button variant="ghost" size="icon" aria-label={`Download version ${v.serial}`} onClick={() => onDownload(v.id)}>
                   <Download className="size-4" aria-hidden />

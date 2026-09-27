@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { fmtDate } from '@/lib/time';
 import { iso, NOW } from '@/test/fixtures';
 import { ValidityBar, validityGeometry } from './ValidityBar';
@@ -129,4 +130,57 @@ it('keeps the renew label left-anchored with a translate when the window starts 
   const label = screen.getByText(/^renews/);
   expect(label).toHaveClass('-translate-x-1/2');
   expect(label).not.toHaveClass('right-0');
+});
+
+// Task 7: the ARI window geometry — inside the lifetime, clamped when it
+// overruns one edge, and null when the window falls entirely outside it.
+it('computes the ARI window geometry: inside, clamped, and outside', () => {
+  const inside = validityGeometry({ notBefore: iso(-30), notAfter: iso(60), ari: { start: iso(0), end: iso(20), checkedAt: iso(0) }, now: NOW });
+  expect(inside.ari).toEqual({ from: expect.closeTo(33.33, 1), to: expect.closeTo(55.56, 1) });
+
+  const clamped = validityGeometry({ notBefore: iso(-30), notAfter: iso(60), ari: { start: iso(-40), end: iso(10), checkedAt: iso(0) }, now: NOW });
+  expect(clamped.ari).toEqual({ from: 0, to: expect.closeTo(44.44, 1) });
+
+  const outside = validityGeometry({ notBefore: iso(-30), notAfter: iso(60), ari: { start: iso(70), end: iso(90), checkedAt: iso(0) }, now: NOW });
+  expect(outside.ari).toBeNull();
+
+  expect(validityGeometry({ notBefore: iso(-30), notAfter: iso(60), ari: null, now: NOW }).ari).toBeNull();
+});
+
+it("appends the ARI window to the bar's accessible label", () => {
+  render(
+    <TooltipProvider>
+      <ValidityBar
+        notBefore={iso(-30)}
+        notAfter={iso(60)}
+        tone="valid"
+        now={NOW}
+        ari={{ start: iso(0), end: iso(20), checkedAt: iso(0) }}
+      />
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('img')).toHaveAccessibleName(`Valid ${fmtDate(iso(-30))} to ${fmtDate(iso(60))}, expires in 60 d, ARI window ${fmtDate(iso(0))} to ${fmtDate(iso(20))}`);
+});
+
+// Pre-flight C2: the ARI help must be reachable outside the decorative
+// role="img" bar and outside the aria-hidden legend row — a screen reader
+// user tabbing through the page must actually land on it.
+it('keeps the ARI HelpTip reachable outside the role="img" bar and the aria-hidden legend', () => {
+  render(
+    <TooltipProvider>
+      <ValidityBar
+        notBefore={iso(-30)}
+        notAfter={iso(60)}
+        tone="valid"
+        now={NOW}
+        size="full"
+        ari={{ start: iso(0), end: iso(20), checkedAt: iso(0) }}
+      />
+    </TooltipProvider>,
+  );
+  const helpButton = screen.getByRole('button', { name: 'Help' });
+  for (let el: HTMLElement | null = helpButton; el; el = el.parentElement) {
+    expect(el.getAttribute('role')).not.toBe('img');
+    expect(el.getAttribute('aria-hidden')).not.toBe('true');
+  }
 });
