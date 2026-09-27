@@ -42,6 +42,17 @@ type Account struct {
 	CreatedAt       time.Time
 }
 
+// Staging reports whether ca's preset is the one that does not itself
+// enforce ACME rate limits: true only for letsencrypt-staging (Deviations
+// R7). A custom directory (Pebble, or anything else reached through
+// "custom") is not staging by this signal, so the rate ledger enforces it
+// like any production CA — an e2e run raises the limits through settings
+// instead.
+func (ca CA) Staging() bool {
+	p, ok := acmesigner.PresetByCode(ca.Preset)
+	return ok && p.Staging
+}
+
 func caFromRow(r sqlcgen.Ca) CA {
 	return CA{ID: r.ID, OrgID: r.OrgID, Name: r.Name, Preset: r.Preset, DirectoryURL: r.DirectoryUrl,
 		TrustBundlePEM: r.TrustBundlePem, EABKid: r.EabKid, HasEAB: len(r.EabHmac) > 0,

@@ -156,13 +156,23 @@ In the web UI, a pending certificate with records waiting shows an amber **Manua
 
 ### Failures and backoff
 
-A failed attempt sets `failureCount`, `lastError`, and the next try to `min(5 min · 2^(failures−1), 24 h)` ±20%. When the CA answers `rateLimited` with `Retry-After`, the next try is no earlier than that. A failed renewal leaves a still-valid certificate `active`. The rate-limit ledger appears as a `skipped` step until Phase 4A Task 11.
+A failed attempt sets `failureCount`, `lastError`, and the next try to `min(5 min · 2^(failures−1), 24 h)` ±20%. When the CA answers `rateLimited` with `Retry-After`, the next try is no earlier than that. A failed renewal leaves a still-valid certificate `active`. A rate-limit ledger failure (see [Rate limits](#rate-limits)) is the one exception: the next try is scheduled exactly at the window's expiry, not by this backoff.
 
 ## CAA
 
 Before any order, CertForge checks each name's CAA records itself: for each SAN, strip a leading `*.`, then climb labels from the name up to and including its registered domain, stopping at the first label with any CAA records — exactly the lookup RFC 8659 §5.3 describes. If that record set does not permit the CA (via `issuewild` for a wildcard name, `issue` otherwise, or an unrecognised critical property), the attempt fails before contacting the CA at all, with `urn:ietf:params:acme:error:caa` and a message naming the record and a CAA line to add.
 
 This is a convenience only — **the CA always re-checks CAA itself during the real order**; disabling it here only saves a doomed order, it never lets an actually-forbidden name through. Turn it off with **Check CAA records** in [Settings → Issuance](configuration.md#issuance); a certificate has no per-certificate override. When the CA's directory publishes no `caaIdentities` (or a CA kind, Phase 5, that publishes none at all), the step succeeds without evaluating CAA — there is nothing to compare records against.
+
+## Rate limits
+
+Before every order, CertForge checks its own local record of what it has sent this CA — `new_order` (once per attempt), `cert_issued` (once per registered domain, on success) and `failed_validation` (once per registered domain, on a `unauthorized`, `dns`, `connection`, `incorrectResponse`, `tls` or `caa` failure) — against four trailing-window limits, defaulting to Let's Encrypt's own published limits: 50 certificates per registered domain per week, 5 duplicate (identical name set) certificates per week, 5 failed validations per account per hour, 300 new orders per account per 3 hours. Set to `0` to disable a limit; change them under [Settings → Issuance](configuration.md#issuance).
+
+This is only an approximation of the CA's real limits: it is tracked **per CA entry, not per ACME account**, so two CA entries pointing at the same real CA (or an account shared outside CertForge) are not counted together, and a CertForge instance is never the CA's only client. A CA using the `letsencrypt-staging` preset is recorded but never enforced, since that CA does not itself rate-limit; any other directory (including a custom Pebble instance used for testing) is enforced like production, so a test run that needs to issue past the built-in limits raises them in settings instead.
+
+When a limit is reached, the attempt fails at the `rate_ledger` step with `urn:ietf:params:acme:error:rateLimited` and a message naming the limit, the current count and the retry time; unlike an ordinary failure, the next attempt is scheduled exactly when the window clears (the oldest counted event's window expiry), not by the usual exponential backoff — though a longer `Retry-After` from the CA itself still wins.
+
+`GET /orgs/{orgId}/rate-ledger?ca=<id>` (also shown on the CA's page) reports the current count, limit and reset time for each: one `certsPerRegisteredDomainPerWeek` and one `failedValidationsPerHour` entry per registered domain the org has issued against this CA, one `newOrdersPer3Hours` entry for the CA as a whole, and — only when `certificate=<id>` is also given — one `duplicateCertsPerWeek` entry for that certificate's exact name set. Every count is CA-wide (it is the CA's own limit, shared by every org using that CA entry); only which registered domains are shown is scoped to the calling org's own certificates.
 
 ## Attempts
 

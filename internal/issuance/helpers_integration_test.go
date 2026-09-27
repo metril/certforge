@@ -79,6 +79,20 @@ func (f *fixture) client(t *testing.T, org uuid.UUID, name string, capabilities 
 	return id
 }
 
+// account registers a fresh ACME account against caID, for tests that issue
+// against a CA other than the fixture's default one.
+func (f *fixture) account(t *testing.T, caID uuid.UUID) uuid.UUID {
+	t.Helper()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	der, _ := x509.MarshalPKCS8PrivateKey(key)
+	a, err := f.store.InsertAccount(context.Background(), f.org, caID,
+		signer.AccountMaterial{Email: "ops@example.test", KeyPKCS8: der, RegistrationURI: "https://ca.test/acct/" + caID.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a.ID
+}
+
 func (f *fixture) credential(t *testing.T, name string) uuid.UUID {
 	t.Helper()
 	c, err := f.store.CreateDNSCredential(context.Background(), f.org, name, "cloudflare", map[string]string{"CF_DNS_API_TOKEN": "tok-" + name})

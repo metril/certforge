@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"golang.org/x/net/publicsuffix"
 
 	"github.com/metril/certforge/internal/signer"
 )
@@ -167,10 +166,7 @@ func CheckCAA(ctx context.Context, r CAAResolver, names []string, identities []s
 // name it was found at), or no records when every label up to and
 // including the registered domain came back empty.
 func caaLookupChain(ctx context.Context, r CAAResolver, name string, servers []string) (owner string, records []CAARecord, err error) {
-	registered, psErr := publicsuffix.EffectiveTLDPlusOne(name)
-	if psErr != nil {
-		registered = name
-	}
+	registered := registeredDomainOrSelf(name)
 	owner = name
 	for {
 		recs, err := r.LookupCAA(ctx, owner, servers)

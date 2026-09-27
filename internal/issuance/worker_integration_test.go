@@ -174,8 +174,10 @@ func TestIssueSuccess(t *testing.T) {
 	st := stepStatus(a)
 	// caa is "success" (not "skipped"): fakeSigner does not implement
 	// signer.DirectoryInfo, so the step succeeds with "CA does not publish
-	// caaIdentities" — see Task 10.
-	for name, want := range map[string]string{"caa": "success", "rate_ledger": "skipped", "account": "success", "order": "success",
+	// caaIdentities" — see Task 10. rate_ledger is "success" too, Task 11:
+	// the fixture's CA is preset "custom" (not staging) with no prior
+	// ledger rows, so it is enforced and within every limit.
+	for name, want := range map[string]string{"caa": "success", "rate_ledger": "success", "account": "success", "order": "success",
 		"challenge example.test": "success", "finalize": "success", "store": "success"} {
 		if st[name] != want {
 			t.Errorf("step %s = %q want %q (%v)", name, st[name], want, st)
@@ -441,6 +443,50 @@ func TestIssueManualConfirm(t *testing.T) {
 	<-done // the goroutine still calls t.Errorf; it must finish before the test does
 	if got, _ := f.store.GetCertificate(context.Background(), f.org, c.ID); got.Status != StatusActive {
 		t.Fatalf("cert = %+v", got)
+	}
+}
+
+// TestWorkerLedgerBlocksAndSchedules: 5 prior cert_issued rows for the same
+// exact name set already reach a duplicateCertsPerWeek limit of 5, so this
+// attempt must fail at the rate_ledger step before ever contacting the CA,
+// and next_renew_at must be exactly the window's expiry (the oldest of the
+// 5 rows plus 7 days), not the usual exponential backoff.
+func TestWorkerLedgerBlocksAndSchedules(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	names := []string{"dup.example.test"}
+	c := f.cert(t, names, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: ptr(f.credential(t, "cf"))}})
+	oldest := now0.Add(-5 * time.Hour)
+	for i := 5; i >= 1; i-- {
+		if err := f.store.RecordCertIssued(ctx, nil, f.ca.ID, c.ID, names, now0.Add(-time.Duration(i)*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fs := &fakeSigner{issued: issuedFor(t, names, now0)}
+	w := newWorker(f, fs)
+	w.Settings = func(context.Context) (IssuanceSettings, error) {
+		return IssuanceSettings{RateLimits: RateLimits{DuplicateCertsPerWeek: 5}}, nil
+	}
+	if err := w.Issue(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fs.calls != 0 {
+		t.Fatalf("signer.Issue was called %d time(s)", fs.calls)
+	}
+	got, err := f.store.GetCertificate(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRetry := oldest.Add(7 * 24 * time.Hour)
+	if got.Status != StatusFailed || got.NextRenewAt == nil || !got.NextRenewAt.Equal(wantRetry) {
+		t.Fatalf("cert = %+v, want next_renew_at %s", got, wantRetry)
+	}
+	a := lastAttempt(t, f, c.ID)
+	if a.Outcome != OutcomeFailed || a.ACMEErrorType != "urn:ietf:params:acme:error:rateLimited" {
+		t.Fatalf("attempt = %+v", a)
+	}
+	if st := stepStatus(a)["rate_ledger"]; st != challenge.StepFailed {
+		t.Fatalf("rate_ledger step = %q", st)
 	}
 }
 

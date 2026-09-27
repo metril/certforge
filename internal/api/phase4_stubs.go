@@ -25,8 +25,3 @@ func (s *Server) UploadCertificate(_ context.Context, _ gen.UploadCertificateReq
 func (s *Server) UploadCertificateVersion(_ context.Context, _ gen.UploadCertificateVersionRequestObject) (gen.UploadCertificateVersionResponseObject, error) {
 	return nil, notImplemented
 }
-
-// GetRateLedger lands in Task 11 (rate ledger).
-func (s *Server) GetRateLedger(_ context.Context, _ gen.GetRateLedgerRequestObject) (gen.GetRateLedgerResponseObject, error) {
-	return nil, notImplemented
-}

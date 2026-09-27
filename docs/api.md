@@ -73,7 +73,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET /orgs/{orgId}/certificates/{id}/attempts` | attempts with step timeline and log |
 | `GET /orgs/{orgId}/certificates/{id}/manual-dns` | TXT records waiting for an operator |
 | `POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm` | resume the waiting attempt |
-| `GET /orgs/{orgId}/rate-ledger` | the CA's current rate-limit usage (arriving in Phase 4A) |
+| `GET /orgs/{orgId}/rate-ledger?ca=<id>&certificate=<id>` | the CA's current rate-limit usage (`ca` required; `certificate` adds the duplicate-certificate item) — needs `certs:read`; see [certificates.md#rate-limits](certificates.md#rate-limits) |
 | `GET /users` | list users |
 | `PATCH /users/{id}` | disable or re-enable a user, revoking sessions |
 | `GET, POST /api-keys` | list, create API keys (token shown once) |

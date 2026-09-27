@@ -168,7 +168,11 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 	defer func() {
 		if r := recover(); r != nil {
 			tl.Logf("panic: %v\n%s", r, truncatedStack())
-			if ferr := w.fail(bg, cert, attemptID, tl, fmt.Errorf("panic: %v", r)); ferr != nil {
+			// Effective{} here (not the eff run assigns below): a panic never
+			// carries an ACME error type, so fail's failed-validation write
+			// never triggers regardless, and eff is only otherwise used for
+			// that.
+			if ferr := w.fail(bg, cert, attemptID, tl, Effective{}, fmt.Errorf("panic: %v", r)); ferr != nil {
 				w.Log.Error("finish attempt after panic", "attempt", attemptID, "err", ferr)
 			}
 			panic(r)
@@ -176,7 +180,7 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 	}()
 	iss, eff, err := w.run(ctx, cert, attemptID, tl)
 	if err != nil {
-		return w.fail(bg, cert, attemptID, tl, err)
+		return w.fail(bg, cert, attemptID, tl, eff, err)
 	}
 	if err := w.succeed(bg, cert, attemptID, tl, iss, eff); err != nil {
 		// succeed's own transaction rolled back, so the attempt row is still
@@ -216,7 +220,9 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	if err := w.caaStep(ctx, tl, cert, ca, eff, sig, cfg); err != nil {
 		return nil, eff, err
 	}
-	tl.Step("rate_ledger", challenge.StepSkipped, "rate-limit ledger arrives in Phase 4")
+	if err := w.rateLedgerStep(ctx, tl, cert, ca, cfg); err != nil {
+		return nil, eff, err
+	}
 
 	tl.Step("account", challenge.StepRunning, "")
 	acct, material, err := w.Store.AccountMaterial(ctx, cert.OrgID, *eff.AccountID.Value)
@@ -328,6 +334,46 @@ func (w *IssueWorker) caaStep(ctx context.Context, tl *Timeline, cert Certificat
 		return err
 	}
 	tl.Step("caa", challenge.StepSuccess, detail)
+	return nil
+}
+
+// validationFailureTypes are the ACME error types recorded against
+// failedValidationsPerHour (Deviations R7): a challenge that the CA itself
+// rejected, not an infrastructure or configuration error.
+var validationFailureTypes = map[string]bool{
+	"urn:ietf:params:acme:error:unauthorized":      true,
+	"urn:ietf:params:acme:error:dns":               true,
+	"urn:ietf:params:acme:error:connection":        true,
+	"urn:ietf:params:acme:error:incorrectResponse": true,
+	"urn:ietf:params:acme:error:tls":               true,
+	"urn:ietf:params:acme:error:caa":               true,
+}
+
+// rateLedgerStep runs the local rate-limit check (R7) for cert's names
+// against ca's CA-wide ledger, then records a new_order row for the attempt
+// about to run — always, even for a staging preset, which is recorded but
+// never enforced (its CA does not itself rate-limit; Deviations R7).
+func (w *IssueWorker) rateLedgerStep(ctx context.Context, tl *Timeline, cert Certificate, ca CA, cfg IssuanceSettings) error {
+	tl.Step("rate_ledger", challenge.StepRunning, "")
+	staging := ca.Staging()
+	if !staging {
+		exceeded, err := CheckLedger(ctx, w.Store, ca.ID, cert.Names(), cfg.RateLimits, w.Now())
+		if err != nil {
+			return err
+		}
+		if exceeded != nil {
+			tl.Step("rate_ledger", challenge.StepFailed, exceeded.Error())
+			return &signer.Error{Type: "urn:ietf:params:acme:error:rateLimited", Detail: exceeded.Error(), Err: exceeded}
+		}
+	}
+	if err := w.Store.RecordNewOrder(ctx, ca.ID, w.Now()); err != nil {
+		return err
+	}
+	if staging {
+		tl.Step("rate_ledger", challenge.StepSuccess, "recorded only (staging CA)")
+	} else {
+		tl.Step("rate_ledger", challenge.StepSuccess, "within limits")
+	}
 	return nil
 }
 
@@ -460,6 +506,9 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 	if err != nil {
 		return err
 	}
+	if err := w.Store.RecordCertIssued(ctx, tx, *eff.CAID.Value, cert.ID, cert.Names(), w.Now()); err != nil {
+		return err
+	}
 	next := NextRenewAt(eff.RenewPolicy.Value, iss.NotBefore, iss.NotAfter, w.Now())
 	// The names this attempt actually issued for are cert.Names() as it was
 	// captured at the start of the attempt (run's req.Names); comparing them
@@ -504,7 +553,13 @@ func (w *IssueWorker) notifyVersion(ctx context.Context, certID, versionID uuid.
 	}
 }
 
-func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, cause error) error {
+// fail records cause as this attempt's outcome and schedules the next one.
+// eff is the Effective resolved by run (zero-valued from the panic-recovery
+// path, which never carries an ACME error type): when it names a CA and
+// cause's ACME type is one of validationFailureTypes, a failed_validation
+// row is recorded against it (Deviations R7) — best-effort, logged rather
+// than failing the whole attempt-finish on a write error.
+func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, eff Effective, cause error) error {
 	now := w.Now()
 	failures := cert.FailureCount + 1
 	var acmeType string
@@ -513,14 +568,35 @@ func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid
 	if errors.As(cause, &se) {
 		acmeType, retryAfter = se.Type, se.RetryAfter
 	}
-	delay := Backoff(failures, retryAfter, w.Rand)
-	next := now.Add(delay)
+	if caID := eff.CAID.Value; caID != nil && validationFailureTypes[acmeType] {
+		if rerr := w.Store.RecordFailedValidation(ctx, *caID, cert.Names(), now); rerr != nil {
+			w.Log.Warn("record failed validation", "attempt", attemptID, "err", rerr)
+		}
+	}
+	// A rate-ledger failure (LedgerExceeded, wrapped in se above) schedules
+	// next_renew_at at the window's expiry rather than the usual exponential
+	// backoff — a longer backoff would often outlast the window pointlessly,
+	// a shorter one would just fail again — but a later CA Retry-After (rare
+	// here: the ledger check never contacts the CA) still wins.
+	var le *LedgerExceeded
+	var next time.Time
+	if errors.As(cause, &le) {
+		next = le.RetryAt
+		if alt := now.Add(retryAfter); alt.After(next) {
+			next = alt
+		}
+	} else {
+		next = now.Add(Backoff(failures, retryAfter, w.Rand))
+	}
 	tl.Finish(challenge.StepFailed, cause.Error())
 	tl.Logf("error: %v", cause)
-	tl.Logf("failure %d; next attempt at %s (in %s)", failures, next.UTC().Format(time.RFC3339), delay.Round(time.Second))
+	tl.Logf("failure %d; next attempt at %s (in %s)", failures, next.UTC().Format(time.RFC3339), next.Sub(now).Round(time.Second))
 	steps, log := tl.Snapshot()
 	var ra *time.Time
-	if retryAfter > 0 {
+	switch {
+	case le != nil:
+		ra = &next
+	case retryAfter > 0:
 		t := now.Add(retryAfter)
 		ra = &t
 	}

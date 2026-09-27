@@ -40,14 +40,23 @@ func (w *ScheduleWorker) Work(ctx context.Context, _ *river.Job[ScheduleArgs]) e
 	return err
 }
 
-// EnqueueDue marks expired certificates, closes stale attempts and enqueues
-// due certificates. It returns how many new jobs were inserted (duplicates of
-// queued or running jobs are skipped by the unique options).
+// ledgerRetention is how long a rate_ledger row is kept before EnqueueDue
+// prunes it (Deviations R7): longer than every CheckLedger window (the
+// widest is 7 days) so a still-relevant row is never pruned mid-window.
+const ledgerRetention = 30 * 24 * time.Hour
+
+// EnqueueDue marks expired certificates, closes stale attempts, prunes old
+// rate-ledger rows and enqueues due certificates. It returns how many new
+// jobs were inserted (duplicates of queued or running jobs are skipped by
+// the unique options).
 func EnqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, error) {
 	if _, err := s.MarkExpired(ctx); err != nil {
 		return 0, err
 	}
 	if _, err := s.FailStaleAttempts(ctx, 4*time.Hour); err != nil {
+		return 0, err
+	}
+	if _, err := s.PruneLedger(ctx, time.Now().Add(-ledgerRetention)); err != nil {
 		return 0, err
 	}
 	ids, err := s.DueCertificateIDs(ctx, limit)

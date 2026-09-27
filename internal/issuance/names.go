@@ -4,7 +4,21 @@ import (
 	"fmt"
 	"net"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
+
+// registeredDomainOrSelf returns name's registered domain (eTLD+1) via
+// publicsuffix, or name itself when publicsuffix cannot find one (a bare
+// TLD, a single label, or an IP) — shared by the CAA walk (caaLookupChain)
+// and the rate ledger (RegisteredDomains).
+func registeredDomainOrSelf(name string) string {
+	d, err := publicsuffix.EffectiveTLDPlusOne(name)
+	if err != nil {
+		return name
+	}
+	return d
+}
 
 // NormalizeNames validates and de-duplicates certificate names. The common
 // name comes first. Wildcards are allowed only as the whole leftmost label.

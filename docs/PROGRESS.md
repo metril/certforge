@@ -227,8 +227,8 @@ Phase 4 is split into two plans: 4A issuance backend (schema, issuance settings,
 | 7 | Agent challenge relay (server) | done | 81b9c65 |
 | 8 | Agent challenge serving and Traefik ACME router | done | 26f7dd8 |
 | 9 | Mixed-method order flow | done | fbf723f |
-| 10 | CAA pre-check | done | pending |
-| 11 | Rate ledger | planned | – |
+| 10 | CAA pre-check | done | 3fb5dcb |
+| 11 | Rate ledger | done | pending |
 | 12 | ARI | planned | – |
 | 13 | Upload and unmanaged certificates | planned | – |
 | 14 | Import from acme.sh and certbot | planned | – |
