@@ -151,10 +151,15 @@ it('shows a 409 detail inline when retire is refused', async () => {
 
 it('is read-only without settings:write', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
-  renderRoute('/settings/agents');
+  const { user } = renderRoute('/settings/agents');
   expect(await screen.findByRole('button', { name: 'Rotate' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Retire' })).toBeDisabled();
-  expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  // Review fix round 1 (Task 9, SchemaSection.tsx): Save is shown disabled
+  // behind PermissionTip, never hidden.
+  const save = screen.getByRole('button', { name: 'Save' });
+  expect(save).toBeDisabled();
+  await user.hover(save);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the settings:write permission');
 });
 
 it('says when the listener is not running, with the restart advice in a tooltip', async () => {

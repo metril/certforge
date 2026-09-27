@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage, withSecretSentinels } from '@/forms/uiSchema';
 import { HelpTip } from '@/components/HelpTip';
+import { PermissionTip } from '@/components/PermissionTip';
 import type { HelpKey } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
@@ -16,13 +17,21 @@ import { can } from '@/lib/permissions';
  * Authentication's OIDC form. Secret properties arrive as `storedSecrets`
  * and are sent back as "__unchanged__" unless replaced. `actions` renders
  * extra buttons (Authentication's "Test connection") next to Save, given
- * the form's current (possibly unsaved) value. Read-only, with no Save,
- * unless the caller holds settings:write.
+ * the form's current (possibly unsaved) value. The form itself is read-only
+ * without settings:write; Save stays visible but disabled behind
+ * `PermissionTip` (review fix round 1, Task 9 — global-constraints: a
+ * control the caller cannot use is shown disabled, never hidden, exactly
+ * like IssuanceDefaultsSection's own "Save global defaults"/"Save org
+ * defaults" buttons). `actions` and Discard still only show for a writer:
+ * Discard because a read-only form never produces a draft to discard, and
+ * `actions` (e.g. Authentication's "Test connection") because it isn't the
+ * write control this ruling is about.
  *
  * `title`/`help` (Task 9): renders a small heading with a top border above
  * the form when a caller mounts this as its own sub-block rather than the
  * whole section — IssuanceDefaultsSection's Global-tab "Checks and limits"
- * block, under the `issuance` section. */
+ * block, under the `issuance` section. It renders before the loading/error
+ * states below too, so the heading doesn't pop in only once data arrives. */
 export function SchemaSection({
   section,
   title,
@@ -43,62 +52,85 @@ export function SchemaSection({
   const formRef = useRef<SchemaFormHandle>(null);
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
   const [saveError, setSaveError] = useState<ErrorSchema | null>(null);
+  const canWrite = can(me, 'settings:write');
 
-  if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
-  if (q.isError) return <p role="alert">{errorMessage(q.error)}</p>;
+  const heading = title && (
+    <div className="flex items-center gap-1.5 border-t pt-4">
+      <h3 className="text-sm font-medium">{title}</h3>
+      {help && <HelpTip id={help} />}
+    </div>
+  );
+
+  if (q.isPending) {
+    return (
+      <div className="grid max-w-[720px] gap-6">
+        {heading}
+        <p className="text-ink-muted">Loading…</p>
+      </div>
+    );
+  }
+  if (q.isError) {
+    return (
+      <div className="grid max-w-[720px] gap-6">
+        {heading}
+        <p role="alert">{errorMessage(q.error)}</p>
+      </div>
+    );
+  }
   const schema = q.data.schema as RJSFSchema;
   const stored = q.data.storedSecrets;
   const value = draft ?? withSecretSentinels(schema, q.data.value ?? {}, stored);
-  const editable = can(me, 'settings:write') && Object.values(schema.properties ?? {}).some((p) => typeof p === 'object' && !p.readOnly);
+  // A schema with nothing writable at all (every property readOnly) has no
+  // Save button regardless of permission — there's genuinely nothing to
+  // persist. Otherwise the block always renders; `canWrite` alone decides
+  // whether the form and Save are usable, not whether they're shown.
+  const hasWritableField = Object.values(schema.properties ?? {}).some((p) => typeof p === 'object' && !p.readOnly);
 
   return (
     <div className="grid max-w-[720px] gap-6">
-      {title && (
-        <div className="flex items-center gap-1.5 border-t pt-4">
-          <h3 className="text-sm font-medium">{title}</h3>
-          {help && <HelpTip id={help} />}
-        </div>
-      )}
+      {heading}
       <SchemaForm
         ref={formRef}
         schema={schema}
         value={value}
         onChange={(v) => { setDraft(v); setSaveError(null); }}
         storedSecrets={stored}
-        readonly={!editable}
+        readonly={!canWrite}
         extraErrors={saveError ?? undefined}
         uiSchemaOverrides={uiSchemaOverrides}
       />
-      {editable && (
+      {hasWritableField && (
         <div className="flex flex-wrap gap-2">
-          <Button
-            disabled={!draft || save.isPending}
-            onClick={async () => {
-              if (!formRef.current?.validate()) return;
-              try {
-                await save.mutateAsync(value);
-                setDraft(null);
-                setSaveError(null);
-              } catch (e) {
-                // The mutation's own toast (useSaveSettings isn't silent
-                // here) already surfaces the failure with the server's own
-                // message, which already names the offending field for
-                // these plain schema sections' JSON-Schema-check errors
-                // (fix round 1, Take now #6) — this additionally highlights
-                // that field inline, when the message names one. The draft
-                // stays either way so nothing typed is lost.
-                setSaveError(fieldErrorFromMessage(schema, errorMessage(e)));
-              }
-            }}
-          >
-            Save
-          </Button>
+          <PermissionTip allowed={canWrite} action="settings:write">
+            <Button
+              disabled={!canWrite || !draft || save.isPending}
+              onClick={async () => {
+                if (!formRef.current?.validate()) return;
+                try {
+                  await save.mutateAsync(value);
+                  setDraft(null);
+                  setSaveError(null);
+                } catch (e) {
+                  // The mutation's own toast (useSaveSettings isn't silent
+                  // here) already surfaces the failure with the server's own
+                  // message, which already names the offending field for
+                  // these plain schema sections' JSON-Schema-check errors
+                  // (fix round 1, Take now #6) — this additionally highlights
+                  // that field inline, when the message names one. The draft
+                  // stays either way so nothing typed is lost.
+                  setSaveError(fieldErrorFromMessage(schema, errorMessage(e)));
+                }
+              }}
+            >
+              Save
+            </Button>
+          </PermissionTip>
           {draft && (
             <Button variant="ghost" onClick={() => { setDraft(null); setSaveError(null); }}>
               Discard changes
             </Button>
           )}
-          {actions?.(value)}
+          {canWrite && actions?.(value)}
         </div>
       )}
     </div>

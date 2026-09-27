@@ -173,8 +173,14 @@ it('is read-only without settings:write', async () => {
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))),
     ...handlers(),
   );
-  renderRoute('/settings/authentication');
+  const { user } = renderRoute('/settings/authentication');
   await screen.findByText('Stored');
-  expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  // Review fix round 1 (Task 9, SchemaSection.tsx): Save is shown disabled
+  // behind PermissionTip, never hidden, matching the global rule that a
+  // control the caller cannot use stays visible-but-disabled.
+  const save = screen.getByRole('button', { name: 'Save' });
+  expect(save).toBeDisabled();
+  await user.hover(save);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the settings:write permission');
   expect(screen.queryByRole('button', { name: 'Test connection' })).not.toBeInTheDocument();
 });

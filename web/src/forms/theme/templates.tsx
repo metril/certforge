@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 // of to this label-and-content wrapper.
 const ObjectGridClassNames = createContext<string | undefined>(undefined);
 
-function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawErrors, children, hidden, classNames, schema, uiSchema }: FieldTemplateProps) {
+function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawErrors, children, hidden, classNames, schema, uiSchema, registry }: FieldTemplateProps) {
   if (hidden) return <div className="hidden">{children}</div>;
   // Booleans render their own label + help inside SwitchField. RJSF forces
   // displayLabel=false whenever a field sets `ui:field` (our `listArray`
@@ -29,20 +29,33 @@ function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawE
   // displayLabel=false for every plain object field (getDisplayLabel.js),
   // which would otherwise hide a nested object's own title/description —
   // Issuance's "Rate limits" heading and its tooltip — so a NESTED object
-  // field always shows its label too; the root object itself (id === the
-  // form's bare idPrefix, "root" — every schema-driven form here, and every
-  // schema fixture, uses SchemaForm's default) is excluded, since its own
-  // schema.title (e.g. Issuance's root "Issuance") is meant as this app's
-  // tab/heading copy, not a label repeated inside the form body.
+  // field always shows its heading too; the root object itself (its `id`
+  // equals the form's own configured `idPrefix` — `registry.globalFormOptions
+  // .idPrefix`, not a hardcoded "root" literal, though every schema-driven
+  // form here uses SchemaForm's unconfigured default of "root") is excluded,
+  // since its own schema.title (e.g. Issuance's root "Issuance") is meant as
+  // this app's tab/heading copy, not a label repeated inside the form body.
   const isObject = schema.type === 'object';
-  const isNestedObject = isObject && id !== 'root';
+  const isNestedObject = isObject && id !== registry.globalFormOptions.idPrefix;
   const showLabel = (displayLabel || uiSchema?.['ui:field'] === 'listArray' || isNestedObject) && !!label && schema.type !== 'boolean';
   const body = (
     <>
       {showLabel && (
         <div className="flex items-center gap-1.5">
-          <Label htmlFor={id}>{label}</Label>
-          {!required && <span className="text-xs text-ink-muted">Optional</span>}
+          {isNestedObject ? (
+            // A plain heading, not a <Label htmlFor>: a nested object field
+            // (e.g. Issuance's "Rate limits") renders several inputs of its
+            // own below, not one control this text could label, and "root_
+            // rateLimits" isn't the id of anything on the page.
+            <span className="text-sm font-medium">{label}</span>
+          ) : (
+            <Label htmlFor={id}>{label}</Label>
+          )}
+          {/* "Optional" names a single field's own requiredness; an object
+              heading doesn't get one (skipped for every nested object, not
+              just when `required` happens to be set — `required` here is
+              never meaningful for one of these object fields today). */}
+          {!isNestedObject && !required && <span className="text-xs text-ink-muted">Optional</span>}
           {rawDescription && <HelpTip text={rawDescription} />}
         </div>
       )}

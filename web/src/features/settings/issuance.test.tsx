@@ -89,16 +89,51 @@ it('0 is allowed; -1 is blocked by the inline schema error and never reaches the
   expect(issuancePut).toBeUndefined();
 });
 
-it('an org admin (no global settings:write) sees it read-only with no Save', async () => {
+// Review fix round 1 (Important): a control the caller cannot use is shown
+// disabled behind PermissionTip, never hidden (global-constraints), exactly
+// like the "Save global defaults" button on the same tab — not hidden, as
+// the original brief text said.
+it('an org admin (no global settings:write) sees the fields disabled and Save disabled with a tooltip, not hidden', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: org.id }]))));
-  await openGlobalTab();
+  const { user } = await openGlobalTab();
   expect(screen.getByRole('switch', { name: 'Check CAA records' })).toBeDisabled();
   expect(screen.getByLabelText('Duplicate certificates per week')).toBeDisabled();
-  expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  const save = screen.getByRole('button', { name: 'Save' });
+  expect(save).toBeDisabled();
+  await user.hover(save);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the settings:write permission');
 });
 
+// Review fix round 1 (Important): the previous version asserted before the
+// org tab's own data could have loaded, so it passed even if the block were
+// on the org tab too — wait for one of the org tab's own fields to render
+// first, so a real regression (the block leaking onto the org tab) would
+// actually fail this.
 it('the org tab has no checks-and-limits block', async () => {
   renderRoute('/settings/issuance-defaults');
-  await screen.findByRole('tab', { name: 'Global' });
+  await screen.findByRole('group', { name: 'Key type' });
   expect(screen.queryByText('Checks and limits')).not.toBeInTheDocument();
+  expect(screen.queryByRole('switch', { name: 'Check CAA records' })).not.toBeInTheDocument();
+});
+
+// Review fix round 1 (Minor): the heading renders before SchemaSection's
+// loading/error early returns, so it's visible while the section is still
+// loading too.
+it('the Checks and limits heading shows while the section is still loading', async () => {
+  server.use(http.get(url('/settings/issuance'), () => new Promise(() => {})));
+  const { user } = renderRoute('/settings/issuance-defaults');
+  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  expect(await screen.findByText('Checks and limits')).toBeInTheDocument();
+  expect(screen.getByText('Loading…')).toBeInTheDocument();
+});
+
+// Review fix round 1 (Minor): a nested object field's own heading (RJSF
+// forces its label off by default; templates.tsx now forces it back on for
+// "Rate limits") is a plain heading, not a dangling <label htmlFor> pointing
+// at no single input, and doesn't show "Optional" the way a leaf field does.
+it('the Rate limits heading is a plain heading, not a dangling label, and skips "Optional"', async () => {
+  await openGlobalTab();
+  const heading = screen.getByText('Rate limits');
+  expect(heading.tagName).not.toBe('LABEL');
+  expect(within(heading.parentElement as HTMLElement).queryByText('Optional')).not.toBeInTheDocument();
 });
