@@ -28,7 +28,8 @@ func (q *Queries) BumpRedeploySeqs(ctx context.Context, ids []uuid.UUID) error {
 }
 
 const clientAssignments = `-- name: ClientAssignments :many
-SELECT g.id, g.cert_id, ce.name AS certificate_name, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
+SELECT g.id, g.cert_id, ce.name AS certificate_name, ce.common_name AS certificate_common_name,
+       ce.sans AS certificate_sans, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
        d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
@@ -40,18 +41,20 @@ ORDER BY g.created_at, g.id
 `
 
 type ClientAssignmentsRow struct {
-	ID              uuid.UUID   `json:"id"`
-	CertID          uuid.UUID   `json:"cert_id"`
-	CertificateName string      `json:"certificate_name"`
-	Delivery        string      `json:"delivery"`
-	HookIds         []uuid.UUID `json:"hook_ids"`
-	RemovedAt       *time.Time  `json:"removed_at"`
-	RedeploySeq     int64       `json:"redeploy_seq"`
-	VersionID       *uuid.UUID  `json:"version_id"`
-	Expected        []byte      `json:"expected"`
-	Fingerprint     *string     `json:"fingerprint"`
-	TargetType      *string     `json:"target_type"`
-	TargetConfig    []byte      `json:"target_config"`
+	ID                    uuid.UUID   `json:"id"`
+	CertID                uuid.UUID   `json:"cert_id"`
+	CertificateName       string      `json:"certificate_name"`
+	CertificateCommonName string      `json:"certificate_common_name"`
+	CertificateSans       []string    `json:"certificate_sans"`
+	Delivery              string      `json:"delivery"`
+	HookIds               []uuid.UUID `json:"hook_ids"`
+	RemovedAt             *time.Time  `json:"removed_at"`
+	RedeploySeq           int64       `json:"redeploy_seq"`
+	VersionID             *uuid.UUID  `json:"version_id"`
+	Expected              []byte      `json:"expected"`
+	Fingerprint           *string     `json:"fingerprint"`
+	TargetType            *string     `json:"target_type"`
+	TargetConfig          []byte      `json:"target_config"`
 }
 
 func (q *Queries) ClientAssignments(ctx context.Context, clientID uuid.UUID) ([]ClientAssignmentsRow, error) {
@@ -67,6 +70,8 @@ func (q *Queries) ClientAssignments(ctx context.Context, clientID uuid.UUID) ([]
 			&i.ID,
 			&i.CertID,
 			&i.CertificateName,
+			&i.CertificateCommonName,
+			&i.CertificateSans,
 			&i.Delivery,
 			&i.HookIds,
 			&i.RemovedAt,

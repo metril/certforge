@@ -151,7 +151,7 @@ In the web UI, a pending certificate with records waiting shows an amber **Manua
 - `percent` N: renew when N% of the lifetime remains (default 33: day 60 of a 90-day certificate, day 4 of a 6-day certificate).
 - `days` N: renew N days before expiry.
 - Renewal is never scheduled earlier than half the lifetime, so a 30-day policy on a 6-day certificate cannot loop.
-- `useAri` is stored; ACME Renewal Information arrives in Phase 4.
+- `useAri`: use the CA's ACME Renewal Information window when it is earlier — see [ARI](#ari).
 - The scheduler checks every 5 minutes. **Renew now** enqueues immediately; it reports `enqueued: false` if an attempt is already queued or running.
 
 ### Failures and backoff
@@ -166,7 +166,7 @@ This is a convenience only — **the CA always re-checks CAA itself during the r
 
 ## Rate limits
 
-Before every order, CertForge checks its own local record of what it has sent this CA — `new_order` (once per attempt), `cert_issued` (once per registered domain, on success) and `failed_validation` (once per registered domain, on a `unauthorized`, `dns`, `connection`, `incorrectResponse`, `tls` or `caa` failure) — against four trailing-window limits, defaulting to Let's Encrypt's own published limits: 50 certificates per registered domain per week, 5 duplicate (identical name set) certificates per week, 5 failed validations per account per hour, 300 new orders per account per 3 hours. Set to `0` to disable a limit; change them under [Settings → Issuance](configuration.md#issuance).
+Before every order, CertForge checks its own local record of what it has sent this CA — `new_order` (once per attempt), `cert_issued` (once per registered domain, on success) and `failed_validation` (once per registered domain, on a `unauthorized`, `dns`, `connection`, `incorrectResponse`, `tls` or `caa` failure) — against four trailing-window limits, defaulting to Let's Encrypt's own published limits: 50 certificates per registered domain per week, 5 duplicate (identical name set) certificates per week, 5 failed validations per registered domain per hour, 300 new orders per CA per 3 hours. Set to `0` to disable a limit; change them under [Settings → Issuance](configuration.md#issuance).
 
 This is only an approximation of the CA's real limits: it is tracked **per CA entry, not per ACME account**, so two CA entries pointing at the same real CA (or an account shared outside CertForge) are not counted together, and a CertForge instance is never the CA's only client. A CA using the `letsencrypt-staging` preset is recorded but never enforced, since that CA does not itself rate-limit; any other directory (including a custom Pebble instance used for testing) is enforced like production, so a test run that needs to issue past the built-in limits raises them in settings instead.
 

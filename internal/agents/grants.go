@@ -243,7 +243,10 @@ func grantPaths(layoutFiles []byte, typ *string, cfg []byte, certName string) ([
 		if err != nil {
 			return nil, err
 		}
-		for _, f := range delivery.RenderTraefik(certName, tc, nil, nil) {
+		// names is nil: only .Path is read below, and AcmeRouterFile's path
+		// (certforge-acme-<SafeName>.yml) does not depend on it, only its
+		// Host() rule content does.
+		for _, f := range delivery.RenderTraefik(certName, nil, tc, nil, nil) {
 			out = append(out, f.Path)
 		}
 	}
@@ -422,7 +425,8 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 					extras[eid] = em
 				}
 			}
-			files, err := delivery.GrantFiles(&m, extras, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName)
+			names := append([]string{r.CertificateCommonName}, r.CertificateSans...)
+			files, err := delivery.GrantFiles(&m, extras, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName, names)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -437,7 +441,8 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 			// through Traefik. checkPaths (grantPaths) picks up the same
 			// path unconditionally, so this changes only what gets written,
 			// never what collision detection already saw.
-			files, err := delivery.GrantFiles(nil, nil, nil, target, r.CertificateName)
+			names := append([]string{r.CertificateCommonName}, r.CertificateSans...)
+			files, err := delivery.GrantFiles(nil, nil, nil, target, r.CertificateName, names)
 			if err != nil {
 				return nil, nil, err
 			}

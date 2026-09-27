@@ -63,6 +63,19 @@ func (r RuleSpec) EffectiveVia() Via {
 	return r.Via
 }
 
+// Normalize clears Via on any rule whose method is not http-01: via is a
+// choice between this server and an agent, meaningful only for http-01
+// (every other method always uses an agent, or none). Called by every
+// writer before a rule is stored, so a stray "server" a client sent
+// alongside, say, tls-alpn-01 (the OpenAPI schema's via carried a default
+// of "server" until this task) never lingers in stored data even though
+// Validate no longer rejects it.
+func (r *RuleSpec) Normalize() {
+	if r.Method != MethodHTTP01 {
+		r.Via = ""
+	}
+}
+
 // Validate checks a rule in isolation (credential and client ownership are
 // checked by the store).
 func (r RuleSpec) Validate() error {
@@ -112,9 +125,12 @@ func (r RuleSpec) Validate() error {
 		if r.Webroot != "" {
 			return fmt.Errorf("rule %q: tls-alpn-01 takes no webroot", r.Match)
 		}
-		if r.Via != "" && r.Via != ViaAgent {
-			return fmt.Errorf("rule %q: tls-alpn-01 via must be agent", r.Match)
-		}
+		// via is meaningless outside http-01 (only http-01 chooses between
+		// this server and an agent; tls-alpn-01 always needs an agent), so
+		// any value here is ignored rather than rejected — the OpenAPI
+		// schema's now-optional via can round-trip a stale "server" default
+		// a client sent for a tls-alpn-01 rule without erroring. Normalize
+		// clears it back to "" before storage (see RuleSpec.Normalize).
 	default:
 		return fmt.Errorf("rule %q: method %q is not supported (dns-01, manual-dns, http-01, tls-alpn-01)", r.Match, r.Method)
 	}

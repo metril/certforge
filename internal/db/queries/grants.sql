@@ -72,7 +72,8 @@ ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, state = '
        expected = EXCLUDED.expected, error = '', extra_version_ids = EXCLUDED.extra_version_ids, updated_at = now();
 
 -- name: GrantSources :many
-SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name, ce.current_version_id,
+SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name,
+       ce.common_name AS certificate_common_name, ce.sans AS certificate_sans, ce.current_version_id,
        o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
        t.type AS target_type, t.config AS target_config
 FROM client_cert_grants g

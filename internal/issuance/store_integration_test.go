@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -277,6 +279,34 @@ func TestCertificateRuleCredentialMustBeInOrg(t *testing.T) {
 	}
 }
 
+// TestCertificateNormalizesViaOffHTTP01 (4A final review, finding 3): via
+// is meaningful only for http-01 (Validate no longer rejects it elsewhere,
+// so a client's stale "server" default on a tls-alpn-01 rule stores
+// cleanly), but the stored rule itself must not keep it: prepareCertTx
+// normalizes via back to "" for any rule whose method is not http-01,
+// before the rule is marshalled into the certificate row.
+func TestCertificateNormalizesViaOffHTTP01(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	agent := f.client(t, f.org, "agent", []string{"tls-alpn-01"})
+	in := CertInput{Name: "web", CommonName: "example.test",
+		Rules: []challenge.RuleSpec{{Match: "example.test", Method: challenge.MethodTLSALPN01, ClientID: &agent, Via: challenge.ViaServer}}}
+	c, err := f.store.CreateCertificate(ctx, f.org, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Rules) != 1 || c.Rules[0].Via != "" {
+		t.Fatalf("stored rule via = %+v, want cleared", c.Rules)
+	}
+	got, err := f.store.GetCertificate(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Rules) != 1 || got.Rules[0].Via != "" {
+		t.Fatalf("read-back rule via = %+v, want cleared", got.Rules)
+	}
+}
+
 // Review Focus (P34): org defaults referencing another org's CA, account or
 // DNS credential (rows that exist in the same database, just owned by a
 // different org) are rejected with a typed ValidationError (422), not
@@ -426,6 +456,74 @@ func TestValidateRulesLocksClientsInIDOrder(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("org-defaults write never unblocked after tx1 committed")
+	}
+}
+
+// TestConcurrentRenamesSharingRuleClientDoNotDeadlock (4A final review,
+// finding 6): a rename used to take its rules' clientId(s) FOR KEY SHARE
+// (lockRuleClientsInIDOrder, via prepareCertTx) and then, inside the same
+// transaction, the rename hook (agents' render, mimicked here) locked the
+// same client FOR UPDATE. Two renames sharing a client both hold the row
+// FOR KEY SHARE (compatible with each other), then both try to upgrade to
+// FOR UPDATE: a classic lock-upgrade deadlock, 40P01, surfaced as an
+// opaque 500. The fix locks rule clients FOR UPDATE up front, in id order,
+// whenever the certificate's name is changing, so no later upgrade ever
+// races another session's read lock on the same row.
+func TestConcurrentRenamesSharingRuleClientDoNotDeadlock(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	shared := f.client(t, f.org, "shared", []string{"tls-alpn-01"})
+
+	mk := func(name string) Certificate {
+		in := CertInput{Name: name, CommonName: name + ".example.test",
+			Rules: []challenge.RuleSpec{{Match: name + ".example.test", Method: challenge.MethodTLSALPN01, ClientID: &shared}}}
+		c, err := f.store.CreateCertificate(ctx, f.org, in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	c1 := mk("cert1")
+	c2 := mk("cert2")
+
+	// hook mimics agents.Service.ResyncCertificateRename -> render, which
+	// locks a renamed certificate's grant clients FOR UPDATE in id order
+	// inside the rename's own transaction; here that is just the shared
+	// client both certificates' rules reference. The sleep widens the
+	// window between the rule-lock step (fast: a handful of queries) and
+	// this FOR UPDATE request, so both concurrent renames below have
+	// reliably taken whatever lock prepareCertTx takes on the shared
+	// client before either reaches here — without it, the two calls can
+	// interleave so that one finishes entirely before the other starts,
+	// masking the bug.
+	hook := func(hctx context.Context, q *sqlcgen.Queries, _ uuid.UUID) (func(), error) {
+		time.Sleep(200 * time.Millisecond)
+		if _, err := q.LockClientByID(hctx, shared); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	rename := func(c Certificate, newName string) error {
+		in := CertInput{Name: newName, CommonName: c.CommonName,
+			Rules: []challenge.RuleSpec{{Match: c.CommonName, Method: challenge.MethodTLSALPN01, ClientID: &shared}}}
+		_, _, err := f.store.UpdateCertificate(ctx, f.org, c.ID, in, hook)
+		return err
+	}
+
+	done := make(chan error, 2)
+	go func() { done <- rename(c1, "cert1-renamed") }()
+	go func() { done <- rename(c2, "cert2-renamed") }()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("concurrent rename sharing a client: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent renames sharing a client never unblocked")
+		}
 	}
 }
 

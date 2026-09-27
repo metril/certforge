@@ -46,7 +46,7 @@ func TestRuleSpecValidateMethods(t *testing.T) {
 		{"tls-alpn-01 with clientId", RuleSpec{Match: "example.com", Method: MethodTLSALPN01, ClientID: &id}, true},
 		{"tls-alpn-01 via absent", RuleSpec{Match: "example.com", Method: MethodTLSALPN01, ClientID: &id, Via: ""}, true},
 		{"tls-alpn-01 via agent", RuleSpec{Match: "example.com", Method: MethodTLSALPN01, ClientID: &id, Via: ViaAgent}, true},
-		{"tls-alpn-01 via server", RuleSpec{Match: "example.com", Method: MethodTLSALPN01, ClientID: &id, Via: ViaServer}, false},
+		{"tls-alpn-01 via server", RuleSpec{Match: "example.com", Method: MethodTLSALPN01, ClientID: &id, Via: ViaServer}, true},
 		{"tls-alpn-01 forbids webroot", RuleSpec{Match: "example.com", Method: MethodTLSALPN01, ClientID: &id, Webroot: "/var/www"}, false},
 		{"tls-alpn-01 forbids dnsCredentialId", RuleSpec{Match: "example.com", Method: MethodTLSALPN01, ClientID: &id, DNSCredentialID: &id}, false},
 		{"tls-alpn-01 forbids propagationSeconds", RuleSpec{Match: "example.com", Method: MethodTLSALPN01, ClientID: &id, PropagationSeconds: &secs}, false},

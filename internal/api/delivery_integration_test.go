@@ -248,6 +248,56 @@ func TestLayoutPasswordWriteOnly(t *testing.T) {
 	wantStatus(t, err, 422)
 }
 
+// TestUpdateLayoutKeylessGrant422 (4A final review, finding 1): a layout
+// granted to a certificate whose current version has no key renders fine
+// while the layout stays cert-only, but an update that makes it need a key
+// (a key/combined part, a DER key, or a p12/jks file) must 422 naming the
+// certificate rather than storing the change and letting the next Resync
+// render fail opaquely with render.ErrNoKey (a 500 via mapAgentErr).
+func TestUpdateLayoutKeylessGrant422(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	c := f.activeClient(t, "web-keyless-layout")
+
+	leafDER, _, _ := realCert(t, "layout-keyless.example.test", 9301)
+	body := pemCert(leafDER)
+	res, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateUpload{Name: "layout-keyless", CertificatePem: &body}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	certID := res.(gen.UploadCertificate201JSONResponse).Id
+
+	certLayoutID := f.layout(t, "cert-only-layout", "/etc/ssl/layout-keyless.pem")
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &certLayoutID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The layout still renders fine against the keyless version.
+	if _, err := f.srv.GetLayout(op, gen.GetLayoutRequestObject{OrgId: f.org, Id: certLayoutID}); err != nil {
+		t.Fatal(err)
+	}
+
+	// PATCHing it to add a key part must 422, naming the certificate, not
+	// store the change.
+	keyUpdate := &gen.LayoutInput{Name: "cert-only-layout", Files: []gen.OutputFile{
+		{Path: "/etc/ssl/layout-keyless.pem", Format: gen.OutputFormat("pem"), Parts: []gen.OutputPart{gen.OutputPart("fullchain")}, Mode: "0644"},
+		{Path: "/etc/ssl/layout-keyless.key", Format: gen.OutputFormat("pem"), Parts: []gen.OutputPart{gen.OutputPart("key")}, Mode: "0600"},
+	}}
+	_, err = f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: certLayoutID, Body: keyUpdate})
+	wantStatus(t, err, 422)
+
+	// The stored layout is unchanged (still cert-only).
+	got, err := f.srv.GetLayout(op, gen.GetLayoutRequestObject{OrgId: f.org, Id: certLayoutID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files := got.(gen.GetLayout200JSONResponse).Files; len(files) != 1 {
+		t.Fatalf("layout files changed despite the 422: %+v", files)
+	}
+}
+
 // Review Focus: extraCertificateIds is checked against the writing org and
 // against having a current version, and a certificate a layout still lists
 // cannot be deleted out from under it.

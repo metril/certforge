@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -427,6 +428,21 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	}
 	if err := s.checkLayoutExtraCerts(ctx, q, r.OrgId, li.extraCertIDs); err != nil {
 		return nil, err
+	}
+	// 4A final review finding 1: a layout already granted to a certificate
+	// works fine cert-only against a keyless current version (R10), but an
+	// update that makes it need a key must be refused here — under the
+	// locks already taken in this transaction — rather than stored and
+	// left for the next Resync render to fail opaquely with
+	// render.ErrNoKey (mapAgentErr's 500).
+	if delivery.NeedsKey(li.files) {
+		name, err := q.LayoutKeylessGrantCertificate(ctx, &r.Id)
+		if err == nil {
+			return nil, unprocessable("files", fmt.Sprintf("certificate %q has no stored private key; this layout would need one", name))
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
 	}
 	l, err := q.UpdateLayout(ctx, sqlcgen.UpdateLayoutParams{Name: li.name, Files: li.filesJSON, Password: sealed,
 		ExtraCertIds: li.extraCertIDs, ID: r.Id, OrgID: r.OrgId})

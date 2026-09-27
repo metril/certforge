@@ -118,7 +118,7 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			// never fetches a bundle in the first place.
 			return fail("the bundle has no key material for the %s target", a.Target.Type)
 		}
-		files = append(files, delivery.RenderTraefik(a.CertificateName, cfg, b.Material.Fullchain, b.Material.Key)...)
+		files = append(files, delivery.RenderTraefik(a.CertificateName, a.CertificateNames, cfg, b.Material.Fullchain, b.Material.Key)...)
 		certsDir = path.Join(cfg.Dir, "certs", delivery.SafeName(a.CertificateName))
 	}
 	// A first pass fails fast, before any hook runs, on a path that is
@@ -185,7 +185,7 @@ func (d *Deployer) DeployTargetOnly(a agentproto.Assignment) (agentproto.GrantRe
 	if err != nil {
 		return fail("target: %v", err)
 	}
-	f := delivery.AcmeRouterFile(a.CertificateName, cfg)
+	f := delivery.AcmeRouterFile(a.CertificateName, a.CertificateNames, cfg)
 	if f == nil {
 		return res, written, ""
 	}

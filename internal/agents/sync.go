@@ -112,7 +112,8 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 		if r.VersionID == nil && len(specs) == 0 {
 			continue
 		}
-		a := agentproto.Assignment{ID: r.ID, CertificateID: r.CertID, CertificateName: r.CertificateName, VersionID: r.VersionID,
+		names := append([]string{r.CertificateCommonName}, r.CertificateSans...)
+		a := agentproto.Assignment{ID: r.ID, CertificateID: r.CertID, CertificateName: r.CertificateName, CertificateNames: names, VersionID: r.VersionID,
 			RedeploySeq: r.RedeploySeq, Delivery: r.Delivery, Files: specs, Target: target, Hooks: []agentproto.HookSpec{}}
 		if r.Fingerprint != nil {
 			a.Fingerprint = *r.Fingerprint

@@ -20,6 +20,21 @@ SELECT o.id, count(g.id)::bigint AS grants
 FROM output_specs o LEFT JOIN client_cert_grants g ON g.output_spec_id = o.id AND g.removed_at IS NULL
 WHERE o.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY o.id;
 
+-- name: LayoutKeylessGrantCertificate :one
+-- The name of one certificate (the first, by name) with a live grant on
+-- this layout whose current version has no stored key. Used by
+-- UpdateLayout (R10 mirror, 4A final review finding 1): an update that
+-- makes the layout need a key (delivery.NeedsKey on the new files) must be
+-- refused with 422 when any of its live grants' certificates would then
+-- have nothing to render a key from, rather than storing the update and
+-- only discovering ErrNoKey later, opaquely, from the Resync render.
+-- pgx.ErrNoRows means none found (nothing to refuse).
+SELECT ce.name FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN certificate_versions v ON v.id = ce.current_version_id
+WHERE g.output_spec_id = sqlc.arg(id) AND g.removed_at IS NULL AND v.private_key IS NULL
+ORDER BY ce.name LIMIT 1;
+
 -- name: LayoutDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g

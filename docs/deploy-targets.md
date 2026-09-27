@@ -18,12 +18,12 @@ Per grant the agent writes, in this order and atomically (temp file, fsync, rena
 
 The `certforge-acme-<name>.yml` router is unrelated to the certificate itself, so the agent renders and installs it even for a grant whose certificate has no version yet — a `method: http-01, via: agent` rule behind Traefik can then issue its very first certificate, since Pebble/Let's Encrypt reaches the agent's listener through this route before any certificate exists: the server lists such a grant's assignment with `versionId: null` and this one file, and the agent writes it straight from the assignment's target config, without ever fetching a bundle.
 
+The router's rule matches `Host()` on the certificate's own names (every SAN of the certificate row, known even before it has a version), so it claims only requests for this certificate, not every host Traefik serves. It carries no `entryPoints`, so it listens on whatever entrypoints Traefik's static config defines rather than assuming one is named `web` — see docs/PROGRESS.md's Known gap for what that does not pin down.
+
     http:
       routers:
         certforge-acme-web:
-          rule: PathPrefix(`/.well-known/acme-challenge/`)
-          entryPoints:
-            - web
+          rule: Host(`web.example.com`) && PathPrefix(`/.well-known/acme-challenge/`)
           service: certforge-acme-web
           priority: 1000
       services:

@@ -85,6 +85,12 @@ type Assignment struct {
 	ID              uuid.UUID `json:"id"`
 	CertificateID   uuid.UUID `json:"certificateId"`
 	CertificateName string    `json:"certificateName"`
+	// CertificateNames is the certificate's own names (common name then
+	// SANs), available even before it has a version (C3). The agent needs
+	// it only to rebuild DeployTargetOnly's Traefik ACME router file
+	// locally (delivery.AcmeRouterFile's Host() matcher); every other use
+	// of a grant's files comes from the server-rendered Files instead.
+	CertificateNames []string `json:"certificateNames"`
 	// VersionID is nil for a live grant whose certificate has no version
 	// yet (C3): Files then holds only the target's material-independent
 	// files (today, a Traefik ACME router file), and the agent must

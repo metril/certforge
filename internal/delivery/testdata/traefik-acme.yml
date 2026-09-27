@@ -2,9 +2,7 @@
 http:
   routers:
     certforge-acme-web-frontend:
-      rule: PathPrefix(`/.well-known/acme-challenge/`)
-      entryPoints:
-        - web
+      rule: Host(`web-frontend.example.test`,`www.web-frontend.example.test`) && PathPrefix(`/.well-known/acme-challenge/`)
       service: certforge-acme-web-frontend
       priority: 1000
   services:

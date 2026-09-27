@@ -24,7 +24,7 @@ func TestRenderTraefikGolden(t *testing.T) {
 		{"traefik-default.yml", "api.example.test", TraefikConfig{Dir: "/data/traefik", PathPrefix: "/etc/traefik/dynamic", DefaultCert: true, Stores: []string{"default", "internal"}},
 			[3]string{"/data/traefik/certs/api.example.test/fullchain.pem", "/data/traefik/certs/api.example.test/privkey.pem", "/data/traefik/certforge-api.example.test.yml"}},
 	} {
-		files := RenderTraefik(tc.name, tc.cfg, []byte("FULLCHAIN"), []byte("KEY"))
+		files := RenderTraefik(tc.name, nil, tc.cfg, []byte("FULLCHAIN"), []byte("KEY"))
 		if len(files) != 3 {
 			t.Fatalf("%s: %d files", tc.golden, len(files))
 		}
@@ -54,7 +54,8 @@ func TestRenderTraefikGolden(t *testing.T) {
 
 func TestRenderTraefikACME(t *testing.T) {
 	cfg := TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"}
-	files := RenderTraefik("Web Frontend", cfg, []byte("FULLCHAIN"), []byte("KEY"))
+	names := []string{"web-frontend.example.test", "www.web-frontend.example.test"}
+	files := RenderTraefik("Web Frontend", names, cfg, []byte("FULLCHAIN"), []byte("KEY"))
 	if len(files) != 4 {
 		t.Fatalf("%d files", len(files))
 	}
@@ -77,7 +78,7 @@ func TestRenderTraefikACME(t *testing.T) {
 	}
 
 	// No acmeServiceUrl: no fourth file, same as before this task.
-	if got := RenderTraefik("Web Frontend", TraefikConfig{Dir: "/etc/traefik/dynamic"}, []byte("FULLCHAIN"), []byte("KEY")); len(got) != 3 {
+	if got := RenderTraefik("Web Frontend", names, TraefikConfig{Dir: "/etc/traefik/dynamic"}, []byte("FULLCHAIN"), []byte("KEY")); len(got) != 3 {
 		t.Fatalf("without acmeServiceUrl: %d files", len(got))
 	}
 
@@ -98,7 +99,7 @@ func TestRenderTraefikACME(t *testing.T) {
 // the very first issuance can validate through Traefik.
 func TestGrantFilesNoVersionEmitsACMEOnly(t *testing.T) {
 	target := &agentproto.Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/etc/traefik/dynamic","acmeServiceUrl":"http://agent:8080"}`)}
-	files, err := GrantFiles(nil, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}, target, "Web")
+	files, err := GrantFiles(nil, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}, target, "Web", []string{"web.example.test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,11 +108,11 @@ func TestGrantFilesNoVersionEmitsACMEOnly(t *testing.T) {
 	}
 
 	noACME := &agentproto.Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`)}
-	if files, err := GrantFiles(nil, nil, nil, noACME, "Web"); err != nil || len(files) != 0 {
+	if files, err := GrantFiles(nil, nil, nil, noACME, "Web", []string{"web.example.test"}); err != nil || len(files) != 0 {
 		t.Fatalf("without acmeServiceUrl: files %+v err %v", files, err)
 	}
 
-	if files, err := GrantFiles(nil, nil, nil, nil, "Web"); err != nil || len(files) != 0 {
+	if files, err := GrantFiles(nil, nil, nil, nil, "Web", []string{"web.example.test"}); err != nil || len(files) != 0 {
 		t.Fatalf("no target: files %+v err %v", files, err)
 	}
 }

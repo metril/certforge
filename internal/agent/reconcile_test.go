@@ -218,12 +218,13 @@ func TestReconcileDeploysVersionlessACMEFileWithoutBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	acme := delivery.AcmeRouterFile("web", tc)
+	names := []string{"web.example.test"}
+	acme := delivery.AcmeRouterFile("web", names, tc)
 	if acme == nil {
 		t.Fatal("setup: no ACME router file")
 	}
 	spec := agentproto.FileSpec{Path: acme.Path, Mode: acme.Mode, SHA256: delivery.Digest(acme.Data)}
-	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", VersionID: nil,
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "web", CertificateNames: names, VersionID: nil,
 		Files: []agentproto.FileSpec{spec}, Target: &agentproto.Target{Type: "traefik", Config: cfg}, Hooks: []agentproto.HookSpec{}}
 	api := &fakeAPI{as: agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{a}}}
 	id := newTestIdentity(t)

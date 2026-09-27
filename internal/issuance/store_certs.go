@@ -115,7 +115,7 @@ func (s *Store) PutOrgDefaults(ctx context.Context, orgID uuid.UUID, d Defaults)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
-	if err := s.validateDefaultsTx(ctx, q, orgID, d); err != nil {
+	if err := s.validateDefaultsTx(ctx, q, orgID, d, false); err != nil {
 		return err
 	}
 	b, err := json.Marshal(d)
@@ -243,8 +243,15 @@ func validateDefaultsShape(d Defaults) error {
 		}
 	}
 	if d.VerificationRules != nil {
-		for _, r := range *d.VerificationRules {
-			if err := r.Validate(); err != nil {
+		rules := *d.VerificationRules
+		for i := range rules {
+			// Normalize before Validate, and by index (not range's copy),
+			// so a stray via on a non-http-01 rule (say a client that sent
+			// the OpenAPI schema's old "server" default alongside
+			// tls-alpn-01) is cleared in the stored slice itself, not just
+			// accepted.
+			rules[i].Normalize()
+			if err := rules[i].Validate(); err != nil {
 				return &ValidationError{"verificationRules", err.Error()}
 			}
 		}
@@ -259,8 +266,9 @@ func validateDefaultsShape(d Defaults) error {
 // UPDATE lock on the same row blocks until this transaction ends. Used by
 // every writer (PutOrgDefaults, certificate create/update) that must be
 // safe against a concurrent delete racing the write, not just against a
-// delete that has already committed.
-func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults) error {
+// delete that has already committed. renaming is passed straight through
+// to validateRulesOrgTx; see prepareCertTx.
+func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults, renaming bool) error {
 	if err := validateDefaultsShape(d); err != nil {
 		return err
 	}
@@ -297,7 +305,7 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 		}
 	}
 	if d.VerificationRules != nil {
-		return s.validateRulesOrgTx(ctx, q, orgID, *d.VerificationRules)
+		return s.validateRulesOrgTx(ctx, q, orgID, *d.VerificationRules, renaming)
 	}
 	return nil
 }
@@ -419,7 +427,7 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 				return err
 			}
 		}
-		clients, err := lockRuleClientsInIDOrder(ctx, q, uuid.Nil, false, *d.VerificationRules)
+		clients, err := lockRuleClientsInIDOrder(ctx, q, uuid.Nil, false, false, *d.VerificationRules)
 		if err != nil {
 			return err
 		}
@@ -441,8 +449,9 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 // DeleteClient's FOR UPDATE lock on the same row blocks until this
 // transaction ends; see validateDefaultsTx. Called for both a certificate's
 // own rules and org-level default rules (PutOrgDefaults), so a rule's
-// clientId is validated identically at either level.
-func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, rules []challenge.RuleSpec) error {
+// clientId is validated identically at either level. renaming is passed
+// straight through to lockRuleClientsInIDOrder; see prepareCertTx.
+func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, rules []challenge.RuleSpec, renaming bool) error {
 	for _, r := range rules {
 		if r.DNSCredentialID == nil {
 			continue
@@ -460,7 +469,7 @@ func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgI
 			return err
 		}
 	}
-	clients, err := lockRuleClientsInIDOrder(ctx, q, orgID, true, rules)
+	clients, err := lockRuleClientsInIDOrder(ctx, q, orgID, true, renaming, rules)
 	if err != nil {
 		return err
 	}
@@ -493,7 +502,17 @@ func (s *Store) validateRulesOrgTx(ctx context.Context, q *sqlcgen.Queries, orgI
 // cross-org global issuance_defaults settings section) checks existence
 // only, mirroring dnsCredentialId's own global-vs-org split elsewhere in
 // this file. orgID is ignored when orgScoped is false.
-func lockRuleClientsInIDOrder(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, orgScoped bool, rules []challenge.RuleSpec) (map[uuid.UUID]sqlcgen.Client, error) {
+//
+// forUpdate takes FOR UPDATE instead of FOR KEY SHARE (fix round 2,
+// finding 6): a certificate rename's own RenameHook (agents' render) locks
+// its grant clients FOR UPDATE later in the same transaction, so two
+// concurrent renames sharing a rule client would otherwise both take FOR
+// KEY SHARE here (compatible with each other) and then both try to
+// upgrade to FOR UPDATE in the hook — a classic lock-upgrade deadlock
+// (40P01). Locking FOR UPDATE up front instead means whichever rename
+// reaches this client row first simply blocks the other here, before
+// either holds a weaker lock the other could get stuck upgrading past.
+func lockRuleClientsInIDOrder(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, orgScoped, forUpdate bool, rules []challenge.RuleSpec) (map[uuid.UUID]sqlcgen.Client, error) {
 	seen := map[uuid.UUID]bool{}
 	firstMatch := map[uuid.UUID]string{}
 	var ids []uuid.UUID
@@ -514,11 +533,17 @@ func lockRuleClientsInIDOrder(ctx context.Context, q *sqlcgen.Queries, orgID uui
 	}
 	out := make(map[uuid.UUID]sqlcgen.Client, len(ids))
 	for _, id := range ids {
-		if _, err := q.LockClientKeyShare(ctx, id); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+		var lockErr error
+		if forUpdate {
+			_, lockErr = q.LockClientByID(ctx, id)
+		} else {
+			_, lockErr = q.LockClientKeyShare(ctx, id)
+		}
+		if lockErr != nil {
+			if errors.Is(lockErr, pgx.ErrNoRows) {
 				return nil, notFound(id)
 			}
-			return nil, err
+			return nil, lockErr
 		}
 		var c sqlcgen.Client
 		var err error
@@ -560,7 +585,15 @@ func checkRuleClientCapability(r challenge.RuleSpec, c sqlcgen.Client) error {
 // so a concurrent delete of one of those rows blocks until the certificate
 // write's own transaction ends instead of racing it into a dangling
 // reference (mirrors PutOrgDefaults; see validateDefaultsTx).
-func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *CertInput) error {
+// renaming is true only from UpdateCertificate, and only when the
+// certificate's name is actually changing: it makes the rule-client locks
+// below FOR UPDATE instead of FOR KEY SHARE (see lockRuleClientsInIDOrder),
+// because a rename's own RenameHook (agents' render) locks those same
+// clients FOR UPDATE later in this same transaction. Taking FOR UPDATE up
+// front avoids the lock-upgrade deadlock two concurrent renames sharing a
+// client would otherwise hit: both holding FOR KEY SHARE and then both
+// trying to upgrade to FOR UPDATE (fix round 2, finding 6).
+func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *CertInput, renaming bool) error {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return &ValidationError{"name", "required"}
@@ -573,15 +606,16 @@ func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uui
 	if in.Rules == nil {
 		in.Rules = []challenge.RuleSpec{}
 	}
-	for _, r := range in.Rules {
-		if err := r.Validate(); err != nil {
+	for i := range in.Rules {
+		in.Rules[i].Normalize()
+		if err := in.Rules[i].Validate(); err != nil {
 			return &ValidationError{"verificationRules", err.Error()}
 		}
 	}
-	if err := s.validateRulesOrgTx(ctx, q, orgID, in.Rules); err != nil {
+	if err := s.validateRulesOrgTx(ctx, q, orgID, in.Rules, renaming); err != nil {
 		return err
 	}
-	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides)
+	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides, renaming)
 }
 
 // CreateCertificate stores a definition, due for issuance now. Runs inside
@@ -593,7 +627,7 @@ func (s *Store) CreateCertificate(ctx context.Context, orgID uuid.UUID, in CertI
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
-	if err := s.prepareCertTx(ctx, q, orgID, &in); err != nil {
+	if err := s.prepareCertTx(ctx, q, orgID, &in, false); err != nil {
 		return Certificate{}, err
 	}
 	rules, err := json.Marshal(in.Rules)
@@ -647,7 +681,12 @@ func (s *Store) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in C
 	if err != nil {
 		return Certificate{}, false, err
 	}
-	if err := s.prepareCertTx(ctx, q, orgID, &in); err != nil {
+	// Matches the "hook runs" condition below exactly: prepareCertTx must
+	// take the stronger, deadlock-avoiding lock on this certificate's rule
+	// clients whenever hook is actually going to run and could upgrade one
+	// of the same rows to FOR UPDATE later in this transaction.
+	renaming := hook != nil && strings.TrimSpace(in.Name) != cur.Name
+	if err := s.prepareCertTx(ctx, q, orgID, &in, renaming); err != nil {
 		return Certificate{}, false, err
 	}
 	reissue = !slices.Equal(cur.Names(), append([]string{in.CommonName}, in.SANs...))

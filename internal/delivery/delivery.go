@@ -280,8 +280,10 @@ func TargetMaterial(m render.Material) (agentproto.Material, error) {
 // material-independent files render then, which today is the Traefik ACME
 // router file when acmeServiceUrl is set (AcmeRouterFile) — letting the
 // very first issuance validate through Traefik before any certificate
-// exists. A layout never renders without material.
-func GrantFiles(m *render.Material, extras map[uuid.UUID]render.Material, l *Layout, target *agentproto.Target, certName string) ([]File, error) {
+// exists. A layout never renders without material. names is the
+// certificate's own names (common name + SANs), needed by AcmeRouterFile's
+// Host() matcher even when m is nil.
+func GrantFiles(m *render.Material, extras map[uuid.UUID]render.Material, l *Layout, target *agentproto.Target, certName string, names []string) ([]File, error) {
 	if m == nil {
 		if target == nil {
 			return nil, nil
@@ -290,7 +292,7 @@ func GrantFiles(m *render.Material, extras map[uuid.UUID]render.Material, l *Lay
 		if err != nil {
 			return nil, err
 		}
-		if f := AcmeRouterFile(certName, cfg); f != nil {
+		if f := AcmeRouterFile(certName, names, cfg); f != nil {
 			return []File{*f}, nil
 		}
 		return nil, nil
@@ -312,7 +314,7 @@ func GrantFiles(m *render.Material, extras map[uuid.UUID]render.Material, l *Lay
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, RenderTraefik(certName, cfg, mat.Fullchain, mat.Key)...)
+		out = append(out, RenderTraefik(certName, names, cfg, mat.Fullchain, mat.Key)...)
 	}
 	return out, nil
 }

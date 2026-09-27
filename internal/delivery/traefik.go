@@ -97,16 +97,29 @@ func SafeName(s string) string {
 // through Traefik. Deviation R4: per grant (certforge-acme-<SafeName>.yml,
 // router and service certforge-acme-<SafeName>), not a single shared file,
 // so it disappears with its grant like every other per-grant file.
-func AcmeRouterFile(certName string, cfg TraefikConfig) *File {
+//
+// names is the certificate row's own names (common name + SANs), available
+// even before it has a version (C3): the router's rule matches Host() on
+// all of them, so it claims only requests for this certificate's own
+// names, not (as an earlier version of this file did) every host on the
+// Traefik instance. It carries no entryPoints, so it listens on whichever
+// entrypoints Traefik's own static config defines rather than hard-coding
+// "web" — see docs/PROGRESS.md's Known gap for the one thing this does not
+// pin down.
+func AcmeRouterFile(certName string, names []string, cfg TraefikConfig) *File {
 	if cfg.AcmeServiceURL == "" {
 		return nil
 	}
 	router := "certforge-acme-" + SafeName(certName)
+	hosts := make([]string, len(names))
+	for i, n := range names {
+		hosts[i] = "`" + n + "`"
+	}
 	var y strings.Builder
 	y.WriteString("# Managed by CertForge. Do not edit; changes are overwritten.\n")
 	y.WriteString("http:\n  routers:\n")
-	fmt.Fprintf(&y, "    %s:\n      rule: PathPrefix(`/.well-known/acme-challenge/`)\n      entryPoints:\n        - web\n      service: %s\n      priority: 1000\n",
-		router, router)
+	fmt.Fprintf(&y, "    %s:\n      rule: Host(%s) && PathPrefix(`/.well-known/acme-challenge/`)\n      service: %s\n      priority: 1000\n",
+		router, strings.Join(hosts, ","), router)
 	y.WriteString("  services:\n")
 	fmt.Fprintf(&y, "    %s:\n      loadBalancer:\n        servers:\n          - url: %s\n", router, strconv.Quote(cfg.AcmeServiceURL))
 	return &File{Path: path.Join(cfg.Dir, router+".yml"), Mode: "0644", Data: []byte(y.String())}
@@ -114,9 +127,10 @@ func AcmeRouterFile(certName string, cfg TraefikConfig) *File {
 
 // RenderTraefik returns the files the target writes, in write order:
 // fullchain.pem, privkey.pem, certforge-<name>.yml, then (when
-// cfg.AcmeServiceURL is set) the ACME router file. Removal deletes in
-// reverse order, so Traefik drops the certificate before its files vanish.
-func RenderTraefik(certName string, cfg TraefikConfig, fullchain, key []byte) []File {
+// cfg.AcmeServiceURL is set) the ACME router file (see AcmeRouterFile for
+// what names is). Removal deletes in reverse order, so Traefik drops the
+// certificate before its files vanish.
+func RenderTraefik(certName string, names []string, cfg TraefikConfig, fullchain, key []byte) []File {
 	name := SafeName(certName)
 	prefix := cfg.PathPrefix
 	if prefix == "" {
@@ -148,7 +162,7 @@ func RenderTraefik(certName string, cfg TraefikConfig, fullchain, key []byte) []
 		{Path: path.Join(cfg.Dir, keyRel), Mode: "0600", Data: key},
 		{Path: path.Join(cfg.Dir, "certforge-"+name+".yml"), Mode: "0644", Data: []byte(y.String())},
 	}
-	if f := AcmeRouterFile(certName, cfg); f != nil {
+	if f := AcmeRouterFile(certName, names, cfg); f != nil {
 		out = append(out, *f)
 	}
 	return out

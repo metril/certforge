@@ -880,7 +880,7 @@ export interface paths {
         put?: never;
         /**
          * Export a version as PKCS#12 or JKS
-         * @description Needs certs:read and keys:export; recorded as certificate.key_exported in the audit log before anything is sent, even when the version has no key. The password is never logged, audited, put in a URL, or returned by any read.
+         * @description Needs certs:read and keys:export; recorded as certificate.key_exported in the audit log before anything is sent. A version with no stored key 404s before anything is audited. The password is never logged, audited, put in a URL, or returned by any read.
          */
         post: operations["exportCertificateVersion"];
         delete?: never;
@@ -2133,11 +2133,8 @@ export interface components {
             resolvers?: string[];
             /** @description Zone that _acme-challenge is CNAMEd into; checked before validation. */
             cnameAliasZone?: string;
-            /**
-             * @description http-01 only; default server.
-             * @default server
-             */
-            via: components["schemas"]["ChallengeVia"];
+            /** @description http-01 only; default server. Ignored (cleared) for any other method. */
+            via?: components["schemas"]["ChallengeVia"];
             /**
              * Format: uuid
              * @description Client that serves the challenge; required for tls-alpn-01, or for http-01 with via agent.
@@ -2583,9 +2580,9 @@ export interface components {
             certsPerRegisteredDomainPerWeek: number;
             /** @description Identical-name-set certificates per week. */
             duplicateCertsPerWeek: number;
-            /** @description Failed challenge validations per account per hour. */
+            /** @description Failed challenge validations per registered domain per hour. */
             failedValidationsPerHour: number;
-            /** @description New orders per account per 3 hours. */
+            /** @description New orders per CA per 3 hours. */
             newOrdersPer3Hours: number;
         };
         /** @description Current usage of one rate limit, against its window. */

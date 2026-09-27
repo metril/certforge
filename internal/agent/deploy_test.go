@@ -41,7 +41,7 @@ func TestDeployerLayoutTraefikAndRemove(t *testing.T) {
 		t.Fatalf("res %+v written %d", res, len(written))
 	}
 	yml := filepath.Join(dir, "traefik", "certforge-web.yml")
-	want := delivery.RenderTraefik("Web", delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik")}, []byte("FULL"), []byte("KEY"))
+	want := delivery.RenderTraefik("Web", nil, delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik")}, []byte("FULL"), []byte("KEY"))
 	got, _ := os.ReadFile(yml)
 	if !bytes.Equal(got, want[2].Data) || mode(t, filepath.Join(dir, "traefik", "certs", "web", "privkey.pem")) != 0o600 {
 		t.Fatalf("yml %s", got)

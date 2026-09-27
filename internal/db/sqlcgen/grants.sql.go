@@ -406,7 +406,8 @@ func (q *Queries) GrantClientIDs(ctx context.Context, ids []uuid.UUID) ([]GrantC
 }
 
 const grantSources = `-- name: GrantSources :many
-SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name, ce.current_version_id,
+SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name,
+       ce.common_name AS certificate_common_name, ce.sans AS certificate_sans, ce.current_version_id,
        o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
        t.type AS target_type, t.config AS target_config
 FROM client_cert_grants g
@@ -417,17 +418,19 @@ WHERE g.id = ANY($1::uuid[]) AND g.removed_at IS NULL
 `
 
 type GrantSourcesRow struct {
-	ID                 uuid.UUID   `json:"id"`
-	ClientID           uuid.UUID   `json:"client_id"`
-	CertID             uuid.UUID   `json:"cert_id"`
-	Delivery           string      `json:"delivery"`
-	CertificateName    string      `json:"certificate_name"`
-	CurrentVersionID   *uuid.UUID  `json:"current_version_id"`
-	LayoutFiles        []byte      `json:"layout_files"`
-	LayoutPassword     []byte      `json:"layout_password"`
-	LayoutExtraCertIds []uuid.UUID `json:"layout_extra_cert_ids"`
-	TargetType         *string     `json:"target_type"`
-	TargetConfig       []byte      `json:"target_config"`
+	ID                    uuid.UUID   `json:"id"`
+	ClientID              uuid.UUID   `json:"client_id"`
+	CertID                uuid.UUID   `json:"cert_id"`
+	Delivery              string      `json:"delivery"`
+	CertificateName       string      `json:"certificate_name"`
+	CertificateCommonName string      `json:"certificate_common_name"`
+	CertificateSans       []string    `json:"certificate_sans"`
+	CurrentVersionID      *uuid.UUID  `json:"current_version_id"`
+	LayoutFiles           []byte      `json:"layout_files"`
+	LayoutPassword        []byte      `json:"layout_password"`
+	LayoutExtraCertIds    []uuid.UUID `json:"layout_extra_cert_ids"`
+	TargetType            *string     `json:"target_type"`
+	TargetConfig          []byte      `json:"target_config"`
 }
 
 func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSourcesRow, error) {
@@ -445,6 +448,8 @@ func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSou
 			&i.CertID,
 			&i.Delivery,
 			&i.CertificateName,
+			&i.CertificateCommonName,
+			&i.CertificateSans,
 			&i.CurrentVersionID,
 			&i.LayoutFiles,
 			&i.LayoutPassword,
