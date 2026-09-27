@@ -82,6 +82,16 @@ func enrolledAgent(ctx context.Context, t *testing.T, c *apiClient, orgID string
 		}
 		agentClientID = uuid.MustParse(created.Client.ID)
 	})
+	// sync.Once.Do still marks itself done even if the closure above
+	// exited early via t.Fatal (its deferred done-store runs on that
+	// unwind same as a normal return), so a later caller in a different
+	// test whose own enrolment attempt already failed would otherwise
+	// silently proceed with the zero UUID and poll a nonexistent client
+	// until it times out. Fail fast instead, on the caller's own t,
+	// pointing at the real cause.
+	if agentClientID == uuid.Nil {
+		t.Fatal("enrolledAgent: the one-time agent enrolment already failed in an earlier test; see that test's own failure for the cause")
+	}
 	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + agentClientID.String()
 	waitFor(ctx, t, "client active and connected", func() (clientOut, bool) {
 		var cl clientOut

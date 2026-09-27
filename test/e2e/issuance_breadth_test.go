@@ -5,6 +5,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -24,8 +25,9 @@ import (
 // breadthAttemptStep/breadthAttempt mirror gen.AttemptStep/gen.IssuanceAttempt
 // (newest attempt first, per GET .../attempts).
 type breadthAttemptStep struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
 }
 
 type breadthAttempt struct {
@@ -160,45 +162,70 @@ func waitActive(ctx context.Context, t *testing.T, c *apiClient, certPath string
 	return cert
 }
 
-// waitActiveRetrying polls certPath and renews it again every time a new
-// failure appears, until it goes active. Unlike waitActive, more than one
-// failure is expected and tolerated: agent-http01's certificate creation
-// fires an automatic attempt with no grant/ACME router yet (guaranteed to
-// fail), and even once the router file exists on disk, Traefik's
-// file-provider watcher reloading it across a cross-container bind mount
-// is not instantaneous, so a renew straight after the file appears can
-// still race a Traefik that has not picked it up yet. Bounded only by ctx.
-func waitActiveRetrying(ctx context.Context, t *testing.T, c *apiClient, certPath string) breadthCertOut {
+// expectedUnrouted is the acme error substring a http-01 validation fails
+// with when Traefik (or the agent) has nothing to route the challenge
+// through yet: an "unauthorized" ACME problem whose detail names a
+// non-200 (typically 404) response. agent-http01's retry loop uses it to
+// tell that expected, transient race apart from a genuine regression.
+const expectedUnrouted = "urn:ietf:params:acme:error:unauthorized"
+
+// waitTraefikRouterEnabled polls Traefik's own API (docker exec + wget
+// over the container's own localhost; the API entrypoint is not published
+// to the host) until routerName's file-provider router reports
+// "enabled". The router file existing on disk (deploy/compose.test.yaml's
+// bind mount) is not the same as Traefik's file-provider watcher having
+// actually reloaded it, so relying on the file's mtime alone can still
+// race a Traefik that has not picked the route up yet.
+func waitTraefikRouterEnabled(ctx context.Context, t *testing.T, routerName string) {
 	t.Helper()
-	renewedAt := -1
-	cert := waitFor(ctx, t, certPath+" active (retrying past expected early failures)", func() (breadthCertOut, bool) {
-		var cur breadthCertOut
-		c.call(ctx, t, http.MethodGet, certPath, nil, &cur)
-		if cur.Status == "active" {
-			return cur, true
-		}
-		if cur.FailureCount != renewedAt {
-			renewedAt = cur.FailureCount
-			c.call(ctx, t, http.MethodPost, certPath+"/renew", nil, nil)
-		}
-		return cur, false
-	})
-	if cert.Status != "active" {
-		t.Fatalf("%s: issuance failed: %s", certPath, cert.LastError)
+	compose := os.Getenv("CF_E2E_COMPOSE")
+	if compose == "" {
+		t.Fatal("CF_E2E_COMPOSE is not set (run through make e2e)")
 	}
-	return cert
+	idOut, err := exec.CommandContext(ctx, "sh", "-c", compose+" ps -q traefik").CombinedOutput()
+	if err != nil {
+		t.Fatalf("compose ps -q traefik: %v\n%s", err, idOut)
+	}
+	id := strings.TrimSpace(string(idOut))
+	if id == "" {
+		t.Fatal("no running container for service traefik")
+	}
+	url := "http://localhost:8081/api/http/routers/" + routerName + "@file"
+	waitFor(ctx, t, "traefik router "+routerName+" enabled", func() (string, bool) {
+		out, _ := exec.CommandContext(ctx, "docker", "exec", id, "wget", "-qO-", url).CombinedOutput()
+		s := string(out)
+		return s, strings.Contains(s, `"status":"enabled"`)
+	})
 }
 
-// assertStepsSucceeded fetches the newest attempt for certPath and fails
-// the test unless every named step succeeded.
-func assertStepsSucceeded(ctx context.Context, t *testing.T, c *apiClient, certPath string, names ...string) {
+// attemptSteps fetches certPath's newest attempt's steps.
+func attemptSteps(ctx context.Context, t *testing.T, c *apiClient, certPath string) []breadthAttemptStep {
 	t.Helper()
 	var attempts []breadthAttempt
 	c.call(ctx, t, http.MethodGet, certPath+"/attempts", nil, &attempts)
 	if len(attempts) == 0 {
 		t.Fatalf("%s: no attempts", certPath)
 	}
-	steps := attempts[0].Steps
+	return attempts[0].Steps
+}
+
+// stepMessage returns the message of the named step, or "" if absent.
+func stepMessage(steps []breadthAttemptStep, name string) string {
+	for _, s := range steps {
+		if s.Name == name {
+			return s.Message
+		}
+	}
+	return ""
+}
+
+// assertStepsSucceeded fetches the newest attempt for certPath, fails the
+// test unless every named step succeeded, and returns the full step list
+// so a caller can make further assertions (message content, for example)
+// without a second fetch.
+func assertStepsSucceeded(ctx context.Context, t *testing.T, c *apiClient, certPath string, names ...string) []breadthAttemptStep {
+	t.Helper()
+	steps := attemptSteps(ctx, t, c, certPath)
 	status := func(name string) (string, bool) {
 		for _, s := range steps {
 			if s.Name == name {
@@ -213,6 +240,7 @@ func assertStepsSucceeded(ctx context.Context, t *testing.T, c *apiClient, certP
 			t.Fatalf("%s: step %q = %q (found=%v), want success; steps=%+v", certPath, name, got, ok, steps)
 		}
 	}
+	return steps
 }
 
 // TestIssuanceBreadthAgainstCompose proves Phase 4A's issuance breadth end
@@ -317,12 +345,60 @@ func TestIssuanceBreadthAgainstCompose(t *testing.T) {
 			}
 			return fi.Size(), fi.Size() > 0
 		})
-		// waitActiveRetrying renews again on every new failure: the
-		// automatic attempt above, and (the file existing is not the same
-		// as Traefik's watcher having reloaded it yet) possibly one or more
-		// renews right after, until Traefik actually routes the challenge
-		// to the agent.
-		waitActiveRetrying(ctx, t, c, certPath)
+
+		// No pre-existing version: this really is the certificate's first
+		// issuance, routed entirely through Traefik, the way Task 8's
+		// version-less-grant delivery is meant to be proven.
+		var atFile breadthCertOut
+		c.call(ctx, t, http.MethodGet, certPath, nil, &atFile)
+		if atFile.CurrentVersion != nil {
+			t.Fatalf("%s: already has a current version when the router file appeared; not a first-issuance case", certPath)
+		}
+
+		// The router file existing on disk (above) is not the same as
+		// Traefik's file-provider watcher having reloaded it across the
+		// cross-container bind mount; confirm the router itself is live
+		// before relying on it to route anything.
+		waitTraefikRouterEnabled(ctx, t, "certforge-acme-agent-http01")
+
+		// The automatic attempt certificate creation fired had nothing to
+		// route through yet and is expected to fail with the challenge
+		// unauthorized (not some other, unrelated problem).
+		cur := waitFor(ctx, t, certPath+" automatic attempt fails (no route existed yet)", func() (breadthCertOut, bool) {
+			var v breadthCertOut
+			c.call(ctx, t, http.MethodGet, certPath, nil, &v)
+			return v, v.FailureCount > 0
+		})
+		if !strings.Contains(cur.LastError, expectedUnrouted) {
+			t.Fatalf("%s: automatic attempt failed unexpectedly (not the pre-routing race): %s", certPath, cur.LastError)
+		}
+
+		// Retry now that Traefik is confirmed to route the challenge to
+		// the agent: exactly one renew is expected to succeed, but a
+		// couple of retries are tolerated (each must still fail the same,
+		// expected way) in case that renew itself still raced something.
+		const maxRetries = 3
+		for retry := 0; cur.Status != "active"; retry++ {
+			if retry >= maxRetries {
+				t.Fatalf("%s: still failing after %d retries: %s", certPath, retry, cur.LastError)
+			}
+			waitFor(ctx, t, certPath+" renewal enqueued", func() (bool, bool) {
+				var res struct {
+					Enqueued bool `json:"enqueued"`
+				}
+				c.call(ctx, t, http.MethodPost, certPath+"/renew", nil, &res)
+				return res.Enqueued, res.Enqueued
+			})
+			prevFailures := cur.FailureCount
+			cur = waitFor(ctx, t, certPath+" retry finished", func() (breadthCertOut, bool) {
+				var v breadthCertOut
+				c.call(ctx, t, http.MethodGet, certPath, nil, &v)
+				return v, v.Status == "active" || v.FailureCount > prevFailures
+			})
+			if cur.Status != "active" && !strings.Contains(cur.LastError, expectedUnrouted) {
+				t.Fatalf("%s: retry failed unexpectedly (not the pre-routing race): %s", certPath, cur.LastError)
+			}
+		}
 		assertStepsSucceeded(ctx, t, c, certPath, "caa", "rate_ledger")
 	})
 
@@ -354,7 +430,17 @@ func TestIssuanceBreadthAgainstCompose(t *testing.T) {
 		}, &cert)
 		certPath := "/api/v1/orgs/" + orgID + "/certificates/" + cert.ID
 		waitActive(ctx, t, c, certPath)
-		assertStepsSucceeded(ctx, t, c, certPath, "caa", "rate_ledger", "challenge mixed.e2e", "challenge api.e2e")
+		steps := assertStepsSucceeded(ctx, t, c, certPath, "caa", "rate_ledger", "challenge mixed.e2e", "challenge api.e2e")
+		// Both rules succeeding is not proof they used different methods
+		// (a regression could route both through the same one); the step
+		// message names the actual challenge type presented, per
+		// internal/challenge/router.go's doneMessage.
+		if got := stepMessage(steps, "challenge mixed.e2e"); !strings.Contains(got, "TXT") {
+			t.Fatalf("%s: challenge mixed.e2e step message %q does not show dns-01 (TXT)", certPath, got)
+		}
+		if got := stepMessage(steps, "challenge api.e2e"); !strings.Contains(got, "http-01") {
+			t.Fatalf("%s: challenge api.e2e step message %q does not show http-01", certPath, got)
+		}
 	})
 
 	t.Run("export-p12", func(t *testing.T) {
@@ -367,7 +453,7 @@ func TestIssuanceBreadthAgainstCompose(t *testing.T) {
 		// DecodeChain, not Decode: render.PKCS12 always includes the chain
 		// as CA bags alongside the leaf and key, and Decode only accepts
 		// exactly one certificate bag.
-		_, got, _, err := pkcs12.DecodeChain(data, password)
+		privAny, got, _, err := pkcs12.DecodeChain(data, password)
 		if err != nil {
 			t.Fatalf("pkcs12 decode: %v", err)
 		}
@@ -383,6 +469,20 @@ func TestIssuanceBreadthAgainstCompose(t *testing.T) {
 		if !bytes.Equal(got.Raw, want.Raw) {
 			t.Fatal("exported p12 leaf does not match the current version")
 		}
+		if privAny == nil {
+			t.Fatal("exported p12 has no private key")
+		}
+		signer, ok := privAny.(crypto.Signer)
+		if !ok {
+			t.Fatalf("exported p12 private key is %T, not a crypto.Signer", privAny)
+		}
+		pub, ok := signer.Public().(interface{ Equal(crypto.PublicKey) bool })
+		if !ok {
+			t.Fatalf("exported p12 private key's public key %T has no Equal method", signer.Public())
+		}
+		if !pub.Equal(got.PublicKey) {
+			t.Fatal("exported p12 private key does not match the leaf's public key")
+		}
 	})
 
 	t.Run("ari", func(t *testing.T) {
@@ -397,13 +497,37 @@ func TestIssuanceBreadthAgainstCompose(t *testing.T) {
 		}, &cert)
 		certPath := "/api/v1/orgs/" + orgID + "/certificates/" + cert.ID
 		active := waitActive(ctx, t, c, certPath)
-		if active.NextRenewAt == nil {
-			t.Fatal("nextRenewAt missing right after issuance")
+		if active.CurrentVersion == nil {
+			t.Fatal("no current version right after issuance")
 		}
-		policyNextRenew, err := time.Parse(time.RFC3339, *active.NextRenewAt)
+		var versions []struct {
+			NotBefore string `json:"notBefore"`
+			NotAfter  string `json:"notAfter"`
+		}
+		c.call(ctx, t, http.MethodGet, certPath+"/versions", nil, &versions)
+		if len(versions) == 0 {
+			t.Fatal("no versions")
+		}
+		notBefore, err := time.Parse(time.RFC3339, versions[0].NotBefore)
 		if err != nil {
 			t.Fatal(err)
 		}
+		notAfter, err := time.Parse(time.RFC3339, versions[0].NotAfter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Independently computed from the version's own validity, not read
+		// off the certificate's own nextRenewAt: the post-issuance ARI poll
+		// (below) runs synchronously right after the same commit that sets
+		// status active, so a GET landing after it has already run would
+		// read nextRenewAt already lowered by ARI, making a "final ≤
+		// before" comparison against the certificate's own value
+		// tautological. internal/issuance/policy.go's NextRenewAt, percent
+		// mode: notAfter - 33% of the lifetime (the two floors it also
+		// applies — half the lifetime, now+1h — never bind for Pebble's
+		// 90-day default profile, so they are not replicated here).
+		life := notAfter.Sub(notBefore)
+		policyNextRenew := notAfter.Add(-(life / 100 * 33))
 		// The 6h periodic ARI poll has RunOnStart false; only the
 		// post-issuance best-effort poll (IssueWorker.succeed) fills the
 		// window here.

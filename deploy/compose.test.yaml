@@ -69,6 +69,13 @@ services:
       - --entrypoints.web.address=:8080
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
+      # Not published to the host: the file provider watching a
+      # cross-container bind mount is not instantaneous, so the breadth
+      # e2e (fix round 1) polls a router's status here via `docker exec` +
+      # wget, over the container's own localhost, before it relies on that
+      # router actually forwarding a challenge.
+      - --entrypoints.traefik.address=:8081
+      - --api.insecure=true
     volumes:
       - ../.e2e/traefik:/etc/traefik/dynamic:ro
   agent:
