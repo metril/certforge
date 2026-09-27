@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,6 +21,7 @@ import (
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/render"
 )
@@ -379,19 +381,26 @@ func (s *Server) ListIssuanceAttempts(ctx context.Context, r gen.ListIssuanceAtt
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
-// DownloadCertificateVersion renders PEM parts of one version. Parts
-// containing the key (key, combined) need keys:export and are audited
-// before any byte is returned: the audit call here bypasses the
-// fire-and-forget s.audit helper and returns its own error instead, since a
-// failed audit write must block the download rather than merely being
-// logged. A version with no stored key (imported without one) reports 404,
-// same as any other missing part of the request, not 500.
+// DownloadCertificateVersion renders pem or der parts of one version
+// through render.For(format). Parts containing the key (key, combined) need
+// keys:export and are audited before any byte is returned: the audit call
+// here bypasses the fire-and-forget s.audit helper and returns its own
+// error instead, since a failed audit write must block the download rather
+// than merely being logged. A version with no stored key (imported without
+// one) reports 404, same as any other missing part of the request, not
+// 500. der only holds cert, chain and key, one part per file;
+// render.ErrNotDER (fullchain, combined) is 422.
 func (s *Server) DownloadCertificateVersion(ctx context.Context, r gen.DownloadCertificateVersionRequestObject) (gen.DownloadCertificateVersionResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
 		return nil, err
 	}
-	if r.Params.Format != nil && string(*r.Params.Format) != "pem" {
-		return nil, unprocessable("format", "pem is supported now; der is not implemented yet")
+	format := "pem"
+	if r.Params.Format != nil {
+		format = string(*r.Params.Format)
+	}
+	renderer, ok := render.For(format)
+	if !ok {
+		return nil, unprocessable("format", fmt.Sprintf("unknown format %q; valid: %s", format, strings.Join(render.Formats, ", ")))
 	}
 	var parts []string
 	for _, p := range strings.Split(r.Params.Parts, ",") {
@@ -413,25 +422,33 @@ func (s *Server) DownloadCertificateVersion(ctx context.Context, r gen.DownloadC
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	files, err := render.Render(m, parts)
+	files, err := renderer.Render(m, render.OutputOpts{Parts: parts})
 	if err != nil {
 		if errors.Is(err, render.ErrNoKey) {
 			return nil, &HTTPError{Status: http.StatusNotFound, Title: "Not found", Detail: "this version has no stored private key"}
+		}
+		if errors.Is(err, render.ErrNotDER) {
+			return nil, unprocessable("parts", err.Error())
 		}
 		return nil, unprocessable("parts", err.Error()+"; valid: "+strings.Join(render.Parts, ", "))
 	}
 	if needKey {
 		org := r.OrgId
 		if err := s.d.Auditor.Record(ctx, audit.Event{Action: "certificate.key_exported", ResourceType: "certificate_version",
-			ResourceID: r.Vid.String(), OrgID: &org, Details: map[string]any{"certificateId": c.ID.String(), "parts": parts}}); err != nil {
+			ResourceID: r.Vid.String(), OrgID: &org, Details: map[string]any{"certificateId": c.ID.String(), "parts": parts, "format": format}}); err != nil {
 			return nil, fmt.Errorf("audit key export: %w", err)
 		}
 	}
 	base := unsafeName.ReplaceAllString(c.Name, "_")
 	if len(files) == 1 {
 		f := files[0]
+		headers := gen.DownloadCertificateVersion200ResponseHeaders{ContentDisposition: fmt.Sprintf(`attachment; filename="%s-%s"`, base, f.Name)}
+		if f.ContentType == "application/octet-stream" {
+			return gen.DownloadCertificateVersion200ApplicationoctetStreamResponse{Body: bytes.NewReader(f.Data), ContentLength: int64(len(f.Data)),
+				Headers: headers}, nil
+		}
 		return gen.DownloadCertificateVersion200ApplicationxPemFileResponse{Body: bytes.NewReader(f.Data), ContentLength: int64(len(f.Data)),
-			Headers: gen.DownloadCertificateVersion200ResponseHeaders{ContentDisposition: fmt.Sprintf(`attachment; filename="%s-%s"`, base, f.Name)}}, nil
+			Headers: headers}, nil
 	}
 	z, err := render.Zip(files)
 	if err != nil {
@@ -439,6 +456,77 @@ func (s *Server) DownloadCertificateVersion(ctx context.Context, r gen.DownloadC
 	}
 	return gen.DownloadCertificateVersion200ApplicationzipResponse{Body: bytes.NewReader(z), ContentLength: int64(len(z)),
 		Headers: gen.DownloadCertificateVersion200ResponseHeaders{ContentDisposition: fmt.Sprintf(`attachment; filename="%s.zip"`, base)}}, nil
+}
+
+var exportAliasRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// ExportCertificateVersion packages a version as a password-protected
+// PKCS#12 or JKS file. Authorization is certs:read then keys:export (an
+// export always touches the key, unlike download's key/combined parts), and
+// the key export is audited (certificate.key_exported, format p12/jks)
+// before any byte is returned, exactly like DownloadCertificateVersion's
+// key-bearing parts. The password is validated here (length; JKS's own
+// ASCII/6-character minimum surfaces through render.ErrPassword) but never
+// logged, audited, put in a URL, or echoed back.
+func (s *Server) ExportCertificateVersion(ctx context.Context, r gen.ExportCertificateVersionRequestObject) (gen.ExportCertificateVersionResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	if _, err := authorize(ctx, authz.ActionKeysExport, &r.OrgId); err != nil {
+		return nil, err
+	}
+	format := string(r.Body.Format)
+	renderer, ok := render.For(format)
+	if !ok || (format != "p12" && format != "jks") {
+		return nil, unprocessable("format", fmt.Sprintf("unknown export format %q; valid: p12, jks", format))
+	}
+	if r.Body.Password == nil || *r.Body.Password == "" {
+		return nil, unprocessable("password", "required")
+	}
+	password := *r.Body.Password
+	if utf8.RuneCountInString(password) > 128 {
+		return nil, unprocessable("password", "must be at most 128 characters")
+	}
+	opts := render.OutputOpts{Password: password}
+	if r.Body.Alias != nil {
+		if !exportAliasRE.MatchString(*r.Body.Alias) {
+			return nil, unprocessable("alias", `must match ^[A-Za-z0-9._-]{1,64}$`)
+		}
+		opts.Alias = *r.Body.Alias
+	}
+	if r.Body.Encoding != nil {
+		opts.Encoding = string(*r.Body.Encoding)
+	}
+	c, err := s.d.Issuance.Store.GetCertificate(ctx, r.OrgId, r.Id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	m, err := s.d.Certs.Material(ctx, c.ID, r.Vid, true)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	opts.BaseName = delivery.SafeName(c.Name)
+	files, err := renderer.Render(m, opts)
+	if err != nil {
+		if errors.Is(err, render.ErrNoKey) {
+			return nil, &HTTPError{Status: http.StatusNotFound, Title: "Not found", Detail: "this version has no stored private key"}
+		}
+		if errors.Is(err, render.ErrPassword) {
+			return nil, unprocessable("password", err.Error())
+		}
+		return nil, unprocessable("format", err.Error())
+	}
+	org := r.OrgId
+	if err := s.d.Auditor.Record(ctx, audit.Event{Action: "certificate.key_exported", ResourceType: "certificate_version",
+		ResourceID: r.Vid.String(), OrgID: &org, Details: map[string]any{"certificateId": c.ID.String(), "format": format}}); err != nil {
+		return nil, fmt.Errorf("audit key export: %w", err)
+	}
+	f := files[0]
+	headers := gen.ExportCertificateVersion200ResponseHeaders{ContentDisposition: fmt.Sprintf(`attachment; filename="%s"`, f.Name)}
+	if format == "p12" {
+		return gen.ExportCertificateVersion200ApplicationxPkcs12Response{Body: bytes.NewReader(f.Data), ContentLength: int64(len(f.Data)), Headers: headers}, nil
+	}
+	return gen.ExportCertificateVersion200ApplicationxJavaKeystoreResponse{Body: bytes.NewReader(f.Data), ContentLength: int64(len(f.Data)), Headers: headers}, nil
 }
 
 // ListManualDNS returns the TXT records an operator must add for a waiting

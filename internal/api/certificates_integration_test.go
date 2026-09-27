@@ -6,23 +6,263 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/json"
+	"fmt"
 	"io"
+	"math/big"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pavlo-v-chernykh/keystore-go/v4"
+	"software.sslmate.com/src/go-pkcs12"
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/issuance"
+	"github.com/metril/certforge/internal/signer"
 )
 
 func (f *apiFixture) download(ctx context.Context, c gen.Id, v gen.VersionId, parts string) (gen.DownloadCertificateVersionResponseObject, error) {
 	return f.srv.DownloadCertificateVersion(ctx, gen.DownloadCertificateVersionRequestObject{OrgId: f.org, Id: c, Vid: v,
 		Params: gen.DownloadCertificateVersionParams{Parts: parts}})
+}
+
+func (f *apiFixture) downloadFormat(ctx context.Context, c gen.Id, v gen.VersionId, format, parts string) (gen.DownloadCertificateVersionResponseObject, error) {
+	ff := gen.DownloadCertificateVersionParamsFormat(format)
+	return f.srv.DownloadCertificateVersion(ctx, gen.DownloadCertificateVersionRequestObject{OrgId: f.org, Id: c, Vid: v,
+		Params: gen.DownloadCertificateVersionParams{Format: &ff, Parts: parts}})
+}
+
+func (f *apiFixture) export(ctx context.Context, c gen.Id, v gen.VersionId, body *gen.ExportRequest) (gen.ExportCertificateVersionResponseObject, error) {
+	return f.srv.ExportCertificateVersion(ctx, gen.ExportCertificateVersionRequestObject{OrgId: f.org, Id: c, Vid: v, Body: body})
+}
+
+// realCert returns a real, x509-parseable self-signed leaf and one chain
+// certificate, plus a PKCS#8 EC key: unlike issuedCert's opaque "leaf"/"key"
+// placeholder bytes (fine for PEM, which treats parts as opaque), the
+// DER/PKCS12/JKS renderers parse their input, so these tests need material
+// that actually decodes.
+func realCert(t *testing.T, cn string, serial int64) ([]byte, [][]byte, []byte) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: cn},
+		NotBefore: now, NotAfter: now.AddDate(0, 3, 0), DNSNames: []string{cn}}
+	leafDER, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chainTpl := &x509.Certificate{SerialNumber: big.NewInt(serial + 1000), Subject: pkix.Name{CommonName: "Test Intermediate"},
+		NotBefore: now, NotAfter: now.AddDate(0, 3, 0)}
+	chainDER, err := x509.CreateCertificate(rand.Reader, chainTpl, chainTpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return leafDER, [][]byte{chainDER}, pkcs8
+}
+
+// realIssuedCert stores a certificate whose current version holds real,
+// parseable material (see realCert); withKey=false stores a keyless
+// version, the same shape an unmanaged upload without a key would leave
+// (Task 13), covering ErrNoKey for DER/export.
+func (f *apiFixture) realIssuedCert(t *testing.T, name string, withKey bool) (issuance.Certificate, certstore.Version) {
+	t.Helper()
+	ctx := context.Background()
+	c, err := f.store.CreateCertificate(ctx, f.org, issuance.CertInput{Name: name, CommonName: name + ".example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafDER, chainDER, pkcs8 := realCert(t, name+".example.test", time.Now().UnixNano())
+	iss := &signer.Issued{LeafDER: leafDER, ChainDER: chainDER, NotBefore: time.Now(), NotAfter: time.Now().Add(90 * 24 * time.Hour), Serial: "0b"}
+	if withKey {
+		iss.PrivateKeyPKCS8 = pkcs8
+	}
+	tx, err := f.store.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := f.certs.Insert(ctx, tx, c.ID, iss, "ec256", certstore.InsertOpts{Source: "issued"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return c, v
+}
+
+// TestDownloadDER is the Task 4 brief's DER download coverage: a single
+// part returns octet-stream bytes that parse as x509, several parts zip
+// (named cert.der/chain-1.der, matching the DER renderer's own file names),
+// and a PEM-only part (fullchain) is 422 through render.ErrNotDER.
+func TestDownloadDER(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-der", true)
+
+	res, err := f.downloadFormat(f.as("operator"), c.ID, v.ID, "der", "cert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	octet, ok := res.(gen.DownloadCertificateVersion200ApplicationoctetStreamResponse)
+	if !ok {
+		t.Fatalf("response type = %T", res)
+	}
+	body, _ := io.ReadAll(octet.Body)
+	if _, err := x509.ParseCertificate(body); err != nil {
+		t.Fatalf("cert.der did not parse: %v", err)
+	}
+
+	res, err = f.downloadFormat(f.as("operator"), c.ID, v.ID, "der", "cert,chain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	z, ok := res.(gen.DownloadCertificateVersion200ApplicationzipResponse)
+	if !ok {
+		t.Fatalf("response type = %T", res)
+	}
+	b, _ := io.ReadAll(z.Body)
+	zr, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, zf := range zr.File {
+		names[zf.Name] = true
+	}
+	if !names["cert.der"] || !names["chain-1.der"] {
+		t.Fatalf("zip entries = %v", names)
+	}
+
+	_, err = f.downloadFormat(f.as("operator"), c.ID, v.ID, "der", "fullchain")
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+}
+
+// TestExportP12 is the Task 4 brief's PKCS#12 export coverage: a caller
+// without keys:export is forbidden, an authorized caller gets a decodable
+// .p12 named after the certificate.
+func TestExportP12(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-p12", true)
+	pw := "hunter22"
+
+	_, err := f.export(f.as("viewer"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatP12, Password: &pw})
+	wantStatus(t, err, http.StatusForbidden)
+
+	res, err := f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatP12, Password: &pw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p12, ok := res.(gen.ExportCertificateVersion200ApplicationxPkcs12Response)
+	if !ok {
+		t.Fatalf("response type = %T", res)
+	}
+	if p12.Headers.ContentDisposition != `attachment; filename="web-p12.p12"` {
+		t.Fatalf("content-disposition = %q", p12.Headers.ContentDisposition)
+	}
+	body, _ := io.ReadAll(p12.Body)
+	if _, _, _, err := pkcs12.DecodeChain(body, pw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+}
+
+// TestExportJKS is the Task 4 brief's JKS export coverage: the alias
+// defaults to SafeName(cert name), and a password under 6 characters is
+// 422 (render.ErrPassword, JKS's own minimum).
+func TestExportJKS(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-jks", true)
+	pw := "hunter22"
+
+	res, err := f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatJks, Password: &pw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jr, ok := res.(gen.ExportCertificateVersion200ApplicationxJavaKeystoreResponse)
+	if !ok {
+		t.Fatalf("response type = %T", res)
+	}
+	if jr.Headers.ContentDisposition != `attachment; filename="web-jks.jks"` {
+		t.Fatalf("content-disposition = %q", jr.Headers.ContentDisposition)
+	}
+	body, _ := io.ReadAll(jr.Body)
+	ks := keystore.New()
+	if err := ks.Load(bytes.NewReader(body), []byte(pw)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ks.GetPrivateKeyEntry("web-jks", []byte(pw)); err != nil {
+		t.Fatalf("alias did not default to SafeName(cert name): %v", err)
+	}
+
+	short := "abcde"
+	_, err = f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatJks, Password: &short})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+}
+
+// TestExportAuditOmitsPassword is the Task 4 brief's audit coverage: the
+// key-export audit event names the format but never carries the password,
+// under any key or as a substring of any value.
+func TestExportAuditOmitsPassword(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-audit", true)
+	pw := "hunter22-not-logged"
+
+	if _, err := f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatP12, Password: &pw}); err != nil {
+		t.Fatal(err)
+	}
+
+	var details string
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT details::text FROM audit_events WHERE action = 'certificate.key_exported' ORDER BY id DESC LIMIT 1`).Scan(&details); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(details, pw) {
+		t.Fatalf("audit details contain the password: %s", details)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(details), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["format"] != "p12" {
+		t.Fatalf("format = %v", got["format"])
+	}
+	for k, val := range got {
+		if strings.Contains(k, "password") || strings.Contains(fmt.Sprint(val), pw) {
+			t.Fatalf("audit details key %q leaked the password: %v", k, val)
+		}
+	}
+}
+
+// TestExportKeylessVersion is the Task 4 brief's keyless coverage: a
+// version stored with no key (the same shape an unmanaged upload without a
+// key leaves, Task 13) is 404 for both export and DER's key part.
+func TestExportKeylessVersion(t *testing.T) {
+	f := newAPIFixture(t)
+	c, v := f.realIssuedCert(t, "web-nokey", false)
+	pw := "hunter22"
+
+	_, err := f.export(f.as("admin"), c.ID, v.ID, &gen.ExportRequest{Format: gen.ExportFormatP12, Password: &pw})
+	wantStatus(t, err, http.StatusNotFound)
+
+	_, err = f.downloadFormat(f.as("admin"), c.ID, v.ID, "der", "key")
+	wantStatus(t, err, http.StatusNotFound)
 }
 
 // Review Focus: downloading a key without keys:export.

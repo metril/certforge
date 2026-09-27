@@ -26,11 +26,6 @@ func (s *Server) UploadCertificateVersion(_ context.Context, _ gen.UploadCertifi
 	return nil, notImplemented
 }
 
-// ExportCertificateVersion lands in Task 4 (download and export API).
-func (s *Server) ExportCertificateVersion(_ context.Context, _ gen.ExportCertificateVersionRequestObject) (gen.ExportCertificateVersionResponseObject, error) {
-	return nil, notImplemented
-}
-
 // GetRateLedger lands in Task 11 (rate ledger).
 func (s *Server) GetRateLedger(_ context.Context, _ gen.GetRateLedgerRequestObject) (gen.GetRateLedgerResponseObject, error) {
 	return nil, notImplemented

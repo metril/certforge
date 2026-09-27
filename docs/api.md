@@ -69,7 +69,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET /orgs/{orgId}/certificates/{id}/versions` | issued versions |
 | `POST /orgs/{orgId}/certificates/{id}/versions/upload` | add an uploaded version to an unmanaged certificate (arriving in Phase 4A) |
 | `GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download` | PEM or DER file, or zip; `key` needs `keys:export` |
-| `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/export` | PKCS#12 or JKS export; needs `keys:export` (arriving in Phase 4A) |
+| `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/export` | PKCS#12 or JKS export (password in the body); needs `certs:read` and `keys:export` |
 | `GET /orgs/{orgId}/certificates/{id}/attempts` | attempts with step timeline and log |
 | `GET /orgs/{orgId}/certificates/{id}/manual-dns` | TXT records waiting for an operator |
 | `POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm` | resume the waiting attempt |
@@ -104,7 +104,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `POST /agents/ca/rotate` | rotate the agent CA |
 | `POST /agents/ca/{id}/retire` | retire an agent CA |
 
-The five endpoints marked "arriving in Phase 4A" above are in the OpenAPI contract now (Task 2) but answer 501 until their own task lands: export (Task 4), upload and import (Task 13, 14), rate ledger (Task 11).
+The four endpoints marked "arriving in Phase 4A" above are in the OpenAPI contract now (Task 2) but answer 501 until their own task lands: upload and import (Task 13, 14), rate ledger (Task 11).
 
 `GET /.well-known/acme-challenge/{token}` (not under `/api/v1`, on the main listener, unauthenticated) serves an http-01 key authorization as `text/plain` for a token this server is currently waiting on (`^[A-Za-z0-9_-]{1,128}$`), or 404 otherwise. It is not in the OpenAPI document.
 

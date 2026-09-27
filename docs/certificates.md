@@ -167,7 +167,9 @@ Any other ACME error type shows as "The CA returned `<type>`."; open **Raw log**
 
 ## Downloads
 
-`GET .../versions/{vid}/download?format=pem&parts=...`. Parts: `cert`, `chain`, `fullchain`, `key`, `combined` (fullchain + key). One part returns a PEM file; several return a zip (`privkey.pem` and `combined.pem` with mode 0600). `key` and `combined` need the `keys:export` permission (global admin only) and every such download is written to the audit log before any byte is sent.
+`GET .../versions/{vid}/download?format=pem&parts=...` (`format` is `pem` or `der`, default `pem`). Parts: `cert`, `chain`, `fullchain`, `key`, `combined` (fullchain + key). One part returns a raw file; several return a zip (`privkey.pem`/`privkey.der` and `combined.pem` with mode 0600). `key` and `combined` need the `keys:export` permission (global admin only) and every such download is written to the audit log before any byte is sent.
+
+`POST .../versions/{vid}/export` packages a version as PKCS#12 or JKS instead, with the password (and, for `p12`, `encoding`, or for `jks`, `alias`) in the JSON request body — see [Export passwords](#export-passwords) for why. It needs `certs:read` and `keys:export`, the same as a key-bearing download.
 
 ### Formats
 
@@ -178,4 +180,8 @@ Four output formats:
 - `p12`: one password-protected `<name>.p12` holding the leaf, its chain, any extra certificates (as CA certificates, leaf and chain), and the key.
 - `jks`: one password-protected `<name>.jks` Java keystore holding a private-key entry (leaf, key, chain) and a trusted-certificate entry per extra certificate and per extra chain certificate; the store password equals the key password, must be at least 6 characters, and must be ASCII (Java's own keystore format does not agree with this library on how a non-ASCII password hashes, so a non-ASCII password would produce a file Java/keytool cannot open with the same password).
 
-`key`, `combined`, and every p12/jks export need the `keys:export` permission (global admin only) and are written to the audit log before any byte is sent. DER, PKCS#12 and JKS downloads and exports land in a later Phase 4A task.
+`key`, `combined`, and every p12/jks export need the `keys:export` permission (global admin only) and are written to the audit log before any byte is sent, as `certificate.key_exported` with a `format` of `pem`, `der`, `p12`, or `jks`.
+
+### Export passwords
+
+Export (`POST .../export`) takes its password in the JSON request body instead of a query parameter, unlike download's `format`/`parts`: a GET's query string routinely ends up in proxy and browser history, access logs, and `Referer` headers, so a query-string password would leak far more readily than one that never leaves the body of a POST. The password is validated (1 to 128 characters; at least 6, ASCII-only, for JKS) but never stored, logged, put in a URL, returned by any read, or included in the `certificate.key_exported` audit event the export records — that event's `details` carries only `certificateId` and `format`.
