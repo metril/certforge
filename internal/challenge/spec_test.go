@@ -1,6 +1,7 @@
 package challenge
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -71,17 +72,8 @@ func TestRuleSpecValidateMethodErrorListsAll(t *testing.T) {
 		t.Fatal("want error")
 	}
 	for _, m := range []string{"dns-01", "manual-dns", "http-01", "tls-alpn-01"} {
-		if !containsStr(err.Error(), m) {
+		if !strings.Contains(err.Error(), m) {
 			t.Errorf("error %q missing method %q", err.Error(), m)
 		}
 	}
-}
-
-func containsStr(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }

@@ -105,7 +105,7 @@ flowchart LR
 ```
 
 - Match patterns: `*`, `*.zone` (one label below zone, or `*.zone` itself), `zone` (zone and everything below). First match wins. The UI's coverage panel uses the same rules.
-- `Router.Validate` rejects uncovered names, IP addresses, and a wildcard name routed to anything other than dns-01/manual-dns, before an order exists.
+- `Router.Validate` rejects uncovered names and IP addresses before an order exists. `ruleFor` — the single choke point every name-to-rule lookup goes through — skips an http-01/tls-alpn-01 rule for a wildcard name and tries the next matching rule in order (no ACME CA offers those challenges for a wildcard authorization), so such a name is "uncovered" only once every rule in its path has been skipped this way.
 - lego providers are built by `challenge.Build` under a global mutex with an isolated environment (`internal/challenge/lego_env.go`).
 - Provider schemas are generated from lego's TOML metadata by `tools/gen-lego-schemas` into `internal/challenge/schemas/` and published to the meta registry by `challenge.AddToMeta` and served under `dnsProviders` in `GET /api/v1/meta/schemas`.
 

@@ -120,13 +120,20 @@ func (s *Service) RegisterAccount(ctx context.Context, orgID, caID uuid.UUID, em
 // plus any cert-level VerificationRules override, the same two sources
 // buildRouter combines at issuance time) route one of its wildcard SANs to
 // http-01 or tls-alpn-01: no ACME CA ever offers those challenges for a
-// wildcard authorization (challenge.Router.Validate enforces the same rule
-// once a real Router is built). A wildcard name matched by none of these
-// rules is not flagged: it may still be covered by an org/global catch-all
-// rule, only resolved (and checked) at issuance time. in.CommonName/SANs
-// are normalized the same way Store.prepareCertTx normalizes them; a
-// malformed name surfaces from there instead, so a normalization error here
-// is silently ignored.
+// wildcard authorization. Per the controller ruling (challenge.Router.
+// ruleFor applies the same rule once a real Router is built), a wildcard
+// name does not stop at the first matching rule the way a normal name does:
+// an http-01/tls-alpn-01 match is skipped and checking continues with the
+// next rule in order, since that rule can never prove a wildcard anyway. A
+// wildcard SAN this ends up matching no eligible rule for is only flagged
+// when at least one rule DID match it (and was skipped) — a rule someone
+// wrote targeting this exact name with an impossible method is a real
+// mistake worth catching now, even though an org/global catch-all could in
+// principle still save it. A wildcard matched by nothing at all is not
+// flagged: it may be covered by such a catch-all, only known at issuance
+// time. in.CommonName/SANs are normalized the same way Store.prepareCertTx
+// normalizes them; a normalization error surfaces from there instead, so one
+// here is silently ignored.
 func validateWildcardMethods(in CertInput) error {
 	names, err := NormalizeNames(in.CommonName, in.SANs)
 	if err != nil {
@@ -140,15 +147,21 @@ func validateWildcardMethods(in CertInput) error {
 		if !strings.HasPrefix(n, "*.") {
 			continue
 		}
+		var skipped challenge.Type
 		for _, r := range rules {
 			m, err := challenge.ParseMatch(r.Match)
 			if err != nil || !m.Matches(n) {
 				continue
 			}
-			if t := r.Method.Type(); t != challenge.DNS01 {
-				return &ValidationError{"verificationRules", fmt.Sprintf("wildcard name %s cannot use %s", n, t)}
+			if t := r.Method.Type(); t == challenge.HTTP01 || t == challenge.TLSALPN01 {
+				skipped = t
+				continue // ruling: wildcard skips this rule, tries the next
 			}
-			break // first match wins
+			skipped = "" // resolved to an eligible (dns-01/manual-dns) rule
+			break
+		}
+		if skipped != "" {
+			return &ValidationError{"verificationRules", fmt.Sprintf("wildcard name %s cannot use %s", n, skipped)}
 		}
 	}
 	return nil

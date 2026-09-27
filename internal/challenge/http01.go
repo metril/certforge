@@ -45,11 +45,22 @@ func (t *HTTPTokens) now() time.Time {
 	return time.Now()
 }
 
-// Put stores keyAuth for token, servable until the store's TTL elapses.
+// Put stores keyAuth for token, servable until the store's TTL elapses, and
+// purges every already-expired token (fix round 1, Minor finding): without
+// this, a token whose CleanUp is never called (a crashed or superseded
+// attempt) would sit in the map forever instead of just becoming
+// unreadable, so a long-running server accumulates one entry per token ever
+// presented.
 func (t *HTTPTokens) Put(token, keyAuth string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.tokens[token] = httpToken{keyAuth: keyAuth, expires: t.now().Add(t.ttl)}
+	now := t.now()
+	for tok, e := range t.tokens {
+		if !now.Before(e.expires) {
+			delete(t.tokens, tok)
+		}
+	}
+	t.tokens[token] = httpToken{keyAuth: keyAuth, expires: now.Add(t.ttl)}
 }
 
 // Get returns the key authorization for token, if present and not expired.

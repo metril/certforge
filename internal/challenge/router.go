@@ -68,25 +68,20 @@ func NewRouter(ctx context.Context, names []string, rules []Rule, sink StepSink)
 	return &Router{ctx: ctx, names: ns, rules: slices.Clone(rules), sink: sink, now: time.Now}
 }
 
-// Validate fails when a name is an IP address, no rule matches it, or a
-// wildcard name is routed to a method other than dns-01/manual-dns (a CA
-// never offers http-01 or tls-alpn-01 for a wildcard authorization), so an
-// uncoverable name is reported before any order is placed at the CA.
+// Validate fails when a name is an IP address, or no rule matches it: for a
+// wildcard name, ruleFor already skips any http-01/tls-alpn-01 rule in its
+// path (no ACME CA offers those challenges for a wildcard authorization; see
+// the controller ruling on ruleFor), so an uncovered wildcard is reported
+// the same way as any other uncovered name, before any order is placed at
+// the CA.
 func (r *Router) Validate() error {
 	var bad []string
 	for _, n := range r.names {
 		if net.ParseIP(n) != nil {
 			return fmt.Errorf("IP address %s cannot be validated with DNS-01", n)
 		}
-		rule, ok := r.ruleFor(n)
-		if !ok {
+		if _, ok := r.ruleFor(n); !ok {
 			bad = append(bad, n)
-			continue
-		}
-		if strings.HasPrefix(n, "*.") {
-			if t := ruleType(rule.Provider); t != DNS01 {
-				return fmt.Errorf("wildcard name %s cannot use %s; only dns-01 (or manual-dns) can prove a wildcard", n, t)
-			}
 		}
 	}
 	if len(bad) > 0 {
@@ -104,13 +99,22 @@ func ruleType(p ChallengeProvider) Type {
 	return p.Type()
 }
 
-// ChallengeTypes returns the distinct challenge types in use across every
-// rule (manual-dns counts as dns-01), in first-seen order.
+// ChallengeTypes returns the distinct challenge types r.names actually
+// resolve to (each name's own ruleFor lookup; manual-dns counts as dns-01),
+// in name order. A rule that matches none of the certificate's names — an
+// inherited catch-all shadowed, for every name, by the certificate's own
+// rules — does not appear here, so acme.Issue does not reject a certificate
+// as spanning more than one challenge type over a rule its names never
+// actually reach.
 func (r *Router) ChallengeTypes() []string {
 	seen := map[Type]bool{}
 	var out []string
-	for _, ru := range r.rules {
-		t := ruleType(ru.Provider)
+	for _, n := range r.names {
+		rule, ok := r.ruleFor(n)
+		if !ok {
+			continue
+		}
+		t := ruleType(rule.Provider)
 		if !seen[t] {
 			seen[t] = true
 			out = append(out, string(t))
@@ -183,8 +187,18 @@ func (v *solverView) CleanUp(domain, token, keyAuth string) error {
 
 func (v *solverView) Timeout() (time.Duration, time.Duration) { return v.r.Timeout() }
 
+// PreCheck resolves domain to the rule of v's own type (routeForType), not
+// Router's type-blind, apex-wins route: for an apex rule of a different
+// type sharing a bare domain with a wildcard rule of v's type, using route
+// here would silently apply the apex rule's resolvers/AliasZone/budget (or
+// lack of them) instead of the wildcard rule's own (fix round 1, Important
+// finding; see TestSolverViewPreCheckUsesOwnTypeRule).
 func (v *solverView) PreCheck(domain, fqdn, value string, check func(fqdn, value string) (bool, error)) (bool, error) {
-	return v.r.PreCheck(domain, fqdn, value, check)
+	name, rule, err := v.r.routeForType(domain, v.t)
+	if err != nil {
+		return false, err
+	}
+	return v.r.preCheck(name, rule, fqdn, value, check)
 }
 
 func (v *solverView) ChallengeTypes() []string { return []string{string(v.t)} }
@@ -198,11 +212,25 @@ func (v *solverView) TypeFor(domain string) (string, error) {
 
 func (v *solverView) For(t string) signer.ChallengeSolver { return v.r.For(t) }
 
+// ruleFor returns the first rule matching name. Controller ruling: no ACME
+// CA ever offers http-01 or tls-alpn-01 for a wildcard authorization, so
+// when name is a wildcard ("*.zone"), a rule of either type is treated as
+// not matching — routing skips it and tries the next matching rule in
+// order — instead of matching it and then failing later. This is the single
+// choke point every wildcard/method interaction goes through: Validate,
+// TypeFor, ChallengeTypes and routeForType all resolve through ruleFor.
 func (r *Router) ruleFor(name string) (*Rule, bool) {
+	wildcard := strings.HasPrefix(name, "*.")
 	for i := range r.rules {
-		if r.rules[i].Matcher.Matches(name) {
-			return &r.rules[i], true
+		if !r.rules[i].Matcher.Matches(name) {
+			continue
 		}
+		if wildcard {
+			if t := ruleType(r.rules[i].Provider); t == HTTP01 || t == TLSALPN01 {
+				continue
+			}
+		}
+		return &r.rules[i], true
 	}
 	return nil, false
 }
@@ -427,6 +455,14 @@ func (r *Router) PreCheck(domain, fqdn, value string, check func(fqdn, value str
 	if err != nil {
 		return false, err
 	}
+	return r.preCheck(name, rule, fqdn, value, check)
+}
+
+// preCheck runs the propagation/readiness check for name/rule. Shared by
+// the unfiltered Router.PreCheck and solverView.PreCheck (which resolves
+// name/rule via routeForType instead of route, so it never applies the
+// wrong rule's settings for a domain shared across types; see solverView).
+func (r *Router) preCheck(name string, rule *Rule, fqdn, value string, check func(fqdn, value string) (bool, error)) (bool, error) {
 	if w, ok := rule.Provider.(Waiter); ok {
 		if werr := w.WaitReady(r.ctx); werr != nil {
 			r.markFailed(name, werr)

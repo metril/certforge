@@ -39,6 +39,31 @@ func TestHTTPTokensTTL(t *testing.T) {
 	}
 }
 
+// TestHTTPTokensPutPurgesExpired (fix round 1, Minor finding): an expired
+// token is not just unreadable via Get (already covered by TestHTTPTokensTTL)
+// but actually evicted from the store on a later Put, so a long-running
+// server does not accumulate one map entry per token forever.
+func TestHTTPTokensPutPurgesExpired(t *testing.T) {
+	clock := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	tok := NewHTTPTokens(time.Minute)
+	tok.Now = func() time.Time { return clock }
+
+	tok.Put("a", "ka-a")
+	tok.Put("b", "ka-b")
+	if got := len(tok.tokens); got != 2 {
+		t.Fatalf("len(tokens) = %d, want 2", got)
+	}
+
+	clock = clock.Add(2 * time.Minute) // both a and b are now expired
+	tok.Put("c", "ka-c")
+	if got := len(tok.tokens); got != 1 {
+		t.Fatalf("len(tokens) after Put past the TTL = %d, want 1 (only c; a and b purged)", got)
+	}
+	if _, ok := tok.tokens["c"]; !ok {
+		t.Fatal("c itself must still be there")
+	}
+}
+
 // TestServerHTTP01PresentCleanUp: Present stores the token/keyAuth pair so
 // it is servable, and Type reports http-01; CleanUp removes it.
 func TestServerHTTP01PresentCleanUp(t *testing.T) {

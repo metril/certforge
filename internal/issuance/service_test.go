@@ -77,3 +77,27 @@ func TestValidateWildcardMethodChecksOverrideRules(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+// TestValidateWildcardMethodAcceptsOrderedRules (fix round 1, controller
+// ruling + Important finding 3): an apex rule using http-01 listed first, a
+// wildcard rule using dns-01 listed second — the same shape and order
+// task-6-brief.md's TestRouterMixedApexWildcard uses at the Router level.
+// The apex rule's zone matcher also matches the wildcard name (matchZone
+// matches wildcards below its zone), but per the controller ruling a
+// wildcard name skips an http-01/tls-alpn-01 match and tries the next rule,
+// so this must be accepted (no error), matching what Router.Validate would
+// conclude for the same rule list.
+func TestValidateWildcardMethodAcceptsOrderedRules(t *testing.T) {
+	id := uuid.New()
+	in := CertInput{
+		CommonName: "example.com",
+		SANs:       []string{"*.example.com"},
+		Rules: []challenge.RuleSpec{
+			{Match: "example.com", Method: challenge.MethodHTTP01},
+			{Match: "*.example.com", Method: challenge.MethodDNS01, DNSCredentialID: &id},
+		},
+	}
+	if err := validateWildcardMethods(in); err != nil {
+		t.Fatalf("err = %v, want nil (the wildcard rule after the apex http-01 rule resolves it)", err)
+	}
+}

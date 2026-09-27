@@ -361,18 +361,21 @@ func TestRouterChallengeTypes(t *testing.T) {
 	}
 }
 
-// TestRouterMixedApexWildcard: an apex rule using http-01 and a wildcard
-// rule using dns-01 for the same zone. Validate must pass (the wildcard name
-// itself is routed to dns-01, which is all Validate requires), TypeFor must
-// report the wildcard name's own (unstripped) type, and For(type) must let
-// each type's view reach only its own provider for the shared bare domain.
+// TestRouterMixedApexWildcard: an apex rule using http-01 listed first, a
+// wildcard rule using dns-01 listed second, for the same zone. The
+// controller ruling means "first match wins" does not apply unmodified to a
+// wildcard name against an http-01/tls-alpn-01 rule: such a rule can never
+// prove a wildcard, so a wildcard name skips it and matches the next rule in
+// order — here the wildcard rule, even though the (broader) apex zone
+// matcher listed first would otherwise have matched "*.example.com" too
+// (matchZone matches wildcards below its zone). Validate must pass, TypeFor
+// must report the wildcard name's own (unstripped) type, and For(type) must
+// let each type's view reach only its own provider for the shared bare
+// domain.
 func TestRouterMixedApexWildcard(t *testing.T) {
 	httpProv := &recProvider{typ: HTTP01}
 	dnsProv := &recProvider{typ: DNS01}
-	// The more specific (wildcard) matcher must be listed first: "first
-	// match wins" is how an operator picks the wildcard over the zone rule
-	// for the wildcard name itself; see TestRouterOverlappingZonesFirstMatchWins.
-	rules := []Rule{rule(t, "*.example.com", dnsProv), rule(t, "example.com", httpProv)}
+	rules := []Rule{rule(t, "example.com", httpProv), rule(t, "*.example.com", dnsProv)}
 	r := NewRouter(context.Background(), []string{"example.com", "*.example.com"}, rules, nil)
 
 	if err := r.Validate(); err != nil {
@@ -409,5 +412,52 @@ func TestRouterRejectsWildcardNonDNS(t *testing.T) {
 	err := r.Validate()
 	if err == nil || !strings.Contains(err.Error(), "*.example.com") {
 		t.Fatalf("Validate() = %v, want a wildcard/http-01 error", err)
+	}
+}
+
+// TestRouterChallengeTypesIgnoresUnusedCatchAll (fix round 1, Important
+// finding): ChallengeTypes must reflect only the rules r.names actually
+// resolve to, not every rule in the list. An inherited "* -> http-01"
+// catch-all that never actually matches anything (the certificate's own
+// dns-01 rule shadows it for every one of its names, first-match-wins) must
+// not appear, or a certificate fully served by dns-01 would be wrongly
+// rejected by acme.Issue as spanning more than one challenge type.
+func TestRouterChallengeTypesIgnoresUnusedCatchAll(t *testing.T) {
+	r := NewRouter(context.Background(), []string{"example.com"},
+		[]Rule{rule(t, "example.com", &recProvider{}), rule(t, "*", &recProvider{typ: HTTP01})}, nil)
+	got := r.ChallengeTypes()
+	if len(got) != 1 || got[0] != string(DNS01) {
+		t.Fatalf("ChallengeTypes = %v, want [dns-01] (the unused http-01 catch-all must not count)", got)
+	}
+}
+
+// TestSolverViewPreCheckUsesOwnTypeRule (fix round 1, Important finding):
+// solverView.PreCheck must resolve via routeForType, not the type-blind
+// Router.route (apex-wins). For an apex http-01 rule and a wildcard dns-01
+// rule sharing a bare domain, the dns-01 view's PreCheck for the wildcard
+// authorization must use the wildcard rule's own settings (here, AliasZone)
+// — not silently pass because the apex rule (wrongly used) has none.
+func TestSolverViewPreCheckUsesOwnTypeRule(t *testing.T) {
+	httpProv := &recProvider{typ: HTTP01}
+	dnsProv := &recProvider{typ: DNS01}
+	apex := rule(t, "example.com", httpProv)
+	wild := rule(t, "*.example.com", dnsProv)
+	wild.AliasZone = "alias.example.net"
+	sink := &sinkRec{}
+	r := NewRouter(context.Background(), []string{"example.com", "*.example.com"}, []Rule{apex, wild}, sink)
+	view := r.For(string(DNS01))
+
+	// lego passes the wildcard-prefixed targeted domain to PreCheck for a
+	// wildcard authorization (see routingKey's doc comment).
+	ok, err := view.PreCheck("*.example.com", "_acme-challenge.example.com.", "v", func(string, string) (bool, error) { return true, nil })
+	if !ok || err != nil {
+		t.Fatalf("PreCheck must fail fast (true, nil) on the alias mismatch: %v, %v", ok, err)
+	}
+	step := "challenge *.example.com"
+	if sink.steps[step] != StepFailed {
+		t.Fatalf("must be routed to the wildcard rule's AliasZone check, not silently pass via the apex rule: step = %q", sink.steps[step])
+	}
+	if msg := sink.lastMessage(step); !strings.Contains(msg, "alias zone") {
+		t.Fatalf("message should name the alias mismatch: %q", msg)
 	}
 }

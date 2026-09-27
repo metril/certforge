@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -557,6 +558,24 @@ func TestCreateCertificateAndRenew(t *testing.T) {
 	_, err = f.srv.CreateCertificate(f.as("operator"), gen.CreateCertificateRequestObject{OrgId: f.org,
 		Body: &gen.CertificateInput{Name: "bad", CommonName: "example.test", Sans: &bad}})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
+}
+
+// TestCreateCertificateRejectsWildcardHTTP01 (fix round 1, Minor finding):
+// a wildcard SAN whose only matching rule uses http-01 is rejected at
+// create time (issuance.validateWildcardMethods, wired into
+// Service.CreateCertificate before the store write) with a 422 naming
+// verificationRules, not left to fail only once an issuance attempt runs.
+func TestCreateCertificateRejectsWildcardHTTP01(t *testing.T) {
+	f := newAPIFixture(t)
+	sans := []string{"*.example.test"}
+	_, err := f.srv.CreateCertificate(f.as("operator"), gen.CreateCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateInput{Name: "wild-http01", CommonName: "example.test", Sans: &sans,
+			VerificationRules: &[]gen.VerificationRule{{Match: "*.example.test", Method: "http-01"}}}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+	var he *HTTPError
+	if !errors.As(err, &he) || he.Title != "Invalid verificationRules" {
+		t.Fatalf("err = %v, want an Invalid verificationRules problem", err)
+	}
 }
 
 // TestListCertificatesPagesAndFilters exercises the list endpoint's paging,
