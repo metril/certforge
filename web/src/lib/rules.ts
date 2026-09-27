@@ -52,11 +52,25 @@ export function withVia(rule: VerificationRule, via: ChallengeVia): Verification
 
 /** A rule is usable once it has what its method needs to actually run: a
  * credential for dns-01, a client for tls-alpn-01 or http-01 via agent.
- * Everything else (manual-dns, http-01 via server) needs nothing more. */
-export function ruleUsable(r: VerificationRule): boolean {
+ * Everything else (manual-dns, http-01 via server) needs nothing more.
+ *
+ * When `clients` is given, an agent-mode rule's `clientId` is also checked
+ * against `clientOptions()` — the same membership the picker itself offers
+ * — so a client kept from before a webroot was cleared, or one that never
+ * reported the method's capability, is caught here too (review fix round
+ * 1, Minor). Without `clients` (most callers, which don't have the list to
+ * hand), this falls back to the plain clientId-presence check. */
+export function ruleUsable(r: VerificationRule, clients?: Client[]): boolean {
   if (r.method === 'dns-01') return !!r.dnsCredentialId;
-  if (r.method === 'http-01') return r.via !== 'agent' || !!r.clientId;
-  if (r.method === 'tls-alpn-01') return !!r.clientId;
+  if (r.method === 'http-01') {
+    if (r.via !== 'agent') return true;
+    if (!r.clientId) return false;
+    return !clients || clientOptions(clients, 'http-01', r.webroot).some((c) => c.id === r.clientId);
+  }
+  if (r.method === 'tls-alpn-01') {
+    if (!r.clientId) return false;
+    return !clients || clientOptions(clients, 'tls-alpn-01').some((c) => c.id === r.clientId);
+  }
   return true;
 }
 
@@ -81,5 +95,11 @@ export function clientOptions(clients: Client[], method: 'http-01' | 'tls-alpn-0
 }
 
 /** Mirrors delivery.CleanPath, same as a layout file's `path` (lib/paths.ts,
- * features/delivery/layoutFiles.ts re-exports the same function). */
-export const webrootError = pathError;
+ * features/delivery/layoutFiles.ts re-exports the same function) — except a
+ * webroot names a *directory* the agent writes into, not a file, so a
+ * trailing slash (the natural way to type one) is stripped first instead of
+ * being rejected with pathError's file-specific message (review fix round
+ * 1, Minor). */
+export function webrootError(p: string): string | null {
+  return pathError(p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p);
+}

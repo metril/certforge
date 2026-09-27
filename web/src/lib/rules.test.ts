@@ -111,7 +111,38 @@ describe('ruleTarget', () => {
   it('tls-alpn-01 without a client', () => expect(ruleTarget({ match: '*', method: 'tls-alpn-01' }, creds, clients)).toBe('no client'));
 });
 
-it('webrootError is pathError', () => {
+// Review fix round 1 (Minor): webroot names a directory, not a file, so a
+// trailing slash (the natural way to type one) must not be rejected with
+// pathError's file-specific "Name a file, not a directory." message.
+it('webrootError tolerates a trailing slash', () => {
   expect(webrootError('/srv/acme')).toBeNull();
+  expect(webrootError('/srv/acme/')).toBeNull();
   expect(webrootError('relative')).not.toBeNull();
+  expect(webrootError('/')).not.toBeNull();
+});
+
+// Review fix round 1 (Minor): once a webroot is cleared, a client picked
+// while it was set (any active client, regardless of capability) must go
+// back to needing the method's own capability — ruleUsable, given the
+// client list, now checks the same membership clientOptions() would offer.
+describe('ruleUsable with a client list', () => {
+  const noCap = [makeClient({ id: 'c-1', name: 'web-1', status: 'active', capabilities: [] })];
+  const capable = [makeClient({ id: 'c-1', name: 'web-1', status: 'active', capabilities: ['http-01'] })];
+
+  it('http-01 via agent: a client with no capability and no webroot is not usable', () => {
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' }, noCap)).toBe(false);
+  });
+  it('http-01 via agent: the same client becomes usable once a webroot is set', () => {
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1', webroot: '/srv/acme' }, noCap)).toBe(true);
+  });
+  it('http-01 via agent: a capable client is usable either way', () => {
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' }, capable)).toBe(true);
+  });
+  it('tls-alpn-01: a client with no capability is not usable', () => {
+    expect(ruleUsable({ match: '*', method: 'tls-alpn-01', clientId: 'c-1' }, noCap)).toBe(false);
+  });
+  it('without a client list, falls back to the plain clientId-presence check', () => {
+    expect(ruleUsable({ match: '*', method: 'http-01', via: 'agent', clientId: 'c-1' })).toBe(true);
+    expect(ruleUsable({ match: '*', method: 'tls-alpn-01', clientId: 'c-1' })).toBe(true);
+  });
 });

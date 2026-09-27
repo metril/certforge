@@ -19,17 +19,33 @@ import { cn } from '@/lib/utils';
 let seq = 0;
 const newKey = () => `rule-${++seq}`;
 
-const METHOD_OPTIONS = [
-  { value: 'dns-01' as const, label: 'DNS' },
-  { value: 'manual-dns' as const, label: 'Manual' },
-  { value: 'http-01' as const, label: 'HTTP', hint: help['rules.http01'].text },
-  { value: 'tls-alpn-01' as const, label: 'TLS-ALPN', hint: help['rules.tlsalpn01'].text },
-];
+// Review fix round 1 (Important): the Global tab's issuance defaults have
+// no org (FieldCtx.clients is always []), so a rule saved there with
+// tls-alpn-01 or http-01-via-agent can never get a working client and 422s
+// on Save. `agentModes={false}` (IssuanceDefaultsSection's Global context)
+// disables just those two segments, each with a hint explaining why —
+// existing rows already on one of them still render normally (their
+// client combobox and its usual empty text), only further selection is
+// blocked.
+function methodOptions(agentModes: boolean) {
+  return [
+    { value: 'dns-01' as const, label: 'DNS' },
+    { value: 'manual-dns' as const, label: 'Manual' },
+    { value: 'http-01' as const, label: 'HTTP', hint: help['rules.http01'].text },
+    {
+      value: 'tls-alpn-01' as const,
+      label: 'TLS-ALPN',
+      ...(agentModes ? { hint: help['rules.tlsalpn01'].text } : { disabled: true, hint: help['rules.globalAgentDisabled'].text }),
+    },
+  ];
+}
 
-const VIA_OPTIONS = [
-  { value: 'server' as const, label: 'Server' },
-  { value: 'agent' as const, label: 'Agent' },
-];
+function viaOptions(agentModes: boolean) {
+  return [
+    { value: 'server' as const, label: 'Server' },
+    { value: 'agent' as const, label: 'Agent', ...(agentModes ? {} : { disabled: true, hint: help['rules.globalAgentDisabled'].text }) },
+  ];
+}
 
 function hasAdvanced(rule: VerificationRule): boolean {
   return rule.method === 'dns-01' || rule.method === 'manual-dns' || (rule.method === 'http-01' && rule.via === 'agent');
@@ -41,6 +57,7 @@ type RowProps = {
   rule: VerificationRule;
   credentials: DnsCredential[];
   clients: Client[];
+  agentModes: boolean;
   onUpdate: (patch: Partial<VerificationRule>) => void;
   onSetMethod: (m: VerificationMethod) => void;
   onSetVia: (v: ChallengeVia) => void;
@@ -51,7 +68,7 @@ type RowProps = {
   onAddCredential?: () => void;
 };
 
-function RuleRow({ id, index, rule, credentials, clients, onUpdate, onSetMethod, onSetVia, onRemove, onMove, canMoveUp, canMoveDown, onAddCredential }: RowProps) {
+function RuleRow({ id, index, rule, credentials, clients, agentModes, onUpdate, onSetMethod, onSetVia, onRemove, onMove, canMoveUp, canMoveDown, onAddCredential }: RowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const [advanced, setAdvanced] = useState(false);
   const n = index + 1;
@@ -97,10 +114,10 @@ function RuleRow({ id, index, rule, credentials, clients, onUpdate, onSetMethod,
           size="sm"
           value={rule.method}
           onChange={onSetMethod}
-          options={METHOD_OPTIONS}
+          options={methodOptions(agentModes)}
         />
         {rule.method === 'dns-01' && (
-          <div className="w-full sm:w-64">
+          <div className="flex w-full items-center gap-1 sm:w-64">
             <Combobox
               aria-label={`Rule ${n} credential`}
               value={rule.dnsCredentialId}
@@ -117,11 +134,12 @@ function RuleRow({ id, index, rule, credentials, clients, onUpdate, onSetMethod,
                 )
               }
             />
+            <HelpTip id="rules.credential" />
           </div>
         )}
         {rule.method === 'http-01' && (
           <span className="flex items-center gap-1">
-            <SegmentedControl<ChallengeVia> aria-label={`Rule ${n} served by`} size="sm" value={via ?? 'server'} onChange={onSetVia} options={VIA_OPTIONS} />
+            <SegmentedControl<ChallengeVia> aria-label={`Rule ${n} served by`} size="sm" value={via ?? 'server'} onChange={onSetVia} options={viaOptions(agentModes)} />
             <HelpTip id="rules.via" />
           </span>
         )}
@@ -197,10 +215,13 @@ type Props = {
   onChange: (rules: VerificationRule[]) => void;
   credentials: DnsCredential[];
   clients: Client[];
+  /** false disables tls-alpn-01 and http-01-via-agent (no org to pick a
+   * client from — the Global tab's issuance defaults). Default true. */
+  agentModes?: boolean;
   onAddCredential?: (ruleIndex: number) => void;
 };
 
-export function VerificationRulesEditor({ rules, onChange, credentials, clients, onAddCredential }: Props) {
+export function VerificationRulesEditor({ rules, onChange, credentials, clients, agentModes = true, onAddCredential }: Props) {
   const keys = useRef<string[]>([]);
   while (keys.current.length < rules.length) keys.current.push(newKey());
   keys.current.length = rules.length;
@@ -254,6 +275,7 @@ export function VerificationRulesEditor({ rules, onChange, credentials, clients,
                 rule={r}
                 credentials={credentials}
                 clients={clients}
+                agentModes={agentModes}
                 onUpdate={(p) => update(i, p)}
                 onSetMethod={(m) => setMethod(i, m)}
                 onSetVia={(v) => setVia(i, v)}

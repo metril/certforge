@@ -137,6 +137,21 @@ describe('the Global tab has no clients (FieldCtx.clients: [] there)', () => {
     expect(await screen.findByText('No client serves tls-alpn-01')).toBeInTheDocument();
     expect(screen.queryByRole('option')).toBeNull();
   });
+
+  // Review fix round 1 (Important): IssuanceDefaultsSection's globalCtx now
+  // also sets agentModes: false, since an empty client list alone still let
+  // TLS-ALPN/Served-by-Agent be picked in the Global context and 422 on
+  // Save — the field editor must thread FieldCtx.agentModes through.
+  it('TLS-ALPN and Served by Agent are disabled when the context sets agentModes: false', async () => {
+    const globalCtx: FieldCtx = { ...ctx, clients: [], agentModes: false };
+    const { user } = renderUI(<>{verificationRulesField.editor([{ match: '*', method: 'http-01', via: 'server' }], () => {}, globalCtx, 'f-verificationRules')}</>);
+    const tlsAlpn = screen.getByRole('radio', { name: 'TLS-ALPN' });
+    expect(tlsAlpn).toBeDisabled();
+    const agent = screen.getByRole('radio', { name: 'Agent' });
+    expect(agent).toBeDisabled();
+    await user.hover(agent);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(/agent methods need an org/i);
+  });
 });
 
 describe('editor widths (review fix round 1, #8: no fixed width that overflows a 375px viewport)', () => {

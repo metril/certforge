@@ -87,8 +87,10 @@ export function IssuanceDefaultsSection() {
   // The Global tab's issuance defaults aren't org-scoped, so its own
   // verification-rules editor never offers a client picker — clients live
   // per org (FieldCtx.clients, allClientsQuery(orgId)); the Org tab below
-  // keeps the real, org-scoped list.
-  const globalCtx: typeof ctx = { ...ctx, clients: [] };
+  // keeps the real, org-scoped list. agentModes: false (review fix round 1,
+  // Important) also disables tls-alpn-01/http-01-via-agent there, since an
+  // empty client list alone still let them be picked and 422 on Save.
+  const globalCtx: typeof ctx = { ...ctx, clients: [], agentModes: false };
   const globalQ = useQuery(settingsQuery('issuance_defaults'));
   const orgQ = useQuery({ ...orgDefaultsQuery(org?.id ?? ''), enabled: !!org });
   const effectiveQ = useQuery({ ...effectiveDefaultsQuery(org?.id ?? ''), enabled: !!org });

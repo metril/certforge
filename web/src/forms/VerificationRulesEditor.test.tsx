@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import type { VerificationRule } from '@/api/types';
+import { help } from '@/lib/help';
 import { makeClient } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { VerificationRulesEditor } from './VerificationRulesEditor';
@@ -11,9 +12,9 @@ const clients = [
   makeClient({ id: 'cl-alpn', name: 'web-2', status: 'active', capabilities: ['tls-alpn-01'] }),
 ];
 
-function Harness({ initial }: { initial: VerificationRule[] }) {
+function Harness({ initial, agentModes }: { initial: VerificationRule[]; agentModes?: boolean }) {
   const [rules, setRules] = useState(initial);
-  return <VerificationRulesEditor rules={rules} onChange={setRules} credentials={[]} clients={clients} />;
+  return <VerificationRulesEditor rules={rules} onChange={setRules} credentials={[]} clients={clients} agentModes={agentModes} />;
 }
 
 it('every row picks its own method, DNS / Manual / HTTP / TLS-ALPN', () => {
@@ -95,4 +96,37 @@ it('the column header row reads Match, Method, Details', () => {
   expect(screen.getByText('Match')).toBeInTheDocument();
   expect(screen.getByText('Method')).toBeInTheDocument();
   expect(screen.getByText('Details')).toBeInTheDocument();
+});
+
+it('shows a HelpTip next to the DNS credential combobox', () => {
+  renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01' }]} />);
+  const combo = screen.getByRole('combobox', { name: 'Rule 1 credential' });
+  // combo.closest('div') is Combobox's own internal wrapper; the row wraps
+  // that plus the HelpTip in one more div around it.
+  expect(within(combo.closest('div')!.parentElement!).getByLabelText('Help')).toBeInTheDocument();
+});
+
+// Review fix round 1 (Important): the Global tab's issuance defaults have
+// no org, so a client picked for an agent-mode rule there can never work
+// (022 on Save). agentModes={false} disables the two segments that need a
+// client, each with a tooltip explaining why.
+it('agentModes=false disables TLS-ALPN and Served by Agent, each with a hint', async () => {
+  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'dns-01' }]} agentModes={false} />);
+  const tlsAlpn = screen.getByRole('radio', { name: 'TLS-ALPN' });
+  expect(tlsAlpn).toBeDisabled();
+  await user.hover(tlsAlpn);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(help['rules.globalAgentDisabled'].text);
+
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 1 method' })).getByRole('radio', { name: 'HTTP' }));
+  const agent = screen.getByRole('radio', { name: 'Agent' });
+  expect(agent).toBeDisabled();
+  await user.hover(agent);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(help['rules.globalAgentDisabled'].text);
+});
+
+it('agentModes=false still renders an existing agent-mode row normally (empty-state text, not hidden)', async () => {
+  const rules: VerificationRule[] = [{ match: 'example.com', method: 'tls-alpn-01' }];
+  const { user } = renderUI(<VerificationRulesEditor rules={rules} onChange={() => {}} credentials={[]} clients={[]} agentModes={false} />);
+  await user.click(screen.getByRole('combobox', { name: 'Rule 1 client' }));
+  expect(await screen.findByText('No client serves tls-alpn-01')).toBeInTheDocument();
 });

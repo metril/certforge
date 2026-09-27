@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, ca, makeCert, problem, providers, url } from '@/test/fixtures';
+import { authHandlers, ca, makeCert, makeClient, problem, providers, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let created: unknown;
@@ -21,6 +21,15 @@ beforeEach(() => {
     http.get(url('/settings/issuance_defaults'), () => HttpResponse.json({ schema: {}, value: {} })),
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca])),
     http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([])),
+    http.get(url('/orgs/org-1/clients'), () =>
+      HttpResponse.json({
+        items: [
+          makeClient({ id: 'cl-http', name: 'web-1', status: 'active', capabilities: ['http-01'] }),
+          makeClient({ id: 'cl-alpn', name: 'web-2', status: 'active', capabilities: ['tls-alpn-01'] }),
+        ],
+        nextCursor: null,
+      }),
+    ),
     http.post(url('/orgs/org-1/certificates'), async ({ request }) => {
       created = await request.json();
       return HttpResponse.json(makeCert({ id: 'c-new', name: 'www.example.com', status: 'pending', currentVersion: undefined }), { status: 201 });
@@ -62,6 +71,69 @@ it('fast path: paste names, credential pre-filled, Issue from step 2', async () 
   // own queries) before the test ends, instead of leaving them in flight
   // into the next test's handler reset.
   await screen.findByRole('navigation', { name: 'Breadcrumb' });
+});
+
+// Task 3 review fix round 1 (Important): the brief's own "create sends
+// mixed rules" test was missing — one row stays dns-01, one switches to
+// http-01 served by an agent, one to tls-alpn-01, and the POST body must
+// carry `via` only on the http-01 rule and `clientId` only on the two
+// agent-served rules.
+it('create sends mixed rules: DNS, HTTP via agent, and TLS-ALPN', async () => {
+  const { user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.paste('aaa.com bbb.net ccc.org');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByLabelText('Rule 1 match')).toHaveValue('aaa.com'));
+
+  await user.click(screen.getByRole('combobox', { name: 'Rule 1 credential' }));
+  await user.click(await screen.findByText('Cloudflare prod'));
+
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 method' })).getByRole('radio', { name: 'HTTP' }));
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 2 served by' })).getByRole('radio', { name: 'Agent' }));
+  await user.click(screen.getByRole('combobox', { name: 'Rule 2 client' }));
+  await user.click(await screen.findByRole('option', { name: 'web-1' }));
+
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Rule 3 method' })).getByRole('radio', { name: 'TLS-ALPN' }));
+  await user.click(screen.getByRole('combobox', { name: 'Rule 3 client' }));
+  await user.click(await screen.findByRole('option', { name: 'web-2' }));
+
+  await user.click(screen.getByRole('button', { name: 'Issue certificate' }));
+  await waitFor(() =>
+    expect((created as Record<string, unknown>).verificationRules).toEqual([
+      { match: 'aaa.com', method: 'dns-01', dnsCredentialId: 'd-1' },
+      { match: 'bbb.net', method: 'http-01', via: 'agent', clientId: 'cl-http' },
+      { match: 'ccc.org', method: 'tls-alpn-01', clientId: 'cl-alpn' },
+    ]),
+  );
+  await screen.findByRole('navigation', { name: 'Breadcrumb' });
+});
+
+// Task 3 review fix round 1 (Important): fromCertificate/toCertificateInput
+// must round-trip a mix of methods unchanged through the full edit UI, not
+// only through the reducer directly (state.test.ts already covers that).
+it('edit keeps per-rule methods: a mixed rule set round-trips unchanged on an untouched save', async () => {
+  const rules = [
+    { match: 'aaa.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+    { match: 'bbb.net', method: 'http-01' as const, via: 'agent' as const, clientId: 'cl-http' },
+    { match: 'ccc.org', method: 'tls-alpn-01' as const, clientId: 'cl-alpn' },
+  ];
+  server.use(
+    http.get(url('/orgs/org-1/certificates/c-1'), () =>
+      HttpResponse.json(makeCert({ commonName: 'aaa.com', sans: ['bbb.net', 'ccc.org'], verificationRules: rules })),
+    ),
+    http.put(url('/orgs/org-1/certificates/c-1'), async ({ request }) => {
+      updated = await request.json();
+      return HttpResponse.json(makeCert({ commonName: 'aaa.com', sans: ['bbb.net', 'ccc.org'], verificationRules: rules }));
+    }),
+  );
+  const { user } = renderRoute('/o/acme/certificates/c-1/edit');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByLabelText('Rule 1 match')).toHaveValue('aaa.com'));
+  await screen.findByRole('combobox', { name: 'Rule 2 client' });
+  await screen.findByRole('combobox', { name: 'Rule 3 client' });
+  await user.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect((updated as Record<string, unknown>).verificationRules).toEqual(rules));
 });
 
 it('blocks Issue while a zone has no credential and no catch-all', async () => {

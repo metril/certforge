@@ -121,6 +121,30 @@ it('mixed methods are each covered by their own rule', () => {
   expect(verificationReady(['a.test', 'b.test', 'c.test'], rules, null)).toBe(true);
 });
 
+// Review fix round 1 (Important): the apex-sharing shortcut only holds for
+// dns-01/manual-dns; an apex's own http-01 rule can win the apex's lookup
+// (the apex itself is never skipped) but can never prove the wildcard, so
+// the wildcard must fall back to resolving itself instead of being marked
+// "covered" by a rule that can't cover it.
+it('an apex http-01 rule does not cover its wildcard; a later dns-01 rule matching the wildcard directly does', () => {
+  const rules = [
+    { match: 'example.com', method: 'http-01' as const, via: 'server' as const },
+    { match: '*.example.com', method: 'dns-01' as const, dnsCredentialId: 'd-1' },
+  ];
+  const c = coverage(['example.com', '*.example.com'], rules, null);
+  expect(c[0]).toMatchObject({ name: 'example.com', state: 'rule', ruleIndex: 0 });
+  expect(c[1]).toMatchObject({ name: '*.example.com', state: 'rule', ruleIndex: 1 });
+  expect(c[1]!.viaApex).toBeUndefined();
+});
+
+it('an apex http-01 rule with no other rule leaves the wildcard "wildcard-non-dns"', () => {
+  const rules = [{ match: 'example.com', method: 'http-01' as const, via: 'server' as const }];
+  const c = coverage(['example.com', '*.example.com'], rules, null);
+  expect(c[0]).toMatchObject({ name: 'example.com', state: 'rule', ruleIndex: 0 });
+  expect(c[1]).toMatchObject({ name: '*.example.com', state: 'wildcard-non-dns' });
+  expect(c[1]!.viaApex).toBeUndefined();
+});
+
 // Fix round 1 (review, Important): the router strips a wildcard name's
 // "*." before routing, so the apex's rule serves both names whenever the
 // apex is also on the certificate (docs/certificates.md "the rule matching

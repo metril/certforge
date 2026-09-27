@@ -17,8 +17,11 @@ import type { HelpKey } from '@/lib/help';
 import { ruleTarget } from '@/lib/rules';
 
 // Clients are org-scoped (allClientsQuery(orgId)); the Global tab has no
-// single org to ask, so IssuanceDefaultsSection passes an empty list there.
-export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[]; clients: Client[] };
+// single org to ask, so IssuanceDefaultsSection passes an empty list there,
+// plus agentModes: false (review fix round 1, Important) — otherwise
+// tls-alpn-01/http-01-via-agent stay pickable there with no client that
+// could ever satisfy them, and Save 422s.
+export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[]; clients: Client[]; agentModes?: boolean };
 export type FieldKey = keyof IssuanceDefaults;
 type V<K extends FieldKey> = NonNullable<IssuanceDefaults[K]>;
 
@@ -216,7 +219,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     display: (v, c) => rulesSummary(v, c.credentials, c.clients),
     editor: (v, set, c) => (
       <div className="w-full">
-        <VerificationRulesEditor rules={v} onChange={set} credentials={c.credentials} clients={c.clients} />
+        <VerificationRulesEditor rules={v} onChange={set} credentials={c.credentials} clients={c.clients} agentModes={c.agentModes} />
       </div>
     ),
   }),

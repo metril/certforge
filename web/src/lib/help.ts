@@ -108,6 +108,7 @@ export const help = {
   'rules.via': { text: 'Server: CertForge answers on /.well-known/acme-challenge/. Agent: a client answers on its host.', learnMore: 'certificates.md#http-01' },
   'rules.client': { text: 'Agent that answers the challenge. Only clients that serve this method are listed, unless a webroot is set.', learnMore: 'agent.md#challenge-serving' },
   'rules.webroot': { text: 'Absolute directory on the client. The agent writes the token there instead of serving it.', learnMore: 'agent.md#challenge-serving' },
+  'rules.globalAgentDisabled': { text: "Agent methods need an org's own clients, which global defaults don't have. Set this per certificate or org instead." },
   'rules.catchAll': { text: 'Rules that certificates fall back to when none of their own match.' },
   'attempt.retry': { text: 'Failed attempts back off from 5 minutes up to 24 hours. Rate limits use the CA’s retry time.' },
   'manual.records': { text: 'Add these TXT records at your DNS host, then confirm. CertForge checks them before asking the CA.', learnMore: 'certificates.md#manual-dns' },
