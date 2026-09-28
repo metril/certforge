@@ -1461,6 +1461,42 @@ func (q *Queries) ListDueCertificateIDs(ctx context.Context, limit int32) ([]uui
 	return items, nil
 }
 
+const lockCertificateVersionForUpdate = `-- name: LockCertificateVersionForUpdate :one
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, chain_der, private_key, source, ari_window, revoked_at, created_at, ca_id FROM certificate_versions WHERE id = $1 AND cert_id = $2 FOR UPDATE
+`
+
+type LockCertificateVersionForUpdateParams struct {
+	ID     uuid.UUID `json:"id"`
+	CertID uuid.UUID `json:"cert_id"`
+}
+
+// Locks one version for the duration of RevokeVersion's read-check-write
+// (issuance.Store.RevokeVersion), so a concurrent revoke of the same
+// version serializes instead of both reading revoked_at IS NULL and racing
+// the update.
+func (q *Queries) LockCertificateVersionForUpdate(ctx context.Context, arg LockCertificateVersionForUpdateParams) (CertificateVersion, error) {
+	row := q.db.QueryRow(ctx, lockCertificateVersionForUpdate, arg.ID, arg.CertID)
+	var i CertificateVersion
+	err := row.Scan(
+		&i.ID,
+		&i.CertID,
+		&i.Serial,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.Sha256Fp,
+		&i.KeyType,
+		&i.LeafDer,
+		&i.ChainDer,
+		&i.PrivateKey,
+		&i.Source,
+		&i.AriWindow,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.CaID,
+	)
+	return i, err
+}
+
 const lowerNextRenewAt = `-- name: LowerNextRenewAt :exec
 UPDATE certificates SET next_renew_at = LEAST(next_renew_at, $3), updated_at = now()
 WHERE id = $1 AND current_version_id = $2 AND failure_count = 0
@@ -1593,6 +1629,53 @@ func (q *Queries) SetARIWindow(ctx context.Context, arg SetARIWindowParams) erro
 		arg.AriRetryAfter,
 	)
 	return err
+}
+
+const setCertificateVersionRevoked = `-- name: SetCertificateVersionRevoked :one
+UPDATE certificate_versions SET revoked_at = $3
+WHERE id = $1 AND cert_id = $2
+RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
+`
+
+type SetCertificateVersionRevokedParams struct {
+	ID        uuid.UUID  `json:"id"`
+	CertID    uuid.UUID  `json:"cert_id"`
+	RevokedAt *time.Time `json:"revoked_at"`
+}
+
+type SetCertificateVersionRevokedRow struct {
+	ID        uuid.UUID  `json:"id"`
+	CertID    uuid.UUID  `json:"cert_id"`
+	Serial    string     `json:"serial"`
+	NotBefore time.Time  `json:"not_before"`
+	NotAfter  time.Time  `json:"not_after"`
+	Sha256Fp  string     `json:"sha256_fp"`
+	KeyType   string     `json:"key_type"`
+	Source    string     `json:"source"`
+	CaID      *uuid.UUID `json:"ca_id"`
+	HasKey    bool       `json:"has_key"`
+	RevokedAt *time.Time `json:"revoked_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+func (q *Queries) SetCertificateVersionRevoked(ctx context.Context, arg SetCertificateVersionRevokedParams) (SetCertificateVersionRevokedRow, error) {
+	row := q.db.QueryRow(ctx, setCertificateVersionRevoked, arg.ID, arg.CertID, arg.RevokedAt)
+	var i SetCertificateVersionRevokedRow
+	err := row.Scan(
+		&i.ID,
+		&i.CertID,
+		&i.Serial,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.Sha256Fp,
+		&i.KeyType,
+		&i.Source,
+		&i.CaID,
+		&i.HasKey,
+		&i.RevokedAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const setCurrentVersion = `-- name: SetCurrentVersion :one

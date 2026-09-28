@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -77,22 +78,25 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 }
 
 const createCA = `-- name: CreateCA :one
-INSERT INTO cas (org_id, name, type, config, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO cas (org_id, name, type, config, secret_cfg, not_before, not_after, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number
 `
 
 type CreateCAParams struct {
-	OrgID          uuid.UUID `json:"org_id"`
-	Name           string    `json:"name"`
-	Type           string    `json:"type"`
-	Config         []byte    `json:"config"`
-	Preset         string    `json:"preset"`
-	DirectoryUrl   string    `json:"directory_url"`
-	TrustBundlePem string    `json:"trust_bundle_pem"`
-	EabKid         string    `json:"eab_kid"`
-	EabHmac        []byte    `json:"eab_hmac"`
-	Resolvers      []string  `json:"resolvers"`
+	OrgID          uuid.UUID  `json:"org_id"`
+	Name           string     `json:"name"`
+	Type           string     `json:"type"`
+	Config         []byte     `json:"config"`
+	SecretCfg      []byte     `json:"secret_cfg"`
+	NotBefore      *time.Time `json:"not_before"`
+	NotAfter       *time.Time `json:"not_after"`
+	Preset         string     `json:"preset"`
+	DirectoryUrl   string     `json:"directory_url"`
+	TrustBundlePem string     `json:"trust_bundle_pem"`
+	EabKid         string     `json:"eab_kid"`
+	EabHmac        []byte     `json:"eab_hmac"`
+	Resolvers      []string   `json:"resolvers"`
 }
 
 func (q *Queries) CreateCA(ctx context.Context, arg CreateCAParams) (Ca, error) {
@@ -101,6 +105,9 @@ func (q *Queries) CreateCA(ctx context.Context, arg CreateCAParams) (Ca, error) 
 		arg.Name,
 		arg.Type,
 		arg.Config,
+		arg.SecretCfg,
+		arg.NotBefore,
+		arg.NotAfter,
 		arg.Preset,
 		arg.DirectoryUrl,
 		arg.TrustBundlePem,
@@ -482,6 +489,60 @@ func (q *Queries) UpdateCA(ctx context.Context, arg UpdateCAParams) (Ca, error) 
 		arg.EabKid,
 		arg.EabHmac,
 		arg.Resolvers,
+	)
+	var i Ca
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Preset,
+		&i.DirectoryUrl,
+		&i.TrustBundlePem,
+		&i.EabKid,
+		&i.EabHmac,
+		&i.Resolvers,
+		&i.Shared,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Config,
+		&i.SecretCfg,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CrlNumber,
+	)
+	return i, err
+}
+
+const updateCACrypto = `-- name: UpdateCACrypto :one
+UPDATE cas SET config = $3, secret_cfg = $4, not_before = $5, not_after = $6, crl_number = $7, updated_at = now()
+WHERE id = $1 AND org_id = $2
+RETURNING id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number
+`
+
+type UpdateCACryptoParams struct {
+	ID        uuid.UUID  `json:"id"`
+	OrgID     uuid.UUID  `json:"org_id"`
+	Config    []byte     `json:"config"`
+	SecretCfg []byte     `json:"secret_cfg"`
+	NotBefore *time.Time `json:"not_before"`
+	NotAfter  *time.Time `json:"not_after"`
+	CrlNumber int64      `json:"crl_number"`
+}
+
+// Rotate and Revoke each update only the crypto-bearing columns (config,
+// secret_cfg, not_before, not_after, crl_number), leaving name/preset/eab/
+// resolvers untouched; the caller has already locked the row FOR UPDATE
+// (LockCA), inside the same transaction as this write.
+func (q *Queries) UpdateCACrypto(ctx context.Context, arg UpdateCACryptoParams) (Ca, error) {
+	row := q.db.QueryRow(ctx, updateCACrypto,
+		arg.ID,
+		arg.OrgID,
+		arg.Config,
+		arg.SecretCfg,
+		arg.NotBefore,
+		arg.NotAfter,
+		arg.CrlNumber,
 	)
 	var i Ca
 	err := row.Scan(

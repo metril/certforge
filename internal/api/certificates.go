@@ -387,6 +387,36 @@ func (s *Server) ListCertificateVersions(ctx context.Context, r gen.ListCertific
 	return out, nil
 }
 
+// revocationReasonCodes maps RevocationReason to its RFC 5280 §5.3.1
+// CRLReason code.
+var revocationReasonCodes = map[gen.RevocationReason]int{
+	gen.Unspecified:          0,
+	gen.KeyCompromise:        1,
+	gen.CaCompromise:         2,
+	gen.AffiliationChanged:   3,
+	gen.Superseded:           4,
+	gen.CessationOfOperation: 5,
+}
+
+// RevokeCertificateVersion revokes one issued private-CA certificate
+// version, feeding its issuer's CRL from the next build.
+func (s *Server) RevokeCertificateVersion(ctx context.Context, r gen.RevokeCertificateVersionRequestObject) (gen.RevokeCertificateVersionResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCertsIssue, &r.OrgId); err != nil {
+		return nil, err
+	}
+	reason := gen.Unspecified
+	if r.Body != nil && r.Body.Reason != nil {
+		reason = *r.Body.Reason
+	}
+	v, err := s.d.Issuance.Store.RevokeVersion(ctx, r.OrgId, r.Id, r.Vid, revocationReasonCodes[reason], s.baseURL)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	s.audit(ctx, audit.Event{Action: "certificate.revoked", ResourceType: "certificate_version", ResourceID: v.ID.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"certificateId": r.Id.String(), "versionId": v.ID.String(), "serial": v.Serial, "reason": string(reason)}})
+	return gen.RevokeCertificateVersion200JSONResponse(versionOut(v)), nil
+}
+
 // ListIssuanceAttempts returns a certificate's 50 newest attempts with their
 // step timeline and log.
 func (s *Server) ListIssuanceAttempts(ctx context.Context, r gen.ListIssuanceAttemptsRequestObject) (gen.ListIssuanceAttemptsResponseObject, error) {

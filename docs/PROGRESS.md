@@ -267,7 +267,7 @@ Phase 5 is split into two plans: 5A vault and private CA backend (schema, Vault 
 | 4 | Transit KEK and root secret | done | 9a3e606 |
 | 5 | Multi-wrapper envelope, rewrap, keys API | done | 1e2573e |
 | 6 | localca signer | done | 34d4f69 |
-| 7 | localca CA lifecycle, CRL, revocation | planned | – |
+| 7 | localca CA lifecycle, CRL, revocation | done | pending |
 | 8 | Vault provider, test endpoint, vaultpki | planned | – |
 | 9 | Issuance kind gate | planned | – |
 | 10 | Server deploy targets and vault-kv | planned | – |

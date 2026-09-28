@@ -10,8 +10,9 @@ import (
 
 // TestCATypeRoundTrip covers Phase 5A Task 1: a CA created with no type
 // defaults to acme with an empty config and round-trips through GetCA; an
-// unknown type is a 422 on the type field; a private kind (not built until
-// T7/T8) is also a 422, "not available yet".
+// unknown type is a 422 on the type field; vaultpki (not built until T8) is
+// also a 422, "not available yet" — localca's own CRUD matrix is Task 7's
+// TestLocalCACRUDMatrix (internal/api/private_ca_integration_test.go).
 func TestCATypeRoundTrip(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -41,8 +42,8 @@ func TestCATypeRoundTrip(t *testing.T) {
 		t.Fatalf("unknown type: err = %v, want a type ValidationError", err)
 	}
 
-	_, err = f.store.CreateCA(ctx, f.org, CAInput{Name: "Local", Type: CATypeLocalCA})
+	_, err = f.store.CreateCA(ctx, f.org, CAInput{Name: "Vault", Type: CATypeVaultPKI})
 	if !errors.As(err, &ve) || ve.Field != "type" || ve.Msg != "not available yet" {
-		t.Fatalf("localca type: err = %v, want type ValidationError %q", err, "not available yet")
+		t.Fatalf("vaultpki type: err = %v, want type ValidationError %q", err, "not available yet")
 	}
 }

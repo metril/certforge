@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strings"
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
@@ -10,18 +11,50 @@ import (
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
 )
 
-// caOut maps a stored CA to its API shape. StoredSecrets is always empty and
-// notBefore/notAfter/crlUrl always absent for now: only acme CAs can be
-// created until Tasks 7 and 8 build the localca and vaultpki signers.
-func caOut(c issuance.CA) gen.CA {
-	cfg := c.Config
-	if cfg == nil {
-		cfg = map[string]any{}
-	}
-	return gen.CA{Id: c.ID, OrgId: c.OrgID, Name: c.Name, Preset: gen.CAPresetCode(c.Preset), DirectoryUrl: c.DirectoryURL,
+// caOut maps a stored CA to its API shape. For a localca CA, config's
+// internal "revoked" array (issuance.Store's own bookkeeping) is replaced
+// by revokedCount, and crlUrl is filled on the CA itself and on every
+// retired[] entry under the same condition (crl enabled and general.baseUrl
+// set) — no key bytes ever reach config; that lives only in secret_cfg,
+// which caOut never reads.
+func (s *Server) caOut(ctx context.Context, c issuance.CA) gen.CA {
+	out := gen.CA{Id: c.ID, OrgId: c.OrgID, Name: c.Name, Preset: gen.CAPresetCode(c.Preset), DirectoryUrl: c.DirectoryURL,
 		TrustBundlePem: c.TrustBundlePEM, EabKid: c.EABKid, HasEab: c.HasEAB, Resolvers: c.Resolvers,
-		Shared: c.Shared, Type: gen.CaType(c.Type), Config: cfg, StoredSecrets: []string{},
+		Shared: c.Shared, Type: gen.CaType(c.Type), StoredSecrets: []string{},
 		NotBefore: c.NotBefore, NotAfter: c.NotAfter, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
+	cfg := map[string]any{}
+	for k, v := range c.Config {
+		cfg[k] = v
+	}
+	if c.Type == issuance.CATypeLocalCA {
+		if imported, _ := cfg["imported"].(bool); imported {
+			out.StoredSecrets = []string{"importKeyPem"}
+		}
+		n := 0
+		if raw, ok := cfg["revoked"]; ok {
+			if arr, ok := raw.([]any); ok {
+				n = len(arr)
+			}
+			delete(cfg, "revoked")
+		}
+		cfg["revokedCount"] = n
+		crlOn, _ := cfg["crl"].(bool)
+		base := strings.TrimSuffix(s.baseURL(ctx), "/")
+		if crlOn && base != "" {
+			out.CrlUrl = ptr(base + "/crl/" + c.ID.String() + ".crl")
+			if retired, ok := cfg["retired"].([]any); ok {
+				for _, riAny := range retired {
+					if ri, ok := riAny.(map[string]any); ok {
+						if serial, _ := ri["serial"].(string); serial != "" {
+							ri["crlUrl"] = base + "/crl/" + c.ID.String() + "/" + serial + ".crl"
+						}
+					}
+				}
+			}
+		}
+	}
+	out.Config = cfg
+	return out
 }
 
 func caIn(b *gen.CAInput) issuance.CAInput {
@@ -75,7 +108,7 @@ func (s *Server) ListCas(ctx context.Context, r gen.ListCasRequestObject) (gen.L
 	}
 	out := make(gen.ListCas200JSONResponse, 0, len(cas))
 	for _, c := range cas {
-		out = append(out, caOut(c))
+		out = append(out, s.caOut(ctx, c))
 	}
 	return out, nil
 }
@@ -91,7 +124,7 @@ func (s *Server) CreateCa(ctx context.Context, r gen.CreateCaRequestObject) (gen
 	}
 	s.audit(ctx, audit.Event{Action: "ca.create", ResourceType: "ca", ResourceID: c.ID.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"name": c.Name, "preset": c.Preset}})
-	return gen.CreateCa201JSONResponse(caOut(c)), nil
+	return gen.CreateCa201JSONResponse(s.caOut(ctx, c)), nil
 }
 
 // GetCa returns one CA of the org.
@@ -103,7 +136,7 @@ func (s *Server) GetCa(ctx context.Context, r gen.GetCaRequestObject) (gen.GetCa
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return gen.GetCa200JSONResponse(caOut(c)), nil
+	return gen.GetCa200JSONResponse(s.caOut(ctx, c)), nil
 }
 
 // UpdateCa replaces a CA's fields.
@@ -117,7 +150,7 @@ func (s *Server) UpdateCa(ctx context.Context, r gen.UpdateCaRequestObject) (gen
 	}
 	s.audit(ctx, audit.Event{Action: "ca.update", ResourceType: "ca", ResourceID: c.ID.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"name": c.Name, "preset": c.Preset}})
-	return gen.UpdateCa200JSONResponse(caOut(c)), nil
+	return gen.UpdateCa200JSONResponse(s.caOut(ctx, c)), nil
 }
 
 // DeleteCa deletes a CA unreferenced by accounts, certificates or defaults.
@@ -130,6 +163,21 @@ func (s *Server) DeleteCa(ctx context.Context, r gen.DeleteCaRequestObject) (gen
 	}
 	s.audit(ctx, audit.Event{Action: "ca.delete", ResourceType: "ca", ResourceID: r.Id.String(), OrgID: &r.OrgId})
 	return gen.DeleteCa204Response{}, nil
+}
+
+// RotateCa generates a fresh issuing certificate under a localca CA's root,
+// retiring the current one until its own expiry.
+func (s *Server) RotateCa(ctx context.Context, r gen.RotateCaRequestObject) (gen.RotateCaResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCAsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	c, newSerial, retiredSerial, err := s.d.Issuance.Store.RotateCA(ctx, r.OrgId, r.Id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	s.audit(ctx, audit.Event{Action: "ca.rotate", ResourceType: "ca", ResourceID: c.ID.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"newIssuerSerial": newSerial, "retiredSerial": retiredSerial}})
+	return gen.RotateCa200JSONResponse(s.caOut(ctx, c)), nil
 }
 
 // ListAcmeAccounts returns the org's ACME accounts sorted by email.

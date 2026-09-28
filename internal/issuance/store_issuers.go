@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/url"
 	"strings"
@@ -11,10 +12,12 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
+	"github.com/metril/certforge/internal/signer/localca"
 )
 
 // CA kinds (Shared contract: CaType enum). Only CATypeACME issues today;
@@ -103,9 +106,24 @@ func (in *CAInput) normalize() (acmesigner.Preset, error) {
 		in.Type = CATypeACME
 	}
 	switch in.Type {
-	case CATypeLocalCA, CATypeVaultPKI:
-		// Recognized kinds, but their signers don't exist yet (Tasks 7, 8).
+	case CATypeVaultPKI:
+		// Recognized kind, but its signer doesn't exist yet (Task 8).
 		return acmesigner.Preset{}, &ValidationError{"type", "not available yet"}
+	case CATypeLocalCA:
+		if in.EABKid != "" || (in.EABHmac != nil && *in.EABHmac != "") {
+			return acmesigner.Preset{}, &ValidationError{"eabKid", "not applicable to a private CA"}
+		}
+		// preset/directoryUrl/trustBundlePem are acme-only (Shared
+		// contract); a private kind's trust anchor is computed by the
+		// store itself, never taken from the caller.
+		in.Preset, in.DirectoryURL, in.TrustBundlePEM = "", "", ""
+		if in.Resolvers == nil {
+			in.Resolvers = []string{}
+		}
+		if in.Config == nil {
+			in.Config = map[string]any{}
+		}
+		return acmesigner.Preset{}, nil
 	case CATypeACME:
 		// falls through to the acme validation below
 	default:
@@ -163,6 +181,9 @@ func (s *Store) CreateCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, 
 	if err != nil {
 		return CA{}, err
 	}
+	if in.Type == CATypeLocalCA {
+		return s.createLocalCA(ctx, orgID, in)
+	}
 	hmac := ""
 	if in.EABHmac != nil {
 		hmac = *in.EABHmac
@@ -204,6 +225,12 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	p, err := in.normalize()
 	if err != nil {
 		return CA{}, err
+	}
+	if in.Type != cur.Type {
+		return CA{}, &ValidationError{"type", "type cannot change"}
+	}
+	if in.Type == CATypeLocalCA {
+		return s.updateLocalCA(ctx, orgID, id, cur, in)
 	}
 	if in.DirectoryURL != cur.DirectoryUrl {
 		n, err := s.q.CountCAUsers(ctx, id)
@@ -400,4 +427,304 @@ func (s *Store) AccountMaterial(ctx context.Context, orgID, id uuid.UUID) (Accou
 		return Account{}, signer.AccountMaterial{}, err
 	}
 	return accountFromRow(row), signer.AccountMaterial{Email: row.Email, KeyPKCS8: key, RegistrationURI: row.RegistrationUri}, nil
+}
+
+// createLocalCA generates a fresh root and issuing intermediate, or imports
+// an operator-supplied issuing certificate and key, and stores the result:
+// config holds the public fields (Shared contract LocalCaConfig plus the
+// read-only imported/issuingPem/retired/revoked), secret_cfg holds the
+// sealed issuing (and, when generated, root) key, trust_bundle_pem is the
+// root PEM (generated) or the last certificate of importPem (import;
+// the issuing certificate itself when no chain is given), and
+// not_before/not_after are the issuing certificate's own validity.
+func (s *Store) createLocalCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, error) {
+	lcIn, err := parseLocalCAInput(in.Config)
+	if err != nil {
+		return CA{}, err
+	}
+	if err := lcIn.validate(); err != nil {
+		return CA{}, err
+	}
+	now := time.Now()
+
+	var (
+		cfg         localCAConfig
+		sec         localCASecretCfg
+		trustBundle string
+		notBefore   time.Time
+		notAfter    time.Time
+	)
+	if lcIn.ImportPEM != "" {
+		mat, err := localca.Import(lcIn.ImportPEM, lcIn.ImportKeyPEM, lcIn.CRL, now)
+		if err != nil {
+			if errors.Is(err, localca.ErrCannotSignCRL) {
+				return CA{}, &ValidationError{"config.crl", "issuing certificate cannot sign CRLs"}
+			}
+			return CA{}, &ValidationError{"config.importPem", err.Error()}
+		}
+		issuingPKCS8, err := x509.MarshalPKCS8PrivateKey(mat.IssuingKey)
+		if err != nil {
+			return CA{}, err
+		}
+		cfg = localCAConfig{Subject: lcIn.Subject, KeyType: lcIn.KeyType, RootValidityYears: lcIn.RootValidityYears,
+			IssuingValidityYears: lcIn.IssuingValidityYears, MaxLeafDays: lcIn.MaxLeafDays, CRL: lcIn.CRL,
+			Imported: true, IssuingPem: pemEncodeCert(mat.Issuing)}
+		sec = localCASecretCfg{IssuingKey: issuingPKCS8, ImportKeyPem: lcIn.ImportKeyPEM}
+		if mat.Root != nil {
+			trustBundle = pemEncodeCert(mat.Root)
+		} else {
+			trustBundle = pemEncodeCert(mat.Issuing)
+		}
+		notBefore, notAfter = mat.Issuing.NotBefore, mat.Issuing.NotAfter
+	} else {
+		mat, rootKeyPKCS8, err := localca.Generate(lcIn.toSignerConfig(), now)
+		if err != nil {
+			return CA{}, err
+		}
+		issuingPKCS8, err := x509.MarshalPKCS8PrivateKey(mat.IssuingKey)
+		if err != nil {
+			return CA{}, err
+		}
+		cfg = localCAConfig{Subject: lcIn.Subject, KeyType: lcIn.KeyType, RootValidityYears: lcIn.RootValidityYears,
+			IssuingValidityYears: lcIn.IssuingValidityYears, MaxLeafDays: lcIn.MaxLeafDays, CRL: lcIn.CRL,
+			Imported: false, IssuingPem: pemEncodeCert(mat.Issuing)}
+		sec = localCASecretCfg{RootKey: rootKeyPKCS8, IssuingKey: issuingPKCS8}
+		trustBundle = pemEncodeCert(mat.Root)
+		notBefore, notAfter = mat.Issuing.NotBefore, mat.Issuing.NotAfter
+	}
+
+	cfgRaw, err := json.Marshal(cfg)
+	if err != nil {
+		return CA{}, err
+	}
+	secretRaw, err := s.sealJSON(ctx, sec)
+	if err != nil {
+		return CA{}, err
+	}
+	row, err := s.q.CreateCA(ctx, sqlcgen.CreateCAParams{OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
+		SecretCfg: secretRaw, NotBefore: &notBefore, NotAfter: &notAfter, Preset: "", DirectoryUrl: "",
+		TrustBundlePem: trustBundle, EabKid: "", EabHmac: nil, Resolvers: in.Resolvers})
+	if err != nil {
+		return CA{}, dbErr(err, "name")
+	}
+	return caFromRow(row)
+}
+
+// updateLocalCA applies an editable-fields-only update to a localca CA:
+// subject, keyType, the validity years and the import fields are
+// immutable after create (422); maxLeafDays and crl stay editable (Shared
+// contract).
+func (s *Store) updateLocalCA(ctx context.Context, orgID, id uuid.UUID, cur sqlcgen.Ca, in CAInput) (CA, error) {
+	var curCfg localCAConfig
+	if err := json.Unmarshal(cur.Config, &curCfg); err != nil {
+		return CA{}, err
+	}
+	lcIn, err := parseLocalCAInput(in.Config)
+	if err != nil {
+		return CA{}, err
+	}
+	if err := lcIn.validate(); err != nil {
+		return CA{}, err
+	}
+	if lcIn.ImportPEM != "" || lcIn.ImportKeyPEM != "" {
+		return CA{}, &ValidationError{"config.importPem", "immutable after create"}
+	}
+	if lcIn.Subject != curCfg.Subject || lcIn.KeyType != curCfg.KeyType ||
+		lcIn.RootValidityYears != curCfg.RootValidityYears || lcIn.IssuingValidityYears != curCfg.IssuingValidityYears {
+		return CA{}, &ValidationError{"config", "subject, keyType and the validity years are immutable after create"}
+	}
+
+	newCfg := curCfg
+	newCfg.MaxLeafDays = lcIn.MaxLeafDays
+	newCfg.CRL = lcIn.CRL
+	cfgRaw, err := json.Marshal(newCfg)
+	if err != nil {
+		return CA{}, err
+	}
+	row, err := s.q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
+		Preset: "", DirectoryUrl: "", TrustBundlePem: cur.TrustBundlePem, EabKid: "", EabHmac: nil, Resolvers: in.Resolvers})
+	if err != nil {
+		return CA{}, dbErr(err, "name")
+	}
+	return caFromRow(row)
+}
+
+// RotateCA generates a fresh issuing certificate under ca's root, retiring
+// (never deleting) the current one — sealed until its own certificate's
+// notAfter, since a CRL must be signed by its own issuer and leaves already
+// issued under it must stay revocable. Returns the updated CA plus the new
+// and retired issuer's hex serials, for the caller's audit event. 422 for
+// any CA that is not localca, or a localca CA with no held root key (an
+// import).
+func (s *Store) RotateCA(ctx context.Context, orgID, id uuid.UUID) (ca CA, newIssuerSerial, retiredSerial string, err error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return CA{}, "", "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+
+	row, err := q.LockCA(ctx, sqlcgen.LockCAParams{ID: id, OrgID: orgID})
+	if err != nil {
+		return CA{}, "", "", notFound(err)
+	}
+	if row.Type != CATypeLocalCA {
+		return CA{}, "", "", &ValidationError{"id", "rotate is only supported for localca CAs"}
+	}
+	var cfg localCAConfig
+	if err := json.Unmarshal(row.Config, &cfg); err != nil {
+		return CA{}, "", "", err
+	}
+	var sec localCASecretCfg
+	if err := s.openJSON(ctx, row.SecretCfg, &sec); err != nil {
+		return CA{}, "", "", err
+	}
+	if len(sec.RootKey) == 0 {
+		return CA{}, "", "", &ValidationError{"id", "no held root key (an imported CA cannot rotate)"}
+	}
+	root, err := parsePEMCert(row.TrustBundlePem)
+	if err != nil {
+		return CA{}, "", "", err
+	}
+	oldIssuing, err := parsePEMCert(cfg.IssuingPem)
+	if err != nil {
+		return CA{}, "", "", err
+	}
+
+	rootKeyCopy := append([]byte(nil), sec.RootKey...)
+	newMat, err := localca.Rotate(root, rootKeyCopy, cfg.toSignerConfig(), time.Now())
+	if err != nil {
+		return CA{}, "", "", err
+	}
+	newIssuingPKCS8, err := x509.MarshalPKCS8PrivateKey(newMat.IssuingKey)
+	if err != nil {
+		return CA{}, "", "", err
+	}
+
+	now := time.Now()
+	retiredSerial = oldIssuing.SerialNumber.Text(16)
+	cfg.Retired = append(cfg.Retired, retiredIssuer{PEM: pemEncodeCert(oldIssuing), NotAfter: oldIssuing.NotAfter, Serial: retiredSerial})
+	sec.Retired = append(sec.Retired, retiredSecretKey{Serial: retiredSerial, Key: sec.IssuingKey, NotAfter: oldIssuing.NotAfter})
+	cfg.Retired = purgeExpiredRetiredPublic(cfg.Retired, now)
+	sec.Retired = purgeExpiredRetiredSecret(sec.Retired, now)
+
+	newIssuerSerial = newMat.Issuing.SerialNumber.Text(16)
+	cfg.IssuingPem = pemEncodeCert(newMat.Issuing)
+	sec.IssuingKey = newIssuingPKCS8
+
+	cfgRaw, err := json.Marshal(cfg)
+	if err != nil {
+		return CA{}, "", "", err
+	}
+	secretRaw, err := s.sealJSON(ctx, sec)
+	if err != nil {
+		return CA{}, "", "", err
+	}
+	newRow, err := q.UpdateCACrypto(ctx, sqlcgen.UpdateCACryptoParams{ID: id, OrgID: orgID, Config: cfgRaw, SecretCfg: secretRaw,
+		NotBefore: &newMat.Issuing.NotBefore, NotAfter: &newMat.Issuing.NotAfter, CrlNumber: row.CrlNumber})
+	if err != nil {
+		return CA{}, "", "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CA{}, "", "", err
+	}
+	ca, err = caFromRow(newRow)
+	return ca, newIssuerSerial, retiredSerial, err
+}
+
+// purgeExpiredRetiredPublic drops retired issuer entries past their own
+// notAfter (ADR 0015: a retired key is kept only until its certificate
+// expires, purged at the next rotate or CRL build after that — this runs
+// at the next rotate).
+func purgeExpiredRetiredPublic(in []retiredIssuer, now time.Time) []retiredIssuer {
+	out := in[:0:0]
+	for _, r := range in {
+		if r.NotAfter.After(now) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func purgeExpiredRetiredSecret(in []retiredSecretKey, now time.Time) []retiredSecretKey {
+	out := in[:0:0]
+	for _, r := range in {
+		if r.NotAfter.After(now) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// RevokeVersion revokes one issued private-CA certificate version: it
+// locks the version and its CA (Locking constraint), checks the version is
+// an issued (not imported/uploaded) leaf of a private CA, builds a Signer
+// over the issuer that actually signed it (current or, per Task 6's
+// carry-forward, a retired one found by the leaf's AuthorityKeyId), and
+// records the revocation both on the version (revoked_at) and the CA
+// (config.revoked, crl_number++, via localca's Recorder). 409 if already
+// revoked; 422 for an ACME CA, a non-issued version, or (until Task 9)
+// vaultpki.
+func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid.UUID, reason int, baseURL func(context.Context) string) (certstore.Version, error) {
+	if _, err := s.q.GetCertificate(ctx, sqlcgen.GetCertificateParams{ID: certID, OrgID: orgID}); err != nil {
+		return certstore.Version{}, notFound(err)
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return certstore.Version{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+
+	vrow, err := q.LockCertificateVersionForUpdate(ctx, sqlcgen.LockCertificateVersionForUpdateParams{ID: versionID, CertID: certID})
+	if err != nil {
+		return certstore.Version{}, notFound(err)
+	}
+	if vrow.RevokedAt != nil {
+		return certstore.Version{}, &ConflictError{Msg: "version is already revoked"}
+	}
+	if vrow.Source != "issued" || vrow.CaID == nil {
+		return certstore.Version{}, &ValidationError{"versionId", "version was not issued by CertForge"}
+	}
+	caRow, err := q.LockCA(ctx, sqlcgen.LockCAParams{ID: *vrow.CaID, OrgID: orgID})
+	if err != nil {
+		return certstore.Version{}, notFound(err)
+	}
+	if caRow.Type == CATypeACME {
+		return certstore.Version{}, &ValidationError{"versionId", "not supported for ACME CAs yet"}
+	}
+	if caRow.Type != CATypeLocalCA {
+		return certstore.Version{}, &ValidationError{"versionId", "not supported for this CA kind yet"}
+	}
+	leaf, err := x509.ParseCertificate(vrow.LeafDer)
+	if err != nil {
+		return certstore.Version{}, err
+	}
+	var cfg localCAConfig
+	if err := json.Unmarshal(caRow.Config, &cfg); err != nil {
+		return certstore.Version{}, err
+	}
+	issuerSerial, ok := issuerSerialForLeaf(cfg, leaf)
+	if !ok {
+		return certstore.Version{}, &ValidationError{"versionId", "issuing certificate no longer available"}
+	}
+	sig, err := s.localCASignerFromRow(ctx, q, caRow, baseURL(ctx), issuerSerial)
+	if err != nil {
+		return certstore.Version{}, err
+	}
+	if err := sig.Revoke(ctx, leaf, reason); err != nil {
+		return certstore.Version{}, err
+	}
+
+	now := time.Now()
+	updated, err := q.SetCertificateVersionRevoked(ctx, sqlcgen.SetCertificateVersionRevokedParams{ID: versionID, CertID: certID, RevokedAt: &now})
+	if err != nil {
+		return certstore.Version{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return certstore.Version{}, err
+	}
+	return certstore.Version{ID: updated.ID, CertID: updated.CertID, Serial: updated.Serial, NotBefore: updated.NotBefore,
+		NotAfter: updated.NotAfter, SHA256: updated.Sha256Fp, KeyType: updated.KeyType, Source: updated.Source,
+		HasKey: updated.HasKey, CAID: updated.CaID, RevokedAt: updated.RevokedAt, CreatedAt: updated.CreatedAt}, nil
 }

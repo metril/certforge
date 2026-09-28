@@ -320,6 +320,18 @@ FROM certificate_versions WHERE cert_id = $1 ORDER BY created_at DESC;
 -- name: GetCertificateVersion :one
 SELECT * FROM certificate_versions WHERE id = $1 AND cert_id = $2;
 
+-- name: LockCertificateVersionForUpdate :one
+-- Locks one version for the duration of RevokeVersion's read-check-write
+-- (issuance.Store.RevokeVersion), so a concurrent revoke of the same
+-- version serializes instead of both reading revoked_at IS NULL and racing
+-- the update.
+SELECT * FROM certificate_versions WHERE id = $1 AND cert_id = $2 FOR UPDATE;
+
+-- name: SetCertificateVersionRevoked :one
+UPDATE certificate_versions SET revoked_at = $3
+WHERE id = $1 AND cert_id = $2
+RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at;
+
 -- name: ListCertificateVersionsByIDs :many
 -- Batch-loads version metadata for a set of ids in one round trip, so a
 -- certificate list page can render every item's currentVersion without one

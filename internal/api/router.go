@@ -41,6 +41,13 @@ func NewRouter(d Deps) http.Handler {
 	// token containing "/" (or any other extra path segment) reaches the
 	// handler to be rejected as 404 rather than being routed to the SPA.
 	r.Get("/.well-known/acme-challenge/*", wellKnownACMEChallenge(d.HTTPTokens))
+	// Public, unauthenticated CRL routes (Shared contract): outside
+	// /api/v1 and out of the OpenAPI document, documented in docs/api.md
+	// instead, same as the ACME challenge route above. d.Issuance is nil
+	// only in narrow unit-test fixtures that never hit these routes.
+	if d.Issuance != nil {
+		r.Get("/crl/*", crlHandler(d.Issuance.Store, newCRLCache()))
+	}
 	webHandler := webui.Handler()
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {

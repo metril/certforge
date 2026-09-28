@@ -53,7 +53,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `PATCH, DELETE /orgs/{orgId}/sites/{id}` | rename, delete a site |
 | `GET, POST /orgs/{orgId}/cas` | list, add CAs |
 | `GET, PUT, DELETE /orgs/{orgId}/cas/{id}` | read, replace, delete a CA |
-| `POST /orgs/{orgId}/cas/{id}/rotate` | rotate a private CA's issuing key (arriving in Phase 5A; 501 today) |
+| `POST /orgs/{orgId}/cas/{id}/rotate` | rotate a `localca` CA's issuing key (422 for any other kind, or a `localca` CA with no held root key) |
 | `GET, POST /orgs/{orgId}/acme-accounts` | list, register accounts |
 | `GET, DELETE /orgs/{orgId}/acme-accounts/{id}` | read, delete an account |
 | `GET, PUT /orgs/{orgId}/issuance-defaults` | org defaults (null inherits global) |
@@ -75,7 +75,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `POST /orgs/{orgId}/certificates/{id}/versions/upload` | add an uploaded version to an unmanaged certificate (409 if managed) |
 | `GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download` | PEM or DER file, or zip; `key` needs `keys:export` |
 | `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/export` | PKCS#12 or JKS export (password in the body); needs `certs:read` and `keys:export` |
-| `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/revoke` | revoke an issued version for a private CA (arriving in Phase 5A; 501 today) |
+| `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/revoke` | revoke an issued version for a private CA (422 for ACME, or a non-issued version; 409 if already revoked) — see [private-ca.md#revocation](private-ca.md#revocation) |
 | `GET /orgs/{orgId}/certificates/{id}/attempts` | attempts with step timeline and log |
 | `GET /orgs/{orgId}/certificates/{id}/manual-dns` | TXT records waiting for an operator |
 | `POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm` | resume the waiting attempt |
@@ -113,7 +113,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 
 `GET /.well-known/acme-challenge/{token}` (not under `/api/v1`, on the main listener, unauthenticated) serves an http-01 key authorization as `text/plain` for a token this server is currently waiting on (`^[A-Za-z0-9_-]{1,128}$`), or 404 otherwise. It is not in the OpenAPI document.
 
-`GET /crl/{caId}.crl` and `GET /crl/{caId}/{issuerSerial}.crl` (not under `/api/v1`, on the main listener, unauthenticated; arriving in Phase 5A) will serve a localca CA's CRL as `application/pkix-crl` DER — the current issuer's at the first form, any issuer the CA has ever held (hex serial) at the second — 404 for an unknown id, a non-localca CA, or `crl: false`. Neither is in the OpenAPI document, matching the ACME challenge route above.
+`GET /crl/{caId}.crl` and `GET /crl/{caId}/{issuerSerial}.crl` (not under `/api/v1`, on the main listener, unauthenticated) serve a `localca` CA's CRL as `application/pkix-crl` DER with `Cache-Control: max-age=600` — the current issuer's at the first form, any issuer the CA has ever held (lower-case hex serial, `^[0-9a-f]{1,40}$`) at the second — 404 for an unknown id, a non-localca CA, `crl: false`, or an unknown issuer serial. Neither is in the OpenAPI document, matching the ACME challenge route above. See [private-ca.md#crl](private-ca.md#crl).
 
 ### Clients
 

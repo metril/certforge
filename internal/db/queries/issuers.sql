@@ -1,6 +1,6 @@
 -- name: CreateCA :one
-INSERT INTO cas (org_id, name, type, config, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO cas (org_id, name, type, config, secret_cfg, not_before, not_after, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING *;
 
 -- name: GetCA :one
@@ -17,6 +17,15 @@ SELECT * FROM cas WHERE org_id = $1 ORDER BY name;
 -- name: UpdateCA :one
 UPDATE cas SET name = $3, type = $4, config = $5, preset = $6, directory_url = $7, trust_bundle_pem = $8,
     eab_kid = $9, eab_hmac = $10, resolvers = $11, updated_at = now()
+WHERE id = $1 AND org_id = $2
+RETURNING *;
+
+-- name: UpdateCACrypto :one
+-- Rotate and Revoke each update only the crypto-bearing columns (config,
+-- secret_cfg, not_before, not_after, crl_number), leaving name/preset/eab/
+-- resolvers untouched; the caller has already locked the row FOR UPDATE
+-- (LockCA), inside the same transaction as this write.
+UPDATE cas SET config = $3, secret_cfg = $4, not_before = $5, not_after = $6, crl_number = $7, updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING *;
 
