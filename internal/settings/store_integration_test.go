@@ -257,6 +257,55 @@ func TestSectionSecrets(t *testing.T) {
 	}
 }
 
+// TestPutSectionTxUpdateCheck covers Section.ValidateUpdate running inside
+// PutSectionTx: an AddUpdateCheck function sees nil for a section never
+// saved before (first save always allowed), and the section's actual
+// previous stored public value on every save after that.
+func TestPutSectionTxUpdateCheck(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+	st := settings.NewStore(q, envelope(1))
+
+	r := settings.NewRegistry()
+	r.MustRegister("u", json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{
+	  "issuer":{"type":"string"}}}`), json.RawMessage(`{}`))
+	if err := r.AddUpdateCheck("u", func(stored, next json.RawMessage) error {
+		if stored == nil {
+			return nil
+		}
+		var prev, cur struct {
+			Issuer string `json:"issuer"`
+		}
+		_ = json.Unmarshal(stored, &prev)
+		_ = json.Unmarshal(next, &cur)
+		if prev.Issuer != cur.Issuer {
+			return errors.New("issuer is immutable")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sec, _ := r.Section("u")
+
+	if _, err := putTx(ctx, t, pool, st, sec, `{"issuer":"a"}`); err != nil {
+		t.Fatalf("first save: %v", err)
+	}
+	if _, err := putTx(ctx, t, pool, st, sec, `{"issuer":"a"}`); err != nil {
+		t.Fatalf("unchanged issuer: %v", err)
+	}
+	if _, err := putTx(ctx, t, pool, st, sec, `{"issuer":"b"}`); !errors.Is(err, settings.ErrInvalid) {
+		t.Fatalf("changed issuer: err = %v", err)
+	}
+	raw, _, err := st.GetSection(ctx, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]string
+	if err := json.Unmarshal(raw, &v); err != nil || v["issuer"] != "a" {
+		t.Fatalf("rejected update must not persist: %s", raw)
+	}
+}
+
 // TestSectionSecretsFiltersRemovedSchemaKeys covers a secret property that
 // used to exist on a section's schema, still sits encrypted in the stored
 // blob (nothing deletes it), but was later removed from the schema: it must

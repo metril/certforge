@@ -30,6 +30,7 @@ import (
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
+	"github.com/metril/certforge/internal/vault"
 )
 
 // Deps are the services handlers use.
@@ -64,6 +65,12 @@ type Deps struct {
 	// Keys reports the active KEK's status and starts its rewrap job
 	// (Task 5: GET/POST /keys/*).
 	Keys *kek.Service
+
+	// Vault builds a live Vault client from the "vault" settings section,
+	// for testVaultSettings and the vaultpki CA/signer (Task 8). nil
+	// answers testVaultSettings with a connection failure result and every
+	// vaultpki CA operation with a "not configured" 422.
+	Vault *vault.Provider
 
 	// DNSTestTimeout bounds POST .../dns-credentials/{id}/test; zero means
 	// the 2-minute default (a test override, since lego's Present/CleanUp

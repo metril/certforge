@@ -42,6 +42,55 @@ secret decouples those derived keys from the KEK's own bytes, and why an
 existing install with no static KEK at all cannot seed that root the first
 time it boots on Transit.
 
+## Integrations {#integrations}
+
+Settings → Integrations → Vault (`GET`/`PUT /api/v1/settings/vault`) is how
+the running server itself reaches Vault or OpenBao for everything other
+than the Transit KEK above: private CAs on the `vaultpki` kind and the
+`vault-kv` deploy target (Phase 5B). Fields: `address` (required once
+anything else is set), `namespace` (Vault Enterprise only), `authMethod`
+(`token` or `approle`, default `token`), `token` or `roleId`/`secretId`
+depending on the method, `caPem` (extra trust, never replaces the system
+root pool) and `timeoutSeconds` (1–60, default 10).
+
+`internal/vault.Provider` turns the section into a live `*Client`:
+`Client(ctx)` builds and logs in once, then caches the result keyed by a
+SHA-256 hash of the section's effective value plus its decrypted secrets —
+an unrelated settings change (or none at all) reuses the cached client, and
+a change to the address, auth method or credentials closes the old client's
+renewal loop and builds a fresh one. `Configured(ctx)` reports whether an
+address is set at all, gating a `vaultpki` CA create and the `checks.vault`
+readiness entry.
+
+`POST /api/v1/settings/vault/test` (`testVaultSettings`, needs
+`settings:write`, not audited) logs in with the given settings — merging an
+omitted or `__unchanged__` secret field with the value already stored — and
+reports `{ok, tokenTtlSeconds, policies, version}` or `{ok: false, error}`.
+It never fails with a connection or authentication problem; those come back
+as `ok: false` in a 200. It fails with 422 only when the request itself is
+malformed: a schema violation, an `authMethod`/secret mismatch, or the
+re-entry rule below. `error`, when present, has already had the client's
+own token/secretId redacted and every string value of the request itself
+scrubbed from it a second time, so a role id or CA bundle echoed back by a
+misbehaving Vault error message cannot leak either.
+
+**Re-entry rule**: a `PUT` or test request that changes `address` or
+`namespace` must re-send the secret field its `authMethod` needs (`token`,
+or `secretId` under `approle`) — an omitted or `__unchanged__` value is 422
+`"re-enter the token"`. This stops a token or AppRole secretId silently
+following the section over to what may be a different Vault install. The
+very first save of the section is always allowed, since there is nothing
+yet to compare against.
+
+### AppRole {#approle}
+
+For `authMethod: approle`, create a role with a policy scoped to the
+features actually used (see the table below), then set `roleId` and
+`secretId` on the section. A `secret_id_ttl` matching how often the
+`secretId` will be rotated is reasonable; `Client`'s renewal loop keeps the
+resulting token alive between rotations by logging in again (never by
+renewing a `secretId` itself, which Vault does not support).
+
 ## Authentication
 
 Two methods, chosen by which `Auth` value the client is built with:
@@ -86,6 +135,46 @@ Grant the narrowest policy for the features actually used:
 | PKI read CA | `<mount>/cert/ca` | `read` |
 | Token self-service (renewal) | `auth/token/lookup-self`, `auth/token/renew-self` | `read`/`update` (usually already default-policy) |
 | Health check | `sys/health` | unauthenticated |
+
+## PKI {#pki}
+
+A CA of kind `vaultpki` (`CAInput.type: vaultpki`, `config`: `mount`
+default `pki`, `role`, optional `ttl`) issues and revokes through Vault's
+PKI secrets engine instead of holding any key material itself — the
+signing key never leaves Vault. Settings → Integrations → Vault must be
+configured first; creating one before that is 422 "configure Settings →
+Integrations → Vault first".
+
+Create reads the mount's current CA certificate (`GET <mount>/cert/ca`),
+which becomes the CA's `trustBundlePem` and `notBefore`/`notAfter` — a
+snapshot taken at create time, not re-read on every issuance or on update
+(rotating the mount's own CA in Vault needs a fresh CertForge CA pointed at
+it, the same as any other out-of-band Vault change). Update only replaces
+`mount`/`role`/`ttl`; it does not re-contact Vault. A Vault error at create
+(an unreachable server, a mount that does not exist) is 422 with the
+client's own redacted message.
+
+Issue signs a CSR through `POST <mount>/sign/<role>` (`internal/signer/
+vaultpki`): the request carries `common_name`, `alt_names`, `ip_sans` and,
+when the CA's `ttl` is set, `ttl` — otherwise the role's own `max_ttl`
+applies. The response's `certificate` is cross-checked against the CSR's
+own public key before being trusted, and its issuing chain comes from
+`ca_chain` (or `issuing_ca` when Vault returned no chain). Revoke calls
+`POST <mount>/revoke` (Phase 5A Task 9 wires the revoke API route itself;
+the signer method lands with this task). `vaultpki` implements no ACME
+directory (`RenewalInfo` returns "not supported" — there is no ARI to
+poll).
+
+The PKI role needs, at minimum:
+
+- `allow_any_name: true`, or domain rules covering every name CertForge
+  will request (`allowed_domains` plus `allow_subdomains`/`allow_glob_domains`
+  as needed).
+- `allow_ip_sans: true` if any certificate will carry an IP SAN.
+- `max_ttl` at least as long as the CA's configured `ttl` (or the longest
+  leaf validity issued without one).
+- The `sign` policy capability on `<mount>/sign/<role>` (see the table
+  above), plus `read` on `<mount>/cert/ca` and `update` on `<mount>/revoke`.
 
 ## OpenBao {#openbao}
 

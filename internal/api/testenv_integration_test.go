@@ -28,6 +28,7 @@ import (
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
+	"github.com/metril/certforge/internal/vault"
 )
 
 type testEnv struct {
@@ -49,6 +50,9 @@ func newTestEnvOpts(t *testing.T, opts ...func(*api.Deps)) *testEnv {
 	if err := authn.RegisterSettings(sections); err != nil {
 		t.Fatal(err)
 	}
+	if err := vault.RegisterSettings(sections); err != nil {
+		t.Fatal(err)
+	}
 	store := settings.NewStore(q, env)
 	authSrc, err := authn.NewSettingsSource(store, sections)
 	if err != nil {
@@ -68,6 +72,7 @@ func newTestEnvOpts(t *testing.T, opts ...func(*api.Deps)) *testEnv {
 		AuthSettings: authSrc,
 		LoginLimiter: authn.NewLimiter(0, 0),
 		OIDC:         authn.NewOIDC(bytes.Repeat([]byte{9}, 32), nil),
+		Vault:        vault.NewProvider(store, sections),
 	}
 	for _, o := range opts {
 		o(&d)

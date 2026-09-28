@@ -9,6 +9,7 @@ import (
 
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/vault"
 )
 
 // GlobalSettings reads settings keys; *settings.Store implements it.
@@ -23,6 +24,7 @@ type Store struct {
 	q      *sqlcgen.Queries
 	box    crypto.Box
 	global GlobalSettings
+	vault  *vault.Provider // set by SetVault; nil until wired (a vaultpki CA create/update then 422s)
 }
 
 // NewStore returns a Store. global may be nil (built-in defaults only).
@@ -48,3 +50,9 @@ func (s *Store) openJSON(ctx context.Context, sealed []byte, out any) error {
 
 // Begin starts a transaction on the store's pool (tests and certstore writes).
 func (s *Store) Begin(ctx context.Context) (pgx.Tx, error) { return s.pool.Begin(ctx) }
+
+// SetVault wires the Vault provider a vaultpki CA create reaches Vault's
+// PKI secrets engine through (update only replaces mount/role/ttl and never
+// contacts Vault). Left unset (nil), every vaultpki CA create 422s as
+// unconfigured, same as an empty "vault" settings section would.
+func (s *Store) SetVault(p *vault.Provider) { s.vault = p }

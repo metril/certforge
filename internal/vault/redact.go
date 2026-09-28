@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
@@ -77,3 +78,25 @@ type redactedError struct {
 
 func (e *redactedError) Error() string { return e.msg }
 func (e *redactedError) Unwrap() error { return e.cause }
+
+// scrubRaw removes every string value raw holds (its top-level properties,
+// whatever they are — token, secretId, roleId, caPem, ...) from msg, on top
+// of whatever Client.Redact already caught. Provider.Test uses it so a
+// candidate "vault" section value's own secrets never survive into the
+// testVaultSettings response even when raw's token/secretId came from a
+// caller-supplied value the Client itself never held as c.token/c.auth
+// (Contract: "scrubbed of every secret value in raw").
+func scrubRaw(msg string, raw json.RawMessage) string {
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return msg
+	}
+	for _, v := range doc {
+		var str string
+		if err := json.Unmarshal(v, &str); err != nil || str == "" {
+			continue
+		}
+		msg = strings.ReplaceAll(msg, str, "[redacted]")
+	}
+	return msg
+}

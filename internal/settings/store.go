@@ -210,11 +210,18 @@ func (s *Store) PutSectionTx(ctx context.Context, tx pgx.Tx, sec *Section, raw j
 	if err := sec.Validate(raw); err != nil {
 		return nil, err
 	}
+	q := s.q.WithTx(tx)
+	var stored json.RawMessage
+	if err := s.GetTx(ctx, tx, sec.Key(), &stored); err != nil && !errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
+	if err := sec.ValidateUpdate(stored, raw); err != nil {
+		return nil, err
+	}
 	pub, in, err := sec.split(raw)
 	if err != nil {
 		return nil, err
 	}
-	q := s.q.WithTx(tx)
 	b, err := json.Marshal(pub)
 	if err != nil {
 		return nil, fmt.Errorf("settings: encode %s: %w", sec.Key(), err)

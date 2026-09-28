@@ -25,6 +25,7 @@ import (
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/signer"
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
+	"github.com/metril/certforge/internal/vault"
 )
 
 type fakeJobs struct{ queued map[uuid.UUID]bool }
@@ -46,12 +47,37 @@ func (r *fakeRegistrar) Register(_ context.Context, email string, _ *acmesigner.
 }
 
 type apiFixture struct {
-	srv   *Server
-	pool  *pgxpool.Pool
-	store *issuance.Store
-	certs *certstore.Store
-	box   crypto.Box
-	org   uuid.UUID
+	srv           *Server
+	pool          *pgxpool.Pool
+	store         *issuance.Store
+	certs         *certstore.Store
+	box           crypto.Box
+	org           uuid.UUID
+	settingsStore *settings.Store
+	sections      *settings.Registry
+}
+
+// setVaultSettings stores raw as the "vault" global settings section
+// (bypassing HTTP, this fixture has no server to send a request to), for a
+// test that points the section at a fake Vault httptest server.
+func (f *apiFixture) setVaultSettings(t *testing.T, raw string) {
+	t.Helper()
+	ctx := context.Background()
+	sec, ok := f.sections.Section(vault.SectionName)
+	if !ok {
+		t.Fatal("vault section not registered")
+	}
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := f.settingsStore.PutSectionTx(ctx, tx, sec, []byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func newAPIFixture(t *testing.T) *apiFixture {
@@ -68,7 +94,12 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	if err := issuance.RegisterSettings(sections); err != nil {
 		t.Fatal(err)
 	}
+	if err := vault.RegisterSettings(sections); err != nil {
+		t.Fatal(err)
+	}
+	vaultProvider := vault.NewProvider(settingsStore, sections)
 	store := issuance.NewStore(pool, box, settingsStore)
+	store.SetVault(vaultProvider)
 	certs := certstore.New(pool, box)
 	aud := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	svc := issuance.NewService(store, certs, &fakeJobs{queued: map[uuid.UUID]bool{}})
@@ -76,8 +107,9 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	svc.Auditor = aud
 	svc.Log = slog.Default()
 	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
-		Settings: settingsStore, Sections: sections}}
-	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, box: box, org: dbtest.Org(t, pool)}
+		Settings: settingsStore, Sections: sections, Vault: vaultProvider}}
+	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, box: box, org: dbtest.Org(t, pool),
+		settingsStore: settingsStore, sections: sections}
 }
 
 // as returns a context for a user holding role in the fixture org; admin is

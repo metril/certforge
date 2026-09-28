@@ -13,6 +13,7 @@ import (
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/settings"
+	"github.com/metril/certforge/internal/vault"
 )
 
 // GetSettingsSection returns a section's schema and value.
@@ -182,4 +183,53 @@ func (s *Server) sectionResponse(ctx context.Context, sec *settings.Section) (ge
 		return gen.SettingsSection{}, err
 	}
 	return gen.SettingsSection{Section: sec.Name, Schema: schema, Value: value, Stored: stored, StoredSecrets: storedSecrets}, nil
+}
+
+// TestVaultSettings validates req.Body against the "vault" section's schema
+// and re-entry rule (the same checks PUT /settings/vault runs), then asks
+// Vault.Provider to actually log in and look up its own token with the
+// resolved settings. A malformed or re-entry-violating request is 422; once
+// the request is well-formed, the response is always 200 — Provider.Test
+// itself reports an unreachable Vault or bad credentials as
+// VaultTestResult.ok == false, not an error (not audited: settings:write is
+// enough, this never changes stored state).
+func (s *Server) TestVaultSettings(ctx context.Context, req gen.TestVaultSettingsRequestObject) (gen.TestVaultSettingsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionSettingsWrite, nil); err != nil {
+		return nil, err
+	}
+	sec, ok := s.d.Sections.Section(vault.SectionName)
+	if !ok {
+		return nil, notFound("settings section %q", vault.SectionName)
+	}
+	if req.Body == nil {
+		return nil, badRequest("missing body")
+	}
+	raw, err := json.Marshal(req.Body)
+	if err != nil {
+		return nil, badRequest("%v", err)
+	}
+	if err := sec.Validate(raw); err != nil {
+		return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
+	}
+	_, stored, err := s.d.Settings.GetSection(ctx, sec)
+	if err != nil {
+		return nil, err
+	}
+	if err := sec.ValidateUpdate(stored, raw); err != nil {
+		return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
+	}
+	if s.d.Vault == nil {
+		return gen.TestVaultSettings200JSONResponse{Ok: false, Error: ptr("vault is not configured on this server")}, nil
+	}
+	res := s.d.Vault.Test(ctx, raw)
+	out := gen.VaultTestResult{Ok: res.OK}
+	if res.Error != "" {
+		out.Error = &res.Error
+	}
+	if res.OK {
+		out.TokenTtlSeconds = &res.TokenTTLSeconds
+		out.Policies = &res.Policies
+		out.Version = &res.Version
+	}
+	return gen.TestVaultSettings200JSONResponse(out), nil
 }

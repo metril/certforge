@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -106,10 +107,7 @@ func (in *CAInput) normalize() (acmesigner.Preset, error) {
 		in.Type = CATypeACME
 	}
 	switch in.Type {
-	case CATypeVaultPKI:
-		// Recognized kind, but its signer doesn't exist yet (Task 8).
-		return acmesigner.Preset{}, &ValidationError{"type", "not available yet"}
-	case CATypeLocalCA:
+	case CATypeLocalCA, CATypeVaultPKI:
 		if in.EABKid != "" || (in.EABHmac != nil && *in.EABHmac != "") {
 			return acmesigner.Preset{}, &ValidationError{"eabKid", "not applicable to a private CA"}
 		}
@@ -184,6 +182,9 @@ func (s *Store) CreateCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, 
 	if in.Type == CATypeLocalCA {
 		return s.createLocalCA(ctx, orgID, in)
 	}
+	if in.Type == CATypeVaultPKI {
+		return s.createVaultPKICA(ctx, orgID, in)
+	}
 	hmac := ""
 	if in.EABHmac != nil {
 		hmac = *in.EABHmac
@@ -231,6 +232,9 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	}
 	if in.Type == CATypeLocalCA {
 		return s.updateLocalCA(ctx, orgID, id, in)
+	}
+	if in.Type == CATypeVaultPKI {
+		return s.updateVaultPKICA(ctx, orgID, id, in)
 	}
 	if in.DirectoryURL != cur.DirectoryUrl {
 		n, err := s.q.CountCAUsers(ctx, id)
@@ -752,4 +756,141 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	return certstore.Version{ID: updated.ID, CertID: updated.CertID, Serial: updated.Serial, NotBefore: updated.NotBefore,
 		NotAfter: updated.NotAfter, SHA256: updated.Sha256Fp, KeyType: updated.KeyType, Source: updated.Source,
 		HasKey: updated.HasKey, CAID: updated.CaID, RevokedAt: updated.RevokedAt, CreatedAt: updated.CreatedAt}, nil
+}
+
+// vaultPKIConfig is a vaultpki CA's public cas.config column: the Shared
+// contract's VaultPkiConfig fields, verbatim — a vaultpki CA holds no local
+// key material (unlike localca), so unlike localCAConfig there is nothing
+// read-only to add.
+type vaultPKIConfig struct {
+	Mount string `json:"mount"`
+	Role  string `json:"role"`
+	TTL   string `json:"ttl,omitempty"`
+}
+
+// vaultPKIConfigWire is VaultPkiConfig's wire shape with every field
+// optional, so parseVaultPKIInput can tell "omitted" (default applies)
+// from an explicit zero value.
+type vaultPKIConfigWire struct {
+	Mount *string `json:"mount"`
+	Role  *string `json:"role"`
+	TTL   *string `json:"ttl"`
+}
+
+func parseVaultPKIInput(raw map[string]any) (vaultPKIConfig, error) {
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return vaultPKIConfig{}, err
+	}
+	var w vaultPKIConfigWire
+	if err := json.Unmarshal(b, &w); err != nil {
+		return vaultPKIConfig{}, &ValidationError{"config", "invalid vaultpki config: " + err.Error()}
+	}
+	cfg := vaultPKIConfig{Mount: "pki"}
+	if w.Mount != nil {
+		cfg.Mount = *w.Mount
+	}
+	if w.Role != nil {
+		cfg.Role = *w.Role
+	}
+	if w.TTL != nil {
+		cfg.TTL = *w.TTL
+	}
+	return cfg, nil
+}
+
+var vaultMountRe = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$`)
+
+// validate checks cfg's shape (Shared contract VaultPkiConfig bounds).
+func (cfg vaultPKIConfig) validate() error {
+	if !vaultMountRe.MatchString(cfg.Mount) {
+		return &ValidationError{"config.mount", "must match ^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$"}
+	}
+	if len(cfg.Role) < 1 || len(cfg.Role) > 128 {
+		return &ValidationError{"config.role", "required, 1-128 characters"}
+	}
+	if cfg.TTL != "" {
+		d, err := time.ParseDuration(cfg.TTL)
+		if err != nil {
+			return &ValidationError{"config.ttl", "must be a Go duration string, for example 2160h"}
+		}
+		if d < time.Hour || d > 19800*time.Hour {
+			return &ValidationError{"config.ttl", "must be between 1h and 19800h (825 days)"}
+		}
+	}
+	return nil
+}
+
+// errVaultNotConfigured is createVaultPKICA/updateVaultPKICA's 422 when the
+// "vault" settings section has no address set (Task 8 brief's contract
+// detail, verbatim).
+var errVaultNotConfigured = &ValidationError{"type", "configure Settings → Integrations → Vault first"}
+
+// createVaultPKICA validates cfg and reads mount's current CA certificate
+// from Vault (PKIReadCA), which becomes trust_bundle_pem and
+// not_before/not_after — a vaultpki CA holds no key material of its own, so
+// unlike createLocalCA there is nothing to seal into secret_cfg.
+func (s *Store) createVaultPKICA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, error) {
+	cfg, err := parseVaultPKIInput(in.Config)
+	if err != nil {
+		return CA{}, err
+	}
+	if err := cfg.validate(); err != nil {
+		return CA{}, err
+	}
+	if s.vault == nil || !s.vault.Configured(ctx) {
+		return CA{}, errVaultNotConfigured
+	}
+	vc, err := s.vault.Client(ctx)
+	if err != nil {
+		return CA{}, &ValidationError{"type", err.Error()}
+	}
+	certPEM, err := vc.PKIReadCA(ctx, cfg.Mount)
+	if err != nil {
+		return CA{}, &ValidationError{"config.mount", err.Error()}
+	}
+	cert, err := parsePEMCert(certPEM)
+	if err != nil {
+		return CA{}, &ValidationError{"config.mount", "vault returned an invalid CA certificate"}
+	}
+
+	cfgRaw, err := json.Marshal(cfg)
+	if err != nil {
+		return CA{}, err
+	}
+	row, err := s.q.CreateCA(ctx, sqlcgen.CreateCAParams{OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
+		NotBefore: &cert.NotBefore, NotAfter: &cert.NotAfter, Preset: "", DirectoryUrl: "",
+		TrustBundlePem: certPEM, EabKid: "", EabHmac: nil, Resolvers: in.Resolvers})
+	if err != nil {
+		return CA{}, dbErr(err, "name")
+	}
+	return caFromRow(row)
+}
+
+// updateVaultPKICA replaces a vaultpki CA's mount/role/ttl. It does not
+// re-contact Vault: trust_bundle_pem and not_before/not_after are set once
+// at create and stay as they are, the same as every other UpdateCA field
+// this query touches.
+func (s *Store) updateVaultPKICA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (CA, error) {
+	cfg, err := parseVaultPKIInput(in.Config)
+	if err != nil {
+		return CA{}, err
+	}
+	if err := cfg.validate(); err != nil {
+		return CA{}, err
+	}
+	cur, err := s.q.GetCA(ctx, sqlcgen.GetCAParams{ID: id, OrgID: orgID})
+	if err != nil {
+		return CA{}, notFound(err)
+	}
+	cfgRaw, err := json.Marshal(cfg)
+	if err != nil {
+		return CA{}, err
+	}
+	row, err := s.q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
+		Preset: "", DirectoryUrl: "", TrustBundlePem: cur.TrustBundlePem, EabKid: "", EabHmac: nil, Resolvers: in.Resolvers})
+	if err != nil {
+		return CA{}, dbErr(err, "name")
+	}
+	return caFromRow(row)
 }

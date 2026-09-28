@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -50,5 +51,54 @@ func TestVaultSettingsSchema(t *testing.T) {
 		if err := sec.Validate([]byte(ok)); err != nil {
 			t.Errorf("%s: rejected: %v", name, err)
 		}
+	}
+}
+
+// TestVaultSettingsReentry covers checkReentry (pre-flight ruling): first
+// save is always allowed; once address/namespace is stored, a PUT that
+// keeps them unchanged may omit or send "__unchanged__" for the active
+// method's secret, but a PUT that changes either one must re-send it.
+func TestVaultSettingsReentry(t *testing.T) {
+	sec, ok := func() (*settings.Section, bool) {
+		r := settings.NewRegistry()
+		if err := RegisterSettings(r); err != nil {
+			t.Fatal(err)
+		}
+		return r.Section(SectionName)
+	}()
+	if !ok {
+		t.Fatal("vault section not registered")
+	}
+
+	stored := json.RawMessage(`{"address":"https://vault.test:8200","authMethod":"token"}`)
+
+	if err := sec.ValidateUpdate(nil, []byte(`{"address":"https://vault.test:8200","authMethod":"token"}`)); err != nil {
+		t.Fatalf("first save rejected: %v", err)
+	}
+	if err := sec.ValidateUpdate(stored, []byte(`{"address":"https://vault.test:8200","authMethod":"token"}`)); err != nil {
+		t.Fatalf("unchanged address, no token: %v", err)
+	}
+	if err := sec.ValidateUpdate(stored, []byte(`{"address":"https://vault.test:8200","authMethod":"token","token":"__unchanged__"}`)); err != nil {
+		t.Fatalf("unchanged address, __unchanged__ token: %v", err)
+	}
+	if err := sec.ValidateUpdate(stored, []byte(`{"address":"https://other.test:8200","authMethod":"token"}`)); err == nil {
+		t.Fatal("changed address, omitted token: accepted")
+	}
+	if err := sec.ValidateUpdate(stored, []byte(`{"address":"https://other.test:8200","authMethod":"token","token":"__unchanged__"}`)); err == nil {
+		t.Fatal("changed address, __unchanged__ token: accepted")
+	}
+	if err := sec.ValidateUpdate(stored, []byte(`{"address":"https://other.test:8200","authMethod":"token","token":"t2"}`)); err != nil {
+		t.Fatalf("changed address, fresh token: %v", err)
+	}
+	if err := sec.ValidateUpdate(stored, []byte(`{"address":"https://vault.test:8200","namespace":"ns","authMethod":"token"}`)); err == nil {
+		t.Fatal("changed namespace, omitted token: accepted")
+	}
+
+	approleStored := json.RawMessage(`{"address":"https://vault.test:8200","authMethod":"approle"}`)
+	if err := sec.ValidateUpdate(approleStored, []byte(`{"address":"https://other.test:8200","authMethod":"approle","roleId":"r"}`)); err == nil {
+		t.Fatal("approle, changed address, omitted secretId: accepted")
+	}
+	if err := sec.ValidateUpdate(approleStored, []byte(`{"address":"https://other.test:8200","authMethod":"approle","roleId":"r","secretId":"s2"}`)); err != nil {
+		t.Fatalf("approle, changed address, fresh secretId: %v", err)
 	}
 }

@@ -108,3 +108,26 @@ func TestAddCheck(t *testing.T) {
 		t.Fatal("AddCheck on unknown section succeeded")
 	}
 }
+
+func TestAddUpdateCheck(t *testing.T) {
+	r := NewRegistry()
+	r.MustRegister("s", json.RawMessage(secretSchema), json.RawMessage(`{}`))
+	if err := r.AddUpdateCheck("s", func(stored, next json.RawMessage) error {
+		if stored == nil {
+			return nil
+		}
+		return errors.New("nope")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sec, _ := r.Section("s")
+	if err := sec.ValidateUpdate(nil, []byte(`{}`)); err != nil {
+		t.Fatalf("nil stored: %v", err)
+	}
+	if err := sec.ValidateUpdate(json.RawMessage(`{}`), []byte(`{}`)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v", err)
+	}
+	if err := r.AddUpdateCheck("missing", nil); err == nil {
+		t.Fatal("AddUpdateCheck on unknown section succeeded")
+	}
+}

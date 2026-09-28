@@ -19,6 +19,8 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
 	"github.com/metril/certforge/internal/signer/localca"
+	"github.com/metril/certforge/internal/signer/vaultpki"
+	"github.com/metril/certforge/internal/vault"
 )
 
 // localCASubject is a localca CA's public subject, stored in the cas.config
@@ -227,22 +229,49 @@ func (r *caRecorder) Revoke(ctx context.Context, serial, issuerSerial string, re
 }
 
 // SignerFactory builds a signer.Signer for a CA. Store supplies the CA's
-// key material; BaseURL resolves the server's public base URL
-// (general.baseUrl) fresh per call, for a leaf's CRL distribution point.
-// Task 7 wires the localca case only; Task 9 adds acme and vaultpki and
-// removes worker.DefaultSigner (Pre-flight rulings).
+// key material; Vault builds a vaultpki CA's client; BaseURL resolves the
+// server's public base URL (general.baseUrl) fresh per call, for a leaf's
+// CRL distribution point. Task 7 wired the localca case; Task 8 adds
+// vaultpki; Task 9 adds acme and removes worker.DefaultSigner (Pre-flight
+// rulings).
 type SignerFactory struct {
 	Store   *Store
+	Vault   *vault.Provider
 	BaseURL func(ctx context.Context) string
 }
 
-// New builds ca's current-issuer signer. Any kind but localca returns
-// signer.ErrNotSupported (422 at the API, until Task 9).
+// New builds ca's current-issuer signer. acme returns signer.ErrNotSupported
+// until Task 9 (422 at the API).
 func (f *SignerFactory) New(ctx context.Context, ca CA) (signer.Signer, error) {
-	if ca.Type != CATypeLocalCA {
+	switch ca.Type {
+	case CATypeLocalCA:
+		return f.Store.localCASignerCurrent(ctx, ca, f.baseURL(ctx))
+	case CATypeVaultPKI:
+		return f.newVaultPKISigner(ctx, ca)
+	default:
 		return nil, signer.ErrNotSupported
 	}
-	return f.Store.localCASignerCurrent(ctx, ca, f.baseURL(ctx))
+}
+
+// newVaultPKISigner builds a vaultpki Signer over ca's stored mount/role/ttl
+// and the shared Vault client Vault.Client builds from live settings.
+func (f *SignerFactory) newVaultPKISigner(ctx context.Context, ca CA) (signer.Signer, error) {
+	if f.Vault == nil {
+		return nil, vault.ErrNotConfigured
+	}
+	vc, err := f.Vault.Client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(ca.Config)
+	if err != nil {
+		return nil, err
+	}
+	var cfg vaultPKIConfig
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		return nil, err
+	}
+	return vaultpki.New(vc, vaultpki.Config{Mount: cfg.Mount, Role: cfg.Role, TTL: cfg.TTL}), nil
 }
 
 func (f *SignerFactory) baseURL(ctx context.Context) string {

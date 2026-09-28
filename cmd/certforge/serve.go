@@ -32,6 +32,7 @@ import (
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
 	"github.com/metril/certforge/internal/signer/localca"
+	"github.com/metril/certforge/internal/signer/vaultpki"
 	"github.com/metril/certforge/internal/vault"
 )
 
@@ -94,9 +95,12 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	challenge.AddToMeta(metaReg)
 	delivery.AddToMeta(metaReg)
 	localca.AddToMeta(metaReg)
+	vaultpki.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
+	vaultProvider := vault.NewProvider(store, sections)
 	issuanceStore := issuance.NewStore(pool, box, store)
+	issuanceStore.SetVault(vaultProvider)
 	certStore := certstore.New(pool, box)
 	agentSettings, err := agents.NewSettingsSource(store, sections, cfg.BaseURL)
 	if err != nil {
@@ -199,7 +203,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
-		HTTPTokens: httpTokens, Keys: keysSvc,
+		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

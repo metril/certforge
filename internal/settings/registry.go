@@ -22,12 +22,13 @@ var sectionName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 // Top-level string properties marked "secret": true are write-only: they are
 // stored encrypted in the secret column and never appear in the value.
 type Section struct {
-	Name    string
-	Schema  json.RawMessage
-	Default json.RawMessage
-	schema  *jsonschema.Schema
-	secrets []string
-	checks  []func(json.RawMessage) error
+	Name         string
+	Schema       json.RawMessage
+	Default      json.RawMessage
+	schema       *jsonschema.Schema
+	secrets      []string
+	checks       []func(json.RawMessage) error
+	updateChecks []func(stored, next json.RawMessage) error
 }
 
 // SectionKey is the settings-table key that stores section name.
@@ -50,6 +51,22 @@ func (s *Section) Validate(raw []byte) error {
 	}
 	for _, check := range s.checks {
 		if err := check(raw); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+	}
+	return nil
+}
+
+// ValidateUpdate runs the section's update checks (AddUpdateCheck) against
+// stored (the section's previous public value, nil when never saved) and
+// next (the incoming raw value, before its secrets are split out). Called
+// by PutSectionTx and by a provider's own Test method (vault.Provider.Test)
+// wherever a section needs to compare the stored value against a candidate
+// one — for example rejecting a re-sent secret sentinel when the address it
+// would apply to has changed.
+func (s *Section) ValidateUpdate(stored, next json.RawMessage) error {
+	for _, check := range s.updateChecks {
+		if err := check(stored, next); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalid, err)
 		}
 	}
@@ -184,6 +201,20 @@ func (r *Registry) AddCheck(name string, fn func(raw json.RawMessage) error) err
 		return fmt.Errorf("settings: section %q not registered", name)
 	}
 	s.checks = append(s.checks, fn)
+	return nil
+}
+
+// AddUpdateCheck adds a check comparing a section's previous stored public
+// value against an incoming candidate value (Section.ValidateUpdate). Call
+// it at startup, before the registry serves requests.
+func (r *Registry) AddUpdateCheck(name string, fn func(stored, next json.RawMessage) error) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.sections[name]
+	if !ok {
+		return fmt.Errorf("settings: section %q not registered", name)
+	}
+	s.updateChecks = append(s.updateChecks, fn)
 	return nil
 }
 

@@ -41,7 +41,10 @@ func RegisterSettings(r *settings.Registry) error {
 	if err := r.Register(SectionName, json.RawMessage(settingsSchema), json.RawMessage(settingsDefault)); err != nil {
 		return err
 	}
-	return r.AddCheck(SectionName, checkSettings)
+	if err := r.AddCheck(SectionName, checkSettings); err != nil {
+		return err
+	}
+	return r.AddUpdateCheck(SectionName, checkReentry)
 }
 
 // checkSettings enforces the auth-method pairing the schema alone cannot
@@ -63,6 +66,45 @@ func checkSettings(raw json.RawMessage) error {
 	}
 	if (s.RoleID != "" || s.SecretID != "") && method != "approle" {
 		return errors.New("roleId and secretId require authMethod approle")
+	}
+	return nil
+}
+
+// checkReentry enforces the re-entry rule (Shared contract, Settings row,
+// pre-flight ruling): when address or namespace changes, the secret field
+// for the selected authMethod (token, or secretId under approle) must be
+// re-sent — omitted or Unchanged would otherwise silently carry a stored
+// credential over to what may be a different Vault install. stored is nil
+// on a section's first save, which is always allowed. Run by both
+// PutSectionTx (PUT /settings/vault) and the testVaultSettings handler
+// (POST /settings/vault/test), ahead of Provider.Test.
+func checkReentry(stored, next json.RawMessage) error {
+	if stored == nil {
+		return nil
+	}
+	var prev, cur Settings
+	if err := json.Unmarshal(stored, &prev); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(next, &cur); err != nil {
+		return err
+	}
+	if prev.Address == cur.Address && prev.Namespace == cur.Namespace {
+		return nil
+	}
+	method := cur.AuthMethod
+	if method == "" {
+		method = "token"
+	}
+	switch method {
+	case "token":
+		if cur.Token == "" || cur.Token == settings.Unchanged {
+			return errors.New("re-enter the token")
+		}
+	case "approle":
+		if cur.SecretID == "" || cur.SecretID == settings.Unchanged {
+			return errors.New("re-enter the token")
+		}
 	}
 	return nil
 }
