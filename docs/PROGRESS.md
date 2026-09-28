@@ -262,8 +262,8 @@ Phase 5 is split into two plans: 5A vault and private CA backend (schema, Vault 
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Schema, CA kinds, vault section | done | beabc09 |
-| 2 | OpenAPI contract | done | pending |
-| 3 | Vault client | planned | – |
+| 2 | OpenAPI contract | done | 43fd668 |
+| 3 | Vault client | done | pending |
 | 4 | Transit KEK and root secret | planned | – |
 | 5 | Multi-wrapper envelope, rewrap, keys API | planned | – |
 | 6 | localca signer | planned | – |
@@ -429,6 +429,7 @@ Phase 5 is split into two plans: 5A vault and private CA backend (schema, Vault 
 - 5A: probe (R6) — dropped: nothing would call it and `testVaultSettings` already covers Vault reachability; `deploy.Target` loses `Probe` and its only helper, `KVDeleteMetadata`, is not built.
 - 5A: verified (R8) — lego v4.24.0's transip and hyperone providers read their key/passport files eagerly at construction (`gotransip.NewClient`, `hyperone.LoadPassportFile`), so `Build` removes the temp dir right after constructing the provider, not after use.
 - 5A Task 2: `CA.config`'s per-kind read-only fields (localca's `imported`, `issuingPem`, `retired`, `revokedCount`) are documented in the schema's prose rather than modeled as extra properties, since `config` stays a generic object (matching `DeployTarget.config`); `LocalCaConfig`/`VaultPkiConfig` describe the writable fields only. The two new grant operations (`createServerGrant`, `listTargetGrants`) are tagged `clients`, like every other Grant operation, despite nesting under `/orgs/{orgId}/deploy-targets/{id}`. All seven new operations 501 from `internal/api/phase5_stubs.go` until their owning task lands; making `CAInput.preset` optional (required only for acme) turned `gen.CAInput.Preset` into `*CAPresetCode`, so every existing test constructing one now wraps the value in `ptr(gen.CAPresetCode(...))`.
+- 5A Task 3: `internal/vault`'s retry and relogin are two separate layers — `doWithRetry` gives every request 3 attempts on a connection error or an unaccepted 5xx (200ms/400ms backoff, capped by ctx), then `doJSON` wraps that once more for a single relogin-and-retry on a 403 under `AppRoleAuth`, so a relogin never eats into or restarts the retry budget. `Health` passes 501/503 as a `noRetry` set instead of the default 5xx handling: those are meaningful sealed/uninitialized states, not transient failures, so they return an `*APIError` on the first attempt instead of being retried three times. `Client.Redact` is a method, not a free function, because it needs the client's own current token and (under AppRole) its configured secretId to scrub from an error's message; it also strips a handful of well-known JSON field names (`client_token`, `secret_id`, `token`) as a second, value-independent pass. `Start`'s renewal loop takes an unexported `clock` interface (`After(time.Duration) <-chan time.Time`) so `TestTokenRenewalAtHalfTTL` can drive it without a real half-minute sleep; this stays internal since the Shared contracts row for `internal/vault` names no exported clock type. `PKIRevoke`'s serial argument is passed through to Vault byte-for-byte (never reformatted), since `PKISign` already returns it in Vault's own colon-separated-hex form for the caller to store and later revoke.
 
 ## Known gaps
 

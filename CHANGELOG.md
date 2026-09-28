@@ -122,6 +122,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Upload PEM or PKCS#12 certificates from the web UI.
 - Import certificates from acme.sh or certbot archives with a preview.
 - Command palette imports and uploads certificates; Playwright covers exports, uploads and imports.
+- Vault HTTP client for Transit, KV v2, PKI, AppRole and token auth.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.
