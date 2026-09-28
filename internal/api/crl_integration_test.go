@@ -5,10 +5,13 @@ package api
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -110,13 +113,45 @@ func TestRevokeVersionFeedsCRL(t *testing.T) {
 	}
 }
 
+// TestRevokeACMEVersion422 covers the batch-3 review fix: the version must
+// actually carry an acme CA's id, or the 422 comes from the "not issued by
+// CertForge" branch (a nil ca_id, f.issuedCert's default) instead of the
+// ACME one this test means to exercise.
 func TestRevokeACMEVersion422(t *testing.T) {
 	f := newAPIFixture(t)
-	c, v := f.issuedCert(t, "acme-cert")
-	_, err := f.srv.RevokeCertificateVersion(f.as("operator"), gen.RevokeCertificateVersionRequestObject{
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "ACME", Preset: ptrT(gen.CAPresetCode("letsencrypt")),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acmeCA := res.(gen.CreateCa201JSONResponse)
+
+	c, err := f.store.CreateCertificate(context.Background(), f.org, issuance.CertInput{Name: "acme-cert", CommonName: "acme-cert.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := f.store.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := f.certs.Insert(context.Background(), tx, c.ID, &signer.Issued{LeafDER: []byte("leaf"), NotBefore: time.Now(),
+		NotAfter: time.Now().Add(time.Hour), Serial: "01"}, "ec256", certstore.InsertOpts{Source: "issued", CAID: &acmeCA.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.srv.RevokeCertificateVersion(f.as("operator"), gen.RevokeCertificateVersionRequestObject{
 		OrgId: f.org, Id: c.ID, Vid: v.ID, Body: &gen.RevokeCertificateVersionJSONRequestBody{},
 	})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
+	var he *HTTPError
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, "not supported for ACME CAs yet") {
+		t.Fatalf("err = %v, want detail to mention ACME CAs are not supported yet", err)
+	}
 }
 
 func TestCRLRoutes(t *testing.T) {
@@ -147,6 +182,51 @@ func TestCRLRoutes(t *testing.T) {
 
 	t.Run("unknown ca id is 404", func(t *testing.T) {
 		getCRL(t, httpSrv.Client(), httpSrv.URL+"/crl/"+uuid.New().String()+".crl", http.StatusNotFound)
+	})
+
+	// Batch-3 review fix: the cache key includes crl_number, so a
+	// revocation must be visible on the very next fetch, not only once the
+	// 10-minute in-memory TTL happens to expire. Its own CA (not the outer
+	// one already revoked against above) so crl_number starts at a known 0.
+	t.Run("cache reflects a revocation immediately, not after a TTL wait", func(t *testing.T) {
+		res3, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+			Name: "CacheCA", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cacheCA := res3.(gen.CreateCa201JSONResponse)
+		leaf2, v2 := issueLocalLeaf(t, f, cacheCA.Id, "cache-me.example.test")
+
+		before := getCRL(t, httpSrv.Client(), httpSrv.URL+"/crl/"+cacheCA.Id.String()+".crl", http.StatusOK)
+		beforeCRL, err := x509.ParseRevocationList(before)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(beforeCRL.RevokedCertificateEntries) != 0 {
+			t.Fatalf("fresh CA's CRL already lists a revocation: %v", beforeCRL.RevokedCertificateEntries)
+		}
+
+		if _, err := f.srv.RevokeCertificateVersion(f.as("operator"), gen.RevokeCertificateVersionRequestObject{
+			OrgId: f.org, Id: v2.CertID, Vid: v2.ID, Body: &gen.RevokeCertificateVersionJSONRequestBody{},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		after := getCRL(t, httpSrv.Client(), httpSrv.URL+"/crl/"+cacheCA.Id.String()+".crl", http.StatusOK)
+		afterCRL, err := x509.ParseRevocationList(after)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, e := range afterCRL.RevokedCertificateEntries {
+			if e.SerialNumber.Cmp(leaf2.SerialNumber) == 0 {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("revocation not visible on the very next fetch: cache served a stale entry")
+		}
 	})
 
 	t.Run("crl false is 404", func(t *testing.T) {

@@ -3,17 +3,26 @@
 package api
 
 import (
+	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"math/big"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/signer"
 	"github.com/metril/certforge/internal/signer/localca"
@@ -213,18 +222,229 @@ func TestLocalCACRUDMatrix(t *testing.T) {
 	})
 }
 
+// TestLocalCASecretsNeverInCA checks GetCa's actual response (not just the
+// create response) for a leaked private key three ways: the PEM marker
+// itself, secret_cfg's own root/issuing/import key fields decrypted and
+// checked by their exact base64, and the issuing key CASecret hands back
+// to a caller re-marshalled to PKCS8 — so a leak of any of the individual
+// byte fields (not just a stray "PRIVATE KEY" PEM string) would fail this.
 func TestLocalCASecretsNeverInCA(t *testing.T) {
 	f := newAPIFixture(t)
-	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+	createRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
 		Name: "Secrets", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	created := createRes.(gen.CreateCa201JSONResponse)
+
+	getRes, err := f.srv.GetCa(f.as("admin"), gen.GetCaRequestObject{OrgId: f.org, Id: created.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := getRes.(gen.GetCa200JSONResponse)
+	body := mustJSON(t, got)
+	if strings.Contains(body, "PRIVATE KEY") {
+		t.Fatalf("GET body contains a private key:\n%s", body)
+	}
+
+	ctx := context.Background()
+	q := sqlcgen.New(f.pool)
+	row, err := q.GetCAByID(ctx, created.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := f.box.Open(ctx, row.SecretCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sc map[string]interface{}
+	if err := json.Unmarshal(raw, &sc); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"rootKey", "issuingKey", "importKeyPem"} {
+		v, _ := sc[field].(string)
+		if v == "" {
+			continue
+		}
+		if strings.Contains(body, v) {
+			t.Fatalf("GET body leaks secret_cfg.%s", field)
+		}
+	}
+
+	mat, _, err := f.store.CASecret(ctx, row, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuingPKCS8 := mustMarshalPKCS8(t, mat.IssuingKey)
+	if strings.Contains(body, base64.StdEncoding.EncodeToString(issuingPKCS8)) {
+		t.Fatal("GET body leaks the issuing key (from CASecret)")
+	}
+}
+
+// TestUpdateLocalCAConcurrentRotateNotLost covers the batch-3 review fix:
+// updateLocalCA now locks the CA row FOR UPDATE for its whole
+// read-check-write, the same lock Rotate takes, so an update and a
+// concurrent rotate can never clobber each other — both effects must be
+// present once both calls return, regardless of which ran first.
+func TestUpdateLocalCAConcurrentRotateNotLost(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "Concurrent", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := res.(gen.CreateCa201JSONResponse)
+	origIssuingPem, _ := created.Config["issuingPem"].(string)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, err := f.srv.UpdateCa(f.as("admin"), gen.UpdateCaRequestObject{OrgId: f.org, Id: created.Id, Body: &gen.CAInput{
+			Name: "Concurrent", Type: ptrT(gen.Localca), Config: ptrT(map[string]interface{}{
+				"subject": map[string]interface{}{"commonName": "Test Root"}, "maxLeafDays": 45, "crl": true,
+			}),
+		}})
+		errs <- err
+	}()
+	go func() {
+		defer wg.Done()
+		_, err := f.srv.RotateCa(f.as("admin"), gen.RotateCaRequestObject{OrgId: f.org, Id: created.Id})
+		errs <- err
+	}()
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := f.srv.GetCa(f.as("admin"), gen.GetCaRequestObject{OrgId: f.org, Id: created.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := got.(gen.GetCa200JSONResponse)
+	if v, _ := ca.Config["maxLeafDays"].(float64); v != 45 {
+		t.Fatalf("update lost: maxLeafDays = %v, want 45", ca.Config["maxLeafDays"])
+	}
+	newIssuingPem, _ := ca.Config["issuingPem"].(string)
+	if newIssuingPem == "" || newIssuingPem == origIssuingPem {
+		t.Fatal("rotate lost: issuingPem unchanged")
+	}
+	retired, ok := ca.Config["retired"].([]interface{})
+	if !ok || len(retired) != 1 {
+		t.Fatalf("rotate lost: retired = %v", ca.Config["retired"])
+	}
+}
+
+// buildChainCert signs a CA certificate for cn under parent/parentKey
+// (nil/nil for a self-signed root), for TestImportPreservesFullChain.
+func buildChainCert(t *testing.T, parent *x509.Certificate, parentKey crypto.Signer, cn string) (*x509.Certificate, crypto.Signer) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: cn},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage: x509.KeyUsageCertSign, BasicConstraintsValid: true, IsCA: true}
+	signParent, signKey := parent, parentKey
+	if signParent == nil {
+		signParent, signKey = tmpl, key
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, signParent, key.Public(), signKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert, key
+}
+
+// TestImportPreservesFullChain covers the batch-3 review fix: importing a
+// certificate whose chain has more than one certificate above the issuing
+// certificate (issuing -> mid -> root, an intermediate genuinely between
+// the issuing certificate and the self-signed root) used to lose "mid"
+// entirely — only the root ever got persisted. A leaf issued afterward
+// must carry the full chain (issuing + mid) in its ChainDER and verify
+// through it up to the root.
+func TestImportPreservesFullChain(t *testing.T) {
+	f := newAPIFixture(t)
+	root, rootKey := buildChainCert(t, nil, nil, "Root")
+	mid, midKey := buildChainCert(t, root, rootKey, "Mid")
+	issuing, issuingKey := buildChainCert(t, mid, midKey, "Issuing")
+
+	certPEM := encodeCertPEM(issuing.Raw) + encodeCertPEM(mid.Raw) + encodeCertPEM(root.Raw)
+	keyPEM := encodeKeyPEM(t, issuingKey)
+
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "Chain", Type: ptrT(gen.Localca), Config: ptrT(map[string]interface{}{
+			"subject": map[string]interface{}{"commonName": "Chain"}, "importPem": certPEM, "importKeyPem": keyPEM, "crl": false,
+		}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ca := res.(gen.CreateCa201JSONResponse)
-	b := mustJSON(t, ca)
-	if strings.Contains(b, "PRIVATE KEY") {
-		t.Fatalf("GET body contains a private key:\n%s", b)
+	got, err := parseFirstCert(ca.TrustBundlePem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SerialNumber.Cmp(root.SerialNumber) != 0 {
+		t.Fatal("trustBundlePem should be the last importPem certificate (the root)")
+	}
+
+	ctx := context.Background()
+	domCA, err := f.store.GetCA(ctx, f.org, ca.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	factory := &issuance.SignerFactory{Store: f.store, BaseURL: func(context.Context) string { return "" }}
+	sig, err := factory.New(ctx, domCA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issued, err := sig.Issue(ctx, signer.IssueRequest{Names: []string{"leaf.example.test"}, KeyType: signer.EC256})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issued.ChainDER) != 2 {
+		t.Fatalf("chainDER = %d entries, want 2 (issuing + mid)", len(issued.ChainDER))
+	}
+	midInChain, err := x509.ParseCertificate(issued.ChainDER[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if midInChain.SerialNumber.Cmp(mid.SerialNumber) != 0 {
+		t.Fatal("chainDER's second entry should be the intermediate (mid), not lost")
+	}
+
+	leaf, err := x509.ParseCertificate(issued.LeafDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(root)
+	inters := x509.NewCertPool()
+	for _, c := range issued.ChainDER {
+		cc, err := x509.ParseCertificate(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inters.AddCert(cc)
+	}
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, Intermediates: inters, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
+		t.Fatalf("leaf does not verify through the full chain: %v", err)
 	}
 }
 

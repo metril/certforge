@@ -230,7 +230,7 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 		return CA{}, &ValidationError{"type", "type cannot change"}
 	}
 	if in.Type == CATypeLocalCA {
-		return s.updateLocalCA(ctx, orgID, id, cur, in)
+		return s.updateLocalCA(ctx, orgID, id, in)
 	}
 	if in.DirectoryURL != cur.DirectoryUrl {
 		n, err := s.q.CountCAUsers(ctx, id)
@@ -432,11 +432,17 @@ func (s *Store) AccountMaterial(ctx context.Context, orgID, id uuid.UUID) (Accou
 // createLocalCA generates a fresh root and issuing intermediate, or imports
 // an operator-supplied issuing certificate and key, and stores the result:
 // config holds the public fields (Shared contract LocalCaConfig plus the
-// read-only imported/issuingPem/retired/revoked), secret_cfg holds the
-// sealed issuing (and, when generated, root) key, trust_bundle_pem is the
-// root PEM (generated) or the last certificate of importPem (import;
-// the issuing certificate itself when no chain is given), and
-// not_before/not_after are the issuing certificate's own validity.
+// read-only imported/issuingPem/retired/revoked, plus chainPem, internal —
+// see localCAConfig), secret_cfg holds the sealed issuing (and, when
+// generated, root) key, trust_bundle_pem is the last certificate of
+// mat.Chain (the root for a generated CA; for an import, the last
+// certificate of importPem whether or not it is itself self-signed — the
+// issuing certificate itself only when importPem carried no chain at all),
+// and not_before/not_after are the issuing certificate's own validity.
+// mat.Chain (Generate: [root]; Import: everything importPem carried after
+// the issuing certificate, in order) is stored whole as config.chainPem so
+// a multi-intermediate import's Issue calls still carry every intermediate
+// in Issued.ChainDER, not just the top of the chain.
 func (s *Store) createLocalCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, error) {
 	lcIn, err := parseLocalCAInput(in.Config)
 	if err != nil {
@@ -448,50 +454,48 @@ func (s *Store) createLocalCA(ctx context.Context, orgID uuid.UUID, in CAInput) 
 	now := time.Now()
 
 	var (
-		cfg         localCAConfig
-		sec         localCASecretCfg
-		trustBundle string
-		notBefore   time.Time
-		notAfter    time.Time
+		mat       localca.Material
+		sec       localCASecretCfg
+		imported  bool
+		importKey string
 	)
+	defer clearSecretCfg(&sec)
 	if lcIn.ImportPEM != "" {
-		mat, err := localca.Import(lcIn.ImportPEM, lcIn.ImportKeyPEM, lcIn.CRL, now)
+		mat, err = localca.Import(lcIn.ImportPEM, lcIn.ImportKeyPEM, lcIn.CRL, now)
 		if err != nil {
 			if errors.Is(err, localca.ErrCannotSignCRL) {
 				return CA{}, &ValidationError{"config.crl", "issuing certificate cannot sign CRLs"}
 			}
 			return CA{}, &ValidationError{"config.importPem", err.Error()}
 		}
-		issuingPKCS8, err := x509.MarshalPKCS8PrivateKey(mat.IssuingKey)
-		if err != nil {
-			return CA{}, err
-		}
-		cfg = localCAConfig{Subject: lcIn.Subject, KeyType: lcIn.KeyType, RootValidityYears: lcIn.RootValidityYears,
-			IssuingValidityYears: lcIn.IssuingValidityYears, MaxLeafDays: lcIn.MaxLeafDays, CRL: lcIn.CRL,
-			Imported: true, IssuingPem: pemEncodeCert(mat.Issuing)}
-		sec = localCASecretCfg{IssuingKey: issuingPKCS8, ImportKeyPem: lcIn.ImportKeyPEM}
-		if mat.Root != nil {
-			trustBundle = pemEncodeCert(mat.Root)
-		} else {
-			trustBundle = pemEncodeCert(mat.Issuing)
-		}
-		notBefore, notAfter = mat.Issuing.NotBefore, mat.Issuing.NotAfter
+		imported, importKey = true, lcIn.ImportKeyPEM
 	} else {
-		mat, rootKeyPKCS8, err := localca.Generate(lcIn.toSignerConfig(), now)
+		var rootKeyPKCS8 []byte
+		mat, rootKeyPKCS8, err = localca.Generate(lcIn.toSignerConfig(), now)
 		if err != nil {
 			return CA{}, err
 		}
-		issuingPKCS8, err := x509.MarshalPKCS8PrivateKey(mat.IssuingKey)
-		if err != nil {
-			return CA{}, err
-		}
-		cfg = localCAConfig{Subject: lcIn.Subject, KeyType: lcIn.KeyType, RootValidityYears: lcIn.RootValidityYears,
-			IssuingValidityYears: lcIn.IssuingValidityYears, MaxLeafDays: lcIn.MaxLeafDays, CRL: lcIn.CRL,
-			Imported: false, IssuingPem: pemEncodeCert(mat.Issuing)}
-		sec = localCASecretCfg{RootKey: rootKeyPKCS8, IssuingKey: issuingPKCS8}
-		trustBundle = pemEncodeCert(mat.Root)
-		notBefore, notAfter = mat.Issuing.NotBefore, mat.Issuing.NotAfter
+		sec.RootKey = rootKeyPKCS8
 	}
+	issuingPKCS8, err := x509.MarshalPKCS8PrivateKey(mat.IssuingKey)
+	if err != nil {
+		return CA{}, err
+	}
+	sec.IssuingKey = issuingPKCS8
+	sec.ImportKeyPem = importKey
+
+	var chainPem strings.Builder
+	for _, c := range mat.Chain {
+		chainPem.WriteString(pemEncodeCert(c))
+	}
+	trustBundle := pemEncodeCert(mat.Issuing)
+	if len(mat.Chain) > 0 {
+		trustBundle = pemEncodeCert(mat.Chain[len(mat.Chain)-1])
+	}
+	cfg := localCAConfig{Subject: lcIn.Subject, KeyType: lcIn.KeyType, RootValidityYears: lcIn.RootValidityYears,
+		IssuingValidityYears: lcIn.IssuingValidityYears, MaxLeafDays: lcIn.MaxLeafDays, CRL: lcIn.CRL,
+		Imported: imported, IssuingPem: pemEncodeCert(mat.Issuing), ChainPem: chainPem.String()}
+	notBefore, notAfter := mat.Issuing.NotBefore, mat.Issuing.NotAfter
 
 	cfgRaw, err := json.Marshal(cfg)
 	if err != nil {
@@ -513,12 +517,13 @@ func (s *Store) createLocalCA(ctx context.Context, orgID uuid.UUID, in CAInput) 
 // updateLocalCA applies an editable-fields-only update to a localca CA:
 // subject, keyType, the validity years and the import fields are
 // immutable after create (422); maxLeafDays and crl stay editable (Shared
-// contract).
-func (s *Store) updateLocalCA(ctx context.Context, orgID, id uuid.UUID, cur sqlcgen.Ca, in CAInput) (CA, error) {
-	var curCfg localCAConfig
-	if err := json.Unmarshal(cur.Config, &curCfg); err != nil {
-		return CA{}, err
-	}
+// contract). It locks the CA row FOR UPDATE for its whole read-check-write
+// (one transaction), the same lock Rotate and Revoke each take, so a
+// concurrent rotate or revoke can never be lost: whichever of the two
+// commits first is the state the other reads and writes on top of, instead
+// of this update's own unlocked read going stale under it and clobbering
+// issuingPem/retired/revoked with whatever an earlier, unlocked read saw.
+func (s *Store) updateLocalCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (CA, error) {
 	lcIn, err := parseLocalCAInput(in.Config)
 	if err != nil {
 		return CA{}, err
@@ -528,6 +533,22 @@ func (s *Store) updateLocalCA(ctx context.Context, orgID, id uuid.UUID, cur sqlc
 	}
 	if lcIn.ImportPEM != "" || lcIn.ImportKeyPEM != "" {
 		return CA{}, &ValidationError{"config.importPem", "immutable after create"}
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return CA{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+
+	cur, err := q.LockCA(ctx, sqlcgen.LockCAParams{ID: id, OrgID: orgID})
+	if err != nil {
+		return CA{}, notFound(err)
+	}
+	var curCfg localCAConfig
+	if err := json.Unmarshal(cur.Config, &curCfg); err != nil {
+		return CA{}, err
 	}
 	if lcIn.Subject != curCfg.Subject || lcIn.KeyType != curCfg.KeyType ||
 		lcIn.RootValidityYears != curCfg.RootValidityYears || lcIn.IssuingValidityYears != curCfg.IssuingValidityYears {
@@ -541,10 +562,13 @@ func (s *Store) updateLocalCA(ctx context.Context, orgID, id uuid.UUID, cur sqlc
 	if err != nil {
 		return CA{}, err
 	}
-	row, err := s.q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
+	row, err := q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
 		Preset: "", DirectoryUrl: "", TrustBundlePem: cur.TrustBundlePem, EabKid: "", EabHmac: nil, Resolvers: in.Resolvers})
 	if err != nil {
 		return CA{}, dbErr(err, "name")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CA{}, err
 	}
 	return caFromRow(row)
 }
@@ -579,6 +603,7 @@ func (s *Store) RotateCA(ctx context.Context, orgID, id uuid.UUID) (ca CA, newIs
 	if err := s.openJSON(ctx, row.SecretCfg, &sec); err != nil {
 		return CA{}, "", "", err
 	}
+	defer clearSecretCfg(&sec)
 	if len(sec.RootKey) == 0 {
 		return CA{}, "", "", &ValidationError{"id", "no held root key (an imported CA cannot rotate)"}
 	}

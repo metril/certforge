@@ -54,7 +54,14 @@ type revokedEntry struct {
 // column: the Shared contract's LocalCaConfig public fields, plus the
 // read-only imported/issuingPem/retired/revoked fields. internal/api's
 // caOut renders this to the wire shape (revoked -> revokedCount, retired[]
-// entries gain crlUrl).
+// entries gain crlUrl, chainPem is stripped — an internal reconstruction
+// aid, not part of the LocalCaConfig contract). ChainPem is every
+// certificate above the issuing certificate, in order (the full imported
+// chain, or just the root for a generated CA) — set once at create and
+// never touched by Rotate, since only the issuing certificate changes
+// across a rotation, never what is above it. Kept here (not a second
+// column) since it is public, CA-wide, and shared by every issuer, current
+// or retired.
 type localCAConfig struct {
 	Subject              localCASubject  `json:"subject"`
 	KeyType              string          `json:"keyType"`
@@ -64,6 +71,7 @@ type localCAConfig struct {
 	CRL                  bool            `json:"crl"`
 	Imported             bool            `json:"imported"`
 	IssuingPem           string          `json:"issuingPem"`
+	ChainPem             string          `json:"chainPem"`
 	Retired              []retiredIssuer `json:"retired"`
 	Revoked              []revokedEntry  `json:"revoked"`
 }
@@ -113,16 +121,42 @@ func parsePEMCert(s string) (*x509.Certificate, error) {
 	return x509.ParseCertificate(blk.Bytes)
 }
 
+// parsePEMCertChain decodes every CERTIFICATE PEM block in s, in order
+// (mirrors localca.Import's own unexported parseCertChain; duplicated
+// rather than exported from Task 6's package, since it is a handful of
+// lines and issuance has no other reason to depend on localca beyond its
+// public Material/Config/Signer surface).
+func parsePEMCertChain(s string) ([]*x509.Certificate, error) {
+	var certs []*x509.Certificate
+	rest := []byte(s)
+	for {
+		var blk *pem.Block
+		blk, rest = pem.Decode(rest)
+		if blk == nil {
+			break
+		}
+		if blk.Type != "CERTIFICATE" {
+			continue
+		}
+		c, err := x509.ParseCertificate(blk.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("issuance: parse chain certificate: %w", err)
+		}
+		certs = append(certs, c)
+	}
+	return certs, nil
+}
+
 // materialFromParts rebuilds a localca.Material for one issuer (current or
-// retired) from its stored PEM, its PKCS#8 key, and the CA's own trust
-// bundle. The trust bundle is the root PEM for a generated CA, or for an
-// import either the root (its last chain certificate, when self-signed) or
-// the issuing certificate itself (a chainless import) — Import records the
-// same rule (localca.Import), so comparing serials tells the two apart
-// without a separate "imported" flag: when the trust bundle's certificate
-// is the issuing certificate itself, there is no separate root to trust
-// through (Material.Root stays nil, matching a chainless Import).
-func materialFromParts(issuingPEM string, issuingKeyPKCS8 []byte, trustBundlePEM string) (localca.Material, error) {
+// retired) from its stored PEM, its PKCS#8 key, and the CA's chain (every
+// certificate above the issuing certificate, in order — localCAConfig's
+// ChainPem, shared by every issuer since only the issuing certificate
+// itself changes across a rotation). The chain's last certificate is
+// Material.Root only when it is actually self-signed (the same check
+// localca.Import itself uses): an import whose top-of-chain certificate is
+// not self-signed has no local root, and the whole chain is returned as-is
+// for the caller to trust as given.
+func materialFromParts(issuingPEM string, issuingKeyPKCS8 []byte, chainPEM string) (localca.Material, error) {
 	issuing, err := parsePEMCert(issuingPEM)
 	if err != nil {
 		return localca.Material{}, err
@@ -135,18 +169,30 @@ func materialFromParts(issuingPEM string, issuingKeyPKCS8 []byte, trustBundlePEM
 	if !ok {
 		return localca.Material{}, fmt.Errorf("issuance: issuing key of type %T is not a signer", key)
 	}
-	mat := localca.Material{Issuing: issuing, IssuingKey: signerKey}
-	if trustBundlePEM != "" {
-		cand, err := parsePEMCert(trustBundlePEM)
-		if err != nil {
-			return localca.Material{}, err
-		}
-		if cand.SerialNumber.Cmp(issuing.SerialNumber) != 0 {
-			mat.Root = cand
-			mat.Chain = []*x509.Certificate{cand}
+	chain, err := parsePEMCertChain(chainPEM)
+	if err != nil {
+		return localca.Material{}, err
+	}
+	mat := localca.Material{Issuing: issuing, IssuingKey: signerKey, Chain: chain}
+	if n := len(chain); n > 0 {
+		last := chain[n-1]
+		if bytes.Equal(last.RawIssuer, last.RawSubject) && last.CheckSignatureFrom(last) == nil {
+			mat.Root = last
 		}
 	}
 	return mat, nil
+}
+
+// clearSecretCfg zeroes every private-key byte slice in sc — the root key,
+// the current issuing key, and every retired issuing key — once the
+// caller is done with it (Security constraint: CA private-key bytes never
+// outlive the call that needs them).
+func clearSecretCfg(sc *localCASecretCfg) {
+	clear(sc.RootKey)
+	clear(sc.IssuingKey)
+	for i := range sc.Retired {
+		clear(sc.Retired[i].Key)
+	}
 }
 
 // caRecorder implements localca.Recorder against a CA row already locked
@@ -209,9 +255,9 @@ func (f *SignerFactory) baseURL(ctx context.Context) string {
 // localCASignerCurrent builds a Signer over ca's current issuing material
 // (not the caller's already-open transaction, if any: a plain read used by
 // the future issuance path, Task 9). Revoking against a retired issuer
-// uses localCASignerForLeaf instead, inside RevokeVersion's own
-// transaction, since only that path ever needs to lock and mutate the CA
-// row.
+// calls localCASignerFromRow directly instead, inside RevokeVersion's own
+// transaction with a specific issuerSerial, since only that path ever
+// needs to lock and mutate the CA row.
 func (s *Store) localCASignerCurrent(ctx context.Context, ca CA, baseURL string) (signer.Signer, error) {
 	row, err := s.q.GetCA(ctx, sqlcgen.GetCAParams{ID: ca.ID, OrgID: ca.OrgID})
 	if err != nil {
@@ -253,8 +299,9 @@ func currentIssuerSerial(cfg localCAConfig) string {
 }
 
 // retiredMaterial looks up a retired issuer by hex serial in both cfg's
-// public entries (the certificate) and sc's sealed entries (its key).
-func retiredMaterial(cfg localCAConfig, sc localCASecretCfg, trustBundlePEM, serial string) (localca.Material, error) {
+// public entries (the certificate) and sc's sealed entries (its key); the
+// chain above it (chainPEM) is the same for every issuer of this CA.
+func retiredMaterial(cfg localCAConfig, sc localCASecretCfg, chainPEM, serial string) (localca.Material, error) {
 	var pemStr string
 	for _, ri := range cfg.Retired {
 		if ri.Serial == serial {
@@ -275,13 +322,16 @@ func retiredMaterial(cfg localCAConfig, sc localCASecretCfg, trustBundlePEM, ser
 	if len(keyBytes) == 0 {
 		return localca.Material{}, &ValidationError{"issuerSerial", "no such issuer for this CA"}
 	}
-	return materialFromParts(pemStr, keyBytes, trustBundlePEM)
+	return materialFromParts(pemStr, keyBytes, chainPEM)
 }
 
-// CASecret is a thin, exported alias of localCASignerFromRow's material
-// step, for the CRL route: it returns issuer's Material (current when
-// issuerSerial is "") without building a Signer, since building a CRL
-// needs only the issuing certificate and its key, not a full Signer.
+// CASecret returns issuer's Material and signer Config (current when
+// issuerSerial is ""): the CA lifecycle's single source of truth for
+// unsealing and reconstructing a localca CA's key material, used by the
+// signer-building path (localCASignerFromRow) and directly by CRL below,
+// which needs only the issuing certificate and its key, not a full Signer.
+// The returned Material's private key bytes are the caller's alone to use
+// and let go of; sc's own copies are cleared before this returns.
 func (s *Store) CASecret(ctx context.Context, row sqlcgen.Ca, issuerSerial string) (localca.Material, localca.Config, error) {
 	var cfg localCAConfig
 	if err := json.Unmarshal(row.Config, &cfg); err != nil {
@@ -291,15 +341,28 @@ func (s *Store) CASecret(ctx context.Context, row sqlcgen.Ca, issuerSerial strin
 	if err := s.openJSON(ctx, row.SecretCfg, &sc); err != nil {
 		return localca.Material{}, localca.Config{}, err
 	}
+	defer clearSecretCfg(&sc)
 	var mat localca.Material
 	var err error
 	switch issuerSerial {
 	case "", currentIssuerSerial(cfg):
-		mat, err = materialFromParts(cfg.IssuingPem, sc.IssuingKey, row.TrustBundlePem)
+		mat, err = materialFromParts(cfg.IssuingPem, sc.IssuingKey, cfg.ChainPem)
 	default:
-		mat, err = retiredMaterial(cfg, sc, row.TrustBundlePem, issuerSerial)
+		mat, err = retiredMaterial(cfg, sc, cfg.ChainPem, issuerSerial)
 	}
 	return mat, cfg.toSignerConfig(), err
+}
+
+// CACRLNumber returns caID's current crl_number, for the public CRL
+// route's cache key: keying on it (Shared contract) means a revocation's
+// crl_number bump is visible on the very next request instead of waiting
+// out the cache's own TTL.
+func (s *Store) CACRLNumber(ctx context.Context, caID uuid.UUID) (int64, error) {
+	row, err := s.q.GetCAByID(ctx, caID)
+	if err != nil {
+		return 0, ErrNotFound
+	}
+	return row.CrlNumber, nil
 }
 
 // CRL builds a DER CRL for caID's issuer (the current one when
@@ -323,51 +386,16 @@ func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 	if !cfg.CRL {
 		return nil, ErrNotFound
 	}
-	var sc localCASecretCfg
-	if err := s.openJSON(ctx, row.SecretCfg, &sc); err != nil {
-		return nil, err
-	}
 
-	var issuingPEM string
-	var keyBytes []byte
-	switch issuerSerial {
-	case "", currentIssuerSerial(cfg):
-		issuingPEM, keyBytes = cfg.IssuingPem, sc.IssuingKey
-	default:
-		for _, ri := range cfg.Retired {
-			if ri.Serial == issuerSerial {
-				issuingPEM = ri.PEM
-				break
-			}
-		}
-		if issuingPEM == "" {
-			return nil, ErrNotFound
-		}
-		for _, rk := range sc.Retired {
-			if rk.Serial == issuerSerial {
-				keyBytes = rk.Key
-				break
-			}
-		}
-		if len(keyBytes) == 0 {
-			return nil, ErrNotFound
-		}
-	}
-
-	issuing, err := parsePEMCert(issuingPEM)
+	mat, _, err := s.CASecret(ctx, row, issuerSerial)
 	if err != nil {
-		return nil, err
-	}
-	key, err := x509.ParsePKCS8PrivateKey(keyBytes)
-	if err != nil {
-		return nil, err
-	}
-	signerKey, ok := key.(stdcrypto.Signer)
-	if !ok {
-		return nil, fmt.Errorf("issuance: issuing key of type %T is not a signer", key)
+		// Covers an unknown issuerSerial (retiredMaterial's
+		// ValidationError) and a corrupt stored certificate/key alike:
+		// the route never distinguishes reasons for its 404.
+		return nil, ErrNotFound
 	}
 
-	issuerHex := issuing.SerialNumber.Text(16)
+	issuerHex := mat.Issuing.SerialNumber.Text(16)
 	var revoked []localca.Revoked
 	for _, re := range cfg.Revoked {
 		if re.IssuerSerial != issuerHex {
@@ -379,7 +407,7 @@ func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 		}
 		revoked = append(revoked, localca.Revoked{Serial: sn, RevokedAt: re.At, ReasonCode: re.Reason})
 	}
-	return localca.BuildCRL(issuing, signerKey, revoked, big.NewInt(row.CrlNumber), time.Now())
+	return localca.BuildCRL(mat.Issuing, mat.IssuingKey, revoked, big.NewInt(row.CrlNumber), time.Now())
 }
 
 // issuerSerialForLeaf decides which of cfg's issuers signed leaf, by

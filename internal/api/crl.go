@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -34,8 +35,13 @@ type crlCacheEntry struct {
 	builtAt time.Time
 }
 
-// crlCache is an in-memory cache of built CRL DER, keyed by "caId" or
-// "caId/issuerSerial". Safe for concurrent use.
+// crlCache is an in-memory cache of built CRL DER, keyed by
+// "caId/issuerSerial/crlNumber" (Shared contract): crl_number is bumped on
+// every revocation (issuance.caRecorder.Revoke), so the key itself changes
+// the instant a revocation commits — a stale entry under the previous key
+// is simply never hit again, and ages out under crlCacheTTL like any other
+// unused entry, rather than needing to be found and invalidated. Safe for
+// concurrent use.
 type crlCache struct {
 	mu      sync.Mutex
 	entries map[string]crlCacheEntry
@@ -77,16 +83,25 @@ func crlHandler(store *issuance.Store, cache *crlCache) http.HandlerFunc {
 			return
 		}
 		issuerSerial := m[2]
-		key := caID.String() + "/" + issuerSerial
 
+		// CACRLNumber is a single cheap column read; its own error (an
+		// unknown id, most likely) just means no cache key is safe to
+		// build, so this falls straight through to store.CRL below, which
+		// answers the actual 404.
+		var key string
+		if n, nErr := store.CACRLNumber(r.Context(), caID); nErr == nil {
+			key = caID.String() + "/" + issuerSerial + "/" + strconv.FormatInt(n, 10)
+		}
 		der, ok := cache.get(key)
-		if !ok {
-			der, err = store.CRL(r.Context(), caID, issuerSerial)
-			if err != nil {
+		if key == "" || !ok {
+			var crlErr error
+			if der, crlErr = store.CRL(r.Context(), caID, issuerSerial); crlErr != nil {
 				http.NotFound(w, r)
 				return
 			}
-			cache.put(key, der)
+			if key != "" {
+				cache.put(key, der)
+			}
 		}
 		w.Header().Set("Content-Type", "application/pkix-crl")
 		w.Header().Set("Cache-Control", "max-age=600")

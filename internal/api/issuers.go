@@ -27,6 +27,10 @@ func (s *Server) caOut(ctx context.Context, c issuance.CA) gen.CA {
 		cfg[k] = v
 	}
 	if c.Type == issuance.CATypeLocalCA {
+		// chainPem is an internal reconstruction aid (every certificate
+		// above the issuing certificate, kept so Issue/CRL can rebuild the
+		// full chain) — not part of the LocalCaConfig contract.
+		delete(cfg, "chainPem")
 		if imported, _ := cfg["imported"].(bool); imported {
 			out.StoredSecrets = []string{"importKeyPem"}
 		}
@@ -123,7 +127,7 @@ func (s *Server) CreateCa(ctx context.Context, r gen.CreateCaRequestObject) (gen
 		return nil, mapErr(err)
 	}
 	s.audit(ctx, audit.Event{Action: "ca.create", ResourceType: "ca", ResourceID: c.ID.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"name": c.Name, "preset": c.Preset}})
+		Details: map[string]any{"name": c.Name, "preset": c.Preset, "type": c.Type}})
 	return gen.CreateCa201JSONResponse(s.caOut(ctx, c)), nil
 }
 
@@ -149,7 +153,7 @@ func (s *Server) UpdateCa(ctx context.Context, r gen.UpdateCaRequestObject) (gen
 		return nil, mapErr(err)
 	}
 	s.audit(ctx, audit.Event{Action: "ca.update", ResourceType: "ca", ResourceID: c.ID.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"name": c.Name, "preset": c.Preset}})
+		Details: map[string]any{"name": c.Name, "preset": c.Preset, "type": c.Type}})
 	return gen.UpdateCa200JSONResponse(s.caOut(ctx, c)), nil
 }
 
@@ -176,7 +180,7 @@ func (s *Server) RotateCa(ctx context.Context, r gen.RotateCaRequestObject) (gen
 		return nil, mapErr(err)
 	}
 	s.audit(ctx, audit.Event{Action: "ca.rotate", ResourceType: "ca", ResourceID: c.ID.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"newIssuerSerial": newSerial, "retiredSerial": retiredSerial}})
+		Details: map[string]any{"caId": c.ID.String(), "newIssuerSerial": newSerial, "retiredSerial": retiredSerial}})
 	return gen.RotateCa200JSONResponse(s.caOut(ctx, c)), nil
 }
 

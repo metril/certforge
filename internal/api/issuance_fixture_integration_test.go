@@ -50,6 +50,7 @@ type apiFixture struct {
 	pool  *pgxpool.Pool
 	store *issuance.Store
 	certs *certstore.Store
+	box   crypto.Box
 	org   uuid.UUID
 }
 
@@ -76,7 +77,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	svc.Log = slog.Default()
 	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
 		Settings: settingsStore, Sections: sections}}
-	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, org: dbtest.Org(t, pool)}
+	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, box: box, org: dbtest.Org(t, pool)}
 }
 
 // as returns a context for a user holding role in the fixture org; admin is
