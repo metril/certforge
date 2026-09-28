@@ -208,3 +208,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Vault Transit as a KEK source and a sealed root secret for derived keys.
 - KEK rotation with previous keys, a resumable rewrap job and the keys status API.
 - Built-in private CA signer with root, issuing intermediate and CRL.
+- Phase 5A batch-2 review fixes: a failed rewrap run now reports an honest, non-zero `remaining` (recomputed over every table) instead of the stale value the runbook would read as safe to finish rotating; `RewrapStatus`/`TableStatus` gained the schema's json field names; the eight-column integration test now checks every read path, not three of eight.

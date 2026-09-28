@@ -5,6 +5,7 @@ package kek_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -76,9 +77,10 @@ func TestRewrapAllEightColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateAccount(ctx, sqlcgen.CreateAccountParams{
+	acct, err := q.CreateAccount(ctx, sqlcgen.CreateAccountParams{
 		OrgID: org.ID, CaID: ca.ID, Email: "ops@acme.example", AccountKey: acctBlob.Marshal(), RegistrationUri: "https://acme.example/acct/1",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -87,9 +89,10 @@ func TestRewrapAllEightColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateDNSCredential(ctx, sqlcgen.CreateDNSCredentialParams{
+	dnsCred, err := q.CreateDNSCredential(ctx, sqlcgen.CreateDNSCredentialParams{
 		OrgID: org.ID, Name: "dns1", ProviderCode: "manual", PublicCfg: []byte("{}"), SecretCfg: dnsBlob.Marshal(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,9 +101,10 @@ func TestRewrapAllEightColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateLayout(ctx, sqlcgen.CreateLayoutParams{
+	layout, err := q.CreateLayout(ctx, sqlcgen.CreateLayoutParams{
 		OrgID: org.ID, Name: "layout1", Files: []byte("[]"), Password: pwBlob.Marshal(), ExtraCertIds: []uuid.UUID{},
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,9 +114,10 @@ func TestRewrapAllEightColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if _, err := q.InsertAgentCA(ctx, sqlcgen.InsertAgentCAParams{
+	agentCA, err := q.InsertAgentCA(ctx, sqlcgen.InsertAgentCAParams{
 		CertDer: []byte("fake-der"), Key: agentKeyBlob.Marshal(), NotBefore: now, NotAfter: now.Add(24 * time.Hour),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,11 +132,12 @@ func TestRewrapAllEightColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.InsertCertificateVersion(ctx, sqlcgen.InsertCertificateVersionParams{
+	version, err := q.InsertCertificateVersion(ctx, sqlcgen.InsertCertificateVersionParams{
 		CertID: cert.ID, Serial: "01", NotBefore: now, NotAfter: now.Add(90 * 24 * time.Hour),
 		Sha256Fp: "deadbeef", KeyType: "ec256", LeafDer: []byte("fake-leaf"), ChainDer: [][]byte{},
 		PrivateKey: privKeyBlob.Marshal(), Source: "issued",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -163,6 +169,26 @@ func TestRewrapAllEightColumns(t *testing.T) {
 	if st.Rewrap.Remaining != 0 {
 		t.Fatalf("remaining = %d, want 0: %+v", st.Rewrap.Remaining, st.Rewrap.Tables)
 	}
+	// Expected Rewrapped per table: cas holds both eab_hmac and secret_cfg
+	// (2), every other table holds exactly the one row seeded above (1).
+	// This is what review batch 2's finding #2 asks for beyond Remaining==0
+	// alone: Remaining reaching 0 via the same Page query the rewrap itself
+	// used would pass silently even if that query were mis-wired to never
+	// see a row in the first place (Rewrapped would then also read 0, which
+	// this catches).
+	wantRewrapped := map[kek.RewrapTable]int64{
+		// crypto.canary is rewrapped by the dedicated canary-first step
+		// (not by this table's own pass, which finds it already
+		// active-sealed and skips it as a no-op); only test.rewrap8 counts
+		// here.
+		kek.TableSettings:               1,
+		kek.TableCAs:                    2,
+		kek.TableAcmeAccounts:           1,
+		kek.TableDNSProviderCredentials: 1,
+		kek.TableOutputSpecs:            1,
+		kek.TableAgentCAs:               1,
+		kek.TableCertificateVersions:    1,
+	}
 	casCount := 0
 	for _, ts := range st.Rewrap.Tables {
 		if ts.Table == kek.TableCAs {
@@ -171,9 +197,34 @@ func TestRewrapAllEightColumns(t *testing.T) {
 		if ts.Remaining != 0 {
 			t.Fatalf("table %s remaining = %d, want 0", ts.Table, ts.Remaining)
 		}
+		if want := wantRewrapped[ts.Table]; ts.Rewrapped != want {
+			t.Fatalf("table %s rewrapped = %d, want %d", ts.Table, ts.Rewrapped, want)
+		}
 	}
 	if casCount != 1 {
 		t.Fatalf("cas appears %d times in rewrap status, want 1", casCount)
+	}
+
+	// The stored crypto.rewrap row round-trips with the RewrapStatus
+	// schema's camelCase keys (review batch 2 finding #3), not Go field
+	// names: checked against the raw jsonb value, not just the RewrapStatus
+	// Go value Status() already decoded above.
+	rewrapRow, err := q.GetSetting(ctx, settings.RewrapKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"running"`, `"startedAt"`, `"finishedAt"`, `"activeKekId"`, `"previousKekIds"`,
+		`"tables"`, `"remaining"`, `"error"`, `"table"`, `"scanned"`, `"rewrapped"`} {
+		if !bytes.Contains(rewrapRow.Value, []byte(key)) {
+			t.Fatalf("stored crypto.rewrap row missing key %s: %s", key, rewrapRow.Value)
+		}
+	}
+	var stored kek.RewrapStatus
+	if err := json.Unmarshal(rewrapRow.Value, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.ActiveKEKID != wrapperB.ID() || stored.Remaining != 0 || len(stored.Tables) != len(kek.Tables) {
+		t.Fatalf("stored row does not round-trip: %+v", stored)
 	}
 
 	// Every read path still decrypts, now under the active envelope alone
@@ -206,6 +257,36 @@ func TestRewrapAllEightColumns(t *testing.T) {
 	}
 	assertDecrypts("cas.eab_hmac", caRow.EabHmac, "eab hmac")
 	assertDecrypts("cas.secret_cfg", caRow.SecretCfg, "localca imported key")
+
+	acctRow, err := q.GetAccountByID(ctx, acct.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDecrypts("acme_accounts.account_key", acctRow.AccountKey, "acme account key")
+
+	dnsRow, err := q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: dnsCred.ID, OrgID: org.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDecrypts("dns_provider_credentials.secret_cfg", dnsRow.SecretCfg, `{"token":"dns secret"}`)
+
+	layoutRow, err := q.GetLayout(ctx, sqlcgen.GetLayoutParams{ID: layout.ID, OrgID: org.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDecrypts("output_specs.password", layoutRow.Password, "p12 password")
+
+	agentCARow, err := q.GetAgentCA(ctx, agentCA.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDecrypts("agent_cas.key", agentCARow.Key, "agent ca key")
+
+	versionRow, err := q.GetCertificateVersion(ctx, sqlcgen.GetCertificateVersionParams{ID: version.ID, CertID: cert.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDecrypts("certificate_versions.private_key", versionRow.PrivateKey, "leaf private key")
 
 	if err := storeA.VerifyCanary(ctx); err == nil {
 		t.Fatal("canary should no longer verify under A alone after the rewrap")

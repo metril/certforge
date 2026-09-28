@@ -90,32 +90,34 @@ var tableColumns = map[RewrapTable][]string{
 // persisted at settings.RewrapKey after every page so getKeysStatus can
 // report it while the job is still running. This is the shape behind
 // gen.RewrapStatus, kept independent of internal/api/gen (Info's doc
-// comment explains why).
+// comment explains why); its json tags match that schema's property names
+// directly (rather than going through api/keys.go's field-by-field mapping)
+// since this struct is also what gets marshalled into the settings table.
 type RewrapStatus struct {
-	Running        bool
-	StartedAt      time.Time
-	FinishedAt     *time.Time
-	ActiveKEKID    string
-	PreviousKEKIDs []string
-	Tables         []TableStatus
+	Running        bool          `json:"running"`
+	StartedAt      time.Time     `json:"startedAt"`
+	FinishedAt     *time.Time    `json:"finishedAt"`
+	ActiveKEKID    string        `json:"activeKekId"`
+	PreviousKEKIDs []string      `json:"previousKekIds"`
+	Tables         []TableStatus `json:"tables"`
 	// Remaining is the sum of every table's Remaining, refreshed by each
 	// table's final summary pass (countRemaining).
-	Remaining int64
-	Error     string
+	Remaining int64  `json:"remaining"`
+	Error     string `json:"error"`
 }
 
-// TableStatus is rewrap progress for one table. Scanned counts rows
-// visited; Rewrapped and Remaining count sealed columns (cas visits one row
-// per Scanned but tallies two independent columns into the same entry).
-// Remaining starts as the page-scan's lost-race count and is then replaced
-// by a final, read-only recount of blobs still on a non-active id, which
-// also catches a row whose column changed after this table's keyset walk
-// had already passed it by.
+// TableStatus is rewrap progress for one table (gen.RewrapTableStatus).
+// Scanned counts rows visited; Rewrapped and Remaining count sealed columns
+// (cas visits one row per Scanned but tallies two independent columns into
+// the same entry). Remaining starts as the page-scan's lost-race count and
+// is then replaced by a final, read-only recount of blobs still on a
+// non-active id, which also catches a row whose column changed after this
+// table's keyset walk had already passed it by.
 type TableStatus struct {
-	Table     RewrapTable
-	Scanned   int64
-	Rewrapped int64
-	Remaining int64
+	Table     RewrapTable `json:"table"`
+	Scanned   int64       `json:"scanned"`
+	Rewrapped int64       `json:"rewrapped"`
+	Remaining int64       `json:"remaining"`
 }
 
 // Row is one page row: PK identifies it (a uuid.UUID's String(), or the
@@ -166,14 +168,14 @@ func (s *Service) run(ctx context.Context) (*RewrapStatus, error) {
 		return status, err
 	}
 
+	store := s.tableStore()
 	if err := s.rewrapCanary(ctx, active); err != nil {
-		return status, s.fail(ctx, status, err)
+		return status, s.fail(ctx, store, active, status, err)
 	}
 
-	store := s.tableStore()
 	for i := range Tables {
 		if err := s.rewrapTable(ctx, store, active, i, status); err != nil {
-			return status, s.fail(ctx, status, err)
+			return status, s.fail(ctx, store, active, status, err)
 		}
 	}
 
@@ -190,12 +192,29 @@ func (s *Service) run(ctx context.Context) (*RewrapStatus, error) {
 }
 
 // fail marks status as finished with cause and best-effort saves it, then
-// returns cause unchanged for the caller to propagate.
-func (s *Service) fail(ctx context.Context, status *RewrapStatus, cause error) error {
+// returns cause unchanged for the caller to propagate. A failed run must
+// not report remaining=0 by default — the KEK-rotation runbook reads that
+// as "safe to drop CF_KEK_PREVIOUS" — so before saving, fail runs the same
+// read-only countRemaining pass a successful run finishes with, over every
+// table, even ones this run never reached (a canary failure aborts before
+// any table is scanned at all): a recount failure for one table is logged
+// and that table's Remaining is left at whatever it already was, rather
+// than failing the failure path itself.
+func (s *Service) fail(ctx context.Context, store Store, active crypto.KeyWrapper, status *RewrapStatus, cause error) error {
 	status.Running = false
 	fin := s.now()
 	status.FinishedAt = &fin
 	status.Error = cause.Error()
+	for i := range status.Tables {
+		table := status.Tables[i].Table
+		n, err := s.countRemaining(ctx, store, active, table, tableColumns[table])
+		if err != nil {
+			s.log().Error("kek rewrap: count remaining after failure", "table", table, "err", err)
+			continue
+		}
+		status.Tables[i].Remaining = n
+	}
+	status.Remaining = sumRemaining(status.Tables)
 	if err := s.saveStatus(ctx, status); err != nil {
 		s.log().Error("kek rewrap: save status after failure", "err", err)
 	}
@@ -271,6 +290,11 @@ func (s *Service) rewrapTable(ctx context.Context, store Store, active crypto.Ke
 			}
 		}
 		after = rows[len(rows)-1].PK
+		// Refresh the overall sum from what's known so far after every
+		// page, not only once at the very end (run's success path): a
+		// mid-run status polled from GET /keys/status must not sit at a
+		// stale 0 while a large table is still being walked.
+		status.Remaining = sumRemaining(status.Tables)
 		if err := s.saveStatus(ctx, status); err != nil {
 			return err
 		}
@@ -283,6 +307,7 @@ func (s *Service) rewrapTable(ctx context.Context, store Store, active crypto.Ke
 		return fmt.Errorf("kek: rewrap %s: summary: %w", table, err)
 	}
 	status.Tables[idx].Remaining = remaining
+	status.Remaining = sumRemaining(status.Tables)
 	return s.saveStatus(ctx, status)
 }
 

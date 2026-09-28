@@ -254,14 +254,14 @@ func TestLoadKEKSources(t *testing.T) {
 		want string
 	}{
 		{"env and file", map[string]string{"CF_KEK": key(1), "CF_KEK_FILE": "/x"}, "only one of"},
-		{"env and vault", map[string]string{"CF_KEK": key(1), "CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "t"}, "only one of"},
-		{"file and vault", map[string]string{"CF_KEK_FILE": "/x", "CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "t"}, "only one of"},
-		{"vault missing transit key", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TOKEN": "t"}, "CF_KEK_VAULT_TRANSIT_KEY"},
+		{"env and vault", map[string]string{"CF_KEK": key(1), "CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "s3cr3t-token1"}, "only one of"},
+		{"file and vault", map[string]string{"CF_KEK_FILE": "/x", "CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "s3cr3t-token1"}, "only one of"},
+		{"vault missing transit key", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TOKEN": "s3cr3t-token1"}, "CF_KEK_VAULT_TRANSIT_KEY"},
 		{"vault no auth", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k"}, "CF_KEK_VAULT_TOKEN"},
-		{"vault both auth methods", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "t", "CF_KEK_VAULT_ROLE_ID": "r", "CF_KEK_VAULT_SECRET_ID": "s"}, "only one auth method"},
-		{"vault token and token file", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "t", "CF_KEK_VAULT_TOKEN_FILE": "/x"}, "only one of"},
+		{"vault both auth methods", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "s3cr3t-token1", "CF_KEK_VAULT_ROLE_ID": "r", "CF_KEK_VAULT_SECRET_ID": "s3cr3t-id1"}, "only one auth method"},
+		{"vault token and token file", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "s3cr3t-token1", "CF_KEK_VAULT_TOKEN_FILE": "/x"}, "only one of"},
 		{"vault approle missing secret", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_ROLE_ID": "r"}, "CF_KEK_VAULT_ROLE_ID and CF_KEK_VAULT_SECRET_ID"},
-		{"vault approle secret and secret file", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_ROLE_ID": "r", "CF_KEK_VAULT_SECRET_ID": "s", "CF_KEK_VAULT_SECRET_ID_FILE": "/x"}, "only one of"},
+		{"vault approle secret and secret file", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_ROLE_ID": "r", "CF_KEK_VAULT_SECRET_ID": "s3cr3t-id1", "CF_KEK_VAULT_SECRET_ID_FILE": "/x"}, "only one of"},
 	}
 	for _, tc := range mixCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -270,11 +270,12 @@ func TestLoadKEKSources(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
-			// The error must name variables, never the secret values that
-			// happen to be present in this case's env.
-			for _, secret := range []string{"t", "s", "tok"} {
-				if v, ok := tc.env["CF_KEK_VAULT_TOKEN"]; ok && v == secret && strings.Contains(err.Error(), secret) && len(secret) > 1 {
-					t.Fatalf("error leaks a secret value: %v", err)
+			// The error must name variables, never the secret values this
+			// case's own env actually set (checked against each one's real
+			// value, not a fixed placeholder that may not even be present).
+			for _, k := range []string{"CF_KEK", "CF_KEK_VAULT_TOKEN", "CF_KEK_VAULT_SECRET_ID"} {
+				if v, ok := tc.env[k]; ok && v != "" && strings.Contains(err.Error(), v) {
+					t.Fatalf("error leaks %s's value %q: %v", k, v, err)
 				}
 			}
 		})

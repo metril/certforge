@@ -231,6 +231,14 @@ func TestRewrapCanaryFirstFailsFast(t *testing.T) {
 	if status.Error == "" {
 		t.Fatal("status.Error not set")
 	}
+	// A failed run must not report remaining=0: the operations runbook
+	// reads that as "safe to drop CF_KEK_PREVIOUS". otherPK is still
+	// sealed under prev (never reached — the canary check failed before
+	// any table was scanned), so a read-only recount over every table must
+	// still find it.
+	if status.Remaining == 0 {
+		t.Fatal("status.Remaining = 0 on a failed run, want > 0")
+	}
 	for _, ts := range status.Tables {
 		if ts.Scanned != 0 {
 			t.Fatalf("table %s was scanned (%d rows) after the canary check failed fast", ts.Table, ts.Scanned)

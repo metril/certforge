@@ -32,7 +32,7 @@ Generate one:
 head -c 32 /dev/urandom | base64
 ```
 
-Losing the KEK means losing every private key and secret in the database. Store a copy outside the server before issuing anything. The server derives a KEK id from the key, stores it with every encrypted row, and checks a canary at startup. With the wrong KEK, `/readyz` reports `kek: failed`.
+Losing the KEK means losing every private key and secret in the database. Store a copy outside the server before issuing anything. The server derives a KEK id from the key, stores it with every encrypted row, and checks the sealed root secret and a canary at startup. Once a root secret is sealed (every boot after the very first), a wrong KEK fails to decrypt it and the server refuses to start, rather than serving degraded — see `docs/security.md#root-secret`. Only a fresh database (no root sealed yet) accepts whatever KEK it is first given. `/readyz` reports `kek: failed` for the narrower remaining case: the root decrypts but the canary does not.
 
 For `CF_KEK_FILE` in the container, the file must be readable by uid 65532: `chown 65532 kek && chmod 0400 kek`.
 
