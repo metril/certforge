@@ -2,10 +2,17 @@
 
 ## KEK handling
 
-- The key-encryption key (KEK) comes from `CF_KEK` (base64) or `CF_KEK_FILE`. It is never stored in the database or logged, and config errors never echo it.
-- Each secret is sealed with its own AES-256-GCM data key. The data key is wrapped by the KEK. The KEK id (`static-` plus 16 hex characters of `SHA-256("certforge-kek-id:" || key)`, a domain-separated hash, not a plain hash of the key) is stored in every blob and bound as authenticated data.
+- The key-encryption key (KEK) comes from `CF_KEK` (base64), `CF_KEK_FILE`, or Vault Transit via `CF_KEK_VAULT_ADDR` (see `docs/vault.md#transit-kek`). It is never stored in the database or logged, and config errors never echo it (nor, for Transit, the Vault token or AppRole secretId).
+- Each secret is sealed with its own AES-256-GCM data key. The data key is wrapped by the KEK. A static KEK's id is `static-` plus 16 hex characters of `SHA-256("certforge-kek-id:" || key)` (a domain-separated hash, not a plain hash of the key); a Transit KEK's id is `vault-` plus 16 hex characters of `SHA-256("certforge-kek-id:vault:" || address || 0x00 || mount || 0x00 || key)`, derived from where it is reached rather than from any Vault-side key material, so rotating the key's version inside Vault does not change it. Either way the id is stored in every blob and bound as authenticated data.
 - At startup the server decrypts the `crypto.canary` setting, or writes it on first boot. With a wrong KEK the server keeps serving, but `/readyz` returns 503 with `kek: failed` and every secret read fails with a clear error. Nothing is overwritten.
 - Escrow the KEK outside the server. Without it, backups cannot be decrypted.
+
+## Root secret {#root-secret}
+
+- Every key this server derives — the audit chain's HMAC key, the OIDC state HMAC key — is HKDF'd from a 32-byte root secret (`crypto.root`, sealed the same way any other secret setting is), not from the KEK's own bytes directly. This decouples derived keys from which KEK happens to be active: rotating the KEK (which key wraps `crypto.root`, Phase 5's rewrap) re-wraps the root, it does not regenerate it, so every derived key stays byte-for-byte the same across a rotation and the audit chain never forks.
+- On a fresh database (no KEK canary sealed yet) the root is 32 random bytes. On an existing install upgrading into this scheme, the root is instead seeded with the exact bytes its already-configured static KEK holds — recognised by comparing that KEK's id against the canary's own recorded id — so `DeriveKey(root, ...)` reproduces exactly what `DeriveKey(kek, ...)` produced before, and every previously written audit row keeps verifying. An existing install with no static KEK available (already running Transit-only, with the original static KEK gone) cannot seed the root this way and fails to boot with a clear message; configure the original static KEK as `CF_KEK` once, long enough for the root to be sealed, then switch back to Transit.
+- `EnsureRoot` runs before the KEK canary check on every boot. A root failure aborts startup outright — unlike a canary failure, which only degrades `/readyz` — because writing audit events (or anything else) under a key derived from the wrong root would fork the chain in a way `Rechain`/`Check` can never repair.
+- The root secret itself is never logged, never appears in `/readyz` or the API, and is `clear()`ed from memory once every key for that boot has been derived from it.
 
 ## Local admin, sessions, and CSRF
 

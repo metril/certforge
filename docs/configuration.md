@@ -7,8 +7,18 @@ CertForge is configured from the web UI. The environment only carries what the s
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
 | `CF_DATABASE_URL` | yes | – | Postgres URL, for example `postgres://certforge:pw@postgres:5432/certforge?sslmode=disable` |
-| `CF_KEK` | one of these two | – | Key-encryption key: 32 random bytes, base64 |
-| `CF_KEK_FILE` | one of these two | – | Path to a file with the KEK (base64, or exactly 32 raw bytes) |
+| `CF_KEK` | one of `CF_KEK`, `CF_KEK_FILE`, `CF_KEK_VAULT_ADDR` | – | Key-encryption key: 32 random bytes, base64 |
+| `CF_KEK_FILE` | see above | – | Path to a file with the KEK (base64, or exactly 32 raw bytes) |
+| `CF_KEK_VAULT_ADDR` | see above | – | Vault (or OpenBao) address; selects a Transit-backed KEK instead of a static one (see `docs/vault.md#transit-kek`) |
+| `CF_KEK_VAULT_TRANSIT_KEY` | with `CF_KEK_VAULT_ADDR` | – | Transit key name |
+| `CF_KEK_VAULT_MOUNT` | no | `transit` | Transit secrets engine mount |
+| `CF_KEK_VAULT_NAMESPACE` | no | – | Vault Enterprise namespace |
+| `CF_KEK_VAULT_CA_FILE` | no | – | Path to a PEM bundle of extra CAs to trust for Vault's TLS (adds to the system pool; TLS verification is never disabled) |
+| `CF_KEK_VAULT_TOKEN` | one auth method, with `CF_KEK_VAULT_ADDR` | – | Vault token (token auth) |
+| `CF_KEK_VAULT_TOKEN_FILE` | see above | – | Path to a file holding the token |
+| `CF_KEK_VAULT_ROLE_ID` | with `CF_KEK_VAULT_SECRET_ID[_FILE]` | – | AppRole role id |
+| `CF_KEK_VAULT_SECRET_ID` | with `CF_KEK_VAULT_ROLE_ID` | – | AppRole secret id |
+| `CF_KEK_VAULT_SECRET_ID_FILE` | see above | – | Path to a file holding the secret id |
 | `CF_LISTEN_HTTP` | no | `:8080` | UI and API listener |
 | `CF_LISTEN_AGENT` | no | `:8443` | Agent listener: TLS with agent client certificates, serves only `/agent/v1/*`. Must be reached directly or through TCP/TLS passthrough, never a TLS-terminating proxy. |
 | `CF_BASE_URL` | no | – | Public URL. The setup wizard stores its own value in Settings → General, which takes precedence |
@@ -25,6 +35,8 @@ head -c 32 /dev/urandom | base64
 Losing the KEK means losing every private key and secret in the database. Store a copy outside the server before issuing anything. The server derives a KEK id from the key, stores it with every encrypted row, and checks a canary at startup. With the wrong KEK, `/readyz` reports `kek: failed`.
 
 For `CF_KEK_FILE` in the container, the file must be readable by uid 65532: `chown 65532 kek && chmod 0400 kek`.
+
+Exactly one of `CF_KEK`, `CF_KEK_FILE` and `CF_KEK_VAULT_ADDR` may be set; a mix is a startup error naming the variables involved, never a value read from any of them. `CF_KEK_VAULT_ADDR` selects a Vault Transit-backed KEK instead of a static one — see `docs/vault.md#transit-kek` for how it works and `docs/security.md#root-secret` for why it needs the sealed root secret. Every `_FILE` variable's contents are trimmed of surrounding whitespace after reading.
 
 ## Settings framework
 

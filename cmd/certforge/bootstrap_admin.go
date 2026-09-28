@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -50,15 +51,30 @@ func runBootstrapAdmin(ctx context.Context, args []string, stdout io.Writer) err
 	if err := db.Migrate(ctx, pool); err != nil {
 		return err
 	}
-	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(cfg.KEK.Key), cfg.KEK.Key))
+	active, legacyKEKs, closeKEK, err := buildKEK(ctx, cfg, slog.Default())
+	if err != nil {
+		return fmt.Errorf("kek: %w", err)
+	}
+	defer closeKEK()
+	env := crypto.NewEnvelope(active)
 	store := settings.NewStore(sqlcgen.New(pool), env)
+	// EnsureRoot before EnsureCanary (pre-flight ruling), same order as
+	// serve: a fresh database has no canary yet either, and a root failure
+	// aborts here rather than writing audit events under an untrustworthy
+	// derived key.
+	root, err := rootKey(ctx, store, legacyKEKs)
+	if err != nil {
+		return fmt.Errorf("root secret: %w", err)
+	}
+	auditKey := crypto.DeriveKey(root, "certforge-audit")
+	clear(root)
 	// Run the KEK canary before constructing the auditor: with the wrong
 	// KEK, events written here would be keyed wrong and never verify under
 	// the right one (controller ruling C6).
 	if err := store.EnsureCanary(ctx); err != nil {
 		return fmt.Errorf("KEK canary check failed; refusing to write audit events under the wrong KEK: %w", err)
 	}
-	aud := audit.New(pool, crypto.DeriveKey(cfg.KEK.Key, "certforge-audit"))
+	aud := audit.New(pool, auditKey)
 	id, err := setup.New(pool, aud, settings.DefaultRegistry()).SetAdminPassword(ctx, password)
 	if err != nil {
 		return err

@@ -43,8 +43,24 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return err
 	}
 	q := sqlcgen.New(pool)
-	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(cfg.KEK.Key), cfg.KEK.Key))
+	active, legacyKEKs, closeKEK, err := buildKEK(ctx, cfg, log)
+	if err != nil {
+		return fmt.Errorf("kek: %w", err)
+	}
+	defer closeKEK()
+	env := crypto.NewEnvelope(active)
 	store := settings.NewStore(q, env)
+	// EnsureRoot must run before EnsureCanary (pre-flight ruling): a fresh
+	// database has no canary yet either, and a root failure here aborts
+	// boot outright (a wrong audit key would fork the chain), unlike a
+	// canary failure below, which only degrades /readyz.
+	root, err := rootKey(ctx, store, legacyKEKs)
+	if err != nil {
+		return fmt.Errorf("root secret: %w", err)
+	}
+	auditKey := crypto.DeriveKey(root, "certforge-audit")
+	oidcKey := crypto.DeriveKey(root, "certforge-oidc-state")
+	clear(root)
 	canaryOK := true
 	if err := store.EnsureCanary(ctx); err != nil {
 		canaryOK = false
@@ -83,12 +99,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return err
 	}
 	agentCA := agentca.NewStore(pool, box)
-	// A failed canary means the derived key below cannot be trusted to be
-	// the real audit key: constructing a recording Auditor with it would
-	// write rows keyed wrong, which Rechain and Check can never verify
-	// (ADR 0008). NewDisabled refuses every Record call instead; readiness
-	// already reports the KEK failure separately.
-	auditKey := crypto.DeriveKey(cfg.KEK.Key, "certforge-audit")
+	// A failed canary means the KEK cannot be trusted to be the one this
+	// database was set up with: constructing a recording Auditor with
+	// auditKey would write rows keyed wrong, which Rechain and Check can
+	// never verify (ADR 0008). NewDisabled refuses every Record call
+	// instead; readiness already reports the KEK failure separately.
 	aud := audit.New(pool, auditKey)
 	if !canaryOK {
 		aud = audit.NewDisabled(pool, auditKey)
@@ -161,7 +176,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	}
 	defer stopRiver(riverClient, log)
 	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
-	oidcClient := authn.NewOIDC(crypto.DeriveKey(cfg.KEK.Key, "certforge-oidc-state"), nil)
+	oidcClient := authn.NewOIDC(oidcKey, nil)
 	deps := api.Deps{
 		Config: cfg, Log: log, Pool: pool, Queries: q, Settings: store, Sections: sections,
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),

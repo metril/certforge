@@ -10,7 +10,11 @@ import (
 	"testing"
 )
 
-var allVars = []string{"CF_DATABASE_URL", "CF_KEK", "CF_KEK_FILE", "CF_LISTEN_HTTP", "CF_LISTEN_AGENT", "CF_BASE_URL", "CF_LOG_LEVEL"}
+var allVars = []string{
+	"CF_DATABASE_URL", "CF_KEK", "CF_KEK_FILE", "CF_LISTEN_HTTP", "CF_LISTEN_AGENT", "CF_BASE_URL", "CF_LOG_LEVEL",
+	"CF_KEK_VAULT_ADDR", "CF_KEK_VAULT_TRANSIT_KEY", "CF_KEK_VAULT_MOUNT", "CF_KEK_VAULT_NAMESPACE", "CF_KEK_VAULT_CA_FILE",
+	"CF_KEK_VAULT_TOKEN", "CF_KEK_VAULT_TOKEN_FILE", "CF_KEK_VAULT_ROLE_ID", "CF_KEK_VAULT_SECRET_ID", "CF_KEK_VAULT_SECRET_ID_FILE",
+}
 
 func setEnv(t *testing.T, kv map[string]string) {
 	t.Helper()
@@ -82,7 +86,7 @@ func TestLoadErrors(t *testing.T) {
 		want string
 	}{
 		{"missing db", map[string]string{"CF_KEK": key(1)}, "CF_DATABASE_URL is required"},
-		{"missing kek", map[string]string{"CF_DATABASE_URL": "postgres://x/y"}, "CF_KEK or CF_KEK_FILE is required"},
+		{"missing kek", map[string]string{"CF_DATABASE_URL": "postgres://x/y"}, "CF_KEK, CF_KEK_FILE or CF_KEK_VAULT_ADDR is required"},
 		{"both kek", map[string]string{"CF_DATABASE_URL": "postgres://x/y", "CF_KEK": key(1), "CF_KEK_FILE": "/x"}, "only one of"},
 		{"short kek", map[string]string{"CF_DATABASE_URL": "postgres://x/y", "CF_KEK": short}, "32 bytes"},
 		{"bad base64", map[string]string{"CF_DATABASE_URL": "postgres://x/y", "CF_KEK": "!!!"}, "not valid base64"},
@@ -102,4 +106,187 @@ func TestLoadErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLoadKEKSources covers each of the three KEK sources (env, file,
+// Vault Transit with each auth method), every mix rejected between them,
+// and that a rejection error names the offending variables without ever
+// including a secret value.
+func TestLoadKEKSources(t *testing.T) {
+	base := map[string]string{"CF_DATABASE_URL": "postgres://x/y"}
+	withBase := func(kv map[string]string) map[string]string {
+		out := map[string]string{}
+		for k, v := range base {
+			out[k] = v
+		}
+		for k, v := range kv {
+			out[k] = v
+		}
+		return out
+	}
+
+	t.Run("env", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{"CF_KEK": key(1)}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.KEK.Kind != KEKKindStatic || c.KEK.Source != "env" || len(c.KEK.Key) != KEKSize || c.KEK.Vault != nil {
+			t.Fatalf("kek = %+v", c.KEK)
+		}
+	})
+
+	t.Run("file", func(t *testing.T) {
+		dir := t.TempDir()
+		p := dir + "/kek"
+		if err := os.WriteFile(p, []byte(key(2)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		setEnv(t, withBase(map[string]string{"CF_KEK_FILE": p}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.KEK.Kind != KEKKindStatic || c.KEK.Source != "file" || c.KEK.Vault != nil {
+			t.Fatalf("kek = %+v", c.KEK)
+		}
+	})
+
+	t.Run("vault token", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{
+			"CF_KEK_VAULT_ADDR": "https://vault.example.com:8200/", "CF_KEK_VAULT_TRANSIT_KEY": "certforge-kek",
+			"CF_KEK_VAULT_TOKEN": "s.supersecret",
+		}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.KEK.Kind != KEKKindVaultTransit || c.KEK.Vault == nil {
+			t.Fatalf("kek = %+v", c.KEK)
+		}
+		if c.KEK.Vault.Addr != "https://vault.example.com:8200/" || c.KEK.Vault.Key != "certforge-kek" || c.KEK.Vault.Token != "s.supersecret" {
+			t.Fatalf("vault = %+v", c.KEK.Vault)
+		}
+		if c.KEK.Vault.Mount != "transit" {
+			t.Fatalf("mount default = %q", c.KEK.Vault.Mount)
+		}
+	})
+
+	t.Run("vault token file", func(t *testing.T) {
+		dir := t.TempDir()
+		p := dir + "/token"
+		if err := os.WriteFile(p, []byte("s.filetoken\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		setEnv(t, withBase(map[string]string{
+			"CF_KEK_VAULT_ADDR": "https://vault.example.com:8200", "CF_KEK_VAULT_TRANSIT_KEY": "certforge-kek",
+			"CF_KEK_VAULT_TOKEN_FILE": p,
+		}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.KEK.Vault.Token != "s.filetoken" {
+			t.Fatalf("token = %q", c.KEK.Vault.Token)
+		}
+	})
+
+	t.Run("vault approle", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{
+			"CF_KEK_VAULT_ADDR": "https://vault.example.com:8200", "CF_KEK_VAULT_TRANSIT_KEY": "certforge-kek",
+			"CF_KEK_VAULT_ROLE_ID": "role-1", "CF_KEK_VAULT_SECRET_ID": "secret-1",
+		}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.KEK.Vault.RoleID != "role-1" || c.KEK.Vault.SecretID != "secret-1" {
+			t.Fatalf("vault = %+v", c.KEK.Vault)
+		}
+	})
+
+	t.Run("vault approle secret file", func(t *testing.T) {
+		dir := t.TempDir()
+		p := dir + "/secret_id"
+		if err := os.WriteFile(p, []byte("secret-from-file\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		setEnv(t, withBase(map[string]string{
+			"CF_KEK_VAULT_ADDR": "https://vault.example.com:8200", "CF_KEK_VAULT_TRANSIT_KEY": "certforge-kek",
+			"CF_KEK_VAULT_ROLE_ID": "role-1", "CF_KEK_VAULT_SECRET_ID_FILE": p,
+		}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.KEK.Vault.SecretID != "secret-from-file" {
+			t.Fatalf("secretId = %q", c.KEK.Vault.SecretID)
+		}
+	})
+
+	t.Run("vault ca file", func(t *testing.T) {
+		dir := t.TempDir()
+		p := dir + "/ca.pem"
+		pem := "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n"
+		if err := os.WriteFile(p, []byte(pem), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		setEnv(t, withBase(map[string]string{
+			"CF_KEK_VAULT_ADDR": "https://vault.example.com:8200", "CF_KEK_VAULT_TRANSIT_KEY": "certforge-kek",
+			"CF_KEK_VAULT_TOKEN": "tok", "CF_KEK_VAULT_CA_FILE": p, "CF_KEK_VAULT_MOUNT": "transit-2", "CF_KEK_VAULT_NAMESPACE": "ns1",
+		}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.KEK.Vault.CAFile != pem || c.KEK.Vault.Mount != "transit-2" || c.KEK.Vault.Namespace != "ns1" {
+			t.Fatalf("vault = %+v", c.KEK.Vault)
+		}
+	})
+
+	mixCases := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"env and file", map[string]string{"CF_KEK": key(1), "CF_KEK_FILE": "/x"}, "only one of"},
+		{"env and vault", map[string]string{"CF_KEK": key(1), "CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "t"}, "only one of"},
+		{"file and vault", map[string]string{"CF_KEK_FILE": "/x", "CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "t"}, "only one of"},
+		{"vault missing transit key", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TOKEN": "t"}, "CF_KEK_VAULT_TRANSIT_KEY"},
+		{"vault no auth", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k"}, "CF_KEK_VAULT_TOKEN"},
+		{"vault both auth methods", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "t", "CF_KEK_VAULT_ROLE_ID": "r", "CF_KEK_VAULT_SECRET_ID": "s"}, "only one auth method"},
+		{"vault token and token file", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_TOKEN": "t", "CF_KEK_VAULT_TOKEN_FILE": "/x"}, "only one of"},
+		{"vault approle missing secret", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_ROLE_ID": "r"}, "CF_KEK_VAULT_ROLE_ID and CF_KEK_VAULT_SECRET_ID"},
+		{"vault approle secret and secret file", map[string]string{"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k", "CF_KEK_VAULT_ROLE_ID": "r", "CF_KEK_VAULT_SECRET_ID": "s", "CF_KEK_VAULT_SECRET_ID_FILE": "/x"}, "only one of"},
+	}
+	for _, tc := range mixCases {
+		t.Run(tc.name, func(t *testing.T) {
+			setEnv(t, withBase(tc.env))
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+			// The error must name variables, never the secret values that
+			// happen to be present in this case's env.
+			for _, secret := range []string{"t", "s", "tok"} {
+				if v, ok := tc.env["CF_KEK_VAULT_TOKEN"]; ok && v == secret && strings.Contains(err.Error(), secret) && len(secret) > 1 {
+					t.Fatalf("error leaks a secret value: %v", err)
+				}
+			}
+		})
+	}
+
+	t.Run("vault error omits secret values", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{
+			"CF_KEK_VAULT_ADDR": "https://v", "CF_KEK_VAULT_TRANSIT_KEY": "k",
+			"CF_KEK_VAULT_TOKEN": "extremely-secret-token-value", "CF_KEK_VAULT_ROLE_ID": "r", "CF_KEK_VAULT_SECRET_ID": "extremely-secret-secret-id",
+		}))
+		_, err := Load()
+		if err == nil {
+			t.Fatal("want error for mixed auth methods")
+		}
+		if strings.Contains(err.Error(), "extremely-secret") {
+			t.Fatalf("error leaks a secret value: %v", err)
+		}
+	})
 }

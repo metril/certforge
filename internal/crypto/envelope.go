@@ -34,6 +34,15 @@ type KeyWrapper interface {
 	Unwrap(ctx context.Context, wrapped []byte) ([]byte, error)
 }
 
+// Rewrapper is implemented by a KeyWrapper that can move an already-wrapped
+// DEK onto newer key material without ever exposing the DEK itself (Vault
+// Transit's rewrap operation: TransitWrapper implements this). changed
+// reports whether wrapped was actually re-encrypted; false with a nil error
+// means it was already current and rewrapped is the same bytes as wrapped.
+type Rewrapper interface {
+	Rewrap(ctx context.Context, wrapped []byte) (rewrapped []byte, changed bool, err error)
+}
+
 // KeyID derives a stable, non-secret id for a static KEK.
 func KeyID(key []byte) string {
 	sum := sha256.Sum256(append([]byte("certforge-kek-id:"), key...))
