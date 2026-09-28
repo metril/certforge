@@ -27,6 +27,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/issuance"
+	"github.com/metril/certforge/internal/kek"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
@@ -43,13 +44,14 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return err
 	}
 	q := sqlcgen.New(pool)
-	active, legacyKEKs, closeKEK, err := buildKEK(ctx, cfg, log)
+	active, previousKEKs, legacyKEKs, closeKEK, err := buildKEK(ctx, cfg, log)
 	if err != nil {
 		return fmt.Errorf("kek: %w", err)
 	}
 	defer closeKEK()
-	env := crypto.NewEnvelope(active)
+	env := crypto.NewEnvelope(active, previousKEKs...)
 	store := settings.NewStore(q, env)
+	keysInfo := kekInfo(cfg, active, previousKEKs)
 	// EnsureRoot must run before EnsureCanary (pre-flight ruling): a fresh
 	// database has no canary yet either, and a root failure here aborts
 	// boot outright (a wrong audit key would fork the chain), unlike a
@@ -142,10 +144,16 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	ariWorker := issuance.NewARIPollWorker(issuanceStore, certStore)
 	ariWorker.Log = log
 	issueWorker.ARI = ariWorker
-	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log, agentListener.RegisterRiver, agentSvc.RegisterRiver)
+	// keysSvc.River is set right after riverClient exists below (same
+	// construct-then-wire order as issuanceSvc): RegisterRiver only needs
+	// the Service pointer, not River itself, to register RewrapWorker.
+	keysSvc := &kek.Service{Env: env, Settings: store, Pool: pool, Audit: aud, Info: keysInfo, Log: log}
+	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log,
+		agentListener.RegisterRiver, agentSvc.RegisterRiver, keysSvc.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)
 	}
+	keysSvc.River = riverClient
 	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
@@ -175,6 +183,13 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return fmt.Errorf("start river: %w", err)
 	}
 	defer stopRiver(riverClient, log)
+	// Best-effort: a rewrap job is only enqueued when there is previous-KEK
+	// data to move or the active KEK can rewrap in place (EnqueueIfNeeded's
+	// own check); a failure here never blocks boot the way a KEK or root
+	// failure above does.
+	if _, err := keysSvc.EnqueueIfNeeded(ctx); err != nil {
+		log.Error("kek rewrap not enqueued at boot", "err", err)
+	}
 	sessions := authn.NewSessions(q, authn.DefaultSessionTTL)
 	oidcClient := authn.NewOIDC(oidcKey, nil)
 	deps := api.Deps{
@@ -182,7 +197,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
-		HTTPTokens: httpTokens,
+		HTTPTokens: httpTokens, Keys: keysSvc,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

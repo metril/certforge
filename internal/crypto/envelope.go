@@ -12,6 +12,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 var (
@@ -86,25 +88,52 @@ func (w *staticWrapper) Unwrap(_ context.Context, wrapped []byte) ([]byte, error
 	return dek, nil
 }
 
-// Envelope seals data with per-call DEKs wrapped by one KeyWrapper.
+// Envelope seals data with per-call DEKs wrapped by an active KeyWrapper,
+// and can still open a Blob sealed by any previous KeyWrapper it was also
+// given (Task 5: a KEK rotation keeps decrypting old data by id, while
+// RewrapWorker moves blobs onto the active one in the background).
 type Envelope struct {
-	w KeyWrapper
+	active KeyWrapper
+	byID   map[string]KeyWrapper
+	// order holds every wrapper, active first, for Wrappers().
+	order []KeyWrapper
 }
 
-// NewEnvelope returns an Envelope using w as the active KEK.
-func NewEnvelope(w KeyWrapper) *Envelope { return &Envelope{w: w} }
+// NewEnvelope returns an Envelope using active as the active KEK, plus any
+// previous KeyWrappers it should still be able to Decrypt blobs sealed
+// under. It panics if two wrappers (active or previous) share an id: that
+// would make Decrypt's "pick the wrapper with this id" rule ambiguous, and
+// every caller building this list (cmd/certforge/kek.go) already has
+// everything it needs to avoid it before construction.
+func NewEnvelope(active KeyWrapper, previous ...KeyWrapper) *Envelope {
+	byID := map[string]KeyWrapper{active.ID(): active}
+	order := make([]KeyWrapper, 0, 1+len(previous))
+	order = append(order, active)
+	for _, w := range previous {
+		if _, dup := byID[w.ID()]; dup {
+			panic("crypto: NewEnvelope: duplicate KEK id " + w.ID())
+		}
+		byID[w.ID()] = w
+		order = append(order, w)
+	}
+	return &Envelope{active: active, byID: byID, order: order}
+}
 
 // KEKID returns the active KEK id.
-func (e *Envelope) KEKID() string { return e.w.ID() }
+func (e *Envelope) KEKID() string { return e.active.ID() }
 
-// Encrypt seals plaintext under a fresh DEK.
+// Wrappers returns every configured KeyWrapper, active first, then previous
+// ones in the order NewEnvelope received them.
+func (e *Envelope) Wrappers() []KeyWrapper { return slices.Clone(e.order) }
+
+// Encrypt seals plaintext under a fresh DEK, wrapped by the active KEK.
 func (e *Envelope) Encrypt(ctx context.Context, plaintext []byte) (Blob, error) {
 	dek := make([]byte, 32)
 	if _, err := rand.Read(dek); err != nil {
 		return Blob{}, err
 	}
 	defer clear(dek)
-	wrapped, err := e.w.Wrap(ctx, dek)
+	wrapped, err := e.active.Wrap(ctx, dek)
 	if err != nil {
 		return Blob{}, fmt.Errorf("crypto: wrap DEK: %w", err)
 	}
@@ -116,16 +145,23 @@ func (e *Envelope) Encrypt(ctx context.Context, plaintext []byte) (Blob, error) 
 	if _, err := rand.Read(nonce); err != nil {
 		return Blob{}, err
 	}
-	id := e.w.ID()
+	id := e.active.ID()
 	return Blob{KEKID: id, WrappedDEK: wrapped, Nonce: nonce, Ciphertext: aead.Seal(nil, nonce, plaintext, []byte(id))}, nil
 }
 
-// Decrypt opens b. It never panics on malformed input.
+// Decrypt opens b, picking the wrapper (active or previous) whose id
+// matches b.KEKID. It never panics on malformed input, and its error never
+// includes any wrapper's key bytes — only ids, which are not secret.
 func (e *Envelope) Decrypt(ctx context.Context, b Blob) ([]byte, error) {
-	if b.KEKID != e.w.ID() {
-		return nil, fmt.Errorf("%w: blob %q, active %q", ErrWrongKEK, b.KEKID, e.w.ID())
+	w, ok := e.byID[b.KEKID]
+	if !ok {
+		ids := make([]string, len(e.order))
+		for i, x := range e.order {
+			ids[i] = x.ID()
+		}
+		return nil, fmt.Errorf("%w: blob %q, have %s", ErrWrongKEK, b.KEKID, strings.Join(ids, ", "))
 	}
-	dek, err := e.w.Unwrap(ctx, b.WrappedDEK)
+	dek, err := w.Unwrap(ctx, b.WrappedDEK)
 	if err != nil {
 		return nil, fmt.Errorf("crypto: unwrap DEK: %w", err)
 	}

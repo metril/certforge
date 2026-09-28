@@ -103,6 +103,48 @@ func TestEnsureRootNoLegacyFails(t *testing.T) {
 	}
 }
 
+// TestEnsureRootTransitWithPreviousStatic covers the static→Transit upgrade
+// (pre-flight ruling, Task 5): an existing install's canary is sealed under
+// its original static KEK, and it now boots with that KEK moved to
+// CF_KEK_PREVIOUS and a Vault-Transit KEK as CF_KEK. EnsureRoot's legacy
+// lookup must still find the original KEK's bytes (by the canary's recorded
+// KEKID) even though the *active* KEK is Transit and holds no bytes at all
+// — legacy here only ever comes from a static candidate, previous or
+// active, and rootSeed's env.Encrypt call always seals through the active
+// (Transit) wrapper regardless of which legacy candidate matched.
+func TestEnsureRootTransitWithPreviousStatic(t *testing.T) {
+	ctx := context.Background()
+	_, q := dbtest.New(t)
+	oldKEK := bytes.Repeat([]byte{5}, 32)
+	oldWrapper := crypto.NewStaticWrapper(crypto.KeyID(oldKEK), oldKEK)
+
+	// Pre-upgrade: canary sealed under the original static KEK alone.
+	preSt := settings.NewStore(q, crypto.NewEnvelope(oldWrapper))
+	if err := preSt.EnsureCanary(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Post-upgrade boot: active is Transit, oldWrapper is now previous.
+	transit := crypto.NewTransitWrapper(fakeTransitAPI{}, "https://vault.example.com:8200", "transit", "certforge-kek")
+	env := crypto.NewEnvelope(transit, oldWrapper)
+	st := settings.NewStore(q, env)
+
+	legacy := map[string][]byte{crypto.KeyID(oldKEK): oldKEK}
+	root, err := st.EnsureRoot(ctx, legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(root, oldKEK) {
+		t.Fatal("root does not equal the previous static KEK's bytes")
+	}
+
+	// The canary (and anything else sealed pre-upgrade) still decrypts
+	// through the previous wrapper the envelope was given.
+	if err := st.VerifyCanary(ctx); err != nil {
+		t.Fatalf("canary no longer verifies after the upgrade: %v", err)
+	}
+}
+
 // TestEnsureRootExistingInstallKeepsAuditChain is the crucial safety net for
 // the 5A upgrade (Review Focus T4): an install from before this phase wrote
 // audit rows keyed with DeriveKey(kek.Key, "certforge-audit") directly. On

@@ -51,12 +51,12 @@ func runBootstrapAdmin(ctx context.Context, args []string, stdout io.Writer) err
 	if err := db.Migrate(ctx, pool); err != nil {
 		return err
 	}
-	active, legacyKEKs, closeKEK, err := buildKEK(ctx, cfg, slog.Default())
+	active, previousKEKs, legacyKEKs, closeKEK, err := buildKEK(ctx, cfg, slog.Default())
 	if err != nil {
 		return fmt.Errorf("kek: %w", err)
 	}
 	defer closeKEK()
-	env := crypto.NewEnvelope(active)
+	env := crypto.NewEnvelope(active, previousKEKs...)
 	store := settings.NewStore(sqlcgen.New(pool), env)
 	// EnsureRoot before EnsureCanary (pre-flight ruling), same order as
 	// serve: a fresh database has no canary yet either, and a root failure

@@ -26,6 +26,7 @@ import (
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/issuance"
+	"github.com/metril/certforge/internal/kek"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
@@ -59,6 +60,10 @@ type Deps struct {
 	AgentSettings *agents.SettingsSource // agents settings section; PUT invalidates it
 	Hub           *agenthub.Hub          // agent WebSockets (nil: /agent/v1/ws answers 503)
 	AgentListener *agentca.Listener      // agent listener certificate (nil when not running)
+
+	// Keys reports the active KEK's status and starts its rewrap job
+	// (Task 5: GET/POST /keys/*).
+	Keys *kek.Service
 
 	// DNSTestTimeout bounds POST .../dns-credentials/{id}/test; zero means
 	// the 2-minute default (a test override, since lego's Present/CleanUp

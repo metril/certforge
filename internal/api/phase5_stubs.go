@@ -7,12 +7,13 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 )
 
-// Phase 5A contract stubs. These seven operations are declared in
+// Phase 5A contract stubs. These operations are declared in
 // api/openapi.yaml (Task 2) but not yet implemented; each later task
 // (7: RotateCa, 8: TestVaultSettings, 9: RevokeCertificateVersion,
-// 10/11: CreateServerGrant/ListTargetGrants, 5: GetKeysStatus/StartRewrap)
-// moves its own method out of this file into its resource file and, once
-// the last one leaves (Task 13), this file is deleted.
+// 10/11: CreateServerGrant/ListTargetGrants) moves its own method out of
+// this file into its resource file and, once the last one leaves
+// (Task 13), this file is deleted. GetKeysStatus/StartRewrap moved to
+// internal/api/keys.go (Task 5).
 
 var errNotImplemented = &HTTPError{Status: http.StatusNotImplemented, Title: "Not implemented"}
 
@@ -23,16 +24,6 @@ func (s *Server) RotateCa(context.Context, gen.RotateCaRequestObject) (gen.Rotat
 
 // RevokeCertificateVersion is implemented in Task 7 (localca CA lifecycle, CRL, revocation).
 func (s *Server) RevokeCertificateVersion(context.Context, gen.RevokeCertificateVersionRequestObject) (gen.RevokeCertificateVersionResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// GetKeysStatus is implemented in Task 5 (multi-wrapper envelope, rewrap, keys API).
-func (s *Server) GetKeysStatus(context.Context, gen.GetKeysStatusRequestObject) (gen.GetKeysStatusResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// StartRewrap is implemented in Task 5 (multi-wrapper envelope, rewrap, keys API).
-func (s *Server) StartRewrap(context.Context, gen.StartRewrapRequestObject) (gen.StartRewrapResponseObject, error) {
 	return nil, errNotImplemented
 }
 

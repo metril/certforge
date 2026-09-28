@@ -61,10 +61,16 @@ type VaultKEK struct {
 type Config struct {
 	DatabaseURL string
 	KEK         KEKConfig
-	ListenHTTP  string
-	ListenAgent string
-	BaseURL     string
-	LogLevel    string
+	// PreviousKEKs are KEKs a rotation moved away from, still configured so
+	// the multi-wrapper crypto.Envelope can decrypt not-yet-rewrapped data
+	// and internal/kek.RewrapWorker can move it onto KEK. At most one
+	// static (CF_KEK_PREVIOUS[_FILE]) and one vault-transit
+	// (CF_KEK_PREVIOUS_VAULT_*) entry, in that order when both are set.
+	PreviousKEKs []KEKConfig
+	ListenHTTP   string
+	ListenAgent  string
+	BaseURL      string
+	LogLevel     string
 }
 
 // Load reads and validates the CF_* environment variables.
@@ -85,6 +91,12 @@ func Load() (Config, error) {
 		errs = append(errs, err)
 	} else {
 		c.KEK = kek
+	}
+	prev, err := loadPreviousKEKs()
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		c.PreviousKEKs = prev
 	}
 	if c.BaseURL != "" {
 		if err := ValidateBaseURL(c.BaseURL); err != nil {
@@ -152,76 +164,126 @@ func loadKEK() (KEKConfig, error) {
 		}
 		return KEKConfig{Kind: KEKKindStatic, Source: "file", Key: k}, nil
 	case vaultAddr != "":
-		return loadVaultKEK(vaultAddr)
+		return loadVaultKEK(vaultAddr, "CF_KEK_VAULT")
 	default:
 		return KEKConfig{}, errors.New("one of CF_KEK, CF_KEK_FILE or CF_KEK_VAULT_ADDR is required")
 	}
 }
 
-// loadVaultKEK reads the CF_KEK_VAULT_* variables for a Transit-backed KEK.
-// _FILE variants are trimmed after reading. Exactly one auth method (token
-// or AppRole) must be configured; a mix, or neither, is an error naming the
-// variables involved, never any value read from them.
-func loadVaultKEK(addr string) (KEKConfig, error) {
-	transitKey := strings.TrimSpace(os.Getenv("CF_KEK_VAULT_TRANSIT_KEY"))
+// loadPreviousKEKs reads CF_KEK_PREVIOUS[_FILE] and CF_KEK_PREVIOUS_VAULT_*:
+// a KEK a rotation moved away from, still configured so the multi-wrapper
+// envelope can decrypt not-yet-rewrapped data (Task 5). At most one static
+// candidate (CF_KEK_PREVIOUS or CF_KEK_PREVIOUS_FILE, never both) and at
+// most one vault-transit candidate may be set; either, both, or neither is
+// valid. Whether a candidate happens to equal the active KEK is checked by
+// the caller once both are built into crypto.KeyWrapper values
+// (cmd/certforge/kek.go): this package never derives a KEK's id, the same
+// way loadKEK above never does either.
+func loadPreviousKEKs() ([]KEKConfig, error) {
+	var out []KEKConfig
+	envVal := strings.TrimSpace(os.Getenv("CF_KEK_PREVIOUS"))
+	path := strings.TrimSpace(os.Getenv("CF_KEK_PREVIOUS_FILE"))
+	switch {
+	case envVal != "" && path != "":
+		return nil, errors.New("set only one of CF_KEK_PREVIOUS and CF_KEK_PREVIOUS_FILE")
+	case envVal != "":
+		k, err := decodeKey(envVal)
+		if err != nil {
+			return nil, fmt.Errorf("CF_KEK_PREVIOUS: %w", err)
+		}
+		out = append(out, KEKConfig{Kind: KEKKindStatic, Source: "env", Key: k})
+	case path != "":
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("CF_KEK_PREVIOUS_FILE: %w", err)
+		}
+		k := raw
+		if len(k) != KEKSize {
+			k, err = decodeKey(strings.TrimSpace(string(raw)))
+			if err != nil {
+				return nil, fmt.Errorf("CF_KEK_PREVIOUS_FILE %s: %w", path, err)
+			}
+		}
+		out = append(out, KEKConfig{Kind: KEKKindStatic, Source: "file", Key: k})
+	}
+
+	if vaultAddr := strings.TrimSpace(os.Getenv("CF_KEK_PREVIOUS_VAULT_ADDR")); vaultAddr != "" {
+		vk, err := loadVaultKEK(vaultAddr, "CF_KEK_PREVIOUS_VAULT")
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vk)
+	}
+	return out, nil
+}
+
+// loadVaultKEK reads the <prefix>_TRANSIT_KEY, _MOUNT, _NAMESPACE, _CA_FILE,
+// _TOKEN[_FILE], _ROLE_ID and _SECRET_ID[_FILE] variables for a
+// Transit-backed KEK at addr: prefix is CF_KEK_VAULT for the active KEK and
+// CF_KEK_PREVIOUS_VAULT for a previous one (same suffixes). _FILE variants
+// are trimmed after reading. Exactly one auth method (token or AppRole)
+// must be configured; a mix, or neither, is an error naming the variables
+// involved, never any value read from them.
+func loadVaultKEK(addr, prefix string) (KEKConfig, error) {
+	transitKey := strings.TrimSpace(os.Getenv(prefix + "_TRANSIT_KEY"))
 	if transitKey == "" {
-		return KEKConfig{}, errors.New("CF_KEK_VAULT_TRANSIT_KEY is required with CF_KEK_VAULT_ADDR")
+		return KEKConfig{}, fmt.Errorf("%s_TRANSIT_KEY is required with %s_ADDR", prefix, prefix)
 	}
 	vk := &VaultKEK{
 		Addr:      addr,
 		Key:       transitKey,
-		Mount:     envOr("CF_KEK_VAULT_MOUNT", "transit"),
-		Namespace: strings.TrimSpace(os.Getenv("CF_KEK_VAULT_NAMESPACE")),
+		Mount:     envOr(prefix+"_MOUNT", "transit"),
+		Namespace: strings.TrimSpace(os.Getenv(prefix + "_NAMESPACE")),
 	}
-	if caFile := strings.TrimSpace(os.Getenv("CF_KEK_VAULT_CA_FILE")); caFile != "" {
+	if caFile := strings.TrimSpace(os.Getenv(prefix + "_CA_FILE")); caFile != "" {
 		raw, err := os.ReadFile(caFile)
 		if err != nil {
-			return KEKConfig{}, fmt.Errorf("CF_KEK_VAULT_CA_FILE: %w", err)
+			return KEKConfig{}, fmt.Errorf("%s_CA_FILE: %w", prefix, err)
 		}
 		vk.CAFile = string(raw)
 	}
 
-	token := strings.TrimSpace(os.Getenv("CF_KEK_VAULT_TOKEN"))
-	tokenFile := strings.TrimSpace(os.Getenv("CF_KEK_VAULT_TOKEN_FILE"))
-	roleID := strings.TrimSpace(os.Getenv("CF_KEK_VAULT_ROLE_ID"))
-	secretID := strings.TrimSpace(os.Getenv("CF_KEK_VAULT_SECRET_ID"))
-	secretIDFile := strings.TrimSpace(os.Getenv("CF_KEK_VAULT_SECRET_ID_FILE"))
+	token := strings.TrimSpace(os.Getenv(prefix + "_TOKEN"))
+	tokenFile := strings.TrimSpace(os.Getenv(prefix + "_TOKEN_FILE"))
+	roleID := strings.TrimSpace(os.Getenv(prefix + "_ROLE_ID"))
+	secretID := strings.TrimSpace(os.Getenv(prefix + "_SECRET_ID"))
+	secretIDFile := strings.TrimSpace(os.Getenv(prefix + "_SECRET_ID_FILE"))
 
 	tokenAuth := token != "" || tokenFile != ""
 	approleAuth := roleID != "" || secretID != "" || secretIDFile != ""
 
 	switch {
 	case tokenAuth && approleAuth:
-		return KEKConfig{}, errors.New("set only one auth method for CF_KEK_VAULT_ADDR: CF_KEK_VAULT_TOKEN[_FILE] or CF_KEK_VAULT_ROLE_ID and CF_KEK_VAULT_SECRET_ID[_FILE]")
+		return KEKConfig{}, fmt.Errorf("set only one auth method for %s_ADDR: %s_TOKEN[_FILE] or %s_ROLE_ID and %s_SECRET_ID[_FILE]", prefix, prefix, prefix, prefix)
 	case tokenAuth:
 		if token != "" && tokenFile != "" {
-			return KEKConfig{}, errors.New("set only one of CF_KEK_VAULT_TOKEN and CF_KEK_VAULT_TOKEN_FILE")
+			return KEKConfig{}, fmt.Errorf("set only one of %s_TOKEN and %s_TOKEN_FILE", prefix, prefix)
 		}
 		if tokenFile != "" {
 			raw, err := os.ReadFile(tokenFile)
 			if err != nil {
-				return KEKConfig{}, fmt.Errorf("CF_KEK_VAULT_TOKEN_FILE: %w", err)
+				return KEKConfig{}, fmt.Errorf("%s_TOKEN_FILE: %w", prefix, err)
 			}
 			token = strings.TrimSpace(string(raw))
 		}
 		vk.Token = token
 	case approleAuth:
 		if secretID != "" && secretIDFile != "" {
-			return KEKConfig{}, errors.New("set only one of CF_KEK_VAULT_SECRET_ID and CF_KEK_VAULT_SECRET_ID_FILE")
+			return KEKConfig{}, fmt.Errorf("set only one of %s_SECRET_ID and %s_SECRET_ID_FILE", prefix, prefix)
 		}
 		if roleID == "" || (secretID == "" && secretIDFile == "") {
-			return KEKConfig{}, errors.New("CF_KEK_VAULT_ROLE_ID and CF_KEK_VAULT_SECRET_ID[_FILE] are both required for AppRole auth")
+			return KEKConfig{}, fmt.Errorf("%s_ROLE_ID and %s_SECRET_ID[_FILE] are both required for AppRole auth", prefix, prefix)
 		}
 		if secretIDFile != "" {
 			raw, err := os.ReadFile(secretIDFile)
 			if err != nil {
-				return KEKConfig{}, fmt.Errorf("CF_KEK_VAULT_SECRET_ID_FILE: %w", err)
+				return KEKConfig{}, fmt.Errorf("%s_SECRET_ID_FILE: %w", prefix, err)
 			}
 			secretID = strings.TrimSpace(string(raw))
 		}
 		vk.RoleID, vk.SecretID = roleID, secretID
 	default:
-		return KEKConfig{}, errors.New("CF_KEK_VAULT_ADDR requires CF_KEK_VAULT_TOKEN[_FILE] or CF_KEK_VAULT_ROLE_ID and CF_KEK_VAULT_SECRET_ID[_FILE]")
+		return KEKConfig{}, fmt.Errorf("%s_ADDR requires %s_TOKEN[_FILE] or %s_ROLE_ID and %s_SECRET_ID[_FILE]", prefix, prefix, prefix, prefix)
 	}
 	return KEKConfig{Kind: KEKKindVaultTransit, Source: "vault", Vault: vk}, nil
 }

@@ -36,7 +36,7 @@ const RewrapKey = "crypto.rewrap"
 // first time an existing install boots on a Vault-Transit KEK with no
 // static KEK configured: configure the original static KEK as CF_KEK once,
 // long enough for EnsureRoot to seed the root, then switch to Transit.
-var ErrNoLegacyRoot = errors.New("settings: existing install: configure its original static KEK as CF_KEK")
+var ErrNoLegacyRoot = errors.New("settings: existing install: configure its original static KEK as CF_KEK or CF_KEK_PREVIOUS")
 
 // EnsureRoot reads the sealed root secret, creating it on first boot.
 //

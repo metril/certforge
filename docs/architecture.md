@@ -71,7 +71,25 @@ flowchart LR
   CT & WDEK --> Blob
 ```
 
-Blob bytes: `0x01 | len(kek_id) | kek_id | u16 len(wrapped) | wrapped | len(nonce) | nonce | ciphertext`. `kek_id` (`crypto.KeyID`) is `static-` plus 16 hex characters of a domain-separated hash, `SHA-256("certforge-kek-id:" || key)`, not a plain SHA-256 of the key, so a different KEK is detected before any decryption. `Decrypt` validates every length and never panics on malformed input. Phase 5 adds a Vault Transit `KeyWrapper` and rewrap.
+Blob bytes: `0x01 | len(kek_id) | kek_id | u16 len(wrapped) | wrapped | len(nonce) | nonce | ciphertext`. `kek_id` (`crypto.KeyID`) is `static-` plus 16 hex characters of a domain-separated hash, `SHA-256("certforge-kek-id:" || key)`, not a plain SHA-256 of the key, so a different KEK is detected before any decryption. `Decrypt` validates every length and never panics on malformed input. Phase 5 adds a Vault Transit `KeyWrapper` (`crypto.TransitWrapper`, `kek_id` = `vault-` plus 16 hex characters derived from the Vault address, mount and key name — stable across a Transit key-version bump inside Vault).
+
+### Multi-wrapper envelope and KEK rotation (Phase 5, ADR 0014)
+
+`crypto.Envelope` holds one active `KeyWrapper` plus zero or more previous ones (`CF_KEK_PREVIOUS[_FILE]`, `CF_KEK_PREVIOUS_VAULT_*`). `Encrypt` always uses the active wrapper; `Decrypt` picks whichever wrapper's id matches the blob's own `kek_id` header, so a row sealed under a previous KEK keeps decrypting for as long as that KEK stays configured — no downtime, no offline migration, while `internal/kek.RewrapWorker` moves rows onto the active KEK in the background.
+
+```mermaid
+flowchart LR
+  subgraph Envelope
+    Active[active KeyWrapper]
+    Prev[previous KeyWrapper]
+  end
+  ReadBlob[stored Blob, kek_id=X] -->|kek_id matches| Active
+  ReadBlob -->|kek_id matches| Prev
+  RewrapWorker -->|Decrypt via matching wrapper, Encrypt via Active| NewBlob[new Blob, kek_id=active]
+  RewrapWorker -->|CAS: UPDATE ... WHERE col=old| DB[(sealed column)]
+```
+
+A previous→active rewrap always decrypts and re-encrypts the whole value through the Envelope (fresh DEK, nonce and ciphertext), never just re-wraps the DEK in place: `Encrypt`'s AEAD binds `kek_id` as additional data, so relabelling it onto old ciphertext would break authentication on the next read. The one exception is a same-id Transit key-version bump on the active KEK (`TransitWrapper.Rewrap`, the `crypto.Rewrapper` interface), which moves the wrapped DEK alone without the DEK ever leaving Vault. Every rewrap write is `UPDATE ... SET col = $new WHERE pk = $pk AND col = $old` — a lost compare-and-swap counts the row in `remaining` for the next run rather than overwriting data the job never decrypted. See `docs/operations.md#kek-rotation` and `#rewrap` for the operator-facing runbook.
 
 ## Data model (Phase 1A)
 

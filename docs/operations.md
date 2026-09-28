@@ -69,3 +69,20 @@ Public, unauthenticated routes (`/auth/login`, `/setup/complete`) are as exposed
 3. When the old CA shows 0, retire it. Retiring is refused while any active client still holds an unexpired certificate from it. Retire switches the listener certificate to the new CA; by then every active agent holds a bundle that trusts it.
 
 Enrolment tokens pin the CA that signs the listener certificate, so tokens created before or after a rotation work until the old CA is retired; after that, a token pinned to it is refused (409) and the client needs re-enrolling for a new one.
+
+## KEK rotation
+
+CertForge's key-encryption key (KEK) can be rotated live, with no downtime and no offline migration step (ADR 0014). `GET /api/v1/keys/status` reports the active KEK's identity, any previous KEKs still configured, a canary round-trip and the most recent rewrap's progress.
+
+**Static → static** (a new `CF_KEK`/`CF_KEK_FILE` value):
+1. Move the current value to `CF_KEK_PREVIOUS` (or `CF_KEK_PREVIOUS_FILE`), set the new value as `CF_KEK`/`CF_KEK_FILE`, and restart.
+2. Boot enqueues a rewrap automatically. Watch `GET /keys/status`'s `rewrap.remaining` (or trigger a fresh run any time with `POST /api/v1/keys/rewrap`, `settings:write`, 409 while one is already running).
+3. Once `remaining` reaches 0, remove `CF_KEK_PREVIOUS[_FILE]` and restart again. Every row is now decryptable under the new KEK alone.
+
+**Static → Vault Transit**: set `CF_KEK_PREVIOUS`/`CF_KEK_PREVIOUS_FILE` to the current static key, configure `CF_KEK_VAULT_*` for the new Transit-backed KEK (`docs/vault.md#transit-kek`), and follow the same steps. This is also the path an existing (pre-5A) install takes on its first boot after upgrading: `EnsureRoot`'s legacy lookup needs the original static KEK, as either `CF_KEK` or `CF_KEK_PREVIOUS`, to seed the sealed root secret with the exact bytes every previously-derived key (the audit HMAC key above all) already used — skipping this on that one boot fails startup outright (`settings.ErrNoLegacyRoot`) rather than silently forking the audit chain.
+
+At most one static and one Vault-Transit previous KEK may be configured at a time (`CF_KEK_PREVIOUS[_FILE]` and `CF_KEK_PREVIOUS_VAULT_*`, same suffixes as `CF_KEK_VAULT_*`); a previous KEK removed before `remaining` reaches 0 leaves those rows undecryptable until it is reconfigured (loud failure, `crypto.ErrWrongKEK`, never silent data loss).
+
+### Rewrap
+
+`internal/kek.RewrapWorker` walks every sealed column (`settings`, `cas` — `eab_hmac` and `secret_cfg` together, `acme_accounts`, `dns_provider_credentials`, `output_specs`, `agent_cas`, `certificate_versions`) in keyset pages, moving each row still sealed under a previous KEK onto the active one. It rewraps the KEK canary first as a fast, explicit check: a previous KEK misconfigured or removed too soon fails the whole run immediately rather than after scanning far larger tables first. Progress is visible mid-run (`GET /keys/status`'s `rewrap` object updates after every page) and the job is safe to resume or re-run: a row already on the active KEK is a cheap no-op, and every write is a compare-and-swap, so a lost race against a concurrent write is simply counted in `remaining` and retried by the next run instead of overwriting data the job never decrypted.

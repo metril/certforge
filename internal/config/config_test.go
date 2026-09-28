@@ -14,6 +14,10 @@ var allVars = []string{
 	"CF_DATABASE_URL", "CF_KEK", "CF_KEK_FILE", "CF_LISTEN_HTTP", "CF_LISTEN_AGENT", "CF_BASE_URL", "CF_LOG_LEVEL",
 	"CF_KEK_VAULT_ADDR", "CF_KEK_VAULT_TRANSIT_KEY", "CF_KEK_VAULT_MOUNT", "CF_KEK_VAULT_NAMESPACE", "CF_KEK_VAULT_CA_FILE",
 	"CF_KEK_VAULT_TOKEN", "CF_KEK_VAULT_TOKEN_FILE", "CF_KEK_VAULT_ROLE_ID", "CF_KEK_VAULT_SECRET_ID", "CF_KEK_VAULT_SECRET_ID_FILE",
+	"CF_KEK_PREVIOUS", "CF_KEK_PREVIOUS_FILE",
+	"CF_KEK_PREVIOUS_VAULT_ADDR", "CF_KEK_PREVIOUS_VAULT_TRANSIT_KEY", "CF_KEK_PREVIOUS_VAULT_MOUNT", "CF_KEK_PREVIOUS_VAULT_NAMESPACE",
+	"CF_KEK_PREVIOUS_VAULT_CA_FILE", "CF_KEK_PREVIOUS_VAULT_TOKEN", "CF_KEK_PREVIOUS_VAULT_TOKEN_FILE",
+	"CF_KEK_PREVIOUS_VAULT_ROLE_ID", "CF_KEK_PREVIOUS_VAULT_SECRET_ID", "CF_KEK_PREVIOUS_VAULT_SECRET_ID_FILE",
 }
 
 func setEnv(t *testing.T, kv map[string]string) {
@@ -287,6 +291,110 @@ func TestLoadKEKSources(t *testing.T) {
 		}
 		if strings.Contains(err.Error(), "extremely-secret") {
 			t.Fatalf("error leaks a secret value: %v", err)
+		}
+	})
+}
+
+// TestLoadPreviousKEKs covers CF_KEK_PREVIOUS[_FILE] and
+// CF_KEK_PREVIOUS_VAULT_* (Task 5): none set is the common case (empty,
+// no error); a static and a Transit previous KEK may be set together;
+// CF_KEK_PREVIOUS and CF_KEK_PREVIOUS_FILE together is rejected the same
+// way CF_KEK/CF_KEK_FILE are.
+func TestLoadPreviousKEKs(t *testing.T) {
+	base := map[string]string{"CF_DATABASE_URL": "postgres://x/y", "CF_KEK": key(1)}
+	withBase := func(kv map[string]string) map[string]string {
+		out := map[string]string{}
+		for k, v := range base {
+			out[k] = v
+		}
+		for k, v := range kv {
+			out[k] = v
+		}
+		return out
+	}
+
+	t.Run("none", func(t *testing.T) {
+		setEnv(t, base)
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(c.PreviousKEKs) != 0 {
+			t.Fatalf("previous = %+v", c.PreviousKEKs)
+		}
+	})
+
+	t.Run("static env", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{"CF_KEK_PREVIOUS": key(9)}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(c.PreviousKEKs) != 1 || c.PreviousKEKs[0].Kind != KEKKindStatic || c.PreviousKEKs[0].Source != "env" || len(c.PreviousKEKs[0].Key) != KEKSize {
+			t.Fatalf("previous = %+v", c.PreviousKEKs)
+		}
+	})
+
+	t.Run("static file", func(t *testing.T) {
+		dir := t.TempDir()
+		p := dir + "/prev"
+		if err := os.WriteFile(p, bytes.Repeat([]byte{8}, 32), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		setEnv(t, withBase(map[string]string{"CF_KEK_PREVIOUS_FILE": p}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(c.PreviousKEKs) != 1 || c.PreviousKEKs[0].Source != "file" {
+			t.Fatalf("previous = %+v", c.PreviousKEKs)
+		}
+	})
+
+	t.Run("static env and file conflict", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{"CF_KEK_PREVIOUS": key(9), "CF_KEK_PREVIOUS_FILE": "/x"}))
+		_, err := Load()
+		if err == nil || !strings.Contains(err.Error(), "only one of CF_KEK_PREVIOUS") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
+	t.Run("vault transit", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{
+			"CF_KEK_PREVIOUS_VAULT_ADDR": "https://vault.example.com:8200", "CF_KEK_PREVIOUS_VAULT_TRANSIT_KEY": "old-key",
+			"CF_KEK_PREVIOUS_VAULT_TOKEN": "s.previoustoken",
+		}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(c.PreviousKEKs) != 1 || c.PreviousKEKs[0].Kind != KEKKindVaultTransit || c.PreviousKEKs[0].Vault == nil {
+			t.Fatalf("previous = %+v", c.PreviousKEKs)
+		}
+		if c.PreviousKEKs[0].Vault.Key != "old-key" || c.PreviousKEKs[0].Vault.Token != "s.previoustoken" {
+			t.Fatalf("previous vault = %+v", c.PreviousKEKs[0].Vault)
+		}
+	})
+
+	t.Run("vault missing transit key", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{"CF_KEK_PREVIOUS_VAULT_ADDR": "https://v", "CF_KEK_PREVIOUS_VAULT_TOKEN": "t"}))
+		_, err := Load()
+		if err == nil || !strings.Contains(err.Error(), "CF_KEK_PREVIOUS_VAULT_TRANSIT_KEY") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
+	t.Run("both static and vault previous", func(t *testing.T) {
+		setEnv(t, withBase(map[string]string{
+			"CF_KEK_PREVIOUS":            key(9),
+			"CF_KEK_PREVIOUS_VAULT_ADDR": "https://v", "CF_KEK_PREVIOUS_VAULT_TRANSIT_KEY": "old-key", "CF_KEK_PREVIOUS_VAULT_TOKEN": "t",
+		}))
+		c, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(c.PreviousKEKs) != 2 || c.PreviousKEKs[0].Kind != KEKKindStatic || c.PreviousKEKs[1].Kind != KEKKindVaultTransit {
+			t.Fatalf("previous = %+v", c.PreviousKEKs)
 		}
 	})
 }
