@@ -147,7 +147,12 @@ export function layoutErrors({
       const byteLen = new TextEncoder().encode(password!).length;
       if (byteLen > 128) {
         e.password = 'At most 128 characters.';
-      } else if (needsJKS && (!ASCII.test(password!) || [...password!].length < 6)) {
+      } else if (needsJKS && !ASCII.test(password!)) {
+        // Fix wave (Minor): reported as "At least 6 characters." even for
+        // an ASCII-only failure, which is true but not why it was
+        // rejected — split to match DownloadSheet's own passwordError.
+        e.password = 'ASCII characters only.';
+      } else if (needsJKS && [...password!].length < 6) {
         e.password = 'At least 6 characters.';
       }
     }

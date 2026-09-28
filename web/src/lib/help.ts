@@ -241,6 +241,7 @@ export const help = {
     text: 'Protects PKCS#12 and JKS files. Stored encrypted and never shown again.',
     learnMore: 'certificates.md#export-passwords',
   },
+  'layout.passwordNeeded': { text: 'A PKCS#12 or JKS file in this layout still needs it. Change that file to PEM or DER first.' },
   'layout.extraCerts': {
     text: "Other certificates added to this layout's files, such as a partner CA. Up to 10.",
     learnMore: 'agent.md#file-layouts',

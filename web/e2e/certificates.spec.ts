@@ -105,29 +105,31 @@ test('375 px: upload and import', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Upload certificate' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 
+  // Fix wave (Minor): the assertion used to run right after the bare form —
+  // it never actually measured the widest thing this page renders, the
+  // Import preview, which only exists once Preview has run. Below `md`
+  // (D1) ImportPreview renders as cards inside a `<section
+  // aria-label="Import preview">` (role "region"), not the desktop
+  // `role="table"` `'import dry run'` asserts against — this is that
+  // narrow layout, so a region is what's actually there.
   await page.goto(`/o/${E2E.orgSlug}/certificates/import`);
   await expect(page.getByRole('heading', { name: 'Import certificates' })).toBeVisible();
+  await page.getByLabel('Archive').setInputFiles(fixture('acmesh.zip'));
+  await page.getByRole('combobox', { name: 'CA' }).click();
+  await page.getByRole('option', { name: /^Pebble/ }).click();
+  await page.getByRole('button', { name: 'Preview' }).click();
+  await expect(page.getByRole('region', { name: 'Import preview' }).getByText('Create').first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
 
-// Known gap (Task 10): at 375 px, the certificate detail page's own root
-// (`CertificateDetail`'s `<div className="grid gap-6">`) resolves a
-// 403 px single-column grid track — 28 px past the 375 px viewport — with
-// the Download sheet open on PKCS#12, independent of which day count the
-// renewal label shows (reproduced at both "renews in 5 d" and "renews in
-// 61 d", ruling out ValidityBar's own edge-anchoring fix for a late
-// renewal window). `document.documentElement.scrollWidth` measured 419.
-// Multiple diagnostic passes (widest rendered box, leaf scrollWidth,
-// computed `grid-template-columns`, and finally every element whose own
-// `scrollWidth` exceeds its `clientWidth`) all confirm the grid track
-// itself — not any single labelled control — is sized to 403 px, but
-// none isolated which descendant's min-content actually drives it; every
-// candidate row (`CoveragePanel`'s describe span, the header's action
-// button row, the CA/Account/Next-renewal `dl`) uses `flex-wrap` and
-// should reflow. Needs a real browser layout debugger (devtools), not
-// more headless diagnostics, to find the exact element — left for a
-// follow-up task rather than guessed at further.
-test.fixme('375 px: certificate detail with the Download sheet on PKCS#12', async ({ page }) => {
+// Fix wave: the 403 px single-column grid track this test used to hit
+// (`document.documentElement.scrollWidth` measured 419) traced to `<Tabs>`
+// (CertificateDetail.tsx) being a `min-width: auto` grid item while
+// TabsList's five whitespace-nowrap triggers refuse to shrink below their
+// combined min-content width (403 px) — nothing to do with the Download
+// sheet itself, which is why the bare page below is checked too. Fixed by
+// adding `min-w-0` to `<Tabs>`.
+test('375 px: certificate detail, and with the Download sheet on PKCS#12', async ({ page }) => {
   await page.goto('/login');
   await signInLocal(page);
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
@@ -142,6 +144,8 @@ test.fixme('375 px: certificate detail with the Download sheet on PKCS#12', asyn
   await page.goto(`/o/${E2E.orgSlug}/certificates`);
   await page.getByRole('link', { name: new RegExp(`^${E2E.certName}`) }).click();
   await expect(page.getByRole('heading', { level: 1, name: E2E.certName })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+
   await page.getByRole('button', { name: 'Download', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Download' });
   await sheet.getByRole('radiogroup', { name: 'Format' }).getByRole('radio', { name: 'PKCS#12' }).click();

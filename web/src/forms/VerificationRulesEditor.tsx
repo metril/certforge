@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { matchError } from '@/lib/coverage';
 import { help } from '@/lib/help';
-import { clientOptions, webrootError, withMethod, withVia } from '@/lib/rules';
+import { cleanWebroot, clientOptions, webrootError, withMethod, withVia } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 
 let seq = 0;
@@ -202,6 +202,16 @@ function RuleRow({ id, index, rule, credentials, clients, agentModes, onUpdate, 
               placeholder="/var/www/html"
               value={rule.webroot ?? ''}
               onChange={(e) => onUpdate({ webroot: e.target.value || undefined })}
+              // Fix wave (Important): stripped on blur, not on every
+              // keystroke — cleanWebroot would otherwise eat the interior
+              // slash of "/srv/" the instant it's typed, before "acme"
+              // follows it. Only once the value is settled (blur) can a
+              // *trailing* slash be told apart from one that more
+              // characters are still going to follow.
+              onBlur={(e) => {
+                const v = cleanWebroot(e.target.value);
+                if (v !== e.target.value) onUpdate({ webroot: v || undefined });
+              }}
             />
           </Field>
         </div>

@@ -95,6 +95,17 @@ export function clientOptions(clients: Client[], method: 'http-01' | 'tls-alpn-0
   return active.filter((c) => c.capabilities.includes(method));
 }
 
+/** Strips a webroot's trailing slash (the natural way to type a directory),
+ * the same tolerance `webrootError` validates against — used by the editor
+ * so the *stored* value matches what was validated, instead of sending the
+ * server's `cleanWebroot` a value with the slash still on it (fix wave,
+ * Important: that trailing slash passed the browser check here but 422'd
+ * server-side). A lone "/" is left alone, so it stays invalid rather than
+ * silently becoming an empty string. */
+export function cleanWebroot(p: string): string {
+  return p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p;
+}
+
 /** Mirrors delivery.CleanPath, same as a layout file's `path` (lib/paths.ts,
  * features/delivery/layoutFiles.ts re-exports the same function) — except a
  * webroot names a *directory* the agent writes into, not a file, so a
@@ -102,5 +113,5 @@ export function clientOptions(clients: Client[], method: 'http-01' | 'tls-alpn-0
  * being rejected with pathError's file-specific message (review fix round
  * 1, Minor). */
 export function webrootError(p: string): string | null {
-  return pathError(p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p);
+  return pathError(cleanWebroot(p));
 }

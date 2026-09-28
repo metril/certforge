@@ -3,6 +3,7 @@ import { Lock } from 'lucide-react';
 import { UNCHANGED } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 type Props = {
   id: string;
@@ -13,10 +14,11 @@ type Props = {
   stored: boolean;
   placeholder?: string;
   disabled?: boolean;
-  /** Hides the field's own Remove button (default true). A caller sets this
-   * false when something else already requires the secret to stay set
-   * (Task 8: a layout password while any file is p12/jks). */
-  removable?: boolean;
+  /** When set, the field's own Remove button renders disabled with a
+   * tooltip giving this reason, instead of being removable — never hidden
+   * (fix wave: a layout password while any file is p12/jks used to hide
+   * Remove outright). Omit to let Remove work normally. */
+  removeDisabledReason?: string;
 };
 
 /**
@@ -30,7 +32,7 @@ type Props = {
  * the Replace/Keep-stored buttons — there's nothing a disabled field can let
  * the caller do, so it shows only the static "Stored"/"Not set" state.
  */
-export function SecretInput({ id, label, value, onChange, stored, placeholder, disabled = false, removable = true }: Props) {
+export function SecretInput({ id, label, value, onChange, stored, placeholder, disabled = false, removeDisabledReason }: Props) {
   const [editing, setEditing] = useState(!stored);
   // Fix round 1 (Take now #4): Replace and Remove both start editing with an
   // empty-looking input, but clearing back to "" afterward must mean
@@ -84,7 +86,18 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
         >
           Replace
         </Button>
-        {removable && (
+        {removeDisabledReason ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="inline-flex">
+                <Button type="button" variant="ghost" size="sm" aria-label={`Remove ${label}`} disabled>
+                  Remove
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{removeDisabledReason}</TooltipContent>
+          </Tooltip>
+        ) : (
           <Button
             type="button"
             variant="ghost"

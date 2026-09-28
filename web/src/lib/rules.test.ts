@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DnsCredential, VerificationRule } from '@/api/types';
 import { makeClient } from '@/test/fixtures';
-import { clientOptions, METHOD_LABEL, ruleTarget, ruleUsable, webrootError, withMethod, withVia } from './rules';
+import { cleanWebroot, clientOptions, METHOD_LABEL, ruleTarget, ruleUsable, webrootError, withMethod, withVia } from './rules';
 
 describe('METHOD_LABEL', () => {
   it('labels every method', () => {
@@ -143,5 +143,19 @@ it('webrootError tolerates a trailing slash', () => {
   expect(webrootError('/srv/acme/')).toBeNull();
   expect(webrootError('relative')).not.toBeNull();
   expect(webrootError('/')).not.toBeNull();
+});
+
+// Fix wave (Important): a trailing slash passed webrootError's own browser
+// check but 422'd against the server's cleanWebroot, because the editor
+// stored the value exactly as typed instead of the same slash-stripped form
+// it validated. cleanWebroot is what the editor now applies on change.
+describe('cleanWebroot', () => {
+  it('strips exactly one trailing slash', () => {
+    expect(cleanWebroot('/srv/acme/')).toBe('/srv/acme');
+    expect(cleanWebroot('/srv/acme')).toBe('/srv/acme');
+  });
+  it('leaves a lone "/" alone, so it stays invalid rather than becoming empty', () => {
+    expect(cleanWebroot('/')).toBe('/');
+  });
 });
 

@@ -70,13 +70,20 @@ export function SettingsTab({ cert, orgId, orgSlug }: Props) {
           ))}
         </ul>
       </section>
-      <section aria-labelledby="st-verification" className="grid gap-3">
-        <h2 id="st-verification" className="text-base font-semibold">
-          Verification
-        </h2>
-        <p className="text-sm">{rulesSummary(cert.verificationRules, ctx.credentials, ctx.clients)}</p>
-        <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
-      </section>
+      {/* Fix wave (Important): an unmanaged certificate's verificationRules
+          is empty (upload/import never runs the wizard) — the summary and
+          Coverage would both describe verification for a certificate
+          CertForge was never asked to verify, down to a false "No matching
+          rule" for every name. */}
+      {cert.managed && (
+        <section aria-labelledby="st-verification" className="grid gap-3">
+          <h2 id="st-verification" className="text-base font-semibold">
+            Verification
+          </h2>
+          <p className="text-sm">{rulesSummary(cert.verificationRules, ctx.credentials, ctx.clients)}</p>
+          <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
+        </section>
+      )}
       <section aria-labelledby="st-options" className="grid gap-2">
         <h2 id="st-options" className="text-base font-semibold">
           Options

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, CircleAlert, Eye, EyeOff, Plus, TriangleAlert, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CircleAlert, Copy, Eye, EyeOff, Plus, TriangleAlert, X } from 'lucide-react';
 import { allCertificatesQuery } from '@/api/queries/certificates';
 import { useSaveLayout } from '@/api/queries/delivery';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
@@ -16,7 +16,9 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { help } from '@/lib/help';
 import { generatePassword } from '@/lib/password';
+import { useCopy } from '@/lib/useCopy';
 import {
   emptyFile,
   hasErrors,
@@ -63,6 +65,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
   const [storedPassword, setStoredPassword] = useState<string | undefined>(undefined);
   const [newPassword, setNewPassword] = useState(() => generatePassword());
   const [reveal, setReveal] = useState(false);
+  const { status: copyStatus, copy } = useCopy(newPassword);
   const [showErrors, setShowErrors] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -335,7 +338,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                   onChange={setStoredPassword}
                   stored={layout!.passwordSet}
                   disabled={readOnly}
-                  removable={!anyKeystoreFile}
+                  removeDisabledReason={anyKeystoreFile ? help['layout.passwordNeeded'].text : undefined}
                 />
               ) : (
                 <div className="flex items-center gap-2">
@@ -352,6 +355,11 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                     <>
                       <Button type="button" variant="ghost" size="icon" aria-label={reveal ? 'Hide password' : 'Show password'} onClick={() => setReveal((r) => !r)}>
                         {reveal ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" aria-label="Copy password" onClick={() => void copy()}>
+                        {copyStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
+                        {copyStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
+                        {copyStatus === 'idle' && <Copy className="size-4" aria-hidden />}
                       </Button>
                       <Button type="button" variant="ghost" size="sm" onClick={() => setNewPassword(generatePassword())}>
                         Generate

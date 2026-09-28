@@ -130,3 +130,17 @@ it('agentModes=false still renders an existing agent-mode row normally (empty-st
   await user.click(screen.getByRole('combobox', { name: 'Rule 1 client' }));
   expect(await screen.findByText('No client serves tls-alpn-01')).toBeInTheDocument();
 });
+
+// Fix wave (Important): webrootError tolerated a trailing slash so Save
+// never blocked on it, but the server's cleanWebroot rejects one — the
+// stored value must actually drop it once typing settles (blur), not just
+// validate as if it had.
+it('strips a typed trailing slash from an agent webroot once it loses focus', async () => {
+  const { user } = renderUI(<Harness initial={[{ match: 'example.com', method: 'http-01', via: 'agent', clientId: 'cl-http' }]} />);
+  await user.click(screen.getByRole('button', { name: 'Advanced' }));
+  const input = screen.getByLabelText('Webroot');
+  await user.type(input, '/srv/acme/');
+  expect(input).toHaveValue('/srv/acme/');
+  await user.tab();
+  expect(input).toHaveValue('/srv/acme');
+});

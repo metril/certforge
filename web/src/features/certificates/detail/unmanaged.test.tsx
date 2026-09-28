@@ -101,6 +101,29 @@ it('marks a keyless version with a No key chip in the Versions tab', async () =>
   expect(within(rows[1]!).queryByText('No key')).not.toBeInTheDocument();
 });
 
+// Fix wave (Important): an uploaded/imported certificate's own
+// verificationRules is empty (upload/import never runs the wizard), so
+// Coverage's "first matching rule" search finds none for any name — a
+// false "No matching rule" for a certificate that was never meant to be
+// verified by CertForge at all. Coverage and the Verification summary only
+// make sense for a certificate CertForge itself renews.
+it('hides the Coverage panel for an unmanaged certificate on Overview', async () => {
+  server.use(http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ managed: false, verificationRules: [] }))));
+  renderRoute('/o/acme/certificates/c-1/overview');
+  await screen.findByRole('heading', { level: 1, name: 'www' });
+  expect(screen.queryByRole('region', { name: 'Coverage' })).not.toBeInTheDocument();
+  expect(screen.queryByText('No matching rule')).not.toBeInTheDocument();
+});
+
+it('hides the Verification summary and Coverage panel for an unmanaged certificate on Settings', async () => {
+  server.use(http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ managed: false, verificationRules: [] }))));
+  renderRoute('/o/acme/certificates/c-1/settings');
+  await screen.findByRole('heading', { level: 1, name: 'www' });
+  expect(screen.queryByRole('heading', { name: 'Verification' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Coverage' })).not.toBeInTheDocument();
+  expect(screen.queryByText('No matching rule')).not.toBeInTheDocument();
+});
+
 // A managed certificate raced to unmanaged server-side (or any other 409):
 // useRenewCertificates is meta: { silent: true }, so this proves the header
 // still surfaces it via renewToastHandlers instead of failing silently.

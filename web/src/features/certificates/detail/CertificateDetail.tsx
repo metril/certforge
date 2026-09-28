@@ -96,7 +96,14 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
           separate "is this a pending manual-dns cert" check to keep in sync
           with the attempt/rule state. */}
       <ManualDnsCard orgId={org.id} cert={cert} canConfirm={can(me, 'certs:issue', org.id)} />
-      <Tabs value={tab} onValueChange={(v) => goTab(v as Tab)}>
+      {/* Fix wave (Important): this grid's single-column track (line ~76) is
+          otherwise sized by Tabs' own `min-width: auto` default — a grid
+          item's automatic minimum size is its content's, and TabsList's
+          five `whitespace-nowrap` triggers refuse to shrink below their
+          combined min-content width (403 px), overflowing a 375 px
+          viewport regardless of TabsList's own overflow-x-auto. `min-w-0`
+          lets the item (and TabsList's scrollbar) shrink to the track. */}
+      <Tabs value={tab} onValueChange={(v) => goTab(v as Tab)} className="min-w-0">
         <TabsList className="max-w-full overflow-x-auto">
           {TABS.map((t) => (
             <TabsTrigger key={t} value={t}>

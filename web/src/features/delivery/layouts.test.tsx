@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { OutputFile } from '@/api/types';
+import { help } from '@/lib/help';
 import { server } from '@/test/server';
 import { authHandlers, makeCert, makeLayout, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
@@ -79,9 +80,12 @@ describe('layoutErrors', () => {
 
   // render.CheckJKSPassword requires ASCII *and* at least 6 characters, only
   // when a file is jks; a non-ASCII password of 6+ code points must still
-  // fail, and an ASCII one under 6 must still fail.
+  // fail, and an ASCII one under 6 must still fail. Fix wave (Minor): the
+  // two checks now report their own message, matching DownloadSheet's own
+  // passwordError — a non-ASCII password used to say "At least 6
+  // characters.", which is true but not why it was rejected.
   it('requires ASCII and at least 6 characters only when a file is jks', () => {
-    expect(layoutErrors({ files: jksFiles, password: 'héllo1', passwordSet: false, extraCertificateIds: [] }).password).toBe('At least 6 characters.');
+    expect(layoutErrors({ files: jksFiles, password: 'héllo1', passwordSet: false, extraCertificateIds: [] }).password).toBe('ASCII characters only.');
     expect(layoutErrors({ files: jksFiles, password: 'ab', passwordSet: false, extraCertificateIds: [] }).password).toBe('At least 6 characters.');
     expect(layoutErrors({ files: jksFiles, password: 'hello1', passwordSet: false, extraCertificateIds: [] })).toEqual({});
     // A non-ASCII password is fine for a plain p12 file (no jks rule applies).
@@ -341,6 +345,20 @@ it('removes a stored password when no file needs one', async () => {
   await waitFor(() => expect(patched).toMatchObject({ password: '' }));
 });
 
+// Fix wave (Minor): the generated layout password had Show/Generate but no
+// Copy, unlike DownloadSheet's own generated password.
+it('generated layout password has a Copy button that writes it to the clipboard', async () => {
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New layout' });
+  await user.type(within(sheet).getByLabelText('Name'), 'store');
+  const first = within(sheet).getByRole('listitem', { name: 'File 1' });
+  await user.type(within(first).getByLabelText('Path'), '/etc/ssl/bundle.p12');
+  await user.click(within(first).getByRole('radio', { name: 'PKCS#12' }));
+  const pwField = within(sheet).getByLabelText('Password') as HTMLInputElement;
+  await user.click(within(sheet).getByRole('button', { name: 'Copy password' }));
+  expect(await navigator.clipboard.readText()).toBe(pwField.value);
+});
+
 it('clears a JKS alias to undefined instead of an empty string once cleared', async () => {
   const { user } = renderRoute('/o/acme/delivery/layouts?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'New layout' });
@@ -379,7 +397,10 @@ it('clears the extra part from every PEM file once the last extra certificate is
   expect(savedParts).toContain('fullchain');
 });
 
-it('SecretInput hides Remove for the layout password while a file is p12/jks', async () => {
+// Fix wave (Important, disabled-never-hidden): Remove used to be omitted
+// outright while a file still needed the password; it now shows disabled,
+// with a tooltip naming why.
+it('disables Remove (never hides it) for the layout password while a file is p12/jks', async () => {
   server.use(
     http.get(url('/orgs/org-1/layouts'), () =>
       HttpResponse.json({
@@ -389,8 +410,10 @@ it('SecretInput hides Remove for the layout password while a file is p12/jks', a
   );
   const { user } = renderRoute('/o/acme/delivery/layouts?edit=l-1');
   const sheet = await screen.findByRole('dialog', { name: 'Edit nginx' });
-  await user.hover(within(sheet).getByText('Stored'));
-  expect(within(sheet).queryByRole('button', { name: 'Remove Password' })).not.toBeInTheDocument();
+  const removeButton = within(sheet).getByRole('button', { name: 'Remove Password' });
+  expect(removeButton).toBeDisabled();
+  await user.hover(removeButton);
+  expect(await screen.findByText(help['layout.passwordNeeded'].text)).toBeInTheDocument();
   expect(within(sheet).getByRole('button', { name: 'Replace Password' })).toBeInTheDocument();
 });
 
