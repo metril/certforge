@@ -371,13 +371,22 @@ func (s *Store) CASecret(ctx context.Context, row sqlcgen.Ca, issuerSerial strin
 		return localca.Material{}, localca.Config{}, err
 	}
 	defer clearSecretCfg(&sc)
+	// chainPem was added by the batch-3 review fix (f5fccdc); a row
+	// created before it has none. Falling back to the CA's own
+	// trust_bundle_pem — a single certificate, but parsePEMCertChain reads
+	// it as a one-entry chain just fine — keeps such a row's Material.Root
+	// and Chain from silently going empty instead of losing the root.
+	chainPEM := cfg.ChainPem
+	if chainPEM == "" {
+		chainPEM = row.TrustBundlePem
+	}
 	var mat localca.Material
 	var err error
 	switch issuerSerial {
 	case "", currentIssuerSerial(cfg):
-		mat, err = materialFromParts(cfg.IssuingPem, sc.IssuingKey, cfg.ChainPem)
+		mat, err = materialFromParts(cfg.IssuingPem, sc.IssuingKey, chainPEM)
 	default:
-		mat, err = retiredMaterial(cfg, sc, cfg.ChainPem, issuerSerial)
+		mat, err = retiredMaterial(cfg, sc, chainPEM, issuerSerial)
 	}
 	return mat, cfg.toSignerConfig(), err
 }

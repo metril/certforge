@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/issuance"
@@ -228,17 +230,16 @@ func TestLocalCACRUDMatrix(t *testing.T) {
 // checked by their exact base64, and the issuing key CASecret hands back
 // to a caller re-marshalled to PKCS8 — so a leak of any of the individual
 // byte fields (not just a stray "PRIVATE KEY" PEM string) would fail this.
-func TestLocalCASecretsNeverInCA(t *testing.T) {
-	f := newAPIFixture(t)
-	createRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
-		Name: "Secrets", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	created := createRes.(gen.CreateCa201JSONResponse)
-
-	getRes, err := f.srv.GetCa(f.as("admin"), gen.GetCaRequestObject{OrgId: f.org, Id: created.Id})
+// assertLocalCASecretsNeverInGetCa fetches caID with GetCa and checks its
+// response three ways: no "PRIVATE KEY" PEM marker, no base64 of any of
+// secret_cfg's own key fields (decrypted directly), and no base64 of the
+// issuing key CASecret hands back re-marshalled to PKCS8. requireFields
+// lists which secret_cfg fields this CA is expected to actually hold (so a
+// field that is empty for a generated CA, say importKeyPem, still gets a
+// real check on an imported one instead of silently no-op'ing).
+func assertLocalCASecretsNeverInGetCa(t *testing.T, f *apiFixture, caID uuid.UUID, requireFields ...string) {
+	t.Helper()
+	getRes, err := f.srv.GetCa(f.as("admin"), gen.GetCaRequestObject{OrgId: f.org, Id: caID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +251,7 @@ func TestLocalCASecretsNeverInCA(t *testing.T) {
 
 	ctx := context.Background()
 	q := sqlcgen.New(f.pool)
-	row, err := q.GetCAByID(ctx, created.Id)
+	row, err := q.GetCAByID(ctx, caID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +262,11 @@ func TestLocalCASecretsNeverInCA(t *testing.T) {
 	var sc map[string]interface{}
 	if err := json.Unmarshal(raw, &sc); err != nil {
 		t.Fatal(err)
+	}
+	for _, field := range requireFields {
+		if v, _ := sc[field].(string); v == "" {
+			t.Fatalf("secret_cfg.%s is empty; this check would vacuously pass", field)
+		}
 	}
 	for _, field := range []string{"rootKey", "issuingKey", "importKeyPem"} {
 		v, _ := sc[field].(string)
@@ -280,6 +286,46 @@ func TestLocalCASecretsNeverInCA(t *testing.T) {
 	if strings.Contains(body, base64.StdEncoding.EncodeToString(issuingPKCS8)) {
 		t.Fatal("GET body leaks the issuing key (from CASecret)")
 	}
+}
+
+// TestLocalCASecretsNeverInCA covers both key-holding shapes a localca CA
+// can have: a generated CA (rootKey + issuingKey) and an imported one
+// (issuingKey + importKeyPem, no root key) — the batch-3 re-review found
+// the import case untested, so importKeyPem's own leak check was silently
+// skipped every run.
+func TestLocalCASecretsNeverInCA(t *testing.T) {
+	f := newAPIFixture(t)
+
+	t.Run("generated", func(t *testing.T) {
+		res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+			Name: "Secrets", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		created := res.(gen.CreateCa201JSONResponse)
+		assertLocalCASecretsNeverInGetCa(t, f, created.Id, "rootKey", "issuingKey")
+	})
+
+	t.Run("imported", func(t *testing.T) {
+		mat, _, err := localca.Generate(localca.Config{Subject: localca.Subject{CommonName: "Import Secrets"},
+			KeyType: signer.EC256, RootValidityYears: 10, IssuingValidityYears: 3, MaxLeafDays: 397, CRL: true}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		certPEM := encodeCertPEM(mat.Issuing.Raw) + encodeCertPEM(mat.Root.Raw)
+		keyPEM := encodeKeyPEM(t, mat.IssuingKey)
+		res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+			Name: "SecretsImported", Type: ptrT(gen.Localca), Config: ptrT(map[string]interface{}{
+				"subject": map[string]interface{}{"commonName": "Import Secrets"}, "importPem": certPEM, "importKeyPem": keyPEM,
+			}),
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		created := res.(gen.CreateCa201JSONResponse)
+		assertLocalCASecretsNeverInGetCa(t, f, created.Id, "issuingKey", "importKeyPem")
+	})
 }
 
 // TestUpdateLocalCAConcurrentRotateNotLost covers the batch-3 review fix:

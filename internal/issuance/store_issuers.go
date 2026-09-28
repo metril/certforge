@@ -675,11 +675,18 @@ func purgeExpiredRetiredPublic(in []retiredIssuer, now time.Time) []retiredIssue
 	return out
 }
 
+// purgeExpiredRetiredSecret drops expired retired keys like
+// purgeExpiredRetiredPublic drops their public entries, and clears each
+// dropped entry's key bytes before letting it go — clearSecretCfg only
+// ever sees whatever sec.Retired holds at function return, so a key
+// dropped here would otherwise never be cleared at all.
 func purgeExpiredRetiredSecret(in []retiredSecretKey, now time.Time) []retiredSecretKey {
 	out := in[:0:0]
 	for _, r := range in {
 		if r.NotAfter.After(now) {
 			out = append(out, r)
+		} else {
+			clear(r.Key)
 		}
 	}
 	return out

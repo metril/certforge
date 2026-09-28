@@ -32,19 +32,32 @@ func NewStore(pool *pgxpool.Pool, box crypto.Box, global GlobalSettings) *Store 
 	return &Store{pool: pool, q: sqlcgen.New(pool), box: box, global: global}
 }
 
+// sealJSON marshals v (typically a secret_cfg-shaped struct whose []byte
+// fields hold private-key bytes, base64-encoded by encoding/json) and
+// seals it. The marshalled plaintext is cleared once sealed — Security
+// constraint: it must not outlive the call that needed it, same as the
+// key bytes it was built from (clearSecretCfg and friends clear those
+// separately, at their own call sites).
 func (s *Store) sealJSON(ctx context.Context, v any) ([]byte, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
+	defer clear(b)
 	return s.box.Seal(ctx, b)
 }
 
+// openJSON decrypts sealed and unmarshals it into out. The decrypted
+// plaintext JSON (which, for a secret_cfg, still carries every key's
+// base64 text) is cleared once unmarshalled: json.Unmarshal always copies
+// into fresh []byte allocations for out's own []byte fields, so clearing b
+// here never touches what out ends up holding.
 func (s *Store) openJSON(ctx context.Context, sealed []byte, out any) error {
 	b, err := s.box.Open(ctx, sealed)
 	if err != nil {
 		return err
 	}
+	defer clear(b)
 	return json.Unmarshal(b, out)
 }
 
