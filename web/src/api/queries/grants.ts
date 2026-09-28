@@ -9,7 +9,7 @@ export const grantsQuery = (orgId: string, clientId: string) =>
     queryKey: ['grants', orgId, clientId],
     queryFn: async () => (await call(api.GET('/orgs/{orgId}/clients/{id}/grants', { params: { path: { orgId, id: clientId } } }))).items,
     // A pending deployment lands within seconds on a connected push client.
-    refetchInterval: (q) => livePoll(!!q.state.data?.some((g) => g.deployment.state === 'pending')),
+    refetchInterval: (q) => livePoll(!!q.state.data?.some((g) => g.deployment?.state === 'pending')),
   });
 
 export const certificateDeploymentsQuery = (orgId: string, certId: string) =>

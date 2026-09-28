@@ -311,6 +311,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/vault/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Vault connectivity
+         * @description Needs settings:write. Logs in to Vault (or OpenBao) with the given settings and reports the outcome, using the same authMethod pairing and address/namespace rules as PUT /settings/vault. A secret field (token, secretId) omitted or __unchanged__ uses the currently stored value, unless address or namespace changed, which is 422 ("re-enter the token"). Always 200 once the request is well-formed; ok false carries the error. Not recorded in the audit log.
+         */
+        post: operations["testVaultSettings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/{section}": {
         parameters: {
             query?: never;
@@ -332,6 +352,46 @@ export interface paths {
          */
         put: operations["putSettingsSection"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read key-encryption key status
+         * @description Needs global settings:read. The active KEK, any previous KEKs still configured to decrypt old data, whether a round-trip canary against the active KEK just succeeded, and the most recent rewrap (running or finished; null if one has never run).
+         */
+        get: operations["getKeysStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/rewrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start rewrapping secrets under the active KEK
+         * @description Needs global settings:write. Starts, in the background, re-encrypting every secret under the active KEK, table by table in order (settings; cas, covering eab_hmac and secret_cfg together; acme_accounts; dns_provider_credentials; output_specs; agent_cas; certificate_versions); 409 while a rewrap is already running. Recorded as kek.rewrap_started (activeKekId) when it starts and kek.rewrap_finished (rewrapped, remaining; system actor) when it completes.
+         */
+        post: operations["startRewrap"];
         delete?: never;
         options?: never;
         head?: never;
@@ -413,6 +473,31 @@ export interface paths {
          * @description Needs cas:write. 409 while accounts, certificates or defaults reference it.
          */
         delete: operations["deleteCa"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/cas/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a private CA's issuing key
+         * @description Needs cas:write. localca only, and only with a held root key: generates a new issuing certificate under the same root and retires (never deletes) the current issuing key, sealed until its certificate's notAfter — a CRL must be signed by its own issuer, so leaves already issued under the retired key can still be revoked. 422 for any other CA kind, or a localca CA without a held root key. Recorded as ca.rotate in the audit log with newIssuerSerial and retiredSerial.
+         */
+        post: operations["rotateCa"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -889,6 +974,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/certificates/{id}/versions/{vid}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+                /** @description Certificate version id. */
+                vid: components["parameters"]["VersionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke an issued version
+         * @description Needs certs:issue. Marks the version revoked with the given reason so it is listed on its issuer's CRL from the next rebuild. Private CAs only: 422 "not supported for ACME CAs yet" for a version issued by an acme CA, and 422 for a version that was imported or uploaded rather than issued. 409 if the version is already revoked. Recorded as certificate.revoked in the audit log with certificateId, versionId, serial and reason.
+         */
+        post: operations["revokeCertificateVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/certificates/{id}/manual-dns": {
         parameters: {
             query?: never;
@@ -1343,6 +1455,35 @@ export interface paths {
          * @description Needs delivery:write. The type cannot change (422). Every grant using it is re-rendered and its client's revision bumped in the same transaction; 409 when that would make two of a client's grants write one path.
          */
         patch: operations["updateDeployTarget"];
+        trace?: never;
+    };
+    "/orgs/{orgId}/deploy-targets/{id}/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a deploy target's server-side grants
+         * @description Needs clients:read. Live grants on this target (runsOn server), sorted by certificate name.
+         */
+        get: operations["listTargetGrants"];
+        put?: never;
+        /**
+         * Grant a certificate to a server-side deploy target
+         * @description Needs clients:write; also keys:export when the target's config has includeKey true. 422 when the target's runsOn is agent (an agent target takes grants through POST /orgs/{orgId}/clients/{id}/grants instead). One grant per certificate per target (409). Recorded as grant.create in the audit log with runsOn: server and includeKey.
+         */
+        post: operations["createServerGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/orgs/{orgId}/hooks": {
@@ -1881,6 +2022,128 @@ export interface components {
             /** @description Names of the section's secret properties that currently hold a value. Secret values are never returned; send "__unchanged__" to keep one, "" to clear it. */
             storedSecrets: string[];
         };
+        /** @description The vault global settings section — how CertForge reaches Vault (or OpenBao); served by GET/PUT /settings/vault. */
+        VaultSettings: {
+            /**
+             * Format: uri
+             * @description Vault's base URL (http or https). Required once any other field below is set.
+             */
+            address?: string;
+            /** @description Vault Enterprise namespace; empty for open-source Vault or OpenBao. */
+            namespace?: string;
+            /**
+             * @description How CertForge logs in to Vault.
+             * @default token
+             * @enum {string}
+             */
+            authMethod: "token" | "approle";
+            /** @description Vault token, used when authMethod is token. Secret: __unchanged__ or omitted keeps the stored value, empty string clears it. */
+            token?: string;
+            /** @description AppRole role id */
+            roleId?: string;
+            /** @description AppRole secret id, used when authMethod is approle. Secret: __unchanged__ or omitted keeps the stored value, empty string clears it. */
+            secretId?: string;
+            /** @description Additional PEM-encoded certificates trusted for Vault's TLS */
+            caPem?: string;
+            /**
+             * @description Per-request timeout for calls to Vault.
+             * @default 10
+             */
+            timeoutSeconds: number;
+        };
+        /** @description Result of testVaultSettings. */
+        VaultTestResult: {
+            /** @description Vault answered and login succeeded. */
+            ok: boolean;
+            /** @description Remaining lifetime of the resulting token */
+            tokenTtlSeconds?: number;
+            /** @description Policies attached to the resulting token. */
+            policies?: string[];
+            /** @description Vault's reported server version. */
+            version?: string;
+            /** @description Why the test failed */
+            error?: string;
+        };
+        /**
+         * @description How the key-encryption key is held — a static configured key, or Vault's Transit secrets engine.
+         * @enum {string}
+         */
+        KekKind: "static" | "vault-transit";
+        /** @description One key-encryption key's identity, without its key material. */
+        KekRef: {
+            kind: components["schemas"]["KekKind"];
+            /** @description Opaque id identifying this KEK */
+            kekId: string;
+        };
+        /**
+         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together.
+         * @enum {string}
+         */
+        RewrapTable: "settings" | "cas" | "acme_accounts" | "dns_provider_credentials" | "output_specs" | "agent_cas" | "certificate_versions";
+        /** @description Rewrap progress for one table. */
+        RewrapTableStatus: {
+            table: components["schemas"]["RewrapTable"];
+            /**
+             * Format: int64
+             * @description Rows scanned so far.
+             */
+            scanned: number;
+            /**
+             * Format: int64
+             * @description Rows successfully re-encrypted under the active KEK.
+             */
+            rewrapped: number;
+            /**
+             * Format: int64
+             * @description Rows of this table not yet rewrapped.
+             */
+            remaining: number;
+        };
+        /** @description A rewrap run's progress, from startRewrap to completion. */
+        RewrapStatus: {
+            /** @description A rewrap is in progress now. */
+            running: boolean;
+            /**
+             * Format: date-time
+             * @description When this rewrap started.
+             */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description When it finished; null while running.
+             */
+            finishedAt: string | null;
+            /** @description KEK every row is being rewrapped to. */
+            activeKekId: string;
+            /** @description KEKs rows may still be wrapped under. */
+            previousKekIds: string[];
+            /** @description Progress per table */
+            tables: components["schemas"]["RewrapTableStatus"][];
+            /**
+             * Format: int64
+             * @description Total rows remaining across every table.
+             */
+            remaining: number;
+            /** @description Why the rewrap stopped; null while running or after a clean finish. */
+            error: string | null;
+        };
+        /** @description The server's key-encryption key and any rewrap in progress. */
+        KeysStatus: {
+            kind: components["schemas"]["KekKind"];
+            /** @description Opaque id of the active KEK. */
+            kekId: string;
+            /**
+             * Format: uri
+             * @description Vault address in use; present only when kind is vault-transit.
+             */
+            vaultAddress?: string;
+            /** @description Previous KEKs still configured to decrypt old data. */
+            previous: components["schemas"]["KekRef"][];
+            /** @description A round-trip encrypt/decrypt against the active KEK just succeeded. */
+            canaryOk: boolean;
+            /** @description The most recent rewrap, running or finished; null if one has never run. */
+            rewrap: components["schemas"]["RewrapStatus"] | null;
+        };
         /** @description First-run state. */
         SetupStatus: {
             /** @description True until POST /setup/complete succeeds. */
@@ -1916,7 +2179,68 @@ export interface components {
             /** @description The CA needs External Account Binding. */
             requiresEab: boolean;
         };
-        /** @description An ACME certificate authority. */
+        /**
+         * @description A CA's kind — an external ACME directory, a CertForge-managed private CA, or one backed by Vault's PKI secrets engine.
+         * @enum {string}
+         */
+        CaType: "acme" | "localca" | "vaultpki";
+        /** @description Configuration for a localca CA (Deviations R4). Everything here is public except importKeyPem. */
+        LocalCaConfig: {
+            /** @description Root and issuing certificate subject. */
+            subject: {
+                /** @description Common name of the root and issuing certificates. */
+                commonName: string;
+                /** @description Organization name. */
+                organization?: string;
+                /** @description ISO 3166-1 alpha-2 country code. */
+                country?: string;
+            };
+            /**
+             * @description Key algorithm for the root and issuing keys: ec256, ec384, rsa2048 or rsa4096 (Deviations R4 reuses KeyType instead of a separate ecdsa-p256-style enum).
+             * @default ec256
+             */
+            keyType: components["schemas"]["KeyType"];
+            /**
+             * @description Root certificate lifetime in years. Immutable after create.
+             * @default 10
+             */
+            rootValidityYears: number;
+            /**
+             * @description Issuing certificate lifetime in years. Immutable after create.
+             * @default 3
+             */
+            issuingValidityYears: number;
+            /**
+             * @description Longest validity this CA will issue a leaf for. Editable after create.
+             * @default 397
+             */
+            maxLeafDays: number;
+            /**
+             * @description Publish a CRL for this CA at GET /crl/{caId}.crl. Editable after create.
+             * @default true
+             */
+            crl: boolean;
+            /** @description Create only, immutable after: PEM to import instead of generating a root — the issuing certificate followed by its chain (the last certificate is the trust anchor). */
+            importPem?: string;
+            /** @description Create only, immutable after: PEM private key for importPem's issuing certificate. Secret; never returned. */
+            importKeyPem?: string;
+        };
+        /** @description Configuration for a vaultpki CA, backed by Vault's PKI secrets engine. */
+        VaultPkiConfig: {
+            /**
+             * @description Vault PKI secrets engine mount path.
+             * @default pki
+             */
+            mount: string;
+            /** @description Vault PKI role to sign leaves against. */
+            role: string;
+            /**
+             * @description Go duration string for issued leaf validity, 1h to 19800h (825 days); Vault's own role or mount ceiling still applies.
+             * @example 2160h
+             */
+            ttl?: string;
+        };
+        /** @description A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for. */
         CA: {
             /**
              * Format: uuid
@@ -1927,50 +2251,81 @@ export interface components {
              * Format: uuid
              * @description Owning org.
              */
-            orgId?: string;
+            orgId: string;
             /** @description Unique name in the org. */
             name: string;
-            /** @description Preset code. */
+            /** @description Preset code; meaningless for a private CA. */
             preset: components["schemas"]["CAPresetCode"];
-            /** @description ACME directory URL. */
+            /** @description ACME directory URL; empty for a private CA. */
             directoryUrl: string;
-            /** @description Extra PEM roots for a private ACME server. */
-            trustBundlePem?: string;
+            /** @description Extra PEM roots for a private ACME server (acme), or the CA's own trust anchor for a private kind: for localca the root PEM (generated), or for an import the last certificate of importPem; for vaultpki the CA certificate read from Vault at create. */
+            trustBundlePem: string;
             /** @description EAB key id; empty when unused. */
-            eabKid?: string;
+            eabKid: string;
             /** @description An EAB HMAC is stored (it is never returned). */
-            hasEab?: boolean;
+            hasEab: boolean;
             /** @description DNS resolvers (host or host:port) for propagation checks. */
             resolvers: string[];
             /** @description Reserved for Phase 2 global CAs; false in Phase 1. */
-            shared?: boolean;
+            shared: boolean;
+            type: components["schemas"]["CaType"];
+            /** @description Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki. */
+            config: {
+                [key: string]: unknown;
+            };
+            /** @description Secret config fields held for this CA, for example importKeyPem. */
+            storedSecrets: string[];
+            /**
+             * Format: date-time
+             * @description Start of validity of the issuing certificate (localca) or the Vault CA (vaultpki); absent for acme.
+             */
+            notBefore?: string;
+            /**
+             * Format: date-time
+             * @description End of validity of the issuing certificate (localca) or the Vault CA (vaultpki); absent for acme.
+             */
+            notAfter?: string;
+            /**
+             * Format: uri
+             * @description This CA's current CRL, at GET /crl/{caId}.crl; present only for a localca CA with crl enabled and general.baseUrl set.
+             */
+            crlUrl?: string;
             /**
              * Format: date-time
              * @description Creation time.
              */
-            createdAt?: string;
+            createdAt: string;
             /**
              * Format: date-time
              * @description Last change.
              */
-            updatedAt?: string;
+            updatedAt: string;
         };
         /** @description Fields to create or replace a CA. */
         CAInput: {
             /** @description Unique name in the org. */
             name: string;
-            /** @description Preset code. */
-            preset: components["schemas"]["CAPresetCode"];
-            /** @description Required for custom; defaults to the preset URL. */
+            /**
+             * @description CA kind, default acme. Immutable after create (422 "type cannot change").
+             * @default acme
+             */
+            type: components["schemas"]["CaType"];
+            /** @description Preset code; required for acme, ignored for a private kind. */
+            preset?: components["schemas"]["CAPresetCode"];
+            /** @description Required for a custom acme preset; defaults to the preset URL. Ignored for a private kind. */
             directoryUrl?: string;
-            /** @description Extra PEM roots. */
+            /** @description Extra PEM roots; acme only. */
             trustBundlePem?: string;
-            /** @description EAB key id. */
+            /** @description EAB key id; acme only, 422 on a private kind. */
             eabKid?: string;
-            /** @description EAB HMAC key (base64url). Write-only: on update null or __unchanged__ keeps it, empty string removes it. */
+            /** @description EAB HMAC key (base64url); acme only, 422 on a private kind. Write-only: on update null or __unchanged__ keeps it, empty string removes it. */
             eabHmac?: string | null;
-            /** @description DNS resolvers for propagation checks. */
+            /** @description DNS resolvers for propagation checks; acme only. */
             resolvers?: string[];
+            /** @description Kind-specific configuration: LocalCaConfig for localca, VaultPkiConfig for vaultpki; omitted or {} for acme. For localca, subject, keyType, the validity years and the import fields are immutable after create (422); maxLeafDays and crl stay editable. */
+            config?: {
+                [key: string]: unknown;
+            };
         };
         /** @description A registered ACME account; its key never leaves the server. */
         AcmeAccount: {
@@ -2269,6 +2624,19 @@ export interface components {
              * @description When this window was last fetched from the CA.
              */
             checkedAt: string;
+        };
+        /**
+         * @description RFC 5280 CRL revocation reason code.
+         * @enum {string}
+         */
+        RevocationReason: "unspecified" | "keyCompromise" | "caCompromise" | "affiliationChanged" | "superseded" | "cessationOfOperation";
+        /** @description Reason to record when revoking a certificate version. */
+        RevokeRequest: {
+            /**
+             * @description Reason for the revocation.
+             * @default unspecified
+             */
+            reason: components["schemas"]["RevocationReason"];
         };
         /** @description One issued certificate. */
         CertificateVersion: {
@@ -3107,15 +3475,15 @@ export interface components {
             items: components["schemas"]["Layout"][];
         };
         /**
-         * @description Deploy target type; its config schema is in GET /meta/schemas under deployTargets.
+         * @description Deploy target type; its config schema is in GET /meta/schemas under deployTargets. vault-kv runs on the server rather than an agent.
          * @enum {string}
          */
-        DeployTargetType: "traefik";
+        DeployTargetType: "traefik" | "vault-kv";
         /**
-         * @description Where the target runs; server-side targets arrive in later phases.
+         * @description Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
          * @enum {string}
          */
-        RunsOn: "agent";
+        RunsOn: "agent" | "server";
         /** @description A deploy target the agent drives after writing a grant's files. */
         DeployTarget: {
             /**
@@ -3261,7 +3629,7 @@ export interface components {
              */
             updatedAt: string;
         };
-        /** @description A certificate granted to one client, with how it is delivered. */
+        /** @description A certificate granted to a client (runsOn agent) or a server-side deploy target (runsOn server), with how it is delivered. */
         Grant: {
             /**
              * Format: uuid
@@ -3270,11 +3638,11 @@ export interface components {
             id: string;
             /**
              * Format: uuid
-             * @description Client.
+             * @description Client; null for a server grant.
              */
-            clientId: string;
-            /** @description Client name. */
-            clientName: string;
+            clientId: string | null;
+            /** @description Client name; null for a server grant. */
+            clientName: string | null;
             /**
              * Format: uuid
              * @description Certificate.
@@ -3297,7 +3665,11 @@ export interface components {
             hookIds: string[];
             /** @description On drift */
             autoRemediate: boolean;
-            deployment: components["schemas"]["Deployment"];
+            /** @description Agent-side deployment state; null for a server grant (see serverDeployment). */
+            deployment: components["schemas"]["Deployment"] | null;
+            runsOn: components["schemas"]["RunsOn"];
+            /** @description Server-side deployment state; null for an agent grant (see deployment). */
+            serverDeployment: components["schemas"]["ServerDeployment"] | null;
             /**
              * Format: date-time
              * @description Creation time.
@@ -3357,6 +3729,45 @@ export interface components {
         GrantList: {
             /** @description Grants sorted by certificate name. */
             items: components["schemas"]["Grant"][];
+        };
+        /** @description A new grant on a server-side deploy target. */
+        ServerGrantInput: {
+            /**
+             * Format: uuid
+             * @description Certificate in the target's org.
+             */
+            certificateId: string;
+            /**
+             * Format: uuid
+             * @description Output layout in the same org
+             */
+            layoutId?: string | null;
+        };
+        /**
+         * @description A server grant's deploy state.
+         * @enum {string}
+         */
+        ServerDeploymentStatus: "pending" | "deployed" | "failed";
+        /** @description A server grant's deployment state, in place of the agent-side Deployment. */
+        ServerDeployment: {
+            status: components["schemas"]["ServerDeploymentStatus"];
+            /**
+             * Format: uuid
+             * @description Certificate version deployed or being deployed; null until the certificate is first issued.
+             */
+            versionId: string | null;
+            /** @description The last deploy error */
+            lastError: string | null;
+            /**
+             * Format: date-time
+             * @description When status last became deployed.
+             */
+            deployedAt: string | null;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
         };
         /** @description One client's deployment of a certificate. */
         CertificateDeployment: {
@@ -4119,6 +4530,37 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    testVaultSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultSettings"];
+            };
+        };
+        responses: {
+            /** @description Test result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultTestResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     getSettingsSection: {
         parameters: {
             query?: never;
@@ -4178,6 +4620,53 @@ export interface operations {
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getKeysStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current key status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeysStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    startRewrap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rewrap started. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeysStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -4359,6 +4848,36 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    rotateCa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CA with its new issuing certificate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CA"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -5272,6 +5791,46 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    revokeCertificateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+                /** @description Certificate version id. */
+                vid: components["parameters"]["VersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeRequest"];
+            };
+        };
+        responses: {
+            /** @description The revoked version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateVersion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     listManualDNS: {
         parameters: {
             query?: never;
@@ -6167,6 +6726,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeployTarget"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listTargetGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createServerGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerGrantInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"];
                 };
             };
             400: components["responses"]["BadRequest"];

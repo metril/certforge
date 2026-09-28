@@ -25,11 +25,11 @@ func TestCaPresetsListed(t *testing.T) {
 
 func TestCreateCaPermissionsAndValidation(t *testing.T) {
 	f := newAPIFixture(t)
-	_, err := f.srv.CreateCa(f.as("operator"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: "letsencrypt"}})
+	_, err := f.srv.CreateCa(f.as("operator"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
 	wantStatus(t, err, http.StatusForbidden) // cas:write is global-admin only
-	_, err = f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "Zero", Preset: "zerossl"}})
+	_, err = f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "Zero", Preset: ptr(gen.CAPresetCode("zerossl"))}})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
-	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: "letsencrypt"}})
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,13 +47,13 @@ func TestCreateCaPermissionsAndValidation(t *testing.T) {
 
 func TestUpdateAndDeleteCaAudited(t *testing.T) {
 	f := newAPIFixture(t)
-	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: "letsencrypt"}})
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ca := res.(gen.CreateCa201JSONResponse)
 	if _, err := f.srv.UpdateCa(f.as("admin"), gen.UpdateCaRequestObject{OrgId: f.org, Id: ca.Id,
-		Body: &gen.CAInput{Name: "LE2", Preset: "letsencrypt"}}); err != nil {
+		Body: &gen.CAInput{Name: "LE2", Preset: ptr(gen.CAPresetCode("letsencrypt"))}}); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.auditCount(t, "ca.update"); n != 1 {
@@ -71,7 +71,7 @@ func TestUpdateAndDeleteCaAudited(t *testing.T) {
 
 func TestDeleteCaBlockedWhileReferenced(t *testing.T) {
 	f := newAPIFixture(t)
-	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: "letsencrypt"}})
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestDeleteCaBlockedWhileReferenced(t *testing.T) {
 
 func TestAcmeAccountLifecycleAudited(t *testing.T) {
 	f := newAPIFixture(t)
-	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: "letsencrypt"}})
+	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestGlobalIssuanceDefaultsValidated(t *testing.T) {
 		Body: &gen.SettingsValue{"caId": bogus}})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
 
-	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: "letsencrypt"}})
+	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
 	if err != nil {
 		t.Fatal(err)
 	}

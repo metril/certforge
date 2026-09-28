@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { DnsCredential } from '@/api/types';
-import { makeClient } from '@/test/fixtures';
+import { ca, makeClient } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, ISSUANCE_FIELDS, rulesSummary, type FieldCtx } from './issuanceFields';
 
@@ -96,7 +96,7 @@ describe('fullPayload (review fix round 1, #1/#3)', () => {
 describe('lookup fields disable Override when there is nothing to choose (review fix round 1, #4)', () => {
   it('caId', () => {
     expect(caField.disabledReason?.(ctx)).toBe('No CAs yet');
-    expect(caField.disabledReason?.({ ...ctx, cas: [{ id: 'ca-1', name: 'x', preset: 'letsencrypt', directoryUrl: '', resolvers: [] }] })).toBeUndefined();
+    expect(caField.disabledReason?.({ ...ctx, cas: [{ ...ca, name: 'x', directoryUrl: '' }] })).toBeUndefined();
   });
   it('accountId', () => {
     expect(accountField.disabledReason?.(ctx)).toBe('No accounts yet');

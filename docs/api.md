@@ -53,11 +53,16 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `PATCH, DELETE /orgs/{orgId}/sites/{id}` | rename, delete a site |
 | `GET, POST /orgs/{orgId}/cas` | list, add CAs |
 | `GET, PUT, DELETE /orgs/{orgId}/cas/{id}` | read, replace, delete a CA |
+| `POST /orgs/{orgId}/cas/{id}/rotate` | rotate a private CA's issuing key (arriving in Phase 5A; 501 today) |
 | `GET, POST /orgs/{orgId}/acme-accounts` | list, register accounts |
 | `GET, DELETE /orgs/{orgId}/acme-accounts/{id}` | read, delete an account |
 | `GET, PUT /orgs/{orgId}/issuance-defaults` | org defaults (null inherits global) |
 | `GET /orgs/{orgId}/issuance-defaults/effective` | resolved defaults with sources |
 | `GET, PUT /settings/issuance_defaults` | global defaults (settings section) |
+| `GET, PUT /settings/vault` | global Vault connection settings (settings section) |
+| `POST /settings/vault/test` | test Vault connectivity with the given settings (arriving in Phase 5A; 501 today) |
+| `GET /keys/status` | key-encryption key status (arriving in Phase 5A; 501 today) |
+| `POST /keys/rewrap` | start rewrapping secrets under the active KEK (arriving in Phase 5A; 501 today) |
 | `GET, POST /orgs/{orgId}/dns-credentials` | list, add DNS credentials |
 | `GET, PUT, DELETE /orgs/{orgId}/dns-credentials/{id}` | read, replace, delete a credential |
 | `POST /orgs/{orgId}/dns-credentials/{id}/test` | create and remove a test TXT record |
@@ -70,6 +75,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `POST /orgs/{orgId}/certificates/{id}/versions/upload` | add an uploaded version to an unmanaged certificate (409 if managed) |
 | `GET /orgs/{orgId}/certificates/{id}/versions/{vid}/download` | PEM or DER file, or zip; `key` needs `keys:export` |
 | `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/export` | PKCS#12 or JKS export (password in the body); needs `certs:read` and `keys:export` |
+| `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/revoke` | revoke an issued version for a private CA (arriving in Phase 5A; 501 today) |
 | `GET /orgs/{orgId}/certificates/{id}/attempts` | attempts with step timeline and log |
 | `GET /orgs/{orgId}/certificates/{id}/manual-dns` | TXT records waiting for an operator |
 | `POST /orgs/{orgId}/certificates/{id}/manual-dns/confirm` | resume the waiting attempt |
@@ -91,6 +97,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `POST /orgs/{orgId}/clients/{id}/reenroll` | return a client to pending with a fresh token |
 | `GET, POST /orgs/{orgId}/clients/{id}/grants` | list, create a grant |
 | `GET /orgs/{orgId}/clients/{id}/hook-runs` | a client's hook runs |
+| `GET, POST /orgs/{orgId}/deploy-targets/{id}/grants` | list, create a server-side grant on a deploy target (arriving in Phase 5A; 501 today) |
 | `PATCH, DELETE /orgs/{orgId}/grants/{id}` | change, delete a grant |
 | `POST /orgs/{orgId}/grants/{id}/redeploy` | force reinstall and report |
 | `GET /orgs/{orgId}/certificates/{id}/deployments` | a certificate's deployments across clients |
@@ -105,6 +112,8 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `POST /agents/ca/{id}/retire` | retire an agent CA |
 
 `GET /.well-known/acme-challenge/{token}` (not under `/api/v1`, on the main listener, unauthenticated) serves an http-01 key authorization as `text/plain` for a token this server is currently waiting on (`^[A-Za-z0-9_-]{1,128}$`), or 404 otherwise. It is not in the OpenAPI document.
+
+`GET /crl/{caId}.crl` and `GET /crl/{caId}/{issuerSerial}.crl` (not under `/api/v1`, on the main listener, unauthenticated; arriving in Phase 5A) will serve a localca CA's CRL as `application/pkix-crl` DER — the current issuer's at the first form, any issuer the CA has ever held (hex serial) at the second — 404 for an unknown id, a non-localca CA, or `crl: false`. Neither is in the OpenAPI document, matching the ACME challenge route above.
 
 ### Clients
 

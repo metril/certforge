@@ -162,7 +162,10 @@ export const presets: CAPreset[] = [
   { preset: 'zerossl', name: 'ZeroSSL', directoryUrl: 'https://acme.zerossl.com/v2/DV90', requiresEab: true },
   { preset: 'custom', name: 'Custom directory', directoryUrl: '', requiresEab: false },
 ];
-export const ca: CA = { id: 'ca-1', name: "Let's Encrypt", preset: 'letsencrypt', directoryUrl: presets[0]!.directoryUrl, resolvers: [] };
+export const ca: CA = {
+  id: 'ca-1', orgId: org.id, name: "Let's Encrypt", preset: 'letsencrypt', directoryUrl: presets[0]!.directoryUrl, trustBundlePem: '',
+  eabKid: '', hasEab: false, resolvers: [], shared: false, type: 'acme', config: {}, storedSecrets: [], createdAt: iso(-10), updatedAt: iso(-10),
+};
 export const account: AcmeAccount = { id: 'acc-1', caId: 'ca-1', email: 'ops@example.com', status: 'valid', registrationUri: 'https://acme-v02.api.letsencrypt.org/acme/acct/123456' };
 
 // Provider schemas (Task 8). `secret`, `serverPath`, `unsupported`, and
@@ -244,7 +247,7 @@ export function makeGrant(p: Partial<Grant> = {}): Grant {
   return {
     id: 'g-1', clientId: 'cl-1', clientName: 'web-1', certificateId: 'c-1', certificateName: 'www', delivery: 'push',
     layoutId: 'l-1', deployTargetId: null, hookIds: [], autoRemediate: false, deployment: makeDeployment(),
-    createdAt: iso(-2), updatedAt: iso(-1), ...p,
+    runsOn: 'agent', serverDeployment: null, createdAt: iso(-2), updatedAt: iso(-1), ...p,
   };
 }
 

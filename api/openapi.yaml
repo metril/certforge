@@ -399,6 +399,36 @@ paths:
         "415": {$ref: "#/components/responses/UnsupportedMediaType"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /settings/vault/test:
+    post:
+      operationId: testVaultSettings
+      tags: [settings]
+      summary: Test Vault connectivity
+      description: >-
+        Needs settings:write. Logs in to Vault (or OpenBao) with the given settings and reports
+        the outcome, using the same authMethod pairing and address/namespace rules as PUT
+        /settings/vault. A secret field (token, secretId) omitted or __unchanged__ uses the
+        currently stored value, unless address or namespace changed, which is 422 ("re-enter the
+        token"). Always 200 once the request is well-formed; ok false carries the error. Not
+        recorded in the audit log.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/VaultSettings"}
+      responses:
+        "200":
+          description: Test result.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VaultTestResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /settings/{section}:
     parameters:
       - name: section
@@ -452,6 +482,46 @@ paths:
         "413": {$ref: "#/components/responses/PayloadTooLarge"}
         "415": {$ref: "#/components/responses/UnsupportedMediaType"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /keys/status:
+    get:
+      operationId: getKeysStatus
+      tags: [settings]
+      summary: Read key-encryption key status
+      description: >-
+        Needs global settings:read. The active KEK, any previous KEKs still configured to decrypt
+        old data, whether a round-trip canary against the active KEK just succeeded, and the most
+        recent rewrap (running or finished; null if one has never run).
+      responses:
+        "200":
+          description: Current key status.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KeysStatus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /keys/rewrap:
+    post:
+      operationId: startRewrap
+      tags: [settings]
+      summary: Start rewrapping secrets under the active KEK
+      description: >-
+        Needs global settings:write. Starts, in the background, re-encrypting every secret under
+        the active KEK, table by table in order (settings; cas, covering eab_hmac and secret_cfg
+        together; acme_accounts; dns_provider_credentials; output_specs; agent_cas;
+        certificate_versions); 409 while a rewrap is already running. Recorded as
+        kek.rewrap_started (activeKekId) when it starts and kek.rewrap_finished (rewrapped,
+        remaining; system actor) when it completes.
+      responses:
+        "202":
+          description: Rewrap started.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KeysStatus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
   /meta/ca-presets:
     get:
@@ -570,6 +640,30 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/cas/{id}/rotate:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: rotateCa
+      tags: [issuers]
+      summary: Rotate a private CA's issuing key
+      description: >-
+        Needs cas:write. localca only, and only with a held root key: generates a new issuing
+        certificate under the same root and retires (never deletes) the current issuing key,
+        sealed until its certificate's notAfter — a CRL must be signed by its own issuer, so
+        leaves already issued under the retired key can still be revoked. 422 for any other CA
+        kind, or a localca CA without a held root key. Recorded as ca.rotate in the audit log with
+        newIssuerSerial and retiredSerial.
+      responses:
+        "200":
+          description: The CA with its new issuing certificate.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CA"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/acme-accounts:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
@@ -1195,6 +1289,41 @@ paths:
         "415": {$ref: "#/components/responses/UnsupportedMediaType"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/{id}/versions/{vid}/revoke:
+    parameters:
+      - {$ref: "#/components/parameters/OrgId"}
+      - {$ref: "#/components/parameters/Id"}
+      - {$ref: "#/components/parameters/VersionId"}
+    post:
+      operationId: revokeCertificateVersion
+      tags: [certificates]
+      summary: Revoke an issued version
+      description: >-
+        Needs certs:issue. Marks the version revoked with the given reason so it is listed on its
+        issuer's CRL from the next rebuild. Private CAs only: 422 "not supported for ACME CAs
+        yet" for a version issued by an acme CA, and 422 for a version that was imported or
+        uploaded rather than issued. 409 if the version is already revoked. Recorded as
+        certificate.revoked in the audit log with certificateId, versionId, serial and reason.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RevokeRequest"}
+      responses:
+        "200":
+          description: The revoked version.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateVersion"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates/{id}/manual-dns:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -1767,6 +1896,55 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/deploy-targets/{id}/grants:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: listTargetGrants
+      tags: [clients]
+      summary: List a deploy target's server-side grants
+      description: Needs clients:read. Live grants on this target (runsOn server), sorted by certificate name.
+      responses:
+        "200":
+          description: Grants.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Grants.
+                items: {$ref: "#/components/schemas/Grant"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createServerGrant
+      tags: [clients]
+      summary: Grant a certificate to a server-side deploy target
+      description: >-
+        Needs clients:write; also keys:export when the target's config has includeKey true. 422
+        when the target's runsOn is agent (an agent target takes grants through POST
+        /orgs/{orgId}/clients/{id}/grants instead). One grant per certificate per target (409).
+        Recorded as grant.create in the audit log with runsOn: server and includeKey.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ServerGrantInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Grant"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/hooks:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
@@ -2544,6 +2722,80 @@ components:
           type: array
           description: Names of the section's secret properties that currently hold a value. Secret values are never returned; send "__unchanged__" to keep one, "" to clear it.
           items: {type: string}
+    VaultSettings:
+      type: object
+      description: The vault global settings section — how CertForge reaches Vault (or OpenBao); served by GET/PUT /settings/vault.
+      properties:
+        address: {type: string, format: uri, description: "Vault's base URL (http or https). Required once any other field below is set."}
+        namespace: {type: string, maxLength: 128, description: Vault Enterprise namespace; empty for open-source Vault or OpenBao.}
+        authMethod: {type: string, enum: [token, approle], default: token, description: How CertForge logs in to Vault.}
+        token: {type: string, writeOnly: true, description: "Vault token, used when authMethod is token. Secret: __unchanged__ or omitted keeps the stored value, empty string clears it."}
+        roleId: {type: string, maxLength: 128, description: AppRole role id, used when authMethod is approle.}
+        secretId: {type: string, writeOnly: true, description: "AppRole secret id, used when authMethod is approle. Secret: __unchanged__ or omitted keeps the stored value, empty string clears it."}
+        caPem: {type: string, maxLength: 65536, description: Additional PEM-encoded certificates trusted for Vault's TLS, appended to the system root pool.}
+        timeoutSeconds: {type: integer, minimum: 1, maximum: 60, default: 10, description: Per-request timeout for calls to Vault.}
+    VaultTestResult:
+      type: object
+      description: Result of testVaultSettings.
+      required: [ok]
+      properties:
+        ok: {type: boolean, description: Vault answered and login succeeded.}
+        tokenTtlSeconds: {type: integer, description: Remaining lifetime of the resulting token, in seconds.}
+        policies: {type: array, items: {type: string}, description: Policies attached to the resulting token.}
+        version: {type: string, description: Vault's reported server version.}
+        error: {type: string, description: Why the test failed, with any secret redacted.}
+    KekKind:
+      type: string
+      enum: [static, vault-transit]
+      description: How the key-encryption key is held — a static configured key, or Vault's Transit secrets engine.
+    KekRef:
+      type: object
+      description: One key-encryption key's identity, without its key material.
+      required: [kind, kekId]
+      properties:
+        kind: {$ref: "#/components/schemas/KekKind"}
+        kekId: {type: string, description: Opaque id identifying this KEK, stable across restarts.}
+    RewrapTable:
+      type: string
+      enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions]
+      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together.
+    RewrapTableStatus:
+      type: object
+      description: Rewrap progress for one table.
+      required: [table, scanned, rewrapped, remaining]
+      properties:
+        table: {$ref: "#/components/schemas/RewrapTable"}
+        scanned: {type: integer, format: int64, description: Rows scanned so far.}
+        rewrapped: {type: integer, format: int64, description: Rows successfully re-encrypted under the active KEK.}
+        remaining: {type: integer, format: int64, description: Rows of this table not yet rewrapped.}
+    RewrapStatus:
+      type: object
+      description: A rewrap run's progress, from startRewrap to completion.
+      required: [running, startedAt, finishedAt, activeKekId, previousKekIds, tables, remaining, error]
+      properties:
+        running: {type: boolean, description: A rewrap is in progress now.}
+        startedAt: {type: string, format: date-time, description: When this rewrap started.}
+        finishedAt: {type: string, format: date-time, nullable: true, description: When it finished; null while running.}
+        activeKekId: {type: string, description: KEK every row is being rewrapped to.}
+        previousKekIds: {type: array, items: {type: string}, description: KEKs rows may still be wrapped under.}
+        tables: {type: array, items: {$ref: "#/components/schemas/RewrapTableStatus"}, description: Progress per table, in visit order.}
+        remaining: {type: integer, format: int64, description: Total rows remaining across every table.}
+        error: {type: string, nullable: true, description: Why the rewrap stopped; null while running or after a clean finish.}
+    KeysStatus:
+      type: object
+      description: The server's key-encryption key and any rewrap in progress.
+      required: [kind, kekId, previous, canaryOk, rewrap]
+      properties:
+        kind: {$ref: "#/components/schemas/KekKind"}
+        kekId: {type: string, description: Opaque id of the active KEK.}
+        vaultAddress: {type: string, format: uri, description: Vault address in use; present only when kind is vault-transit.}
+        previous: {type: array, items: {$ref: "#/components/schemas/KekRef"}, description: Previous KEKs still configured to decrypt old data.}
+        canaryOk: {type: boolean, description: A round-trip encrypt/decrypt against the active KEK just succeeded.}
+        rewrap:
+          description: The most recent rewrap, running or finished; null if one has never run.
+          allOf:
+            - $ref: "#/components/schemas/RewrapStatus"
+          nullable: true
     SetupStatus:
       type: object
       description: First-run state.
@@ -2590,41 +2842,107 @@ components:
         name: {type: string, description: Display name.}
         directoryUrl: {type: string, description: ACME directory URL; empty for custom.}
         requiresEab: {type: boolean, description: The CA needs External Account Binding.}
+    CaType:
+      type: string
+      enum: [acme, localca, vaultpki]
+      description: A CA's kind — an external ACME directory, a CertForge-managed private CA, or one backed by Vault's PKI secrets engine.
+    LocalCaConfig:
+      type: object
+      description: Configuration for a localca CA (Deviations R4). Everything here is public except importKeyPem.
+      required: [subject, keyType, rootValidityYears, issuingValidityYears, maxLeafDays, crl]
+      properties:
+        subject:
+          type: object
+          description: Root and issuing certificate subject.
+          required: [commonName]
+          properties:
+            commonName: {type: string, minLength: 1, maxLength: 64, description: Common name of the root and issuing certificates.}
+            organization: {type: string, maxLength: 64, description: Organization name.}
+            country: {type: string, pattern: "^[A-Z]{2}$", description: ISO 3166-1 alpha-2 country code.}
+        keyType:
+          description: "Key algorithm for the root and issuing keys: ec256, ec384, rsa2048 or rsa4096 (Deviations R4 reuses KeyType instead of a separate ecdsa-p256-style enum)."
+          allOf:
+            - $ref: "#/components/schemas/KeyType"
+          default: ec256
+        rootValidityYears: {type: integer, minimum: 1, maximum: 30, default: 10, description: Root certificate lifetime in years. Immutable after create.}
+        issuingValidityYears: {type: integer, minimum: 1, maximum: 10, default: 3, description: Issuing certificate lifetime in years. Immutable after create.}
+        maxLeafDays: {type: integer, minimum: 1, maximum: 825, default: 397, description: Longest validity this CA will issue a leaf for. Editable after create.}
+        crl: {type: boolean, default: true, description: "Publish a CRL for this CA at GET /crl/{caId}.crl. Editable after create."}
+        importPem: {type: string, description: "Create only, immutable after: PEM to import instead of generating a root — the issuing certificate followed by its chain (the last certificate is the trust anchor)."}
+        importKeyPem: {type: string, writeOnly: true, description: "Create only, immutable after: PEM private key for importPem's issuing certificate. Secret; never returned."}
+    VaultPkiConfig:
+      type: object
+      description: Configuration for a vaultpki CA, backed by Vault's PKI secrets engine.
+      required: [mount, role]
+      properties:
+        mount: {type: string, pattern: "^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$", default: pki, description: Vault PKI secrets engine mount path.}
+        role: {type: string, minLength: 1, maxLength: 128, description: Vault PKI role to sign leaves against.}
+        ttl: {type: string, example: 2160h, description: "Go duration string for issued leaf validity, 1h to 19800h (825 days); Vault's own role or mount ceiling still applies."}
     CA:
       type: object
-      description: An ACME certificate authority.
-      required: [id, name, preset, directoryUrl, resolvers]
+      description: A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for.
+      required: [id, orgId, name, preset, directoryUrl, trustBundlePem, eabKid, hasEab, resolvers, shared, type, config, storedSecrets, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: CA id.}
         orgId: {type: string, format: uuid, description: Owning org.}
         name: {type: string, description: Unique name in the org.}
         preset:
-          description: Preset code.
+          description: Preset code; meaningless for a private CA.
           allOf:
             - $ref: "#/components/schemas/CAPresetCode"
-        directoryUrl: {type: string, description: ACME directory URL.}
-        trustBundlePem: {type: string, description: Extra PEM roots for a private ACME server.}
+        directoryUrl: {type: string, description: ACME directory URL; empty for a private CA.}
+        trustBundlePem:
+          type: string
+          description: >-
+            Extra PEM roots for a private ACME server (acme), or the CA's own trust anchor for a
+            private kind: for localca the root PEM (generated), or for an import the last
+            certificate of importPem; for vaultpki the CA certificate read from Vault at create.
         eabKid: {type: string, description: EAB key id; empty when unused.}
         hasEab: {type: boolean, description: An EAB HMAC is stored (it is never returned).}
         resolvers: {type: array, items: {type: string}, description: DNS resolvers (host or host:port) for propagation checks.}
         shared: {type: boolean, description: Reserved for Phase 2 global CAs; false in Phase 1.}
+        type: {$ref: "#/components/schemas/CaType"}
+        config:
+          type: object
+          additionalProperties: true
+          description: >-
+            Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the
+            read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter,
+            serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys
+            retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki.
+        storedSecrets: {type: array, items: {type: string}, description: "Secret config fields held for this CA, for example importKeyPem."}
+        notBefore: {type: string, format: date-time, description: Start of validity of the issuing certificate (localca) or the Vault CA (vaultpki); absent for acme.}
+        notAfter: {type: string, format: date-time, description: End of validity of the issuing certificate (localca) or the Vault CA (vaultpki); absent for acme.}
+        crlUrl: {type: string, format: uri, description: "This CA's current CRL, at GET /crl/{caId}.crl; present only for a localca CA with crl enabled and general.baseUrl set."}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
     CAInput:
       type: object
       description: Fields to create or replace a CA.
-      required: [name, preset]
+      required: [name]
       properties:
         name: {type: string, description: Unique name in the org.}
+        type:
+          description: 'CA kind, default acme. Immutable after create (422 "type cannot change").'
+          allOf:
+            - $ref: "#/components/schemas/CaType"
+          default: acme
         preset:
-          description: Preset code.
+          description: Preset code; required for acme, ignored for a private kind.
           allOf:
             - $ref: "#/components/schemas/CAPresetCode"
-        directoryUrl: {type: string, description: Required for custom; defaults to the preset URL.}
-        trustBundlePem: {type: string, description: Extra PEM roots.}
-        eabKid: {type: string, description: EAB key id.}
-        eabHmac: {type: string, nullable: true, writeOnly: true, description: "EAB HMAC key (base64url). Write-only: on update null or __unchanged__ keeps it, empty string removes it."}
-        resolvers: {type: array, items: {type: string}, description: DNS resolvers for propagation checks.}
+        directoryUrl: {type: string, description: Required for a custom acme preset; defaults to the preset URL. Ignored for a private kind.}
+        trustBundlePem: {type: string, description: Extra PEM roots; acme only.}
+        eabKid: {type: string, description: "EAB key id; acme only, 422 on a private kind."}
+        eabHmac: {type: string, nullable: true, writeOnly: true, description: "EAB HMAC key (base64url); acme only, 422 on a private kind. Write-only: on update null or __unchanged__ keeps it, empty string removes it."}
+        resolvers: {type: array, items: {type: string}, description: DNS resolvers for propagation checks; acme only.}
+        config:
+          type: object
+          additionalProperties: true
+          description: >-
+            Kind-specific configuration: LocalCaConfig for localca, VaultPkiConfig for vaultpki;
+            omitted or {} for acme. For localca, subject, keyType, the validity years and the
+            import fields are immutable after create (422); maxLeafDays and crl stay editable.
     AcmeAccount:
       type: object
       description: A registered ACME account; its key never leaves the server.
@@ -2865,6 +3183,20 @@ components:
         start: {type: string, format: date-time, description: Earliest suggested renewal time.}
         end: {type: string, format: date-time, description: Latest suggested renewal time.}
         checkedAt: {type: string, format: date-time, description: When this window was last fetched from the CA.}
+    RevocationReason:
+      type: string
+      enum: [unspecified, keyCompromise, caCompromise, affiliationChanged, superseded, cessationOfOperation]
+      description: RFC 5280 CRL revocation reason code.
+    RevokeRequest:
+      type: object
+      description: Reason to record when revoking a certificate version.
+      required: [reason]
+      properties:
+        reason:
+          description: Reason for the revocation.
+          allOf:
+            - $ref: "#/components/schemas/RevocationReason"
+          default: unspecified
     CertificateVersion:
       type: object
       description: One issued certificate.
@@ -3395,12 +3727,12 @@ components:
         items: {type: array, items: {$ref: "#/components/schemas/Layout"}, description: Layouts sorted by name.}
     DeployTargetType:
       type: string
-      enum: [traefik]
-      description: Deploy target type; its config schema is in GET /meta/schemas under deployTargets.
+      enum: [traefik, vault-kv]
+      description: Deploy target type; its config schema is in GET /meta/schemas under deployTargets. vault-kv runs on the server rather than an agent.
     RunsOn:
       type: string
-      enum: [agent]
-      description: Where the target runs; server-side targets arrive in later phases.
+      enum: [agent, server]
+      description: Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
     DeployTarget:
       type: object
       description: A deploy target the agent drives after writing a grant's files.
@@ -3491,12 +3823,12 @@ components:
         updatedAt: {type: string, format: date-time, description: Last change.}
     Grant:
       type: object
-      description: A certificate granted to one client, with how it is delivered.
-      required: [id, clientId, clientName, certificateId, certificateName, delivery, layoutId, deployTargetId, hookIds, autoRemediate, deployment, createdAt, updatedAt]
+      description: A certificate granted to a client (runsOn agent) or a server-side deploy target (runsOn server), with how it is delivered.
+      required: [id, clientId, clientName, certificateId, certificateName, delivery, layoutId, deployTargetId, hookIds, autoRemediate, deployment, runsOn, serverDeployment, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: Grant id.}
-        clientId: {type: string, format: uuid, description: Client.}
-        clientName: {type: string, description: Client name.}
+        clientId: {type: string, format: uuid, nullable: true, description: Client; null for a server grant.}
+        clientName: {type: string, nullable: true, description: Client name; null for a server grant.}
         certificateId: {type: string, format: uuid, description: Certificate.}
         certificateName: {type: string, description: Certificate name.}
         delivery: {$ref: "#/components/schemas/GrantDelivery"}
@@ -3504,7 +3836,17 @@ components:
         deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target; null for files only.}
         hookIds: {type: array, items: {type: string, format: uuid}, description: Hooks in run order.}
         autoRemediate: {type: boolean, description: On drift, bump the revision so the agent reinstalls.}
-        deployment: {$ref: "#/components/schemas/Deployment"}
+        deployment:
+          description: Agent-side deployment state; null for a server grant (see serverDeployment).
+          allOf:
+            - $ref: "#/components/schemas/Deployment"
+          nullable: true
+        runsOn: {$ref: "#/components/schemas/RunsOn"}
+        serverDeployment:
+          description: Server-side deployment state; null for an agent grant (see deployment).
+          allOf:
+            - $ref: "#/components/schemas/ServerDeployment"
+          nullable: true
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
     GrantInput:
@@ -3534,6 +3876,27 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Grant"}, description: Grants sorted by certificate name.}
+    ServerGrantInput:
+      type: object
+      description: A new grant on a server-side deploy target.
+      required: [certificateId]
+      properties:
+        certificateId: {type: string, format: uuid, description: Certificate in the target's org.}
+        layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org, for a target that renders files from a layout.}
+    ServerDeploymentStatus:
+      type: string
+      enum: [pending, deployed, failed]
+      description: A server grant's deploy state.
+    ServerDeployment:
+      type: object
+      description: A server grant's deployment state, in place of the agent-side Deployment.
+      required: [status, versionId, lastError, deployedAt, updatedAt]
+      properties:
+        status: {$ref: "#/components/schemas/ServerDeploymentStatus"}
+        versionId: {type: string, format: uuid, nullable: true, description: Certificate version deployed or being deployed; null until the certificate is first issued.}
+        lastError: {type: string, nullable: true, maxLength: 1000, description: The last deploy error, scrubbed of any secret; null after a clean deploy.}
+        deployedAt: {type: string, format: date-time, nullable: true, description: When status last became deployed.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
     CertificateDeployment:
       type: object
       description: One client's deployment of a certificate.

@@ -126,6 +126,9 @@ export function CaSheet({ orgId, open, ca, onOpenChange }: Props) {
     // the stored HMAC (preflight A18).
     const body: CAInput = {
       name: form.name.trim(),
+      // This sheet only ever creates/edits acme CAs; private CA kinds arrive
+      // with their own UI in 5B.
+      type: 'acme',
       preset: form.preset,
       directoryUrl: form.directoryUrl.trim(),
       trustBundlePem: custom && form.trustBundlePem.trim() ? form.trustBundlePem.trim() : undefined,

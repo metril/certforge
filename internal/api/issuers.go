@@ -10,14 +10,25 @@ import (
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
 )
 
+// caOut maps a stored CA to its API shape. StoredSecrets is always empty and
+// notBefore/notAfter/crlUrl always absent for now: only acme CAs can be
+// created until Tasks 7 and 8 build the localca and vaultpki signers.
 func caOut(c issuance.CA) gen.CA {
-	return gen.CA{Id: c.ID, OrgId: ptr(c.OrgID), Name: c.Name, Preset: gen.CAPresetCode(c.Preset), DirectoryUrl: c.DirectoryURL,
-		TrustBundlePem: ptr(c.TrustBundlePEM), EabKid: ptr(c.EABKid), HasEab: ptr(c.HasEAB), Resolvers: c.Resolvers,
-		Shared: ptr(c.Shared), CreatedAt: ptr(c.CreatedAt), UpdatedAt: ptr(c.UpdatedAt)}
+	cfg := c.Config
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+	return gen.CA{Id: c.ID, OrgId: c.OrgID, Name: c.Name, Preset: gen.CAPresetCode(c.Preset), DirectoryUrl: c.DirectoryURL,
+		TrustBundlePem: c.TrustBundlePEM, EabKid: c.EABKid, HasEab: c.HasEAB, Resolvers: c.Resolvers,
+		Shared: c.Shared, Type: gen.CaType(c.Type), Config: cfg, StoredSecrets: []string{},
+		NotBefore: c.NotBefore, NotAfter: c.NotAfter, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
 }
 
 func caIn(b *gen.CAInput) issuance.CAInput {
-	in := issuance.CAInput{Name: b.Name, Preset: string(b.Preset), EABHmac: b.EabHmac}
+	in := issuance.CAInput{Name: b.Name, EABHmac: b.EabHmac}
+	if b.Preset != nil {
+		in.Preset = string(*b.Preset)
+	}
 	if b.DirectoryUrl != nil {
 		in.DirectoryURL = *b.DirectoryUrl
 	}
@@ -29,6 +40,12 @@ func caIn(b *gen.CAInput) issuance.CAInput {
 	}
 	if b.Resolvers != nil {
 		in.Resolvers = *b.Resolvers
+	}
+	if b.Type != nil {
+		in.Type = string(*b.Type)
+	}
+	if b.Config != nil {
+		in.Config = *b.Config
 	}
 	return in
 }

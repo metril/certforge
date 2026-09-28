@@ -61,7 +61,7 @@ it('adds a CA from a preset card', async () => {
   expect(within(sheet).getByLabelText('Name')).toHaveValue("Let's Encrypt (staging)");
   await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
   await waitFor(() =>
-    expect(posted).toEqual({ name: "Let's Encrypt (staging)", preset: 'letsencrypt-staging', directoryUrl: presets[1]!.directoryUrl, resolvers: [] }),
+    expect(posted).toEqual({ name: "Let's Encrypt (staging)", type: 'acme', preset: 'letsencrypt-staging', directoryUrl: presets[1]!.directoryUrl, resolvers: [] }),
   );
   await waitFor(() => expect(router.state.location.search).toEqual({}));
 });

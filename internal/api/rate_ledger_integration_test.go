@@ -16,7 +16,7 @@ import (
 func TestGetRateLedgerAPI(t *testing.T) {
 	f := newAPIFixture(t)
 	ctx := context.Background()
-	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: "letsencrypt"}})
+	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestGetRateLedgerAPI(t *testing.T) {
 func TestGetRateLedgerHidesOtherOrgDomains(t *testing.T) {
 	f := newAPIFixture(t)
 	ctx := context.Background()
-	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: "letsencrypt"}})
+	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
 	if err != nil {
 		t.Fatal(err)
 	}

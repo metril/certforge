@@ -261,8 +261,8 @@ Phase 5 is split into two plans: 5A vault and private CA backend (schema, Vault 
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | Schema, CA kinds, vault section | done | pending |
-| 2 | OpenAPI contract | planned | – |
+| 1 | Schema, CA kinds, vault section | done | beabc09 |
+| 2 | OpenAPI contract | done | pending |
 | 3 | Vault client | planned | – |
 | 4 | Transit KEK and root secret | planned | – |
 | 5 | Multi-wrapper envelope, rewrap, keys API | planned | – |
@@ -428,6 +428,7 @@ Phase 5 is split into two plans: 5A vault and private CA backend (schema, Vault 
 - 5A: health strip (R7) — the 5A `/readyz` contract is unchanged; 5B extends `HealthStrip` to also show `degraded` checks, since a degraded vault check leaves the server ready.
 - 5A: probe (R6) — dropped: nothing would call it and `testVaultSettings` already covers Vault reachability; `deploy.Target` loses `Probe` and its only helper, `KVDeleteMetadata`, is not built.
 - 5A: verified (R8) — lego v4.24.0's transip and hyperone providers read their key/passport files eagerly at construction (`gotransip.NewClient`, `hyperone.LoadPassportFile`), so `Build` removes the temp dir right after constructing the provider, not after use.
+- 5A Task 2: `CA.config`'s per-kind read-only fields (localca's `imported`, `issuingPem`, `retired`, `revokedCount`) are documented in the schema's prose rather than modeled as extra properties, since `config` stays a generic object (matching `DeployTarget.config`); `LocalCaConfig`/`VaultPkiConfig` describe the writable fields only. The two new grant operations (`createServerGrant`, `listTargetGrants`) are tagged `clients`, like every other Grant operation, despite nesting under `/orgs/{orgId}/deploy-targets/{id}`. All seven new operations 501 from `internal/api/phase5_stubs.go` until their owning task lands; making `CAInput.preset` optional (required only for acme) turned `gen.CAInput.Preset` into `*CAPresetCode`, so every existing test constructing one now wraps the value in `ptr(gen.CAPresetCode(...))`.
 
 ## Known gaps
 

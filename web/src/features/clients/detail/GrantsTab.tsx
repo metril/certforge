@@ -102,7 +102,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   if (grants.length === 0) return <EmptyState message="No certificates granted yet.">{emptyAction}</EmptyState>;
 
   const toggle = (g: Grant) => onOpen(open === g.id ? undefined : g.id);
-  const attention = (g: Grant) => g.deployment.state === 'drift' || g.deployment.state === 'failed';
+  const attention = (g: Grant) => g.deployment?.state === 'drift' || g.deployment?.state === 'failed';
   const startRemoving = (g: Grant) => {
     setForce(false);
     setRemoving(g);
@@ -153,9 +153,9 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
 
   const detail = (g: Grant) => (
     <section id={`grant-${g.id}`} aria-label={`Deployment of ${g.certificateName}`} className="grid gap-3 py-2">
-      <FileCompare deployment={g.deployment} name={g.certificateName} />
+      <FileCompare deployment={g.deployment!} name={g.certificateName} />
       <div className="flex flex-wrap items-center gap-3 text-xs text-ink-muted">
-        {g.deployment.reportedAt && <span>Reported {relTime(g.deployment.reportedAt)}</span>}
+        {g.deployment?.reportedAt && <span>Reported {relTime(g.deployment.reportedAt)}</span>}
         <ClientWriteTip canWrite={canWrite} revoked={client.status === 'revoked'}>
           <Button size="sm" variant={attention(g) ? 'default' : 'outline'} disabled={!writable || redeploying(g)} onClick={() => redeploy.mutate(g.id)}>
             <RotateCw className="size-3.5" aria-hidden />
@@ -207,7 +207,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
                   <TableCell className="py-1">{g.autoRemediate ? 'On' : 'Off'}</TableCell>
                   <TableCell className="py-1">
                     <span className="inline-flex items-center gap-1">
-                      <DeploymentChip state={g.deployment.state} withHelp />
+                      <DeploymentChip state={g.deployment!.state} withHelp />
                       {toggleButton(g)}
                     </span>
                   </TableCell>
@@ -230,7 +230,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
             <li key={g.id} className="grid gap-2 rounded-md border border-border bg-panel p-3">
               <div className="flex items-center justify-between gap-2">
                 {certLink(g)}
-                <DeploymentChip state={g.deployment.state} withHelp />
+                <DeploymentChip state={g.deployment!.state} withHelp />
               </div>
               <span className="truncate text-xs text-ink-muted">
                 {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)} · {g.hookIds.length || '–'} hooks · Auto-remediate {g.autoRemediate ? 'On' : 'Off'}

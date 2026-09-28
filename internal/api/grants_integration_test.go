@@ -1154,3 +1154,46 @@ func TestGrantKeylessRace(t *testing.T) {
 		}
 	}
 }
+
+// Task 2: CA.type/config/storedSecrets and Grant.runsOn/serverDeployment are
+// now mapped for real. Only acme CAs and client (agent) grants exist until
+// Tasks 7-11 build private CAs and server grants, so an acme CA carries no
+// CA-material dates or CRL URL, and every grant here is runsOn: agent with
+// serverDeployment nil.
+func TestCATypeMapped(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+
+	caRes, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{Name: "LE", Preset: ptr(gen.CAPresetCode("letsencrypt"))}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := caRes.(gen.CreateCa201JSONResponse)
+	got, err := f.srv.GetCa(f.as("viewer"), gen.GetCaRequestObject{OrgId: f.org, Id: created.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := got.(gen.GetCa200JSONResponse)
+	if ca.Type != gen.CaType("acme") || len(ca.Config) != 0 || len(ca.StoredSecrets) != 0 {
+		t.Fatalf("ca = %+v", ca)
+	}
+	if ca.NotBefore != nil || ca.NotAfter != nil || ca.CrlUrl != nil {
+		t.Fatalf("acme CA must carry no CA-material dates or CRL URL: %+v", ca)
+	}
+
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	grantRes, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := grantRes.(gen.CreateGrant201JSONResponse)
+	if string(g.RunsOn) != "agent" || g.ServerDeployment != nil {
+		t.Fatalf("grant runsOn/serverDeployment = %+v", g)
+	}
+	if g.ClientId == nil || *g.ClientId != c.ID || g.ClientName == nil || *g.ClientName != "web-1" || g.Deployment == nil {
+		t.Fatalf("grant client/deployment = %+v", g)
+	}
+}

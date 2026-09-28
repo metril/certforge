@@ -141,3 +141,49 @@ func TestPhase4OperationsDeclared(t *testing.T) {
 		t.Error("CertificateVersion.required missing hasKey")
 	}
 }
+
+func TestPhase5OperationsDeclared(t *testing.T) {
+	sw, err := gen.GetSwagger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, id := range []string{"rotateCa", "revokeCertificateVersion", "getKeysStatus", "startRewrap",
+		"testVaultSettings", "createServerGrant", "listTargetGrants"} {
+		want[id] = false
+	}
+	// See TestPhase3OperationsDeclared for why the operationId is lower-cased
+	// back before comparing against api/openapi.yaml.
+	for _, item := range sw.Paths.Map() {
+		for _, op := range item.Operations() {
+			id := op.OperationID
+			if id != "" {
+				id = strings.ToLower(id[:1]) + id[1:]
+			}
+			if _, ok := want[id]; ok {
+				want[id] = true
+			}
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Errorf("operation %s missing", id)
+		}
+	}
+	if got := len(sw.Components.Schemas["CaType"].Value.Enum); got != 3 {
+		t.Errorf("CaType has %d values, want 3", got)
+	}
+	if !slices.Contains(sw.Components.Schemas["RunsOn"].Value.Enum, "server") {
+		t.Error("RunsOn missing server")
+	}
+	for _, f := range []string{"type", "config", "storedSecrets"} {
+		if !slices.Contains(sw.Components.Schemas["CA"].Value.Required, f) {
+			t.Errorf("CA.required missing %s", f)
+		}
+	}
+	for _, f := range []string{"runsOn", "serverDeployment"} {
+		if !slices.Contains(sw.Components.Schemas["Grant"].Value.Required, f) {
+			t.Errorf("Grant.required missing %s", f)
+		}
+	}
+}

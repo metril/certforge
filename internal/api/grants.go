@@ -36,14 +36,21 @@ func deploymentOut(state string, versionID *uuid.UUID, expected, installed []byt
 	return d, nil
 }
 
+// grantOut maps a GrantViews row to its API shape. Every grant returned by
+// this query is a client grant today (server grants, and their
+// runsOn/serverDeployment, arrive in Task 11): clientId and clientName are
+// always set, deployment is always present, and runsOn is always agent with
+// serverDeployment nil.
 func grantOut(r sqlcgen.GrantViewsRow) (gen.Grant, error) {
 	d, err := deploymentOut(r.State, r.VersionID, r.Expected, r.Installed, r.Error, r.ReportedAt, r.DeploymentUpdatedAt)
 	if err != nil {
 		return gen.Grant{}, err
 	}
-	return gen.Grant{Id: r.ID, ClientId: *r.ClientID, ClientName: r.ClientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
+	clientName := r.ClientName
+	return gen.Grant{Id: r.ID, ClientId: r.ClientID, ClientName: &clientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
 		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, HookIds: r.HookIds,
-		AutoRemediate: r.AutoRemediate, Deployment: d, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
+		AutoRemediate: r.AutoRemediate, Deployment: &d, RunsOn: gen.RunsOn("agent"), ServerDeployment: nil,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
 
 func (s *Server) grantByID(ctx context.Context, orgID, id uuid.UUID) (gen.Grant, error) {

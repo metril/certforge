@@ -202,3 +202,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Settings edit the CAA check and local rate limits.
 - The import preview table's Name and Names columns overflowed into the Expires column in a real browser (a `table-fixed` column with no assigned width and a `truncate` span missing `block`, caught only by Playwright); columns now have explicit widths and truncate correctly.
 - Schema for private CA kinds, server-side deploy targets and the Vault settings section.
+- OpenAPI contract for private CAs, KEK rotation, Vault settings and server-side grants.
