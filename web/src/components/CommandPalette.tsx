@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { FileText, Plus, RotateCw, Server, ShieldCheck } from 'lucide-react';
+import { FileText, FolderInput, Plus, RotateCw, Server, ShieldCheck, Upload } from 'lucide-react';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -186,6 +186,26 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               >
                 <Plus className="size-4" aria-hidden />
                 New certificate
+              </CommandItem>
+            )}
+            {canCreate && (
+              <CommandItem
+                value="action:import-certificates"
+                keywords={['import', 'acme.sh', 'certbot', 'migrate']}
+                onSelect={() => run(() => void navigate({ to: '/o/$org/certificates/import', params: { org: org.slug } }))}
+              >
+                <FolderInput className="size-4" aria-hidden />
+                Import certificates
+              </CommandItem>
+            )}
+            {canCreate && (
+              <CommandItem
+                value="action:upload-certificate"
+                keywords={['upload', 'pem', 'pkcs12', 'pfx', 'external']}
+                onSelect={() => run(() => void navigate({ to: '/o/$org/certificates/upload', params: { org: org.slug } }))}
+              >
+                <Upload className="size-4" aria-hidden />
+                Upload certificate
               </CommandItem>
             )}
             {canWriteClients && (

@@ -121,6 +121,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Attempts explain CAA and rate-limit failures and show rate-limit usage.
 - Upload PEM or PKCS#12 certificates from the web UI.
 - Import certificates from acme.sh or certbot archives with a preview.
+- Command palette imports and uploads certificates; Playwright covers exports, uploads and imports.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.
@@ -198,3 +199,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Certificate detail marks externally managed certificates, uploads new versions and shows the ARI window.
 - Layout editor supports DER, PKCS#12 and JKS files, a stored password and extra certificates.
 - Settings edit the CAA check and local rate limits.
+- The import preview table's Name and Names columns overflowed into the Expires column in a real browser (a `table-fixed` column with no assigned width and a `truncate` span missing `block`, caught only by Playwright); columns now have explicit widths and truncate correctly.

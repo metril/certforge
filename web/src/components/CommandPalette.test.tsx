@@ -255,3 +255,54 @@ it('hides Enrol client and Delivery pages without the permissions', async () => 
   expect(within(dialog).queryByText('Enrol client')).not.toBeInTheDocument();
   expect(within(dialog).queryByText('Delivery: Deploy targets')).not.toBeInTheDocument();
 });
+
+// Task 10: Import certificates and Upload certificate, next to New
+// certificate, for the same canCreate writers (certs:write in the current
+// org). Each is its own dedicated route, not filtered behind a search term
+// the way Renew <name> is.
+it('offers Import certificates and Upload certificate to writers, each navigating to its own route', async () => {
+  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })));
+  const { router, user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await user.click(await within(dialog).findByText('Import certificates'));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/import'));
+
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog2 = await screen.findByRole('dialog');
+  await user.click(await within(dialog2).findByText('Upload certificate'));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/upload'));
+});
+
+it('hides Import certificates and Upload certificate for a viewer', async () => {
+  server.use(
+    // First match wins, so this /auth/me override must be listed before
+    // certificateHandlers' own (via authHandlers).
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))),
+    ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByPlaceholderText('www.example.com');
+  expect(within(dialog).queryByText('Import certificates')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Upload certificate')).not.toBeInTheDocument();
+});
+
+it('hides Import certificates and Upload certificate under All orgs', async () => {
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'admin', orgId: null }], [org, org2]))),
+    http.get(url('/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  );
+  const { user } = renderRoute('/o/all/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByPlaceholderText('www.example.com');
+  expect(within(dialog).queryByText('Import certificates')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Upload certificate')).not.toBeInTheDocument();
+});

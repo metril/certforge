@@ -31,36 +31,52 @@ function NameCell({ item, orgSlug }: { item: ImportItem; orgSlug: string }) {
       <Link
         to="/o/$org/certificates/$id/$tab"
         params={{ org: orgSlug, id: item.certificateId, tab: 'overview' }}
-        className="truncate font-mono text-xs font-semibold hover:underline"
+        className="block truncate font-mono text-xs font-semibold hover:underline"
       >
         {item.name}
       </Link>
     );
   }
-  return <span className="truncate font-mono text-xs">{item.name}</span>;
+  return <span className="block truncate font-mono text-xs">{item.name}</span>;
 }
 
 const col = createColumnHelper<Row>();
 
+// Task 10 fix: every text cell needs `block` on its `truncate` span (an
+// inline element's overflow-hidden doesn't clip against the table's own
+// `table-fixed` column width, so a long acme.sh/certbot name overflowed
+// into the next column instead of ellipsizing — caught by Playwright
+// against a real browser, not jsdom, the same class of bug the CSP
+// validator fix (3B) also only surfaced in a real browser) plus a
+// `meta.className` width on every column so `table-fixed` has something
+// to divide, the same convention `certColumns` (the certificates list)
+// already uses.
 function columns(orgSlug: string) {
   return [
-    col.accessor('name', { header: 'Name', cell: ({ row }) => <NameCell item={row.original} orgSlug={orgSlug} /> }),
+    col.accessor('name', {
+      header: 'Name',
+      meta: { className: 'w-36' },
+      cell: ({ row }) => <NameCell item={row.original} orgSlug={orgSlug} />,
+    }),
     col.accessor('names', {
       header: 'Names',
+      meta: { className: 'w-36' },
       cell: ({ getValue }) => (
-        <span className="truncate font-mono text-xs" title={getValue().join(', ')}>
+        <span className="block truncate font-mono text-xs" title={getValue().join(', ')}>
           {namesSummary(getValue())}
         </span>
       ),
     }),
     col.accessor('notAfter', {
       header: 'Expires',
+      meta: { className: 'w-28' },
       cell: ({ getValue }) => (
         <span className={cn('whitespace-nowrap text-xs', daysUntil(getValue()) < EXPIRING_SOON_DAYS && 'text-expiring')}>{fmtDate(getValue())}</span>
       ),
     }),
     col.accessor('issuer', {
       header: 'Issuer',
+      meta: { className: 'w-32' },
       cell: ({ getValue }) => (
         <span className="block max-w-32 truncate text-xs" title={getValue()}>
           {getValue()}
@@ -69,10 +85,10 @@ function columns(orgSlug: string) {
     }),
     col.accessor('hasKey', {
       header: 'Key',
-      meta: { help: 'import.hasKey' },
+      meta: { help: 'import.hasKey', className: 'w-24' },
       cell: ({ getValue }) => (getValue() ? <ToneChip tone="valid" icon={KeyRound} label="Key" /> : <ToneChip tone="neutral" icon={ShieldOff} label="No key" />),
     }),
-    col.accessor('source', { header: 'Source', cell: ({ getValue }) => SOURCE_LABEL[getValue()] }),
+    col.accessor('source', { header: 'Source', meta: { className: 'w-20' }, cell: ({ getValue }) => SOURCE_LABEL[getValue()] }),
     col.display({
       id: 'action',
       header: 'Action',
