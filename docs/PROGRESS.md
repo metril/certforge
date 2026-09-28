@@ -269,8 +269,8 @@ Phase 5 is split into two plans: 5A vault and private CA backend (schema, Vault 
 | 6 | localca signer | done | 34d4f69 |
 | 7 | localca CA lifecycle, CRL, revocation | done | b8c02e7 |
 | 8 | Vault provider, test endpoint, vaultpki | done | 8fa8ee4 |
-| 9 | Issuance kind gate | done | pending |
-| 10 | Server deploy targets and vault-kv | planned | – |
+| 9 | Issuance kind gate | done | d0681ee |
+| 10 | Server deploy targets and vault-kv | done | pending |
 | 11 | Client-less grants and dispatcher | planned | – |
 | 12 | File-backed DNS credentials | planned | – |
 | 13 | Vault readiness and wiring | planned | – |

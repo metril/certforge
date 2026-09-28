@@ -47,3 +47,21 @@ Example YAML for `dir: /data/traefik`, `pathPrefix: /etc/traefik/dynamic`, `defa
             keyFile: "/etc/traefik/dynamic/certs/web/privkey.pem"
 
 Compose example: see [agent.md](agent.md#traefik-integration).
+
+## Vault KV {#vault-kv}
+
+Runs on the server, not an agent — its grants are client-less ("server grants") and have no client to enroll or check in. Writes a certificate's rendered files as one document in a Vault (or OpenBao) [KV v2](https://developer.hashicorp.com/vault/docs/secrets/kv/kv-v2) secrets engine. Settings → Integrations → Vault must be configured first (see [vault.md](vault.md#integrations)); every write uses that section's token/AppRole, never a credential stored on the target itself.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `mount` | `secret` | KV v2 secrets engine mount path. |
+| `path` | `certforge/{org}/{name}` | Secret path within the mount. May use `{org}` (the org's slug), `{cert}` (the certificate's id) and `{name}` (the certificate's name, cleaned the same way Traefik's `<name>` is); no other `{…}` placeholder is allowed. The rendered path must not start with `/` or contain `..`. |
+| `keys.fullchain` | `fullchain.pem` | Document field the full chain PEM is written under. |
+| `keys.cert` | `cert.pem` | Document field the leaf certificate PEM is written under. |
+| `keys.chain` | `chain.pem` | Document field the intermediate chain PEM is written under. |
+| `keys.key` | `privkey.pem` | Document field the private key PEM is written under, when `includeKey` is set. |
+| `includeKey` | `false` | Also write the private key. A grant onto a target with this set needs `keys:export` (checked when the grant is created, not when the target itself is saved). |
+
+Without a layout, the document gets exactly `keys.fullchain`/`keys.cert`/`keys.chain` (plus `keys.key` when `includeKey`). With a layout, each of the layout's own output files is written under its own file name instead (e.g. a `keystore.p12` file lands at the `keystore.p12` field); a key-bearing layout file (a `key`/`combined` PEM part, any DER `key`, or any p12/jks file) is dropped the same way, unless `includeKey`.
+
+Each deploy is one `PUT <mount>/data/<path>` (`internal/vault.Client.KVPut`), overwriting the whole document — nothing is merged with what was there before. The grant's `serverDeployment` records the path written and the resulting KV version.

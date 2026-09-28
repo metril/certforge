@@ -182,7 +182,7 @@ func (f *syncFixture) target(t *testing.T, name string, cfg delivery.TraefikConf
 	if err != nil {
 		t.Fatal(err)
 	}
-	dt, err := f.q.CreateDeployTarget(context.Background(), sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: name, Type: delivery.TargetTraefik, Config: b})
+	dt, err := f.q.CreateDeployTarget(context.Background(), sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: name, Type: delivery.TargetTraefik, RunsOn: "agent", Config: b})
 	if err != nil {
 		t.Fatal(err)
 	}

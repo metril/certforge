@@ -25,6 +25,7 @@ import (
 	"github.com/metril/certforge/internal/config"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/kek"
 	"github.com/metril/certforge/internal/meta"
@@ -71,6 +72,12 @@ type Deps struct {
 	// answers testVaultSettings with a connection failure result and every
 	// vaultpki CA operation with a "not configured" 422.
 	Vault *vault.Provider
+
+	// Deploy holds server-run deploy target types (vault-kv, Task 10). A
+	// nil registry (or a type it does not hold) makes CreateDeployTarget/
+	// UpdateDeployTarget reject the type with 422, same as an unregistered
+	// type today.
+	Deploy *deploy.Registry
 
 	// DNSTestTimeout bounds POST .../dns-credentials/{id}/test; zero means
 	// the 2-minute default (a test override, since lego's Present/CleanUp

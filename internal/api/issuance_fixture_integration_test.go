@@ -21,6 +21,7 @@ import (
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/crypto/cryptotest"
 	"github.com/metril/certforge/internal/db/dbtest"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/signer"
@@ -98,6 +99,8 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		t.Fatal(err)
 	}
 	vaultProvider := vault.NewProvider(settingsStore, sections)
+	deployReg := deploy.NewRegistry()
+	deployReg.Register("Vault KV (runs on server)", deploy.VaultKV{Vault: vaultProvider})
 	store := issuance.NewStore(pool, box, settingsStore)
 	store.SetVault(vaultProvider)
 	certs := certstore.New(pool, box)
@@ -107,7 +110,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	svc.Auditor = aud
 	svc.Log = slog.Default()
 	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
-		Settings: settingsStore, Sections: sections, Vault: vaultProvider}}
+		Settings: settingsStore, Sections: sections, Vault: vaultProvider, Deploy: deployReg}}
 	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, box: box, org: dbtest.Org(t, pool),
 		settingsStore: settingsStore, sections: sections}
 }

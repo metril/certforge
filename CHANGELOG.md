@@ -125,6 +125,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Vault HTTP client for Transit, KV v2, PKI, AppRole and token auth.
 - Private CA creation, import, rotation, revocation and public CRLs.
 - Certificates issue from private CAs without ACME steps.
+- Server-side deploy target framework and the Vault KV target.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

@@ -274,7 +274,7 @@ func TestGrantRejectsOverlappingPaths(t *testing.T) {
 	upper, _ := f.currentCert(t, "Web")
 	lower, _ := f.currentCert(t, "web")
 	api, _ := f.currentCert(t, "api")
-	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik",
+	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik", RunsOn: "agent",
 		Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -645,7 +645,7 @@ func TestOnVersionIsolatesPerClientRenderFailure(t *testing.T) {
 	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: good.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}}); err != nil {
 		t.Fatal(err)
 	}
-	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik",
+	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik", RunsOn: "agent",
 		Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -733,7 +733,7 @@ func TestCertificateRenameResyncsGrantsAndBlocksOverlap(t *testing.T) {
 	c := f.activeClient(t, "web-1")
 	apiCert, _ := f.currentCert(t, "api")
 	webCert, _ := f.currentCert(t, "web")
-	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik",
+	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik", RunsOn: "agent",
 		Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -972,7 +972,7 @@ func TestGrantKeylessCert(t *testing.T) {
 	wantStatus(t, err, 422)
 
 	// A deploy target (Traefik always renders fullchain + key): 422.
-	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik",
+	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik", RunsOn: "agent",
 		Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)})
 	if err != nil {
 		t.Fatal(err)

@@ -17,8 +17,12 @@ func TestKVPutShape(t *testing.T) {
 
 	c := newTestClient(t, fv.URL(), TokenAuth{Token: "t"})
 
-	if err := c.KVPut(context.Background(), "secret", "certs/foo", map[string]any{"cert": "PEM"}, nil); err != nil {
+	v, err := c.KVPut(context.Background(), "secret", "certs/foo", map[string]any{"cert": "PEM"}, nil)
+	if err != nil {
 		t.Fatalf("KVPut (no cas): %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("version = %d, want 1", v)
 	}
 	var body map[string]any
 	if err := fv.LastBody(http.MethodPost, "/v1/secret/data/certs/foo", &body); err != nil {
@@ -33,7 +37,7 @@ func TestKVPutShape(t *testing.T) {
 	}
 
 	cas := 3
-	if err := c.KVPut(context.Background(), "secret", "certs/foo", map[string]any{"cert": "PEM2"}, &cas); err != nil {
+	if _, err := c.KVPut(context.Background(), "secret", "certs/foo", map[string]any{"cert": "PEM2"}, &cas); err != nil {
 		t.Fatalf("KVPut (cas): %v", err)
 	}
 	if err := fv.LastBody(http.MethodPost, "/v1/secret/data/certs/foo", &body); err != nil {

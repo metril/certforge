@@ -17,6 +17,7 @@ import (
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/render"
 )
 
@@ -541,24 +542,42 @@ func (s *Server) targetsOut(ctx context.Context, rows []sqlcgen.DeployTarget) ([
 	return out, nil
 }
 
-func validTarget(in *gen.DeployTargetInput) (string, []byte, error) {
+// validTarget validates and canonicalizes a deploy target input, returning
+// its name, config to store and derived runsOn: traefik goes through
+// delivery.ParseTarget (agent-run), every other type is looked up in
+// s.d.Deploy (server-run); an unknown type is 422. runsOn is always
+// derived from the type (deploy.RunsOn), never taken from client input —
+// DeployTargetInput has no runsOn field.
+func (s *Server) validTarget(in *gen.DeployTargetInput) (name, runsOn string, cfg []byte, err error) {
 	if in == nil {
-		return "", nil, badRequest("missing body")
+		return "", "", nil, badRequest("missing body")
 	}
-	name, err := cleanName("name", in.Name)
+	name, err = cleanName("name", in.Name)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	raw, err := json.Marshal(in.Config)
 	if err != nil {
-		return "", nil, badRequest("config is not a JSON object")
+		return "", "", nil, badRequest("config is not a JSON object")
 	}
-	cfg, err := delivery.ParseTarget(string(in.Type), raw)
+	typ := string(in.Type)
+	runsOn = deploy.RunsOn(typ)
+	if typ == delivery.TargetTraefik {
+		tc, err := delivery.ParseTarget(typ, raw)
+		if err != nil {
+			return "", "", nil, mapDeliveryErr(err)
+		}
+		cfg, err = json.Marshal(tc)
+		return name, runsOn, cfg, err
+	}
+	cfg, ok, err := s.d.Deploy.ParseConfig(typ, raw)
+	if !ok {
+		return "", "", nil, unprocessable("type", fmt.Sprintf("unknown deploy target type %q", in.Type))
+	}
 	if err != nil {
-		return "", nil, mapDeliveryErr(err)
+		return "", "", nil, mapDeliveryErr(err)
 	}
-	b, err := json.Marshal(cfg)
-	return name, b, err
+	return name, runsOn, cfg, nil
 }
 
 // ListDeployTargets returns an org's deploy targets.
@@ -601,11 +620,11 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	name, cfg, err := validTarget(r.Body)
+	name, runsOn, cfg, err := s.validTarget(r.Body)
 	if err != nil {
 		return nil, err
 	}
-	t, err := s.queries().CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: r.OrgId, Name: name, Type: string(r.Body.Type), Config: cfg})
+	t, err := s.queries().CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: r.OrgId, Name: name, Type: string(r.Body.Type), RunsOn: runsOn, Config: cfg})
 	switch pgCode(err) {
 	case pgUniqueViolation:
 		return nil, conflict("A deploy target named %q exists in this org.", name)
@@ -629,7 +648,7 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	name, cfg, err := validTarget(r.Body)
+	name, _, cfg, err := s.validTarget(r.Body)
 	if err != nil {
 		return nil, err
 	}

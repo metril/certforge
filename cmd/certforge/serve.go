@@ -26,6 +26,7 @@ import (
 	"github.com/metril/certforge/internal/db"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/kek"
 	"github.com/metril/certforge/internal/meta"
@@ -99,6 +100,9 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
 	vaultProvider := vault.NewProvider(store, sections)
+	deployReg := deploy.NewRegistry()
+	deployReg.Register("Vault KV (runs on server)", deploy.VaultKV{Vault: vaultProvider})
+	deploy.AddToMeta(deployReg, metaReg)
 	issuanceStore := issuance.NewStore(pool, box, store)
 	issuanceStore.SetVault(vaultProvider)
 	certStore := certstore.New(pool, box)
@@ -209,7 +213,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
-		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider,
+		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

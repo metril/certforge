@@ -70,7 +70,7 @@ SELECT * FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id;
 SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2;
 
 -- name: CreateDeployTarget :one
-INSERT INTO deploy_targets (org_id, name, type, config) VALUES ($1, $2, $3, $4) RETURNING *;
+INSERT INTO deploy_targets (org_id, name, type, runs_on, config) VALUES ($1, $2, $3, $4, $5) RETURNING *;
 
 -- name: UpdateDeployTarget :one
 UPDATE deploy_targets SET name = sqlc.arg(name), config = sqlc.arg(config), updated_at = now()

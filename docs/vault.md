@@ -176,6 +176,12 @@ The PKI role needs, at minimum:
 - The `sign` policy capability on `<mount>/sign/<role>` (see the table
   above), plus `read` on `<mount>/cert/ca` and `update` on `<mount>/revoke`.
 
+## KV {#kv}
+
+The `vault-kv` deploy target (`internal/deploy`) writes a certificate's rendered files as one document in a KV v2 secrets engine, `PUT <mount>/data/<path>` (`Client.KVPut`), instead of writing files to an agent's filesystem. It runs on the server — see [deploy-targets.md#vault-kv](deploy-targets.md#vault-kv) for its config (mount, path template, document field names, `includeKey`) and how a layout changes the document's shape. Like `vaultpki`, it goes through `internal/vault.Provider`, so it always uses whatever Settings → Integrations → Vault currently holds; there is no separate credential on the target itself.
+
+The KV path is a template (`{org}`/`{cert}`/`{name}`, resolved per deploy) rendered before the write, then checked against the same rules a stored file path would need: no leading `/`, no `..`, and only `A-Za-z0-9._/-`. The policy needs `create`/`update` on `<mount>/data/<path>` (see the table above) — `KVPut` never reads a path back, so no `read` capability is needed for this target.
+
 ## OpenBao {#openbao}
 
 OpenBao is API-compatible for every path this client uses — Transit, KV

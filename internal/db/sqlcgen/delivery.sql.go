@@ -12,13 +12,14 @@ import (
 )
 
 const createDeployTarget = `-- name: CreateDeployTarget :one
-INSERT INTO deploy_targets (org_id, name, type, config) VALUES ($1, $2, $3, $4) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at
+INSERT INTO deploy_targets (org_id, name, type, runs_on, config) VALUES ($1, $2, $3, $4, $5) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at
 `
 
 type CreateDeployTargetParams struct {
 	OrgID  uuid.UUID `json:"org_id"`
 	Name   string    `json:"name"`
 	Type   string    `json:"type"`
+	RunsOn string    `json:"runs_on"`
 	Config []byte    `json:"config"`
 }
 
@@ -27,6 +28,7 @@ func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTarget
 		arg.OrgID,
 		arg.Name,
 		arg.Type,
+		arg.RunsOn,
 		arg.Config,
 	)
 	var i DeployTarget
