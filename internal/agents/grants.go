@@ -336,7 +336,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 	}
 	clients := make([]uuid.UUID, 0, len(rows))
 	for _, r := range rows {
-		clients = append(clients, r.ClientID)
+		clients = append(clients, *r.ClientID)
 	}
 	clients = uniq(clients)
 	if len(clients) > 0 {
@@ -389,7 +389,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 	}
 	for _, r := range rows {
 		if r.Delivery == "push" {
-			push[r.ClientID] = true
+			push[*r.ClientID] = true
 		}
 		expected := []byte("[]")
 		extraVersionIDs := []uuid.UUID{}
@@ -504,7 +504,7 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 	if c.Status == "revoked" {
 		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
 	}
-	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: clientID, CertID: in.CertID, Delivery: in.Delivery,
+	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: &clientID, CertID: in.CertID, Delivery: in.Delivery,
 		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate})
 	if pgCode(err) == pgUniqueViolation {
 		return uuid.Nil, conflict("This client already has a grant for that certificate.")
@@ -555,7 +555,7 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 	if err := s.checkRefs(ctx, q, orgID, in); err != nil {
 		return err
 	}
-	if _, err := q.LockClientByID(ctx, cur.ClientID); err != nil {
+	if _, err := q.LockClientByID(ctx, *cur.ClientID); err != nil {
 		return err
 	}
 	g, err := q.UpdateGrant(ctx, sqlcgen.UpdateGrantParams{Delivery: in.Delivery, OutputSpecID: in.LayoutID,
@@ -563,14 +563,14 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 	if err != nil {
 		return err
 	}
-	if err := s.checkPaths(ctx, q, []uuid.UUID{g.ClientID}); err != nil {
+	if err := s.checkPaths(ctx, q, []uuid.UUID{*g.ClientID}); err != nil {
 		return err
 	}
 	_, push, err := s.render(ctx, q, []uuid.UUID{grantID})
 	if err != nil {
 		return err
 	}
-	revs, err := s.bump(ctx, q, []uuid.UUID{g.ClientID})
+	revs, err := s.bump(ctx, q, []uuid.UUID{*g.ClientID})
 	if err != nil {
 		return err
 	}
@@ -608,7 +608,7 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID, for
 	if g.RemovedAt != nil && !force {
 		return nil
 	}
-	c, err := q.GetClientByID(ctx, g.ClientID)
+	c, err := q.GetClientByID(ctx, *g.ClientID)
 	if err != nil {
 		return err
 	}
@@ -627,7 +627,7 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID, for
 	var revs []sqlcgen.BumpClientRevisionsRow
 	if immediate {
 		err = q.DeleteGrantRow(ctx, grantID)
-	} else if revs, err = s.bump(ctx, q, []uuid.UUID{g.ClientID}); err == nil && len(revs) != 1 {
+	} else if revs, err = s.bump(ctx, q, []uuid.UUID{*g.ClientID}); err == nil && len(revs) != 1 {
 		err = errors.New("agents: bump returned no revision for the grant's client")
 	} else if err == nil {
 		// The bumped revision is the first one whose assignments list this
@@ -641,7 +641,7 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID, for
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.nudge(revs, map[uuid.UUID]bool{g.ClientID: g.Delivery == "push"})
+	s.nudge(revs, map[uuid.UUID]bool{*g.ClientID: g.Delivery == "push"})
 	d := grantDetails(g)
 	d["immediate"] = immediate
 	if force {
@@ -673,7 +673,7 @@ func (s *Service) Redeploy(ctx context.Context, orgID, grantID uuid.UUID) error 
 	if err != nil {
 		return err
 	}
-	revs, err := s.bump(ctx, q, []uuid.UUID{g.ClientID})
+	revs, err := s.bump(ctx, q, []uuid.UUID{*g.ClientID})
 	if err != nil {
 		return err
 	}
@@ -745,7 +745,7 @@ func (s *Service) resyncGrants(ctx context.Context, ids []uuid.UUID) error {
 	}
 	byClient := map[uuid.UUID][]uuid.UUID{}
 	for _, g := range groups {
-		byClient[g.ClientID] = append(byClient[g.ClientID], g.ID)
+		byClient[*g.ClientID] = append(byClient[*g.ClientID], g.ID)
 	}
 	var firstErr error
 	for clientID, grantIDs := range byClient {

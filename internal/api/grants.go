@@ -41,7 +41,7 @@ func grantOut(r sqlcgen.GrantViewsRow) (gen.Grant, error) {
 	if err != nil {
 		return gen.Grant{}, err
 	}
-	return gen.Grant{Id: r.ID, ClientId: r.ClientID, ClientName: r.ClientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
+	return gen.Grant{Id: r.ID, ClientId: *r.ClientID, ClientName: r.ClientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
 		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, HookIds: r.HookIds,
 		AutoRemediate: r.AutoRemediate, Deployment: d, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
@@ -179,13 +179,13 @@ func (s *Server) ListCertificateDeployments(ctx context.Context, r gen.ListCerti
 	}
 	items := make([]gen.CertificateDeployment, 0, len(rows))
 	for _, row := range rows {
-		connected := s.d.Agents != nil && s.d.Agents.Connected(row.ClientID)
+		connected := s.d.Agents != nil && s.d.Agents.Connected(*row.ClientID)
 		online := connected || (s.d.Agents != nil && row.ClientLastSeen != nil && !row.ClientLastSeen.Before(cutoff))
 		d, err := deploymentOut(row.State, row.VersionID, row.Expected, row.Installed, row.Error, row.ReportedAt, row.DeploymentUpdatedAt)
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, gen.CertificateDeployment{GrantId: row.GrantID, ClientId: row.ClientID, ClientName: row.ClientName,
+		items = append(items, gen.CertificateDeployment{GrantId: row.GrantID, ClientId: *row.ClientID, ClientName: row.ClientName,
 			ClientStatus: gen.ClientStatus(row.ClientStatus), ClientConnected: connected, ClientOnline: online,
 			SiteId: row.SiteID, Delivery: gen.GrantDelivery(row.Delivery), LayoutId: row.LayoutID, LayoutName: row.LayoutName,
 			DeployTargetId: row.DeployTargetID, DeployTargetName: row.DeployTargetName, Deployment: d})

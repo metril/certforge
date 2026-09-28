@@ -64,7 +64,7 @@ func (s *Server) clientsOut(ctx context.Context, rows []sqlcgen.Client) ([]gen.C
 	}
 	cm := map[uuid.UUID]sqlcgen.ClientCountsRow{}
 	for _, c := range counts {
-		cm[c.ClientID] = c
+		cm[*c.ClientID] = c
 	}
 	em := map[uuid.UUID]time.Time{}
 	for _, t := range tokens {

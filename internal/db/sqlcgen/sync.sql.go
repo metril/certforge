@@ -57,7 +57,7 @@ type ClientAssignmentsRow struct {
 	TargetConfig          []byte      `json:"target_config"`
 }
 
-func (q *Queries) ClientAssignments(ctx context.Context, clientID uuid.UUID) ([]ClientAssignmentsRow, error) {
+func (q *Queries) ClientAssignments(ctx context.Context, clientID *uuid.UUID) ([]ClientAssignmentsRow, error) {
 	rows, err := q.db.Query(ctx, clientAssignments, clientID)
 	if err != nil {
 		return nil, err
@@ -112,7 +112,7 @@ type ClientDeploymentsRow struct {
 	Expected        []byte     `json:"expected"`
 }
 
-func (q *Queries) ClientDeployments(ctx context.Context, clientID uuid.UUID) ([]ClientDeploymentsRow, error) {
+func (q *Queries) ClientDeployments(ctx context.Context, clientID *uuid.UUID) ([]ClientDeploymentsRow, error) {
 	rows, err := q.db.Query(ctx, clientDeployments, clientID)
 	if err != nil {
 		return nil, err
@@ -155,8 +155,8 @@ WHERE g.id = $1 AND g.client_id = $2 AND g.removed_at IS NULL
 `
 
 type GrantForBundleParams struct {
-	ID       uuid.UUID `json:"id"`
-	ClientID uuid.UUID `json:"client_id"`
+	ID       uuid.UUID  `json:"id"`
+	ClientID *uuid.UUID `json:"client_id"`
 }
 
 type GrantForBundleRow struct {

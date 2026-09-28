@@ -88,7 +88,7 @@ type CertificateDeploymentsParams struct {
 
 type CertificateDeploymentsRow struct {
 	GrantID             uuid.UUID  `json:"grant_id"`
-	ClientID            uuid.UUID  `json:"client_id"`
+	ClientID            *uuid.UUID `json:"client_id"`
 	ClientName          string     `json:"client_name"`
 	ClientStatus        string     `json:"client_status"`
 	ClientLastSeen      *time.Time `json:"client_last_seen"`
@@ -217,7 +217,7 @@ ORDER BY g.created_at, g.id
 
 type ClientGrantPathsRow struct {
 	ID              uuid.UUID  `json:"id"`
-	ClientID        uuid.UUID  `json:"client_id"`
+	ClientID        *uuid.UUID `json:"client_id"`
 	RemovedAt       *time.Time `json:"removed_at"`
 	CertificateName string     `json:"certificate_name"`
 	LayoutFiles     []byte     `json:"layout_files"`
@@ -325,7 +325,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, client_id, cert_id, delivery, 
 `
 
 type CreateGrantParams struct {
-	ClientID       uuid.UUID   `json:"client_id"`
+	ClientID       *uuid.UUID  `json:"client_id"`
 	CertID         uuid.UUID   `json:"cert_id"`
 	Delivery       string      `json:"delivery"`
 	OutputSpecID   *uuid.UUID  `json:"output_spec_id"`
@@ -377,8 +377,8 @@ SELECT id, client_id FROM client_cert_grants WHERE id = ANY($1::uuid[]) AND remo
 `
 
 type GrantClientIDsRow struct {
-	ID       uuid.UUID `json:"id"`
-	ClientID uuid.UUID `json:"client_id"`
+	ID       uuid.UUID  `json:"id"`
+	ClientID *uuid.UUID `json:"client_id"`
 }
 
 // Cheap grant id -> client id lookup (no joins), used to isolate a
@@ -419,7 +419,7 @@ WHERE g.id = ANY($1::uuid[]) AND g.removed_at IS NULL
 
 type GrantSourcesRow struct {
 	ID                    uuid.UUID   `json:"id"`
-	ClientID              uuid.UUID   `json:"client_id"`
+	ClientID              *uuid.UUID  `json:"client_id"`
 	CertID                uuid.UUID   `json:"cert_id"`
 	Delivery              string      `json:"delivery"`
 	CertificateName       string      `json:"certificate_name"`
@@ -489,7 +489,7 @@ type GrantViewsParams struct {
 
 type GrantViewsRow struct {
 	ID                  uuid.UUID   `json:"id"`
-	ClientID            uuid.UUID   `json:"client_id"`
+	ClientID            *uuid.UUID  `json:"client_id"`
 	ClientName          string      `json:"client_name"`
 	CertID              uuid.UUID   `json:"cert_id"`
 	CertificateName     string      `json:"certificate_name"`
@@ -878,7 +878,7 @@ SELECT id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_
 // Revoking a client can never be confirmed by its agent again, so
 // RevokeClient hard-deletes every grant of this client still awaiting
 // removal instead of leaving it removal-pending forever.
-func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID uuid.UUID) ([]ClientCertGrant, error) {
+func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *uuid.UUID) ([]ClientCertGrant, error) {
 	rows, err := q.db.Query(ctx, removalPendingGrantsForClient, clientID)
 	if err != nil {
 		return nil, err

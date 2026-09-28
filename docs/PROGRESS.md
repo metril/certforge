@@ -10,7 +10,7 @@ Single status file. Updated in every commit that completes a task.
 | 2 | Identity and tenancy | done | [design](design.md) | [2A](superpowers/plans/2026-09-25-phase-2a-identity-backend.md) · [2B](superpowers/plans/2026-09-25-phase-2b-tenancy-web-ui.md) | 2026-09-25 | 2026-09-25 |
 | 3 | Agent | done | [design](design.md) | [3A](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) · [3B](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md) | 2026-09-25 | 2026-09-26 |
 | 4 | Issuance breadth and formats | done | [design](design.md) | [4A](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) · [4B](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) | 2026-09-27 | 2026-09-27 |
-| 5 | Vault and private CA | planned | [design](design.md) | – | – | – |
+| 5 | Vault and private CA | in progress | [design](design.md) | [5A](superpowers/plans/2026-09-27-phase-5a-vault-private-ca-backend.md) · [5B](superpowers/plans/2026-09-27-phase-5b-issuers-vault-web-ui.md) | 2026-09-27 | – |
 | 6 | Ops | planned | [design](design.md) | – | – | – |
 | 7 | Deploy targets | planned | [design](design.md) | – | – | – |
 
@@ -253,6 +253,29 @@ Phase 4A complete; 4B (certificates web UI) builds on it.
 
 Phase 4B complete; Phase 4 (issuance breadth and formats) is now complete.
 
+### Phase 5: Vault and private CA — in progress (started 2026-09-27)
+
+Phase 5 is split into two plans: 5A vault and private CA backend (schema, Vault client, Transit KEK and root secret, multi-wrapper envelope and rewrap, localca signer and CA lifecycle, Vault provider and vaultpki, issuance kind gate, server deploy targets and vault-kv, client-less grants, file-backed DNS credentials, readiness) and 5B issuers and vault web UI. Plan 5A: [vault and private CA backend](superpowers/plans/2026-09-27-phase-5a-vault-private-ca-backend.md). Plan 5B: [issuers and vault web UI](superpowers/plans/2026-09-27-phase-5b-issuers-vault-web-ui.md).
+
+#### Phase 5A tasks
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Schema, CA kinds, vault section | done | pending |
+| 2 | OpenAPI contract | planned | – |
+| 3 | Vault client | planned | – |
+| 4 | Transit KEK and root secret | planned | – |
+| 5 | Multi-wrapper envelope, rewrap, keys API | planned | – |
+| 6 | localca signer | planned | – |
+| 7 | localca CA lifecycle, CRL, revocation | planned | – |
+| 8 | Vault provider, test endpoint, vaultpki | planned | – |
+| 9 | Issuance kind gate | planned | – |
+| 10 | Server deploy targets and vault-kv | planned | – |
+| 11 | Client-less grants and dispatcher | planned | – |
+| 12 | File-backed DNS credentials | planned | – |
+| 13 | Vault readiness and wiring | planned | – |
+| 14 | Vault and private-CA e2e | planned | – |
+
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.
@@ -395,7 +418,16 @@ Phase 4B complete; Phase 4 (issuance breadth and formats) is now complete.
 - 4B Task 10: `web/e2e/screens.ts` now holds `setTheme`/`snap` (moved out of `clients.spec.ts`, unchanged), imported by both `clients.spec.ts` and the new `certificates.spec.ts`. Fixtures come from `internal/importer/testdata/acmesh`'s 100-year self-signed material (4A Task 14): `web/e2e/fixtures/upload.pem` is a copy of `ecc.acmesh.example.test_ecc/fullchain.cer`, the first entry in acme.sh's own directory order (`fs.ReadDir` sorts by name, so `ecc.*` sorts before `nokey.*`/`rsa.*`/`split.*`); `web/e2e/fixtures/acmesh.zip` is built with `cd internal/importer/testdata/acmesh && python3 -m zipfile -c ../../../../web/e2e/fixtures/acmesh.zip *`, landing the domain directories at the archive root. Screenshots inspected in both themes (`test-results/screens/{light,dark}-<name>.png`): `download-p12`, `upload`, `certificate-unmanaged`, `import-preview`, `wizard-http01`, `layout-p12`, `settings-issuance` — no checkbox/radio anywhere, tooltips present, chip/meter contrast and sheet clipping fine in both themes. `import-preview` was genuinely broken and got fixed: `ImportPreview.tsx`'s `columns()` set no `meta.className` width on any column and its `Name`/`Names` cells used `truncate` without `block` — an inline element's `overflow:hidden` doesn't clip against a `table-fixed` column in a real browser (jsdom never catches this, same class of bug as the 3B CSP validator fix), so a long acme.sh domain overlapped the `Expires` column instead of ellipsizing; fixed to match `certColumns`' own `w-XX` + `block truncate` convention (the `Issuer` column in the same file already used it correctly), confirmed clean by re-running and re-inspecting both themes. `certificate-unmanaged` (dark) shows the "Uploaded pw-upload" success toast still rendered in its light styling a few actions after it fired, even though the rest of the page is dark — a Sonner toast-lifecycle/theme-prop-cascade timing quirk on an already-open toast, not a layout defect in the certificate screens under test; noted, not chased further (the same real-toggle `snap` mechanism does correctly theme a toast fired immediately before it, per `clients.spec.ts`'s `settings-agents` screenshot).
 - 4B Task 10: `web/e2e/certificates.spec.ts`'s 375 px check split in two — `'375 px: upload and import'` (green) and `'375 px: certificate detail with the Download sheet on PKCS#12'`, `test.fixme`d: `CertificateDetail`'s root (`<div className="grid gap-6">`) resolved a 403 px single-column grid track at a 375 px viewport with the Download sheet open on PKCS#12 (`document.documentElement.scrollWidth` measured 419), reproduced identically at "renews in 5 d" and "renews in 61 d" (ruling out `ValidityBar`'s own >80%-anchor fix for a late renewal window as the cause). Four diagnostic passes against the live compose stack — widest rendered box, leaf `scrollWidth`, computed `grid-template-columns`, and every element whose own `scrollWidth` exceeds its `clientWidth` — narrowed it to the grid track itself being oversized, without isolating which descendant's min-content drove it (every candidate row inspected already used `flex-wrap` and should have reflowed). The actual cause (4B final fix wave): none of those candidates, because the culprit wasn't a row's content at all — `<Tabs>` (a grid item right in that root) has no explicit `min-width`, and a grid item's automatic minimum defaults to its content's; `TabsList`'s five `whitespace-nowrap` triggers refuse to shrink below their combined min-content width (403 px) regardless of `overflow-x-auto`. Fixed with `min-w-0` on `<Tabs>`; the sheet was never the cause, which is why the fix wave also added a bare-page (no sheet) 375 px check alongside it.
 
-- 4B final fix wave: the 375 px overflow above was `<Tabs>` lacking `min-w-0`, not the Download sheet (fixed, see the Task 10 entry above). `VerificationRulesEditor`'s webroot field validated a trailing slash as fine (`webrootError` already tolerated one) but stored it exactly as typed, so it still 422'd against the server's `cleanWebroot`; the new `cleanWebroot` helper (`lib/rules.ts`) is now applied on blur, not on every keystroke — stripping mid-typing would eat the interior slash of a path like `/srv/` before the rest of it is typed. `OverviewTab` and `SettingsTab` now hide Coverage (and, on Settings, the Verification summary) for an unmanaged certificate: its `verificationRules` is always empty (upload/import never runs the wizard), so Coverage's first-match search found none for any name and showed a false "No matching rule" for a certificate CertForge was never asked to verify.
+- 4B final fix wave: the 375 px overflow above was `<Tabs>` lacking `min-w-0`, not the Download sheet (fixed, see the Task 10 entry above). `VerificationRulesEditor`'s webroot field validated a trailing slash as fine (`webrootError` already tolerated one) but stored it exactly as typed, so it still 422'd against the server's `cleanWebroot`; the new `cleanWebroot` helper (`lib/rules.ts`) is now applied on blur, not on every keystroke — stripping mid-typing would eat the interior slash of a path like `/srv/` before the rest of it is typed. `OverviewTab` and `SettingsTab` now hide Coverage (and, on Settings, the Verification summary) for an unmanaged certificate: its `verificationRules` is always empty (uploaded (unmanaged) certificates never run the wizard), so Coverage's first-match search found none for any name and showed a false "No matching rule" for a certificate CertForge was never asked to verify.
+
+- 5A: grant paths (R9/R6) — `createGrant` stays client-scoped; server grants get their own `createServerGrant`/`listTargetGrants` on `/orgs/{orgId}/deploy-targets/{id}/grants`, while `updateGrant`/`deleteGrant`/`redeployGrant` stay shared for both kinds; `Grant.clientId`, `clientName` and `deployment` become nullable.
+- 5A: CRL after rotation (R4/R10) — a retired issuing key stays sealed until its certificate's `NotAfter` (purged at the next rotate/CRL build after that), so a leaf issued under it can still be revoked; every issuer gets its own CRL at `/crl/{caId}/{issuerSerial}.crl`, with `/crl/{caId}.crl` serving the current issuer.
+- 5A: revocation feed (R4) — `revokeCertificateVersion` is added for private-CA versions only, since `Signer.Revoke` had no caller and there was no revocation API; ACME versions get 422 "not supported for ACME CAs yet".
+- 5A: key types (R4) — localca's `keyType` reuses the existing `KeyType` enum (`ec256|ec384|rsa2048|rsa4096`, default `ec256`) instead of a separate `ecdsa-p256`-style enum, so one enum serves leaves and CAs.
+- 5A: CA path (R9) — CA routes stay org-scoped, so `rotateCa` is `POST /orgs/{orgId}/cas/{id}/rotate`, not a top-level route.
+- 5A: health strip (R7) — the 5A `/readyz` contract is unchanged; 5B extends `HealthStrip` to also show `degraded` checks, since a degraded vault check leaves the server ready.
+- 5A: probe (R6) — dropped: nothing would call it and `testVaultSettings` already covers Vault reachability; `deploy.Target` loses `Probe` and its only helper, `KVDeleteMetadata`, is not built.
+- 5A: verified (R8) — lego v4.24.0's transip and hyperone providers read their key/passport files eagerly at construction (`gotransip.NewClient`, `hyperone.LoadPassportFile`), so `Build` removes the temp dir right after constructing the provider, not after use.
 
 ## Known gaps
 

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Vault",
+  "description": "HashiCorp Vault (or OpenBao) connection details, used by the Transit KEK and by private CAs backed by Vault's PKI secrets engine.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "address": {
+      "type": "string",
+      "title": "Address",
+      "description": "Vault's base URL. Required once any other field below is set.",
+      "pattern": "^https?://[^\\s]+$",
+      "examples": ["https://vault.example.com:8200"]
+    },
+    "namespace": {
+      "type": "string",
+      "title": "Namespace",
+      "description": "Vault Enterprise namespace. Leave empty for open-source Vault or OpenBao.",
+      "maxLength": 128
+    },
+    "authMethod": {
+      "type": "string",
+      "title": "Authentication method",
+      "description": "How CertForge logs in to Vault.",
+      "enum": ["token", "approle"],
+      "default": "token"
+    },
+    "token": {
+      "type": "string",
+      "title": "Token",
+      "description": "Vault token, used when the authentication method is token.",
+      "secret": true
+    },
+    "roleId": {
+      "type": "string",
+      "title": "Role ID",
+      "description": "AppRole role id, used when the authentication method is approle.",
+      "maxLength": 128
+    },
+    "secretId": {
+      "type": "string",
+      "title": "Secret ID",
+      "description": "AppRole secret id, used when the authentication method is approle.",
+      "secret": true
+    },
+    "caPem": {
+      "type": "string",
+      "title": "CA bundle",
+      "description": "Additional PEM-encoded certificates trusted for Vault's TLS, appended to the system root pool.",
+      "maxLength": 65536
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "title": "Timeout (seconds)",
+      "description": "Per-request timeout for calls to Vault.",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 10
+    }
+  },
+  "dependentRequired": {
+    "namespace": ["address"],
+    "authMethod": ["address"],
+    "token": ["address"],
+    "roleId": ["address"],
+    "secretId": ["address"],
+    "caPem": ["address"],
+    "timeoutSeconds": ["address"]
+  }
+}

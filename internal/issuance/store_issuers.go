@@ -3,6 +3,7 @@ package issuance
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"net"
 	"net/url"
 	"strings"
@@ -16,22 +17,43 @@ import (
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
 )
 
-// CA is an ACME directory. Shared is reserved for Phase 2 global CAs.
+// CA kinds (Shared contract: CaType enum). Only CATypeACME issues today;
+// CATypeLocalCA and CATypeVaultPKI are recognized but rejected as "not
+// available yet" until Tasks 7 and 8 build their signers.
+const (
+	CATypeACME     = "acme"
+	CATypeLocalCA  = "localca"
+	CATypeVaultPKI = "vaultpki"
+)
+
+// CA is an ACME directory, or (from Phase 5A) a private CA. Shared is
+// reserved for Phase 2 global CAs. Type, Config, NotBefore, NotAfter and
+// CRLNumber are meaningless placeholders for an acme CA (Type is always
+// "acme", Config is always empty, the rest are always nil/zero) until a
+// private kind can actually be created.
 type CA struct {
 	ID, OrgID                                          uuid.UUID
 	Name, Preset, DirectoryURL, TrustBundlePEM, EABKid string
 	HasEAB                                             bool
 	Resolvers                                          []string
 	Shared                                             bool
+	Type                                               string
+	Config                                             map[string]any
+	NotBefore, NotAfter                                *time.Time
+	CRLNumber                                          int64
 	CreatedAt, UpdatedAt                               time.Time
 }
 
 // CAInput creates or replaces a CA. EABHmac: on create nil/"" = none; on
 // update nil or challenge.Unchanged keeps the stored value, "" clears it.
+// Type defaults to acme when empty; Config is the kind's public config
+// (empty for acme).
 type CAInput struct {
 	Name, Preset, DirectoryURL, TrustBundlePEM, EABKid string
 	EABHmac                                            *string
 	Resolvers                                          []string
+	Type                                               string
+	Config                                             map[string]any
 }
 
 // Account is a registered ACME account (key never leaves the store).
@@ -53,10 +75,18 @@ func (ca CA) Staging() bool {
 	return ok && p.Staging
 }
 
-func caFromRow(r sqlcgen.Ca) CA {
+func caFromRow(r sqlcgen.Ca) (CA, error) {
+	cfg := map[string]any{}
+	if len(r.Config) > 0 {
+		if err := json.Unmarshal(r.Config, &cfg); err != nil {
+			return CA{}, err
+		}
+	}
 	return CA{ID: r.ID, OrgID: r.OrgID, Name: r.Name, Preset: r.Preset, DirectoryURL: r.DirectoryUrl,
 		TrustBundlePEM: r.TrustBundlePem, EABKid: r.EabKid, HasEAB: len(r.EabHmac) > 0,
-		Resolvers: r.Resolvers, Shared: r.Shared, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		Resolvers: r.Resolvers, Shared: r.Shared, Type: r.Type, Config: cfg,
+		NotBefore: r.NotBefore, NotAfter: r.NotAfter, CRLNumber: r.CrlNumber,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
 
 func accountFromRow(r sqlcgen.AcmeAccount) Account {
@@ -68,6 +98,21 @@ func (in *CAInput) normalize() (acmesigner.Preset, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return acmesigner.Preset{}, &ValidationError{"name", "required"}
+	}
+	if in.Type == "" {
+		in.Type = CATypeACME
+	}
+	switch in.Type {
+	case CATypeLocalCA, CATypeVaultPKI:
+		// Recognized kinds, but their signers don't exist yet (Tasks 7, 8).
+		return acmesigner.Preset{}, &ValidationError{"type", "not available yet"}
+	case CATypeACME:
+		// falls through to the acme validation below
+	default:
+		return acmesigner.Preset{}, &ValidationError{"type", "unknown type " + in.Type}
+	}
+	if in.Config == nil {
+		in.Config = map[string]any{}
 	}
 	p, ok := acmesigner.PresetByCode(in.Preset)
 	if !ok {
@@ -132,12 +177,16 @@ func (s *Store) CreateCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, 
 	if err != nil {
 		return CA{}, err
 	}
-	row, err := s.q.CreateCA(ctx, sqlcgen.CreateCAParams{OrgID: orgID, Name: in.Name, Preset: in.Preset,
+	cfg, err := json.Marshal(in.Config)
+	if err != nil {
+		return CA{}, err
+	}
+	row, err := s.q.CreateCA(ctx, sqlcgen.CreateCAParams{OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfg, Preset: in.Preset,
 		DirectoryUrl: in.DirectoryURL, TrustBundlePem: in.TrustBundlePEM, EabKid: in.EABKid, EabHmac: sealed, Resolvers: in.Resolvers})
 	if err != nil {
 		return CA{}, dbErr(err, "name")
 	}
-	return caFromRow(row), nil
+	return caFromRow(row)
 }
 
 // UpdateCA replaces a CA's fields. Changing directoryUrl while an ACME
@@ -174,12 +223,16 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	if p.RequiresEAB && (in.EABKid == "" || len(sealed) == 0) {
 		return CA{}, &ValidationError{"eabKid", p.Name + " requires an EAB key id and HMAC"}
 	}
-	row, err := s.q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Preset: in.Preset,
+	cfg, err := json.Marshal(in.Config)
+	if err != nil {
+		return CA{}, err
+	}
+	row, err := s.q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfg, Preset: in.Preset,
 		DirectoryUrl: in.DirectoryURL, TrustBundlePem: in.TrustBundlePEM, EabKid: in.EABKid, EabHmac: sealed, Resolvers: in.Resolvers})
 	if err != nil {
 		return CA{}, dbErr(err, "name")
 	}
-	return caFromRow(row), nil
+	return caFromRow(row)
 }
 
 // GetCA returns one CA of the org.
@@ -188,7 +241,7 @@ func (s *Store) GetCA(ctx context.Context, orgID, id uuid.UUID) (CA, error) {
 	if err != nil {
 		return CA{}, notFound(err)
 	}
-	return caFromRow(row), nil
+	return caFromRow(row)
 }
 
 // ListCAs returns the org's CAs by name.
@@ -199,7 +252,11 @@ func (s *Store) ListCAs(ctx context.Context, orgID uuid.UUID) ([]CA, error) {
 	}
 	out := make([]CA, len(rows))
 	for i, r := range rows {
-		out[i] = caFromRow(r)
+		ca, err := caFromRow(r)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = ca
 	}
 	return out, nil
 }

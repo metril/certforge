@@ -188,7 +188,7 @@ func (s *Service) RevokeClient(ctx context.Context, orgID, id uuid.UUID) (sqlcge
 	// A revoked client's agent can never come back to confirm a removal,
 	// so every grant of this client still awaiting one is hard-deleted now
 	// rather than left removal-pending forever.
-	pending, err := q.RemovalPendingGrantsForClient(ctx, id)
+	pending, err := q.RemovalPendingGrantsForClient(ctx, &id)
 	if err != nil {
 		return c, err
 	}

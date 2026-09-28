@@ -31,9 +31,10 @@ export function OverviewTab({ cert, orgId }: { cert: Certificate; orgId: string 
         ))}
       </section>
       {/* Fix wave (Important): an unmanaged certificate's verificationRules
-          is empty (upload/import never runs the wizard), so Coverage would
-          show a false "No matching rule" for every name on a certificate
-          CertForge was never asked to verify at all. */}
+          is empty (uploaded (unmanaged) certificates never run the
+          wizard), so Coverage would show a false "No matching rule" for
+          every name on a certificate CertForge was never asked to verify
+          at all. */}
       {cert.managed && <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />}
       <section aria-labelledby="ov-config" className="grid gap-2 lg:col-span-2">
         <h2 id="ov-config" className="text-base font-semibold">

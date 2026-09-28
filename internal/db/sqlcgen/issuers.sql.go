@@ -77,14 +77,16 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 }
 
 const createCA = `-- name: CreateCA :one
-INSERT INTO cas (org_id, name, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at
+INSERT INTO cas (org_id, name, type, config, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number
 `
 
 type CreateCAParams struct {
 	OrgID          uuid.UUID `json:"org_id"`
 	Name           string    `json:"name"`
+	Type           string    `json:"type"`
+	Config         []byte    `json:"config"`
 	Preset         string    `json:"preset"`
 	DirectoryUrl   string    `json:"directory_url"`
 	TrustBundlePem string    `json:"trust_bundle_pem"`
@@ -97,6 +99,8 @@ func (q *Queries) CreateCA(ctx context.Context, arg CreateCAParams) (Ca, error) 
 	row := q.db.QueryRow(ctx, createCA,
 		arg.OrgID,
 		arg.Name,
+		arg.Type,
+		arg.Config,
 		arg.Preset,
 		arg.DirectoryUrl,
 		arg.TrustBundlePem,
@@ -119,6 +123,11 @@ func (q *Queries) CreateCA(ctx context.Context, arg CreateCAParams) (Ca, error) 
 		&i.Shared,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Config,
+		&i.SecretCfg,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CrlNumber,
 	)
 	return i, err
 }
@@ -206,7 +215,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id uuid.UUID) (AcmeAccount
 }
 
 const getCA = `-- name: GetCA :one
-SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at FROM cas WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number FROM cas WHERE id = $1 AND org_id = $2
 `
 
 type GetCAParams struct {
@@ -231,12 +240,17 @@ func (q *Queries) GetCA(ctx context.Context, arg GetCAParams) (Ca, error) {
 		&i.Shared,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Config,
+		&i.SecretCfg,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CrlNumber,
 	)
 	return i, err
 }
 
 const getCAByID = `-- name: GetCAByID :one
-SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at FROM cas WHERE id = $1
+SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number FROM cas WHERE id = $1
 `
 
 // Ignores org scope: used only to check that a CA referenced by the global
@@ -258,6 +272,11 @@ func (q *Queries) GetCAByID(ctx context.Context, id uuid.UUID) (Ca, error) {
 		&i.Shared,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Config,
+		&i.SecretCfg,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CrlNumber,
 	)
 	return i, err
 }
@@ -296,7 +315,7 @@ func (q *Queries) ListAccounts(ctx context.Context, orgID uuid.UUID) ([]AcmeAcco
 }
 
 const listCAs = `-- name: ListCAs :many
-SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at FROM cas WHERE org_id = $1 ORDER BY name
+SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number FROM cas WHERE org_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListCAs(ctx context.Context, orgID uuid.UUID) ([]Ca, error) {
@@ -322,6 +341,11 @@ func (q *Queries) ListCAs(ctx context.Context, orgID uuid.UUID) ([]Ca, error) {
 			&i.Shared,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Config,
+			&i.SecretCfg,
+			&i.NotBefore,
+			&i.NotAfter,
+			&i.CrlNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -371,7 +395,7 @@ func (q *Queries) LockAccountKeyShare(ctx context.Context, id uuid.UUID) (uuid.U
 }
 
 const lockCA = `-- name: LockCA :one
-SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at FROM cas WHERE id = $1 AND org_id = $2 FOR UPDATE
+SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number FROM cas WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
 
 type LockCAParams struct {
@@ -399,6 +423,11 @@ func (q *Queries) LockCA(ctx context.Context, arg LockCAParams) (Ca, error) {
 		&i.Shared,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Config,
+		&i.SecretCfg,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CrlNumber,
 	)
 	return i, err
 }
@@ -420,16 +449,18 @@ func (q *Queries) LockCAKeyShare(ctx context.Context, id uuid.UUID) (uuid.UUID, 
 }
 
 const updateCA = `-- name: UpdateCA :one
-UPDATE cas SET name = $3, preset = $4, directory_url = $5, trust_bundle_pem = $6,
-    eab_kid = $7, eab_hmac = $8, resolvers = $9, updated_at = now()
+UPDATE cas SET name = $3, type = $4, config = $5, preset = $6, directory_url = $7, trust_bundle_pem = $8,
+    eab_kid = $9, eab_hmac = $10, resolvers = $11, updated_at = now()
 WHERE id = $1 AND org_id = $2
-RETURNING id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at
+RETURNING id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number
 `
 
 type UpdateCAParams struct {
 	ID             uuid.UUID `json:"id"`
 	OrgID          uuid.UUID `json:"org_id"`
 	Name           string    `json:"name"`
+	Type           string    `json:"type"`
+	Config         []byte    `json:"config"`
 	Preset         string    `json:"preset"`
 	DirectoryUrl   string    `json:"directory_url"`
 	TrustBundlePem string    `json:"trust_bundle_pem"`
@@ -443,6 +474,8 @@ func (q *Queries) UpdateCA(ctx context.Context, arg UpdateCAParams) (Ca, error) 
 		arg.ID,
 		arg.OrgID,
 		arg.Name,
+		arg.Type,
+		arg.Config,
 		arg.Preset,
 		arg.DirectoryUrl,
 		arg.TrustBundlePem,
@@ -465,6 +498,11 @@ func (q *Queries) UpdateCA(ctx context.Context, arg UpdateCAParams) (Ca, error) 
 		&i.Shared,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Config,
+		&i.SecretCfg,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CrlNumber,
 	)
 	return i, err
 }

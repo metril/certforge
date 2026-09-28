@@ -71,7 +71,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 	if err != nil {
 		return agentproto.Assignments{}, err
 	}
-	rows, err := s.Q.ClientAssignments(ctx, c.ID)
+	rows, err := s.Q.ClientAssignments(ctx, &c.ID)
 	if err != nil {
 		return agentproto.Assignments{}, err
 	}
@@ -132,7 +132,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 // Bundle renders one grant's files for its own agent. Key material leaves
 // the server only with an audit row: an audit failure fails the request.
 func (s *Service) Bundle(ctx context.Context, c sqlcgen.Client, grantID uuid.UUID) (agentproto.Bundle, error) {
-	r, err := s.Q.GrantForBundle(ctx, sqlcgen.GrantForBundleParams{ID: grantID, ClientID: c.ID})
+	r, err := s.Q.GrantForBundle(ctx, sqlcgen.GrantForBundleParams{ID: grantID, ClientID: &c.ID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return agentproto.Bundle{}, notFound("grant %s", grantID)
 	}
@@ -225,7 +225,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 	if _, err := q.LockClientByID(ctx, c.ID); err != nil {
 		return err
 	}
-	rows, err := q.ClientDeployments(ctx, c.ID)
+	rows, err := q.ClientDeployments(ctx, &c.ID)
 	if err != nil {
 		return err
 	}
@@ -336,7 +336,7 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 	if _, err := q.LockClientByID(ctx, c.ID); err != nil {
 		return err
 	}
-	rows, err := q.ClientDeployments(ctx, c.ID)
+	rows, err := q.ClientDeployments(ctx, &c.ID)
 	if err != nil {
 		return err
 	}

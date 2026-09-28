@@ -77,10 +77,10 @@ GROUP BY g.client_id
 `
 
 type ClientCountsRow struct {
-	ClientID uuid.UUID `json:"client_id"`
-	Grants   int64     `json:"grants"`
-	Drift    int64     `json:"drift"`
-	Failed   int64     `json:"failed"`
+	ClientID *uuid.UUID `json:"client_id"`
+	Grants   int64      `json:"grants"`
+	Drift    int64      `json:"drift"`
+	Failed   int64      `json:"failed"`
 }
 
 func (q *Queries) ClientCounts(ctx context.Context, ids []uuid.UUID) ([]ClientCountsRow, error) {

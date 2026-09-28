@@ -201,3 +201,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Layout editor supports DER, PKCS#12 and JKS files, a stored password and extra certificates.
 - Settings edit the CAA check and local rate limits.
 - The import preview table's Name and Names columns overflowed into the Expires column in a real browser (a `table-fixed` column with no assigned width and a `truncate` span missing `block`, caught only by Playwright); columns now have explicit widths and truncate correctly.
+- Schema for private CA kinds, server-side deploy targets and the Vault settings section.

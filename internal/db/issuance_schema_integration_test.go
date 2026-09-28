@@ -18,12 +18,12 @@ func TestIssuanceSchema(t *testing.T) {
 	ctx := context.Background()
 	org := dbtest.Org(t, pool)
 
-	ca, err := q.CreateCA(ctx, sqlcgen.CreateCAParams{OrgID: org, Name: "LE", Preset: "letsencrypt",
+	ca, err := q.CreateCA(ctx, sqlcgen.CreateCAParams{OrgID: org, Name: "LE", Type: "acme", Config: []byte(`{}`), Preset: "letsencrypt",
 		DirectoryUrl: "https://acme-v02.api.letsencrypt.org/directory", Resolvers: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateCA(ctx, sqlcgen.CreateCAParams{OrgID: org, Name: "LE", Preset: "letsencrypt", DirectoryUrl: "x", Resolvers: []string{}}); err == nil {
+	if _, err := q.CreateCA(ctx, sqlcgen.CreateCAParams{OrgID: org, Name: "LE", Type: "acme", Config: []byte(`{}`), Preset: "letsencrypt", DirectoryUrl: "x", Resolvers: []string{}}); err == nil {
 		t.Fatal("duplicate CA name accepted")
 	}
 	caID := ca.ID

@@ -30,6 +30,7 @@ import (
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
+	"github.com/metril/certforge/internal/vault"
 )
 
 func runServe(ctx context.Context, _ []string, _ io.Writer) error {
@@ -61,6 +62,9 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return err
 	}
 	if err := agents.RegisterSettings(sections); err != nil {
+		return err
+	}
+	if err := vault.RegisterSettings(sections); err != nil {
 		return err
 	}
 	authSettings, err := authn.NewSettingsSource(store, sections)

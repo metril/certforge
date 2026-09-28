@@ -62,19 +62,24 @@ type AuditEvent struct {
 }
 
 type Ca struct {
-	ID             uuid.UUID `json:"id"`
-	OrgID          uuid.UUID `json:"org_id"`
-	Name           string    `json:"name"`
-	Type           string    `json:"type"`
-	Preset         string    `json:"preset"`
-	DirectoryUrl   string    `json:"directory_url"`
-	TrustBundlePem string    `json:"trust_bundle_pem"`
-	EabKid         string    `json:"eab_kid"`
-	EabHmac        []byte    `json:"eab_hmac"`
-	Resolvers      []string  `json:"resolvers"`
-	Shared         bool      `json:"shared"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             uuid.UUID  `json:"id"`
+	OrgID          uuid.UUID  `json:"org_id"`
+	Name           string     `json:"name"`
+	Type           string     `json:"type"`
+	Preset         string     `json:"preset"`
+	DirectoryUrl   string     `json:"directory_url"`
+	TrustBundlePem string     `json:"trust_bundle_pem"`
+	EabKid         string     `json:"eab_kid"`
+	EabHmac        []byte     `json:"eab_hmac"`
+	Resolvers      []string   `json:"resolvers"`
+	Shared         bool       `json:"shared"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	Config         []byte     `json:"config"`
+	SecretCfg      []byte     `json:"secret_cfg"`
+	NotBefore      *time.Time `json:"not_before"`
+	NotAfter       *time.Time `json:"not_after"`
+	CrlNumber      int64      `json:"crl_number"`
 }
 
 type Certificate struct {
@@ -139,7 +144,7 @@ type Client struct {
 
 type ClientCertGrant struct {
 	ID              uuid.UUID   `json:"id"`
-	ClientID        uuid.UUID   `json:"client_id"`
+	ClientID        *uuid.UUID  `json:"client_id"`
 	CertID          uuid.UUID   `json:"cert_id"`
 	Delivery        string      `json:"delivery"`
 	OutputSpecID    *uuid.UUID  `json:"output_spec_id"`
@@ -290,6 +295,15 @@ type RoleBinding struct {
 	OrgID       *uuid.UUID `json:"org_id"`
 	SiteID      *uuid.UUID `json:"site_id"`
 	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type ServerDeployment struct {
+	GrantID    uuid.UUID  `json:"grant_id"`
+	VersionID  *uuid.UUID `json:"version_id"`
+	Status     string     `json:"status"`
+	LastError  string     `json:"last_error"`
+	DeployedAt *time.Time `json:"deployed_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 type Session struct {

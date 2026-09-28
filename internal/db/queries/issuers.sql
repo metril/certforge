@@ -1,6 +1,6 @@
 -- name: CreateCA :one
-INSERT INTO cas (org_id, name, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO cas (org_id, name, type, config, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetCA :one
@@ -15,8 +15,8 @@ SELECT * FROM cas WHERE id = $1;
 SELECT * FROM cas WHERE org_id = $1 ORDER BY name;
 
 -- name: UpdateCA :one
-UPDATE cas SET name = $3, preset = $4, directory_url = $5, trust_bundle_pem = $6,
-    eab_kid = $7, eab_hmac = $8, resolvers = $9, updated_at = now()
+UPDATE cas SET name = $3, type = $4, config = $5, preset = $6, directory_url = $7, trust_bundle_pem = $8,
+    eab_kid = $9, eab_hmac = $10, resolvers = $11, updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING *;
 

@@ -71,10 +71,10 @@ export function SettingsTab({ cert, orgId, orgSlug }: Props) {
         </ul>
       </section>
       {/* Fix wave (Important): an unmanaged certificate's verificationRules
-          is empty (upload/import never runs the wizard) — the summary and
-          Coverage would both describe verification for a certificate
-          CertForge was never asked to verify, down to a false "No matching
-          rule" for every name. */}
+          is empty (uploaded (unmanaged) certificates never run the
+          wizard) — the summary and Coverage would both describe
+          verification for a certificate CertForge was never asked to
+          verify, down to a false "No matching rule" for every name. */}
       {cert.managed && (
         <section aria-labelledby="st-verification" className="grid gap-3">
           <h2 id="st-verification" className="text-base font-semibold">
