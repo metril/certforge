@@ -2849,7 +2849,7 @@ components:
     LocalCaConfig:
       type: object
       description: Configuration for a localca CA (Deviations R4). Everything here is public except importKeyPem.
-      required: [subject, keyType, rootValidityYears, issuingValidityYears, maxLeafDays, crl]
+      required: [subject]
       properties:
         subject:
           type: object
@@ -2873,7 +2873,7 @@ components:
     VaultPkiConfig:
       type: object
       description: Configuration for a vaultpki CA, backed by Vault's PKI secrets engine.
-      required: [mount, role]
+      required: [role]
       properties:
         mount: {type: string, pattern: "^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$", default: pki, description: Vault PKI secrets engine mount path.}
         role: {type: string, minLength: 1, maxLength: 128, description: Vault PKI role to sign leaves against.}
@@ -3190,7 +3190,6 @@ components:
     RevokeRequest:
       type: object
       description: Reason to record when revoking a certificate version.
-      required: [reason]
       properties:
         reason:
           description: Reason for the revocation.

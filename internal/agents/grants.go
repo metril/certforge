@@ -218,6 +218,21 @@ func (s *Service) LiveGrantsNeedKey(ctx context.Context, certID uuid.UUID) (bool
 	return LiveGrantsNeedKeyTx(ctx, s.Q, certID)
 }
 
+// clientOf returns the client id behind a grant row's nullable client_id
+// column, or an internal error instead of panicking if it is nil. Every
+// caller here is a client-grant-only path (render, checkPaths, the grant
+// CRUD methods, OnVersion/SweepDeployments's grouping); client_id became
+// nullable in migration 00012 for server grants (Task 11), which the query
+// layer keeps out of these paths, so nil is not expected to reach any of
+// them — this is a defensive backstop against that invariant breaking,
+// not a normal code path.
+func clientOf(id *uuid.UUID) (uuid.UUID, error) {
+	if id == nil {
+		return uuid.Nil, errors.New("agents: grant has no client (a server grant reached a client-only path)")
+	}
+	return *id, nil
+}
+
 func targetOf(typ *string, cfg []byte) *agentproto.Target {
 	if typ == nil {
 		return nil
@@ -267,6 +282,10 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 	}
 	owner := map[string]string{}
 	for _, r := range rows {
+		cid, err := clientOf(r.ClientID)
+		if err != nil {
+			return err
+		}
 		var paths []string
 		if r.RemovedAt != nil {
 			var specs []agentproto.FileSpec
@@ -296,7 +315,7 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 			return err
 		}
 		for _, p := range paths {
-			k := r.ClientID.String() + "\x00" + p
+			k := cid.String() + "\x00" + p
 			if other, ok := owner[k]; ok {
 				return conflict("The grants for %q and %q on this client would both write %s; use a different layout path or deploy target.", other, r.CertificateName, p)
 			}
@@ -336,7 +355,11 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 	}
 	clients := make([]uuid.UUID, 0, len(rows))
 	for _, r := range rows {
-		clients = append(clients, *r.ClientID)
+		cid, err := clientOf(r.ClientID)
+		if err != nil {
+			return nil, nil, err
+		}
+		clients = append(clients, cid)
 	}
 	clients = uniq(clients)
 	if len(clients) > 0 {
@@ -388,8 +411,12 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 		return m, nil
 	}
 	for _, r := range rows {
+		cid, err := clientOf(r.ClientID)
+		if err != nil {
+			return nil, nil, err
+		}
 		if r.Delivery == "push" {
-			push[*r.ClientID] = true
+			push[cid] = true
 		}
 		expected := []byte("[]")
 		extraVersionIDs := []uuid.UUID{}
@@ -543,6 +570,10 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 	if err != nil {
 		return err
 	}
+	clientID, err := clientOf(cur.ClientID)
+	if err != nil {
+		return err
+	}
 	in.CertID = cur.CertID
 	if err := in.validate(); err != nil {
 		return err
@@ -555,7 +586,7 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 	if err := s.checkRefs(ctx, q, orgID, in); err != nil {
 		return err
 	}
-	if _, err := q.LockClientByID(ctx, *cur.ClientID); err != nil {
+	if _, err := q.LockClientByID(ctx, clientID); err != nil {
 		return err
 	}
 	g, err := q.UpdateGrant(ctx, sqlcgen.UpdateGrantParams{Delivery: in.Delivery, OutputSpecID: in.LayoutID,
@@ -563,14 +594,14 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 	if err != nil {
 		return err
 	}
-	if err := s.checkPaths(ctx, q, []uuid.UUID{*g.ClientID}); err != nil {
+	if err := s.checkPaths(ctx, q, []uuid.UUID{clientID}); err != nil {
 		return err
 	}
 	_, push, err := s.render(ctx, q, []uuid.UUID{grantID})
 	if err != nil {
 		return err
 	}
-	revs, err := s.bump(ctx, q, []uuid.UUID{*g.ClientID})
+	revs, err := s.bump(ctx, q, []uuid.UUID{clientID})
 	if err != nil {
 		return err
 	}
@@ -608,7 +639,11 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID, for
 	if g.RemovedAt != nil && !force {
 		return nil
 	}
-	c, err := q.GetClientByID(ctx, *g.ClientID)
+	clientID, err := clientOf(g.ClientID)
+	if err != nil {
+		return err
+	}
+	c, err := q.GetClientByID(ctx, clientID)
 	if err != nil {
 		return err
 	}
@@ -627,7 +662,7 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID, for
 	var revs []sqlcgen.BumpClientRevisionsRow
 	if immediate {
 		err = q.DeleteGrantRow(ctx, grantID)
-	} else if revs, err = s.bump(ctx, q, []uuid.UUID{*g.ClientID}); err == nil && len(revs) != 1 {
+	} else if revs, err = s.bump(ctx, q, []uuid.UUID{clientID}); err == nil && len(revs) != 1 {
 		err = errors.New("agents: bump returned no revision for the grant's client")
 	} else if err == nil {
 		// The bumped revision is the first one whose assignments list this
@@ -641,7 +676,7 @@ func (s *Service) DeleteGrant(ctx context.Context, orgID, grantID uuid.UUID, for
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.nudge(revs, map[uuid.UUID]bool{*g.ClientID: g.Delivery == "push"})
+	s.nudge(revs, map[uuid.UUID]bool{clientID: g.Delivery == "push"})
 	d := grantDetails(g)
 	d["immediate"] = immediate
 	if force {
@@ -666,6 +701,10 @@ func (s *Service) Redeploy(ctx context.Context, orgID, grantID uuid.UUID) error 
 	if err != nil {
 		return err
 	}
+	clientID, err := clientOf(g.ClientID)
+	if err != nil {
+		return err
+	}
 	if err := q.BumpRedeploySeqs(ctx, []uuid.UUID{grantID}); err != nil {
 		return err
 	}
@@ -673,7 +712,7 @@ func (s *Service) Redeploy(ctx context.Context, orgID, grantID uuid.UUID) error 
 	if err != nil {
 		return err
 	}
-	revs, err := s.bump(ctx, q, []uuid.UUID{*g.ClientID})
+	revs, err := s.bump(ctx, q, []uuid.UUID{clientID})
 	if err != nil {
 		return err
 	}
@@ -745,7 +784,11 @@ func (s *Service) resyncGrants(ctx context.Context, ids []uuid.UUID) error {
 	}
 	byClient := map[uuid.UUID][]uuid.UUID{}
 	for _, g := range groups {
-		byClient[*g.ClientID] = append(byClient[*g.ClientID], g.ID)
+		cid, err := clientOf(g.ClientID)
+		if err != nil {
+			return err
+		}
+		byClient[cid] = append(byClient[cid], g.ID)
 	}
 	var firstErr error
 	for clientID, grantIDs := range byClient {

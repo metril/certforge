@@ -117,6 +117,23 @@ certforge-agent itself (the binary running alongside Traefik or another target) 
 
 Shows the key-encryption key's status (from `/readyz`'s `kek` check) and the **KEK escrow confirmed** switch, which must be on before scheduled backups run.
 
+### Vault section
+
+Global settings for reaching HashiCorp Vault (or OpenBao), served by `GET/PUT /api/v1/settings/vault` (section `vault`; a web UI page arrives in Phase 5B under Settings → Integrations). Used by the Transit KEK, by private CAs backed by Vault's PKI secrets engine, and by the `vault-kv` deploy target.
+
+| Field | Default | Meaning |
+|---|---|---|
+| Address (`address`) | — | Vault's base URL, e.g. `https://vault.example.com:8200`. Required once any other field below is set. |
+| Namespace (`namespace`) | — | Vault Enterprise namespace. Leave empty for open-source Vault or OpenBao. |
+| Authentication method (`authMethod`) | token | `token` or `approle`. |
+| Token (`token`) | — | Vault token. Used, and required, only when the authentication method is `token`; write-only. |
+| Role ID (`roleId`) | — | AppRole role id. Used only when the authentication method is `approle`. |
+| Secret ID (`secretId`) | — | AppRole secret id. Used only when the authentication method is `approle`; write-only. |
+| CA bundle (`caPem`) | — | Additional PEM-encoded certificates trusted for Vault's TLS, appended to the system root pool. Never disables verification. |
+| Timeout in seconds (`timeoutSeconds`) | 10 | Per-request timeout for calls to Vault (1–60). |
+
+`token` may only be set when `authMethod` is `token`; `roleId`/`secretId` may only be set when `authMethod` is `approle` — setting either against the wrong method is rejected. A PUT that changes `address` or `namespace` must re-send `token` (token auth) or `secretId` (AppRole), rather than relying on `__unchanged__`, since a different Vault or namespace cannot be assumed to accept the previously stored credential.
+
 ## First-run setup wizard
 
 Until setup completes, `GET /api/v1/setup/status` returns `{"needsSetup": true}` and the UI shows `/setup`. The wizard posts to `POST /api/v1/setup/complete`:

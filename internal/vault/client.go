@@ -29,6 +29,12 @@ const defaultRenewInterval = 30 * time.Second
 // read; anything larger is an error rather than an unbounded allocation.
 const maxBodySize = 1 << 20 // 1 MiB
 
+// errBodyTooLarge is returned by rawDo when a response exceeds maxBodySize.
+// It is deterministic for a given endpoint, so doWithRetry never retries it
+// (unlike a connection error, retrying would just fail the same way three
+// times slower).
+var errBodyTooLarge = errors.New("vault: response body too large")
+
 // maxAttempts is the retry budget for connection errors and 5xx responses
 // (Contract: "3 attempts with backoff 200 ms·2^n").
 const maxAttempts = 3
@@ -67,7 +73,7 @@ type Client struct {
 	token        string
 	leaseSeconds int
 	renewable    bool
-	stopCh       chan struct{}
+	cancelLoop   context.CancelFunc
 	wg           sync.WaitGroup
 }
 
@@ -124,50 +130,56 @@ func New(cfg Config) (*Client, error) {
 // Start begins a background renewal loop: renewable tokens are renewed at
 // half their TTL, AppRole logins are refreshed the same way by logging in
 // again. Close stops it. Calling Start twice is a no-op.
+//
+// The loop runs on its own context, derived from ctx but canceled by Close
+// independently of it: without that, Close would have to wait out whatever
+// Login/RenewSelf call the loop happened to be in the middle of (up to
+// maxAttempts retries plus backoff on ctx), since those calls run on the
+// loop's context, not a per-call one Close could cancel separately.
 func (c *Client) Start(ctx context.Context) {
 	c.mu.Lock()
-	if c.stopCh != nil {
+	if c.cancelLoop != nil {
 		c.mu.Unlock()
 		return
 	}
-	stop := make(chan struct{})
-	c.stopCh = stop
+	loopCtx, cancel := context.WithCancel(ctx)
+	c.cancelLoop = cancel
 	c.mu.Unlock()
 
 	c.wg.Add(1)
-	go c.renewLoop(ctx, stop)
+	go c.renewLoop(loopCtx)
 }
 
 // Close stops the renewal loop started by Start and waits for it to exit.
 // Calling Close without a prior Start, or twice, is a no-op.
 func (c *Client) Close() {
 	c.mu.Lock()
-	stop := c.stopCh
-	c.stopCh = nil
+	cancel := c.cancelLoop
+	c.cancelLoop = nil
 	c.mu.Unlock()
-	if stop == nil {
+	if cancel == nil {
 		return
 	}
-	close(stop)
+	cancel()
 	c.wg.Wait()
 }
 
-func (c *Client) renewLoop(ctx context.Context, stop <-chan struct{}) {
+func (c *Client) renewLoop(ctx context.Context) {
 	defer c.wg.Done()
 
+	// A seed failure (a Vault blip right at Start) is not fatal: fall
+	// through into the loop below, which waits defaultRenewInterval (no
+	// lease is known yet) and tries again, rather than exiting the renewal
+	// loop for good and leaving a renewable token to expire unrenewed.
 	if c.getToken() == "" {
-		if err := c.Login(ctx); err != nil {
-			return
-		}
-	} else if err := c.refreshLease(ctx); err != nil {
-		return
+		_ = c.Login(ctx)
+	} else {
+		_ = c.refreshLease(ctx)
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-stop:
 			return
 		case <-c.clock.After(c.renewInterval()):
 		}
@@ -314,6 +326,9 @@ func (c *Client) doWithRetry(ctx context.Context, method, path string, body any,
 		}
 		status, respBody, err := c.rawDo(ctx, method, path, body)
 		if err != nil {
+			if errors.Is(err, errBodyTooLarge) {
+				return 0, nil, err
+			}
 			lastErr = err
 			continue
 		}
@@ -397,7 +412,7 @@ func (c *Client) rawDo(ctx context.Context, method, path string, body any) (int,
 		return 0, nil, fmt.Errorf("vault: read response: %w", err)
 	}
 	if len(data) > maxBodySize {
-		return 0, nil, errors.New("vault: response body too large")
+		return 0, nil, errBodyTooLarge
 	}
 	return resp.StatusCode, data, nil
 }
