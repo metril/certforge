@@ -150,6 +150,12 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	ariWorker := issuance.NewARIPollWorker(issuanceStore, certStore)
 	ariWorker.Log = log
 	issueWorker.ARI = ariWorker
+	// SignerFactory is the single signer-construction path both workers use
+	// (localca, vaultpki and acme cases): wired to both before
+	// riverClient.Start, same as HTTPTokens/Relay/CAA/Settings above.
+	signerFactory := &issuance.SignerFactory{Store: issuanceStore, Vault: vaultProvider, BaseURL: generalBaseURL(store, cfg.BaseURL)}
+	issueWorker.NewSigner = signerFactory.New
+	ariWorker.NewSigner = signerFactory.New
 	// keysSvc.River is set right after riverClient exists below (same
 	// construct-then-wire order as issuanceSvc): RegisterRiver only needs
 	// the Service pointer, not River itself, to register RewrapWorker.
@@ -262,6 +268,21 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	}
 	hub.Shutdown()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// generalBaseURL mirrors api.Server.baseURL (the General section's base
+// URL, else the static fallback) for the issuance workers, which run
+// outside any request and so have no *api.Server to call it on.
+func generalBaseURL(store *settings.Store, fallback string) func(ctx context.Context) string {
+	return func(ctx context.Context) string {
+		var g struct {
+			BaseURL string `json:"baseUrl"`
+		}
+		if err := store.Get(ctx, settings.SectionKey("general"), &g); err == nil && g.BaseURL != "" {
+			return g.BaseURL
+		}
+		return fallback
+	}
 }
 
 // stopRiver lets running jobs finish for 30 s, then cancels them; a

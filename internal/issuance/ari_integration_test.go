@@ -33,7 +33,7 @@ func (s *windowSigner) RenewalInfo(context.Context, *x509.Certificate) (*signer.
 
 func newARIWorker(f *fixture, ws *windowSigner) *ARIPollWorker {
 	w := NewARIPollWorker(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}))
-	w.NewSigner = func(CA) signer.Signer { return ws }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return ws, nil }
 	w.Now = func() time.Time { return now0 }
 	w.Rand = func() float64 { return 0.5 }
 	return w
@@ -324,7 +324,7 @@ func TestARIPollDuePaginatesPastFirstPage(t *testing.T) {
 	}
 
 	aw := NewARIPollWorker(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}))
-	aw.NewSigner = func(CA) signer.Signer { return cs }
+	aw.NewSigner = func(context.Context, CA) (signer.Signer, error) { return cs, nil }
 	aw.Now = time.Now
 	aw.Rand = func() float64 { return 0.5 }
 
@@ -401,7 +401,9 @@ func TestMarkCertificateIssuedClearsStaleARIWindow(t *testing.T) {
 	}
 
 	// Reissue: a second version becomes current.
-	w.NewSigner = func(CA) signer.Signer { return &fakeSigner{issued: issuedFor(t, c.Names(), now0.Add(time.Hour))} }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) {
+		return &fakeSigner{issued: issuedFor(t, c.Names(), now0.Add(time.Hour))}, nil
+	}
 	if err := w.Issue(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
 	}

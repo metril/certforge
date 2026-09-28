@@ -116,7 +116,7 @@ var now0 = time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
 
 func newWorker(f *fixture, fs *fakeSigner) *IssueWorker {
 	w := NewIssueWorker(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}))
-	w.NewSigner = func(CA) signer.Signer { return fs }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs, nil }
 	w.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return nopDNS{}, nil }
 	w.Now = func() time.Time { return now0 }
 	w.Rand = func() float64 { return 0.5 }
@@ -254,7 +254,7 @@ func TestIssueCAAForbidsBeforeOrder(t *testing.T) {
 	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
 	fs := &caaSigner{identities: []string{"letsencrypt.org"}}
 	w := newWorker(f, &fs.fakeSigner)
-	w.NewSigner = func(CA) signer.Signer { return fs }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs, nil }
 	w.CAA = fakeCAAResolver{records: map[string][]CAARecord{
 		"example.test": {{Tag: "issue", Value: "other-ca.example"}},
 	}}
@@ -317,7 +317,7 @@ func TestIssuePanicRecordsFailedAttempt(t *testing.T) {
 	f := newFixture(t)
 	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: ptr(f.credential(t, "cf"))}})
 	w := newWorker(f, &fakeSigner{})
-	w.NewSigner = func(CA) signer.Signer { return panicSigner{} }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return panicSigner{}, nil }
 	func() {
 		defer func() {
 			if r := recover(); r == nil {
@@ -363,7 +363,7 @@ func TestIssueKeepsImmediateRenewalWhenNamesChangeDuringAttempt(t *testing.T) {
 	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
 	fs := &renamingSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0)}, f: f, certID: c.ID, newSANs: []string{"extra.example.test"}}
 	w := newWorker(f, &fs.fakeSigner)
-	w.NewSigner = func(CA) signer.Signer { return fs }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs, nil }
 	if err := w.Issue(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +406,7 @@ func TestIssuePropagationDefaultsToProviderTimeout(t *testing.T) {
 	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
 	fs := &timeoutCapturingSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0)}}
 	w := newWorker(f, &fs.fakeSigner)
-	w.NewSigner = func(CA) signer.Signer { return fs }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs, nil }
 	w.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return slowDNS{}, nil }
 	if err := w.Issue(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
@@ -553,7 +553,7 @@ func TestFailDoesNotRecordFailedValidationForLocalCAAForbid(t *testing.T) {
 	c := f.cert(t, []string{"caa-fail.example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
 	fs := &caaSigner{identities: []string{"letsencrypt.org"}}
 	w := newWorker(f, &fs.fakeSigner)
-	w.NewSigner = func(CA) signer.Signer { return fs }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs, nil }
 	w.CAA = fakeCAAResolver{records: map[string][]CAARecord{
 		"caa-fail.example.test": {{Tag: "issue", Value: "other-ca.example"}},
 	}}
@@ -620,7 +620,7 @@ func TestWorkerSetsReplaces(t *testing.T) {
 	first := issuedFor(t, c.Names(), now0)
 	fs1 := &replacesCapturingSigner{fakeSigner: fakeSigner{issued: first}}
 	w := newWorker(f, &fs1.fakeSigner)
-	w.NewSigner = func(CA) signer.Signer { return fs1 }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs1, nil }
 	if err := w.Issue(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +630,7 @@ func TestWorkerSetsReplaces(t *testing.T) {
 
 	// Renewal against the same CA: Replaces is the first version's leaf.
 	fs2 := &replacesCapturingSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0.Add(time.Hour))}}
-	w.NewSigner = func(CA) signer.Signer { return fs2 }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs2, nil }
 	if err := w.Issue(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -659,7 +659,7 @@ func TestWorkerSetsReplaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	fs3 := &replacesCapturingSigner{fakeSigner: fakeSigner{issued: issuedFor(t, c.Names(), now0.Add(2*time.Hour))}}
-	w.NewSigner = func(CA) signer.Signer { return fs3 }
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs3, nil }
 	if err := w.Issue(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -697,7 +697,7 @@ func TestSucceedAppendsARIPollErrorToAttemptLog(t *testing.T) {
 	w := newWorker(f, &fs.fakeSigner)
 
 	ari := NewARIPollWorker(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}))
-	ari.NewSigner = func(CA) signer.Signer { return fs }
+	ari.NewSigner = func(context.Context, CA) (signer.Signer, error) { return fs, nil }
 	ari.Now = func() time.Time { return now0 }
 	ari.Rand = func() float64 { return 0.5 }
 	w.ARI = ari

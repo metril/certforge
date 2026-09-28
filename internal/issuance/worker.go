@@ -20,7 +20,6 @@ import (
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
-	acmesigner "github.com/metril/certforge/internal/signer/acme"
 )
 
 // IssueArgs is the river job issuing one certificate.
@@ -57,9 +56,12 @@ type VersionListener interface {
 // infrastructure errors (database) are returned for river to retry.
 type IssueWorker struct {
 	river.WorkerDefaults[IssueArgs]
-	Store      *Store
-	Certs      *certstore.Store
-	NewSigner  func(CA) signer.Signer
+	Store *Store
+	Certs *certstore.Store
+	// NewSigner builds the signer for a CA (SignerFactory.New in
+	// production): nil means every attempt fails immediately. Set before
+	// riverClient.Start, same as HTTPTokens/Relay/CAA/Settings below.
+	NewSigner  func(ctx context.Context, ca CA) (signer.Signer, error)
 	BuildDNS   func(code string, cfg map[string]string) (legochallenge.Provider, error)
 	Now        func() time.Time
 	Rand       func() float64
@@ -96,15 +98,12 @@ type IssueWorker struct {
 	ARI *ARIPollWorker
 }
 
-// NewIssueWorker wires production defaults.
+// NewIssueWorker wires production defaults. NewSigner is left nil: the
+// caller wires it to a *SignerFactory before riverClient.Start, same as
+// HTTPTokens/Relay/CAA/Settings.
 func NewIssueWorker(store *Store, certs *certstore.Store) *IssueWorker {
-	return &IssueWorker{Store: store, Certs: certs, NewSigner: DefaultSigner, BuildDNS: challenge.Build,
+	return &IssueWorker{Store: store, Certs: certs, BuildDNS: challenge.Build,
 		Now: time.Now, Rand: rand.Float64, Log: slog.Default()}
-}
-
-// DefaultSigner builds the lego-backed ACME signer for ca.
-func DefaultSigner(ca CA) signer.Signer {
-	return acmesigner.New(acmesigner.Config{DirectoryURL: ca.DirectoryURL, TrustBundlePEM: ca.TrustBundlePEM})
 }
 
 // Timeout covers a manual-dns wait plus propagation and finalisation.
@@ -211,14 +210,29 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	if err != nil {
 		return nil, eff, err
 	}
-	if eff.CAID.Value == nil || eff.AccountID.Value == nil {
-		return nil, eff, errors.New("no CA or ACME account configured: set them on the certificate or in issuance defaults")
+	if eff.CAID.Value == nil {
+		return nil, eff, errors.New("no CA configured: set one on the certificate or in issuance defaults")
 	}
 	ca, err := w.Store.GetCA(ctx, cert.OrgID, *eff.CAID.Value)
 	if err != nil {
 		return nil, eff, fmt.Errorf("CA %s: %w", *eff.CAID.Value, err)
 	}
-	sig := w.NewSigner(ca)
+	sig, err := w.NewSigner(ctx, ca)
+	if err != nil {
+		return nil, eff, fmt.Errorf("CA %s: %w", ca.Name, err)
+	}
+
+	// A private CA (localca, vaultpki) has no ACME account, publishes no
+	// caaIdentities, is not rate-ledger tracked and solves no challenge:
+	// runPrivate skips every ACME-only step (Task 9 contract). eff.AccountID
+	// being nil is only ever allowed here; the ACME path below still
+	// requires one.
+	if ca.Private() {
+		return w.runPrivate(ctx, cert, ca, sig, eff, tl)
+	}
+	if eff.AccountID.Value == nil {
+		return nil, eff, errors.New("no ACME account configured: set one on the certificate or in issuance defaults")
+	}
 
 	cfg, err := w.issuanceSettings(ctx)
 	if err != nil {
@@ -247,18 +261,8 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	}
 	replaces := w.replacesCert(ctx, cert, eff, ca, tl)
 	req := signer.IssueRequest{Names: cert.Names(), KeyType: eff.KeyType.Value, PreferredChain: eff.PreferredChain.Value,
-		MustStaple: eff.MustStaple.Value, Account: material, Challenge: router, Replaces: replaces}
-	if eff.ReuseKey.Value && cert.CurrentVersionID != nil {
-		key, kt, err := w.Certs.PrivateKey(ctx, cert.ID, *cert.CurrentVersionID)
-		switch {
-		case err == nil && kt == string(eff.KeyType.Value):
-			req.ReuseKeyPKCS8 = key
-		case err == nil:
-			tl.Logf("reuseKey requested but the stored key is %s, not %s; generating a fresh key", kt, eff.KeyType.Value)
-		default:
-			tl.Logf("reuseKey requested but the stored key could not be read (%v); generating a fresh key", err)
-		}
-	}
+		MustStaple: eff.MustStaple.Value, Account: material, Challenge: router, Replaces: replaces,
+		ReuseKeyPKCS8: w.reuseKeyPKCS8(ctx, cert, eff, tl)}
 	// Recorded here, directly before the order is actually sent: everything
 	// above (account lookup, CA-mismatch check, router/solver build) can
 	// still fail the attempt without ever contacting the CA, and none of
@@ -291,6 +295,57 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	tl.Finish(challenge.StepSuccess, "")
 	tl.Step("finalize", challenge.StepSuccess, "serial "+iss.Serial)
 	return iss, eff, nil
+}
+
+// runPrivate issues cert against a private CA (Task 9 contract): account,
+// caa, rate_ledger and a "challenge <name>" step per name are all recorded
+// StepSkipped "not used by private CAs" — no ACME account is looked up, no
+// CAA identities are checked, nothing is rate-ledger tracked and no
+// challenge is solved. AccountMaterial, buildRouter, RecordNewOrder and
+// replacesCert (ARI-only) are never called; the CSR is built the same way
+// (reuseKeyPKCS8 included) and validity is capped by the signer's own
+// maxLeafDays/ttl, not here. Only the order step and sig.Issue itself run
+// before the shared succeed path.
+func (w *IssueWorker) runPrivate(ctx context.Context, cert Certificate, ca CA, sig signer.Signer, eff Effective, tl *Timeline) (*signer.Issued, Effective, error) {
+	tl.Step("account", challenge.StepSkipped, "not used by private CAs")
+	tl.Step("caa", challenge.StepSkipped, "not used by private CAs")
+	tl.Step("rate_ledger", challenge.StepSkipped, "not used by private CAs")
+	for _, name := range cert.Names() {
+		tl.Step("challenge "+name, challenge.StepSkipped, "not used by private CAs")
+	}
+
+	req := signer.IssueRequest{Names: cert.Names(), KeyType: eff.KeyType.Value, PreferredChain: eff.PreferredChain.Value,
+		MustStaple: eff.MustStaple.Value, ReuseKeyPKCS8: w.reuseKeyPKCS8(ctx, cert, eff, tl)}
+	tl.Step("order", challenge.StepRunning, strings.Join(req.Names, ", "))
+	iss, err := sig.Issue(ctx, req)
+	if err != nil {
+		return nil, eff, err
+	}
+	if iss == nil {
+		return nil, eff, fmt.Errorf("signer %s returned no certificate and no error", ca.Name)
+	}
+	tl.Finish(challenge.StepSuccess, "")
+	tl.Step("finalize", challenge.StepSuccess, "serial "+iss.Serial)
+	return iss, eff, nil
+}
+
+// reuseKeyPKCS8 returns the current version's stored private key when
+// eff.ReuseKey asks for it and its key type still matches, else nil (a
+// fresh key is generated); shared by the ACME and private-CA paths.
+func (w *IssueWorker) reuseKeyPKCS8(ctx context.Context, cert Certificate, eff Effective, tl *Timeline) []byte {
+	if !eff.ReuseKey.Value || cert.CurrentVersionID == nil {
+		return nil
+	}
+	key, kt, err := w.Certs.PrivateKey(ctx, cert.ID, *cert.CurrentVersionID)
+	switch {
+	case err == nil && kt == string(eff.KeyType.Value):
+		return key
+	case err == nil:
+		tl.Logf("reuseKey requested but the stored key is %s, not %s; generating a fresh key", kt, eff.KeyType.Value)
+	default:
+		tl.Logf("reuseKey requested but the stored key could not be read (%v); generating a fresh key", err)
+	}
+	return nil
 }
 
 // issuanceSettings loads the global "issuance" section through w.Settings,

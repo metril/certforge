@@ -21,9 +21,7 @@ import (
 	"github.com/metril/certforge/internal/signer/localca"
 )
 
-// CA kinds (Shared contract: CaType enum). Only CATypeACME issues today;
-// CATypeLocalCA and CATypeVaultPKI are recognized but rejected as "not
-// available yet" until Tasks 7 and 8 build their signers.
+// CA kinds (Shared contract: CaType enum).
 const (
 	CATypeACME     = "acme"
 	CATypeLocalCA  = "localca"
@@ -77,6 +75,14 @@ type Account struct {
 func (ca CA) Staging() bool {
 	p, ok := acmesigner.PresetByCode(ca.Preset)
 	return ok && p.Staging
+}
+
+// Private reports whether ca is a private CA (localca or vaultpki): a
+// private CA has no ACME account, publishes no caaIdentities, is not itself
+// rate-ledger tracked, and has no ARI to poll — issuance for it (Task 9's
+// run/runPrivate) skips every ACME-only step accordingly.
+func (ca CA) Private() bool {
+	return ca.Type == CATypeLocalCA || ca.Type == CATypeVaultPKI
 }
 
 func caFromRow(r sqlcgen.Ca) (CA, error) {
@@ -697,10 +703,11 @@ func purgeExpiredRetiredSecret(in []retiredSecretKey, now time.Time) []retiredSe
 // an issued (not imported/uploaded) leaf of a private CA, builds a Signer
 // over the issuer that actually signed it (current or, per Task 6's
 // carry-forward, a retired one found by the leaf's AuthorityKeyId), and
-// records the revocation both on the version (revoked_at) and the CA
-// (config.revoked, crl_number++, via localca's Recorder). 409 if already
-// revoked; 422 for an ACME CA, a non-issued version, or (until Task 9)
-// vaultpki.
+// records the revocation both on the version (revoked_at) and, for localca,
+// the CA (config.revoked, crl_number++, via localca's Recorder); vaultpki
+// has no local CRL bookkeeping of its own — Revoke just calls Vault's own
+// pki/revoke. 409 if already revoked; 422 for an ACME CA or a non-issued
+// version.
 func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid.UUID, reason int, baseURL func(context.Context) string) (certstore.Version, error) {
 	if _, err := s.q.GetCertificate(ctx, sqlcgen.GetCertificateParams{ID: certID, OrgID: orgID}); err != nil {
 		return certstore.Version{}, notFound(err)
@@ -729,22 +736,11 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	if caRow.Type == CATypeACME {
 		return certstore.Version{}, &ValidationError{"versionId", "not supported for ACME CAs yet"}
 	}
-	if caRow.Type != CATypeLocalCA {
-		return certstore.Version{}, &ValidationError{"versionId", "not supported for this CA kind yet"}
-	}
 	leaf, err := x509.ParseCertificate(vrow.LeafDer)
 	if err != nil {
 		return certstore.Version{}, err
 	}
-	var cfg localCAConfig
-	if err := json.Unmarshal(caRow.Config, &cfg); err != nil {
-		return certstore.Version{}, err
-	}
-	issuerSerial, ok := issuerSerialForLeaf(cfg, leaf)
-	if !ok {
-		return certstore.Version{}, &ValidationError{"versionId", "issuing certificate no longer available"}
-	}
-	sig, err := s.localCASignerFromRow(ctx, q, caRow, baseURL(ctx), issuerSerial)
+	sig, err := s.revokeSigner(ctx, q, caRow, leaf, baseURL)
 	if err != nil {
 		return certstore.Version{}, err
 	}
@@ -763,6 +759,36 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	return certstore.Version{ID: updated.ID, CertID: updated.CertID, Serial: updated.Serial, NotBefore: updated.NotBefore,
 		NotAfter: updated.NotAfter, SHA256: updated.Sha256Fp, KeyType: updated.KeyType, Source: updated.Source,
 		HasKey: updated.HasKey, CAID: updated.CaID, RevokedAt: updated.RevokedAt, CreatedAt: updated.CreatedAt}, nil
+}
+
+// revokeSigner builds the Signer RevokeVersion calls Revoke on, dispatching
+// on caRow's kind (an ACME CA is already rejected by RevokeVersion itself
+// before this is called). localca must find which issuer (current or
+// retired, by the leaf's AuthorityKeyId) actually signed leaf and build a
+// Signer over that one specifically (localCASignerFromRow, the Task 6/7
+// carry-forward); vaultpki has only one issuer to speak of, so it goes
+// through the ordinary SignerFactory.
+func (s *Store) revokeSigner(ctx context.Context, q *sqlcgen.Queries, caRow sqlcgen.Ca, leaf *x509.Certificate, baseURL func(context.Context) string) (signer.Signer, error) {
+	switch caRow.Type {
+	case CATypeLocalCA:
+		var cfg localCAConfig
+		if err := json.Unmarshal(caRow.Config, &cfg); err != nil {
+			return nil, err
+		}
+		issuerSerial, ok := issuerSerialForLeaf(cfg, leaf)
+		if !ok {
+			return nil, &ValidationError{"versionId", "issuing certificate no longer available"}
+		}
+		return s.localCASignerFromRow(ctx, q, caRow, baseURL(ctx), issuerSerial)
+	case CATypeVaultPKI:
+		ca, err := caFromRow(caRow)
+		if err != nil {
+			return nil, err
+		}
+		return (&SignerFactory{Store: s, Vault: s.vault, BaseURL: baseURL}).New(ctx, ca)
+	default:
+		return nil, &ValidationError{"versionId", "not supported for this CA kind yet"}
+	}
 }
 
 // vaultPKIConfig is a vaultpki CA's public cas.config column: the Shared

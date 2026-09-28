@@ -937,7 +937,7 @@ func TestCertificateARIWindowAPI(t *testing.T) {
 
 	win := &signer.Window{Start: time.Now().Add(24 * time.Hour).Truncate(time.Microsecond), End: time.Now().Add(48 * time.Hour).Truncate(time.Microsecond)}
 	aw := issuance.NewARIPollWorker(f.store, f.certs)
-	aw.NewSigner = func(issuance.CA) signer.Signer { return ariAPISigner{win: win} }
+	aw.NewSigner = func(context.Context, issuance.CA) (signer.Signer, error) { return ariAPISigner{win: win}, nil }
 	if err := aw.PollDue(ctx, 500); err != nil {
 		t.Fatal(err)
 	}

@@ -75,21 +75,26 @@ func (s *Server) certRender(c issuance.Certificate, eff issuance.Effective, v *c
 }
 
 // certOut renders one certificate, resolving its effective config and
-// current version with their own queries.
+// current version with their own queries. EffectiveFor can itself fail with
+// a *issuance.ValidationError (Task 9: a certificate-level accountId
+// override against a private effective CA) — mapErr turns that into the
+// same 422 a create/update validation failure would give, rather than an
+// unmapped 500.
 func (s *Server) certOut(ctx context.Context, c issuance.Certificate) (gen.Certificate, error) {
 	eff, err := s.d.Issuance.Store.EffectiveFor(ctx, c)
 	if err != nil {
-		return gen.Certificate{}, err
+		return gen.Certificate{}, mapErr(err)
 	}
 	var v *certstore.Version
 	if c.CurrentVersionID != nil {
 		vv, err := s.d.Certs.Get(ctx, c.ID, *c.CurrentVersionID)
 		if err != nil {
-			return gen.Certificate{}, err
+			return gen.Certificate{}, mapErr(err)
 		}
 		v = &vv
 	}
-	return s.certRender(c, eff, v)
+	o, err := s.certRender(c, eff, v)
+	return o, mapErr(err)
 }
 
 func certIn(b *gen.CertificateInput) (issuance.CertInput, error) {

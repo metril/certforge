@@ -35,7 +35,7 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 
 | Field | Built-in | Notes |
 |---|---|---|
-| `caId`, `accountId` | none | Issuance fails with a clear error until both are set somewhere. The account must belong to the CA. |
+| `caId`, `accountId` | none | Issuance fails with a clear error until `caId` is set somewhere. `accountId` must belong to the CA and is required unless the effective CA is private (see [Private CA issuance](#private-ca-issuance)). |
 | `keyType` | `ec256` | `rsa2048`, `rsa3072`, `rsa4096`, `ec256`, `ec384`. |
 | `renewPolicy` | `percent`, 33 | See [Renewal](#renewal). |
 | `preferredChain` | empty | Issuer common name of an alternate chain. |
@@ -46,6 +46,15 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 | `resolvers` | none | Resolvers for propagation checks. |
 
 `GET /api/v1/orgs/{orgId}/issuance-defaults/effective` and each certificate's `effective` field show the resolved value and its `source`: `default` (built-in), `global`, `org` or `cert`. A changed default applies at the next renewal of every certificate that inherits it. Saving the global section (`PUT /settings/issuance_defaults`) and org defaults (`PUT /orgs/{orgId}/issuance-defaults`) both validate that a referenced CA, account or DNS credential exists (and, for org defaults, belongs to the org) before storing; an unknown id is a 422.
+
+## Private CA issuance
+
+A certificate whose effective CA is a private CA (`localca` or `vaultpki`, see [Certificate authorities](#certificate-authorities)) issues without any ACME machinery:
+
+- The `account`, `caa` and `rate_ledger` attempt steps, and a `challenge <name>` step per name, are all recorded skipped ("not used by private CAs") — no ACME account is looked up, no CAA records are checked, nothing is rate-ledger tracked, and no verification rule is solved. A certificate issuing from a private CA needs no verification rules at all.
+- `accountId` is never required for a private CA. An account inherited from org or global defaults is silently dropped (it was never meant for this CA); an `accountId` set explicitly on the certificate's own overrides, once its effective CA is private, is instead a 422 ("account belongs to a different CA") — a real conflict, not something to override quietly.
+- The certificate's private key and CSR are built the same way as an ACME issuance (honouring `keyType` and `reuseKey`), but the leaf's validity is capped by the CA's own `maxLeafDays` (localca) or `ttl` (vaultpki), never by anything set here.
+- `renewPolicy` still schedules the next renewal the usual way; ARI (see [ARI](#ari)) never applies, since a private CA publishes no ACME Renewal Information — `useAri` is ignored for it.
 
 ## Issuing from the web UI
 

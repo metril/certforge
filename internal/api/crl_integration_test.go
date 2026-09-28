@@ -22,9 +22,9 @@ import (
 )
 
 // issueLocalLeaf issues one leaf straight through a localca Signer (built
-// via issuance.SignerFactory, bypassing the issuance worker, which does not
-// wire private CAs until Task 9) and stores it with certstore.Insert,
-// exactly as the Task 7 brief's TestRevokeVersionFeedsCRL describes.
+// via issuance.SignerFactory, bypassing the issuance worker) and stores it
+// with certstore.Insert, exactly as the Task 7 brief's
+// TestRevokeVersionFeedsCRL describes.
 func issueLocalLeaf(t *testing.T, f *apiFixture, caID uuid.UUID, name string) (*x509.Certificate, certstore.Version) {
 	t.Helper()
 	ctx := context.Background()

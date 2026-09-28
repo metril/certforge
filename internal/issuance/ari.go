@@ -45,19 +45,23 @@ func (ARIPollArgs) Kind() string { return "certforge_ari_poll" }
 // (IssueWorker.succeed), best-effort.
 type ARIPollWorker struct {
 	river.WorkerDefaults[ARIPollArgs]
-	Store     *Store
-	Certs     *certstore.Store
-	NewSigner func(CA) signer.Signer
+	Store *Store
+	Certs *certstore.Store
+	// NewSigner builds the signer for a CA (SignerFactory.New in
+	// production, wired the same as IssueWorker.NewSigner). It never needs
+	// Config.Account: RenewalInfo is an unauthenticated GET (RFC 9773), so
+	// the poll never loads or decrypts an ACME account key.
+	NewSigner func(ctx context.Context, ca CA) (signer.Signer, error)
 	Now       func() time.Time
 	Rand      func() float64
 	Log       *slog.Logger
 }
 
-// NewARIPollWorker wires production defaults. NewSigner never sets
-// Config.Account: RenewalInfo is an unauthenticated GET (RFC 9773), so the
-// poll never needs to load or decrypt an ACME account key.
+// NewARIPollWorker wires production defaults. NewSigner is left nil: the
+// caller wires it to a *SignerFactory before riverClient.Start, same as
+// IssueWorker's own.
 func NewARIPollWorker(store *Store, certs *certstore.Store) *ARIPollWorker {
-	return &ARIPollWorker{Store: store, Certs: certs, NewSigner: DefaultSigner, Now: time.Now, Rand: rand.Float64, Log: slog.Default()}
+	return &ARIPollWorker{Store: store, Certs: certs, Now: time.Now, Rand: rand.Float64, Log: slog.Default()}
 }
 
 func (w *ARIPollWorker) logger() *slog.Logger {
@@ -120,16 +124,19 @@ func (w *ARIPollWorker) PollDue(ctx context.Context, pageSize int) error {
 // on a miss (fix round 1). signers may be nil (an ad-hoc single-certificate
 // call, for example the post-issuance poll), in which case caching is
 // simply skipped.
-func (w *ARIPollWorker) signerFor(signers map[uuid.UUID]signer.Signer, ca CA) signer.Signer {
+func (w *ARIPollWorker) signerFor(ctx context.Context, signers map[uuid.UUID]signer.Signer, ca CA) (signer.Signer, error) {
 	if signers == nil {
-		return w.NewSigner(ca)
+		return w.NewSigner(ctx, ca)
 	}
 	if s, ok := signers[ca.ID]; ok {
-		return s
+		return s, nil
 	}
-	s := w.NewSigner(ca)
+	s, err := w.NewSigner(ctx, ca)
+	if err != nil {
+		return nil, err
+	}
 	signers[ca.ID] = s
-	return s
+	return s, nil
 }
 
 // bumpRetryAfter defers cert's next poll by d (or ariDefaultRetryAfter when
@@ -200,6 +207,13 @@ func (w *ARIPollWorker) pollOne(ctx context.Context, cert Certificate, signers m
 		w.bumpRetryAfter(ctx, cert, retryAfterFromErr(err))
 		return err
 	}
+	// A private CA (localca, vaultpki) has no ACME Renewal Information to
+	// poll (Task 9 contract: "skip certificates whose effective CA is not
+	// acme"); useAri is ignored for it and ariWindow stays null.
+	if ca.Private() {
+		w.bumpRetryAfter(ctx, cert, 0)
+		return nil
+	}
 	m, err := w.Certs.Material(ctx, cert.ID, *cert.CurrentVersionID, false)
 	if err != nil {
 		w.bumpRetryAfter(ctx, cert, 0)
@@ -210,7 +224,12 @@ func (w *ARIPollWorker) pollOne(ctx context.Context, cert Certificate, signers m
 		w.bumpRetryAfter(ctx, cert, 0)
 		return err
 	}
-	win, err := w.signerFor(signers, ca).RenewalInfo(ctx, leaf)
+	sig, err := w.signerFor(ctx, signers, ca)
+	if err != nil {
+		w.bumpRetryAfter(ctx, cert, retryAfterFromErr(err))
+		return err
+	}
+	win, err := sig.RenewalInfo(ctx, leaf)
 	if err != nil {
 		w.bumpRetryAfter(ctx, cert, retryAfterFromErr(err))
 		return err

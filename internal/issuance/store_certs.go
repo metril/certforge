@@ -138,6 +138,16 @@ func (s *Store) EffectiveFor(ctx context.Context, c Certificate) (Effective, err
 	return s.effective(ctx, c.OrgID, c.Overrides)
 }
 
+// effective resolves global, org and cert levels, then reconciles the
+// resolved account against the resolved CA (Task 9 contract): a private CA
+// (localca, vaultpki) has no ACME account. When both are set and the CA is
+// private, an account inherited from org or global defaults is dropped
+// silently (the certificate itself never asked for it); an account set
+// explicitly on the certificate's own overrides is instead a
+// *ValidationError (422 at the API) — a real conflict the caller should
+// know about, not something to silently override. GetCA is skipped
+// whenever either side is already nil, since there is nothing to
+// reconcile.
 func (s *Store) effective(ctx context.Context, orgID uuid.UUID, cert Defaults) (Effective, error) {
 	g, err := s.GlobalDefaults(ctx)
 	if err != nil {
@@ -147,7 +157,22 @@ func (s *Store) effective(ctx context.Context, orgID uuid.UUID, cert Defaults) (
 	if err != nil {
 		return Effective{}, err
 	}
-	return Resolve(g, o, cert), nil
+	eff := Resolve(g, o, cert)
+	if eff.CAID.Value == nil || eff.AccountID.Value == nil {
+		return eff, nil
+	}
+	ca, err := s.GetCA(ctx, orgID, *eff.CAID.Value)
+	if err != nil {
+		return Effective{}, err
+	}
+	if !ca.Private() {
+		return eff, nil
+	}
+	if eff.AccountID.Source == SourceCert {
+		return Effective{}, &ValidationError{"accountId", "account belongs to a different CA"}
+	}
+	eff.AccountID = Field[*uuid.UUID]{Value: nil, Source: SourceDefault}
+	return eff, nil
 }
 
 // globalDefaultsReference reports whether the global issuance_defaults

@@ -18,6 +18,7 @@ import (
 
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
+	acmesigner "github.com/metril/certforge/internal/signer/acme"
 	"github.com/metril/certforge/internal/signer/localca"
 	"github.com/metril/certforge/internal/signer/vaultpki"
 	"github.com/metril/certforge/internal/vault"
@@ -228,26 +229,27 @@ func (r *caRecorder) Revoke(ctx context.Context, serial, issuerSerial string, re
 	return nil
 }
 
-// SignerFactory builds a signer.Signer for a CA. Store supplies the CA's
-// key material; Vault builds a vaultpki CA's client; BaseURL resolves the
+// SignerFactory builds a signer.Signer for a CA: the single construction
+// path both IssueWorker and ARIPollWorker use (their NewSigner field), and
+// RevokeVersion's own localca/vaultpki dispatch. Store supplies the CA's key
+// material; Vault builds a vaultpki CA's client; BaseURL resolves the
 // server's public base URL (general.baseUrl) fresh per call, for a leaf's
-// CRL distribution point. Task 7 wired the localca case; Task 8 adds
-// vaultpki; Task 9 adds acme and removes worker.DefaultSigner (Pre-flight
-// rulings).
+// CRL distribution point.
 type SignerFactory struct {
 	Store   *Store
 	Vault   *vault.Provider
 	BaseURL func(ctx context.Context) string
 }
 
-// New builds ca's current-issuer signer. acme returns signer.ErrNotSupported
-// until Task 9 (422 at the API).
+// New builds ca's current-issuer signer.
 func (f *SignerFactory) New(ctx context.Context, ca CA) (signer.Signer, error) {
 	switch ca.Type {
 	case CATypeLocalCA:
 		return f.Store.localCASignerCurrent(ctx, ca, f.baseURL(ctx))
 	case CATypeVaultPKI:
 		return f.newVaultPKISigner(ctx, ca)
+	case CATypeACME:
+		return acmesigner.New(acmesigner.Config{DirectoryURL: ca.DirectoryURL, TrustBundlePEM: ca.TrustBundlePEM}), nil
 	default:
 		return nil, signer.ErrNotSupported
 	}
