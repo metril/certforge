@@ -251,23 +251,26 @@ func TestPhase6OperationsDeclared(t *testing.T) {
 	}
 }
 
-// TestNoStubsRemain proves internal/api/phase5_stubs.go (Task 2's 501
-// placeholders for the operations this file's TestPhase5OperationsDeclared
-// lists) is gone and nothing else in the package answers with a stub 501:
-// every operationId's *Server method is a real handler now that Tasks
-// 5-13 have landed. Mirrors the acceptance check `grep -rn "Not
+// TestNoStubsRemain proves internal/api/phase5_stubs.go and
+// internal/api/phase6_stubs.go (Tasks 2's and Phase 6A Task 2's 501
+// placeholders) are both gone and nothing else in the package answers with
+// a stub 501: every operationId's *Server method is a real handler now
+// that Tasks 5-14 have landed. Mirrors the acceptance check `grep -rn "Not
 // implemented" internal/api`, and (batch 6 review) also fails on a literal
 // `StatusNotImplemented` anywhere in the package — the brief's actual
 // requirement is no 501 handler at all, not just none using this string.
 //
-// Phase 6A Task 2 adds phase6_stubs.go (its own 501 placeholders, removed
-// by Task 14 the same way phase5_stubs.go was) and internal/api/client/
-// (the generated client, Task 2's own oapi-codegen.client.yaml target).
-// Both are deliberately skipped below until Task 14 deletes phase6_stubs.go
-// (client/ is skipped permanently: it is generated, not a handler stub).
+// internal/api/client/ (the generated client, Task 2's own
+// oapi-codegen.client.yaml target) is skipped permanently below: it is
+// generated, not a handler stub.
 func TestNoStubsRemain(t *testing.T) {
 	if _, err := os.Stat("phase5_stubs.go"); err == nil {
 		t.Fatal("internal/api/phase5_stubs.go still exists")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat("phase6_stubs.go"); err == nil {
+		t.Fatal("internal/api/phase6_stubs.go still exists")
 	} else if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
@@ -285,9 +288,6 @@ func TestNoStubsRemain(t *testing.T) {
 			return filepath.SkipDir
 		}
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		if path == "phase6_stubs.go" {
 			return nil
 		}
 		b, rerr := os.ReadFile(path)

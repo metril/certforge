@@ -253,6 +253,63 @@ sequenceDiagram
   end
 ```
 
+## Event fan-out and notifications (Phase 6A)
+
+Every R2 event source shares one `*notify.Emitter` and one `*notify.Registry`, both constructed once in `cmd/certforge/serve.go` and handed to `notify.Service` (channel CRUD, `testChannel`, `listEvents`), `notify.Sources` (`cert.issued`/`cert.renewal_failed` synchronously, the rest hourly), `monitor.Service` and `backup.Service`:
+
+```mermaid
+flowchart LR
+  subgraph Sources
+    IW[IssueWorker.Listeners] -->|OnVersion: cert.issued| NS[notify.Sources]
+    IW -->|OnFailure: cert.renewal_failed| NS
+    Scan[certforge_notify_scan, hourly] -->|expiring/expired, deploy, offline, agent-cert, prune| NS
+    Mon[monitor.Service.Check] -->|state transition| MonEv[monitor.mismatch/unreachable/expiring/recovered]
+    Bak[backup.Service.RunScheduled] -->|backup.completed/failed| BakEv[backup event]
+    API[testChannel] -->|test| TestEv[test event]
+  end
+  NS --> E[Emitter.Emit]
+  MonEv --> E
+  BakEv --> E
+  TestEv --> E
+  E -->|exact-once by DedupeKey, tx| Events[(notification_events)]
+  E -->|FOR KEY SHARE, per matching enabled channel| Deliv[(notification_deliveries: pending)]
+  E -->|InsertTx| Job[certforge_notify_deliver]
+  Job --> DW[DeliverWorker]
+  DW -->|Registry.Get&#40;channel.type&#41;| N[Notifier.Send]
+  N -->|webhook/discord/ntfy/homeassistant| HX[httpx.Client: no redirects, SSRF-checked]
+  N -->|smtp| Mail[mail.SendMail]
+  DW -->|redacted last_error| Deliv
+```
+
+`Emit` locks the event's matching channels `FOR KEY SHARE` and writes the event plus one `notification_deliveries` row per match inside one transaction (a nil `tx` argument opens its own), so a delivery job is only ever enqueued for a channel the same commit already recorded as pending — there is no window where a job exists with no row to update. `DedupeKey` (its exact per-kind shape is in `docs/notifications.md#dedupe`) makes `Emit` a no-op for a condition already recorded; `notify.Sources.Scan` (the hourly `certforge_notify_scan` job) also prunes `notification_events` older than `notify.EventRetention` (90 days) in the same run, since the dedupe key itself only exists for as long as its row does.
+
+`DeliverWorker` looks the channel's notifier up in the shared `Registry` by `type`, decrypts the channel's sealed secrets, and calls `Notifier.Send`; a failure's error is passed through `httpx.Redact` against every secret value before it is ever written to `last_error` (`docs/security.md#notification-channel-secrets-and-url-policy`). `monitor.Service` and `backup.Service` hold the same `*notify.Emitter` pointer `notify.Sources` does — set once, after `riverClient` exists (`notifyEmitter.River = riverClient`), since `Emitter.River` is only needed at `Emit` time, never at `RegisterRiver` time.
+
+## Backup and restore (Phase 6A)
+
+```mermaid
+flowchart LR
+  subgraph Backup
+    Sched[certforge_backup, hourly] -->|due by schedule| Svc[backup.Service]
+    API[POST /backup] --> Svc
+    CLI[certforge backup] --> Svc
+    Svc -->|Write: stream tables, encrypt per-chunk| Archive[.cfbak: plaintext header + encrypted chunks]
+    Svc -->|backup.completed / backup.failed| Emit2[Emitter.Emit]
+  end
+  subgraph Restore
+    RCLI[certforge restore] -->|AcquireRestoreLock: exclusive| Lock[(ServeLockKey)]
+    RCLI -->|ReadHeader, check RootSealed against this KEK| Check{KEK matches?}
+    Check -->|no| Abort1[ErrKEKMismatch, nothing written]
+    Check -->|yes| Load[load tables under SET CONSTRAINTS ALL DEFERRED]
+    Load --> Verify{root + canary verify?}
+    Verify -->|no| Abort2[rollback, nothing written]
+    Verify -->|yes| Commit[(commit)]
+  end
+  Serve[certforge serve] -->|AcquireServeLock: shared, before db.Migrate| Lock
+```
+
+The stream key (`DeriveKey(DeriveKey(root, "certforge-backup"), hex(salt))`) and the archive format itself are `docs/security.md#backup-encryption` and `docs/operations.md#backup`; this diagram is the wiring only. `serve.go` derives `backupBaseKey` once at boot, before `clear(root)`, and passes it to `backup.Service` alongside the KEK id(s) that `Write` seals `RootSealed` with on each run — `Write` itself re-reads the live `crypto.root` row inside its own snapshot transaction, so a backup taken after a KEK rewrap never uses a stale key. `AcquireServeLock`/`AcquireRestoreLock` share one advisory lock key (`backup.ServeLockKey`): any number of `serve` processes hold it shared for their whole lifetime, a `restore` needs it exclusively, so a running server always blocks a restore and a restore in progress blocks a server from starting (`docs/security.md#serve-lock-and-restore`).
+
 ### Socket
 
 `internal/agenthub` keeps one WebSocket per client (ADR 0010): the newest connection for a client evicts the old one, the server pings every 25 s and closes a socket after 75 s without a message or pong, and the registry is in-memory and single-replica — `Client.connected` means connected to this process. Messages: server-sent `hello_ack` (reply to `hello`, carries the heartbeat interval and desired revision), `sync{revision}` (a nudge; the agent still fetches full assignments), `trust_bundle_update` (after a CA rotation), `revoked` (immediately followed by a close), `challenge_present{token, keyAuth, domain, method, webroot?}` and `challenge_cleanup{token}` (an http-01/tls-alpn-01 rule served by this client's agent; see [agent.md#challenge-serving](agent.md#challenge-serving)); agent-sent `hello`, `heartbeat`, `deploy_result` (a `Report`) and `challenge_ready{token, error?}` (the reply to `challenge_present`), handled by the same `agents.Service` methods the REST endpoints use (`challenge_ready` has no REST equivalent: it only ever arrives over the socket). Close codes: `4000` replaced by a newer connection, `4001` revoked or re-enrolled, `4002` idle timeout.

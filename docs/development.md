@@ -215,6 +215,17 @@ the same URL was already checked at channel create/update — see
 type in `cmd/certforge/serve.go` (`notifyReg.Register(...)`); it then
 appears in `GET /api/v1/meta/schemas` via `notify.AddToMeta`.
 
+A notifier that reads settings (any type that isn't purely per-channel
+config, e.g. SMTP's saved section) takes a `SettingsFunc` field instead of
+holding a value: `serve.go` wires it as a closure over the live
+`*settings.Store` (`notifySettings := func(ctx context.Context) (notify.Settings, error) { return notify.Current(ctx, store) }`),
+so every `Send` — including one running long after boot — re-reads the
+current settings rather than a snapshot taken at registration. Every one of
+the five built-in notifiers is registered this same way, right after
+`notifyReg := notify.NewRegistry()`; `notify.Service` and `notify.Sources`
+then share one `*notify.Registry` and one `*notify.Emitter` with it (see
+`docs/architecture.md`'s event fan-out diagram).
+
 ## Frontend
 
 The web UI lives in `web/` (Vite, React 18, TypeScript strict, Tailwind 4, shadcn/ui on Radix).

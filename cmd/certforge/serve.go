@@ -33,6 +33,7 @@ import (
 	"github.com/metril/certforge/internal/kek"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/metrics"
+	"github.com/metril/certforge/internal/monitor"
 	"github.com/metril/certforge/internal/notify"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
@@ -145,8 +146,21 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	notifyReg.Register(notify.SMTP{Settings: func(ctx context.Context) (notify.SMTPSettings, string, error) {
 		return notify.CurrentSMTP(ctx, store, sections)
 	}})
-	// Task 6 wires notifyReg into notify.Service and DeliverWorker.
 	notify.AddToMeta(notifyReg, metaReg)
+	// notifyEmitter is shared by notifySvc, notifySources, monitorSvc and
+	// backupSvc below: one *notify.Emitter, one river.Inserter. River is
+	// nil until riverClient exists (set right after, same
+	// construct-then-wire order as keysSvc/dispatcher above); Emit's own
+	// nil-tx path only needs Pool until then, and nothing calls Emit before
+	// riverClient.Start.
+	notifyEmitter := &notify.Emitter{Pool: pool, Log: log}
+	// notifySources is issueWorker's third Listener (OnVersion) and its
+	// OnFailure hook below, plus the hourly certforge_notify_scan job
+	// (RegisterRiver): cert.issued/cert.renewal_failed synchronously, the
+	// rest (expiring/expired, deploy, offline, agent-cert-expiring, prune)
+	// on the scan.
+	notifySources := &notify.Sources{Q: q, Emitter: notifyEmitter, Settings: store, Log: log}
+	monitorSvc := &monitor.Service{Store: &monitor.Store{Pool: pool, Q: q}, Emitter: notifyEmitter, Settings: store}
 	issuanceStore := issuance.NewStore(pool, box, store)
 	issuanceStore.SetVault(vaultProvider)
 	certStore := certstore.New(pool, box)
@@ -175,6 +189,10 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 			log.Info("audit chain re-keyed with HMAC-SHA256", "events", n)
 		}
 	}
+	notifySvc := &notify.Service{
+		Store: &notify.Store{Pool: pool, Q: q}, Emitter: notifyEmitter, Registry: notifyReg,
+		Box: box, Settings: store, Audit: aud, BaseURL: cfg.BaseURL, Version: version, Log: log,
+	}
 	agentListener := &agentca.Listener{Source: agentCA, Log: log, Names: func(ctx context.Context) ([]string, error) {
 		st, err := agentSettings.Get(ctx)
 		return st.Names(), err
@@ -182,7 +200,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Box: box, Auditor: aud, Settings: agentSettings, Log: log}
 	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
 	issueWorker.Log = log
-	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc, dispatcher)
+	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc, dispatcher, notifySources)
+	// OnFailure hangs off issueWorker only (Deviations R2): a version
+	// upload/import path has no comparable failure to report. Set before
+	// riverClient.Start, same as every other worker field below.
+	issueWorker.OnFailure = notifySources
 	// Shared with api.Deps.HTTPTokens below; set on the worker before
 	// riverClient.Start so a server http-01 rule can already be served by
 	// the time the first job runs.
@@ -216,22 +238,24 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	for i, r := range keysInfo.Previous {
 		previousKEKIDs[i] = r.KEKID
 	}
-	// backupSvc.Emitter is left nil until Task 14 wires notify.Service
-	// here (backup.Service's own doc comment: a nil Emitter simply emits
-	// nothing, same convention as kek.Service's nil-safe Audit).
 	backupSvc := &backup.Service{
-		Pool: pool, Settings: store, Audit: aud, Log: log,
+		Pool: pool, Settings: store, Audit: aud, Log: log, Emitter: notifyEmitter,
 		BaseKey: backupBaseKey, KEKID: env.KEKID(),
 		PreviousKEKIDs: previousKEKIDs, AppVersion: version,
 	}
 	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log,
 		agentListener.RegisterRiver, agentSvc.RegisterRiver, keysSvc.RegisterRiver, dispatcher.RegisterRiver,
-		backupSvc.RegisterRiver)
+		notifySvc.RegisterRiver, notifySources.RegisterRiver, monitorSvc.RegisterRiver, backupSvc.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)
 	}
 	keysSvc.River = riverClient
 	dispatcher.River = riverClient
+	// notifyEmitter.River completes the shared Emitter (its own doc comment
+	// above): notifySvc/notifySources/monitorSvc/backupSvc all already hold
+	// this pointer, so this single assignment finishes wiring every one of
+	// them before riverClient.Start below.
+	notifyEmitter.River = riverClient
 	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
@@ -299,6 +323,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher,
 		KEKHealth: kekHealth, Version: version, Metrics: metrics.Handler(store, sections), Backup: backupSvc,
+		Notify: notifySvc, Monitors: monitorSvc,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{
