@@ -139,7 +139,7 @@ certforge-agent itself (the binary running alongside Traefik or another target) 
 
 ### Backup section
 
-Shows the key-encryption key's status (from `/readyz`'s `kek` check) and controls scheduled, encrypted backups (section `backup`; the archive format, `certforge backup`/`restore` and the scheduling job land in later Phase 6A tasks).
+Shows the key-encryption key's status (from `/readyz`'s `kek` check) and controls scheduled, encrypted backups (section `backup`). The archive format and CLI are documented in `docs/operations.md#backup`/`#restore`; the scheduled job and `checks.backup` readiness check in `docs/operations.md#backup-schedule`/`#health-endpoints`; the download/status API in `docs/operations.md#backup`.
 
 | Field | Default | Meaning |
 |---|---|---|

@@ -20,6 +20,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/authz"
+	"github.com/metril/certforge/internal/backup"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/config"
@@ -123,6 +124,12 @@ type Deps struct {
 	// (Task 14), alongside monitor.Service's own river registration
 	// (ScanWorker/CheckWorker).
 	Monitors *monitor.Service
+
+	// Backup streams on-demand backups (createBackup) and reports the
+	// schedule/status (getBackupStatus, /readyz's "backup" check; Phase 6A
+	// Task 12: internal/api/backup.go). Wired in cmd/certforge/serve.go
+	// alongside backup.Service's own river registration (ScheduleWorker).
+	Backup *backup.Service
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.

@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/metril/certforge/internal/api"
+	"github.com/metril/certforge/internal/backup"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/settings"
 )
@@ -233,5 +234,38 @@ func TestReadyzVaultNoSecrets(t *testing.T) {
 	var b readyBody
 	if err := json.Unmarshal(raw, &b); err != nil || b.Checks["vault"] != "degraded" {
 		t.Fatalf("expected degraded: %s (err %v)", raw, err)
+	}
+}
+
+// TestReadyzBackupCheck covers the Shared contract's "backup" check:
+// absent while schedule is off, "degraded" with no recent success (but the
+// server stays 200 ready — a stale backup never blocks readiness), and
+// "ok" once a run has actually succeeded.
+func TestReadyzBackupCheck(t *testing.T) {
+	e := newTestEnvOpts(t, withBackup(t))
+	if err := e.deps.Settings.EnsureCanary(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	code, b := readyz(t, e.srv.URL)
+	if code != http.StatusOK {
+		t.Fatalf("status = %d", code)
+	}
+	if _, ok := b.Checks["backup"]; ok {
+		t.Fatalf("backup check present while schedule is off: %+v", b.Checks)
+	}
+
+	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: t.TempDir()})
+	code, b = readyz(t, e.srv.URL)
+	if code != http.StatusOK || b.Checks["backup"] != "degraded" {
+		t.Fatalf("expected 200 degraded (no successful backup yet): %d %+v", code, b)
+	}
+
+	if err := e.deps.Backup.RunScheduled(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	code, b = readyz(t, e.srv.URL)
+	if code != http.StatusOK || b.Checks["backup"] != "ok" {
+		t.Fatalf("expected 200 ok after a successful run: %d %+v", code, b)
 	}
 }

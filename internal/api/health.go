@@ -38,6 +38,9 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 			ready = false
 		}
 	}
+	if word, present := s.backupCheck(ctx); present {
+		checks["backup"] = word // never makes ready false (Shared contract)
+	}
 	status, word := http.StatusOK, "ready"
 	if !ready {
 		status, word = http.StatusServiceUnavailable, "unavailable"
@@ -108,6 +111,31 @@ func (s *Server) probeSectionVault(ctx context.Context) error {
 		}
 	}
 	return s.vaultSectionErr
+}
+
+// backupCheck reports /readyz's "backup" check (Shared contract): present
+// only when the "backup" section's schedule is not off, "degraded" when
+// there has been no successful backup (scheduled or on-demand) in the last
+// 7 days, "ok" otherwise. It never makes the server unready — a stale or
+// never-run backup is an operator problem, not a reason to fail health
+// checks and start a restart loop. s.d.Backup is nil in deployments that
+// have not wired one yet (none today; defensive).
+func (s *Server) backupCheck(ctx context.Context) (word string, present bool) {
+	if s.d.Backup == nil {
+		return "", false
+	}
+	st, err := s.d.Backup.Status(ctx)
+	if err != nil {
+		s.d.Log.Warn("readyz: backup status failed", "err", err)
+		return "", false
+	}
+	if st.Schedule == "off" {
+		return "", false
+	}
+	if st.LastSuccessAt == nil || time.Since(*st.LastSuccessAt) > 7*24*time.Hour {
+		return "degraded", true
+	}
+	return "ok", true
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

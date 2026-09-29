@@ -77,6 +77,14 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	}
 	auditKey := crypto.DeriveKey(root, "certforge-audit")
 	oidcKey := crypto.DeriveKey(root, "certforge-oidc-state")
+	// backupBaseKey feeds backup.Service.Stream (Deviations R6): derived
+	// here, before clear(root), the same way auditKey/oidcKey are — Write
+	// never sees the plaintext root itself, only this already-derived key.
+	backupBaseKey := crypto.DeriveKey(root, "certforge-backup")
+	rootSealed, err := store.SealedRoot(ctx)
+	if err != nil {
+		return fmt.Errorf("sealed root: %w", err)
+	}
 	clear(root)
 	canaryOK := true
 	if err := store.EnsureCanary(ctx); err != nil {
@@ -204,8 +212,21 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// construct-then-wire order as issuanceSvc): RegisterRiver only needs
 	// the Service pointer, not River itself, to register RewrapWorker.
 	keysSvc := &kek.Service{Env: env, Settings: store, Pool: pool, Audit: aud, Info: keysInfo, Log: log}
+	previousKEKIDs := make([]string, len(keysInfo.Previous))
+	for i, r := range keysInfo.Previous {
+		previousKEKIDs[i] = r.KEKID
+	}
+	// backupSvc.Emitter is left nil until Task 14 wires notify.Service
+	// here (backup.Service's own doc comment: a nil Emitter simply emits
+	// nothing, same convention as kek.Service's nil-safe Audit).
+	backupSvc := &backup.Service{
+		Pool: pool, Settings: store, Audit: aud, Log: log,
+		BaseKey: backupBaseKey, RootSealed: rootSealed, KEKID: env.KEKID(),
+		PreviousKEKIDs: previousKEKIDs, AppVersion: version,
+	}
 	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log,
-		agentListener.RegisterRiver, agentSvc.RegisterRiver, keysSvc.RegisterRiver, dispatcher.RegisterRiver)
+		agentListener.RegisterRiver, agentSvc.RegisterRiver, keysSvc.RegisterRiver, dispatcher.RegisterRiver,
+		backupSvc.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)
 	}
@@ -277,7 +298,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher,
-		KEKHealth: kekHealth, Version: version, Metrics: metrics.Handler(store, sections),
+		KEKHealth: kekHealth, Version: version, Metrics: metrics.Handler(store, sections), Backup: backupSvc,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{
