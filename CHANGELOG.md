@@ -253,3 +253,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Phase 6A batch-3 review fixes: an external monitor with no expected certificate now mismatches unless the presented leaf matches some certificate's current version in the org, rather than skipping the mismatch check entirely; a monitor update no longer reverts a concurrent check's own state transition; every event scan now stays within the 90-day retention window so a still-ongoing condition can't re-emit once its original event ages out; a server deployment's stored failure text no longer carries a Vault or other target address into its event.
 - `certforge backup` and `certforge restore` commands with an offline-only restore lock.
 - Backup download API, scheduled backups with retention, and a backup readiness check.
+- cfctl operator CLI.

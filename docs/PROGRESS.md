@@ -312,8 +312,8 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | 9 | External monitors | done | 5a4bcb9 |
 | 10 | Backup archive format | done | 9fe6e3a |
 | 11 | backup and restore CLI, serve lock | done | 345e547 |
-| 12 | Backup API, schedule, readiness | done | pending |
-| 13 | cfctl | planned | – |
+| 12 | Backup API, schedule, readiness | done | ddc3fc4 |
+| 13 | cfctl | done | pending |
 | 14 | Wiring and close-out | planned | – |
 | 15 | Ops e2e | planned | – |
 
