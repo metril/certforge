@@ -116,6 +116,15 @@ services:
     depends_on:
       certforge:
         condition: service_healthy
+      # Not because the agent needs it — it doesn't — but because
+      # `docker compose up --wait` otherwise treats vault-init's own
+      # (expected) exit(0) as the whole stack failing to come up, since
+      # nothing else tells it that container is supposed to exit. Attached
+      # here rather than to certforge (which is not profile-gated) so a
+      # plain, non-e2e-profile `docker compose up` never references a
+      # profile-e2e-only service at all.
+      vault-init:
+        condition: service_completed_successfully
   dex:
     image: ghcr.io/dexidp/dex:v2.45.1
     command: ["dex", "serve", "/etc/dex/config.yaml"]
@@ -132,3 +141,45 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+  # Task 14: dev-mode Vault for the Transit KEK, vaultpki, vault-kv and the
+  # readiness check's own "vault" entry. Dev mode is in-memory and always
+  # unsealed with a fixed root token, which is exactly what the e2e's
+  # "Vault down" step needs (docker compose pause/unpause instead of a
+  # stop/start that would lose its state). Shared by make e2e (this
+  # profile) and make e2e-web (5B's Playwright, brought up with the same
+  # --profile e2e), so both get a running Vault without either target
+  # needing its own copy of this service.
+  vault:
+    profiles: [e2e]
+    image: hashicorp/vault:1.18
+    command: server -dev
+    cap_add: [IPC_LOCK]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${CF_E2E_VAULT_TOKEN:-certforge-e2e-root}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "${CF_VAULT_PORT:-8200}:8200"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8200/v1/sys/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  # One-shot: enables transit/pki/approle and verifies secret/ (dev-mode's
+  # own default kv-v2 mount), then writes a fixed AppRole role_id/secret_id
+  # to ../.e2e/vault for the compose.vault.yaml second boot (Task 14's own
+  # deviation: the e2e first boots on the static KEK like every other e2e
+  # test, then restarts certforge with that override once Transit and this
+  # AppRole exist) to read. See deploy/e2e/vault-init.sh.
+  vault-init:
+    profiles: [e2e]
+    image: hashicorp/vault:1.18
+    entrypoint: ["/bin/sh", "/vault-init/vault-init.sh"]
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${CF_E2E_VAULT_TOKEN:-certforge-e2e-root}
+    volumes:
+      - ./e2e/vault-init.sh:/vault-init/vault-init.sh:ro
+      - ../.e2e/vault:/e2e-vault
+    depends_on:
+      vault:
+        condition: service_healthy

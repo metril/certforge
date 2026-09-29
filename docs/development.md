@@ -62,6 +62,8 @@ overridable, useful when the defaults are already taken:
 | `CF_PEBBLE_MGMT_PORT` | `15000` | Pebble management API (also sets `CF_E2E_PEBBLE_MGMT`; the issuance e2e independently verifies the issued chain against `/intermediates/0` here) |
 | `CF_DEX_PORT` | `5556` | dex (e2e OIDC provider; also sets `CF_E2E_DEX_ADDR`). Playwright maps the name `dex` to `127.0.0.1`, so keep `5556` when running the browser test. |
 | `CF_CHALLTESTSRV_PORT` | `18055` | pebble-challtestsrv management API (also sets `CF_E2E_CHALLTESTSRV`; the breadth e2e adds the A records Pebble's http-01/tls-alpn-01 validation resolves against here, and independently `docker inspect`s the certforge/traefik/agent containers' compose-network IPs to point them at) |
+| `CF_VAULT_PORT` | `8200` | dev-mode Vault (also sets `CF_E2E_VAULT`, `http://localhost:$CF_VAULT_PORT`, for the Vault e2e's own direct reads of the KV document and Vault's PKI CA) |
+| `CF_E2E_VAULT_TOKEN` | `certforge-e2e-root` | Vault's dev-mode root token (`VAULT_DEV_ROOT_TOKEN_ID`); also the value `deploy/e2e/vault-init.sh` sets as the e2e AppRole's fixed `secret_id` (`custom-secret-id`, deterministic rather than Vault-generated, so a rerun never needs to re-read it) |
 
 The issuance e2e test drives the compose server through its own HTTP API
 (`CF_E2E_BASE_URL`), the same way a real client would; it never talks to
@@ -83,6 +85,39 @@ decoded with `go-pkcs12`, and a populated ACME Renewal Information window.
 It reaches pebble-challtestsrv directly (`CF_E2E_CHALLTESTSRV`) to add the
 A records Pebble's validation needs, and shares one enrolled agent
 (`enrolledAgent`, `test/e2e/agent_test.go`) with `TestAgentAgainstCompose`.
+
+`test/e2e/vault_test.go`'s `TestVaultAgainstCompose` (Phase 5A Task 14)
+proves Vault Transit, private CAs, Vault PKI and Vault KV end to end. The
+stack first boots certforge on the static KEK like every other e2e test;
+this test alone then restarts it (`docker compose ... -f
+deploy/compose.vault.yaml up -d --no-deps --force-recreate certforge`) with
+Transit active and the static key kept as previous, so `verifyAuditChain`
+proves the audit chain survives that boundary and the rewrap has real
+sealed rows to move (`POST /keys/rewrap`, polled via `GET /keys/status`
+until `rewrap.finishedAt` is set and `remaining == 0`). It then creates a
+`localca` CA and certificate, verifies the downloaded chain against the
+CA's own `trustBundlePem`, fetches `GET /crl/{caId}.crl`, revokes the
+version and confirms the refetched CRL lists its serial; configures
+Settings → Integrations → Vault and `testVaultSettings`, creates a
+`vaultpki` CA and certificate, and checks its trust bundle equals Vault's
+own `pki/cert/ca`; creates a `vault-kv` deploy target and a server grant on
+the `localca` certificate, waits for `serverDeployment.status ==
+"deployed"`, and reads the KV document directly with Vault's root token
+(`CF_E2E_VAULT`) to confirm `fullchain.pem` matches and `privkey.pem` is
+absent (`includeKey` was never set); and finally `docker compose ... pause
+vault` (dev-mode Vault is in-memory, so it is paused rather than stopped)
+to check `/readyz` reports `checks.vault: failed` within 60s, then unpauses
+and checks it recovers. `deploy/e2e/vault-init.sh` (run once by the
+`vault-init` service, profile `e2e`, right after `vault` itself becomes
+healthy) enables transit and pki, verifies dev-mode's default `secret/`
+kv-v2 mount, and writes a fixed AppRole `role_id`/`secret_id` to
+`../.e2e/vault` for this test's own second boot to read. `make e2e` runs
+this test as its own `go test -run TestVaultAgainstCompose` invocation
+after the rest of the suite passes (`-skip TestVaultAgainstCompose` on the
+first), since it is the only test that restarts and reconfigures the
+server out from under the rest of the stack. OpenBao is untested even with
+this e2e in place — see [vault.md#openbao](vault.md#openbao) — it runs a
+real HashiCorp Vault image, never OpenBao.
 
 The same stack and the same `CF_HTTP_PORT` override are used by the browser
 smoke test below (`web/e2e/`); it just drives the running server with a real

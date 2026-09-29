@@ -220,3 +220,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - TransIP and HyperOne DNS providers via file-backed credentials.
 - Readiness reports Vault reachability.
 - Phase 5A batch-5 review fixes: `includeKey` on a server-run deploy target now needs `keys:export` at create and update, not only at server-grant creation; a stale server-deploy job for an older certificate version can no longer overwrite a target with material from a version a newer job has already superseded; updating a layout a live server grant depends on to a non-PEM file is now refused and an allowed update redeploys that grant; server-grant audit details carry `includeKey` throughout; server-deploy failure text is redacted of Vault secrets and truncated on a valid UTF-8 boundary; DNS provider construction errors no longer leak a file-backed credential's private temp path.
+- End-to-end coverage for Transit KEK rotation, private CAs, Vault PKI and Vault KV.

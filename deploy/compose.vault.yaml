@@ -1,0 +1,31 @@
+# Second-boot override for TestVaultAgainstCompose (Task 14): the e2e stack
+# starts certforge on the static KEK, like every other e2e test, then this
+# file switches it onto Vault Transit with the static KEK kept as previous
+# (CF_KEK_PREVIOUS_FILE, the same secret compose.yaml already mounts at
+# /run/secrets/cf_kek), so the rewrap step has something real to rewrap and
+# verifyAuditChain can prove the audit chain survives a static-to-Transit
+# boot. Applied with `--no-deps --force-recreate certforge` on top of the
+# already-running stack (deploy/compose.yaml + deploy/compose.test.yaml),
+# never on its own.
+#
+# CF_KEK_VAULT_ROLE_ID is not secret and is passed straight through from the
+# host shell (the test reads it out of ../.e2e/vault/role_id, written by
+# deploy/e2e/vault-init.sh, and sets it before invoking `docker compose up`
+# for this file). CF_KEK_VAULT_SECRET_ID_FILE points at the matching
+# secret_id from the same directory instead, so that value never sits in an
+# environment variable any process on the host can read out of `docker
+# inspect` or a process table.
+services:
+  certforge:
+    volumes:
+      - ../.e2e/vault:/run/secrets/vault-approle:ro
+    environment:
+      CF_KEK_FILE: ""
+      CF_KEK_PREVIOUS_FILE: /run/secrets/cf_kek
+      CF_KEK_VAULT_ADDR: http://vault:8200
+      CF_KEK_VAULT_TRANSIT_KEY: certforge
+      CF_KEK_VAULT_ROLE_ID: ${CF_KEK_VAULT_ROLE_ID}
+      CF_KEK_VAULT_SECRET_ID_FILE: /run/secrets/vault-approle/secret_id
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully

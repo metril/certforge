@@ -186,4 +186,8 @@ The KV path is a template (`{org}`/`{cert}`/`{name}`, resolved per deploy) rende
 
 OpenBao is API-compatible for every path this client uses — Transit, KV
 v2, PKI, AppRole and token auth — but untested against a real OpenBao
-server. If something behaves differently, please report it.
+server. `test/e2e/vault_test.go`'s `TestVaultAgainstCompose` (Phase 5A Task
+14, see `docs/development.md`) exercises every one of those paths end to
+end, but only against a real `hashicorp/vault` image; it proves nothing
+about OpenBao's own behavior. If something behaves differently, please
+report it.
