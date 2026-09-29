@@ -1,10 +1,23 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, call } from '../client';
+import type { SettingsSection, VaultSettings, VaultTestResult } from '../types';
 
-export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication' | 'agents' | 'issuance';
+export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication' | 'agents' | 'issuance' | 'vault';
 
 export const settingsQuery = (section: SectionId) =>
   queryOptions({ queryKey: ['settings', section], queryFn: () => call(api.GET('/settings/{section}', { params: { path: { section } } })) });
+
+// Direct calls (not useMutation): the Vault token/secretId are secrets
+// (global constraints, "Secrets" — Test connection and Vault save never go
+// through the mutation cache). Task 6's Integrations section calls both and
+// invalidates ['settings', 'vault'] itself.
+export function testVault(body: VaultSettings): Promise<VaultTestResult> {
+  return call(api.POST('/settings/vault/test', { body }));
+}
+
+export function saveSettingsDirect(section: SectionId, body: Record<string, unknown>): Promise<SettingsSection> {
+  return call(api.PUT('/settings/{section}', { params: { path: { section } }, body }));
+}
 
 // `silent` lets a richer form (Issuance defaults' Global tab, which maps a
 // 422 to a field inline, controller ruling) suppress the default toast the

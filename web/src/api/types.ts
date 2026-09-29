@@ -107,3 +107,17 @@ export type HookPhase = S['HookPhase'];
 export type AgentCA = S['AgentCA'];
 export type AgentCAList = S['AgentCAList'];
 export type AgentListener = S['AgentListener'];
+
+// Phase 5B Task 1: private CAs, Vault settings and server grants.
+export type CaType = S['CaType'];
+export type LocalCaConfig = S['LocalCaConfig'];
+export type VaultPkiConfig = S['VaultPkiConfig'];
+export type KeysStatus = S['KeysStatus'];
+export type RewrapStatus = S['RewrapStatus'];
+export type RewrapTable = S['RewrapTable'];
+export type RevocationReason = S['RevocationReason'];
+export type VaultSettings = S['VaultSettings'];
+export type VaultTestResult = S['VaultTestResult'];
+export type ServerGrantInput = S['ServerGrantInput'];
+export type ServerDeployment = S['ServerDeployment'];
+export type RunsOn = S['RunsOn'];

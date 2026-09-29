@@ -3,7 +3,7 @@ import { filenameFrom, saveBlob } from '@/lib/download';
 import { livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
 import { ApiError } from '../errors';
-import type { Certificate, CertificateInput, CertificateUpload, CertificateVersionUpload, CertStatus, ExportRequest } from '../types';
+import type { Certificate, CertificateInput, CertificateUpload, CertificateVersionUpload, CertStatus, ExportRequest, RevocationReason } from '../types';
 
 export const certificateQuery = (orgId: string, id: string) =>
   queryOptions({
@@ -208,6 +208,19 @@ export const versionsQuery = (orgId: string, id: string) =>
     queryKey: ['versions', orgId, id],
     queryFn: () => call(api.GET('/orgs/{orgId}/certificates/{id}/versions', { params: { path: { orgId, id } } })),
   });
+
+// Private CAs only (localca, vaultpki); 422 for an acme-issued version or one
+// that was imported/uploaded rather than issued (Shared contracts,
+// revokeCertificateVersion).
+export function useRevokeVersion(orgId: string, certId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ vid, reason }: { vid: string; reason: RevocationReason }) =>
+      call(api.POST('/orgs/{orgId}/certificates/{id}/versions/{vid}/revoke', { params: { path: { orgId, id: certId, vid } }, body: { reason } })),
+    meta: { silent: true, success: 'Version revoked' },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['versions', orgId, certId] }),
+  });
+}
 
 // Parts the server can render (docs/certificates.md "Downloads"): `combined`
 // is fullchain + key in one file. `key` and `combined` both need

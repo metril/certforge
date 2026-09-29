@@ -1,20 +1,24 @@
 import { Link } from '@tanstack/react-router';
-import { CircleAlert, Clock } from 'lucide-react';
+import { CircleAlert, Clock, TriangleAlert } from 'lucide-react';
 import type { Readiness } from '@/api/queries/health';
 import type { AgentListener } from '@/api/types';
 import { EXPIRING_DAYS } from '@/lib/status';
 import { daysUntil, relDays } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
-/** Shown only when something is wrong: a failing /readyz check, or the
- * agent listener certificate under 14 days (it renews itself at two thirds,
- * so this means renewal is failing). Silent otherwise. */
+/** Shown only when something is wrong: a failing /readyz check, a degraded
+ * one (Vault reachable but not fully healthy — 5a-facts.md's checks.vault),
+ * or the agent listener certificate under 14 days (it renews itself at two
+ * thirds, so this means renewal is failing). Silent otherwise. */
 export function HealthStrip({ readiness, listener }: { readiness?: Readiness; listener?: AgentListener }) {
-  const failing = readiness && !readiness.ok ? readiness.checks.filter((c) => !c.ok) : [];
+  // A degraded check is never a failure (Deviations R7/preflight ruling):
+  // the server can still be ready while it warns about a degraded section.
+  const failing = readiness && !readiness.ok ? readiness.checks.filter((c) => !c.ok && c.status !== 'degraded') : [];
+  const degraded = readiness ? readiness.checks.filter((c) => c.status === 'degraded') : [];
   const notAfter = listener?.notAfter ?? null;
   const dueIn = notAfter !== null ? daysUntil(notAfter) : null;
   const listenerDue = dueIn !== null && dueIn < EXPIRING_DAYS;
-  if (failing.length === 0 && !listenerDue) return null;
+  if (failing.length === 0 && degraded.length === 0 && !listenerDue) return null;
   return (
     <div
       role="alert"
@@ -33,6 +37,15 @@ export function HealthStrip({ readiness, listener }: { readiness?: Readiness; li
           ))}
         </>
       )}
+      {degraded.map((c) => (
+        <span key={c.name} className="inline-flex flex-wrap items-center gap-1.5">
+          <TriangleAlert className="size-4 text-expiring" aria-hidden />
+          <span className="font-mono text-xs">{c.name}: degraded</span>
+          <Link to="/settings/$section" params={{ section: 'integrations' }} className="text-primary underline-offset-2 hover:underline">
+            Integrations
+          </Link>
+        </span>
+      ))}
       {listenerDue && (
         <span className="inline-flex flex-wrap items-center gap-1.5">
           <Clock className="size-4 text-expiring" aria-hidden />

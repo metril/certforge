@@ -10,7 +10,7 @@ The login page shows **Sign in with single sign-on** when Settings → Authentic
 
 `/o/:org/overview` is the landing page after sign-in. It shows, top to bottom:
 
-- **Health strip** — appears only when `/readyz` reports a failing check (for example, the KEK not loaded), or when the agent listener certificate has under 14 days left (with a link to Settings → Agents); silent once the server is healthy.
+- **Health strip** — appears only when `/readyz` reports a failing check (for example, the KEK not loaded), a degraded one (for example, a configured Vault section that answered but isn't fully healthy — the server can still be ready; a warning row links to Settings → Integrations), or when the agent listener certificate has under 14 days left (with a link to Settings → Agents); silent once the server is healthy.
 - **Status tiles** — a count per certificate status (Active, Pending, Failed, Expired). Each tile is a filter: it links to the certificates list with that status pre-selected, not a modal or a drill-down page.
 - **Needs attention** — one row per problem that wants a look, most urgent first: expired, waiting on manual DNS, issuance failed, deploy failed, drift, overdue for renewal, a client offline while it holds grants, and an agent certificate close to expiry. A certificate waiting on manual DNS is pinned at the top as its own card with the TXT records to add; certificate rows list the cause with an inline **Renew now**; client rows link to the client with one fix (Review, Open, or Re-enrol).
 - **Expiry horizon** — one tick per certificate at its expiry, over the next 90 days, coloured by state, with the renewal window shaded behind it. Drag across the strip to list every certificate expiring in that range.

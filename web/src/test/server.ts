@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { issuanceSettingsSchema, makeImportResult, makeRateLedger, url } from './fixtures';
+import { issuanceSettingsSchema, keysStatic, makeImportResult, makeRateLedger, url } from './fixtures';
 
 // Adaptation (preflight C8): T4's AppShell test navigates to
 // `/o/acme/certificates` without mocking `/certificates` or `/cas`; once
@@ -69,4 +69,18 @@ export const server = setupServer(
   ),
   http.get(url('/orgs/:orgId/rate-ledger'), () => HttpResponse.json(makeRateLedger())),
   http.post(url('/orgs/:orgId/certificates/import'), () => HttpResponse.json(makeImportResult())),
+  // Phase 5B Task 1: the keys card, a deploy target's server grants, and
+  // the Vault settings section — tests that merely navigate through these
+  // routes don't mock them themselves.
+  http.get(url('/keys/status'), () => HttpResponse.json(keysStatic)),
+  http.get(url('/orgs/:orgId/deploy-targets/:id/grants'), () => HttpResponse.json([])),
+  http.get(url('/settings/vault'), () =>
+    HttpResponse.json({
+      section: 'vault',
+      schema: {},
+      value: { authMethod: 'token', timeoutSeconds: 10 },
+      stored: null,
+      storedSecrets: [],
+    }),
+  ),
 );

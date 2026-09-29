@@ -2,7 +2,7 @@ import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@ta
 import { livePoll } from '@/lib/polling';
 import { api, call } from '../client';
 import { errorMessage } from '../errors';
-import type { Grant, GrantInput, GrantUpdate } from '../types';
+import type { Grant, GrantInput, GrantUpdate, ServerGrantInput } from '../types';
 
 export const grantsQuery = (orgId: string, clientId: string) =>
   queryOptions({
@@ -19,12 +19,23 @@ export const certificateDeploymentsQuery = (orgId: string, certId: string) =>
     refetchInterval: (q) => livePoll(!!q.state.data?.some((d) => d.deployment.state === 'pending')),
   });
 
+// A server-side deploy target's own grants (runsOn: server); polls only
+// while one is still pending (Review Focus: "polling that never stops" —
+// T9 "stops polling when settled").
+export const targetGrantsQuery = (orgId: string, targetId: string) =>
+  queryOptions({
+    queryKey: ['grants', orgId, 'target', targetId],
+    queryFn: () => call(api.GET('/orgs/{orgId}/deploy-targets/{id}/grants', { params: { path: { orgId, id: targetId } } })),
+    refetchInterval: (q) => livePoll(!!q.state.data?.some((g) => g.serverDeployment?.status === 'pending')),
+  });
+
 /** Anything that changes a grant moves client counts, deployments and the
  * certificates list's Grants column. */
 export async function invalidateGrants(qc: QueryClient, orgId: string): Promise<void> {
   await Promise.all(
     [
       ['grants', orgId],
+      ['grants', orgId, 'target'],
       ['deployments', orgId],
       ['clients', orgId],
       ['clients', 'all'],
@@ -63,6 +74,16 @@ export function useCreateGrants(orgId: string, clientId: string) {
       createGrants(orgId, clientId, certificateIds, rest),
     meta: { silent: true },
     onSettled: () => invalidateGrants(qc, orgId),
+  });
+}
+
+export function useCreateServerGrant(orgId: string, targetId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ServerGrantInput) =>
+      call(api.POST('/orgs/{orgId}/deploy-targets/{id}/grants', { params: { path: { orgId, id: targetId } }, body })),
+    meta: { silent: true, success: 'Grant created' },
+    onSuccess: () => invalidateGrants(qc, orgId),
   });
 }
 

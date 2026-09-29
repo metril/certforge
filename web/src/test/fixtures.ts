@@ -17,6 +17,7 @@ import type {
   HookRun,
   ImportItem,
   ImportResult,
+  KeysStatus,
   Layout,
   Me,
   MeBinding,
@@ -26,6 +27,7 @@ import type {
   RoleBinding,
   Site,
   UserDetail,
+  VaultSettings,
 } from '@/api/types';
 
 export const url = (path: string) => `*/api/v1${path}`;
@@ -168,14 +170,225 @@ export const ca: CA = {
 };
 export const account: AcmeAccount = { id: 'acc-1', caId: 'ca-1', email: 'ops@example.com', status: 'valid', registrationUri: 'https://acme-v02.api.letsencrypt.org/acme/acct/123456' };
 
+// Phase 5B Task 1: private CAs (Deviations R4/R7), Vault settings and
+// server-side grants. caLocal carries notBefore/notAfter/trustBundlePem
+// (5a-facts.md: these are filled for both private kinds) and two retired
+// issuing certificates, one without a crlUrl (a rotation from before
+// general.baseUrl was set still has no published CRL for that issuer).
+export const caLocal: CA = {
+  id: 'ca-local-1',
+  orgId: org.id,
+  name: 'Internal CA',
+  directoryUrl: '',
+  trustBundlePem: '-----BEGIN CERTIFICATE-----\nMIIBROOTCA\n-----END CERTIFICATE-----\n',
+  eabKid: '',
+  hasEab: false,
+  resolvers: [],
+  shared: false,
+  type: 'localca',
+  config: {
+    subject: { commonName: 'Internal CA', organization: 'Acme', country: 'US' },
+    keyType: 'ec256',
+    rootValidityYears: 10,
+    issuingValidityYears: 3,
+    maxLeafDays: 397,
+    crl: true,
+    imported: false,
+    issuingPem: '-----BEGIN CERTIFICATE-----\nMIIBISSUING\n-----END CERTIFICATE-----\n',
+    retired: [
+      { pem: '-----BEGIN CERTIFICATE-----\nMIIBRETIRED1\n-----END CERTIFICATE-----\n', notAfter: iso(-10), serial: 'aa11bb22', crlUrl: 'https://certs.example.com/crl/ca-local-1/aa11bb22.crl' },
+      { pem: '-----BEGIN CERTIFICATE-----\nMIIBRETIRED2\n-----END CERTIFICATE-----\n', notAfter: iso(-400), serial: 'cc33dd44' },
+    ],
+    revokedCount: 1,
+  },
+  storedSecrets: [],
+  notBefore: iso(-30),
+  notAfter: iso(1065),
+  crlUrl: 'https://certs.example.com/crl/ca-local-1.crl',
+  createdAt: iso(-30),
+  updatedAt: iso(-1),
+};
+
+export const caLocalImported: CA = {
+  ...caLocal,
+  id: 'ca-local-2',
+  name: 'Imported CA',
+  config: { ...caLocal.config, imported: true, retired: [] },
+  storedSecrets: ['importKeyPem'],
+  notBefore: iso(-200),
+  notAfter: iso(895),
+  crlUrl: 'https://certs.example.com/crl/ca-local-2.crl',
+  createdAt: iso(-200),
+  updatedAt: iso(-200),
+};
+
+export const caVaultPki: CA = {
+  id: 'ca-vault-1',
+  orgId: org.id,
+  name: 'Vault PKI',
+  directoryUrl: '',
+  trustBundlePem: '-----BEGIN CERTIFICATE-----\nMIIBVAULTCA\n-----END CERTIFICATE-----\n',
+  eabKid: '',
+  hasEab: false,
+  resolvers: [],
+  shared: false,
+  type: 'vaultpki',
+  config: { mount: 'pki', role: 'certforge', ttl: '2160h' },
+  storedSecrets: [],
+  notBefore: iso(-5),
+  notAfter: iso(3645),
+  createdAt: iso(-5),
+  updatedAt: iso(-5),
+};
+
+export const keysStatic: KeysStatus = {
+  kind: 'static',
+  kekId: 'static-1',
+  previous: [],
+  canaryOk: true,
+  rewrap: null,
+};
+
+export const keysRunning: KeysStatus = {
+  kind: 'vault-transit',
+  kekId: 'vault-transit-1',
+  vaultAddress: 'https://vault.example.com:8200',
+  previous: [{ kind: 'static', kekId: 'static-1' }],
+  canaryOk: true,
+  rewrap: {
+    running: true,
+    startedAt: iso(0),
+    finishedAt: null,
+    activeKekId: 'vault-transit-1',
+    previousKekIds: ['static-1'],
+    tables: [
+      { table: 'settings', scanned: 10, rewrapped: 10, remaining: 0 },
+      { table: 'cas', scanned: 4, rewrapped: 2, remaining: 2 },
+      { table: 'acme_accounts', scanned: 0, rewrapped: 0, remaining: 3 },
+      { table: 'dns_provider_credentials', scanned: 0, rewrapped: 0, remaining: 5 },
+      { table: 'output_specs', scanned: 0, rewrapped: 0, remaining: 2 },
+      { table: 'agent_cas', scanned: 0, rewrapped: 0, remaining: 1 },
+      { table: 'certificate_versions', scanned: 0, rewrapped: 0, remaining: 12 },
+    ],
+    remaining: 25,
+    error: null,
+  },
+};
+
+export const keysDone: KeysStatus = {
+  ...keysRunning,
+  rewrap: {
+    ...keysRunning.rewrap!,
+    running: false,
+    finishedAt: iso(0.02),
+    tables: keysRunning.rewrap!.tables.map((t) => ({ ...t, scanned: t.scanned + t.remaining, rewrapped: t.scanned + t.remaining, remaining: 0 })),
+    remaining: 0,
+  },
+};
+
+export const vaultSettings: VaultSettings = {
+  address: 'https://vault.example.com:8200',
+  namespace: '',
+  authMethod: 'token',
+  timeoutSeconds: 10,
+};
+
+export const targetVaultKv: DeployTarget = {
+  id: 't-vault-1',
+  orgId: org.id,
+  name: 'Vault KV',
+  type: 'vault-kv',
+  runsOn: 'server',
+  config: {
+    mount: 'secret',
+    path: 'certforge/acme/www',
+    keys: { fullchain: 'fullchain.pem', cert: 'cert.pem', chain: 'chain.pem', key: 'privkey.pem' },
+    includeKey: false,
+  },
+  grantCount: 1,
+  createdAt: iso(-5),
+  updatedAt: iso(-5),
+};
+
+// runsOn server: clientId/clientName/deployment are nullable and null here
+// (5a-facts.md), serverDeployment carries the server-side deploy state.
+export const grantServer: Grant = {
+  id: 'g-server-1',
+  clientId: null,
+  clientName: null,
+  certificateId: 'c-1',
+  certificateName: 'www',
+  delivery: 'push',
+  layoutId: 'l-1',
+  deployTargetId: targetVaultKv.id,
+  hookIds: [],
+  autoRemediate: false,
+  deployment: null,
+  runsOn: 'server',
+  serverDeployment: { status: 'deployed', versionId: 'v-1', lastError: null, deployedAt: iso(-1), updatedAt: iso(-1) },
+  createdAt: iso(-2),
+  updatedAt: iso(-1),
+};
+
+// GET /meta/schemas' signers entries (Shared contracts "Meta"): localca's
+// LocalCaConfig (importKeyPem is the secret field) and vaultpki's
+// VaultPkiConfig.
+export const metaSigners: ProviderSchema[] = [
+  {
+    code: 'localca',
+    name: 'Built-in CA',
+    aliases: [],
+    schema: {
+      type: 'object',
+      required: ['subject'],
+      properties: {
+        subject: {
+          type: 'object',
+          required: ['commonName'],
+          properties: {
+            commonName: { type: 'string', title: 'Common name' },
+            organization: { type: 'string', title: 'Organization' },
+            country: { type: 'string', title: 'Country' },
+          },
+        },
+        keyType: { type: 'string', title: 'Key type', default: 'ec256' },
+        rootValidityYears: { type: 'integer', title: 'Root validity (years)', default: 10 },
+        issuingValidityYears: { type: 'integer', title: 'Issuing validity (years)', default: 3 },
+        maxLeafDays: { type: 'integer', title: 'Longest leaf validity (days)', default: 397 },
+        crl: { type: 'boolean', title: 'Publish a CRL', default: true },
+        importPem: { type: 'string', title: 'Import: certificate chain' },
+        importKeyPem: { type: 'string', title: 'Import: private key', secret: true },
+      },
+    },
+  },
+  {
+    code: 'vaultpki',
+    name: 'Vault PKI',
+    aliases: [],
+    schema: {
+      type: 'object',
+      required: ['role'],
+      properties: {
+        mount: { type: 'string', title: 'Mount', default: 'pki' },
+        role: { type: 'string', title: 'Role' },
+        ttl: { type: 'string', title: 'Leaf TTL' },
+      },
+    },
+  },
+] as ProviderSchema[];
+
 // Provider schemas (Task 8). `secret`, `serverPath`, `unsupported`, and
 // `unsupportedReason` are non-standard keywords the real provider JSON
 // Schemas (internal/challenge/schemas/*.json) carry inside `schema`;
 // ProviderSchema['schema'] is typed as a bag of unknown so they pass through
 // untyped (preflight A10). route53 mirrors the real route53.json's
-// server-managed AWS_SHARED_CREDENTIALS_FILE as a `serverPath` field, and
-// hyperone mirrors the real hyperone.json's unsupported flag/reason, so
-// SchemaForm/ProviderPicker tests exercise both against realistic shapes.
+// server-managed AWS_SHARED_CREDENTIALS_FILE as a `serverPath` field.
+// hyperone below is a synthetic `unsupported` fixture kept only so
+// ProviderPicker's unsupported-provider affordance still has something to
+// render against; it no longer mirrors the real hyperone.json (5a-facts.md:
+// hyperone is supported as of 5A Task 12, with an inline HYPERONE_PASSPORT
+// secret field, the same file-backed shape transip already has — see
+// `dns-providers.md#file-backed-credentials`).
 // Fix round 1 (preflight A12): every real provider config property is
 // `type: 'string'` (the API's DNSCredential.config is `{[key: string]: string}`);
 // an `integer` field here (the original `ttl` fixture) is a shape the API
