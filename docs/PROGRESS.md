@@ -302,8 +302,8 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Schema, settings sections, authz | done | f8f24b6 |
-| 2 | OpenAPI contract and generated client | done | pending |
-| 3 | Event model, emitter, delivery, httpx | planned | – |
+| 2 | OpenAPI contract and generated client | done | 57c5d02 |
+| 3 | Event model, emitter, delivery, httpx | done | pending |
 | 4 | HTTP notifiers | planned | – |
 | 5 | SMTP notifier and SMTP test | planned | – |
 | 6 | Channels and events API | planned | – |
@@ -595,3 +595,4 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 - 5A Task 14: Vault Kubernetes auth not implemented — only token and AppRole (`internal/vault.Auth`).
 - 5A Task 14: no OCSP for private CAs — `localca` and `vaultpki` publish CRLs only.
 - 5A Task 14: Playwright coverage for the Vault and private-CA screens (Settings → Integrations → Vault, CA create/rotate for `localca`/`vaultpki`, the vault-kv deploy target) arrives with 5B; `TestVaultAgainstCompose` is a Go e2e against the API only.
+- 6A Task 3: `httpx.CheckHost`/`CheckURL` classify by delegation — `CheckURL` extracts the hostname and calls `CheckHost`, which itself only special-cases a literal IP or the string `"localhost"`; a real hostname is always allowed at this stage (DNS-rebinding protection is `DialControl`'s job, applied again at actual dial time against the address Go has already resolved to). `DialControl` reuses `CheckHost` directly on the resolved `host:port` rather than duplicating the classification. `Payload` bounds `Event.Details` through a per-kind allowlist (`detailAllowlist` in `payload.go`) that Task 7's real event sources are expected to extend as they start emitting each kind for real — Task 3 seeded it with plausible field names since no event source exists yet to confirm them. `Emitter`/`DeliverWorker` have no `RegisterRiver` of their own in this task (that lands with Task 6's `Service`, which owns wiring `DeliverWorker` into `river.Workers`); Task 3's own tests call `DeliverWorker.Work` directly against a hand-built `*river.Job[DeliverArgs]` and a `notify.Inserter` fake, the same pattern `kek`/`deploy`'s own tests use for their River interface.
