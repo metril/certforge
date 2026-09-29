@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type { SchemaFormHandle } from '@/forms/SchemaForm';
 import { KIND_LABEL } from '@/lib/caKinds';
+import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { initialDraft, toCaInput, type CaDraft } from './caBody';
@@ -137,7 +138,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
                   value: k,
                   label: KIND_LABEL[k],
                   disabled: !!ca,
-                  hint: ca ? 'The type cannot change after creation.' : undefined,
+                  hint: ca ? help['ca.typeLocked'].text : undefined,
                 }))}
               />
               {draft.kind === 'vaultpki' && <HelpTip id="ca.vaultPki" />}

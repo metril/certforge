@@ -43,6 +43,20 @@ function acmeFromCa(ca: CA): AcmeDraft {
   };
 }
 
+// Batch 1 review (Important): `CA.config` carries these read-only fields
+// alongside LocalCaConfig's own schema properties (subject, keyType, ...).
+// The signers[localca] schema has `additionalProperties: false`, so seeding
+// the edit draft with the full `ca.config` makes SchemaForm's Ajv `validate()`
+// fail outright on Save (a silent no-op) the moment the operator opens an
+// existing localca CA to edit it.
+const LOCALCA_READONLY_KEYS = ['imported', 'issuingPem', 'retired', 'revokedCount'];
+
+function localCaConfigFromCa(config: Record<string, unknown>): Record<string, unknown> {
+  const c = { ...config };
+  for (const k of LOCALCA_READONLY_KEYS) delete c[k];
+  return c;
+}
+
 /** Builds a fresh draft: every kind starts blank except the one the CA
  * already is (editing) or `initialKind` names (create, from `?kind=`). */
 export function initialDraft(ca: CA | undefined, initialKind: CaType): CaDraft {
@@ -53,7 +67,7 @@ export function initialDraft(ca: CA | undefined, initialKind: CaType): CaDraft {
     acme: ca.type === 'acme' ? acmeFromCa(ca) : emptyAcme,
     // Editing never shows the Import switch (create-only, task-2-brief), so
     // `importing` starts false regardless of whether this CA was imported.
-    localca: ca.type === 'localca' ? { config: ca.config, importing: false } : emptyLocalCa,
+    localca: ca.type === 'localca' ? { config: localCaConfigFromCa(ca.config as Record<string, unknown>), importing: false } : emptyLocalCa,
     vaultpki: ca.type === 'vaultpki' ? { config: ca.config } : emptyVaultPki,
   };
 }

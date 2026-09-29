@@ -308,6 +308,23 @@ it('type locked on edit', async () => {
   expect(within(sheet).getByRole('radio', { name: 'Vault PKI' })).toBeDisabled();
 });
 
+// Batch 1 review (Important): `initialDraft` used to seed the edit form with
+// the full `ca.config` (including read-only `imported`/`issuingPem`/
+// `retired`/`revokedCount`), which the signers[localca] schema's
+// `additionalProperties: false` rejects — SchemaForm's Ajv `validate()`
+// failed silently and Save did nothing. This exercises the real rendered
+// form (not just `caBody.test.ts`'s pure `toCaInput`), so it actually
+// reaches that validation.
+it('localca edit saves', async () => {
+  cas = [caLocal];
+  withSigners();
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=ca-local-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Internal CA' });
+  await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
+  await waitFor(() => expect(put).toBeDefined());
+  expect(put).toEqual({ name: 'Internal CA', type: 'localca', config: { maxLeafDays: 397, crl: true } });
+});
+
 it('import key not cached', async () => {
   withSigners();
   server.use(

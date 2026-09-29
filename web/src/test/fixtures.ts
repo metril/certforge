@@ -222,6 +222,19 @@ export const caLocalImported: CA = {
   updatedAt: iso(-200),
 };
 
+// Batch 1 review: a never-rotated Built-in CA has `retired: null` on the
+// wire (Go's `Retired []retiredIssuer` has no `omitempty`, and create never
+// sets it), not `[]` — every other localca fixture above happened to carry
+// an array already.
+export const caLocalNeverRotated: CA = {
+  ...caLocal,
+  id: 'ca-local-3',
+  name: 'Never Rotated CA',
+  config: { ...caLocal.config, retired: null },
+  createdAt: iso(-1),
+  updatedAt: iso(-1),
+};
+
 export const caVaultPki: CA = {
   id: 'ca-vault-1',
   orgId: org.id,

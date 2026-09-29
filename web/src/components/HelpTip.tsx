@@ -3,6 +3,27 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { docsHref, firstSentences, help, type Help, type HelpKey } from '@/lib/help';
 import { cn } from '@/lib/utils';
 
+/** The standard help tooltip's own body (text, plus a "Learn more" link when
+ * the entry has one) — exported so a control that's disabled for a reason
+ * named in `help.ts` (batch 1 review: `ca.retiredNoCrl`, `ca.rotateImported`)
+ * can show the same tooltip content on itself, not just a bare `entry.text`
+ * that silently drops `learnMore`. */
+export function HelpTipBody({ entry }: { entry: Help }) {
+  return (
+    <>
+      {entry.text}
+      {entry.learnMore && (
+        <>
+          {' '}
+          <a href={docsHref(entry.learnMore)} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+            Learn more
+          </a>
+        </>
+      )}
+    </>
+  );
+}
+
 export function HelpTip({ id, text, warning = false }: { id?: HelpKey; text?: string; warning?: boolean }) {
   const entry: Help | null = id ? help[id] : text ? { text: firstSentences(text, 2) } : null;
   if (!entry) return null;
@@ -21,15 +42,7 @@ export function HelpTip({ id, text, warning = false }: { id?: HelpKey; text?: st
         </button>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-64 text-xs leading-snug">
-        {entry.text}
-        {entry.learnMore && (
-          <>
-            {' '}
-            <a href={docsHref(entry.learnMore)} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-              Learn more
-            </a>
-          </>
-        )}
+        <HelpTipBody entry={entry} />
       </TooltipContent>
     </Tooltip>
   );

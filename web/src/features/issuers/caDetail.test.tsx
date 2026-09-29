@@ -2,8 +2,9 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { CA } from '@/api/types';
+import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, ca, caLocal, caLocalImported, caVaultPki, meWith, url } from '@/test/fixtures';
+import { authHandlers, ca, caLocal, caLocalImported, caLocalNeverRotated, caVaultPki, meWith, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let cas: CA[];
@@ -37,13 +38,22 @@ beforeEach(() => {
 
 it('localca details and crl copy', async () => {
   cas = [caLocal];
-  renderRoute('/o/acme/issuers/cas?view=ca-local-1');
+  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-1');
   const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
   expect(within(sheet).getByText('Built-in CA')).toBeInTheDocument();
   expect(within(sheet).getByText('CN=Internal CA, O=Acme, C=US')).toBeInTheDocument();
   expect(within(sheet).getByText('397')).toBeInTheDocument(); // max leaf days
   expect(within(sheet).getByText('1')).toBeInTheDocument(); // revokedCount
   await within(sheet).findByText('https://certs.example.com/crl/ca-local-1.crl');
+  await user.click(within(sheet).getByRole('button', { name: 'Copy CRL URL' }));
+  expect(await navigator.clipboard.readText()).toBe('https://certs.example.com/crl/ca-local-1.crl');
+});
+
+it('never-rotated localca has no retired issuers section', async () => {
+  cas = [caLocalNeverRotated];
+  renderRoute('/o/acme/issuers/cas?view=ca-local-3');
+  const sheet = await screen.findByRole('dialog', { name: 'Never Rotated CA' });
+  expect(within(sheet).queryByText('Retired issuers')).not.toBeInTheDocument();
 });
 
 it('validity bar for both kinds', async () => {
@@ -87,9 +97,14 @@ it('retired chip copies its crl url', async () => {
 
 it('retired chip without crl url disabled', async () => {
   cas = [caLocal];
-  renderRoute('/o/acme/issuers/cas?view=ca-local-1');
+  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-1');
   const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
-  expect(within(sheet).getByRole('button', { name: /cc33dd44/ })).toBeDisabled();
+  const chip = within(sheet).getByRole('button', { name: /cc33dd44/ });
+  expect(chip).toBeDisabled();
+  await user.hover(chip);
+  const tooltip = await screen.findByRole('tooltip');
+  expect(tooltip).toHaveTextContent(help['ca.retiredNoCrl'].text);
+  expect(within(tooltip).getByRole('link', { name: 'Learn more' })).toBeInTheDocument();
 });
 
 it('rotate confirms and posts', async () => {
@@ -105,9 +120,14 @@ it('rotate confirms and posts', async () => {
 
 it('imported cannot rotate', async () => {
   cas = [caLocalImported];
-  renderRoute('/o/acme/issuers/cas?view=ca-local-2');
+  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-2');
   const sheet = await screen.findByRole('dialog', { name: 'Imported CA' });
-  expect(within(sheet).getByRole('button', { name: 'Rotate issuing certificate' })).toBeDisabled();
+  const rotateBtn = within(sheet).getByRole('button', { name: 'Rotate issuing certificate' });
+  expect(rotateBtn).toBeDisabled();
+  await user.hover(rotateBtn);
+  const tooltip = await screen.findByRole('tooltip');
+  expect(tooltip).toHaveTextContent(help['ca.rotateImported'].text);
+  expect(within(tooltip).getByRole('link', { name: 'Learn more' })).toBeInTheDocument();
 });
 
 it('rotate needs cas:write', async () => {

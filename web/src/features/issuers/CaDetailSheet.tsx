@@ -6,7 +6,7 @@ import { useRotateCa } from '@/api/queries/cas';
 import type { CA } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { CopyField } from '@/components/CopyField';
-import { HelpTip } from '@/components/HelpTip';
+import { HelpTip, HelpTipBody } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { ToneChip } from '@/components/StatusChip';
 import { ValidityBar } from '@/components/ValidityBar';
@@ -23,7 +23,18 @@ import { cn } from '@/lib/utils';
 
 type Subject = { commonName: string; organization?: string; country?: string };
 type RetiredIssuer = { pem: string; notAfter: string; serial: string; crlUrl?: string };
-type LocalConfig = { subject: Subject; keyType: string; maxLeafDays: number; crl: boolean; imported: boolean; retired: RetiredIssuer[]; revokedCount: number };
+// Batch 1 review: Go's `Retired []retiredIssuer` has no `omitempty` and a
+// freshly created (never rotated) CA leaves it unset, so the wire value is
+// `null`, not `[]` — every fixture happened to carry an array already.
+type LocalConfig = {
+  subject: Subject;
+  keyType: string;
+  maxLeafDays: number;
+  crl: boolean;
+  imported: boolean;
+  retired: RetiredIssuer[] | null;
+  revokedCount: number;
+};
 type VaultConfig = { mount: string; role: string; ttl?: string };
 
 /** A small label/value row for the fact panels below, the same shape as
@@ -62,7 +73,9 @@ function RetiredChip({ retired, onCopy }: { retired: RetiredIssuer; onCopy: (url
           {chip}
         </span>
       </TooltipTrigger>
-      <TooltipContent>{help['ca.retiredNoCrl'].text}</TooltipContent>
+      <TooltipContent side="top" className="max-w-64 text-xs leading-snug">
+        <HelpTipBody entry={help['ca.retiredNoCrl']} />
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -87,7 +100,9 @@ function RotateButton({ canWrite, imported, onClick }: { canWrite: boolean; impo
             {btn}
           </span>
         </TooltipTrigger>
-        <TooltipContent>{help['ca.rotateImported'].text}</TooltipContent>
+        <TooltipContent side="top" className="max-w-64 text-xs leading-snug">
+          <HelpTipBody entry={help['ca.rotateImported']} />
+        </TooltipContent>
       </Tooltip>
     );
   }
@@ -213,7 +228,7 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
               <p className="text-xs text-ink-muted">
                 Revoked <span className="font-mono">{local.revokedCount}</span>
               </p>
-              {local.retired.length > 0 && (
+              {local.retired && local.retired.length > 0 && (
                 <div className="grid gap-1.5">
                   <h4 className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
                     Retired issuers <HelpTip id="ca.retired" />
