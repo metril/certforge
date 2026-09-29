@@ -16,6 +16,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 	"unicode/utf8"
 )
@@ -54,6 +55,14 @@ type Options struct {
 type Client struct {
 	http          *http.Client
 	allowLoopback bool
+	// dialer is kept (not just handed to http.Transport and dropped) so a
+	// same-package test can redirect DNS resolution through a stub server
+	// via dialer.Resolver — batch-1 review finding 6:
+	// TestDialRejectsLoopbackAfterResolve needs a hostname that actually
+	// resolves to a blocked address, not a literal IP passed straight to
+	// DialControl, to prove the dial-time recheck (not just CheckURL)
+	// catches DNS rebinding.
+	dialer *net.Dialer
 }
 
 // New builds a Client from opts. It never contacts the network.
@@ -80,6 +89,7 @@ func New(opts Options) (*Client, error) {
 	}
 	return &Client{
 		allowLoopback: opts.AllowLoopback,
+		dialer:        dialer,
 		http: &http.Client{
 			Transport: transport,
 			Timeout:   timeout,
@@ -103,6 +113,14 @@ func (c *Client) Do(ctx context.Context, method, rawURL string, h http.Header, b
 	if err := CheckURL(rawURL, c.allowLoopback); err != nil {
 		return 0, err
 	}
+	// host-only, never the full rawURL: a webhook/ntfy/Home Assistant URL
+	// or its query string can itself carry a secret (a token, a signed
+	// path), so every error this method returns names only the host, not
+	// the path or query (batch-1 review finding 1).
+	host := ""
+	if u, err := url.Parse(rawURL); err == nil {
+		host = u.Host
+	}
 	var lastStatus int
 	var lastErr error
 	for attempt := 1; attempt <= Attempts; attempt++ {
@@ -111,7 +129,7 @@ func (c *Client) Do(ctx context.Context, method, rawURL string, h http.Header, b
 				return lastStatus, err
 			}
 		}
-		status, respBody, err := c.attempt(ctx, method, rawURL, h, body)
+		status, respBody, err := c.attempt(ctx, method, rawURL, host, h, body)
 		if err != nil {
 			lastStatus, lastErr = 0, err
 			continue
@@ -129,14 +147,14 @@ func (c *Client) Do(ctx context.Context, method, rawURL string, h http.Header, b
 	return lastStatus, lastErr
 }
 
-func (c *Client) attempt(ctx context.Context, method, rawURL string, h http.Header, body []byte) (int, []byte, error) {
+func (c *Client) attempt(ctx context.Context, method, rawURL, host string, h http.Header, body []byte) (int, []byte, error) {
 	var rdr io.Reader
 	if body != nil {
 		rdr = bytes.NewReader(body)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, rawURL, rdr)
 	if err != nil {
-		return 0, nil, fmt.Errorf("httpx: build request: %w", err)
+		return 0, nil, fmt.Errorf("httpx: build request for %s: %w", host, err)
 	}
 	for k, vs := range h {
 		for _, v := range vs {
@@ -145,7 +163,18 @@ func (c *Client) attempt(ctx context.Context, method, rawURL string, h http.Head
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("httpx: %s %s: %w", method, rawURL, err)
+		// c.http.Do wraps a transport failure in *url.Error, whose own
+		// Error() embeds the full request URL verbatim (path, query
+		// string and all) — unwrap to the underlying cause and rebuild
+		// the message from host alone, so a webhook/ntfy/Home Assistant
+		// URL's secret query or path parameter never reaches a stored or
+		// logged error (batch-1 review finding 1).
+		cause := error(err)
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			cause = uerr.Err
+		}
+		return 0, nil, fmt.Errorf("httpx: %s %s: %w", method, host, cause)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxBody))

@@ -98,8 +98,16 @@ func TestDeliverRecordsAttemptsAndFinalFailure(t *testing.T) {
 
 	// First attempt: still short of MaxAttempts, so the delivery stays
 	// pending for river to retry.
-	if err := w.Work(ctx, deliverJob(args, 1, 5)); err == nil {
+	workErr := w.Work(ctx, deliverJob(args, 1, 5))
+	if workErr == nil {
 		t.Fatal("Work returned nil for a failing Send")
+	}
+	// The error Work returns is what river stores in job.errors and logs
+	// (batch-1 review finding 1) — it must be the already-redacted text,
+	// never the raw sendErr, or the secret reaches river's own storage and
+	// log even though notification_deliveries.last_error was scrubbed.
+	if strings.Contains(workErr.Error(), secret) {
+		t.Errorf("error returned to river leaked the secret: %q", workErr.Error())
 	}
 	attempts, status, lastError := deliveryRow(t, pool, args)
 	if attempts != 1 {

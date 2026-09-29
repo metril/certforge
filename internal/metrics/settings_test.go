@@ -49,4 +49,31 @@ func TestPrometheusRequiresTokenWhenEnabled(t *testing.T) {
 	if err := sec.ValidateUpdate(disabledStored, []byte(`{"enabled":true}`)); err == nil {
 		t.Fatal("was disabled, enabling without a fresh token: accepted")
 	}
+
+	// batch-1 review finding 2: the schema's own minLength used to reject
+	// {"enabled":true,"bearerToken":"__unchanged__"} at the plain schema
+	// level (Validate), before ValidateUpdate — which is the only thing
+	// that actually knows "__unchanged__" means "keep what's already
+	// there" — ever got a look. Validate alone must now accept it...
+	if err := sec.Validate([]byte(`{"enabled":true,"bearerToken":"__unchanged__"}`)); err != nil {
+		t.Fatalf("Validate rejected __unchanged__ (schema minLength should be gone): %v", err)
+	}
+	// ...and the full pipeline (Validate then ValidateUpdate, same order
+	// PutSectionTx runs them in) must also accept it once a token is
+	// already stored.
+	if err := sec.Validate([]byte(`{"enabled":true,"bearerToken":"__unchanged__"}`)); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if err := sec.ValidateUpdate(enabledStored, []byte(`{"enabled":true,"bearerToken":"__unchanged__"}`)); err != nil {
+		t.Fatalf("ValidateUpdate: %v", err)
+	}
+
+	// The 16-character minimum still applies, just to a fresh value, via
+	// ValidateUpdate now instead of the schema.
+	if err := sec.ValidateUpdate(nil, []byte(`{"enabled":true,"bearerToken":"short"}`)); err == nil {
+		t.Fatal("fresh token under 16 characters: accepted")
+	}
+	if err := sec.Validate([]byte(`{"enabled":true,"bearerToken":"short"}`)); err != nil {
+		t.Fatalf("Validate rejected a short token (minLength moved out of the schema): %v", err)
+	}
 }

@@ -10,6 +10,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/metril/certforge/internal/settings"
 )
@@ -36,6 +37,18 @@ func RegisterSettings(r *settings.Registry) error {
 	return r.AddUpdateCheck(SectionName, checkTokenRequired)
 }
 
+// minBearerTokenLen is the token's minimum length. It lives here, not as
+// the schema's own minLength (batch-1 review finding 2): Section.Validate
+// runs the schema against the full incoming value, secret fields included,
+// before ValidateUpdate (this check) ever sees it — so a schema-level
+// minLength would 422 the ordinary "keep what's stored" update
+// {"enabled":true,"bearerToken":"__unchanged__"} on the sentinel's own
+// length (13), never reaching the "was it actually fresh" question at all.
+// Enforcing the minimum here, for a fresh value only, keeps that update
+// working while still bounding a real token the same way the schema's
+// maxLength already does for every value, fresh or not.
+const minBearerTokenLen = 16
+
 // checkTokenRequired enforces "bearerToken required when enabled" (Shared
 // contract, Settings row): the schema alone cannot express a conditional
 // requirement on a secret property (settings.secretProps forbids
@@ -55,6 +68,9 @@ func checkTokenRequired(stored, next json.RawMessage) error {
 		return nil
 	}
 	if n.BearerToken != "" && n.BearerToken != settings.Unchanged {
+		if len(n.BearerToken) < minBearerTokenLen {
+			return fmt.Errorf("bearerToken must be at least %d characters", minBearerTokenLen)
+		}
 		return nil
 	}
 	if stored != nil {

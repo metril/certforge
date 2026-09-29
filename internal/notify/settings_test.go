@@ -38,27 +38,48 @@ func TestSMTPSettingsSchema(t *testing.T) {
 		t.Fatal("host without from: accepted")
 	}
 
-	stored := []byte(`{"host":"smtp.example.test","port":587,"security":"starttls","timeoutSeconds":10}`)
 	if err := sec.ValidateUpdate(nil, []byte(`{"host":"smtp.example.test","from":"a@example.test"}`)); err != nil {
 		t.Fatalf("first save: %v", err)
 	}
-	if err := sec.ValidateUpdate(stored, []byte(`{"host":"smtp.example.test","port":587,"security":"starttls","timeoutSeconds":10}`)); err != nil {
-		t.Fatalf("unchanged host/port, no password: %v", err)
+
+	// No username (unauthenticated relay): the re-entry rule never applies,
+	// since there is no password whose validity a host/port change could
+	// affect (batch-1 review finding 3).
+	storedNoAuth := []byte(`{"host":"smtp.example.test","port":587,"security":"starttls","timeoutSeconds":10}`)
+	if err := sec.ValidateUpdate(storedNoAuth, []byte(`{"host":"smtp.example.test","port":587,"security":"starttls","timeoutSeconds":10}`)); err != nil {
+		t.Fatalf("no username, unchanged host/port: %v", err)
 	}
-	if err := sec.ValidateUpdate(stored, []byte(`{"host":"smtp.example.test","port":587,"security":"starttls","timeoutSeconds":10,"password":"__unchanged__"}`)); err != nil {
-		t.Fatalf("unchanged host/port, __unchanged__ password: %v", err)
+	if err := sec.ValidateUpdate(storedNoAuth, []byte(`{"host":"other.example.test","port":587,"security":"starttls","timeoutSeconds":10}`)); err != nil {
+		t.Fatalf("no username, changed host, no password: %v", err)
 	}
-	if err := sec.ValidateUpdate(stored, []byte(`{"host":"other.example.test","port":587,"security":"starttls","timeoutSeconds":10}`)); err == nil {
-		t.Fatal("changed host, omitted password: accepted")
+	if err := sec.ValidateUpdate(storedNoAuth, []byte(`{"host":"smtp.example.test","port":2525,"security":"starttls","timeoutSeconds":10}`)); err != nil {
+		t.Fatalf("no username, changed port, no password: %v", err)
 	}
-	if err := sec.ValidateUpdate(stored, []byte(`{"host":"other.example.test","port":587,"security":"starttls","timeoutSeconds":10,"password":"__unchanged__"}`)); err == nil {
-		t.Fatal("changed host, __unchanged__ password: accepted")
+
+	// A username is set: unchanged host/port never needs a password either.
+	storedAuth := []byte(`{"host":"smtp.example.test","port":587,"username":"ops","security":"starttls","timeoutSeconds":10}`)
+	if err := sec.ValidateUpdate(storedAuth, []byte(`{"host":"smtp.example.test","port":587,"username":"ops","security":"starttls","timeoutSeconds":10}`)); err != nil {
+		t.Fatalf("username set, unchanged host/port, no password: %v", err)
 	}
-	if err := sec.ValidateUpdate(stored, []byte(`{"host":"other.example.test","port":587,"security":"starttls","timeoutSeconds":10,"password":"p2"}`)); err != nil {
-		t.Fatalf("changed host, fresh password: %v", err)
+
+	// A username is set and host/port changed: only the literal
+	// __unchanged__ sentinel is rejected — an omitted or explicit ""
+	// password is allowed (both mean "nothing fresh was sent", and are
+	// indistinguishable from each other after unmarshalling).
+	if err := sec.ValidateUpdate(storedAuth, []byte(`{"host":"other.example.test","port":587,"username":"ops","security":"starttls","timeoutSeconds":10,"password":"__unchanged__"}`)); err == nil {
+		t.Fatal("username set, changed host, __unchanged__ password: accepted")
 	}
-	if err := sec.ValidateUpdate(stored, []byte(`{"host":"smtp.example.test","port":2525,"security":"starttls","timeoutSeconds":10}`)); err == nil {
-		t.Fatal("changed port, omitted password: accepted")
+	if err := sec.ValidateUpdate(storedAuth, []byte(`{"host":"other.example.test","port":587,"username":"ops","security":"starttls","timeoutSeconds":10}`)); err != nil {
+		t.Fatalf("username set, changed host, omitted password: %v", err)
+	}
+	if err := sec.ValidateUpdate(storedAuth, []byte(`{"host":"other.example.test","port":587,"username":"ops","security":"starttls","timeoutSeconds":10,"password":""}`)); err != nil {
+		t.Fatalf("username set, changed host, empty password: %v", err)
+	}
+	if err := sec.ValidateUpdate(storedAuth, []byte(`{"host":"other.example.test","port":587,"username":"ops","security":"starttls","timeoutSeconds":10,"password":"p2"}`)); err != nil {
+		t.Fatalf("username set, changed host, fresh password: %v", err)
+	}
+	if err := sec.ValidateUpdate(storedAuth, []byte(`{"host":"smtp.example.test","port":2525,"username":"ops","security":"starttls","timeoutSeconds":10,"password":"__unchanged__"}`)); err == nil {
+		t.Fatal("username set, changed port, __unchanged__ password: accepted")
 	}
 }
 

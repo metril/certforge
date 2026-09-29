@@ -14,9 +14,8 @@
     "bearerToken": {
       "type": "string",
       "title": "Bearer token",
-      "description": "Token the scraper must send as \"Authorization: Bearer <token>\". Required once enabled.",
+      "description": "Token the scraper must send as \"Authorization: Bearer <token>\". Required once enabled, 16-256 characters.",
       "secret": true,
-      "minLength": 16,
       "maxLength": 256
     }
   }

@@ -115,7 +115,19 @@ func checkSMTPSettings(raw json.RawMessage) error {
 // row; pre-flight ruling; same pattern as vault.checkReentry): changing host
 // or port must re-send the password, since a stored password may no longer
 // be valid — or may leak — against a different server. stored is nil on the
-// section's first save, which is always allowed.
+// section's first save, which is always allowed. The rule only applies when
+// the section is actually authenticated (username set): an unauthenticated
+// relay has no password whose validity a host change could affect, so it
+// may change host/port freely (batch-1 review finding 3 — the previous
+// version rejected every host/port change on an unauthenticated section,
+// since Go unmarshals an omitted password to the same "" zero value the
+// section already uses for "no password configured"). Once a username is
+// set, only the literal Unchanged sentinel is rejected: an omitted or ""
+// password cannot be told apart from each other after unmarshalling either
+// (both mean "nothing fresh was sent"), and PutSectionTx already treats
+// both as "keep the stored value" at the storage layer — rejecting only the
+// sentinel here means the settings form does not have to resend a value it
+// never has (a write-only field) just to change an unrelated host/port.
 func checkSMTPReentry(stored, next json.RawMessage) error {
 	if stored == nil {
 		return nil
@@ -127,10 +139,13 @@ func checkSMTPReentry(stored, next json.RawMessage) error {
 	if err := json.Unmarshal(next, &cur); err != nil {
 		return err
 	}
+	if cur.Username == "" {
+		return nil
+	}
 	if prev.Host == cur.Host && prev.Port == cur.Port {
 		return nil
 	}
-	if cur.Password == "" || cur.Password == settings.Unchanged {
+	if cur.Password == settings.Unchanged {
 		return errors.New("re-enter the password")
 	}
 	return nil

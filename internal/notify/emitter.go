@@ -50,7 +50,16 @@ func (e *Emitter) Emit(ctx context.Context, tx pgx.Tx, ev Event) (bool, error) {
 	if !IsKind(ev.Kind) {
 		return false, fmt.Errorf("notify: unknown event kind %q", ev.Kind)
 	}
+	// An empty DedupeKey would collapse every empty-key event of this kind
+	// into the first one ever emitted (notification_events.dedupe_key is
+	// UNIQUE) — batch-1 review finding 4.
+	if ev.DedupeKey == "" {
+		return false, errors.New("notify: dedupe key is required")
+	}
 	ev.Severity = SeverityOf(ev.Kind)
+	// Resource.Type is fixed per kind (ADR 0017), never the caller's
+	// choice — batch-1 review finding 4.
+	ev.Resource.Type = ResourceTypeOf(ev.Kind)
 	ev.Summary = truncateUTF8(ev.Summary, maxSummary)
 
 	if tx != nil {

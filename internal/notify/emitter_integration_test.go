@@ -27,6 +27,11 @@ func TestEmitDuplicateIsNoop(t *testing.T) {
 	ctx := context.Background()
 	pool, _ := dbtest.New(t)
 	org := dbtest.Org(t, pool)
+	// A matching channel (batch-1 review finding 5): without one, this
+	// test could not show that a duplicate Emit adds no delivery row or
+	// job, only that it adds no event row.
+	insertChannel(t, pool, testChannel{orgID: org, name: "all-events"})
+
 	ins := &fakeInserter{}
 	e := &notify.Emitter{Pool: pool, River: ins}
 
@@ -42,11 +47,19 @@ func TestEmitDuplicateIsNoop(t *testing.T) {
 	if got := countRows(t, pool, "notification_events", "dedupe_key = $1", ev.DedupeKey); got != 1 {
 		t.Fatalf("notification_events rows = %d, want 1", got)
 	}
+	deliveryWhere := "event_id IN (SELECT id FROM notification_events WHERE dedupe_key = $1)"
+	if got := countRows(t, pool, "notification_deliveries", deliveryWhere, ev.DedupeKey); got != 1 {
+		t.Fatalf("notification_deliveries rows = %d, want 1", got)
+	}
+	if got := len(ins.channelIDs()); got != 1 {
+		t.Fatalf("River.InsertTx called %d times, want 1", got)
+	}
 
 	// A second Emit with the same DedupeKey (a different event ID — Emit
 	// generates a fresh id server-side via the events table's default, but
 	// this Event's own ID field is client-supplied and irrelevant to the
-	// dedupe check, which is on dedupe_key alone) is a silent no-op.
+	// dedupe check, which is on dedupe_key alone) is a silent no-op: no
+	// second event row, no second delivery row, no second job.
 	created2, err := e.Emit(ctx, nil, ev)
 	if err != nil {
 		t.Fatalf("second Emit: %v", err)
@@ -56,6 +69,50 @@ func TestEmitDuplicateIsNoop(t *testing.T) {
 	}
 	if got := countRows(t, pool, "notification_events", "dedupe_key = $1", ev.DedupeKey); got != 1 {
 		t.Fatalf("notification_events rows after duplicate = %d, want 1", got)
+	}
+	if got := countRows(t, pool, "notification_deliveries", deliveryWhere, ev.DedupeKey); got != 1 {
+		t.Fatalf("notification_deliveries rows after duplicate = %d, want still 1", got)
+	}
+	if got := len(ins.channelIDs()); got != 1 {
+		t.Fatalf("River.InsertTx called %d times after duplicate, want still 1", got)
+	}
+}
+
+func TestEmitRejectsEmptyDedupeKey(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	e := &notify.Emitter{Pool: pool, River: &fakeInserter{}}
+
+	_, err := e.Emit(ctx, nil, newEvent(&org, "cert.issued", ""))
+	if err == nil {
+		t.Fatal("Emit accepted an empty DedupeKey")
+	}
+	if got := countRows(t, pool, "notification_events", "org_id = $1", org); got != 0 {
+		t.Fatalf("notification_events rows = %d, want 0 (rejected before insert)", got)
+	}
+}
+
+func TestEmitFixesResourceTypeToKind(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	e := &notify.Emitter{Pool: pool, River: &fakeInserter{}}
+
+	// A caller-supplied Resource.Type that doesn't match the kind's own
+	// fixed resource type (ADR 0017) is silently corrected, not trusted.
+	ev := newEvent(&org, "cert.issued", "cert.issued:"+uuid.NewString())
+	ev.Resource.Type = "monitor"
+
+	if _, err := e.Emit(ctx, nil, ev); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	var resourceType string
+	if err := pool.QueryRow(ctx, "SELECT resource_type FROM notification_events WHERE dedupe_key = $1", ev.DedupeKey).Scan(&resourceType); err != nil {
+		t.Fatalf("query resource_type: %v", err)
+	}
+	if resourceType != "certificate" {
+		t.Errorf("resource_type = %q, want %q (cert.issued's own fixed type, not the caller's)", resourceType, "certificate")
 	}
 }
 

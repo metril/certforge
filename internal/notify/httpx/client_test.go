@@ -124,11 +124,13 @@ func TestBodyCapped(t *testing.T) {
 	}
 }
 
-func TestDialRejectsLoopbackAfterResolve(t *testing.T) {
-	// DialControl runs against the address net.Dialer has already resolved
-	// a hostname to, so a name that resolves to a loopback address (a DNS
-	// rebinding attack) is rejected here even though CheckURL, given only
-	// the hostname, had nothing to reject.
+// TestDialControlRejectsResolvedLoopback is a narrow unit test of
+// DialControl itself, called directly with an already-resolved address
+// (as net.Dialer would call it after DNS lookup). The end-to-end version —
+// a hostname that actually resolves to a blocked address through a stub
+// DNS server — is TestDialRejectsLoopbackAfterResolve, in
+// client_internal_test.go (batch-1 review finding 6).
+func TestDialControlRejectsResolvedLoopback(t *testing.T) {
 	control := httpx.DialControl(false)
 	if err := control("tcp4", "127.0.0.1:80", nil); err == nil {
 		t.Fatal("DialControl(false) admitted a resolved loopback address")
@@ -143,6 +145,30 @@ func TestConnectionErrorReturnsError(t *testing.T) {
 	_, err := c.Do(context.Background(), http.MethodGet, "http://127.0.0.1:1/", nil, nil)
 	if err == nil {
 		t.Fatal("Do to an unreachable port returned nil error")
+	}
+}
+
+// TestConnectionErrorOmitsPathAndQuery is batch-1 review finding 1's httpx
+// half: a webhook/ntfy/Home Assistant URL's path or query string can carry
+// a secret (a signed path, a token query param), so a transport-level
+// failure's error text must name only the host, never the path or query —
+// even though the underlying *url.Error Go's own http.Client returns
+// embeds the full URL.
+func TestConnectionErrorOmitsPathAndQuery(t *testing.T) {
+	c := newClient(t)
+	_, err := c.Do(context.Background(), http.MethodGet, "http://127.0.0.1:1/webhook/secret-path?token=super-secret-token", nil, nil)
+	if err == nil {
+		t.Fatal("Do to an unreachable port returned nil error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "secret-path") {
+		t.Errorf("error leaked the URL path: %q", msg)
+	}
+	if strings.Contains(msg, "super-secret-token") {
+		t.Errorf("error leaked the query string: %q", msg)
+	}
+	if !strings.Contains(msg, "127.0.0.1:1") {
+		t.Errorf("error dropped the host entirely: %q", msg)
 	}
 }
 

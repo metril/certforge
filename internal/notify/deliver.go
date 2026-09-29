@@ -168,7 +168,12 @@ func (w *DeliverWorker) target(ctx context.Context, orgID *uuid.UUID) (Target, e
 // recordFailure redacts every secret value from sendErr, records the
 // attempt (task-3 brief: attempts = job.Attempt, status failed once
 // job.Attempt has reached the job's MaxAttempts, else still pending) and
-// returns sendErr so river schedules the next retry or gives up.
+// returns the redacted, clipped message — never the raw sendErr — so a
+// secret can never reach river's own job.errors column or its logging
+// (batch-1 review finding 1): sendErr is redacted for storage here, but
+// returning it as-is to river would have stored and logged the
+// unredacted original a second time, over the very copy this method just
+// scrubbed.
 func (w *DeliverWorker) recordFailure(ctx context.Context, job *river.Job[DeliverArgs], sendErr error, secrets map[string]string) error {
 	status := "pending"
 	if job.Attempt >= job.MaxAttempts {
@@ -181,7 +186,7 @@ func (w *DeliverWorker) recordFailure(ctx context.Context, job *river.Job[Delive
 	}); err != nil {
 		w.log().Error("notify: delivery failure not recorded", "event", job.Args.EventID, "channel", job.Args.ChannelID, "err", err)
 	}
-	return sendErr
+	return errors.New(msg)
 }
 
 // terminalFail records a failed delivery with no Send attempt (a disabled
