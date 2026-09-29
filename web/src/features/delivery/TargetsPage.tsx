@@ -19,6 +19,7 @@ import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { RowActions, UsedBy } from './RowActions';
+import { TargetDetailSheet } from './TargetDetailSheet';
 import { TargetSheet } from './TargetSheet';
 
 const stickyCol = 'sticky left-0 z-10 bg-panel';
@@ -27,7 +28,7 @@ export function TargetsPage() {
   const org = useOrg();
   const me = useMe();
   const canWrite = can(me, 'delivery:write', org.id);
-  const { edit } = useSearch({ from: '/_app/o/$org/delivery/targets' });
+  const { edit, view } = useSearch({ from: '/_app/o/$org/delivery/targets' });
   const navigate = useNavigate({ from: '/o/$org/delivery/targets' });
   const q = useQuery(deployTargetsQuery(org.id));
   const metaQ = useQuery(metaSchemasQuery);
@@ -51,7 +52,19 @@ export function TargetsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edit, q.isPending, targets.map((t) => t.id).join(',')]);
+  // Task 9's own detail sheet: server targets only (an agent target id, or
+  // one that no longer resolves, falls through here exactly like `edit`'s
+  // own not-found handling above).
+  useEffect(() => {
+    if (q.isPending || !view) return;
+    if (!targets.some((t) => t.id === view && t.runsOn === 'server')) {
+      openView(undefined);
+      toast.error('Deploy target not found.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, q.isPending, targets.map((t) => t.id).join(',')]);
   const editing = targets.find((t) => t.id === edit);
+  const viewing = targets.find((t) => t.id === view && t.runsOn === 'server');
   const add = metaQ.isError ? (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -142,6 +155,17 @@ export function TargetsPage() {
       )}
       {((canWrite && edit === 'new') || editing) && types.length > 0 && (
         <TargetSheet key={edit} orgId={org.id} target={editing} types={types} readOnly={!canWrite} onOpenChange={(o) => !o && openSheet(undefined)} />
+      )}
+      {viewing && (
+        <TargetDetailSheet
+          key={view}
+          orgId={org.id}
+          orgSlug={org.slug}
+          target={viewing}
+          types={types}
+          onEdit={() => openSheet(viewing.id)}
+          onOpenChange={(o) => !o && openView(undefined)}
+        />
       )}
       <ConfirmDestructive
         open={!!deleting}

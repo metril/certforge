@@ -315,6 +315,13 @@ export const help = {
   'target.vaultKv': { text: 'CertForge writes the files to Vault KV itself. No client is involved.', learnMore: 'deploy-targets.md#vault-kv' },
   'target.includeKey': { text: 'Also write the private key to Vault. Needs the keys:export permission.', learnMore: 'deploy-targets.md#vault-kv' },
   'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
+  // Task 9: the deploy-target detail sheet's own Grants section and its
+  // server grant form's Layout field.
+  'grant.server': { text: 'CertForge writes each new version to this target itself.', learnMore: 'deploy-targets.md#vault-kv' },
+  'grant.serverLayout': {
+    text: "Optional; without one, the target's own key names are used. Only PEM layouts work here.",
+    learnMore: 'deploy-targets.md#vault-kv',
+  },
   'layout.path': { text: 'Absolute path on the client host, one per file.', learnMore: 'agent.md#file-layouts' },
   'layout.parts': { text: "Joined in the order picked. extra adds each extra certificate's leaf and chain." },
   'layout.format': {

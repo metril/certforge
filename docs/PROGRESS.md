@@ -290,7 +290,7 @@ Phase 5A complete; 5B (issuers and vault web UI) builds on it.
 | 6 | Settings → Integrations | done | b667b52 |
 | 7 | Encryption key card | done | 81ccf26 |
 | 8 | Vault KV target and grant fallout | done | db65840 |
-| 9 | Deploy-target detail and server grants | planned | – |
+| 9 | Deploy-target detail and server grants | done | pending |
 | 10 | Docs pass and Playwright | planned | – |
 
 ## Decisions made during implementation
