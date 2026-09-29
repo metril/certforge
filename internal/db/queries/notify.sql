@@ -117,6 +117,127 @@ WHERE (org_id = sqlc.arg(org_id) OR org_id IS NULL)
 ORDER BY at DESC, id DESC
 LIMIT sqlc.arg(page_limit)::int;
 
+-- ---- Task 7: event sources ----
+
+-- name: GetEventCertificateVersion :one
+-- cert.issued's own detail fields (task-7 brief: "serial, notAfter, names,
+-- CA name"): certificate_versions stores no names of its own, so the
+-- certificate's current common_name/sans are used — the same values
+-- MarkCertificateIssued just wrote, since notify.Sources.OnVersion only
+-- ever runs right after a successful issuance commits. ca_id is nullable
+-- (an imported/uploaded version, or a CA later deleted), hence the LEFT
+-- JOIN and COALESCE.
+SELECT ce.org_id, ce.name AS certificate_name, ce.common_name, ce.sans,
+       cv.serial, cv.not_after, COALESCE(ca.name, '') AS ca_name
+FROM certificate_versions cv
+JOIN certificates ce ON ce.id = cv.cert_id
+LEFT JOIN cas ca ON ca.id = cv.ca_id
+WHERE cv.id = sqlc.arg(version_id);
+
+-- name: ScanExpiringCertificateVersions :many
+-- cert.expiring (task-7 brief): the current version only, whose not_after
+-- falls in (now, now+expiryWarningDays]. NOT EXISTS excludes a version
+-- already emitted for (dedupe_key 'cert.expiring:<versionId>') so a
+-- bounded LIMIT can never starve a newly-expiring certificate behind ones
+-- an earlier scan already emitted for.
+SELECT c.id AS cert_id, c.org_id, c.common_name, cv.id AS version_id, cv.not_after
+FROM certificates c
+JOIN certificate_versions cv ON cv.id = c.current_version_id
+WHERE cv.not_after > now() AND cv.not_after <= sqlc.arg(cutoff)::timestamptz
+  AND NOT EXISTS (SELECT 1 FROM notification_events e WHERE e.dedupe_key = 'cert.expiring:' || cv.id::text)
+ORDER BY cv.not_after, c.id
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ScanExpiredCertificateVersions :many
+-- cert.expired (task-7 brief): the current version, not_after <= now, not
+-- yet emitted for (same NOT EXISTS shape as ScanExpiringCertificateVersions).
+SELECT c.id AS cert_id, c.org_id, c.common_name, cv.id AS version_id, cv.not_after
+FROM certificates c
+JOIN certificate_versions cv ON cv.id = c.current_version_id
+WHERE cv.not_after <= now()
+  AND NOT EXISTS (SELECT 1 FROM notification_events e WHERE e.dedupe_key = 'cert.expired:' || cv.id::text)
+ORDER BY cv.not_after, c.id
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ScanFailedOrDriftedDeployments :many
+-- deploy.failed/deploy.drift for agent-run grants (task-7 brief:
+-- "deployments.state failed/drift"): a live grant's own deployment row,
+-- keyed by its deployed version_id, not yet emitted for. A grant with no
+-- version_id yet (never deployed) never matches state IN ('failed',
+-- 'drift') in the first place (its state is still 'pending').
+SELECT g.id AS grant_id, cl.org_id, ce.name AS certificate_name, cl.name AS target_name,
+       d.state, d.version_id, d.error
+FROM client_cert_grants g
+JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN clients cl ON cl.id = g.client_id
+WHERE g.removed_at IS NULL AND d.state IN ('failed', 'drift') AND d.version_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key = 'deploy.' || d.state || ':' || g.id::text || ':' || d.version_id::text
+  )
+ORDER BY d.updated_at, g.id
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ScanFailedServerDeployments :many
+-- deploy.failed for server-run grants (task-7 brief:
+-- "server_deployments.status failed"): server_deployments has no drift
+-- state (no agent reports installed files back for a server target), so
+-- this only ever emits deploy.failed.
+SELECT g.id AS grant_id, t.org_id, ce.name AS certificate_name, t.name AS target_name,
+       sd.version_id, sd.last_error
+FROM client_cert_grants g
+JOIN server_deployments sd ON sd.grant_id = g.id
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+JOIN certificates ce ON ce.id = g.cert_id
+WHERE g.removed_at IS NULL AND sd.status = 'failed' AND sd.version_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key = 'deploy.failed:' || g.id::text || ':' || sd.version_id::text
+  )
+ORDER BY sd.updated_at, g.id
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ScanOfflineClients :many
+-- client.offline (task-7 brief): an active client last seen before cutoff,
+-- with at least one live grant (removed_at IS NULL) — a client with
+-- nothing deployed to it never alerts. last_seen IS NOT NULL excludes a
+-- client that has never connected at all (enrolled but not yet activated
+-- by its first heartbeat). The dedupe key is keyed on last_seen itself, so
+-- a client that reconnects and later goes offline again is a fresh
+-- condition (a new last_seen value never seen in dedupe_key before).
+SELECT c.id AS client_id, c.org_id, c.name AS client_name, c.last_seen
+FROM clients c
+WHERE c.status = 'active' AND c.last_seen IS NOT NULL AND c.last_seen < sqlc.arg(cutoff)::timestamptz
+  AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.client_id = c.id AND g.removed_at IS NULL)
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key = 'client.offline:' || c.id::text || ':' || extract(epoch FROM c.last_seen)::bigint::text
+  )
+ORDER BY c.last_seen, c.id
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: ScanAgentCertExpiringClients :many
+-- agent.cert_expiring (task-7 brief): an active client whose own agent
+-- certificate expires within the (fixed, non-configurable)
+-- notify.AgentCertExpiryWindow. Keyed by agent_cert_serial, so a renewed
+-- agent certificate (a fresh serial) is a new condition.
+SELECT c.id AS client_id, c.org_id, c.name AS client_name, c.agent_cert_serial, c.agent_cert_not_after
+FROM clients c
+WHERE c.status = 'active' AND c.agent_cert_not_after IS NOT NULL
+  AND c.agent_cert_not_after < sqlc.arg(cutoff)::timestamptz
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key = 'agent.cert_expiring:' || c.id::text || ':' || c.agent_cert_serial
+  )
+ORDER BY c.agent_cert_not_after, c.id
+LIMIT sqlc.arg(page_limit)::int;
+
+-- name: PruneOldNotificationEvents :execrows
+-- The 90-day event retention (Deviations R2: runs here, hourly, since
+-- issuance's own 5-minute EnqueueDue must not import notify).
+DELETE FROM notification_events WHERE at < sqlc.arg(cutoff)::timestamptz;
+
 -- name: EventDeliveries :many
 -- listEvents' deliveries[] (Shared contract: EventDelivery, channelName
 -- "at delivery time"). notification_deliveries.channel_id cascades on the

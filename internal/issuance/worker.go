@@ -69,6 +69,11 @@ type IssueWorker struct {
 	ManualPoll time.Duration // 0 = 2s
 	Log        *slog.Logger
 	Listeners  []VersionListener // called after a version commits
+	// OnFailure is called after fail's own writes commit, for every failed
+	// attempt (nil means no listener, the same convention as Listeners
+	// being empty). Set before riverClient.Start; see
+	// cmd/certforge/serve.go.
+	OnFailure FailureListener
 
 	// HTTPTokens backs a server http-01 rule (via: server, the default):
 	// nil means server http-01 is not wired up, so such a rule fails.
@@ -752,5 +757,29 @@ func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid
 	if cert.CurrentVersionID != nil && cert.Status == StatusActive {
 		status = StatusActive // a valid version is still deployed
 	}
-	return w.Store.MarkFailed(ctx, cert.ID, status, failures, cause.Error(), next)
+	if err := w.Store.MarkFailed(ctx, cert.ID, status, failures, cause.Error(), next); err != nil {
+		return err
+	}
+	// cert.NextRenewAt is updated to the value MarkFailed just wrote (the
+	// struct fail received reflects the certificate as it was before this
+	// failure) so a listener's FailureInfo-adjacent nextAttemptAt detail is
+	// accurate, not stale.
+	cert.NextRenewAt = &next
+	w.notifyFailure(ctx, cert, failures, ClassifyFailure(lastFailedStep(steps), cause))
+	return nil
+}
+
+// notifyFailure calls OnFailure, panic-safe like notifyVersion: a
+// panicking listener is logged and never turns an already-committed
+// failure into a returned error.
+func (w *IssueWorker) notifyFailure(ctx context.Context, cert Certificate, failures int, f FailureInfo) {
+	if w.OnFailure == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			w.Log.Error("failure listener panicked", "cert", cert.ID, "panic", r)
+		}
+	}()
+	w.OnFailure.OnFailure(ctx, cert, failures, f)
 }

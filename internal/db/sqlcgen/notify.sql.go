@@ -186,6 +186,49 @@ func (q *Queries) EventDeliveries(ctx context.Context, eventIds []uuid.UUID) ([]
 	return items, nil
 }
 
+const getEventCertificateVersion = `-- name: GetEventCertificateVersion :one
+
+SELECT ce.org_id, ce.name AS certificate_name, ce.common_name, ce.sans,
+       cv.serial, cv.not_after, COALESCE(ca.name, '') AS ca_name
+FROM certificate_versions cv
+JOIN certificates ce ON ce.id = cv.cert_id
+LEFT JOIN cas ca ON ca.id = cv.ca_id
+WHERE cv.id = $1
+`
+
+type GetEventCertificateVersionRow struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	CertificateName string    `json:"certificate_name"`
+	CommonName      string    `json:"common_name"`
+	Sans            []string  `json:"sans"`
+	Serial          string    `json:"serial"`
+	NotAfter        time.Time `json:"not_after"`
+	CaName          string    `json:"ca_name"`
+}
+
+// ---- Task 7: event sources ----
+// cert.issued's own detail fields (task-7 brief: "serial, notAfter, names,
+// CA name"): certificate_versions stores no names of its own, so the
+// certificate's current common_name/sans are used — the same values
+// MarkCertificateIssued just wrote, since notify.Sources.OnVersion only
+// ever runs right after a successful issuance commits. ca_id is nullable
+// (an imported/uploaded version, or a CA later deleted), hence the LEFT
+// JOIN and COALESCE.
+func (q *Queries) GetEventCertificateVersion(ctx context.Context, versionID uuid.UUID) (GetEventCertificateVersionRow, error) {
+	row := q.db.QueryRow(ctx, getEventCertificateVersion, versionID)
+	var i GetEventCertificateVersionRow
+	err := row.Scan(
+		&i.OrgID,
+		&i.CertificateName,
+		&i.CommonName,
+		&i.Sans,
+		&i.Serial,
+		&i.NotAfter,
+		&i.CaName,
+	)
+	return i, err
+}
+
 const getNotificationChannel = `-- name: GetNotificationChannel :one
 SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels WHERE id = $1
 `
@@ -580,6 +623,348 @@ func (q *Queries) MatchingChannels(ctx context.Context, arg MatchingChannelsPara
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pruneOldNotificationEvents = `-- name: PruneOldNotificationEvents :execrows
+DELETE FROM notification_events WHERE at < $1::timestamptz
+`
+
+// The 90-day event retention (Deviations R2: runs here, hourly, since
+// issuance's own 5-minute EnqueueDue must not import notify).
+func (q *Queries) PruneOldNotificationEvents(ctx context.Context, cutoff time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneOldNotificationEvents, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const scanAgentCertExpiringClients = `-- name: ScanAgentCertExpiringClients :many
+SELECT c.id AS client_id, c.org_id, c.name AS client_name, c.agent_cert_serial, c.agent_cert_not_after
+FROM clients c
+WHERE c.status = 'active' AND c.agent_cert_not_after IS NOT NULL
+  AND c.agent_cert_not_after < $1::timestamptz
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key = 'agent.cert_expiring:' || c.id::text || ':' || c.agent_cert_serial
+  )
+ORDER BY c.agent_cert_not_after, c.id
+LIMIT $2::int
+`
+
+type ScanAgentCertExpiringClientsParams struct {
+	Cutoff    time.Time `json:"cutoff"`
+	PageLimit int32     `json:"page_limit"`
+}
+
+type ScanAgentCertExpiringClientsRow struct {
+	ClientID          uuid.UUID  `json:"client_id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	ClientName        string     `json:"client_name"`
+	AgentCertSerial   string     `json:"agent_cert_serial"`
+	AgentCertNotAfter *time.Time `json:"agent_cert_not_after"`
+}
+
+// agent.cert_expiring (task-7 brief): an active client whose own agent
+// certificate expires within the (fixed, non-configurable)
+// notify.AgentCertExpiryWindow. Keyed by agent_cert_serial, so a renewed
+// agent certificate (a fresh serial) is a new condition.
+func (q *Queries) ScanAgentCertExpiringClients(ctx context.Context, arg ScanAgentCertExpiringClientsParams) ([]ScanAgentCertExpiringClientsRow, error) {
+	rows, err := q.db.Query(ctx, scanAgentCertExpiringClients, arg.Cutoff, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScanAgentCertExpiringClientsRow{}
+	for rows.Next() {
+		var i ScanAgentCertExpiringClientsRow
+		if err := rows.Scan(
+			&i.ClientID,
+			&i.OrgID,
+			&i.ClientName,
+			&i.AgentCertSerial,
+			&i.AgentCertNotAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const scanExpiredCertificateVersions = `-- name: ScanExpiredCertificateVersions :many
+SELECT c.id AS cert_id, c.org_id, c.common_name, cv.id AS version_id, cv.not_after
+FROM certificates c
+JOIN certificate_versions cv ON cv.id = c.current_version_id
+WHERE cv.not_after <= now()
+  AND NOT EXISTS (SELECT 1 FROM notification_events e WHERE e.dedupe_key = 'cert.expired:' || cv.id::text)
+ORDER BY cv.not_after, c.id
+LIMIT $1::int
+`
+
+type ScanExpiredCertificateVersionsRow struct {
+	CertID     uuid.UUID `json:"cert_id"`
+	OrgID      uuid.UUID `json:"org_id"`
+	CommonName string    `json:"common_name"`
+	VersionID  uuid.UUID `json:"version_id"`
+	NotAfter   time.Time `json:"not_after"`
+}
+
+// cert.expired (task-7 brief): the current version, not_after <= now, not
+// yet emitted for (same NOT EXISTS shape as ScanExpiringCertificateVersions).
+func (q *Queries) ScanExpiredCertificateVersions(ctx context.Context, pageLimit int32) ([]ScanExpiredCertificateVersionsRow, error) {
+	rows, err := q.db.Query(ctx, scanExpiredCertificateVersions, pageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScanExpiredCertificateVersionsRow{}
+	for rows.Next() {
+		var i ScanExpiredCertificateVersionsRow
+		if err := rows.Scan(
+			&i.CertID,
+			&i.OrgID,
+			&i.CommonName,
+			&i.VersionID,
+			&i.NotAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const scanExpiringCertificateVersions = `-- name: ScanExpiringCertificateVersions :many
+SELECT c.id AS cert_id, c.org_id, c.common_name, cv.id AS version_id, cv.not_after
+FROM certificates c
+JOIN certificate_versions cv ON cv.id = c.current_version_id
+WHERE cv.not_after > now() AND cv.not_after <= $1::timestamptz
+  AND NOT EXISTS (SELECT 1 FROM notification_events e WHERE e.dedupe_key = 'cert.expiring:' || cv.id::text)
+ORDER BY cv.not_after, c.id
+LIMIT $2::int
+`
+
+type ScanExpiringCertificateVersionsParams struct {
+	Cutoff    time.Time `json:"cutoff"`
+	PageLimit int32     `json:"page_limit"`
+}
+
+type ScanExpiringCertificateVersionsRow struct {
+	CertID     uuid.UUID `json:"cert_id"`
+	OrgID      uuid.UUID `json:"org_id"`
+	CommonName string    `json:"common_name"`
+	VersionID  uuid.UUID `json:"version_id"`
+	NotAfter   time.Time `json:"not_after"`
+}
+
+// cert.expiring (task-7 brief): the current version only, whose not_after
+// falls in (now, now+expiryWarningDays]. NOT EXISTS excludes a version
+// already emitted for (dedupe_key 'cert.expiring:<versionId>') so a
+// bounded LIMIT can never starve a newly-expiring certificate behind ones
+// an earlier scan already emitted for.
+func (q *Queries) ScanExpiringCertificateVersions(ctx context.Context, arg ScanExpiringCertificateVersionsParams) ([]ScanExpiringCertificateVersionsRow, error) {
+	rows, err := q.db.Query(ctx, scanExpiringCertificateVersions, arg.Cutoff, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScanExpiringCertificateVersionsRow{}
+	for rows.Next() {
+		var i ScanExpiringCertificateVersionsRow
+		if err := rows.Scan(
+			&i.CertID,
+			&i.OrgID,
+			&i.CommonName,
+			&i.VersionID,
+			&i.NotAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const scanFailedOrDriftedDeployments = `-- name: ScanFailedOrDriftedDeployments :many
+SELECT g.id AS grant_id, cl.org_id, ce.name AS certificate_name, cl.name AS target_name,
+       d.state, d.version_id, d.error
+FROM client_cert_grants g
+JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN clients cl ON cl.id = g.client_id
+WHERE g.removed_at IS NULL AND d.state IN ('failed', 'drift') AND d.version_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key = 'deploy.' || d.state || ':' || g.id::text || ':' || d.version_id::text
+  )
+ORDER BY d.updated_at, g.id
+LIMIT $1::int
+`
+
+type ScanFailedOrDriftedDeploymentsRow struct {
+	GrantID         uuid.UUID  `json:"grant_id"`
+	OrgID           uuid.UUID  `json:"org_id"`
+	CertificateName string     `json:"certificate_name"`
+	TargetName      string     `json:"target_name"`
+	State           string     `json:"state"`
+	VersionID       *uuid.UUID `json:"version_id"`
+	Error           string     `json:"error"`
+}
+
+// deploy.failed/deploy.drift for agent-run grants (task-7 brief:
+// "deployments.state failed/drift"): a live grant's own deployment row,
+// keyed by its deployed version_id, not yet emitted for. A grant with no
+// version_id yet (never deployed) never matches state IN ('failed',
+// 'drift') in the first place (its state is still 'pending').
+func (q *Queries) ScanFailedOrDriftedDeployments(ctx context.Context, pageLimit int32) ([]ScanFailedOrDriftedDeploymentsRow, error) {
+	rows, err := q.db.Query(ctx, scanFailedOrDriftedDeployments, pageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScanFailedOrDriftedDeploymentsRow{}
+	for rows.Next() {
+		var i ScanFailedOrDriftedDeploymentsRow
+		if err := rows.Scan(
+			&i.GrantID,
+			&i.OrgID,
+			&i.CertificateName,
+			&i.TargetName,
+			&i.State,
+			&i.VersionID,
+			&i.Error,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const scanFailedServerDeployments = `-- name: ScanFailedServerDeployments :many
+SELECT g.id AS grant_id, t.org_id, ce.name AS certificate_name, t.name AS target_name,
+       sd.version_id, sd.last_error
+FROM client_cert_grants g
+JOIN server_deployments sd ON sd.grant_id = g.id
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+JOIN certificates ce ON ce.id = g.cert_id
+WHERE g.removed_at IS NULL AND sd.status = 'failed' AND sd.version_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key = 'deploy.failed:' || g.id::text || ':' || sd.version_id::text
+  )
+ORDER BY sd.updated_at, g.id
+LIMIT $1::int
+`
+
+type ScanFailedServerDeploymentsRow struct {
+	GrantID         uuid.UUID  `json:"grant_id"`
+	OrgID           uuid.UUID  `json:"org_id"`
+	CertificateName string     `json:"certificate_name"`
+	TargetName      string     `json:"target_name"`
+	VersionID       *uuid.UUID `json:"version_id"`
+	LastError       string     `json:"last_error"`
+}
+
+// deploy.failed for server-run grants (task-7 brief:
+// "server_deployments.status failed"): server_deployments has no drift
+// state (no agent reports installed files back for a server target), so
+// this only ever emits deploy.failed.
+func (q *Queries) ScanFailedServerDeployments(ctx context.Context, pageLimit int32) ([]ScanFailedServerDeploymentsRow, error) {
+	rows, err := q.db.Query(ctx, scanFailedServerDeployments, pageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScanFailedServerDeploymentsRow{}
+	for rows.Next() {
+		var i ScanFailedServerDeploymentsRow
+		if err := rows.Scan(
+			&i.GrantID,
+			&i.OrgID,
+			&i.CertificateName,
+			&i.TargetName,
+			&i.VersionID,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const scanOfflineClients = `-- name: ScanOfflineClients :many
+SELECT c.id AS client_id, c.org_id, c.name AS client_name, c.last_seen
+FROM clients c
+WHERE c.status = 'active' AND c.last_seen IS NOT NULL AND c.last_seen < $1::timestamptz
+  AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.client_id = c.id AND g.removed_at IS NULL)
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key = 'client.offline:' || c.id::text || ':' || extract(epoch FROM c.last_seen)::bigint::text
+  )
+ORDER BY c.last_seen, c.id
+LIMIT $2::int
+`
+
+type ScanOfflineClientsParams struct {
+	Cutoff    time.Time `json:"cutoff"`
+	PageLimit int32     `json:"page_limit"`
+}
+
+type ScanOfflineClientsRow struct {
+	ClientID   uuid.UUID  `json:"client_id"`
+	OrgID      uuid.UUID  `json:"org_id"`
+	ClientName string     `json:"client_name"`
+	LastSeen   *time.Time `json:"last_seen"`
+}
+
+// client.offline (task-7 brief): an active client last seen before cutoff,
+// with at least one live grant (removed_at IS NULL) — a client with
+// nothing deployed to it never alerts. last_seen IS NOT NULL excludes a
+// client that has never connected at all (enrolled but not yet activated
+// by its first heartbeat). The dedupe key is keyed on last_seen itself, so
+// a client that reconnects and later goes offline again is a fresh
+// condition (a new last_seen value never seen in dedupe_key before).
+func (q *Queries) ScanOfflineClients(ctx context.Context, arg ScanOfflineClientsParams) ([]ScanOfflineClientsRow, error) {
+	rows, err := q.db.Query(ctx, scanOfflineClients, arg.Cutoff, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScanOfflineClientsRow{}
+	for rows.Next() {
+		var i ScanOfflineClientsRow
+		if err := rows.Scan(
+			&i.ClientID,
+			&i.OrgID,
+			&i.ClientName,
+			&i.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -121,6 +121,54 @@ entry per channel that event matched, with that delivery's `status`,
 `attempts`, `lastError` (redacted, like every other channel-facing error
 text) and `deliveredAt`.
 
+### Event sources
+
+`cert.issued` and `cert.renewal_failed` fire synchronously, off the
+issuance worker itself (`internal/notify.Sources`, an
+`issuance.VersionListener` and `issuance.FailureListener`); every other
+kind below is found by the hourly `certforge_notify_scan` job
+(`RunOnStart`, so a freshly started server catches up immediately),
+bounded to 1000 candidates per kind per run:
+
+- **`cert.issued`** fires once a renewal actually commits a new version —
+  only from `issueWorker.Listeners` (a certificate's own issuance/renewal
+  attempts), never from an uploaded or imported version.
+- **`cert.renewal_failed`** fires once a certificate's consecutive failure
+  count reaches the `notifications.failureThreshold` setting, at most once
+  per UTC calendar day thereafter (so a certificate stuck failing for a
+  week alerts once a day, not on every attempt). The failure's cause is
+  never sent as-is: `issuance.ClassifyFailure` reduces it to a `class`
+  (`acme`, `dns`, `caa`, `rate_limit`, `challenge`, `signer` or
+  `internal`), the failed step's name, and, when the CA itself returned
+  one, its ACME problem type/status — never a URL or hostname.
+- **`cert.expiring`** fires once per certificate version, when that
+  version is still the current one and its `notAfter` falls within the
+  `notifications.expiryWarningDays` window (default 7 days). A later
+  renewal (a new current version) is a fresh condition.
+- **`cert.expired`** fires once per certificate version, once its
+  `notAfter` has passed and it is still the current version.
+- **`deploy.failed`** fires once per (grant, version) pair when a live
+  grant's own deployment is in state `failed` — an agent-run grant
+  (`deployments.state`) or a server-run grant (`server_deployments.status`,
+  which has no drift state of its own).
+- **`deploy.drift`** fires once per (grant, version) pair when a live
+  agent-run grant's deployment is in state `drift` (what the agent
+  installed no longer matches what was rendered); server-run grants have
+  no drift detection (nothing reports installed files back).
+- **`client.offline`** fires once per "episode": an active client with at
+  least one live grant, last seen longer ago than the agents section's
+  `offlineAfterSeconds`. The dedupe key is keyed on the client's own
+  `last_seen`, so reconnecting and later going offline again is a new
+  episode and alerts again.
+- **`agent.cert_expiring`** fires once per agent certificate serial, when
+  an active client's own agent certificate expires within 14 days (fixed,
+  not operator-configurable — an agent renews its own certificate
+  automatically; this only fires when that has stopped working).
+
+`monitor.*` (external monitors) and `backup.*` are their own sources
+(`internal/monitor`, `internal/backup`), landing in later Phase 6A tasks.
+The scan also prunes `notification_events` rows older than 90 days.
+
 ## Dedupe
 
 Emit is exact-once per condition: `notification_events.dedupe_key` is

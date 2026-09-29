@@ -11,11 +11,14 @@ import (
 // happens to carry key material) can never leak it to a channel — Payload
 // drops anything not listed here instead of passing Details through
 // verbatim (contract: "details pass through an allowlist per kind, no key
-// material"). Event sources (Task 7) add fields here as they start
-// emitting each kind for real.
+// material"). cert.issued through agent.cert_expiring are the fields
+// Sources (Task 7) actually emits; cert.renewal_failed carries no raw
+// cause.Error() (issuance.FailureInfo/ClassifyFailure's classified view
+// only — TestFailurePayloadHasNoURLOrHost). monitor.*/backup.* remain
+// provisional until Tasks 9/12 emit them for real.
 var detailAllowlist = map[string][]string{
-	"cert.issued":         {"commonName", "sans", "notAfter"},
-	"cert.renewal_failed": {"failures", "step", "lastError"},
+	"cert.issued":         {"serial", "notAfter", "names", "caName"},
+	"cert.renewal_failed": {"failures", "step", "problemType", "status", "class", "nextAttemptAt"},
 	"cert.expiring":       {"commonName", "notAfter"},
 	"cert.expired":        {"commonName", "notAfter"},
 	"deploy.failed":       {"target", "lastError"},
