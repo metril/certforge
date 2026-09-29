@@ -430,6 +430,25 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	if err := s.checkLayoutExtraCerts(ctx, q, r.OrgId, li.extraCertIDs); err != nil {
 		return nil, err
 	}
+	// batch-5 review: a server grant's layout may only ever render PEM
+	// files (Task 11's own create/update-time rule, internal/api/grants.go
+	// serverLayoutFiles) — but that check only ever ran against a *new*
+	// grant, not an *existing* layout a server grant already depends on.
+	// Without this, UpdateLayout could turn a layout backing a live server
+	// grant into p12/jks/der, bypassing the rule entirely (agents.Resync
+	// below never sees a server grant: LiveGrantIDsUsingLayout filters
+	// client_id IS NOT NULL).
+	serverGrants, err := q.ServerGrantsUsingLayout(ctx, r.Id)
+	if err != nil {
+		return nil, err
+	}
+	if len(serverGrants) > 0 {
+		for _, f := range li.files {
+			if f.Format != "pem" {
+				return nil, unprocessable("files", "this layout is used by a server grant, which may only render pem files")
+			}
+		}
+	}
 	// 4A final review finding 1: a layout already granted to a certificate
 	// works fine cert-only against a keyless current version (R10), but an
 	// update that makes it need a key must be refused here — under the
@@ -452,6 +471,15 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	}
 	if err != nil {
 		return nil, err
+	}
+	// Server grants using this layout never go through agents.Resync
+	// (above), so they get their own redeploy: mark pending and enqueue
+	// certforge_server_deploy directly, in the same transaction as the
+	// layout write.
+	for _, sg := range serverGrants {
+		if err := s.d.Dispatcher.EnqueueTx(ctx, tx, q, sg.ID, sg.CurrentVersionID); err != nil {
+			return nil, err
+		}
 	}
 	nudge, err := s.d.Agents.Resync(ctx, q, agents.RefLayout, l.ID)
 	if err != nil {
@@ -580,6 +608,25 @@ func (s *Server) validTarget(in *gen.DeployTargetInput) (name, runsOn string, cf
 	return name, runsOn, cfg, nil
 }
 
+// requireKeysExportForIncludeKey requires keys:export when cfg's own
+// includeKey field is true (Shared contracts: DeployTargetInput's
+// includeKey needs keys:export; controller ruling extends this to every
+// create and update, not only server-grant creation — an update is the
+// only other place includeKey can ever become true). cfg is a target's
+// already-canonicalized config (validTarget's own return), so includeKeyOf
+// (internal/api/grants.go) applies unchanged.
+func (s *Server) requireKeysExportForIncludeKey(ctx context.Context, orgID uuid.UUID, cfg []byte) error {
+	includeKey, err := includeKeyOf(cfg)
+	if err != nil {
+		return err
+	}
+	if !includeKey {
+		return nil
+	}
+	_, err = authorize(ctx, authz.ActionKeysExport, &orgID)
+	return err
+}
+
 // ListDeployTargets returns an org's deploy targets.
 func (s *Server) ListDeployTargets(ctx context.Context, r gen.ListDeployTargetsRequestObject) (gen.ListDeployTargetsResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionDeliveryRead, &r.OrgId); err != nil {
@@ -624,6 +671,9 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireKeysExportForIncludeKey(ctx, r.OrgId, cfg); err != nil {
+		return nil, err
+	}
 	t, err := s.queries().CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: r.OrgId, Name: name, Type: string(r.Body.Type), RunsOn: runsOn, Config: cfg})
 	switch pgCode(err) {
 	case pgUniqueViolation:
@@ -650,6 +700,14 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	}
 	name, _, cfg, err := s.validTarget(r.Body)
 	if err != nil {
+		return nil, err
+	}
+	// Gated whenever the new config sets includeKey true, whether it was
+	// already true or is only now turning true: an update from a caller
+	// without keys:export must never be the thing that lets a target start
+	// (or keep) writing private keys to Vault (controller ruling, batch-5
+	// review — delivery:write alone used to be enough to flip this).
+	if err := s.requireKeysExportForIncludeKey(ctx, r.OrgId, cfg); err != nil {
 		return nil, err
 	}
 	tx, err := s.d.Pool.Begin(ctx)

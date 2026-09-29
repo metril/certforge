@@ -1149,6 +1149,42 @@ func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsPara
 	return items, nil
 }
 
+const serverGrantsUsingLayout = `-- name: ServerGrantsUsingLayout :many
+SELECT g.id, ce.current_version_id
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+WHERE g.output_spec_id = $1::uuid AND g.removed_at IS NULL AND g.client_id IS NULL
+`
+
+type ServerGrantsUsingLayoutRow struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+}
+
+// UpdateLayout's own version of LiveGrantIDsUsingLayout (batch-5 review):
+// every live server grant using layout_id, with its certificate's current
+// version, so UpdateLayout can refuse a non-PEM update while one exists
+// and, once an allowed update commits, redeploy each of them.
+func (q *Queries) ServerGrantsUsingLayout(ctx context.Context, layoutID uuid.UUID) ([]ServerGrantsUsingLayoutRow, error) {
+	rows, err := q.db.Query(ctx, serverGrantsUsingLayout, layoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ServerGrantsUsingLayoutRow{}
+	for rows.Next() {
+		var i ServerGrantsUsingLayoutRow
+		if err := rows.Scan(&i.ID, &i.CurrentVersionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const staleDeploymentGrantIDs = `-- name: StaleDeploymentGrantIDs :many
 SELECT g.id FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id

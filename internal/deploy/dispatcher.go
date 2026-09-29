@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -145,11 +146,17 @@ func (d *Dispatcher) RegisterRiver(workers *river.Workers) []*river.PeriodicJob 
 
 // Deploy renders grantID's certificate material at versionID and writes it
 // to its target. A grant already removed (row gone, or hard-deleted) is
-// simply done: no error, nothing to retry. Any other failure records a
-// redacted, truncated last_error on server_deployments and is returned so
-// river retries with backoff. DeployWorker.Work calls this for
-// certforge_server_deploy; it is also exported for a test to run one
-// deploy attempt directly, without a live river client.
+// simply done: no error, nothing to retry. versionID must still be the
+// grant's own pending version (server_deployments.version_id) — a job for
+// an older version that finishes after a newer one has already taken over
+// (a fresh OnVersion, or a redeploy, moved the grant on) is stale and does
+// nothing at all, successfully: overwriting Vault with an old certificate
+// and marking it "deployed" would be worse than leaving the newer job to
+// run (batch-5 review). Any other failure records a truncated last_error
+// on server_deployments and is returned so river retries with backoff.
+// DeployWorker.Work calls this for certforge_server_deploy; it is also
+// exported for a test to run one deploy attempt directly, without a live
+// river client.
 func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) error {
 	row, err := d.Q.ServerDeployGrant(ctx, grantID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -158,30 +165,33 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 	if err != nil {
 		return err
 	}
+	if row.PendingVersionID == nil || *row.PendingVersionID != versionID {
+		return nil
+	}
 	target, ok := d.Reg.Get(row.TargetType)
 	if !ok {
-		return d.fail(ctx, grantID, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
+		return d.fail(ctx, grantID, versionID, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
 	}
 	var cfg map[string]any
 	if err := json.Unmarshal(row.TargetConfig, &cfg); err != nil {
-		return d.fail(ctx, grantID, err)
+		return d.fail(ctx, grantID, versionID, err)
 	}
 	includeKey, _ := cfg["includeKey"].(bool)
 
 	m, err := d.Certs.Material(ctx, row.CertID, versionID, includeKey)
 	if err != nil {
-		return d.fail(ctx, grantID, err)
+		return d.fail(ctx, grantID, versionID, err)
 	}
 
 	files, err := d.renderFiles(ctx, row, m, includeKey)
 	if err != nil {
-		return d.fail(ctx, grantID, err)
+		return d.fail(ctx, grantID, versionID, err)
 	}
 
 	if _, err := target.Deploy(ctx, Request{OrgSlug: row.OrgSlug, CertID: row.CertID.String(), CertName: row.CertificateName, Files: files, Config: cfg}); err != nil {
-		return d.fail(ctx, grantID, err)
+		return d.fail(ctx, grantID, versionID, err)
 	}
-	return d.Q.MarkServerDeploymentDeployed(ctx, grantID)
+	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID})
 }
 
 // renderFiles renders a server grant's own certificate material: its
@@ -252,22 +262,42 @@ func toRenderFiles(dfiles []delivery.File, specs []delivery.OutputFile) []render
 	return out
 }
 
-// fail records a redacted, truncated last_error on server_deployments and
-// returns cause for river to retry. cause is already redacted of any Vault
-// secret by the time it reaches here: every internal/vault.Client method a
-// Target implementation (vault-kv) calls runs its error through
-// (*vault.Client).Redact before returning it, so this only has to bound the
-// length. A failure to write the record is only logged: the job's own
-// error (returned) is what actually drives the retry.
-func (d *Dispatcher) fail(ctx context.Context, grantID uuid.UUID, cause error) error {
-	msg := cause.Error()
-	if len(msg) > maxLastError {
-		msg = msg[:maxLastError]
-	}
-	if err := d.Q.MarkServerDeploymentFailed(ctx, sqlcgen.MarkServerDeploymentFailedParams{GrantID: grantID, LastError: msg}); err != nil {
+// fail records a truncated last_error on server_deployments (scoped to
+// versionID, the version this attempt was for — MarkServerDeploymentFailed
+// is a no-op if a newer version has since taken over, same reasoning as
+// Deploy's own guard) and returns cause for river to retry. cause is
+// already redacted of any Vault secret by the time it reaches here: every
+// internal/vault.Client method a Target implementation (vault-kv) calls
+// runs its error through (*vault.Client).Redact before returning it, so
+// this only has to bound the length. A failure to write the record is only
+// logged: the job's own error (returned) is what actually drives the retry.
+func (d *Dispatcher) fail(ctx context.Context, grantID, versionID uuid.UUID, cause error) error {
+	msg := truncateUTF8(cause.Error(), maxLastError)
+	if err := d.Q.MarkServerDeploymentFailed(ctx, sqlcgen.MarkServerDeploymentFailedParams{
+		GrantID: grantID, VersionID: &versionID, LastError: msg}); err != nil {
 		d.log().Error("deploy: server deployment failure not recorded", "grant", grantID, "err", err)
 	}
 	return cause
+}
+
+// truncateUTF8 cuts s to at most maxBytes bytes, trimming back further if
+// the cut landed inside a multi-byte rune (an incomplete trailing sequence
+// makes Postgres reject the string outright, since text columns must be
+// valid UTF-8 — losing the whole failure record over a split emoji or
+// accented character would defeat the point of recording one at all).
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	s = s[:maxBytes]
+	for len(s) > 0 {
+		r, size := utf8.DecodeLastRuneInString(s)
+		if r != utf8.RuneError || size != 1 {
+			break
+		}
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 // uniq returns ids with duplicates removed, preserving first occurrence.

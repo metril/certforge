@@ -53,11 +53,19 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 	if dir != "" {
 		defer os.RemoveAll(dir)
 	}
+	// scrubCfg covers both cfg's own inline values (a leaked credential) and
+	// buildCfg's own values — chiefly the private temp file path
+	// withFileBackedCreds substituted in place of an inline field (for
+	// example HYPERONE_PASSPORT_LOCATION): hyperone's own open error quotes
+	// that path verbatim, and cfg alone never contains it (the inline
+	// field was deleted, not kept, when buildCfg was built), so scrubbing
+	// only cfg left the server's own filesystem layout in the error.
+	scrubCfg := scrubMap(cfg, buildCfg)
 
 	if e.factory != nil {
 		p, err := e.factory(buildCfg)
 		if err != nil {
-			return p, Scrub(err, code, cfg)
+			return p, Scrub(err, code, scrubCfg)
 		}
 		return p, nil
 	}
@@ -67,9 +75,29 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 	defer restore()
 	p, err := newByName(e.meta.Code)
 	if err != nil {
-		return nil, Scrub(fmt.Errorf("%s: %w", e.meta.Code, err), code, cfg)
+		return nil, Scrub(fmt.Errorf("%s: %w", e.meta.Code, err), code, scrubCfg)
 	}
 	return p, nil
+}
+
+// scrubMap merges cfg and buildCfg into one map for Scrub: every value
+// worth redacting from either, keyed by field name (the two never collide
+// on a file-backed field — withFileBackedCreds deletes the inline key from
+// buildCfg's copy before adding the path-env key, so cfg's version of that
+// key is the only one preserved for that name; buildCfg's own path-env key
+// has no counterpart in cfg at all). buildScrubList's minimum-length rule
+// still applies to a merged non-secret value the same as any other.
+func scrubMap(cfg, buildCfg map[string]string) map[string]string {
+	m := make(map[string]string, len(cfg)+len(buildCfg))
+	for k, v := range cfg {
+		m[k] = v
+	}
+	for k, v := range buildCfg {
+		if _, ok := m[k]; !ok {
+			m[k] = v
+		}
+	}
+	return m
 }
 
 func isolateEnv(schemaKeys map[string]bool, cfg map[string]string) (restore func()) {

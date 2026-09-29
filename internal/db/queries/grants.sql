@@ -107,6 +107,16 @@ SELECT id FROM client_cert_grants WHERE output_spec_id = $1 AND removed_at IS NU
 -- redeploy path never goes through agents.Resync; see LiveGrantIDsForCert.
 SELECT id FROM client_cert_grants WHERE deploy_target_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL;
 
+-- name: ServerGrantsUsingLayout :many
+-- UpdateLayout's own version of LiveGrantIDsUsingLayout (batch-5 review):
+-- every live server grant using layout_id, with its certificate's current
+-- version, so UpdateLayout can refuse a non-PEM update while one exists
+-- and, once an allowed update commits, redeploy each of them.
+SELECT g.id, ce.current_version_id
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+WHERE g.output_spec_id = sqlc.arg(layout_id)::uuid AND g.removed_at IS NULL AND g.client_id IS NULL;
+
 -- name: LiveGrantIDsUsingHook :many
 -- client_id IS NOT NULL: see LiveGrantIDsForCert (a server grant never has
 -- hooks today, but this keeps the invariant explicit).

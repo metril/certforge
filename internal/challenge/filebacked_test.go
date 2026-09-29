@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	legochallenge "github.com/go-acme/lego/v4/challenge"
@@ -75,6 +76,41 @@ func TestFileBackedTempLifecycle(t *testing.T) {
 	}
 	if _, err := os.Stat(gotDir); !os.IsNotExist(err) {
 		t.Fatalf("temp dir not removed after error: %v", err)
+	}
+}
+
+// Review Focus (batch-5 review): a file-backed provider's own construction
+// error can quote its temp file path verbatim (hyperone's open error does
+// exactly this) — Build must scrub buildCfg's own values too, not only
+// cfg's (the inline credential was never written into cfg's path-keyed
+// form, so scrubbing cfg alone never touches this path at all).
+func TestBuildScrubsFileBackedTempPath(t *testing.T) {
+	const code = "unit-filebacked-scrub"
+	fileBacked[code] = map[string]string{"UNIT_INLINE_CRED": "UNIT_INLINE_CRED_PATH"}
+	t.Cleanup(func() { delete(fileBacked, code) })
+
+	schema := []byte(`{"properties":{"UNIT_INLINE_CRED":{"type":"string","secret":true}}}`)
+	var gotPath string
+	if err := Register(ProviderMeta{Code: code, Name: "Unit filebacked scrub", Schema: schema},
+		func(cfg map[string]string) (legochallenge.Provider, error) {
+			gotPath = cfg["UNIT_INLINE_CRED_PATH"]
+			return nil, fmt.Errorf("open %s: permission denied", gotPath)
+		}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Build(code, map[string]string{"UNIT_INLINE_CRED": "secret-material"})
+	if err == nil {
+		t.Fatal("want error")
+	}
+	if gotPath == "" {
+		t.Fatal("factory never observed the path")
+	}
+	if strings.Contains(err.Error(), gotPath) {
+		t.Fatalf("temp path %q leaked through the error: %v", gotPath, err)
+	}
+	if !strings.Contains(err.Error(), redacted) {
+		t.Fatalf("expected the redaction marker in the error: %v", err)
 	}
 }
 

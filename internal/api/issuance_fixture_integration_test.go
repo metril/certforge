@@ -235,3 +235,16 @@ func (f *apiFixture) auditCount(t *testing.T, action string) int {
 	}
 	return n
 }
+
+// lastAuditDetails returns the most recent details JSON (as text) for
+// action against resourceID.
+func (f *apiFixture) lastAuditDetails(t *testing.T, action, resourceID string) string {
+	t.Helper()
+	var details string
+	err := f.pool.QueryRow(context.Background(),
+		`SELECT details::text FROM audit_events WHERE action = $1 AND resource_id = $2 ORDER BY id DESC LIMIT 1`, action, resourceID).Scan(&details)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return details
+}
