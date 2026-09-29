@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, keysRunning, keysStatic, meWith, org, url } from '@/test/fixtures';
+import { authHandlers, keysRunning, keysStatic, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 // The real vault settings schema (internal/vault's Settings, mirroring
@@ -106,6 +106,84 @@ it('test connection sends sentinel', async () => {
   await waitFor(() => expect(tested.token).toBe('__unchanged__'));
 });
 
+// Batch 3 review (Critical, SchemaSection.tsx:150): the generic
+// fieldErrorFromMessage always matched "re-enter the token" to the literal
+// `token` property, which is hidden under AppRole — the error landed on no
+// visible field. IntegrationsSection's mapSaveError routes it to whichever
+// secret field is actually live.
+it('re-enter the token maps to token under authMethod token', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  server.use(http.put(url('/settings/vault'), () => problem(422, 're-enter the token', {}, 'Invalid settings')));
+  const { user } = renderRoute('/settings/integrations');
+  const namespace = await screen.findByLabelText('Namespace');
+  await user.type(namespace, 'team-a');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const tokenField = screen.getByText('Token').closest('div')!.parentElement!;
+  expect(await within(tokenField).findByRole('alert')).toHaveTextContent('re-enter the token');
+});
+
+it('re-enter the token maps to secretId under authMethod approle', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  server.use(http.put(url('/settings/vault'), () => problem(422, 're-enter the token', {}, 'Invalid settings')));
+  const { user } = renderRoute('/settings/integrations');
+  await screen.findByLabelText('Address');
+  await user.click(screen.getByRole('radio', { name: 'approle' }));
+  await user.type(screen.getByLabelText('Role ID'), 'role-1');
+  await user.type(screen.getByLabelText('Secret ID'), 'secret-1');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const secretIdField = screen.getByText('Secret ID').closest('div')!.parentElement!;
+  expect(await within(secretIdField).findByRole('alert')).toHaveTextContent('re-enter the token');
+});
+
+// Batch 3 review (Critical, IntegrationsSection.tsx:28): `ui:widget: hidden`
+// alone leaves the other method's field (a stored token's `__unchanged__`
+// sentinel, or a typed roleId/secretId) in the Save/Test body; the server
+// 422s on it being present at all under the "wrong" authMethod, so a
+// section with a stored token could never switch to AppRole. Both bodies
+// must drop it.
+it('switching to approle drops the stored token from Save and Test bodies', async () => {
+  let put: Record<string, unknown> = {};
+  let tested: Record<string, unknown> = {};
+  server.use(
+    ...authHandlers({ authed: true }),
+    ...handlers({ onPut: (b) => (put = b), onTest: (b) => { tested = b as Record<string, unknown>; return undefined; } }),
+  );
+  const { user } = renderRoute('/settings/integrations');
+  await screen.findByLabelText('Address');
+  await user.click(screen.getByRole('radio', { name: 'approle' }));
+  await user.type(screen.getByLabelText('Role ID'), 'role-1');
+  await user.type(screen.getByLabelText('Secret ID'), 'secret-1');
+  await user.click(screen.getByRole('button', { name: 'Test connection' }));
+  await waitFor(() => expect(tested.roleId).toBe('role-1'));
+  expect(tested).not.toHaveProperty('token');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(put.roleId).toBe('role-1'));
+  expect(put).not.toHaveProperty('token');
+});
+
+it('switching back to token drops roleId and secretId from Save and Test bodies', async () => {
+  let put: Record<string, unknown> = {};
+  let tested: Record<string, unknown> = {};
+  server.use(
+    ...authHandlers({ authed: true }),
+    ...handlers({ onPut: (b) => (put = b), onTest: (b) => { tested = b as Record<string, unknown>; return undefined; } }),
+  );
+  const { user } = renderRoute('/settings/integrations');
+  await screen.findByLabelText('Address');
+  await user.click(screen.getByRole('radio', { name: 'approle' }));
+  await user.type(screen.getByLabelText('Role ID'), 'role-1');
+  await user.type(screen.getByLabelText('Secret ID'), 'secret-1');
+  await user.click(screen.getByRole('radio', { name: 'token' }));
+  await user.click(screen.getByRole('button', { name: 'Test connection' }));
+  await waitFor(() => expect(tested.authMethod).toBe('token'));
+  expect(tested).not.toHaveProperty('roleId');
+  expect(tested).not.toHaveProperty('secretId');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(put.authMethod).toBe('token'));
+  expect(put).not.toHaveProperty('roleId');
+  expect(put).not.toHaveProperty('secretId');
+});
+
 it('result clears on edit', async () => {
   server.use(...authHandlers({ authed: true }), ...handlers());
   const { user } = renderRoute('/settings/integrations');
@@ -120,15 +198,23 @@ it('vault secrets not cached', async () => {
   let put: Record<string, unknown> = {};
   server.use(...authHandlers({ authed: true }), ...handlers({ onPut: (b) => (put = b) }));
   const { user, queryClient } = renderRoute('/settings/integrations');
-  const namespace = await screen.findByLabelText('Namespace');
-  await user.type(namespace, 'team-a');
+  await screen.findByLabelText('Address');
+  // Batch 3 review (Critical, integrations.test.tsx:119): type a real
+  // secret and save it — the original version never typed one, so it could
+  // not have caught a leak. Assert it neither ends up in the mutation cache
+  // (Save is a direct call, not useMutation) nor anywhere in the query
+  // cache (the server never echoes a secret back on GET).
+  await user.click(screen.getByRole('button', { name: 'Replace Token' }));
+  await user.type(screen.getByLabelText('Token'), 'hvs.REALSECRETVALUE');
   await user.click(screen.getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(put.namespace).toBe('team-a'));
-  expect(put.token).toBe('__unchanged__');
-  // Save goes through a direct api.* call, not useMutation, so nothing
-  // about it (including the sentinel-guarded token) ever lands in the
-  // mutation cache.
+  await waitFor(() => expect(put.token).toBe('hvs.REALSECRETVALUE'));
   expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+  const cached = queryClient
+    .getQueryCache()
+    .getAll()
+    .map((q) => JSON.stringify(q.state.data))
+    .join('\n');
+  expect(cached).not.toContain('hvs.REALSECRETVALUE');
 });
 
 it('transit line only for vault-transit', async () => {

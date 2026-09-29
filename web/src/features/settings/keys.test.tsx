@@ -32,14 +32,18 @@ const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync
 
 it('static key basics', async () => {
   server.use(http.get(url('/keys/status'), () => HttpResponse.json(keysStatic)));
-  renderRoute('/settings/backup');
+  const { user } = renderRoute('/settings/backup');
   expect(await screen.findByText('Static')).toBeInTheDocument();
   expect(screen.queryByText(/vault\.example\.com/)).not.toBeInTheDocument();
   expect(screen.getByText('Canary OK')).toBeInTheDocument();
   expect(screen.getByText('None')).toBeInTheDocument();
   // No previous key and no rewrap has ever run: Rewrap now is disabled with
-  // the keys.rewrapNoPrevious tooltip, not merely absent.
-  expect(screen.getByRole('button', { name: 'Rewrap now' })).toBeDisabled();
+  // the keys.rewrapNoPrevious tooltip, not merely absent (batch 3 review,
+  // Minor: actually hover and assert its text, not just `disabled`).
+  const button = screen.getByRole('button', { name: 'Rewrap now' });
+  expect(button).toBeDisabled();
+  await user.hover(button);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Nothing to rewrap: no previous key is configured.');
 });
 
 it('transit shows address', async () => {

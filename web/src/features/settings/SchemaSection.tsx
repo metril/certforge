@@ -40,6 +40,8 @@ export function SchemaSection({
   actions,
   uiSchemaOverrides,
   saveMode,
+  mapSaveError,
+  prepareBody,
 }: {
   section: SectionId;
   title?: string;
@@ -57,6 +59,23 @@ export function SchemaSection({
    * "Secrets"). The query cache is invalidated the same way either mode
    * would, so the form still shows the freshly-saved value afterward. */
   saveMode?: 'direct';
+  /** Batch 3 review (Critical, SchemaSection.tsx:150): overrides the
+   * default `fieldErrorFromMessage(schema, message)` mapping of a failed
+   * save's error onto a schema property. Vault's own "re-enter the token"
+   * 422 names `token` literally, but `token` is hidden under `authMethod:
+   * 'approle'` — IntegrationsSection maps it to whichever secret field is
+   * actually visible instead. Receives the live (possibly-unsaved) value
+   * so the mapper can consult sibling fields such as `authMethod`. */
+  mapSaveError?: (message: string, value: Record<string, unknown>, schema: RJSFSchema) => ErrorSchema | null;
+  /** Batch 3 review (Critical, IntegrationsSection.tsx:28): transforms the
+   * value right before it's sent to Save (both `saveSettingsDirect` and
+   * `useSaveSettings`), without touching what's rendered or held as the
+   * draft. Vault's own `token`/`roleId`/`secretId` are hidden by
+   * `authMethod` but stay in `value` (so switching `authMethod` back
+   * doesn't lose what was typed) — the server's `checkSettings` 422s if the
+   * *other* method's field is present at all, even as the `__unchanged__`
+   * sentinel, so IntegrationsSection drops it here before the request. */
+  prepareBody?: (value: Record<string, unknown>) => Record<string, unknown>;
 }) {
   const me = useMe();
   const qc = useQueryClient();
@@ -121,18 +140,19 @@ export function SchemaSection({
               disabled={!canWrite || !draft || save.isPending || savingDirect}
               onClick={async () => {
                 if (!formRef.current?.validate()) return;
+                const body = prepareBody ? prepareBody(value) : value;
                 try {
                   if (saveMode === 'direct') {
                     setSavingDirect(true);
                     try {
-                      await saveSettingsDirect(section, value);
+                      await saveSettingsDirect(section, body);
                       await qc.invalidateQueries({ queryKey: ['settings', section] });
                       toast.success('Settings saved');
                     } finally {
                       setSavingDirect(false);
                     }
                   } else {
-                    await save.mutateAsync(value);
+                    await save.mutateAsync(body);
                   }
                   setDraft(null);
                   setSaveError(null);
@@ -146,8 +166,9 @@ export function SchemaSection({
                   // stays either way so nothing typed is lost. Direct mode
                   // (Task 6) has no mutation cache to surface its own toast,
                   // so it's shown here explicitly, same message either way.
-                  if (saveMode === 'direct') toast.error(errorMessage(e));
-                  setSaveError(fieldErrorFromMessage(schema, errorMessage(e)));
+                  const message = errorMessage(e);
+                  if (saveMode === 'direct') toast.error(message);
+                  setSaveError(mapSaveError ? mapSaveError(message, value, schema) : fieldErrorFromMessage(schema, message));
                 }
               }}
             >

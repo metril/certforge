@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleX } from 'lucide-react';
-import type { UiSchema } from '@rjsf/utils';
+import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
 import { keysStatusQuery } from '@/api/queries/keys';
 import { testVault } from '@/api/queries/settings';
 import { errorMessage } from '@/api/errors';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { ToneChip } from '@/components/StatusChip';
+import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
@@ -33,6 +34,39 @@ function vaultUiSchema(value: Record<string, unknown>): UiSchema {
     roleId: approle ? {} : { 'ui:widget': 'hidden' },
     secretId: approle ? {} : { 'ui:widget': 'hidden' },
   };
+}
+
+// Batch 3 review (Critical, IntegrationsSection.tsx:28): the server's own
+// `checkSettings` (internal/vault/settings.go) 422s "token requires
+// authMethod token" if `token` is present at all under `authMethod:
+// 'approle'` (even as the `__unchanged__` sentinel) — and the same for
+// `roleId`/`secretId` under `authMethod: 'token'` — so a section with a
+// stored token could never switch to AppRole, and vice versa. Both the Save
+// and Test bodies drop whichever pair doesn't apply to the live
+// authMethod; the hidden field's own value stays in `value`/the draft, so
+// switching back doesn't lose what was typed.
+function pruneAuthMethod(value: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...value };
+  if (out.authMethod === 'approle') delete out.token;
+  else {
+    delete out.roleId;
+    delete out.secretId;
+  }
+  return out;
+}
+
+// Batch 3 review (Critical, SchemaSection.tsx:150): the generic
+// `fieldErrorFromMessage` maps the 422 "re-enter the token" (5a-facts.md:
+// sent for both authMethod token and approle, same wording either way) to
+// its literal `token` match — wrong, and invisible, when `authMethod` is
+// `approle`, since `token` is hidden. Route it to whichever secret field is
+// actually live instead; anything else falls back to the generic mapper.
+function mapVaultSaveError(message: string, value: Record<string, unknown>, schema: RJSFSchema): ErrorSchema | null {
+  if (/\bre-enter the token\b/i.test(message)) {
+    const field = value.authMethod === 'approle' ? 'secretId' : 'token';
+    return { [field]: { __errors: [message] } } as ErrorSchema;
+  }
+  return fieldErrorFromMessage(schema, message);
 }
 
 function humanizeTtl(seconds: number): string {
@@ -85,15 +119,19 @@ function VaultTest({ value }: { value: Record<string, unknown> }) {
   const [result, setResult] = useState<VaultTestResult | null>(null);
 
   // "The result is held in local state and cleared whenever the draft
-  // changes" (brief) — `value` is a fresh object on every field edit
-  // (SchemaSection's draft state), so a reference-keyed effect is exactly
-  // that signal.
-  useEffect(() => setResult(null), [value]);
+  // changes" (brief). Batch 3 review (Minor, :91): `value` is a *new*
+  // `withSecretSentinels` object on every SchemaSection render even with no
+  // actual edit (e.g. a background refetch on window focus), so a
+  // reference-keyed effect cleared the result on more than edits alone —
+  // keyed on a content signature instead, so only an actual field change
+  // clears it.
+  const signature = JSON.stringify(value);
+  useEffect(() => setResult(null), [signature]);
 
   async function runTest() {
     setTesting(true);
     try {
-      setResult(await testVault(value as VaultSettings));
+      setResult(await testVault(pruneAuthMethod(value) as VaultSettings));
     } catch (e) {
       setResult({ ok: false, error: errorMessage(e) });
     } finally {
@@ -131,6 +169,8 @@ export function IntegrationsSection() {
         help="settings.vault"
         saveMode="direct"
         uiSchemaOverrides={vaultUiSchema}
+        prepareBody={pruneAuthMethod}
+        mapSaveError={mapVaultSaveError}
         actions={(value) => <VaultTest value={value} />}
       />
     </div>

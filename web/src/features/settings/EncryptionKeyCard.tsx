@@ -154,7 +154,11 @@ export function EncryptionKeyCard() {
             ) : (
               <ul className="flex flex-wrap gap-1.5">
                 {keys.previous.map((p) => (
-                  <li key={p.kekId} className="inline-flex h-6 items-center rounded-sm border border-border bg-subtle px-2 font-mono text-xs">
+                  <li
+                    key={p.kekId}
+                    title={`${p.kind} · ${p.kekId}`}
+                    className="inline-flex h-6 max-w-56 items-center truncate rounded-sm border border-border bg-subtle px-2 font-mono text-xs"
+                  >
                     {p.kind} · {p.kekId}
                   </li>
                 ))}
