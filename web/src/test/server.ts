@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { issuanceSettingsSchema, keysStatic, makeImportResult, makeRateLedger, url } from './fixtures';
+import { backupStatus, issuanceSettingsSchema, keysStatic, makeImportResult, makeRateLedger, url } from './fixtures';
 
 // Adaptation (preflight C8): T4's AppShell test navigates to
 // `/o/acme/certificates` without mocking `/certificates` or `/cas`; once
@@ -83,4 +83,11 @@ export const server = setupServer(
       storedSecrets: [],
     }),
   ),
+  // Phase 6B Task 1: the Alerts tabs, HealthStrip's backup link, and any
+  // route that merely navigates through them — tests that care override
+  // these themselves.
+  http.get(url('/orgs/:orgId/channels'), () => HttpResponse.json([])),
+  http.get(url('/orgs/:orgId/monitors'), () => HttpResponse.json([])),
+  http.get(url('/orgs/:orgId/events'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get(url('/backup/status'), () => HttpResponse.json(backupStatus)),
 );

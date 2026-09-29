@@ -7,18 +7,18 @@ export const ACTIONS = [
   'cas:read', 'cas:write', 'accounts:read', 'accounts:write', 'dnscreds:read', 'dnscreds:write',
   'certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'audit:read',
   'sites:read', 'sites:write', 'bindings:read', 'bindings:write', 'apikeys:read', 'apikeys:write',
-  'delivery:read', 'delivery:write',
+  'delivery:read', 'delivery:write', 'alerts:read', 'alerts:write',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
 const GLOBAL_ONLY = new Set<Action>(['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write']);
 const SHARED_READ = new Set<Action>(['orgs:read', 'settings:read', 'cas:read', 'users:read']);
-const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read'];
+const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read', 'alerts:read'];
 
 const ROLE_ACTIONS: Record<string, ReadonlySet<Action>> = {
   admin: new Set(ACTIONS),
   'org-admin': new Set(ACTIONS.filter((a) => !GLOBAL_ONLY.has(a))),
-  operator: new Set<Action>([...VIEWER, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write', 'delivery:write']),
+  operator: new Set<Action>([...VIEWER, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write', 'delivery:write', 'alerts:write']),
   viewer: new Set(VIEWER),
   auditor: new Set<Action>([...VIEWER, 'audit:read']),
 };
@@ -46,6 +46,12 @@ export function hasGlobalBinding(me: Pick<Me, 'bindings'>): boolean {
 /** True when action is allowed globally or in at least one visible org. */
 export function canAnywhere(me: Pick<Me, 'bindings' | 'orgs'>, action: Action): boolean {
   return can(me, action, null) || me.orgs.some((o) => can(me, action, o.id));
+}
+
+/** A global (org-less) admin binding — gates allOrgs channel writes and the
+ * all-orgs-channel affordance, distinct from any single org's admin. */
+export function isGlobalAdmin(me: Pick<Me, 'bindings'>): boolean {
+  return me.bindings.some((b) => b.role === 'admin' && b.orgId === null);
 }
 
 export const API_KEY_SCOPES: ApiKeyScope[] = ['certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'delivery:read', 'delivery:write', 'admin'];

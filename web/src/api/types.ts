@@ -122,3 +122,24 @@ export type ServerGrantInput = S['ServerGrantInput'];
 export type ServerDeployment = S['ServerDeployment'];
 export type ServerDeploymentStatus = S['ServerDeploymentStatus'];
 export type RunsOn = S['RunsOn'];
+
+// Phase 6B Task 1: alerts, monitors, events and backups. Event is aliased as
+// NotifyEvent — the schema's Event would otherwise shadow the DOM Event type.
+export type Channel = S['Channel'];
+export type ChannelInput = S['ChannelInput'];
+export type ChannelType = S['ChannelType'];
+export type ChannelLastDelivery = S['ChannelLastDelivery'];
+export type DeliveryResult = S['DeliveryResult'];
+export type DeliveryStatus = S['DeliveryStatus'];
+export type NotifyEvent = S['Event'];
+export type EventPage = S['EventPage'];
+export type EventKind = S['EventKind'];
+export type EventDelivery = S['EventDelivery'];
+export type Severity = S['Severity'];
+export type Monitor = S['Monitor'];
+export type MonitorInput = S['MonitorInput'];
+export type MonitorState = S['MonitorState'];
+export type BackupStatus = S['BackupStatus'];
+export type BackupSchedule = S['BackupSchedule'];
+export type SmtpTestRequest = S['SmtpTestRequest'];
+export type ServerInfo = S['ServerInfo'];

@@ -17,6 +17,17 @@ it('shows a degraded vault check while the server is ready', async () => {
   expect(within(strip).getByRole('link', { name: 'Integrations' })).toHaveAttribute('href', '/settings/integrations');
 });
 
+it('backup degraded links to backup and keys', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok', backup: 'degraded' } })),
+  );
+  renderRoute('/o/acme/overview');
+  const strip = await screen.findByRole('alert', { name: 'Server health' });
+  expect(within(strip).getByText('backup: degraded')).toBeInTheDocument();
+  expect(within(strip).getByRole('link', { name: 'Backup and keys' })).toHaveAttribute('href', '/settings/backup');
+});
+
 it('degraded not listed as failing', async () => {
   server.use(
     ...authHandlers({ authed: true }),

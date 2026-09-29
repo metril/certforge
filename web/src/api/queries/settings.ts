@@ -1,8 +1,8 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, call } from '../client';
-import type { SettingsSection, VaultSettings, VaultTestResult } from '../types';
+import type { DeliveryResult, SettingsSection, VaultSettings, VaultTestResult } from '../types';
 
-export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication' | 'agents' | 'issuance' | 'vault';
+export type SectionId = 'general' | 'issuance_defaults' | 'backup' | 'authentication' | 'agents' | 'issuance' | 'vault' | 'smtp' | 'prometheus' | 'notifications';
 
 export const settingsQuery = (section: SectionId) =>
   queryOptions({ queryKey: ['settings', section], queryFn: () => call(api.GET('/settings/{section}', { params: { path: { section } } })) });
@@ -17,6 +17,12 @@ export function testVault(body: VaultSettings): Promise<VaultTestResult> {
 
 export function saveSettingsDirect(section: SectionId, body: Record<string, unknown>): Promise<SettingsSection> {
   return call(api.PUT('/settings/{section}', { params: { path: { section } }, body }));
+}
+
+/** Sends a test email through the saved SMTP section (direct call, same
+ * "Secrets" precedent as testVault — never a useMutation). */
+export function testSmtp(to: string): Promise<DeliveryResult> {
+  return call(api.POST('/settings/smtp/test', { body: { to } }));
 }
 
 // `silent` lets a richer form (Issuance defaults' Global tab, which maps a

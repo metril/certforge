@@ -5,10 +5,12 @@ import type {
   ApiKey,
   Attempt,
   AuditEvent,
+  BackupStatus,
   CA,
   CAPreset,
   Certificate,
   CertificateVersion,
+  Channel,
   Client,
   Deployment,
   DeployTarget,
@@ -21,6 +23,8 @@ import type {
   Layout,
   Me,
   MeBinding,
+  Monitor,
+  NotifyEvent,
   Org,
   ProviderSchema,
   RateLedger,
@@ -714,3 +718,117 @@ export const issuanceSettingsSchema = {
     },
   },
 };
+
+// Phase 6B Task 1: channels, monitors, events, backup and the notifier meta
+// schemas (mirrors internal/notify/{webhook,smtp.channel,discord,ntfy,homeassistant}.schema.json verbatim).
+export function makeChannel(p: Partial<Channel> = {}): Channel {
+  return {
+    id: 'ch-1', orgId: org.id, name: 'ops-webhook', type: 'webhook', summary: 'hooks.example.com',
+    config: {}, storedSecrets: ['url'], events: [], minSeverity: 'info', allOrgs: false, enabled: true,
+    lastDelivery: null, createdAt: iso(-5), updatedAt: iso(-5), ...p,
+  };
+}
+
+export function makeMonitor(p: Partial<Monitor> = {}): Monitor {
+  return {
+    id: 'mon-1', orgId: org.id, name: 'edge', host: 'edge.example.com', port: 443, sni: null,
+    intervalSeconds: 3600, expectedCertificateId: null, expectedCertificateName: null, enabled: true,
+    state: 'unknown', lastCheckedAt: null, nextCheckAt: iso(0), lastFingerprint: null, lastNotAfter: null,
+    lastIssuer: null, lastError: null, createdAt: iso(-5), updatedAt: iso(-5), ...p,
+  };
+}
+
+export function makeEvent(p: Partial<NotifyEvent> = {}): NotifyEvent {
+  return {
+    id: 'ev-1', kind: 'cert.expiring', at: iso(0), orgId: org.id, severity: 'warning',
+    resource: { type: 'certificate', id: 'c-1', name: 'www' }, summary: 'www.example.com expires in 7 days',
+    details: {}, deliveries: [], ...p,
+  };
+}
+
+export const backupStatus: BackupStatus = {
+  schedule: 'off', escrowConfirmed: false, directory: null, lastSuccessAt: null, lastFailureAt: null,
+  lastError: null, lastSizeBytes: null, lastFile: null, nextAt: null,
+};
+
+export const smtpSettings = { host: 'smtp.example.com', port: 587, username: 'certforge', from: 'certforge@example.com', security: 'starttls', timeoutSeconds: 10 };
+export const prometheusSettings = { enabled: true };
+export const notificationsSettings = { allowLoopbackUrls: false, expiryWarningDays: 7, failureThreshold: 3 };
+
+const webhookNotifierSchema = {
+  title: 'Webhook',
+  description: 'Sends the event as a JSON POST to any HTTP(S) endpoint, optionally HMAC-signed.',
+  type: 'object',
+  additionalProperties: false,
+  required: ['url'],
+  properties: {
+    url: { type: 'string', title: 'URL', description: 'Endpoint CertForge sends the event to. Kept secret: a token embedded in the URL should not be exposed once saved.', maxLength: 2048, secret: true },
+    authHeader: { type: 'string', title: 'Authorization header', description: 'Sent verbatim as the request’s Authorization header, for example "Bearer <token>".', maxLength: 1024, secret: true },
+    headers: {
+      type: 'object', title: 'Extra headers',
+      description: 'Additional headers sent with every request. A credential-looking name (Authorization, Cookie, or one containing token, key, secret or auth) is rejected; use authHeader for a credential instead.',
+      maxProperties: 20, additionalProperties: false,
+      patternProperties: { '^[A-Za-z0-9-]{1,64}$': { type: 'string', maxLength: 1024 } },
+    },
+    signingSecret: { type: 'string', title: 'Signing secret', description: 'HMAC-SHA256 key for the X-CertForge-Signature header. Leave empty to send the request unsigned.', minLength: 16, maxLength: 256, secret: true },
+    caPem: { type: 'string', title: 'CA certificate (PEM)', description: 'Additional trusted root certificate(s) for this endpoint, PEM-encoded.', maxLength: 65536 },
+  },
+};
+
+const smtpNotifierSchema = {
+  title: 'Email',
+  description: 'Sends the event by email through the SMTP server configured in Settings.',
+  type: 'object',
+  additionalProperties: false,
+  required: ['to'],
+  properties: {
+    to: { type: 'array', title: 'Recipients', description: 'Email addresses to send the notification to.', items: { type: 'string', format: 'email' }, minItems: 1, maxItems: 20, uniqueItems: true },
+    subjectPrefix: { type: 'string', title: 'Subject prefix', description: "Prefix added to every notification email's subject.", maxLength: 64, default: '[CertForge]' },
+  },
+};
+
+const discordNotifierSchema = {
+  title: 'Discord',
+  description: 'Posts the event as an embed through a Discord incoming webhook.',
+  type: 'object',
+  additionalProperties: false,
+  required: ['webhookUrl'],
+  properties: {
+    webhookUrl: { type: 'string', title: 'Webhook URL', description: 'Discord incoming webhook URL (Server Settings -> Integrations -> Webhooks). Must be https.', maxLength: 2048, secret: true },
+  },
+};
+
+const ntfyNotifierSchema = {
+  title: 'ntfy',
+  description: 'Publishes the event as a push notification through ntfy.sh or a self-hosted ntfy server.',
+  type: 'object',
+  additionalProperties: false,
+  required: ['topic'],
+  properties: {
+    server: { type: 'string', title: 'Server', description: 'ntfy server base URL.', pattern: '^https?://[^/\\s]+(/.*)?$', maxLength: 2048, default: 'https://ntfy.sh' },
+    topic: { type: 'string', title: 'Topic', description: 'ntfy topic to publish to.', pattern: '^[A-Za-z0-9_-]{1,64}$' },
+    token: { type: 'string', title: 'Access token', description: 'ntfy access token, sent as a Bearer Authorization header. Leave empty for a public topic.', maxLength: 1024, secret: true },
+    caPem: { type: 'string', title: 'CA certificate (PEM)', description: 'Additional trusted root certificate(s) for a self-hosted server, PEM-encoded.', maxLength: 65536 },
+  },
+};
+
+const homeassistantNotifierSchema = {
+  title: 'Home Assistant',
+  description: 'Calls a Home Assistant webhook automation trigger with the event.',
+  type: 'object',
+  additionalProperties: false,
+  required: ['baseUrl', 'webhookId'],
+  properties: {
+    baseUrl: { type: 'string', title: 'Base URL', description: 'Home Assistant base URL, for example https://homeassistant.local:8123.', pattern: '^https?://[^/\\s]+(/.*)?$', maxLength: 2048 },
+    webhookId: { type: 'string', title: 'Webhook ID', description: "The webhook trigger's ID, as configured on the Home Assistant automation's Webhook trigger.", maxLength: 128, secret: true },
+    caPem: { type: 'string', title: 'CA certificate (PEM)', description: 'Additional trusted root certificate(s), PEM-encoded.', maxLength: 65536 },
+  },
+};
+
+export const metaNotifiers: ProviderSchema[] = [
+  { code: 'webhook', name: 'Webhook', aliases: [], schema: webhookNotifierSchema },
+  { code: 'smtp', name: 'Email', aliases: [], schema: smtpNotifierSchema },
+  { code: 'discord', name: 'Discord', aliases: [], schema: discordNotifierSchema },
+  { code: 'ntfy', name: 'ntfy', aliases: [], schema: ntfyNotifierSchema },
+  { code: 'homeassistant', name: 'Home Assistant', aliases: [], schema: homeassistantNotifierSchema },
+] as ProviderSchema[];

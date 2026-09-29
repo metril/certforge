@@ -8,11 +8,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 export function PermissionTip({
   allowed,
   action,
+  reason,
   side,
   children,
 }: {
   allowed: boolean;
   action: string;
+  /** Overrides the default "Needs the X permission" copy, for a gate that
+   * isn't a single action (for example "Needs a global admin"). */
+  reason?: string;
   side?: 'top' | 'right' | 'bottom' | 'left';
   children: ReactNode;
 }) {
@@ -24,7 +28,7 @@ export function PermissionTip({
           {children}
         </span>
       </TooltipTrigger>
-      <TooltipContent side={side}>Needs the {action} permission</TooltipContent>
+      <TooltipContent side={side}>{reason ?? `Needs the ${action} permission`}</TooltipContent>
     </Tooltip>
   );
 }

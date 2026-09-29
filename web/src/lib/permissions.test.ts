@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MeBinding } from '@/api/types';
 import { org, org2, meWith } from '@/test/fixtures';
-import { can, canAnywhere, canGrantScope, hasGlobalBinding, type Action } from './permissions';
+import { can, canAnywhere, canGrantScope, hasGlobalBinding, isGlobalAdmin, type Action } from './permissions';
 
 const A = 'org-a';
 const B = 'org-b';
@@ -50,6 +50,22 @@ it('delivery follows clients: viewers read, operators write, per org', () => {
   expect(can(m, 'clients:write', org2.id)).toBe(true);
 });
 
+it('viewer reads alerts', () => {
+  expect(can(me({ role: 'viewer', orgId: A }), 'alerts:read', A)).toBe(true);
+  expect(can(me({ role: 'viewer', orgId: A }), 'alerts:write', A)).toBe(false);
+});
+
+it('operator writes alerts', () => {
+  expect(can(me({ role: 'operator', orgId: A }), 'alerts:read', A)).toBe(true);
+  expect(can(me({ role: 'operator', orgId: A }), 'alerts:write', A)).toBe(true);
+});
+
+it('isGlobalAdmin', () => {
+  expect(isGlobalAdmin(me({ role: 'admin', orgId: null }))).toBe(true);
+  expect(isGlobalAdmin(me({ role: 'org-admin', orgId: A }))).toBe(false);
+  expect(isGlobalAdmin(me({ role: 'admin', orgId: A }))).toBe(false);
+});
+
 it('canGrantScope intersects with the creator role', () => {
   const oa = me({ role: 'org-admin', orgId: A });
   expect(canGrantScope(oa, 'certs:read', A)).toBe(true);
@@ -74,6 +90,7 @@ describe('full role x action x scope matrix (hand-transcribed from authz.go)', (
     'sites:read', 'sites:write', 'bindings:read', 'bindings:write',
     'apikeys:read', 'apikeys:write',
     'delivery:read', 'delivery:write',
+    'alerts:read', 'alerts:write',
   ];
 
   // authz.globalOnly: only ever granted through a global (nil-org) binding.
@@ -84,13 +101,13 @@ describe('full role x action x scope matrix (hand-transcribed from authz.go)', (
   const SHARED_READ: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'users:read'];
 
   // authz.viewerActions.
-  const VIEWER_ACTIONS: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read'];
+  const VIEWER_ACTIONS: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read', 'alerts:read'];
 
   // authz.roleActions: each role's action set, transcribed independently.
   const ROLE_SETS: Record<string, Action[]> = {
     admin: ALL_ACTIONS,
     'org-admin': ALL_ACTIONS.filter((a) => !GLOBAL_ONLY.includes(a)),
-    operator: [...VIEWER_ACTIONS, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write', 'delivery:write'],
+    operator: [...VIEWER_ACTIONS, 'accounts:write', 'dnscreds:write', 'certs:write', 'certs:issue', 'clients:write', 'delivery:write', 'alerts:write'],
     viewer: VIEWER_ACTIONS,
     auditor: [...VIEWER_ACTIONS, 'audit:read'],
   };
