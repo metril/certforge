@@ -1,0 +1,78 @@
+import { expect, signInLocal, test } from './auth';
+import { E2E } from './env';
+import { snap } from './screens';
+
+// lib/help.ts's 'keys.rewrapNoPrevious' text, copied rather than imported:
+// that module reads `import.meta.env` (a Vite-only global), which doesn't
+// exist under Playwright's own Node-based test runner.
+const REWRAP_NO_PREVIOUS = 'Nothing to rewrap: no previous key is configured.';
+
+test('Vault settings test button', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+
+  await page.goto('/settings/integrations');
+  const address = page.getByLabel('Address');
+  await expect(address).toBeVisible();
+
+  // The token field may already be "Stored" (another spec's own Vault
+  // settings, self-contained but the same global section) — Replace opens
+  // it for editing either way; a fresh section starts editable already.
+  const replaceToken = page.getByRole('button', { name: 'Replace Token' });
+  if (await replaceToken.isVisible()) await replaceToken.click();
+
+  // getByLabel('Token') also substring-matches the "Keep stored Token"
+  // button that appears once Replace is clicked; getByRole scopes to the
+  // textbox only.
+  const token = page.getByRole('textbox', { name: 'Token' });
+  await address.fill('http://127.0.0.1:1');
+  await token.fill('not-a-real-token');
+  await page.getByRole('button', { name: 'Test connection' }).click();
+  await expect(page.getByText('Failed')).toBeVisible({ timeout: 30_000 });
+
+  await address.fill(E2E.vaultAddr);
+  const replaceAgain = page.getByRole('button', { name: 'Replace Token' });
+  if (await replaceAgain.isVisible()) await replaceAgain.click();
+  await token.fill(E2E.vaultToken);
+  await page.getByRole('button', { name: 'Test connection' }).click();
+  // Pre-flight ruling: Vault is always up in the compose e2e profile, so
+  // this asserts Connected unconditionally.
+  await expect(page.getByText('Connected')).toBeVisible({ timeout: 30_000 });
+  await snap(page, 'integrations');
+
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByLabel('Address')).toHaveValue(E2E.vaultAddr);
+  await expect(page.getByRole('button', { name: 'Replace Token' })).toBeVisible();
+});
+
+test('keys card', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+
+  await page.goto('/settings/backup');
+  const card = page.getByRole('region', { name: 'Encryption key' });
+  await expect(card).toBeVisible();
+  // e2e-web boots with a static KEK and no previous key (5a-facts.md).
+  // exact: true — otherwise this also matches the Key ID's own
+  // "static-<hex>" text (case-insensitive substring).
+  await expect(card.getByText('Static', { exact: true })).toBeVisible();
+  const keyId = card.locator('dd').filter({ has: page.locator('code') }).first();
+  await expect(keyId.locator('code')).not.toBeEmpty();
+  await expect(card.getByText('Canary OK')).toBeVisible();
+
+  const rewrap = card.getByRole('button', { name: 'Rewrap now' });
+  await expect(rewrap).toBeDisabled();
+  // force: true — the disabled button itself is `pointer-events: none`
+  // (Tailwind's disabled: variant); the real hover target the browser
+  // hit-tests to is its own wrapping tooltip-trigger span, so Playwright's
+  // own actionability check (which insists on hovering the button element
+  // exactly) never settles without it.
+  await rewrap.hover({ force: true });
+  await expect(page.getByRole('tooltip')).toContainText(REWRAP_NO_PREVIOUS);
+  await snap(page, 'keys');
+});
