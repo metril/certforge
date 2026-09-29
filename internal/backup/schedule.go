@@ -63,19 +63,21 @@ func (s *Service) RegisterRiver(workers *river.Workers) []*river.PeriodicJob {
 // due reports whether a scheduled backup should run now (task-12 brief):
 // never when schedule is off, not within scheduleFailureBackoff of the
 // last failure, and otherwise only once the schedule's own cadence has
-// elapsed since the last success (immediately, if there has never been
-// one).
-func due(schedule string, lastSuccess, lastFailure *time.Time, now time.Time) bool {
+// elapsed since the last scheduled success (immediately, if there has
+// never been one). lastScheduled is statusRecord.LastScheduledAt (final
+// review fix wave, finding 2) — never LastSuccessAt, which an on-demand
+// download also moves and must not be able to postpone this.
+func due(schedule string, lastScheduled, lastFailure *time.Time, now time.Time) bool {
 	if schedule != "daily" && schedule != "weekly" {
 		return false
 	}
 	if lastFailure != nil && now.Sub(*lastFailure) < scheduleFailureBackoff {
 		return false
 	}
-	if lastSuccess == nil {
+	if lastScheduled == nil {
 		return true
 	}
-	return !now.Before(nextRunAt(schedule, lastSuccess, now))
+	return !now.Before(nextRunAt(schedule, lastScheduled, now))
 }
 
 // RunScheduled runs the scheduled-backup job once: a no-op when the
@@ -93,10 +95,10 @@ func (s *Service) RunScheduled(ctx context.Context) error {
 		return fmt.Errorf("backup: scheduled backup: read status: %w", err)
 	}
 	now := s.now()
-	if !due(set.Schedule, rec.LastSuccessAt, rec.LastFailureAt, now) {
+	if !due(set.Schedule, rec.LastScheduledAt, rec.LastFailureAt, now) {
 		return nil
 	}
-	if err := s.runOnce(ctx, set, &rec, now); err != nil {
+	if err := s.runOnce(ctx, set, now); err != nil {
 		s.log().Error("backup: scheduled backup failed", "err", err)
 	}
 	return nil
@@ -107,9 +109,17 @@ func (s *Service) RunScheduled(ctx context.Context) error {
 // rename — a reader never sees a partial file at the final name), prunes
 // beyond set.RetainCount, and records the outcome. It returns the failure
 // cause (already recorded), never a "please retry me" signal.
-func (s *Service) runOnce(ctx context.Context, set Settings, rec *statusRecord, now time.Time) error {
+//
+// Its own status write is an atomic merge (mergeStatus), never a
+// Get-then-Set of a snapshot loaded before the (possibly slow) Stream call
+// above (final review fix wave, finding 2): a concurrent write to a field
+// this run doesn't itself set (for instance an on-demand download's own
+// LastSuccessAt/LastSizeBytes, or a failure recorded by some other path)
+// would otherwise be blindly reverted to whatever this run's own stale
+// pre-Stream snapshot held for it.
+func (s *Service) runOnce(ctx context.Context, set Settings, now time.Time) error {
 	if !set.KEKEscrowConfirmed {
-		return s.recordFailure(ctx, rec, now, errors.New("KEK escrow not confirmed"))
+		return s.recordFailure(ctx, now, errors.New("KEK escrow not confirmed"))
 	}
 
 	name := fmt.Sprintf("certforge-%s.cfbak", now.UTC().Format("20060102T150405Z"))
@@ -118,7 +128,7 @@ func (s *Service) runOnce(ctx context.Context, set Settings, rec *statusRecord, 
 
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
-		return s.recordFailure(ctx, rec, now, fmt.Errorf("open temp file: %w", err))
+		return s.recordFailure(ctx, now, fmt.Errorf("open temp file: %w", err))
 	}
 	summary, werr := s.Stream(ctx, f)
 	if cerr := f.Close(); werr == nil {
@@ -126,11 +136,11 @@ func (s *Service) runOnce(ctx context.Context, set Settings, rec *statusRecord, 
 	}
 	if werr != nil {
 		_ = os.Remove(tmp)
-		return s.recordFailure(ctx, rec, now, fmt.Errorf("write archive: %w", werr))
+		return s.recordFailure(ctx, now, fmt.Errorf("write archive: %w", werr))
 	}
 	if err := os.Rename(tmp, dest); err != nil {
 		_ = os.Remove(tmp)
-		return s.recordFailure(ctx, rec, now, fmt.Errorf("rename archive: %w", err))
+		return s.recordFailure(ctx, now, fmt.Errorf("rename archive: %w", err))
 	}
 
 	if err := prune(set.Directory, set.RetainCount); err != nil {
@@ -139,29 +149,31 @@ func (s *Service) runOnce(ctx context.Context, set Settings, rec *statusRecord, 
 
 	success := now
 	sz := summary.SizeBytes
-	rec.LastSuccessAt = &success
-	rec.LastFile = name
-	rec.LastSizeBytes = &sz
-	rec.LastError = ""
-	if err := s.saveStatus(ctx, *rec); err != nil {
+	empty := ""
+	if err := s.mergeStatus(ctx, statusPatch{
+		LastSuccessAt:   &success,
+		LastScheduledAt: &success,
+		LastFile:        &name,
+		LastSizeBytes:   &sz,
+		LastError:       &empty,
+	}); err != nil {
 		return fmt.Errorf("backup: save status: %w", err)
 	}
 	s.emitCompleted(ctx, name, summary.SizeBytes)
 	return nil
 }
 
-// recordFailure saves rec with the failure recorded, emits backup.failed
-// and audits it (system actor), then returns cause unchanged so runOnce's
-// caller can log it. Best-effort: a saveStatus/emit/audit error here is
-// logged, never compounding the original failure.
-func (s *Service) recordFailure(ctx context.Context, rec *statusRecord, now time.Time, cause error) error {
+// recordFailure merges the failure into the shared status row, emits
+// backup.failed and audits it (system actor), then returns cause unchanged
+// so runOnce's caller can log it. Best-effort: a mergeStatus/emit/audit
+// error here is logged, never compounding the original failure.
+func (s *Service) recordFailure(ctx context.Context, now time.Time, cause error) error {
 	failure := now
-	rec.LastFailureAt = &failure
-	rec.LastError = clip(cause.Error(), maxLastError)
-	if err := s.saveStatus(ctx, *rec); err != nil {
+	errMsg := clip(cause.Error(), maxLastError)
+	if err := s.mergeStatus(ctx, statusPatch{LastFailureAt: &failure, LastError: &errMsg}); err != nil {
 		s.log().Error("backup: save failure status", "err", err)
 	}
-	s.emitFailed(ctx, now, rec.LastError)
+	s.emitFailed(ctx, now, errMsg)
 	return cause
 }
 

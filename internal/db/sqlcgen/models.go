@@ -180,6 +180,7 @@ type Deployment struct {
 	ReportedAt      *time.Time  `json:"reported_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
 	ExtraVersionIds []uuid.UUID `json:"extra_version_ids"`
+	StateChangedAt  time.Time   `json:"state_changed_at"`
 }
 
 type DnsProviderCredential struct {
@@ -359,12 +360,13 @@ type RoleBinding struct {
 }
 
 type ServerDeployment struct {
-	GrantID    uuid.UUID  `json:"grant_id"`
-	VersionID  *uuid.UUID `json:"version_id"`
-	Status     string     `json:"status"`
-	LastError  string     `json:"last_error"`
-	DeployedAt *time.Time `json:"deployed_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	GrantID        uuid.UUID  `json:"grant_id"`
+	VersionID      *uuid.UUID `json:"version_id"`
+	Status         string     `json:"status"`
+	LastError      string     `json:"last_error"`
+	DeployedAt     *time.Time `json:"deployed_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	StateChangedAt time.Time  `json:"state_changed_at"`
 }
 
 type Session struct {

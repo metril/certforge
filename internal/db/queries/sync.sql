@@ -36,8 +36,15 @@ ORDER BY g.id
 FOR UPDATE OF d;
 
 -- name: SetDeploymentState :exec
+-- state_changed_at (final review fix wave, finding 1) moves only when
+-- state actually transitions — the CASE compares against the row's own
+-- pre-update state, which Postgres evaluates every SET expression
+-- against regardless of clause order. updated_at still moves on every
+-- report (agents.sync's own staleness/ordering uses it); the two are
+-- deliberately no longer the same signal.
 UPDATE deployments SET state = sqlc.arg(state), installed = sqlc.arg(installed), error = sqlc.arg(error),
-       reported_at = now(), updated_at = now()
+       reported_at = now(), updated_at = now(),
+       state_changed_at = CASE WHEN state IS DISTINCT FROM sqlc.arg(state) THEN now() ELSE state_changed_at END
 WHERE grant_id = sqlc.arg(grant_id);
 
 -- name: InsertHookRun :exec

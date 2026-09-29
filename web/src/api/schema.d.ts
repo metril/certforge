@@ -3299,10 +3299,10 @@ export interface components {
             disabled: boolean;
         };
         /**
-         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; admin is everything.
+         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
          * @enum {string}
          */
-        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "admin";
+        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "alerts:read" | "alerts:write" | "admin";
         /** @description An API key without its secret. */
         ApiKey: {
             /**

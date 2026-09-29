@@ -111,20 +111,23 @@ func (s *Service) EscrowConfirmed(ctx context.Context) (bool, error) {
 }
 
 // RecordOnDemandSuccess updates the shared status row after a successful
-// createBackup stream: LastSuccessAt/LastSizeBytes move, but LastFile is
-// left untouched (Shared contract: "null for an on-demand download", so an
-// on-demand backup — never written to disk — must never appear to be one
-// of the retained scheduled files).
+// createBackup stream: LastSuccessAt/LastSizeBytes move, but LastFile and
+// LastScheduledAt are left untouched (Shared contract: "null for an
+// on-demand download", so an on-demand backup — never written to disk —
+// must never appear to be one of the retained scheduled files; final
+// review fix wave, finding 2: nor may it ever look like the scheduled job
+// itself succeeded, which would push the next scheduled run's own due date
+// out). An atomic merge (mergeStatus), not a Get-then-Set round trip, so
+// this can never clobber a concurrent scheduled run's own save of a field
+// this method doesn't itself touch.
 func (s *Service) RecordOnDemandSuccess(ctx context.Context, sizeBytes int64) error {
-	rec, err := s.loadStatus(ctx)
-	if err != nil {
-		return err
-	}
 	now := s.now()
-	rec.LastSuccessAt = &now
-	rec.LastSizeBytes = &sizeBytes
-	rec.LastError = ""
-	return s.saveStatus(ctx, rec)
+	empty := ""
+	return s.mergeStatus(ctx, statusPatch{
+		LastSuccessAt: &now,
+		LastSizeBytes: &sizeBytes,
+		LastError:     &empty,
+	})
 }
 
 // settings reads the live "backup" section: its stored value, or the

@@ -7,8 +7,8 @@
   "properties": {
     "allowLoopbackUrls": {
       "type": "boolean",
-      "title": "Allow loopback and private URLs",
-      "description": "Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback, link-local and private-network hosts. Off by default (SSRF protection).",
+      "title": "Allow loopback and link-local",
+      "description": "Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback and link-local hosts. RFC 1918 private-network hosts are always allowed. Off by default (SSRF protection).",
       "default": false
     },
     "expiryWarningDays": {

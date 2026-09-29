@@ -392,10 +392,11 @@ address must not be unspecified (`0.0.0.0`, `::`), multicast, loopback or
 link-local (`127.0.0.0/8`, `::1`, `169.254.0.0/16`, `fe80::/10`, and
 `localhost` by name) — an IPv4-mapped IPv6 literal (`::ffff:127.0.0.1`) is
 classified by its embedded IPv4 address, not treated as an ordinary global
-one. Settings → Notifications' **Allow loopback and private URLs**
+one. Settings → Notifications' **Allow loopback and link-local**
 (`allowLoopbackUrls`, off by default) re-admits loopback and link-local
 targets, for a home-lab setup reaching a channel or monitor on the same
-host or network. Two addresses stay blocked either way:
+host or network. RFC 1918 and other private-network addresses are always
+allowed, regardless of this setting. Two addresses stay blocked either way:
 `169.254.169.254` and `fd00:ec2::254`, the AWS/GCP/Azure and EC2 IMDSv2
 instance-metadata endpoints — letting a channel or monitor reach either
 would hand out cloud credentials regardless of how permissive the loopback

@@ -60,7 +60,8 @@ export const API_KEY_SCOPES: ApiKeyScope[] = ['certs:read', 'certs:write', 'cert
 const SCOPE_GRANT: Record<ApiKeyScope, Action> = {
   'certs:read': 'certs:read', 'certs:write': 'certs:write', 'certs:issue': 'certs:issue',
   'keys:export': 'keys:export', 'clients:read': 'clients:read', 'clients:write': 'clients:write',
-  'delivery:read': 'delivery:read', 'delivery:write': 'delivery:write', admin: 'settings:write',
+  'delivery:read': 'delivery:read', 'delivery:write': 'delivery:write',
+  'alerts:read': 'alerts:read', 'alerts:write': 'alerts:write', admin: 'settings:write',
 };
 
 /** Whether the server would keep scope on a key the user creates in orgId. */

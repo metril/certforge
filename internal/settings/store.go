@@ -136,6 +136,22 @@ func (s *Store) Set(ctx context.Context, key string, v any) error {
 	return s.q.UpsertSettingValue(ctx, sqlcgen.UpsertSettingValueParams{Key: key, Value: b})
 }
 
+// Merge atomically merges patch's own top-level keys into the JSON object
+// stored at key, in one statement, leaving every other key already stored
+// untouched — unlike Get-then-Set, safe against a concurrent writer
+// touching a different field of the same key at the same time (backup's
+// own status row, service.go:118/schedule.go:68). patch must marshal to a
+// JSON object (every field a caller wants preserved on this write should
+// simply be left out of it, typically via `omitempty` on a *T field, not
+// zeroed).
+func (s *Store) Merge(ctx context.Context, key string, patch any) error {
+	b, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("settings: encode %s: %w", key, err)
+	}
+	return s.q.MergeSettingValue(ctx, sqlcgen.MergeSettingValueParams{Key: key, Patch: b})
+}
+
 // GetSecret decrypts the secret at key.
 func (s *Store) GetSecret(ctx context.Context, key string) ([]byte, error) {
 	row, err := s.q.GetSetting(ctx, key)

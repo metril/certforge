@@ -39,6 +39,8 @@ const (
 // Defines values for ApiKeyScope.
 const (
 	ApiKeyScopeAdmin         ApiKeyScope = "admin"
+	ApiKeyScopeAlertsRead    ApiKeyScope = "alerts:read"
+	ApiKeyScopeAlertsWrite   ApiKeyScope = "alerts:write"
 	ApiKeyScopeCertsIssue    ApiKeyScope = "certs:issue"
 	ApiKeyScopeCertsRead     ApiKeyScope = "certs:read"
 	ApiKeyScopeCertsWrite    ApiKeyScope = "certs:write"
@@ -542,7 +544,7 @@ type ApiKeyList struct {
 	Items []ApiKey `json:"items"`
 }
 
-// ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; admin is everything.
+// ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
 type ApiKeyScope string
 
 // AriWindow The CA's cached ACME Renewal Information window for a certificate's current version.

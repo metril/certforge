@@ -181,7 +181,7 @@ Global settings shared across every notification channel, served by `GET/PUT /ap
 
 | Field | Default | Meaning |
 |---|---|---|
-| Allow loopback and private URLs (`allowLoopbackUrls`) | off | Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback, link-local and private-network hosts. Off by default (SSRF protection). |
+| Allow loopback and link-local (`allowLoopbackUrls`) | off | Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback and link-local hosts. RFC 1918 private-network hosts are always allowed. Off by default (SSRF protection). |
 | Expiry warning (days) (`expiryWarningDays`) | 7 | How many days before a certificate version's `notAfter` a `cert.expiring` event is raised (1–60). |
 | Renewal failure threshold (`failureThreshold`) | 3 | Consecutive renewal failures for one certificate before a `cert.renewal_failed` event is raised, at most once per day (1–10). |
 

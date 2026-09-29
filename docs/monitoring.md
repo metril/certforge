@@ -1,6 +1,6 @@
 # Monitoring
 
-## External monitors {#external-monitors}
+## External monitors
 
 An external monitor polls a TLS endpoint on a schedule — independent of whether CertForge itself deployed anything there — and raises an event on `monitor.mismatch`, `monitor.unreachable`, `monitor.expiring` or `monitor.recovered` (see [notifications.md](notifications.md)). `POST/GET/PATCH/DELETE /orgs/{orgId}/monitors` needs `alerts:read` (list/get) or `alerts:write` (create/update/delete); at most 500 per org.
 
@@ -18,7 +18,7 @@ A check dials `host:port` with a 10 second timeout, sends `sni` (or `host`) as t
 
 Editing `host`, `port`, `sni` or `expectedCertificateId` resets `state` to `unknown` and `nextCheckAt` to now, so the change is observed on the very next scan rather than waiting out whatever was left of the old interval.
 
-## States {#states}
+## States
 
 | State | Meaning |
 |---|---|
@@ -30,7 +30,7 @@ Editing `host`, `port`, `sni` or `expectedCertificateId` resets `state` to `unkn
 
 State order on a conflict between conditions is `unreachable` > `mismatch` > `expiring` > `ok` — an unreachable host is reported as such even if it happens to also be within its expiry window from the last successful check, and a mismatch is reported ahead of an otherwise-fine expiry. An event fires only on a genuine transition (the new state differs from the old, and the write actually won a race against a concurrent check of the same monitor — see [notifications.md#dedupe](notifications.md#dedupe)); `monitor.recovered` fires only when the *previous* state was `mismatch`, `expiring` or `unreachable` and the new one is `ok` — moving from `unknown` straight to `ok` (a monitor's first-ever successful check) is not itself a "recovery" and raises no event.
 
-## Prometheus {#prometheus}
+## Prometheus
 
 `GET /metrics` (not under `/api/v1`, outside the OpenAPI document — see [api.md](api.md)) is a Prometheus scrape target, gated by Settings → Prometheus:
 
@@ -52,7 +52,7 @@ scrape_configs:
       credentials: "<bearerToken>"
 ```
 
-## Metrics reference {#metrics-reference}
+## Metrics reference
 
 Series with a `route` label use chi's own route pattern (`/api/v1/orgs/{orgId}/certificates`, never a request's actual org id), so their cardinality is bounded by the number of API routes, not by traffic. `certforge_certificate_not_after_seconds` is the one series labelled by an id (`certificate`) rather than a name or slug — its cardinality scales with the number of certificates, which is the one place that trade-off is unavoidable (a certificate's own not-after has no other useful grouping). Every other label (`org`, `status`, `state`, `kind`, `result`, `type`) is a small, fixed set of values.
 

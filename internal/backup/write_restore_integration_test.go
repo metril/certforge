@@ -238,16 +238,27 @@ func TestWriteRestoreRoundTrip(t *testing.T) {
 
 // TestRestoreLoadsAtMaxVersion covers a header genuinely stamped at an
 // older migration version (12): Restore must still load at 13, the first
-// version with deferrable foreign keys, never lower. The source
-// database's schema is untouched (still physically at 13, so every
-// Manifest table exists to dump); only the goose_db_version bookkeeping
-// row for 13 is marked not-applied, so Write's own snapshot read
-// legitimately sees 12 — the resulting header is genuine, not edited
-// after the fact (which would break the chunk stream's AAD binding to the
-// header's exact bytes; see the format's tamper detection).
+// version with deferrable foreign keys, never lower. The source database
+// is migrated to exactly 13 (db.MigrateTo), not the binary's own current
+// latest (final review fix wave, finding 1's migration 00014 added a
+// column beyond 13 — dumping a database physically ahead of the version
+// the header ends up claiming would make restoreLoad's COPY into a
+// target only migrated to that claimed version fail on the extra column,
+// a mismatch that can never happen for a genuine backup, where the
+// header's version and the physical schema always move together): only
+// the goose_db_version bookkeeping row for 13 is marked not-applied, so
+// Write's own snapshot read legitimately sees 12 while every column
+// Manifest expects at 13 still physically exists to dump — the resulting
+// header is genuine, not edited after the fact (which would break the
+// chunk stream's AAD binding to the header's exact bytes; see the
+// format's tamper detection).
 func TestRestoreLoadsAtMaxVersion(t *testing.T) {
 	ctx := context.Background()
-	srcPool, srcQ := dbtest.New(t)
+	srcPool := dbtest.Empty(t)
+	if err := db.MigrateTo(ctx, srcPool, 13); err != nil {
+		t.Fatal(err)
+	}
+	srcQ := sqlcgen.New(srcPool)
 	seedAllTables(t, ctx, srcPool)
 	be := newBackupEnv(srcQ, testKey(2))
 	opts := be.writeOpts(ctx, t)

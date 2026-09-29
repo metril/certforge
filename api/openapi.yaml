@@ -3831,8 +3831,8 @@ components:
         disabled: {type: boolean, description: true disables the user and revokes their sessions.}
     ApiKeyScope:
       type: string
-      enum: ["certs:read", "certs:write", "certs:issue", "keys:export", "clients:read", "clients:write", "delivery:read", "delivery:write", "admin"]
-      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; admin is everything.
+      enum: ["certs:read", "certs:write", "certs:issue", "keys:export", "clients:read", "clients:write", "delivery:read", "delivery:write", "alerts:read", "alerts:write", "admin"]
+      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
     ApiKey:
       type: object
       description: An API key without its secret.

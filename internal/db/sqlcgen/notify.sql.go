@@ -820,12 +820,12 @@ JOIN deployments d ON d.grant_id = g.id
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN clients cl ON cl.id = g.client_id
 WHERE g.removed_at IS NULL AND d.state IN ('failed', 'drift') AND d.version_id IS NOT NULL
-  AND d.updated_at >= $1::timestamptz
+  AND d.state_changed_at >= $1::timestamptz
   AND NOT EXISTS (
     SELECT 1 FROM notification_events e
     WHERE e.dedupe_key = 'deploy.' || d.state || ':' || g.id::text || ':' || d.version_id::text
   )
-ORDER BY d.updated_at, g.id
+ORDER BY d.state_changed_at, g.id
 LIMIT $2::int
 `
 
@@ -849,10 +849,14 @@ type ScanFailedOrDriftedDeploymentsRow struct {
 // keyed by its deployed version_id, not yet emitted for. A grant with no
 // version_id yet (never deployed) never matches state IN ('failed',
 // 'drift') in the first place (its state is still 'pending').
-// updated_at >= since (batch-3 review finding 2, same reasoning as
-// ScanExpiredCertificateVersions): a deployment that has sat failed/drifted
-// longer than EventRetention would otherwise re-emit once its original
-// dedupe row is pruned.
+// state_changed_at >= since (final review fix wave, finding 1; supersedes
+// batch-3 review finding 2's updated_at bound): updated_at moves on every
+// agent report regardless of whether state changed, so a deployment stuck
+// failed/drifted for more than EventRetention never aged out under that
+// bound and re-emitted forever once its dedupe row was pruned.
+// state_changed_at only moves on an actual state transition
+// (SetDeploymentState, internal/db/queries/sync.sql), so it correctly
+// reflects how long this condition has actually been ongoing.
 func (q *Queries) ScanFailedOrDriftedDeployments(ctx context.Context, arg ScanFailedOrDriftedDeploymentsParams) ([]ScanFailedOrDriftedDeploymentsRow, error) {
 	rows, err := q.db.Query(ctx, scanFailedOrDriftedDeployments, arg.Since, arg.PageLimit)
 	if err != nil {
@@ -889,12 +893,12 @@ JOIN server_deployments sd ON sd.grant_id = g.id
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.removed_at IS NULL AND sd.status = 'failed' AND sd.version_id IS NOT NULL
-  AND sd.updated_at >= $1::timestamptz
+  AND sd.state_changed_at >= $1::timestamptz
   AND NOT EXISTS (
     SELECT 1 FROM notification_events e
     WHERE e.dedupe_key = 'deploy.failed:' || g.id::text || ':' || sd.version_id::text
   )
-ORDER BY sd.updated_at, g.id
+ORDER BY sd.state_changed_at, g.id
 LIMIT $2::int
 `
 
@@ -915,8 +919,11 @@ type ScanFailedServerDeploymentsRow struct {
 // deploy.failed for server-run grants (task-7 brief:
 // "server_deployments.status failed"): server_deployments has no drift
 // state (no agent reports installed files back for a server target), so
-// this only ever emits deploy.failed. updated_at >= since: same prune-window
-// reasoning as ScanFailedOrDriftedDeployments.
+// this only ever emits deploy.failed. state_changed_at >= since (final
+// review fix wave, finding 1; supersedes batch-3 review finding 2's
+// updated_at bound): same reasoning as ScanFailedOrDriftedDeployments —
+// updated_at moves on every deploy attempt regardless of outcome, while
+// state_changed_at only moves when status actually transitions.
 func (q *Queries) ScanFailedServerDeployments(ctx context.Context, arg ScanFailedServerDeploymentsParams) ([]ScanFailedServerDeploymentsRow, error) {
 	rows, err := q.db.Query(ctx, scanFailedServerDeployments, arg.Since, arg.PageLimit)
 	if err != nil {

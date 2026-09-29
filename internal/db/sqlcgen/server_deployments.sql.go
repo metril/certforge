@@ -76,7 +76,8 @@ func (q *Queries) LiveServerGrantsForExtraCert(ctx context.Context, certID uuid.
 }
 
 const markServerDeploymentDeployed = `-- name: MarkServerDeploymentDeployed :exec
-UPDATE server_deployments SET status = 'deployed', deployed_at = now(), last_error = '', updated_at = now()
+UPDATE server_deployments SET status = 'deployed', deployed_at = now(), last_error = '', updated_at = now(),
+       state_changed_at = CASE WHEN status IS DISTINCT FROM 'deployed' THEN now() ELSE state_changed_at END
 WHERE grant_id = $1 AND version_id = $2
 `
 
@@ -90,14 +91,15 @@ type MarkServerDeploymentDeployedParams struct {
 // or deployed) must not overwrite server_deployments with stale state —
 // Dispatcher.Deploy also checks this before doing any work, so the
 // condition here is defense in depth against the same race, not the only
-// guard.
+// guard. state_changed_at: same CASE convention as UpsertServerDeploymentPending.
 func (q *Queries) MarkServerDeploymentDeployed(ctx context.Context, arg MarkServerDeploymentDeployedParams) error {
 	_, err := q.db.Exec(ctx, markServerDeploymentDeployed, arg.GrantID, arg.VersionID)
 	return err
 }
 
 const markServerDeploymentFailed = `-- name: MarkServerDeploymentFailed :exec
-UPDATE server_deployments SET status = 'failed', last_error = $1, updated_at = now()
+UPDATE server_deployments SET status = 'failed', last_error = $1, updated_at = now(),
+       state_changed_at = CASE WHEN status IS DISTINCT FROM 'failed' THEN now() ELSE state_changed_at END
 WHERE grant_id = $2 AND version_id = $3
 `
 
@@ -110,6 +112,11 @@ type MarkServerDeploymentFailedParams struct {
 // last_error is the caller's own redacted, truncated (<=1000 chars) text
 // (internal/deploy.Dispatcher); never raw enough to carry a Vault token.
 // version_id is checked the same way as MarkServerDeploymentDeployed.
+// state_changed_at: same CASE convention (final review fix wave, finding
+// 1) — a job that fails repeatedly for the same still-failed status does
+// not keep pushing this forward, which is exactly what
+// ScanFailedServerDeployments needs to age a persistently-failing
+// deployment out of the retention window instead of re-emitting forever.
 func (q *Queries) MarkServerDeploymentFailed(ctx context.Context, arg MarkServerDeploymentFailedParams) error {
 	_, err := q.db.Exec(ctx, markServerDeploymentFailed, arg.LastError, arg.GrantID, arg.VersionID)
 	return err
@@ -181,10 +188,11 @@ func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDe
 
 const upsertServerDeploymentPending = `-- name: UpsertServerDeploymentPending :exec
 
-INSERT INTO server_deployments (grant_id, version_id, status, last_error, updated_at)
-VALUES ($1, $2, 'pending', '', now())
+INSERT INTO server_deployments (grant_id, version_id, status, last_error, updated_at, state_changed_at)
+VALUES ($1, $2, 'pending', '', now(), now())
 ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, status = 'pending',
-       last_error = '', updated_at = now()
+       last_error = '', updated_at = now(),
+       state_changed_at = CASE WHEN server_deployments.status IS DISTINCT FROM 'pending' THEN now() ELSE server_deployments.state_changed_at END
 `
 
 type UpsertServerDeploymentPendingParams struct {
@@ -200,6 +208,10 @@ type UpsertServerDeploymentPendingParams struct {
 // with no version yet, C3), status resets to pending and any previous
 // error is cleared. deployed_at is left untouched (ON CONFLICT's SET list
 // omits it): the last successful deploy time survives a new pending cycle.
+// state_changed_at (final review fix wave, finding 1) moves with status
+// the same way deployments.state_changed_at does — CASE against the row's
+// own pre-update status, so a redeploy onto the same still-pending status
+// (an OnVersion for a version that never got picked up) does not reset it.
 func (q *Queries) UpsertServerDeploymentPending(ctx context.Context, arg UpsertServerDeploymentPendingParams) error {
 	_, err := q.db.Exec(ctx, upsertServerDeploymentPending, arg.GrantID, arg.VersionID)
 	return err

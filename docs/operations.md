@@ -1,6 +1,6 @@
 # Operations
 
-## Health endpoints {#readiness}
+## Health endpoints
 
 - `GET /healthz` — liveness. Always `200 {"status":"ok"}` if the process is up and serving HTTP; it does not touch the database.
 - `GET /readyz` — readiness. Checks the database connection and the KEK canary (see [configuration.md](configuration.md#the-kek)), plus Vault reachability once either is in play:
@@ -89,7 +89,7 @@ At most one static and one Vault-Transit previous KEK may be configured at a tim
 
 `internal/kek.RewrapWorker` walks every sealed column (`settings`, `cas` — `eab_hmac` and `secret_cfg` together, `acme_accounts`, `dns_provider_credentials`, `output_specs`, `agent_cas`, `certificate_versions`) in keyset pages, moving each row still sealed under a previous KEK onto the active one. It rewraps the KEK canary first as a fast, explicit check: a previous KEK misconfigured or removed too soon fails the whole run immediately rather than after scanning far larger tables first. Progress is visible mid-run (`GET /keys/status`'s `rewrap` object updates after every page) and the job is safe to resume or re-run: a row already on the active KEK is a cheap no-op, and every write is a compare-and-swap, so a lost race against a concurrent write is simply counted in `remaining` and retried by the next run instead of overwriting data the job never decrypted.
 
-## Backup {#backup}
+## Backup
 
 A backup is a single self-contained `.cfbak` file: a magic string, a plaintext JSON header, then the database's own snapshot, AES-256-GCM encrypted in 64 KiB chunks (`internal/backup`, ADR 0018). Nothing about the format needs a running CertForge server or Postgres to inspect the header — only to restore it.
 
@@ -120,7 +120,7 @@ The `backup` settings section's `schedule` (`off`, `daily` or `weekly`) drives a
 
 A due run refuses (recorded as a failure, same as below) unless `kekEscrowConfirmed` is on. Otherwise it writes `certforge-<yyyymmddThhmmssZ>.cfbak` into the section's `directory` (mode `0600`, a `.tmp` file renamed into place — never a partial file at the final name), then deletes the oldest `certforge-*.cfbak` files beyond `retainCount`. A successful run updates `GET /api/v1/backup/status` (`lastSuccessAt`, `lastSizeBytes`, `lastFile`) and raises a `backup.completed` notification event (`docs/notifications.md`, details `{file, sizeBytes}`); a failed run updates `lastFailureAt`/`lastError` (clipped to 1000 characters), raises `backup.failed`, and appends `backup.failed {error}` to the audit log as the `system` actor. `checks.backup` above reads this same status row.
 
-## Restore {#restore}
+## Restore
 
 Restore is CLI-only — there is no HTTP restore endpoint — and it is the one operation that requires the server to be stopped first:
 

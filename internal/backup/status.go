@@ -19,12 +19,39 @@ const StatusKey = "backup.status"
 // Status below are all derived from the live "backup" settings section
 // instead, not persisted here, so a schedule/directory edit is reflected
 // immediately rather than only after the next run.
+//
+// LastScheduledAt (final review fix wave, finding 2) is deliberately kept
+// separate from LastSuccessAt: due()/nextRunAt must advance only when the
+// *scheduled* job itself succeeds, never when an on-demand download
+// (createBackup/cfctl backup) does — RecordOnDemandSuccess moves
+// LastSuccessAt (the contract's own "most recent success, of either kind")
+// but never LastScheduledAt.
 type statusRecord struct {
-	LastSuccessAt *time.Time `json:"lastSuccessAt"`
-	LastFailureAt *time.Time `json:"lastFailureAt"`
-	LastError     string     `json:"lastError"`
-	LastSizeBytes *int64     `json:"lastSizeBytes"`
-	LastFile      string     `json:"lastFile"`
+	LastSuccessAt   *time.Time `json:"lastSuccessAt"`
+	LastScheduledAt *time.Time `json:"lastScheduledAt"`
+	LastFailureAt   *time.Time `json:"lastFailureAt"`
+	LastError       string     `json:"lastError"`
+	LastSizeBytes   *int64     `json:"lastSizeBytes"`
+	LastFile        string     `json:"lastFile"`
+}
+
+// statusPatch is a partial statusRecord write, merged atomically into the
+// stored value by Service.mergeStatus (final review fix wave, finding 2):
+// every field left nil (the zero value for a pointer) is omitted from the
+// JSON entirely (omitempty) and so leaves whatever is already stored for
+// it untouched — unlike a full statusRecord round-tripped through
+// Get-then-Set, which silently reverts any field a concurrent writer set
+// in between this call's own load and save. A field that must be
+// explicitly cleared (LastError back to "") is still sent, as a non-nil
+// pointer to the zero value: omitempty only skips a nil pointer, not what
+// it points to.
+type statusPatch struct {
+	LastSuccessAt   *time.Time `json:"lastSuccessAt,omitempty"`
+	LastScheduledAt *time.Time `json:"lastScheduledAt,omitempty"`
+	LastFailureAt   *time.Time `json:"lastFailureAt,omitempty"`
+	LastError       *string    `json:"lastError,omitempty"`
+	LastSizeBytes   *int64     `json:"lastSizeBytes,omitempty"`
+	LastFile        *string    `json:"lastFile,omitempty"`
 }
 
 // Status is getBackupStatus's and readyz's own view (Shared contract's
@@ -71,24 +98,27 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	}
 	if set.Schedule != "off" {
 		out.Directory = set.Directory
-		next := nextRunAt(set.Schedule, rec.LastSuccessAt, s.now())
+		next := nextRunAt(set.Schedule, rec.LastScheduledAt, s.now())
 		out.NextAt = &next
 	}
 	return out, nil
 }
 
 // nextRunAt computes when the next scheduled backup is due (task-12
-// brief): lastSuccess plus the schedule's cadence, or now when there has
-// been no success yet.
-func nextRunAt(schedule string, lastSuccess *time.Time, now time.Time) time.Time {
-	if lastSuccess == nil {
+// brief): lastScheduled plus the schedule's cadence, or now when the
+// scheduled job has never succeeded yet. lastScheduled is
+// statusRecord.LastScheduledAt (final review fix wave, finding 2) — never
+// LastSuccessAt, which an on-demand download also moves and must not be
+// able to push this out.
+func nextRunAt(schedule string, lastScheduled *time.Time, now time.Time) time.Time {
+	if lastScheduled == nil {
 		return now
 	}
 	switch schedule {
 	case "weekly":
-		return lastSuccess.Add(7 * 24 * time.Hour)
+		return lastScheduled.Add(7 * 24 * time.Hour)
 	default: // "daily"
-		return lastSuccess.Add(24 * time.Hour)
+		return lastScheduled.Add(24 * time.Hour)
 	}
 }
 
@@ -106,6 +136,10 @@ func (s *Service) loadStatus(ctx context.Context) (statusRecord, error) {
 	return rec, nil
 }
 
-func (s *Service) saveStatus(ctx context.Context, rec statusRecord) error {
-	return s.Settings.Set(ctx, StatusKey, rec)
+// mergeStatus atomically merges patch into the stored status row (final
+// review fix wave, finding 2) instead of a Get-then-Set round trip, so a
+// concurrent write to a field patch does not itself touch (RecordOnDemandSuccess
+// racing runOnce's own save, or the reverse) is never lost.
+func (s *Service) mergeStatus(ctx context.Context, patch statusPatch) error {
+	return s.Settings.Merge(ctx, StatusKey, patch)
 }

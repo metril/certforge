@@ -19,6 +19,17 @@ const EventRetention = 90 * 24 * time.Hour
 // brief: "limit 1000 per kind per run").
 const scanLimit = 1000
 
+// agentSince bounds ScanAgentCertExpiringClients (final review fix wave,
+// finding 1): agent.cert_expiring is emitted up to AgentCertExpiryWindow
+// before the certificate's own not_after, so its dedupe row is pruned at
+// roughly not_after + (EventRetention - AgentCertExpiryWindow), not
+// not_after + EventRetention — using the shared `since` (now -
+// EventRetention) here left a gap where the dedupe row was already gone
+// but the scan's own bound still matched, re-emitting the same condition.
+func agentSince(now time.Time) time.Time {
+	return now.Add(-(EventRetention - AgentCertExpiryWindow))
+}
+
 // ScanArgs is the hourly job driving every event source Sources owns
 // beyond OnVersion/OnFailure: cert.expiring/expired, deploy.failed/drift,
 // client.offline, agent.cert_expiring, and the 90-day event prune.
@@ -87,7 +98,7 @@ func (s *Sources) Scan(ctx context.Context) error {
 	if err := s.scanOffline(ctx, offline, since); err != nil {
 		s.log().Error("notify: client.offline scan failed", "err", err)
 	}
-	if err := s.scanAgentCertExpiring(ctx, now, since); err != nil {
+	if err := s.scanAgentCertExpiring(ctx, now, agentSince(now)); err != nil {
 		s.log().Error("notify: agent.cert_expiring scan failed", "err", err)
 	}
 	if _, err := s.Q.PruneOldNotificationEvents(ctx, now.Add(-EventRetention)); err != nil {

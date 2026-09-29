@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
@@ -388,6 +390,100 @@ func TestScheduledBackupFailureRecordsEventAuditAndBackoff(t *testing.T) {
 	}
 	if st2.LastFailureAt == nil || !st2.LastFailureAt.Equal(firstFailureAt) {
 		t.Fatalf("lastFailureAt changed on a second immediate run: %v -> %v (want unchanged, 1 h backoff)", firstFailureAt, st2.LastFailureAt)
+	}
+}
+
+// TestOnDemandBackupDoesNotPostponeSchedule (final review fix wave,
+// finding 2, service.go:118/schedule.go:68): RecordOnDemandSuccess used to
+// move the same LastSuccessAt due()/nextAt schedule off of, so any
+// on-demand download (API or cfctl) pushed the next scheduled backup
+// further out — a daily download meant the scheduled directory never got
+// a file at all. A separate lastScheduledAt, touched only by the
+// scheduled path, must be what due()/nextAt read.
+func TestOnDemandBackupDoesNotPostponeSchedule(t *testing.T) {
+	e := newTestEnvOpts(t, withBackup(t))
+	dir := t.TempDir()
+	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: dir})
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	e.deps.Backup.Now = func() time.Time { return base }
+
+	if err := e.deps.Backup.RunScheduled(context.Background()); err != nil {
+		t.Fatalf("RunScheduled: %v", err)
+	}
+	st1, err := e.deps.Backup.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantNext := base.Add(24 * time.Hour)
+	if st1.NextAt == nil || !st1.NextAt.Equal(wantNext) {
+		t.Fatalf("NextAt after the scheduled run = %v, want %v", st1.NextAt, wantNext)
+	}
+
+	// An on-demand download completes later the same day.
+	later := base.Add(6 * time.Hour)
+	e.deps.Backup.Now = func() time.Time { return later }
+	if err := e.deps.Backup.RecordOnDemandSuccess(context.Background(), 999); err != nil {
+		t.Fatal(err)
+	}
+
+	st2, err := e.deps.Backup.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st2.NextAt == nil || !st2.NextAt.Equal(wantNext) {
+		t.Fatalf("NextAt after the on-demand download = %v, want unchanged %v (an on-demand download must not postpone the schedule)", st2.NextAt, wantNext)
+	}
+	if st2.LastSuccessAt == nil || !st2.LastSuccessAt.Equal(later) {
+		t.Fatalf("LastSuccessAt after the on-demand download = %v, want %v", st2.LastSuccessAt, later)
+	}
+}
+
+// TestScheduledSuccessSaveIsAtomicWithConcurrentStatusWrites (final review
+// fix wave, finding 2, schedule.go:68): runOnce loads its own status
+// snapshot before the (possibly slow) Stream call and, on success, used to
+// save that whole snapshot back — a write landing on backup.status while
+// Stream is still running (here, on a field this scheduled run's own
+// success path never itself sets) must survive runOnce's own save once it
+// finally completes, not get blindly overwritten by the stale pre-Stream
+// snapshot.
+func TestScheduledSuccessSaveIsAtomicWithConcurrentStatusWrites(t *testing.T) {
+	e := newTestEnvOpts(t, withBackup(t))
+	dir := t.TempDir()
+	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: dir})
+
+	wantFailure := time.Date(2020, 6, 15, 0, 0, 0, 0, time.UTC)
+	e.deps.Backup.StreamFunc = func(ctx context.Context, w io.Writer) (backup.Summary, error) {
+		// A concurrent write lands on backup.status mid-stream, on
+		// lastFailureAt — a field this run's own (upcoming) success save
+		// never itself sets. No row for this key exists yet at this point
+		// (this is the very first backup attempt), hence INSERT ... ON
+		// CONFLICT rather than a plain UPDATE.
+		if _, err := e.deps.Pool.Exec(ctx,
+			`INSERT INTO settings (key, value, updated_at) VALUES ($1, $2::jsonb, now())
+			 ON CONFLICT (key) DO UPDATE SET value = COALESCE(settings.value, '{}'::jsonb) || EXCLUDED.value, updated_at = now()`,
+			"backup.status", fmt.Sprintf(`{"lastFailureAt":%q}`, wantFailure.Format(time.RFC3339))); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte("x")); err != nil {
+			return backup.Summary{}, err
+		}
+		return backup.Summary{SizeBytes: 1}, nil
+	}
+
+	if err := e.deps.Backup.RunScheduled(context.Background()); err != nil {
+		t.Fatalf("RunScheduled: %v", err)
+	}
+
+	st, err := e.deps.Backup.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.LastFailureAt == nil || !st.LastFailureAt.Equal(wantFailure) {
+		t.Fatalf("LastFailureAt = %v, want %v (a concurrent write mid-stream must survive the scheduled run's own success save)", st.LastFailureAt, wantFailure)
+	}
+	if st.LastFile == "" || st.LastSuccessAt == nil {
+		t.Fatalf("status = %+v, want the scheduled run's own success recorded too", st)
 	}
 }
 

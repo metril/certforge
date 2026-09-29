@@ -359,7 +359,8 @@ func (q *Queries) SetAppliedRevision(ctx context.Context, arg SetAppliedRevision
 
 const setDeploymentState = `-- name: SetDeploymentState :exec
 UPDATE deployments SET state = $1, installed = $2, error = $3,
-       reported_at = now(), updated_at = now()
+       reported_at = now(), updated_at = now(),
+       state_changed_at = CASE WHEN state IS DISTINCT FROM $1 THEN now() ELSE state_changed_at END
 WHERE grant_id = $4
 `
 
@@ -370,6 +371,12 @@ type SetDeploymentStateParams struct {
 	GrantID   uuid.UUID `json:"grant_id"`
 }
 
+// state_changed_at (final review fix wave, finding 1) moves only when
+// state actually transitions — the CASE compares against the row's own
+// pre-update state, which Postgres evaluates every SET expression
+// against regardless of clause order. updated_at still moves on every
+// report (agents.sync's own staleness/ordering uses it); the two are
+// deliberately no longer the same signal.
 func (q *Queries) SetDeploymentState(ctx context.Context, arg SetDeploymentStateParams) error {
 	_, err := q.db.Exec(ctx, setDeploymentState,
 		arg.State,
