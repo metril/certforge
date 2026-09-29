@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Email",
+  "description": "Sends the event by email through the SMTP server configured in Settings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["to"],
+  "properties": {
+    "to": {
+      "type": "array",
+      "title": "Recipients",
+      "description": "Email addresses to send the notification to.",
+      "items": {
+        "type": "string",
+        "format": "email"
+      },
+      "minItems": 1,
+      "maxItems": 20,
+      "uniqueItems": true
+    },
+    "subjectPrefix": {
+      "type": "string",
+      "title": "Subject prefix",
+      "description": "Prefix added to every notification email's subject.",
+      "maxLength": 64,
+      "default": "[CertForge]"
+    }
+  }
+}

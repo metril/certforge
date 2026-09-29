@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
@@ -12,9 +13,19 @@ import (
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/issuance"
+	"github.com/metril/certforge/internal/notify"
+	"github.com/metril/certforge/internal/notify/httpx"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/vault"
 )
+
+// smtpTestMaxTimeoutSeconds bounds testSmtpSettings to the Shared
+// contract's "10 s bound" regardless of the saved section's own
+// timeoutSeconds (1-60): SendMail has no context-cancellation seam
+// (net/smtp predates context.Context), so the bound is enforced the same
+// way SendMail enforces any timeout — as the connection's own deadline,
+// derived from cfg.TimeoutSeconds — not by racing a context against it.
+const smtpTestMaxTimeoutSeconds = 10
 
 // GetSettingsSection returns a section's schema and value.
 func (s *Server) GetSettingsSection(ctx context.Context, req gen.GetSettingsSectionRequestObject) (gen.GetSettingsSectionResponseObject, error) {
@@ -183,6 +194,54 @@ func (s *Server) sectionResponse(ctx context.Context, sec *settings.Section) (ge
 		return gen.SettingsSection{}, err
 	}
 	return gen.SettingsSection{Section: sec.Name, Schema: schema, Value: value, Stored: stored, StoredSecrets: storedSecrets}, nil
+}
+
+// TestSmtpSettings sends a fixed test email through the saved "smtp"
+// settings section to req.Body.To (Shared contract: testSmtpSettings; host,
+// port, username, security and timeout all come from storage — only the
+// recipient is taken from the request). 422 "SMTP is not configured" when
+// the saved section's host is empty; otherwise always 200, with a failed
+// send reported as DeliveryResult{status: failed, error} rather than an
+// HTTP error, the same pattern TestVaultSettings uses below. Recorded as
+// smtp.test {ok} regardless of outcome.
+func (s *Server) TestSmtpSettings(ctx context.Context, req gen.TestSmtpSettingsRequestObject) (gen.TestSmtpSettingsResponseObject, error) { //nolint:revive // method name fixed by the testSmtpSettings operationId
+	if _, err := authorize(ctx, authz.ActionSettingsWrite, nil); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, badRequest("missing body")
+	}
+	cfg, password, err := notify.CurrentSMTP(ctx, s.d.Settings, s.d.Sections)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Host == "" {
+		return nil, unprocessable("smtp", "SMTP is not configured")
+	}
+	// The 10s bound is the connection deadline SendMail derives from
+	// TimeoutSeconds (smtpTestMaxTimeoutSeconds's doc comment), not a
+	// context timeout.
+	if cfg.TimeoutSeconds <= 0 || cfg.TimeoutSeconds > smtpTestMaxTimeoutSeconds {
+		cfg.TimeoutSeconds = smtpTestMaxTimeoutSeconds
+	}
+
+	to := string(req.Body.To)
+	start := time.Now()
+	sendErr := notify.SendMail(ctx, cfg, password, []string{to},
+		"CertForge test email", "This is a test email from CertForge to confirm your SMTP settings are working.\n")
+	duration := time.Since(start)
+
+	status := gen.DeliveryStatusDelivered
+	out := gen.DeliveryResult{DurationMs: int(duration.Milliseconds()), Status: status}
+	ok := sendErr == nil
+	if !ok {
+		out.Status = gen.DeliveryStatusFailed
+		msg := httpx.Redact(sendErr.Error(), password, cfg.Username)
+		out.Error = &msg
+	}
+	s.audit(ctx, audit.Event{Action: "smtp.test", ResourceType: "settings", ResourceID: notify.SMTPSectionName,
+		Details: map[string]any{"ok": ok}})
+	return gen.TestSmtpSettings200JSONResponse(out), nil
 }
 
 // TestVaultSettings validates req.Body against the "vault" section's schema

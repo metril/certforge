@@ -191,6 +191,48 @@ if not hmac.compare_digest(expected, request.headers.get("X-CertForge-Signature"
     abort(401)
 ```
 
+## SMTP
+
+An `smtp` channel emails `to` (1–20 addresses) through the server configured
+in Settings → the `smtp` section (`docs/configuration.md#smtp-section`) — a
+channel's own config only picks recipients and, optionally, a
+`subjectPrefix` (default `[CertForge]`); the host, port, credentials,
+security mode and timeout are shared by every `smtp` channel, not set per
+channel. `Send` fails with "SMTP is not configured" when that section's
+`host` is empty.
+
+The message is `text/plain; charset=utf-8`, quoted-printable, one message
+per event:
+
+| Header | Value |
+|---|---|
+| `From` | The `smtp` section's `from` address |
+| `To` | The channel's recipients, comma-separated |
+| `Subject` | `<subjectPrefix> <summary>`, CR/LF-stripped, Q-encoded (RFC 2047) when it holds non-ASCII text |
+| `Date`, `Message-ID`, `MIME-Version` | Standard RFC 5322 headers |
+
+The body lists the event's summary, kind, severity, resource and time, one
+`key: value` line per allowlisted `details` entry (the same allowlist the
+Webhook payload's `details` uses), and — when CertForge's own base URL is
+configured and the event belongs to an org — a link to that org's events
+page.
+
+`security: tls` dials straight into TLS (`ServerName` = the section's
+`host`); `starttls` (the default) dials plaintext, then requires the server
+to advertise `STARTTLS` — a server that does not is an error, never a
+silent downgrade; `none` never upgrades. `AUTH PLAIN` runs only when the
+section's `username` is set. Every dial goes through the same host-policy
+machinery (`httpx.DialControl`) every HTTP notifier's dial uses, with
+loopback always allowed — the SMTP relay is an operator-configured,
+`settings:write`-gated global resource, not a per-channel URL a
+lower-privileged actor could point anywhere, and is often local (a
+mailhog/postfix on the same host) — only the cloud-metadata blocklist still
+applies. The section's `timeoutSeconds` (1–60, default 10) becomes the
+connection's own deadline. Every error SendMail returns has the password
+redacted, so a bad password value can never surface through a delivery
+failure, `notification_deliveries.last_error` or `POST
+/api/v1/settings/smtp/test`'s response.
+
 ## Discord
 
 A `discord` channel's `webhookUrl` (must be `https`) receives one embed per

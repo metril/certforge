@@ -120,7 +120,10 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	notifyReg.Register(notify.Discord{Settings: notifySettings})
 	notifyReg.Register(notify.Ntfy{Settings: notifySettings})
 	notifyReg.Register(notify.HomeAssistant{Settings: notifySettings})
-	// Task 5 registers "smtp"; Task 6 wires notifyReg into notify.Service and DeliverWorker.
+	notifyReg.Register(notify.SMTP{Settings: func(ctx context.Context) (notify.SMTPSettings, string, error) {
+		return notify.CurrentSMTP(ctx, store, sections)
+	}})
+	// Task 6 wires notifyReg into notify.Service and DeliverWorker.
 	notify.AddToMeta(notifyReg, metaReg)
 	issuanceStore := issuance.NewStore(pool, box, store)
 	issuanceStore.SetVault(vaultProvider)

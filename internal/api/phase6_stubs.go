@@ -9,10 +9,11 @@ import (
 
 // Phase 6A contract stubs. These operations are declared in api/openapi.yaml
 // (Task 2) but not yet implemented; each later task (6: channel and event
-// operations; 9: monitor operations; 5: TestSmtpSettings; 12: CreateBackup/
-// GetBackupStatus) moves its own method out of this file into its resource
-// file and, once the last one leaves (Task 14), this file is deleted.
-// getServerInfo is real from Task 2 on (internal/api/server_info.go), not a
+// operations; 9: monitor operations; 12: CreateBackup/GetBackupStatus)
+// moves its own method out of this file into its resource file and, once
+// the last one leaves (Task 14), this file is deleted. TestSmtpSettings
+// moved out in Task 5 (internal/api/settings.go). getServerInfo is real
+// from Task 2 on (internal/api/server_info.go), not a
 // stub here.
 
 var errPhase6NotImplemented = &HTTPError{Status: http.StatusNotImplemented, Title: "Not implemented"}
@@ -79,11 +80,6 @@ func (s *Server) DeleteMonitor(context.Context, gen.DeleteMonitorRequestObject) 
 
 // CheckMonitor is implemented in Task 9 (external monitors).
 func (s *Server) CheckMonitor(context.Context, gen.CheckMonitorRequestObject) (gen.CheckMonitorResponseObject, error) {
-	return nil, errPhase6NotImplemented
-}
-
-// TestSmtpSettings is implemented in Task 5 (SMTP notifier and SMTP test).
-func (s *Server) TestSmtpSettings(context.Context, gen.TestSmtpSettingsRequestObject) (gen.TestSmtpSettingsResponseObject, error) { //nolint:revive // method name fixed by the testSmtpSettings operationId
 	return nil, errPhase6NotImplemented
 }
 

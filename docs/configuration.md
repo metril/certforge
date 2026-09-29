@@ -150,7 +150,7 @@ Shows the key-encryption key's status (from `/readyz`'s `kek` check) and control
 
 ### SMTP section
 
-Global settings for the SMTP server CertForge uses to deliver email notification channels, served by `GET/PUT /api/v1/settings/smtp` (section `smtp`; a web UI page and the notifier itself land in later Phase 6A tasks).
+Global settings for the SMTP server CertForge uses to deliver email notification channels, served by `GET/PUT /api/v1/settings/smtp` (section `smtp`; a web UI page lands in Phase 6B).
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -160,9 +160,11 @@ Global settings for the SMTP server CertForge uses to deliver email notification
 | Password (`password`) | — | SMTP authentication password; write-only. |
 | From address (`from`) | — | Envelope and header From address. Required once `host` is set. |
 | Security (`security`) | starttls | `starttls`, `tls` or `none`. |
-| Timeout in seconds (`timeoutSeconds`) | 10 | Per-connection timeout for SMTP calls (1–60). |
+| Timeout in seconds (`timeoutSeconds`) | 10 | Per-connection timeout for SMTP calls (1–60), also the connection's deadline. |
 
 A username may only be set when `security` is `starttls` or `tls` — plaintext-authenticated sessions are rejected. A PUT that changes `host` or `port` must re-send `password`, rather than relying on `__unchanged__`, since a stored password cannot be assumed to be valid — or safe to send — to a different server.
+
+`security: tls` dials straight into TLS (`ServerName` = `host`); `starttls` (the default) dials plaintext and then requires the server to offer `STARTTLS` — a server that does not is an error, never a silent downgrade to plaintext; `none` never upgrades. `POST /api/v1/settings/smtp/test` (`{to}` → `DeliveryResult`, `settings:write`) sends a fixed test message through the saved section, bounded to 10 seconds regardless of the saved `timeoutSeconds`; a delivery failure comes back as `status: failed` with a redacted `error` rather than an HTTP error (host/port/username are never secret, but the error is still scrubbed of the password), and is recorded as `smtp.test {ok}`. See `docs/notifications.md#smtp` for the notifier itself (the `smtp` channel type) and the message format.
 
 ### Prometheus section
 
