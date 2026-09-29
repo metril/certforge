@@ -17,11 +17,16 @@ export function useCreateMonitor(orgId: string) {
   });
 }
 
+// No fixed success message here (unlike useCreateMonitor): Task 4's
+// MonitorSheet shows its own toast on save — "Monitor saved" normally, or
+// "Monitor saved; state resets to Unknown" when host, port, SNI or the
+// expected certificate changed — so the mutation itself stays silent on
+// success and lets the caller pick the wording.
 export function useUpdateMonitor(orgId: string, id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: MonitorInput) => call(api.PATCH('/orgs/{orgId}/monitors/{id}', { params: { path: { orgId, id } }, body })),
-    meta: { silent: true, success: 'Monitor saved' },
+    meta: { silent: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['monitors', orgId] }),
   });
 }

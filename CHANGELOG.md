@@ -136,6 +136,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web API layer for alerts, monitors, events and backups.
 - Alerts area with a notification channels table.
 - Create, edit and test notification channels in the web UI.
+- Manage external TLS monitors and run a check from the web UI.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

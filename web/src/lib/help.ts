@@ -432,6 +432,19 @@ export const help = {
     text: 'Triggers a Home Assistant webhook automation with the event JSON.',
     learnMore: 'notifications.md#home-assistant',
   },
+  // Task 4 (Phase 6B): external monitors.
+  'monitor.state': {
+    text: 'From the last check: OK, Mismatch, Expiring (under 14 days) or Unreachable.',
+    learnMore: 'monitoring.md#states',
+  },
+  'monitor.expected': {
+    text: 'The certificate this endpoint should serve. Without one, any CertForge certificate matches.',
+    learnMore: 'monitoring.md#states',
+  },
+  'monitor.sni': { text: 'Server name sent in the TLS handshake. Empty means the host.' },
+  'monitor.interval': { text: 'How often CertForge checks the endpoint.', learnMore: 'monitoring.md#external-monitors' },
+  'monitor.check': { text: 'Checks the endpoint now and updates its state.', learnMore: 'monitoring.md#external-monitors' },
+  'monitor.limit': { text: 'An organization can have at most 500 monitors.' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

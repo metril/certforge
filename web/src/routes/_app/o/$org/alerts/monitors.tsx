@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
-import { EmptyState } from '@/components/EmptyState';
+import { MonitorsPage } from '@/features/alerts/MonitorsPage';
 
-// Task 4 fills this in with MonitorsPage; until then the tab renders empty.
 export const Route = createFileRoute('/_app/o/$org/alerts/monitors')({
   validateSearch: z.object({
+    // Detail/create sheet (task 4): `edit=new` or an existing monitor id.
     edit: z.string().optional().catch(undefined),
   }),
-  component: () => <EmptyState message="No monitors yet." />,
+  component: MonitorsPage,
 });
