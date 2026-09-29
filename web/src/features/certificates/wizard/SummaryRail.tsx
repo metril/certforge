@@ -19,7 +19,7 @@ function ruleSummary(rules: WizardState['rules']): string {
   return labels.length ? `${labels.join(' + ')}, ${count}` : count;
 }
 
-export function SummaryRail({ orgId, state, inherited }: { orgId: string; state: WizardState; inherited: Inherited }) {
+export function SummaryRail({ orgId, state, inherited, privateCa }: { orgId: string; state: WizardState; inherited: Inherited; privateCa: boolean }) {
   const ctx = useFieldCtx(orgId);
   const eff = useQuery(effectiveDefaultsQuery(orgId)).data ?? {};
   const cov = coverage(state.names, state.rules, inherited, ctx.clients);
@@ -33,7 +33,8 @@ export function SummaryRail({ orgId, state, inherited }: { orgId: string; state:
   const rows: [string, ReactNode][] = [
     ['Names', `${state.names.length} in ${zones} ${zones === 1 ? 'zone' : 'zones'}`],
     ['Common name', <span className="break-all font-mono text-xs">{state.cn ?? '–'}</span>],
-    ['Verification', ruleSummary(state.rules)],
+    // Task 4 (R12 deviation): a private effective CA needs no verification.
+    ['Verification', privateCa ? 'Not needed' : ruleSummary(state.rules)],
     [
       'Coverage',
       <span className="inline-flex items-center gap-1">

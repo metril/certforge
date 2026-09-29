@@ -1,7 +1,11 @@
+import type { ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type Props = { steps: string[]; current: number; onSelect?: (i: number) => void; canSelect?: (i: number) => boolean };
+// steps: ReactNode (Task 4) so a step label can carry a suffix chip (e.g.
+// "Verification" + a "Not needed" chip for a private effective CA), not
+// just plain text.
+type Props = { steps: ReactNode[]; current: number; onSelect?: (i: number) => void; canSelect?: (i: number) => boolean };
 
 export function Stepper({ steps, current, onSelect, canSelect = (i) => i <= current }: Props) {
   return (
@@ -11,7 +15,7 @@ export function Stepper({ steps, current, onSelect, canSelect = (i) => i <= curr
         const active = i === current;
         const enabled = !!onSelect && canSelect(i) && !active;
         return (
-          <li key={label} className="flex items-center gap-2">
+          <li key={i} className="flex items-center gap-2">
             <button
               type="button"
               disabled={!enabled}

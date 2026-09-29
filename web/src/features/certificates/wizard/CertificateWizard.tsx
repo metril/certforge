@@ -1,24 +1,27 @@
-import { useMemo, useReducer, useState, type Dispatch } from 'react';
+import { useMemo, useReducer, useState, type Dispatch, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { CircleAlert } from 'lucide-react';
+import { CircleAlert, CircleMinus } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
+import { casQuery } from '@/api/queries/cas';
 import { useCreateCertificate, useUpdateCertificate } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { effectiveDefaultsQuery } from '@/api/queries/defaults';
 import type { Certificate, VerificationRule } from '@/api/types';
 import { PageHeader } from '@/components/PageHeader';
 import { Stepper } from '@/components/Stepper';
+import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { ISSUANCE_FIELDS, type FieldKey } from '@/features/settings/issuanceFields';
+import { isPrivate } from '@/lib/caKinds';
 import { inheritedFrom, verificationReady } from '@/lib/coverage';
 import { rememberFromRules } from '@/lib/lastCredential';
 import { useOrg } from '@/lib/org';
 import { NamesStep } from './NamesStep';
 import { OptionsStep } from './OptionsStep';
 import { ReviewStep } from './ReviewStep';
-import { canContinueNames, fromCertificate, initialWizard, toCertificateInput, wizardReducer, type WizardAction } from './state';
+import { canContinueNames, effectiveCaId, fromCertificate, initialWizard, toCertificateInput, wizardReducer, type WizardAction } from './state';
 import { SummaryRail } from './SummaryRail';
 import { VerificationStep } from './VerificationStep';
 
@@ -91,13 +94,30 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
   const eff = useQuery(effectiveDefaultsQuery(org.id)).data;
   const inherited = useMemo(() => inheritedFrom(eff), [eff]);
   const clients = useQuery(allClientsQuery(org.id)).data?.items ?? [];
+  const cas = useQuery(casQuery(org.id)).data ?? [];
   const create = useCreateCertificate(org.id);
   const update = useUpdateCertificate(org.id, edit?.id ?? '');
   const saving = edit ? update : create;
 
+  // Task 4 (R12 deviation): the CA is picked in Options, after Verification,
+  // so "Not needed" follows the *effective* CA (the cert override, else the
+  // inherited default) and updates live as either changes.
+  const effCa = cas.find((c) => c.id === effectiveCaId(state, eff ?? {}));
+  const privateCa = !!effCa && isPrivate(effCa);
+
   const namesOk = canContinueNames(state);
-  const verOk = namesOk && verificationReady(state.names, state.rules, inherited, clients);
+  const verOk = namesOk && (privateCa || verificationReady(state.names, state.rules, inherited, clients));
   const reachable = [true, namesOk, verOk, verOk];
+  const steps: ReactNode[] = STEPS.map((label, i) =>
+    i === VERIFICATION_STEP && privateCa ? (
+      <span key={label} className="inline-flex items-center gap-1.5">
+        {label}
+        <ToneChip tone="neutral" icon={CircleMinus} label="Not needed" />
+      </span>
+    ) : (
+      label
+    ),
+  );
 
   const originalNames = useMemo(() => (edit ? normalizeNames(edit.commonName, edit.sans) : []), [edit]);
   const currentNames = useMemo(() => normalizeNames(state.cn, state.names), [state.cn, state.names]);
@@ -121,7 +141,8 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
   async function submit() {
     setSubmitError(null);
     try {
-      const cert = edit ? await update.mutateAsync(toCertificateInput(state)) : await create.mutateAsync(toCertificateInput(state));
+      const body = toCertificateInput(state, { privateCa });
+      const cert = edit ? await update.mutateAsync(body) : await create.mutateAsync(body);
       // Fix round 1 (review, Important #3): saving an edit that touched
       // nothing about verification (only, say, the key type) must not
       // silently overwrite a credential the user picked for an unrelated
@@ -145,7 +166,7 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
       <PageHeader title={edit ? `Edit ${edit.name}` : from ? `Duplicate ${from.name}` : 'New certificate'} />
       {namesChanged && <p className="mb-4 text-xs text-ink-muted">Changing names will issue a new certificate.</p>}
       <div className="mb-6">
-        <Stepper steps={STEPS} current={step} onSelect={goToStep} canSelect={(i) => reachable[i]!} />
+        <Stepper steps={steps} current={step} onSelect={goToStep} canSelect={(i) => reachable[i]!} />
       </div>
       <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_280px]">
         <div className="grid min-w-0 content-start gap-6">
@@ -156,7 +177,7 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
             </p>
           )}
           {step === 0 && <NamesStep state={state} dispatch={dispatch} />}
-          {step === 1 && <VerificationStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} />}
+          {step === 1 && <VerificationStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} privateCa={privateCa} />}
           {step === 2 && <OptionsStep orgId={org.id} state={state} dispatch={dispatch} />}
           {step === 3 && <ReviewStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} />}
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">
@@ -177,7 +198,7 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
             )}
           </div>
         </div>
-        <SummaryRail orgId={org.id} state={state} inherited={inherited} />
+        <SummaryRail orgId={org.id} state={state} inherited={inherited} privateCa={privateCa} />
       </div>
     </>
   );

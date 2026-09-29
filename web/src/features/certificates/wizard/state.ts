@@ -1,4 +1,4 @@
-import type { Certificate, CertificateInput, IssuanceDefaults, VerificationRule } from '@/api/types';
+import type { Certificate, CertificateInput, EffectiveMap, IssuanceDefaults, VerificationRule } from '@/api/types';
 import { classifyName, MAX_NAMES } from '@/lib/names';
 
 export type WizardState = {
@@ -61,8 +61,21 @@ export function canContinueNames(s: WizardState): boolean {
   return s.names.length > 0 && s.names.length <= MAX_NAMES && !!s.cn && s.names.every((n) => classifyName(n).kind !== 'invalid');
 }
 
-export function toCertificateInput(s: WizardState): CertificateInput {
-  return { name: s.name.trim() || (s.cn ?? ''), commonName: s.cn ?? '', sans: s.names, verificationRules: s.rules, overrides: s.overrides };
+// Task 4 (R12 deviation): the CA is picked in Options, after Verification,
+// so the effective CA is the cert-level override if there is one, else
+// whatever org/global defaults resolve to (EffectiveMap.caId.value).
+export function effectiveCaId(s: { overrides: IssuanceDefaults }, eff: EffectiveMap): string | undefined {
+  return s.overrides.caId ?? eff.caId?.value ?? undefined;
+}
+
+export function toCertificateInput(s: WizardState, opts: { privateCa?: boolean } = {}): CertificateInput {
+  // A private effective CA needs no verification rules; rules the user
+  // never touched (the auto-prefill from names, never a deliberate choice)
+  // are sent as [] rather than whatever the prefill computed. A rule set
+  // the user did touch (including on an edit's existing certificate) is
+  // still sent as-is.
+  const rules = opts.privateCa && !s.rulesTouched ? [] : s.rules;
+  return { name: s.name.trim() || (s.cn ?? ''), commonName: s.cn ?? '', sans: s.names, verificationRules: rules, overrides: s.overrides };
 }
 
 export function fromCertificate(c: Certificate): WizardState {

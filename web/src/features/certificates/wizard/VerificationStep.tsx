@@ -1,20 +1,73 @@
 import { useEffect, useMemo, useState, type Dispatch } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { CircleMinus } from 'lucide-react';
 import { allCertificatesQuery } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { dnsCredentialsQuery, metaSchemasQuery } from '@/api/queries/dns';
 import type { ProviderSchema } from '@/api/types';
+import { SegmentedControl } from '@/components/SegmentedControl';
+import { ToneChip } from '@/components/StatusChip';
+import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CredentialSheet } from '@/features/issuers/CredentialSheet';
 import { CoveragePanel } from '@/forms/CoveragePanel';
 import { ProviderPicker } from '@/forms/ProviderPicker';
 import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
 import { coverage, prefillRules, type Inherited } from '@/lib/coverage';
+import { help } from '@/lib/help';
 import { makeSuggester } from '@/lib/lastCredential';
 import type { WizardAction, WizardState } from './state';
 
-type Props = { orgId: string; state: WizardState; dispatch: Dispatch<WizardAction>; inherited: Inherited };
+type Props = { orgId: string; state: WizardState; dispatch: Dispatch<WizardAction>; inherited: Inherited; privateCa: boolean };
 
-export function VerificationStep({ orgId, state, dispatch, inherited }: Props) {
+/** Display-only "Needed"/"Not needed" segmented control (R12 deviation):
+ * always disabled, follows `privateCa`, wrapped in a tooltip explaining why. */
+function VerificationModeControl({ privateCa }: { privateCa: boolean }) {
+  const helpKey = privateCa ? 'wizard.verificationNotNeeded' : 'wizard.verificationNeeded';
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label htmlFor="ver-mode">Verification</Label>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div tabIndex={0} className="inline-flex">
+            <SegmentedControl
+              id="ver-mode"
+              aria-label="Verification"
+              value={privateCa ? 'not-needed' : 'needed'}
+              onChange={() => {}}
+              options={[
+                { value: 'needed', label: 'Needed', disabled: true },
+                { value: 'not-needed', label: 'Not needed', disabled: true },
+              ]}
+            />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>{help[helpKey].text}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+/** Coverage panel's private-CA substitute: same per-name list, but every
+ * row shows "Not needed" instead of a computed coverage state — nothing is
+ * hidden, only the per-name description changes (R12 deviation). */
+function NotNeededCoverage({ names }: { names: string[] }) {
+  return (
+    <section aria-label="Coverage" className="grid gap-2">
+      <h3 className="text-sm font-semibold">Coverage</h3>
+      <ul className="grid">
+        {names.map((n) => (
+          <li key={n} className="flex min-h-8 flex-wrap items-center gap-2 border-b border-border py-1 text-sm last:border-b-0">
+            <span className="min-w-0 flex-1 truncate font-mono text-xs">{n}</span>
+            <ToneChip tone="neutral" icon={CircleMinus} label="Not needed" />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function VerificationStep({ orgId, state, dispatch, inherited, privateCa }: Props) {
   const credsQ = useQuery(dnsCredentialsQuery(orgId));
   const certsQ = useQuery(allCertificatesQuery(orgId));
   const clientsQ = useQuery(allClientsQuery(orgId));
@@ -40,14 +93,23 @@ export function VerificationStep({ orgId, state, dispatch, inherited }: Props) {
 
   return (
     <div className="grid gap-6">
-      <VerificationRulesEditor
-        rules={state.rules}
-        onChange={(rules) => dispatch({ type: 'setRules', rules })}
-        credentials={creds}
-        clients={clients}
-        onAddCredential={setPickerFor}
-      />
-      <CoveragePanel items={coverage(state.names, state.rules, inherited, clients)} credentials={creds} clients={clients} />
+      <VerificationModeControl privateCa={privateCa} />
+      <div aria-disabled={privateCa || undefined} className={privateCa ? 'pointer-events-none opacity-50' : undefined}>
+        <VerificationRulesEditor
+          rules={state.rules}
+          onChange={(rules) => dispatch({ type: 'setRules', rules })}
+          credentials={creds}
+          clients={clients}
+          onAddCredential={setPickerFor}
+        />
+      </div>
+      <div aria-disabled={privateCa || undefined} className={privateCa ? 'pointer-events-none opacity-50' : undefined}>
+        {privateCa ? (
+          <NotNeededCoverage names={state.names} />
+        ) : (
+          <CoveragePanel items={coverage(state.names, state.rules, inherited, clients)} credentials={creds} clients={clients} />
+        )}
+      </div>
       <ProviderPicker
         open={pickerFor !== null}
         onOpenChange={(o) => !o && setPickerFor(null)}

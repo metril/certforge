@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, ca, makeCert, makeClient, problem, providers, url } from '@/test/fixtures';
+import { authHandlers, ca, caLocal, makeCert, makeClient, problem, providers, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let created: unknown;
@@ -301,6 +301,56 @@ it('edit mode: changing a rule credential (names unchanged) remembers it and sti
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/overview'));
   // Task 16: let the certificate detail page itself settle before the test ends.
   await screen.findByRole('navigation', { name: 'Breadcrumb' });
+});
+
+// Task 4 (R12 deviation): the CA is picked in Options, after Verification,
+// so "Not needed" follows the *effective* CA — the inherited default here,
+// with no override yet — and Next is enabled with no coverage at all.
+it('private inherited CA enables next with no coverage', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+  );
+  const { user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.paste('www.example.com');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  const seg = await screen.findByRole('radiogroup', { name: 'Verification' });
+  expect(within(seg).getByRole('radio', { name: 'Not needed' })).toHaveAttribute('data-state', 'on');
+  const coverage = screen.getByRole('region', { name: 'Coverage' });
+  expect(within(coverage).getByText('Not needed')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Issue certificate' })).not.toBeDisabled();
+});
+
+it('choosing private CA in options updates step label', async () => {
+  server.use(http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])));
+  const { user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.paste('www.example.com');
+  await user.click(screen.getByRole('button', { name: 'Next' })); // -> Verification
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
+  const stepper = screen.getByRole('list', { name: 'Steps' });
+  expect(within(stepper).queryByText('Not needed')).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Next' })); // -> Options
+  await user.click(screen.getByRole('switch', { name: 'Override Certificate authority' }));
+  await user.click(screen.getByRole('combobox', { name: 'Certificate authority' }));
+  await user.click(await screen.findByText(caLocal.name));
+  expect(within(stepper).getByText('Not needed')).toBeInTheDocument();
+});
+
+it('create body for localca: sends empty verificationRules for the private effective CA', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+  );
+  const { user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.paste('www.example.com');
+  await user.click(screen.getByRole('button', { name: 'Next' })); // -> Verification, already private
+  await screen.findByRole('radiogroup', { name: 'Verification' });
+  await user.click(screen.getByRole('button', { name: 'Issue certificate' }));
+  await waitFor(() => expect((created as Record<string, unknown>).verificationRules).toEqual([]));
 });
 
 it('edit mode: a name change reissues, PUTs, and lands on Attempts', async () => {

@@ -116,6 +116,34 @@ it('failed caa stays expanded with its detail text', () => {
   expect(screen.getByText(/CAA at example\.com allows other-ca\.example/)).toBeInTheDocument();
 });
 
+// Task 4 (R12 deviation, 5a-facts.md): a private-CA attempt records account,
+// verify/challenge, caa and rate_ledger as skipped with "not used by
+// private CAs" — no component change, StepRow's existing skipped handling
+// already renders each one this way.
+it('private CA skipped steps', () => {
+  renderUI(
+    <AttemptLogViewer
+      attempt={makeAttempt({
+        outcome: 'success',
+        acmeErrorType: undefined,
+        retryAfter: undefined,
+        steps: [
+          { name: 'account', status: 'skipped', startedAt: iso(-0.01), finishedAt: iso(-0.0099), message: 'not used by private CAs' },
+          { name: 'challenge www.example.com', status: 'skipped', startedAt: iso(-0.0099), finishedAt: iso(-0.0098), message: 'not used by private CAs' },
+          { name: 'caa', status: 'skipped', startedAt: iso(-0.0098), finishedAt: iso(-0.0097), message: 'not used by private CAs' },
+          { name: 'rate_ledger', status: 'skipped', startedAt: iso(-0.0097), finishedAt: iso(-0.0096), message: 'not used by private CAs' },
+        ],
+      })}
+      defaultOpen
+    />,
+  );
+  expect(screen.getAllByText('not used by private CAs')).toHaveLength(4);
+  expect(screen.getAllByText('Skipped:', { selector: '.sr-only' })).toHaveLength(4);
+  expect(screen.getByText('CAA check')).toBeInTheDocument();
+  expect(screen.getByText('Rate limits')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
+});
+
 it('guards Copy log when the Clipboard API is unavailable', async () => {
   const original = navigator.clipboard;
   try {

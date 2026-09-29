@@ -137,6 +137,8 @@ The wizard pre-fills one DNS rule per registered domain with the credential you 
 
 The **Coverage** panel lists every certificate name with the rule and method that prove it (for example "HTTP · server" or "DNS · cloudflare-prod"), or **Catch-all: inherited from Org/Global** when none of the certificate's own rules match but the org or global catch-all does. A wildcard name that only resolves to an HTTP or TLS-ALPN rule shows **Wildcards need a DNS method** — see [Verification methods](#verification-methods). A name with neither is flagged and blocks **Next**.
 
+The CA is chosen on the next step, **Options**, so this step's **Verification** control shows **Not needed** once the effective CA (the CA overridden on Options, or else the inherited default) is a private CA — see [Private CA issuance](#private-ca-issuance) — and updates live as that CA changes. The rules editor and Coverage stay visible but dimmed, every name shows **Not needed** in place of a coverage state, and **Next** no longer waits on coverage. Rules the wizard prefilled but the operator never touched are sent as an empty list; a rule set the operator did edit (including on an existing certificate being edited) is kept as entered.
+
 ### CNAME delegation
 
 To keep DNS API credentials away from a production zone, point `_acme-challenge.<name>` at a record in a separate zone with a CNAME, for example `_acme-challenge.www.example.com CNAME www.example.com.acme.example.net`. lego follows the CNAME automatically. Set **CNAME alias zone** to `acme.example.net` and give the rule a credential for that zone.

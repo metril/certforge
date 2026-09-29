@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { screen } from '@testing-library/react';
+import { useState } from 'react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { DnsCredential } from '@/api/types';
-import { ca, makeClient } from '@/test/fixtures';
+import type { DnsCredential, IssuanceDefaults } from '@/api/types';
+import { account, ca, caLocal, makeClient } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
-import { fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, ISSUANCE_FIELDS, rulesSummary, type FieldCtx } from './issuanceFields';
+import { fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, IssuanceDefaultsForm, ISSUANCE_FIELDS, rulesSummary, type FieldCtx } from './issuanceFields';
 
 const ctx: FieldCtx = { cas: [], accounts: [], credentials: [], clients: [] };
 const renewPolicy = ISSUANCE_FIELDS.find((f) => f.key === 'renewPolicy')!;
@@ -151,6 +152,44 @@ describe('the Global tab has no clients (FieldCtx.clients: [] there)', () => {
     expect(agent).toBeDisabled();
     await user.hover(agent);
     expect(await screen.findByRole('tooltip')).toHaveTextContent(/agent methods need an org/i);
+  });
+});
+
+// Task 4 (R12 deviation): the account field is disabled for a private
+// effective CA — computed by IssuanceDefaultsForm itself from `value`/
+// `inherited`/`ctx.cas`, not a caller-supplied flag, so it works the same
+// in the wizard's Options step and in Settings' issuance defaults.
+describe('IssuanceDefaultsForm disables the account field for a private effective CA', () => {
+  const emptyEff = { value: null, source: 'default' as const };
+  const inherited = () => emptyEff;
+
+  function H({ initial }: { initial: IssuanceDefaults }) {
+    const [value, setValue] = useState<IssuanceDefaults>(initial);
+    return <IssuanceDefaultsForm value={value} onChange={setValue} inherited={inherited} ctx={{ ...ctx, cas: [ca, caLocal], accounts: [account] }} />;
+  }
+
+  it('account disabled for private CA', async () => {
+    const { user } = renderUI(<H initial={{ caId: caLocal.id }} />);
+    const accountSwitch = screen.getByRole('switch', { name: 'Override ACME account' });
+    expect(accountSwitch).toBeDisabled();
+    expect(screen.getByText('Not used by private CAs')).toBeInTheDocument();
+    const group = screen.getByRole('group', { name: 'ACME account' });
+    await user.hover(within(group).getByRole('button', { name: 'Help' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('ACME accounts do not apply to private CAs.');
+  });
+
+  it('an acme effective CA leaves the account field enabled', () => {
+    renderUI(<H initial={{ caId: ca.id }} />);
+    expect(screen.getByRole('switch', { name: 'Override ACME account' })).not.toBeDisabled();
+  });
+
+  it('choosing private CA clears account override', async () => {
+    const { user } = renderUI(<H initial={{ caId: ca.id, accountId: 'acc-1' }} />);
+    expect(screen.getByRole('switch', { name: 'Override ACME account' })).toBeChecked();
+    await user.click(screen.getByRole('combobox', { name: 'Certificate authority' }));
+    await user.click(await screen.findByText(caLocal.name));
+    expect(screen.getByRole('switch', { name: 'Override ACME account' })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Override ACME account' })).toBeDisabled();
   });
 });
 

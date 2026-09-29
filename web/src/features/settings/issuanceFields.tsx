@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { InheritableField, type ChainEntry } from '@/forms/InheritableField';
 import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
+import { isPrivate, KIND_LABEL } from '@/lib/caKinds';
 import type { HelpKey } from '@/lib/help';
 import { ruleTarget } from '@/lib/rules';
 
@@ -91,7 +92,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
           aria-label="Certificate authority"
           value={v}
           onChange={(x) => set(x ?? null)}
-          options={c.cas.map((x) => ({ value: x.id, label: x.name }))}
+          options={c.cas.map((x) => ({ value: x.id, label: x.name, hint: KIND_LABEL[x.type] }))}
           placeholder="Choose CA"
           emptyText="No CAs yet"
         />
@@ -309,17 +310,31 @@ type FormProps = {
   pending?: (k: FieldKey) => boolean;
 };
 
+// Task 4 (R12 deviation): the effective CA (this form's own `caId` override,
+// else whatever the inherited chain resolves to) is computed here, from the
+// form's own props, so the account field's disabled-with-tooltip state
+// works the same wherever this form is used (the wizard's Options step,
+// Settings' Org/Global issuance defaults) with no extra plumbing from the
+// caller.
+function effectiveCa(value: IssuanceDefaults, inherited: FormProps['inherited'], cas: FieldCtx['cas']) {
+  const id = value.caId ?? (inherited('caId').value as string | null | undefined) ?? undefined;
+  return cas.find((c) => c.id === id);
+}
+
 export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, exclude = [], error, pending }: FormProps) {
+  const eca = effectiveCa(value, inherited, ctx.cas);
+  const privateCa = !!eca && isPrivate(eca);
   return (
     <div className="grid">
       {ISSUANCE_FIELDS.filter((f) => !exclude.includes(f.key)).map((f) => {
         const id = `f-${f.key}`;
+        const accountPrivate = f.key === 'accountId' && privateCa;
         return (
           <InheritableField<unknown>
             key={f.key}
             id={id}
             label={f.label}
-            help={f.help}
+            help={accountPrivate ? 'defaults.accountPrivate' : f.help}
             value={value[f.key] as unknown}
             // EffectiveValue is a union across each field's own Effective*
             // shape (EffectiveUuid | EffectiveString | ...); TS widens their
@@ -332,9 +347,21 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, e
             initial={f.initial(ctx)}
             display={(v) => f.display(v, ctx)}
             editor={(v, set) => f.editor(v, set, ctx, id)}
-            onChange={(v) => onChange({ ...value, [f.key]: v })}
+            onChange={(v) => {
+              const next = { ...value, [f.key]: v } as IssuanceDefaults;
+              // Choosing a private CA (or resetting the override back to an
+              // inherited private one) makes an accountId override
+              // meaningless — ACME accounts never apply to a private CA,
+              // and the API 422s a cert-level account override once its
+              // effective CA is private — so clear it in the same update.
+              if (f.key === 'caId') {
+                const nextCa = effectiveCa(next, inherited, ctx.cas);
+                if (nextCa && isPrivate(nextCa) && next.accountId != null) next.accountId = null;
+              }
+              onChange(next);
+            }}
             error={error?.(f.key)}
-            overrideDisabled={f.disabledReason?.(ctx)}
+            overrideDisabled={accountPrivate ? 'Not used by private CAs' : f.disabledReason?.(ctx)}
             pending={pending?.(f.key)}
           />
         );

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { makeCert } from '@/test/fixtures';
-import { canContinueNames, fromCertificate, initialWizard, toCertificateInput, wizardReducer as r } from './state';
+import { canContinueNames, effectiveCaId, fromCertificate, initialWizard, toCertificateInput, wizardReducer as r } from './state';
 
 it('adds names, dedupes, and makes the first one the CN and default name', () => {
   let s = r(initialWizard, { type: 'addNames', names: ['www.example.com', 'api.example.com'] });
@@ -52,4 +52,29 @@ it('fromCertificate round-trips mixed per-rule methods unchanged', () => {
 it('builds the create body with the CN inside sans', () => {
   const s = r(initialWizard, { type: 'addNames', names: ['www.example.com', '*.example.com'] });
   expect(toCertificateInput(s)).toEqual({ name: 'www.example.com', commonName: 'www.example.com', sans: ['www.example.com', '*.example.com'], verificationRules: [], overrides: {} });
+});
+
+// Task 4 (R12 deviation): for a private effective CA, rules the user never
+// touched are sent as [], not whatever the auto-prefill computed.
+it('private untouched rules sent empty', () => {
+  let s = r(initialWizard, { type: 'addNames', names: ['www.example.com'] });
+  s = r(s, { type: 'prefillRules', rules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }] });
+  expect(s.rulesTouched).toBe(false);
+  expect(toCertificateInput(s, { privateCa: true }).verificationRules).toEqual([]);
+  // Unaffected for an acme (non-private) effective CA.
+  expect(toCertificateInput(s, { privateCa: false }).verificationRules).toEqual(s.rules);
+});
+
+it('private touched rules kept', () => {
+  let s = r(initialWizard, { type: 'addNames', names: ['www.example.com'] });
+  s = r(s, { type: 'setRules', rules: [{ match: 'example.com', method: 'dns-01', dnsCredentialId: 'd-1' }] });
+  expect(s.rulesTouched).toBe(true);
+  expect(toCertificateInput(s, { privateCa: true }).verificationRules).toEqual(s.rules);
+});
+
+it('effectiveCaId prefers a cert override, else the inherited default', () => {
+  const inherited = { caId: { value: 'ca-org', source: 'org' as const } };
+  expect(effectiveCaId({ overrides: { caId: 'ca-cert' } }, inherited)).toBe('ca-cert');
+  expect(effectiveCaId({ overrides: {} }, inherited)).toBe('ca-org');
+  expect(effectiveCaId({ overrides: {} }, {})).toBeUndefined();
 });

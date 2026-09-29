@@ -89,6 +89,8 @@ export const help = {
   },
   'defaults.caId': { text: 'CA used when a certificate does not pick one.' },
   'defaults.accountId': { text: 'ACME account used to order from that CA.' },
+  // Task 4: the account field is disabled for a private effective CA.
+  'defaults.accountPrivate': { text: 'ACME accounts do not apply to private CAs.', learnMore: 'certificates.md#private-ca-issuance' },
   'defaults.keyType': { text: 'Key algorithm for new certificates. EC P-256 is small and widely supported.' },
   'defaults.renewPolicy': {
     text: 'Days: renew this many days before expiry. Percent: renew once this share remains, never before half the lifetime.',
@@ -150,6 +152,12 @@ export const help = {
   'rules.webroot': { text: 'Absolute directory on the client. The agent writes the token there instead of serving it.', learnMore: 'agent.md#challenge-serving' },
   'rules.globalAgentDisabled': { text: "Agent methods need an org's own clients, which global defaults don't have. Set this per certificate or org instead." },
   'rules.catchAll': { text: 'Rules that certificates fall back to when none of their own match.' },
+  // Task 4: the wizard's Verification step, when the effective CA is private.
+  'wizard.verificationNotNeeded': {
+    text: 'Private CAs sign without proving control of the names.',
+    learnMore: 'certificates.md#private-ca-issuance',
+  },
+  'wizard.verificationNeeded': { text: 'ACME CAs need each name proved. The CA chosen in Options decides this.' },
   'attempt.retry': { text: 'Failed attempts back off from 5 minutes up to 24 hours. Rate limits use the CA’s retry time.' },
   'attempt.caa': {
     text: 'CertForge checks that CAA records allow this CA before ordering. The CA checks again.',

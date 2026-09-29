@@ -38,12 +38,12 @@ beforeEach(() => {
   );
 });
 
-function H({ inherited }: { inherited: Inherited }) {
+function H({ inherited, privateCa = false }: { inherited: Inherited; privateCa?: boolean }) {
   const [state, dispatch] = useReducer(wizardReducer, wizardReducer(initialWizard, { type: 'addNames', names: ['www.example.com', '*.example.com', 'api.other.net'] }));
   const clients = useQuery(allClientsQuery('org-1')).data?.items ?? [];
   return (
     <>
-      <VerificationStep orgId="org-1" state={state} dispatch={dispatch} inherited={inherited} />
+      <VerificationStep orgId="org-1" state={state} dispatch={dispatch} inherited={inherited} privateCa={privateCa} />
       <output data-testid="ready">{String(verificationReady(state.names, state.rules, inherited, clients))}</output>
       <output data-testid="rules">{JSON.stringify(state.rules)}</output>
     </>
@@ -57,7 +57,7 @@ function HOne() {
   const clients = useQuery(allClientsQuery('org-1')).data?.items ?? [];
   return (
     <>
-      <VerificationStep orgId="org-1" state={state} dispatch={dispatch} inherited={null} />
+      <VerificationStep orgId="org-1" state={state} dispatch={dispatch} inherited={null} privateCa={false} />
       <output data-testid="ready">{String(verificationReady(state.names, state.rules, null, clients))}</output>
     </>
   );
@@ -174,6 +174,41 @@ it('an agent client with no capability is incomplete; a webroot covers it; clear
   row = within(screen.getByRole('region', { name: 'Coverage' })).getByText('api.other.net').closest('li')!;
   await waitFor(() => expect(row).toHaveTextContent('No client'));
   expect(screen.getByTestId('ready')).toHaveTextContent('false');
+});
+
+// Task 4 (R12 deviation): a private effective CA marks Verification "Not
+// needed" — the segmented control is always disabled and display-only, the
+// rules editor and coverage go dimmed/non-interactive, and Coverage shows
+// "Not needed" per name instead of real coverage states.
+it('private CA marks not needed', async () => {
+  const { user } = renderUI(<H inherited={null} privateCa />);
+  const seg = screen.getByRole('radiogroup', { name: 'Verification' });
+  expect(within(seg).getByRole('radio', { name: 'Not needed' })).toHaveAttribute('data-state', 'on');
+  expect(within(seg).getByRole('radio', { name: 'Not needed' })).toBeDisabled();
+  expect(within(seg).getByRole('radio', { name: 'Needed' })).toBeDisabled();
+  await user.hover(seg);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Private CAs sign without proving control of the names.');
+
+  const editorList = screen.getByRole('list', { name: 'Verification rules' });
+  expect(editorList.closest('[aria-disabled="true"]')).toBeTruthy();
+
+  const coverage = screen.getByRole('region', { name: 'Coverage' });
+  expect(coverage.closest('[aria-disabled="true"]')).toBeTruthy();
+  expect(within(coverage).getAllByText('Not needed')).toHaveLength(3);
+  expect(within(coverage).getByText('www.example.com')).toBeInTheDocument();
+  expect(within(coverage).getByText('api.other.net')).toBeInTheDocument();
+});
+
+it('acme shows needed', async () => {
+  const { user } = renderUI(<H inherited={null} privateCa={false} />);
+  const seg = screen.getByRole('radiogroup', { name: 'Verification' });
+  expect(within(seg).getByRole('radio', { name: 'Needed' })).toHaveAttribute('data-state', 'on');
+  expect(within(seg).getByRole('radio', { name: 'Needed' })).toBeDisabled();
+  await user.hover(seg);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('ACME CAs need each name proved.');
+
+  const editorList = screen.getByRole('list', { name: 'Verification rules' });
+  expect(editorList.closest('[aria-disabled="true"]')).toBeNull();
 });
 
 it('coverage shows the method: DNS · credential, then HTTP · client once switched', async () => {

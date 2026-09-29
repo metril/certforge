@@ -137,6 +137,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Web API layer for exports, uploads, imports and the rate ledger.
 - 4B final fix wave: `<Tabs>` on the certificate detail page now has `min-w-0`, fixing a 375 px overflow that traced to it (not the Download sheet); an agent webroot's trailing slash is stripped on blur so it matches what the server accepts; Coverage and the Verification summary are hidden for unmanaged certificates instead of showing a false "No matching rule"; the layout password's Remove button now shows disabled with a tooltip instead of being hidden while a keystore file needs it; its non-ASCII JKS rejection now says "ASCII characters only." instead of "At least 6 characters."; and its generated password gained a Copy button.
 - The overview health strip shows a degraded Vault connection.
+- The certificate wizard skips verification for private CAs.
 
 ### Fixed
 - `authn.Limiter.Allow` read its rate/burst config before taking its lock, racing `Reconfigure`; the check now happens under the lock. Rate-limited login attempts are now audited as `session.login_failed` (`reason: rate_limited`) instead of leaving no record. The limiter's per-key map is now capped at 100k entries, evicting the least-recently-seen key once full, so distinct source addresses cannot grow it without bound.
