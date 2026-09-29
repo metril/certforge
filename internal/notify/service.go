@@ -297,8 +297,10 @@ func (s *Service) CreateChannel(ctx context.Context, orgID uuid.UUID, in Channel
 // type is immutable (the caller's job to reject a type change as 422
 // before calling this, so the exact wording matches the Shared contract's
 // "type cannot change"). A secret config field sent as Unchanged or
-// omitted keeps its stored value; changing the type's reentry field while
-// doing so is a 422 (checkChannelReentry).
+// omitted keeps its stored value; changing the type's reentry field
+// (checkChannelReentry) or, for webhook, changing url to a fresh,
+// different value while authHeader/signingSecret are kept
+// (checkWebhookReentry) is a 422.
 func (s *Service) UpdateChannel(ctx context.Context, orgID, id uuid.UUID, in ChannelInput) (Channel, error) {
 	cur, err := s.Store.Q.GetOrgNotificationChannel(ctx, sqlcgen.GetOrgNotificationChannelParams{ID: id, OrgID: orgID})
 	if err != nil {
@@ -315,13 +317,16 @@ func (s *Service) UpdateChannel(ctx context.Context, orgID, id uuid.UUID, in Cha
 		return Channel{}, err
 	}
 	secretKeys, _ := s.Registry.SecretKeys(cur.Type)
-	resolvedCfg, reusedSecret := mergeChannelConfig(secretKeys, oldSecret, in.Config)
+	resolvedCfg, reused := mergeChannelConfig(secretKeys, oldSecret, in.Config)
 
 	resolved, err := s.validateInput(ctx, in, resolvedCfg)
 	if err != nil {
 		return Channel{}, err
 	}
-	if err := checkChannelReentry(cur.Type, oldPublic, resolved.cfg, reusedSecret); err != nil {
+	if err := checkChannelReentry(cur.Type, oldPublic, resolved.cfg, reused); err != nil {
+		return Channel{}, err
+	}
+	if err := checkWebhookReentry(cur.Type, oldSecret, resolved.cfg, reused); err != nil {
 		return Channel{}, err
 	}
 	public, secret, err := splitChannelConfig(secretKeys, resolved.cfg)

@@ -32,6 +32,12 @@ type fakeSMTPOptions struct {
 	wantAuth      bool // EHLO advertises AUTH PLAIN
 	authOK        func(user, pass string) bool
 	tlsConfig     *tls.Config
+	// hang accepts the connection but never sends the "220" greeting (or
+	// anything else), so a client blocks reading it until its own
+	// deadline/context — batch-2 review's TestSendMailCancelledContextAbortsWithinBound
+	// uses this to prove a cancelled ctx unblocks SendMail well before its
+	// configured timeout, not just before the dial.
+	hang bool
 }
 
 // fakeSMTPServer is a minimal in-process SMTP server for mail_test.go: it
@@ -95,6 +101,12 @@ func (s *fakeSMTPServer) handle(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 	tp := textproto.NewConn(conn)
+	if s.opts.hang {
+		// Never greets; just block until the client (or our own deadline
+		// above) closes the connection.
+		_, _ = tp.ReadLine()
+		return
+	}
 	if err := tp.PrintfLine("220 fake.test ESMTP"); err != nil {
 		return
 	}

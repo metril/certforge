@@ -111,9 +111,14 @@ type Store struct {
 // destination with a separate, readable URL-ish field. Changing that field
 // while the type's secret is kept Unchanged is refused (422 "re-enter the
 // secret") — an old secret would otherwise silently carry over to what may
-// be a different destination. webhook and discord have no such field
-// (their whole URL is itself the secret); smtp has none of its own
-// (channel-level "to"/"subjectPrefix" carry no secret at all).
+// be a different destination. discord has no such field (its whole URL is
+// itself the secret, and it carries no other secret alongside it); smtp
+// has none of its own (channel-level "to"/"subjectPrefix" carry no secret
+// at all). webhook's url is itself the secret too, but — unlike discord —
+// it has two more secrets of its own (authHeader, signingSecret) that
+// travel with it to whatever host url names; that needs its own rule,
+// checkWebhookReentry, since this map's single-field shape (a secret kept
+// vs. one separate public field changing) cannot express it.
 var reentryField = map[string]string{
 	TypeNtfy:          "server",
 	TypeHomeAssistant: "baseUrl",
@@ -222,13 +227,20 @@ func splitChannelConfig(secretKeys []string, cfg map[string]any) (public map[str
 // unlike a non-secret field, which is always a full replacement, and
 // unlike DNS credential config, whose own MergeUpdate treats an omitted
 // secret as cleared, not kept). A secret field explicitly sent as ""
-// clears it. reusedSecret reports whether any secret field was kept
-// (Unchanged or omitted), for checkChannelReentry.
-func mergeChannelConfig(secretKeys []string, oldSecret map[string]string, in map[string]any) (resolved map[string]any, reusedSecret bool) {
+// clears it. reused lists exactly the secret keys that were actually
+// carried over from a stored value — never merely "left as Unchanged/
+// omitted with nothing stored to keep" (batch-2 review finding 2: an ntfy
+// channel with no token ever set must not need its token "re-entered"
+// just because its server changed — checkChannelReentry's whole premise is
+// that a real, already-stored secret would otherwise silently apply to a
+// new destination, which cannot happen when there is no stored secret at
+// all), for checkChannelReentry and checkWebhookReentry.
+func mergeChannelConfig(secretKeys []string, oldSecret map[string]string, in map[string]any) (resolved map[string]any, reused map[string]bool) {
 	resolved = make(map[string]any, len(in)+len(secretKeys))
 	for k, v := range in {
 		resolved[k] = v
 	}
+	reused = map[string]bool{}
 	for _, k := range secretKeys {
 		v, present := resolved[k]
 		kept := !present
@@ -238,8 +250,8 @@ func mergeChannelConfig(secretKeys []string, oldSecret map[string]string, in map
 			}
 		}
 		if kept {
-			reusedSecret = true
 			if old, ok := oldSecret[k]; ok {
+				reused[k] = true
 				resolved[k] = old
 			} else {
 				delete(resolved, k)
@@ -250,22 +262,51 @@ func mergeChannelConfig(secretKeys []string, oldSecret map[string]string, in map
 			delete(resolved, k) // explicit clear
 		}
 	}
-	return resolved, reusedSecret
+	return resolved, reused
 }
 
 // checkChannelReentry enforces the Deviations R3 rule (reentryField's doc
-// comment): typ's reentry field changing while reusedSecret is true is a
-// 422. oldPublic/newPublic are the type's public config before and after
-// the update.
-func checkChannelReentry(typ string, oldPublic, newPublic map[string]any, reusedSecret bool) error {
+// comment): typ's reentry field changing while any secret was reused
+// (kept from a stored value) is a 422. oldPublic/newPublic are the type's
+// public config before and after the update. Every type reentryField
+// covers has exactly one secret property (Registry.SecretKeys), so
+// "any secret reused" and "that one secret reused" are the same thing;
+// checkWebhookReentry is the counterpart for webhook, whose three secrets
+// need a finer-grained rule reused alone cannot express.
+func checkChannelReentry(typ string, oldPublic, newPublic map[string]any, reused map[string]bool) error {
 	field, ok := reentryField[typ]
-	if !ok || !reusedSecret {
+	if !ok || len(reused) == 0 {
 		return nil
 	}
 	ob, _ := json.Marshal(oldPublic[field])
 	nb, _ := json.Marshal(newPublic[field])
 	if !bytes.Equal(ob, nb) {
 		return &ValidationError{Field: "config." + field, Msg: "re-enter the secret"}
+	}
+	return nil
+}
+
+// checkWebhookReentry is checkChannelReentry's webhook-specific
+// counterpart (batch-2 review finding 3; Vault/R3 rationale, plan gap):
+// webhook's url is itself both the destination and its own secret, so
+// changing it to a fresh, genuinely different value while authHeader or
+// signingSecret are carried over unchanged would silently send that
+// stored credential to whatever new host the caller named — any
+// alerts:write holder could repoint a channel's url and have CertForge
+// hand it the previously configured Authorization header or signing key
+// on the next event. A no-op for every type but webhook (reentryField's
+// single-field shape cannot express "one secret field gates two others",
+// so this rule lives on its own rather than folded into reentryField).
+func checkWebhookReentry(typ string, oldSecret map[string]string, resolved map[string]any, reused map[string]bool) error {
+	if typ != TypeWebhook {
+		return nil
+	}
+	newURL, _ := resolved["url"].(string)
+	if newURL == "" || newURL == oldSecret["url"] {
+		return nil // kept, cleared (the schema's own "required" rejects that), or a fresh value identical to what's stored
+	}
+	if reused["authHeader"] || reused["signingSecret"] {
+		return &ValidationError{Field: "config.url", Msg: "re-enter the secret"}
 	}
 	return nil
 }

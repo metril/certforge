@@ -168,6 +168,14 @@ func (r *Registry) ValidateConfig(typ string, cfg map[string]any) error {
 
 // compileNotifierSchema compiles a notifier type's JSON Schema (the same
 // draft 2020-12 compiler internal/settings.Registry.Register uses).
+// AssertFormat is on: draft 2020-12 disables format assertions by default
+// unless the metaschema declares the format-assertion vocabulary, which
+// none of these schemas do — without it, smtp.channel.schema.json's
+// "to": {"format": "email"} silently accepted any string (batch-2 review
+// finding 4). A secret property is still never allowed "format" at all
+// (secretProps, above) — that restriction is about jsonschema echoing a
+// failed pattern/enum/const/format check's rejected value into its own
+// error text, unrelated to whether format is asserted in the first place.
 func compileNotifierSchema(typ string, raw []byte) (*jsonschema.Schema, error) {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
@@ -175,6 +183,7 @@ func compileNotifierSchema(typ string, raw []byte) (*jsonschema.Schema, error) {
 	}
 	url := "https://certforge.invalid/schemas/notifiers/" + typ + ".json"
 	c := jsonschema.NewCompiler()
+	c.AssertFormat()
 	if err := c.AddResource(url, doc); err != nil {
 		return nil, err
 	}

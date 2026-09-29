@@ -246,3 +246,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - SMTP email notifier and a send-test endpoint.
 - Notification channel management, send-test and the events list API.
 - Issuance, expiry, deployment and agent events feed notifications.
+- Phase 6A batch-2 review fixes: an SMTP send now aborts within its context's bound instead of only after its own (up to 60s) connection timeout; an ntfy channel with no stored token no longer needs one "re-entered" just because its server address changed; a webhook channel's `authHeader`/`signingSecret` can no longer silently carry over to a freshly changed `url`; a notification channel's `to`/email fields are now actually validated against their schema's email format.

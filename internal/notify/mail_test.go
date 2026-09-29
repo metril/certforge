@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/notify"
 )
@@ -200,5 +201,41 @@ func TestSMTPNonASCIISubjectEncoded(t *testing.T) {
 	}
 	if !strings.Contains(msgs[0].Data, "Subject: =?UTF-8?") {
 		t.Fatalf("subject not Q-encoded: %q", msgs[0].Data)
+	}
+}
+
+// TestSendMailCancelledContextAbortsWithinBound is batch-2 review finding
+// 1: SendMail used to dial with plain Dial/DialWithDialer and set a fresh
+// deadline only after the dial, so ctx was checked once up front and never
+// again — a caller's WithTimeout(ctx, 10*time.Second) (testChannel) never
+// actually bounded an smtp channel send, only the connection's own
+// (up to 60s) TimeoutSeconds. Against a server that accepts the connection
+// but never sends its greeting (so the client blocks reading it), SendMail
+// must now return once ctx is cancelled — well before the connection's own
+// much longer configured timeout — because conn is wired to ctx via
+// context.AfterFunc.
+func TestSendMailCancelledContextAbortsWithinBound(t *testing.T) {
+	srv := startFakeSMTP(t, fakeSMTPOptions{hang: true})
+	host, port := splitAddr(t, srv.Addr())
+	// A generous TimeoutSeconds: if the fix regresses to ignoring ctx after
+	// the dial, this test must fail by running (close to) the full 30s,
+	// not by coincidentally finishing quickly anyway.
+	cfg := notify.SMTPSettings{Host: host, Port: port, From: "certforge@example.test", Security: "none", TimeoutSeconds: 30}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	err := notify.SendMail(ctx, cfg, "", []string{"ops@example.test"}, "hi", "body\n")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("SendMail succeeded against a hung server, want an error once ctx was cancelled")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("SendMail took %v after ctx was cancelled at 200ms, want well under its 30s TimeoutSeconds", elapsed)
 	}
 }

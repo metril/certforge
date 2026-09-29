@@ -78,3 +78,24 @@ func TestSMTPNotifierSendsToConfiguredRecipients(t *testing.T) {
 		t.Fatalf("body missing kind/severity: %q", msgs[0].Data)
 	}
 }
+
+// TestSMTPValidateConfigRejectsBadEmail is batch-2 review finding 4:
+// smtp.channel.schema.json's "to" items are "format": "email", but
+// draft 2020-12 disables format assertions by default unless
+// AssertFormat/the format-assertion vocabulary is on — without that, any
+// string ("not-an-email") passed create/update's schema check. Covered
+// here through ValidateConfig directly (the same layer channel create/
+// update calls, task-6 brief), not a live channel create, since this is
+// purely a schema-compiler behaviour.
+func TestSMTPValidateConfigRejectsBadEmail(t *testing.T) {
+	reg := notify.NewRegistry()
+	reg.Register(notify.SMTP{Settings: func(context.Context) (notify.SMTPSettings, string, error) {
+		return notify.SMTPSettings{}, "", nil
+	}})
+	if err := reg.ValidateConfig(notify.TypeSMTP, map[string]any{"to": []any{"ops@example.test"}}); err != nil {
+		t.Errorf("a valid email was rejected: %v", err)
+	}
+	if err := reg.ValidateConfig(notify.TypeSMTP, map[string]any{"to": []any{"not-an-email"}}); err == nil {
+		t.Error("ValidateConfig accepted \"not-an-email\" for a to: {format: email} field")
+	}
+}

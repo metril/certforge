@@ -96,8 +96,8 @@ func TestMergeChannelConfigKeepsStoredSecretOnUnchanged(t *testing.T) {
 	resolved, reused := mergeChannelConfig(secretKeys, oldSecret, map[string]any{
 		"server": "https://ntfy.example.test", "topic": "a", "token": Unchanged,
 	})
-	if !reused {
-		t.Error("reusedSecret = false, want true")
+	if !reused["token"] {
+		t.Error("reused[token] = false, want true")
 	}
 	if resolved["token"] != "s3cr3t" {
 		t.Errorf("resolved token = %v, want the stored value", resolved["token"])
@@ -114,8 +114,8 @@ func TestMergeChannelConfigOmittedSecretKeepsStored(t *testing.T) {
 	secretKeys := []string{"token"}
 	oldSecret := map[string]string{"token": "s3cr3t"}
 	resolved, reused := mergeChannelConfig(secretKeys, oldSecret, map[string]any{"server": "https://ntfy.example.test", "topic": "a"})
-	if !reused {
-		t.Error("reusedSecret = false, want true (an omitted secret field still counts as kept)")
+	if !reused["token"] {
+		t.Error("reused[token] = false, want true (an omitted secret field still counts as kept)")
 	}
 	if resolved["token"] != "s3cr3t" {
 		t.Errorf("resolved token = %v, want the stored value kept", resolved["token"])
@@ -126,8 +126,8 @@ func TestMergeChannelConfigEmptyStringClearsSecret(t *testing.T) {
 	secretKeys := []string{"token"}
 	oldSecret := map[string]string{"token": "s3cr3t"}
 	resolved, reused := mergeChannelConfig(secretKeys, oldSecret, map[string]any{"server": "https://ntfy.example.test", "topic": "a", "token": ""})
-	if reused {
-		t.Error("reusedSecret = true, want false (an explicit clear is not a keep)")
+	if reused["token"] {
+		t.Error("reused[token] = true, want false (an explicit clear is not a keep)")
 	}
 	if _, ok := resolved["token"]; ok {
 		t.Errorf("resolved kept a field explicitly cleared with \"\": %v", resolved["token"])
@@ -141,35 +141,99 @@ func TestMergeChannelConfigEmptyStringClearsSecret(t *testing.T) {
 // freshly provided secret.
 func TestChannelReentryRule(t *testing.T) {
 	oldPublic := map[string]any{"server": "https://ntfy.old.test", "topic": "a"}
+	reused := map[string]bool{"token": true}
+	notReused := map[string]bool{}
 
 	// server changed, token reused: rejected.
 	newCfg := map[string]any{"server": "https://ntfy.new.test", "topic": "a", "token": "tok"}
-	if err := checkChannelReentry(TypeNtfy, oldPublic, newCfg, true); err == nil {
+	if err := checkChannelReentry(TypeNtfy, oldPublic, newCfg, reused); err == nil {
 		t.Error("changing server while reusing the secret was accepted")
 	}
 
 	// server unchanged, token reused: allowed.
 	sameCfg := map[string]any{"server": "https://ntfy.old.test", "topic": "b"}
-	if err := checkChannelReentry(TypeNtfy, oldPublic, sameCfg, true); err != nil {
+	if err := checkChannelReentry(TypeNtfy, oldPublic, sameCfg, reused); err != nil {
 		t.Errorf("server unchanged should be allowed while reusing the secret: %v", err)
 	}
 
-	// server changed, token freshly provided (reusedSecret=false): allowed.
-	if err := checkChannelReentry(TypeNtfy, oldPublic, newCfg, false); err != nil {
+	// server changed, token freshly provided (nothing reused): allowed.
+	if err := checkChannelReentry(TypeNtfy, oldPublic, newCfg, notReused); err != nil {
 		t.Errorf("server change with a fresh secret should be allowed: %v", err)
 	}
 
-	// A type with no reentry field (webhook: its whole URL is the secret
-	// itself) is never subject to this rule.
-	if err := checkChannelReentry(TypeWebhook, oldPublic, newCfg, true); err != nil {
-		t.Errorf("webhook has no reentry field, want nil, got %v", err)
+	// A type with no reentry field (discord: its whole URL is the secret
+	// itself, with no other secret alongside it) is never subject to this
+	// rule.
+	if err := checkChannelReentry(TypeDiscord, oldPublic, newCfg, reused); err != nil {
+		t.Errorf("discord has no reentry field, want nil, got %v", err)
+	}
+
+	// batch-2 review finding 2: an ntfy channel that never had a token
+	// stored must not need one "re-entered" just because its server
+	// changed — mergeChannelConfig's own reused map must have no entry for
+	// a key with nothing stored to reuse (Unchanged/omitted with no stored
+	// value is not "reusing a secret"), and checkChannelReentry, fed that,
+	// must allow the server change through.
+	resolved, gotReused := mergeChannelConfig([]string{"token"}, map[string]string{}, map[string]any{"server": "https://ntfy.new.test", "topic": "a"})
+	if gotReused["token"] {
+		t.Error("reused[token] = true for a secret field with nothing stored, want false")
+	}
+	if err := checkChannelReentry(TypeNtfy, oldPublic, resolved, gotReused); err != nil {
+		t.Errorf("server change on a channel with no stored token should be allowed: %v", err)
+	}
+}
+
+// TestWebhookReentryRule is batch-2 review finding 3: webhook's url is
+// itself the secret, so it has no reentryField entry — but it carries two
+// more secrets (authHeader, signingSecret) that must not silently travel
+// to a fresh, different url.
+func TestWebhookReentryRule(t *testing.T) {
+	oldSecret := map[string]string{"url": "https://hooks.old.test/a", "authHeader": "Bearer tok", "signingSecret": "s3cr3t-signing-key"}
+
+	// Fresh, different url; authHeader kept (Unchanged/omitted, reused):
+	// rejected.
+	reusedAuth := map[string]bool{"authHeader": true}
+	if err := checkWebhookReentry(TypeWebhook, oldSecret, map[string]any{"url": "https://hooks.new.test/a"}, reusedAuth); err == nil {
+		t.Error("fresh url with authHeader reused was accepted")
+	}
+
+	// Fresh, different url; signingSecret kept: rejected too.
+	reusedSigning := map[string]bool{"signingSecret": true}
+	if err := checkWebhookReentry(TypeWebhook, oldSecret, map[string]any{"url": "https://hooks.new.test/a"}, reusedSigning); err == nil {
+		t.Error("fresh url with signingSecret reused was accepted")
+	}
+
+	// Fresh, different url; authHeader and signingSecret both freshly
+	// resent (not reused): allowed.
+	fresh := map[string]any{"url": "https://hooks.new.test/a", "authHeader": "Bearer new", "signingSecret": "new-signing-key-1234"}
+	if err := checkWebhookReentry(TypeWebhook, oldSecret, fresh, map[string]bool{}); err != nil {
+		t.Errorf("fresh url with fresh authHeader/signingSecret should be allowed: %v", err)
+	}
+
+	// Fresh, different url; authHeader/signingSecret cleared (absent from
+	// resolved, not reused): allowed.
+	cleared := map[string]any{"url": "https://hooks.new.test/a"}
+	if err := checkWebhookReentry(TypeWebhook, oldSecret, cleared, map[string]bool{}); err != nil {
+		t.Errorf("fresh url with cleared authHeader/signingSecret should be allowed: %v", err)
+	}
+
+	// url itself kept (resolved to the same stored value): allowed, even
+	// with authHeader reused — nothing actually changed destination.
+	same := map[string]any{"url": oldSecret["url"]}
+	if err := checkWebhookReentry(TypeWebhook, oldSecret, same, reusedAuth); err != nil {
+		t.Errorf("url unchanged should be allowed regardless of authHeader: %v", err)
+	}
+
+	// A non-webhook type is never subject to this rule.
+	if err := checkWebhookReentry(TypeNtfy, oldSecret, map[string]any{"url": "https://hooks.new.test/a"}, reusedAuth); err != nil {
+		t.Errorf("checkWebhookReentry should be a no-op for a non-webhook type, got %v", err)
 	}
 }
 
 func TestChannelHomeAssistantReentryField(t *testing.T) {
 	oldPublic := map[string]any{"baseUrl": "https://ha.old.test:8123"}
 	newCfg := map[string]any{"baseUrl": "https://ha.new.test:8123"}
-	if err := checkChannelReentry(TypeHomeAssistant, oldPublic, newCfg, true); err == nil {
+	if err := checkChannelReentry(TypeHomeAssistant, oldPublic, newCfg, map[string]bool{"webhookId": true}); err == nil {
 		t.Error("changing baseUrl while reusing webhookId was accepted")
 	}
 }

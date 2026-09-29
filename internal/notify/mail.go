@@ -54,10 +54,14 @@ func tlsConfigForHost(host string) *tls.Config {
 // global resource rather than a per-channel URL a lower-privileged actor
 // could point anywhere, and are often local (a mailhog/postfix on the same
 // host), so loopback is always allowed here; only the cloud-metadata
-// blocklist inside DialControl still applies. cfg.TimeoutSeconds (or 10s
-// when unset) becomes the connection's single deadline (contract: "the
-// deadline is timeoutSeconds on the conn") — net/smtp has no context
-// support, so ctx is checked only before dialing starts, not during it.
+// blocklist inside DialControl still applies. The connection's single
+// deadline (contract: "the deadline is timeoutSeconds on the conn") is
+// min(now+cfg.TimeoutSeconds (or 10s when unset), ctx's own deadline when
+// it has one) — net/smtp itself has no context support, so ctx is also
+// wired directly onto the connection via context.AfterFunc(ctx, ...): a
+// cancelled or expired ctx closes conn immediately (batch-2 review),
+// unblocking whichever net/smtp call is in flight well before the
+// deadline, not just bounding the initial dial (DialContext/tls.Dialer).
 // Every returned error has password (and, incidentally, any occurrence of
 // it in a URL-escaped or path-escaped form) redacted, so a bad password
 // value can never surface through it (contract: "the password never
@@ -76,17 +80,32 @@ func SendMail(ctx context.Context, cfg SMTPSettings, password string, to []strin
 	var conn net.Conn
 	var err error
 	if cfg.Security == "tls" {
-		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfigForHost(cfg.Host))
+		tlsDialer := &tls.Dialer{NetDialer: dialer, Config: tlsConfigForHost(cfg.Host)}
+		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
 	} else {
-		conn, err = dialer.Dial("tcp", addr)
+		conn, err = dialer.DialContext(ctx, "tcp", addr)
 	}
 	if err != nil {
 		return redactSMTPErr(fmt.Errorf("notify: smtp: dial: %w", err), password)
 	}
-	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+
+	deadline := time.Now().Add(timeout)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
 		_ = conn.Close()
 		return redactSMTPErr(fmt.Errorf("notify: smtp: %w", err), password)
 	}
+	// Closes conn the moment ctx is done (cancelled or its own deadline
+	// passes), so every net/smtp call below — which takes no context of
+	// its own — is bounded by ctx too, not only by the fixed deadline just
+	// set (batch-2 review: testChannel's 10s WithTimeout must bound an
+	// smtp channel's whole exchange, not just its dial). stop() releases
+	// the AfterFunc registration once SendMail is about to return either
+	// way, so a completed call never leaves a live closer behind.
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	client, err := smtp.NewClient(conn, cfg.Host)
 	if err != nil {
