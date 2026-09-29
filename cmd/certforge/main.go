@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,8 +26,29 @@ func commands() []command {
 		{name: "bootstrap-admin", summary: "Reset (after setup) the local admin password", run: runBootstrapAdmin},
 		{name: "serve", summary: "Run the HTTP server", run: runServe},
 		{name: "healthcheck", summary: "Probe /readyz on the local listener", run: runHealthcheck},
+		{name: "backup", summary: "Write an encrypted backup archive", run: runBackup},
+		{name: "restore", summary: "Restore an encrypted backup archive (offline only)", run: runRestore},
 	}
 }
+
+// exitError lets a command exit with a code other than the default 1
+// without calling os.Exit itself, so run stays testable through its
+// return value. A nil err prints nothing to stderr (the command already
+// reported whatever it needed to on stdout); restore's "without --yes"
+// path uses this to exit 2 silently.
+type exitError struct {
+	code int
+	err  error
+}
+
+func (e *exitError) Error() string {
+	if e.err == nil {
+		return fmt.Sprintf("exit %d", e.code)
+	}
+	return e.err.Error()
+}
+
+func (e *exitError) Unwrap() error { return e.err }
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -50,6 +72,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			continue
 		}
 		if err := c.run(ctx, args[1:], stdout); err != nil {
+			var ee *exitError
+			if errors.As(err, &ee) {
+				if ee.err != nil {
+					fmt.Fprintf(stderr, "certforge %s: %v\n", c.name, ee.err)
+				}
+				return ee.code
+			}
 			fmt.Fprintf(stderr, "certforge %s: %v\n", c.name, err)
 			return 1
 		}

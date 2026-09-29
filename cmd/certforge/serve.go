@@ -21,6 +21,7 @@ import (
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/backup"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/crypto"
@@ -46,6 +47,14 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return err
 	}
 	defer pool.Close()
+	// The serve lock is taken before anything else touches the database
+	// (Deviations R6 / global-constraints: "before db.Migrate"), so a
+	// restore that starts between the two can never race a migration.
+	releaseServeLock, err := backup.AcquireServeLock(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("serve lock: %w", err)
+	}
+	defer releaseServeLock()
 	if err := db.Migrate(ctx, pool); err != nil {
 		return err
 	}

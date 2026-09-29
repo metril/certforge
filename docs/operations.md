@@ -96,6 +96,35 @@ A backup is a single self-contained `.cfbak` file: a magic string, a plaintext J
 
 **Key derivation.** The header is plaintext by design — identifying a backup (its date, its KEK id) needs no key — but every chunk's ciphertext is bound to it: the AAD is `sha256(magic‖header)‖chunk index‖final flag`, so a byte flipped anywhere in the header, a dropped final chunk, a reordered chunk or trailing garbage all fail AES-GCM authentication instead of silently decrypting something else. The stream key itself is `DeriveKey(DeriveKey(root, "certforge-backup"), hex(salt))` — two HKDF-SHA256 steps off the same root secret every other derived key comes from (`security.md#root-secret`), never off the KEK's raw bytes, and never reused across two backups since the salt is fresh every time.
 
-**KEK escrow.** Restoring a backup needs the same KEK (active or previous) that sealed it: `Header.RootSealed` is the raw sealed `crypto.root` row, and restore's very first step is proving the configured KEK can unseal that exact value, before touching the database at all. A KEK that is lost entirely makes every backup taken under it permanently unrestorable — there is no recovery path around this, by design (`security.md#kek-handling`). Escrow the KEK before relying on backups; the API (Task 12) refuses to create one until that escrow is confirmed.
+**KEK escrow.** Restoring a backup needs the same KEK (active or previous) that sealed it: `Header.RootSealed` is the raw sealed `crypto.root` row, and restore's very first step is proving the configured KEK can unseal that exact value, before touching the database at all. A KEK that is lost entirely makes every backup taken under it permanently unrestorable — there is no recovery path around this, by design (`security.md#kek-handling`). Escrow the KEK before relying on backups; both the CLI and the API refuse to create one until that escrow is confirmed.
 
 **Restore.** Restore migrates the target database up to `max(header.MigrationVersion, 13)` — migration 13 is the first version whose foreign keys are all `DEFERRABLE`, which restoring depends on — then loads every table inside one transaction with `SET CONSTRAINTS ALL DEFERRED`, verifying each one's row count and content hash against the archive's own manifest before it will commit. Before commit, the freshly loaded `crypto.root` row must equal the header's byte for byte and the canary must still open under the configured KEK; either failure rolls the whole transaction back, so a wrong KEK, a truncated file, or a tampered archive never leaves the database partially loaded. `audit_events` is append-only even to a restore (`internal/db/migrations/00001_init.sql`'s triggers refuse to truncate or delete it under any role) — its rows are still loaded, as inserts on top of whatever the target already had, never replacing history.
+
+**CLI: `certforge backup`.**
+
+```
+certforge backup --out <path|-> [--kek-escrowed]
+```
+
+Streams one archive to `--out` (a `.tmp` file next to it, renamed into place on success — a reader never sees a partial file at the final name) or to stdout with `--out -`. Refuses with a redacted, plain-text error and writes nothing if the `backup` settings section's `kekEscrowConfirmed` is off; `--kek-escrowed` overrides that check for one run (for example scripting a first backup before the setting has been saved through the UI). `backup` takes no advisory lock and runs safely alongside a live server — it only opens a read-only snapshot transaction, the same one the scheduled job (`docs/operations.md#backup-schedule`) uses.
+
+## Restore {#restore}
+
+Restore is CLI-only — there is no HTTP restore endpoint — and it is the one operation that requires the server to be stopped first:
+
+```
+certforge restore --in <path|-> [--yes]
+```
+
+1. **Stop the server.** `restore` takes `ServeLockKey` exclusively; a running `serve` process holds it shared, so restore refuses immediately with "a certforge server is running against this database; stop it first" (`internal/backup.ErrServerRunning`) rather than blocking. Conversely, `serve` cannot start while a restore is mid-flight — its own shared-lock attempt (`pg_try_advisory_lock_shared`) also fails immediately, with "a restore holds the database lock", rather than waiting for the restore to finish.
+2. **Preview, then confirm.** Without `--yes`, restore only reads the archive's plaintext header — no database connection is opened at all — and prints `createdAt`, `appVersion`, `migrationVersion` and `activeKekId`, then exits 2. Re-run with `--yes` once that header is the one you expect.
+3. **Restore.** With `--yes`, restore also refuses a target database whose `audit_events` table is not empty ("restore into a fresh database"): point it at a fresh, never-booted database, not one already in service. It unseals the archive with the configured KEK (active, or any configured previous KEK), refusing with nothing written if none matches (`internal/backup.ErrKEKMismatch`) — the same KEK escrow that sealed the backup is what makes restoring it onto a replacement host possible. On success it appends `restore.completed` (`archiveCreatedAt`, `migrationVersion`, `tables`) to the audit chain as the `cli` actor.
+4. **Start the server.** Once restore reports success, `certforge serve` can start normally against the restored database.
+
+Piped through a compose service:
+
+```
+docker compose run --rm -T certforge restore --in - --yes < backup.cfbak
+```
+
+(`-T` disables the pseudo-TTY compose would otherwise allocate, which would corrupt the binary stream on stdin.)
