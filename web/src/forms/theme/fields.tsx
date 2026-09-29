@@ -1,5 +1,6 @@
 import type { FieldProps, RegistryFieldsType } from '@rjsf/utils';
 import { ListInput } from '@/components/ListInput';
+import { HeadersField } from '@/features/alerts/HeadersField';
 
 // A plain array-of-string field (no `enum`, so SelectWidget's ChipSet path
 // doesn't apply — e.g. authentication's `scopes` and `trustedProxies`) maps
@@ -29,4 +30,5 @@ function ListArrayField({ fieldPathId, formData, onChange, schema, uiSchema, dis
 
 export const fields: RegistryFieldsType = {
   listArray: ListArrayField,
+  headers: HeadersField,
 };

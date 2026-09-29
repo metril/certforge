@@ -393,6 +393,45 @@ export const help = {
     text: 'Events from the last 90 days and where each one was delivered.',
     learnMore: 'notifications.md#events',
   },
+  // Task 3 (Phase 6B): the channel sheet and Send test.
+  'channel.type': {
+    text: 'How the channel delivers events. The type is fixed once the channel exists.',
+    learnMore: 'notifications.md#channels',
+  },
+  'channel.events': {
+    text: 'Only these events are sent. With none selected, every event is sent.',
+    learnMore: 'notifications.md#events',
+  },
+  'channel.minSeverity': {
+    text: 'Events below this severity are not sent to this channel.',
+    learnMore: 'notifications.md#events',
+  },
+  'channel.enabled': { text: 'A disabled channel gets no events. Send test still works.' },
+  'channel.test': {
+    text: 'Sends a test event to the saved channel now and shows the result.',
+    learnMore: 'notifications.md#channels',
+  },
+  'channel.testSaved': { text: 'Tests the saved channel. Save your changes first.' },
+  'notifier.webhook': {
+    text: 'Posts each event as JSON. A signing secret lets the receiver verify it.',
+    learnMore: 'notifications.md#signature',
+  },
+  'notifier.smtp': {
+    text: 'Sends plain-text email through the SMTP server in Settings → Integrations.',
+    learnMore: 'notifications.md#smtp',
+  },
+  'notifier.discord': {
+    text: 'Posts one embed per event to a Discord channel webhook.',
+    learnMore: 'notifications.md#discord',
+  },
+  'notifier.ntfy': {
+    text: 'Publishes to an ntfy topic, with priority set by severity.',
+    learnMore: 'notifications.md#ntfy',
+  },
+  'notifier.homeassistant': {
+    text: 'Triggers a Home Assistant webhook automation with the event JSON.',
+    learnMore: 'notifications.md#home-assistant',
+  },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

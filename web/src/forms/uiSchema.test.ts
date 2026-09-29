@@ -60,3 +60,23 @@ it('keeps a maxLength-200 string field a single-line input, not a textarea', () 
   const s = { type: 'object', properties: { clientId: { type: 'string', title: 'Client ID', maxLength: 200 } } } as unknown as RJSFSchema;
   expect(buildUiSchema(s).clientId).toBeUndefined();
 });
+
+// Task 3 (Phase 6B): the webhook notifier's `headers` property is an object
+// keyed by header name (patternProperties, additionalProperties: false, no
+// fixed `properties`) — it must route to the ChannelSheet's HeadersField,
+// not RJSF's default per-property ObjectField.
+it('headers maps to HeadersField', () => {
+  const s = {
+    type: 'object',
+    properties: {
+      headers: {
+        type: 'object',
+        title: 'Extra headers',
+        maxProperties: 20,
+        additionalProperties: false,
+        patternProperties: { '^[A-Za-z0-9-]{1,64}$': { type: 'string', maxLength: 1024 } },
+      },
+    },
+  } as unknown as RJSFSchema;
+  expect(buildUiSchema(s).headers).toEqual({ 'ui:field': 'headers' });
+});

@@ -322,8 +322,8 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | API layer, libs, permissions, fixtures, HealthStrip | done | 58161df |
-| 2 | Alerts shell and channels table | done | pending |
-| 3 | Channel sheet and Send test | planned | – |
+| 2 | Alerts shell and channels table | done | 9ad1062 |
+| 3 | Channel sheet and Send test | done | pending |
 | 4 | Monitors | planned | – |
 | 5 | Events log | planned | – |
 | 6 | Settings → Integrations: Email, Notifications, Prometheus | planned | – |

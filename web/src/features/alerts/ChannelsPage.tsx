@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Globe, Plus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { canWriteChannel, toChannelInput, TYPE_META } from '@/lib/channels';
@@ -23,6 +24,7 @@ import { useMe, useOrg } from '@/lib/org';
 import { can, isGlobalAdmin } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { ChannelSheet } from './ChannelSheet';
 import { DeliveryChip } from './DeliveryChip';
 
 const col = createColumnHelper<Channel>();
@@ -205,6 +207,7 @@ export function ChannelsPage() {
   const org = useOrg();
   const me = useMe();
   const isMdUp = useMediaQuery('(min-width: 768px)');
+  const { edit } = useSearch({ from: '/_app/o/$org/alerts/channels' });
   const navigate = useNavigate({ from: '/o/$org/alerts/channels' });
   const q = useQuery(channelsQuery(org.id));
   const channels = q.data ?? [];
@@ -213,6 +216,8 @@ export function ChannelsPage() {
   const addAllowed = canWrite && !atLimit;
   const openSheet = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, edit: id }), replace: id === undefined });
   const columns = useMemo(() => channelColumns(me, org), [me, org]);
+  const editing = channels.find((c) => c.id === edit);
+  const editNotFound = !q.isPending && !q.isError && !!edit && edit !== 'new' && !editing;
 
   const add = (
     <PermissionTip allowed={addAllowed} action="alerts:write" reason={!canWrite ? undefined : atLimit ? help['channel.limit'].text : undefined}>
@@ -244,6 +249,23 @@ export function ChannelsPage() {
             </div>
           )}
         </>
+      )}
+      {(edit === 'new' || editing) && (
+        // Mount only once the channel is loaded so the sheet initialises from it.
+        <ChannelSheet key={edit} orgId={org.id} open channel={editing} onOpenChange={(o) => !o && openSheet(undefined)} />
+      )}
+      {editNotFound && (
+        <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
+          <SheetContent side="right" className="w-full sm:max-w-lg">
+            <SheetHeader>
+              <SheetTitle>Channel not found</SheetTitle>
+              <SheetDescription>It may have been deleted.</SheetDescription>
+            </SheetHeader>
+            <div className="px-4">
+              <Button onClick={() => openSheet(undefined)}>Back to channels</Button>
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
     </div>
   );

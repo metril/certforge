@@ -15,6 +15,15 @@ function isPlainStringArray(p: Prop): boolean {
   return p.type === 'array' && typeof items === 'object' && !Array.isArray(items) && items.type === 'string' && items.enum === undefined;
 }
 
+// An object field keyed by an arbitrary name (`patternProperties`/
+// `additionalProperties`, no fixed `properties`) — the webhook notifier's
+// `headers` (internal/notify/webhook.schema.json) — maps to the ChannelSheet's
+// HeadersField (name/value rows) instead of RJSF's default per-property
+// ObjectField, which has no way to add or name a property at all.
+function isHeaderMap(p: Prop): boolean {
+  return p.type === 'object' && !p.properties && (typeof p.patternProperties === 'object' || typeof p.additionalProperties === 'object');
+}
+
 function props(schema: RJSFSchema): [string, Prop][] {
   return Object.entries(schema.properties ?? {}).filter((e): e is [string, Prop] => typeof e[1] === 'object');
 }
@@ -75,6 +84,8 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
       ui[key] = { ...base, 'ui:widget': 'textarea' };
     } else if (isPlainStringArray(p)) {
       ui[key] = { ...base, 'ui:field': 'listArray' };
+    } else if (isHeaderMap(p)) {
+      ui[key] = { ...base, 'ui:field': 'headers' };
     } else if (Object.keys(base).length > 0) {
       ui[key] = base;
     }
