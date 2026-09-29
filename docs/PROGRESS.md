@@ -301,8 +301,8 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | Schema, settings sections, authz | done | pending |
-| 2 | OpenAPI contract and generated client | planned | – |
+| 1 | Schema, settings sections, authz | done | f8f24b6 |
+| 2 | OpenAPI contract and generated client | done | pending |
 | 3 | Event model, emitter, delivery, httpx | planned | – |
 | 4 | HTTP notifiers | planned | – |
 | 5 | SMTP notifier and SMTP test | planned | – |

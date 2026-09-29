@@ -23,7 +23,7 @@ const KIND_LABEL: Record<'static' | 'vault-transit', string> = {
   'vault-transit': 'Vault Transit',
 };
 
-// Visit order (5B Shared contracts, RewrapTable enum).
+// Visit order (5B/6A Shared contracts, RewrapTable enum).
 const TABLE_LABEL: Record<RewrapTable, string> = {
   settings: 'Settings',
   cas: 'CAs',
@@ -32,6 +32,7 @@ const TABLE_LABEL: Record<RewrapTable, string> = {
   output_specs: 'Output specs',
   agent_cas: 'Agent CAs',
   certificate_versions: 'Certificate versions',
+  notification_channels: 'Notification channels',
 };
 
 const SpinIcon = forwardRef<SVGSVGElement, LucideProps>(function SpinIcon(props, ref) {

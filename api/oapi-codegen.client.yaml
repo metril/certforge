@@ -1,0 +1,11 @@
+package: client
+output: internal/api/client/client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true
+  # The Client schema (an enrolled agent, Shared contracts) would otherwise
+  # collide with oapi-codegen's own generated HTTP client type, both named
+  # Client in this package.
+  client-type-name: APIClient

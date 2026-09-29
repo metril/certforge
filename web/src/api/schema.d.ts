@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/server-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server version
+         * @description The running server's version, for cfctl status and support requests. Any authenticated principal.
+         */
+        get: operations["getServerInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs": {
         parameters: {
             query?: never;
@@ -325,6 +345,26 @@ export interface paths {
          * @description Needs settings:write. Logs in to Vault (or OpenBao) with the given settings and reports the outcome, using the same authMethod pairing and address/namespace rules as PUT /settings/vault. A secret field (token, secretId) omitted or __unchanged__ uses the currently stored value, unless address or namespace changed, which is 422 ("re-enter the token"). Always 200 once the request is well-formed; ok false carries the error. Not recorded in the audit log.
          */
         post: operations["testVaultSettings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/smtp/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test email
+         * @description Needs settings:write. Sends a test email through the saved "smtp" section (host, port, username, security and timeout come from storage; only the recipient is taken from the request body). 422 "SMTP is not configured" when the saved section's host is empty. Always 200 once the request is well-formed; ok false carries the redacted error. Recorded as smtp.test (ok).
+         */
+        post: operations["testSmtpSettings"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1829,6 +1869,239 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List notification channels
+         * @description The org's own channels plus other orgs' allOrgs channels, visible only to a global admin. Needs alerts:read.
+         */
+        get: operations["listChannels"];
+        put?: never;
+        /**
+         * Add a notification channel
+         * @description Needs alerts:write. config is validated against the notifier's schema from GET /meta/schemas notifiers; secret fields (schema secret true) are stored encrypted. allOrgs true additionally needs a global admin (403 "all-orgs channels need a global admin"). At most 50 channels per org (422). Recorded as channel.create {channelId, type, allOrgs} (never config).
+         */
+        post: operations["createChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/channels/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a notification channel
+         * @description Secrets are never returned; see storedSecrets. Needs alerts:read.
+         */
+        get: operations["getChannel"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a notification channel
+         * @description Needs alerts:write. Recorded as channel.delete {channelId, type, allOrgs}.
+         */
+        delete: operations["deleteChannel"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a notification channel
+         * @description Needs alerts:write. type is immutable (422 "type cannot change"). A secret config field sent as __unchanged__ or left out keeps the stored value; changing a readable field a secret depends on (for example webhook url, homeassistant baseUrl) while that secret is __unchanged__ is 422 "re-enter the secret". allOrgs true additionally needs a global admin (403 "all-orgs channels need a global admin"). Recorded as channel.update {channelId, type, allOrgs} (never config).
+         */
+        patch: operations["updateChannel"];
+        trace?: never;
+    };
+    "/orgs/{orgId}/channels/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test notification
+         * @description Needs alerts:write. Sends a kind test event to this channel only, inline, bounded to 10 seconds; allowed even while the channel is disabled. Recorded as channel.test {channelId, type, allOrgs}.
+         */
+        post: operations["testChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/monitors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List external monitors
+         * @description The org's monitors. Needs alerts:read.
+         */
+        get: operations["listMonitors"];
+        put?: never;
+        /**
+         * Add an external monitor
+         * @description Needs alerts:write. At most 500 monitors per org (422). Recorded as monitor.create {monitorId, host, port}.
+         */
+        post: operations["createMonitor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/monitors/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get an external monitor
+         * @description Needs alerts:read.
+         */
+        get: operations["getMonitor"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an external monitor
+         * @description Needs alerts:write. Recorded as monitor.delete {monitorId, host, port}.
+         */
+        delete: operations["deleteMonitor"];
+        options?: never;
+        head?: never;
+        /**
+         * Update an external monitor
+         * @description Needs alerts:write. Changing host, port, sni or expectedCertificateId resets state to unknown and nextCheckAt to now, so the change is observed on the next scan. Recorded as monitor.update {monitorId, host, port}.
+         */
+        patch: operations["updateMonitor"];
+        trace?: never;
+    };
+    "/orgs/{orgId}/monitors/{id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a monitor now
+         * @description Needs alerts:write. Runs the check inline, bounded to 15 seconds, and returns the updated monitor. Recorded as monitor.check {monitorId, host, port}.
+         */
+        post: operations["checkMonitor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List events
+         * @description The org's own events plus global (orgId null) events, newest first, keyset paginated. Needs alerts:read. Duplicate conditions are suppressed at emission time, not here, so every event returned already passed the server's own dedupe rule (see docs/notifications.md#dedupe); this endpoint never de-duplicates on its own.
+         */
+        get: operations["listEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create and download a backup
+         * @description Needs settings:write. Streams an encrypted archive of the whole database, table by table, as it is written. 409 "confirm KEK escrow first" unless the backup section's kekEscrowConfirmed is true. Recorded as backup.created {sizeBytes} once streaming completes, or backup.failed {error} (system actor) if it fails partway through. Restoring is CLI-only: no restore over HTTP; see operations.md#restore.
+         */
+        post: operations["createBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Backup schedule and history
+         * @description Needs settings:read. The configured schedule, escrow confirmation, and the most recent scheduled or on-demand outcome.
+         */
+        get: operations["getBackupStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2076,10 +2349,10 @@ export interface components {
             kekId: string;
         };
         /**
-         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together.
+         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked last.
          * @enum {string}
          */
-        RewrapTable: "settings" | "cas" | "acme_accounts" | "dns_provider_credentials" | "output_specs" | "agent_cas" | "certificate_versions";
+        RewrapTable: "settings" | "cas" | "acme_accounts" | "dns_provider_credentials" | "output_specs" | "agent_cas" | "certificate_versions" | "notification_channels";
         /** @description Rewrap progress for one table. */
         RewrapTableStatus: {
             table: components["schemas"]["RewrapTable"];
@@ -3861,6 +4134,337 @@ export interface components {
             /** @description Cursor for the next page; null on the last page. */
             nextCursor?: string | null;
         };
+        /**
+         * @description Notification channel kind; matches a code from GET /meta/schemas notifiers. Immutable after create.
+         * @enum {string}
+         */
+        ChannelType: "webhook" | "smtp" | "discord" | "ntfy" | "homeassistant";
+        /**
+         * @description Outcome of one delivery attempt to one channel.
+         * @enum {string}
+         */
+        DeliveryStatus: "pending" | "delivered" | "failed";
+        /** @description A channel's most recent delivery attempt, across every event. */
+        ChannelLastDelivery: {
+            status: components["schemas"]["DeliveryStatus"];
+            /**
+             * Format: date-time
+             * @description When the attempt finished.
+             */
+            at: string;
+            /** @description Why it failed; absent on success. Redacted of every secret value. */
+            error?: string;
+        };
+        /** @description A configured notification channel (Shared contracts, Channel schema). */
+        Channel: {
+            /**
+             * Format: uuid
+             * @description Channel id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /** @description Unique name in the org. */
+            name: string;
+            type: components["schemas"]["ChannelType"];
+            /** @description non-secret display line computed by the server */
+            summary: string;
+            /** @description Non-secret notifier config fields (from GET /meta/schemas notifiers) */
+            config: {
+                [key: string]: unknown;
+            };
+            /** @description Secret config fields held for this channel */
+            storedSecrets: string[];
+            /** @description Kinds this channel receives; empty means every kind. */
+            events: components["schemas"]["EventKind"][];
+            minSeverity: components["schemas"]["Severity"];
+            /** @description Also receives every other org's matching events. Global-admin only. */
+            allOrgs: boolean;
+            /** @description Delivers events; a disabled channel can still be tested. */
+            enabled: boolean;
+            /** @description The channel's most recent delivery attempt; null before its first event or test. */
+            lastDelivery: components["schemas"]["ChannelLastDelivery"] | null;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
+        };
+        /** @description Fields to create or update a channel. */
+        ChannelInput: {
+            /** @description Unique name in the org. */
+            name: string;
+            /** @description Channel kind. Immutable after create (422 "type cannot change"). */
+            type: components["schemas"]["ChannelType"];
+            /** @description Notifier config fields */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Kinds this channel receives; empty (the default) means every kind.
+             * @default []
+             */
+            events: components["schemas"]["EventKind"][];
+            /**
+             * @description Only events at or above this severity. Default info.
+             * @default info
+             */
+            minSeverity: components["schemas"]["Severity"];
+            /**
+             * @description Also receive every other org's matching events. Needs a global admin (403 "all-orgs channels need a global admin" otherwise). Default false.
+             * @default false
+             */
+            allOrgs: boolean;
+            /**
+             * @description Delivers events. Default true.
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** @description Outcome of one inline delivery, from testChannel or testSmtpSettings. */
+        DeliveryResult: {
+            /** @description delivered or failed; an inline test never returns pending. */
+            status: components["schemas"]["DeliveryStatus"];
+            /** @description Why it failed; absent on success. Redacted of every secret value. */
+            error?: string;
+            /** @description Wall time the attempt took */
+            durationMs: number;
+        };
+        /**
+         * @description What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+         * @enum {string}
+         */
+        EventKind: "cert.issued" | "cert.renewal_failed" | "cert.expiring" | "cert.expired" | "deploy.failed" | "deploy.drift" | "client.offline" | "agent.cert_expiring" | "monitor.mismatch" | "monitor.unreachable" | "monitor.expiring" | "monitor.recovered" | "backup.completed" | "backup.failed" | "test";
+        /**
+         * @description How serious an event is.
+         * @enum {string}
+         */
+        Severity: "info" | "warning" | "critical";
+        /**
+         * @description Kind of object an event is about.
+         * @enum {string}
+         */
+        EventResourceType: "certificate" | "grant" | "client" | "monitor" | "backup" | "channel";
+        /** @description The object an event is about. */
+        EventResource: {
+            type: components["schemas"]["EventResourceType"];
+            /** @description Object id; empty for a resource that no longer exists. */
+            id: string;
+            /** @description Object display name at the time of the event. */
+            name: string;
+        };
+        /** @description One channel's delivery outcome for an event. */
+        EventDelivery: {
+            /**
+             * Format: uuid
+             * @description Channel this delivery targets.
+             */
+            channelId: string;
+            /** @description Channel name at delivery time. */
+            channelName: string;
+            status: components["schemas"]["DeliveryStatus"];
+            /** @description Delivery attempts made so far. */
+            attempts: number;
+            /** @description Most recent failure reason; null after success or before any attempt. Redacted of every secret value. */
+            lastError: string | null;
+            /**
+             * Format: date-time
+             * @description When delivery succeeded; null while pending or failed.
+             */
+            deliveredAt: string | null;
+        };
+        /** @description One notification event (Shared contracts, Other operations and Dedupe keys rows). Duplicate conditions are suppressed once at emission time (docs/notifications.md#dedupe); every event on this feed already passed that check. */
+        Event: {
+            /**
+             * Format: uuid
+             * @description Event id.
+             */
+            id: string;
+            kind: components["schemas"]["EventKind"];
+            /**
+             * Format: date-time
+             * @description When it happened.
+             */
+            at: string;
+            /**
+             * Format: uuid
+             * @description Owning org; null for a global event
+             */
+            orgId: string | null;
+            severity: components["schemas"]["Severity"];
+            resource: components["schemas"]["EventResource"];
+            /** @description Human-readable one-line summary. */
+            summary: string;
+            /** @description Event-specific fields, for example a certificate's notAfter or a monitor's fingerprint. Never carries key material, KEK ids or Vault addresses. */
+            details: {
+                [key: string]: unknown;
+            };
+            /** @description Delivery outcome per matched channel. */
+            deliveries: components["schemas"]["EventDelivery"][];
+        };
+        /** @description One page of events (Shared contracts, Other operations row). */
+        EventPage: {
+            /** @description Events */
+            items: components["schemas"]["Event"][];
+            /** @description Cursor for the next (older) page; null on the last page. */
+            nextCursor: string | null;
+        };
+        /**
+         * @description A monitor's most recently observed state; unknown before its first check.
+         * @enum {string}
+         */
+        MonitorState: "unknown" | "ok" | "mismatch" | "expiring" | "unreachable";
+        /** @description A TLS endpoint CertForge polls on a schedule (Shared contracts, Monitor operations row). */
+        Monitor: {
+            /**
+             * Format: uuid
+             * @description Monitor id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /** @description Unique name in the org. */
+            name: string;
+            /** @description Hostname or IP address to connect to. */
+            host: string;
+            /** @description TCP port to connect to. */
+            port: number;
+            /** @description TLS server name to send; null uses host. */
+            sni: string | null;
+            /** @description Seconds between scheduled checks. */
+            intervalSeconds: number;
+            /**
+             * Format: uuid
+             * @description A CertForge certificate the observed leaf is compared against; null skips the mismatch check.
+             */
+            expectedCertificateId: string | null;
+            /** @description That certificate's name */
+            expectedCertificateName: string | null;
+            /** @description Checked on the scan schedule and countable toward the org's monitor limit. */
+            enabled: boolean;
+            state: components["schemas"]["MonitorState"];
+            /**
+             * Format: date-time
+             * @description When the most recent check ran; null before the first check.
+             */
+            lastCheckedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the next scheduled check is due.
+             */
+            nextCheckAt: string | null;
+            /** @description SHA-256 fingerprint (hex) of the observed leaf; null before the first successful check. */
+            lastFingerprint: string | null;
+            /**
+             * Format: date-time
+             * @description Expiry of the observed leaf; null before the first successful check.
+             */
+            lastNotAfter: string | null;
+            /** @description Issuer of the observed leaf; null before the first successful check. */
+            lastIssuer: string | null;
+            /** @description Most recent check failure; null after a successful check or before any check. */
+            lastError: string | null;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
+        };
+        /** @description Fields to create or update a monitor. */
+        MonitorInput: {
+            /** @description Unique name in the org. */
+            name: string;
+            /** @description Hostname or IP address to connect to. */
+            host: string;
+            /**
+             * @description TCP port to connect to. Default 443.
+             * @default 443
+             */
+            port: number;
+            /** @description TLS server name to send; omitted or null uses host. */
+            sni?: string | null;
+            /**
+             * @description Seconds between scheduled checks. Default 3600.
+             * @default 3600
+             */
+            intervalSeconds: number;
+            /**
+             * Format: uuid
+             * @description A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null skips the mismatch check.
+             */
+            expectedCertificateId?: string | null;
+            /**
+             * @description Checked on the scan schedule. Default true.
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /**
+         * @description The scheduled backup cadence (settings section backup, field schedule).
+         * @enum {string}
+         */
+        BackupSchedule: "off" | "daily" | "weekly";
+        /** @description Backup configuration and the most recent outcome (Shared contracts, Other operations row). */
+        BackupStatus: {
+            schedule: components["schemas"]["BackupSchedule"];
+            /** @description The backup section's kekEscrowConfirmed; createBackup and the scheduled job both require this before writing an archive. */
+            escrowConfirmed: boolean;
+            /** @description Where scheduled backups are written; null while schedule is off. */
+            directory: string | null;
+            /**
+             * Format: date-time
+             * @description When a backup (scheduled or on demand) last completed; null if none ever has.
+             */
+            lastSuccessAt: string | null;
+            /**
+             * Format: date-time
+             * @description When a backup last failed; null if none ever has.
+             */
+            lastFailureAt: string | null;
+            /** @description The last failure's reason; null after a success or before any attempt. */
+            lastError: string | null;
+            /**
+             * Format: int64
+             * @description Size of the last successful archive
+             */
+            lastSizeBytes: number | null;
+            /** @description File name of the last successful scheduled archive; null for an on-demand download or before any scheduled backup. */
+            lastFile: string | null;
+            /**
+             * Format: date-time
+             * @description When the next scheduled backup is due; null while schedule is off.
+             */
+            nextAt: string | null;
+        };
+        /** @description Recipient for testSmtpSettings. */
+        SmtpTestRequest: {
+            /**
+             * Format: email
+             * @description Address to send the test email to.
+             */
+            to: string;
+        };
+        /** @description The running server's identity. */
+        ServerInfo: {
+            /** @description Build version string */
+            version: string;
+        };
     };
     responses: {
         /** @description Malformed request, query parameter, or JSON body. */
@@ -4021,6 +4625,12 @@ export interface components {
         ClientSort: string;
         /** @description Hard-delete a removal-pending or still-live grant at once instead of waiting for the agent to confirm the files are gone; audited with forced true. */
         GrantForce: boolean;
+        /** @description Only these kinds; repeat the parameter for more than one. Omit for every kind. */
+        EventKindFilter: components["schemas"]["EventKind"][];
+        /** @description Only events at or above this severity. */
+        EventSeverityFilter: components["schemas"]["Severity"];
+        /** @description Only events at or after this time. */
+        EventSince: string;
     };
     requestBodies: never;
     headers: never;
@@ -4096,6 +4706,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaSchemas"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getServerInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server info. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerInfo"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -4550,6 +5183,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VaultTestResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    testSmtpSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmtpTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Delivery result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryResult"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -7402,6 +8066,464 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditChainStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Channels. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The channel. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    testChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Delivery result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listMonitors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Monitors. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Monitor"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createMonitor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonitorInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Monitor"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getMonitor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The monitor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Monitor"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteMonitor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateMonitor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonitorInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Monitor"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    checkMonitor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The checked monitor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Monitor"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listEvents: {
+        parameters: {
+            query?: {
+                /** @description Only these kinds; repeat the parameter for more than one. Omit for every kind. */
+                kind?: components["parameters"]["EventKindFilter"];
+                /** @description Only events at or above this severity. */
+                severity?: components["parameters"]["EventSeverityFilter"];
+                /** @description Only events at or after this time. */
+                since?: components["parameters"]["EventSince"];
+                /** @description nextCursor from the previous page. */
+                cursor?: components["parameters"]["ListCursor"];
+            };
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The backup archive. */
+            200: {
+                headers: {
+                    /** @description attachment; filename="certforge-<yyyymmddThhmmssZ>.cfbak" */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getBackupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Backup status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupStatus"];
                 };
             };
             401: components["responses"]["Unauthorized"];

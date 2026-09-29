@@ -17,6 +17,7 @@ Browser sign-in: GET /auth/oidc/start (single sign-on) or POST /auth/login (loca
 | `keys:export` | download `key` or `combined` (audited) | global admin |
 | `clients:read` / `clients:write` | clients, grants, deployments, hook runs | all / admin, org-admin, operator |
 | `delivery:read` / `delivery:write` | layouts, deploy targets, hooks | viewer and up / admin, org-admin, operator |
+| `alerts:read` / `alerts:write` | notification channels, monitors, events (Phase 6A; 501 today except getServerInfo) | viewer and up / admin, org-admin, operator |
 
 certforge-agent does not call this API. It talks to `/agent/v1/*` on the agent listener (CF_LISTEN_AGENT) with its client certificate; see architecture.md → Agent protocol.
 
@@ -110,6 +111,21 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET /agents/ca` | list agent CAs and the listener certificate |
 | `POST /agents/ca/rotate` | rotate the agent CA |
 | `POST /agents/ca/{id}/retire` | retire an agent CA |
+| `GET, POST /orgs/{orgId}/channels` | list, add notification channels (arriving in Phase 6A; 501 today) |
+| `GET, PATCH, DELETE /orgs/{orgId}/channels/{id}` | read, update, delete a channel (arriving in Phase 6A; 501 today) |
+| `POST /orgs/{orgId}/channels/{id}/test` | send a test notification (arriving in Phase 6A; 501 today) |
+| `GET, POST /orgs/{orgId}/monitors` | list, add external TLS monitors (arriving in Phase 6A; 501 today) |
+| `GET, PATCH, DELETE /orgs/{orgId}/monitors/{id}` | read, update, delete a monitor (arriving in Phase 6A; 501 today) |
+| `POST /orgs/{orgId}/monitors/{id}/check` | check a monitor now (arriving in Phase 6A; 501 today) |
+| `GET /orgs/{orgId}/events` | filtered, keyset-paginated event feed (arriving in Phase 6A; 501 today) |
+| `POST /settings/smtp/test` | send a test email through the saved SMTP section (arriving in Phase 6A; 501 today) |
+| `POST /backup` | stream an encrypted database backup (arriving in Phase 6A; 501 today) |
+| `GET /backup/status` | backup schedule and last outcome (arriving in Phase 6A; 501 today) |
+| `GET /server-info` | running server version; any authenticated principal (Phase 6A) |
+
+`GET /metrics` (not under `/api/v1`, outside the OpenAPI document, like `/crl` above) is a Prometheus scrape target, gated by the `prometheus` settings section; it arrives in Phase 6A Task 8 and 404s until then.
+
+`internal/api/client` (Phase 6A Task 2) is a generated Go client for this API (`api/oapi-codegen.client.yaml`), used by `cmd/cfctl` (arriving in Phase 6A Task 13).
 
 `GET /.well-known/acme-challenge/{token}` (not under `/api/v1`, on the main listener, unauthenticated) serves an http-01 key authorization as `text/plain` for a token this server is currently waiting on (`^[A-Za-z0-9_-]{1,128}$`), or 404 otherwise. It is not in the OpenAPI document.
 

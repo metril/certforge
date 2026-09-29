@@ -191,6 +191,66 @@ func TestPhase5OperationsDeclared(t *testing.T) {
 	}
 }
 
+func TestPhase6OperationsDeclared(t *testing.T) {
+	sw, err := gen.GetSwagger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, id := range []string{
+		"listChannels", "createChannel", "getChannel", "updateChannel", "deleteChannel", "testChannel",
+		"listMonitors", "createMonitor", "getMonitor", "updateMonitor", "deleteMonitor", "checkMonitor",
+		"listEvents", "createBackup", "getBackupStatus", "testSmtpSettings", "getServerInfo",
+	} {
+		want[id] = false
+	}
+	// See TestPhase3OperationsDeclared for why the operationId is lower-cased
+	// back before comparing against api/openapi.yaml.
+	for _, item := range sw.Paths.Map() {
+		for _, op := range item.Operations() {
+			id := op.OperationID
+			if id != "" {
+				id = strings.ToLower(id[:1]) + id[1:]
+			}
+			if _, ok := want[id]; ok {
+				want[id] = true
+			}
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Errorf("operation %s missing", id)
+		}
+	}
+	wantEventKinds := []string{
+		"cert.issued", "cert.renewal_failed", "cert.expiring", "cert.expired",
+		"deploy.failed", "deploy.drift", "client.offline", "agent.cert_expiring",
+		"monitor.mismatch", "monitor.unreachable", "monitor.expiring", "monitor.recovered",
+		"backup.completed", "backup.failed", "test",
+	}
+	if got := sw.Components.Schemas["EventKind"].Value.Enum; len(got) != len(wantEventKinds) {
+		t.Errorf("EventKind has %d values, want %d", len(got), len(wantEventKinds))
+	} else {
+		for i, k := range wantEventKinds {
+			if got[i] != k {
+				t.Errorf("EventKind[%d] = %v, want %s", i, got[i], k)
+			}
+		}
+	}
+	if got := len(sw.Components.Schemas["ChannelType"].Value.Enum); got != 5 {
+		t.Errorf("ChannelType has %d values, want 5", got)
+	}
+	for _, f := range []string{"summary", "storedSecrets", "lastDelivery"} {
+		if !slices.Contains(sw.Components.Schemas["Channel"].Value.Required, f) {
+			t.Errorf("Channel.required missing %s", f)
+		}
+	}
+	rewrapTables := sw.Components.Schemas["RewrapTable"].Value.Enum
+	if len(rewrapTables) == 0 || rewrapTables[len(rewrapTables)-1] != "notification_channels" {
+		t.Errorf("RewrapTable does not end with notification_channels: %v", rewrapTables)
+	}
+}
+
 // TestNoStubsRemain proves internal/api/phase5_stubs.go (Task 2's 501
 // placeholders for the operations this file's TestPhase5OperationsDeclared
 // lists) is gone and nothing else in the package answers with a stub 501:
@@ -199,6 +259,12 @@ func TestPhase5OperationsDeclared(t *testing.T) {
 // implemented" internal/api`, and (batch 6 review) also fails on a literal
 // `StatusNotImplemented` anywhere in the package — the brief's actual
 // requirement is no 501 handler at all, not just none using this string.
+//
+// Phase 6A Task 2 adds phase6_stubs.go (its own 501 placeholders, removed
+// by Task 14 the same way phase5_stubs.go was) and internal/api/client/
+// (the generated client, Task 2's own oapi-codegen.client.yaml target).
+// Both are deliberately skipped below until Task 14 deletes phase6_stubs.go
+// (client/ is skipped permanently: it is generated, not a handler stub).
 func TestNoStubsRemain(t *testing.T) {
 	if _, err := os.Stat("phase5_stubs.go"); err == nil {
 		t.Fatal("internal/api/phase5_stubs.go still exists")
@@ -213,11 +279,15 @@ func TestNoStubsRemain(t *testing.T) {
 		// fallback StrictServerInterface (returning StatusNotImplemented
 		// for every operation) as boilerplate, whether or not anything
 		// wires it up — api.Server never does — so it is not a stub this
-		// test can meaningfully flag.
-		if d.IsDir() && d.Name() == "gen" {
+		// test can meaningfully flag. client/ is the generated Go client
+		// (Task 2): also not a handler, never a stub.
+		if d.IsDir() && (d.Name() == "gen" || d.Name() == "client") {
 			return filepath.SkipDir
 		}
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		if path == "phase6_stubs.go" {
 			return nil
 		}
 		b, rerr := os.ReadFile(path)

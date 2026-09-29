@@ -46,6 +46,14 @@ tags:
     description: Output layouts, deploy targets and hooks that grants use.
   - name: agents
     description: The internal agent CA and the agent listener.
+  - name: notifications
+    description: Notification channels and the event feed (Phase 6A).
+  - name: monitoring
+    description: External TLS endpoint monitors (Phase 6A).
+  - name: backup
+    description: Encrypted database backup (Phase 6A).
+  - name: server
+    description: Server-wide status.
 paths:
   /setup/status:
     get:
@@ -102,6 +110,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MetaSchemas"
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /server-info:
+    get:
+      operationId: getServerInfo
+      tags: [server]
+      summary: Server version
+      description: The running server's version, for cfctl status and support requests. Any authenticated principal.
+      responses:
+        "200":
+          description: Server info.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ServerInfo"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/InternalError"}
@@ -422,6 +445,35 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/VaultTestResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /settings/smtp/test:
+    post:
+      operationId: testSmtpSettings
+      tags: [settings]
+      summary: Send a test email
+      description: >-
+        Needs settings:write. Sends a test email through the saved "smtp" section (host, port,
+        username, security and timeout come from storage; only the recipient is taken from the
+        request body). 422 "SMTP is not configured" when the saved section's host is empty.
+        Always 200 once the request is well-formed; ok false carries the redacted error. Recorded
+        as smtp.test (ok).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SmtpTestRequest"}
+      responses:
+        "200":
+          description: Delivery result.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeliveryResult"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -2337,6 +2389,314 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/channels:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listChannels
+      tags: [notifications]
+      summary: List notification channels
+      description: The org's own channels plus other orgs' allOrgs channels, visible only to a global admin. Needs alerts:read.
+      responses:
+        "200":
+          description: Channels.
+          content:
+            application/json:
+              schema: {type: array, description: Channels., items: {$ref: "#/components/schemas/Channel"}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createChannel
+      tags: [notifications]
+      summary: Add a notification channel
+      description: >-
+        Needs alerts:write. config is validated against the notifier's schema from GET
+        /meta/schemas notifiers; secret fields (schema secret true) are stored encrypted.
+        allOrgs true additionally needs a global admin (403 "all-orgs channels need a global
+        admin"). At most 50 channels per org (422). Recorded as channel.create
+        {channelId, type, allOrgs} (never config).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChannelInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Channel"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/channels/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getChannel
+      tags: [notifications]
+      summary: Get a notification channel
+      description: Secrets are never returned; see storedSecrets. Needs alerts:read.
+      responses:
+        "200":
+          description: The channel.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Channel"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    patch:
+      operationId: updateChannel
+      tags: [notifications]
+      summary: Update a notification channel
+      description: >-
+        Needs alerts:write. type is immutable (422 "type cannot change"). A secret config field
+        sent as __unchanged__ or left out keeps the stored value; changing a readable field a
+        secret depends on (for example webhook url, homeassistant baseUrl) while that secret is
+        __unchanged__ is 422 "re-enter the secret". allOrgs true additionally needs a global admin
+        (403 "all-orgs channels need a global admin"). Recorded as channel.update
+        {channelId, type, allOrgs} (never config).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChannelInput"}
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Channel"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteChannel
+      tags: [notifications]
+      summary: Delete a notification channel
+      description: Needs alerts:write. Recorded as channel.delete {channelId, type, allOrgs}.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/channels/{id}/test:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: testChannel
+      tags: [notifications]
+      summary: Send a test notification
+      description: >-
+        Needs alerts:write. Sends a kind test event to this channel only, inline, bounded to 10
+        seconds; allowed even while the channel is disabled. Recorded as channel.test
+        {channelId, type, allOrgs}.
+      responses:
+        "200":
+          description: Delivery result.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeliveryResult"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/monitors:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listMonitors
+      tags: [monitoring]
+      summary: List external monitors
+      description: The org's monitors. Needs alerts:read.
+      responses:
+        "200":
+          description: Monitors.
+          content:
+            application/json:
+              schema: {type: array, description: Monitors., items: {$ref: "#/components/schemas/Monitor"}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createMonitor
+      tags: [monitoring]
+      summary: Add an external monitor
+      description: Needs alerts:write. At most 500 monitors per org (422). Recorded as monitor.create {monitorId, host, port}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MonitorInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Monitor"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/monitors/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getMonitor
+      tags: [monitoring]
+      summary: Get an external monitor
+      description: Needs alerts:read.
+      responses:
+        "200":
+          description: The monitor.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Monitor"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    patch:
+      operationId: updateMonitor
+      tags: [monitoring]
+      summary: Update an external monitor
+      description: >-
+        Needs alerts:write. Changing host, port, sni or expectedCertificateId resets state to
+        unknown and nextCheckAt to now, so the change is observed on the next scan. Recorded as
+        monitor.update {monitorId, host, port}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MonitorInput"}
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Monitor"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteMonitor
+      tags: [monitoring]
+      summary: Delete an external monitor
+      description: Needs alerts:write. Recorded as monitor.delete {monitorId, host, port}.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/monitors/{id}/check:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: checkMonitor
+      tags: [monitoring]
+      summary: Check a monitor now
+      description: Needs alerts:write. Runs the check inline, bounded to 15 seconds, and returns the updated monitor. Recorded as monitor.check {monitorId, host, port}.
+      responses:
+        "200":
+          description: The checked monitor.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Monitor"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/events:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listEvents
+      tags: [notifications]
+      summary: List events
+      description: >-
+        The org's own events plus global (orgId null) events, newest first, keyset paginated.
+        Needs alerts:read. Duplicate conditions are suppressed at emission time, not here, so
+        every event returned already passed the server's own dedupe rule (see
+        docs/notifications.md#dedupe); this endpoint never de-duplicates on its own.
+      parameters:
+        - {$ref: "#/components/parameters/EventKindFilter"}
+        - {$ref: "#/components/parameters/EventSeverityFilter"}
+        - {$ref: "#/components/parameters/EventSince"}
+        - {$ref: "#/components/parameters/ListCursor"}
+      responses:
+        "200":
+          description: One page of events.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EventPage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /backup:
+    post:
+      operationId: createBackup
+      tags: [backup]
+      summary: Create and download a backup
+      description: >-
+        Needs settings:write. Streams an encrypted archive of the whole database, table by table,
+        as it is written. 409 "confirm KEK escrow first" unless the backup section's
+        kekEscrowConfirmed is true. Recorded as backup.created {sizeBytes} once streaming
+        completes, or backup.failed {error} (system actor) if it fails partway through. Restoring
+        is CLI-only: no restore over HTTP; see operations.md#restore.
+      responses:
+        "200":
+          description: The backup archive.
+          headers:
+            Content-Disposition:
+              description: 'attachment; filename="certforge-<yyyymmddThhmmssZ>.cfbak"'
+              schema: {type: string}
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary, description: Encrypted backup archive (internal/backup.Format).}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /backup/status:
+    get:
+      operationId: getBackupStatus
+      tags: [backup]
+      summary: Backup schedule and history
+      description: Needs settings:read. The configured schedule, escrow confirmation, and the most recent scheduled or on-demand outcome.
+      responses:
+        "200":
+          description: Backup status.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BackupStatus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
 components:
   securitySchemes:
     sessionCookie:
@@ -2411,6 +2771,19 @@ components:
     ClientQ: {name: q, in: query, required: false, description: Case-insensitive substring of the client name or reported hostname., schema: {type: string}}
     ClientSort: {name: sort, in: query, required: false, description: "name, lastSeen or status; prefix - for descending. Default name.", schema: {type: string}}
     GrantForce: {name: force, in: query, required: false, description: Hard-delete a removal-pending or still-live grant at once instead of waiting for the agent to confirm the files are gone; audited with forced true., schema: {type: boolean, default: false}}
+    EventKindFilter:
+      name: kind
+      in: query
+      required: false
+      description: Only these kinds; repeat the parameter for more than one. Omit for every kind.
+      schema: {type: array, items: {$ref: "#/components/schemas/EventKind"}}
+    EventSeverityFilter:
+      name: severity
+      in: query
+      required: false
+      description: Only events at or above this severity.
+      schema: {$ref: "#/components/schemas/Severity"}
+    EventSince: {name: since, in: query, required: false, description: Only events at or after this time., schema: {type: string, format: date-time}}
   responses:
     BadRequest:
       description: Malformed request, query parameter, or JSON body.
@@ -2757,8 +3130,8 @@ components:
         kekId: {type: string, description: Opaque id identifying this KEK, stable across restarts.}
     RewrapTable:
       type: string
-      enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions]
-      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together.
+      enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions, notification_channels]
+      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked last.
     RewrapTableStatus:
       type: object
       description: Rewrap progress for one table.
@@ -3943,3 +4316,197 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/HookRun"}, description: Runs, newest first.}
         nextCursor: {type: string, nullable: true, description: Cursor for the next page; null on the last page.}
+    ChannelType:
+      type: string
+      enum: [webhook, smtp, discord, ntfy, homeassistant]
+      description: Notification channel kind; matches a code from GET /meta/schemas notifiers. Immutable after create.
+    DeliveryStatus:
+      type: string
+      enum: [pending, delivered, failed]
+      description: Outcome of one delivery attempt to one channel.
+    ChannelLastDelivery:
+      type: object
+      description: A channel's most recent delivery attempt, across every event.
+      required: [status, at]
+      properties:
+        status: {$ref: "#/components/schemas/DeliveryStatus"}
+        at: {type: string, format: date-time, description: When the attempt finished.}
+        error: {type: string, maxLength: 1000, description: Why it failed; absent on success. Redacted of every secret value.}
+    Channel:
+      type: object
+      description: A configured notification channel (Shared contracts, Channel schema).
+      required: [id, orgId, name, type, summary, config, storedSecrets, events, minSeverity, allOrgs, enabled, lastDelivery, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid, description: Channel id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, minLength: 1, maxLength: 100, description: Unique name in the org.}
+        type: {$ref: "#/components/schemas/ChannelType"}
+        summary: {type: string, maxLength: 200, description: "non-secret display line computed by the server"}
+        config: {type: object, additionalProperties: true, description: Non-secret notifier config fields (from GET /meta/schemas notifiers), for example webhook headers or ntfy topic.}
+        storedSecrets: {type: array, items: {type: string}, description: Secret config fields held for this channel, for example url or token.}
+        events: {type: array, items: {$ref: "#/components/schemas/EventKind"}, description: Kinds this channel receives; empty means every kind.}
+        minSeverity: {$ref: "#/components/schemas/Severity"}
+        allOrgs: {type: boolean, description: Also receives every other org's matching events. Global-admin only.}
+        enabled: {type: boolean, description: Delivers events; a disabled channel can still be tested.}
+        lastDelivery:
+          description: The channel's most recent delivery attempt; null before its first event or test.
+          allOf:
+            - $ref: "#/components/schemas/ChannelLastDelivery"
+          nullable: true
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    ChannelInput:
+      type: object
+      description: Fields to create or update a channel.
+      required: [name, type, config]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Unique name in the org.}
+        type:
+          description: 'Channel kind. Immutable after create (422 "type cannot change").'
+          allOf:
+            - $ref: "#/components/schemas/ChannelType"
+        config: {type: object, additionalProperties: true, description: Notifier config fields, validated against GET /meta/schemas notifiers. A secret field (schema secret true) sent as __unchanged__ or left out keeps the stored value on update.}
+        events: {type: array, items: {$ref: "#/components/schemas/EventKind"}, default: [], description: Kinds this channel receives; empty (the default) means every kind.}
+        minSeverity:
+          description: Only events at or above this severity. Default info.
+          allOf:
+            - $ref: "#/components/schemas/Severity"
+          default: info
+        allOrgs: {type: boolean, default: false, description: 'Also receive every other org''s matching events. Needs a global admin (403 "all-orgs channels need a global admin" otherwise). Default false.'}
+        enabled: {type: boolean, default: true, description: Delivers events. Default true.}
+    DeliveryResult:
+      type: object
+      description: Outcome of one inline delivery, from testChannel or testSmtpSettings.
+      required: [status, durationMs]
+      properties:
+        status:
+          description: delivered or failed; an inline test never returns pending.
+          allOf:
+            - $ref: "#/components/schemas/DeliveryStatus"
+        error: {type: string, maxLength: 1000, description: Why it failed; absent on success. Redacted of every secret value.}
+        durationMs: {type: integer, description: Wall time the attempt took, in milliseconds.}
+    EventKind:
+      type: string
+      enum: [cert.issued, cert.renewal_failed, cert.expiring, cert.expired, deploy.failed, deploy.drift, client.offline, agent.cert_expiring, monitor.mismatch, monitor.unreachable, monitor.expiring, monitor.recovered, backup.completed, backup.failed, test]
+      description: What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+    Severity:
+      type: string
+      enum: [info, warning, critical]
+      description: How serious an event is.
+    EventResourceType:
+      type: string
+      enum: [certificate, grant, client, monitor, backup, channel]
+      description: Kind of object an event is about.
+    EventResource:
+      type: object
+      description: The object an event is about.
+      required: [type, id, name]
+      properties:
+        type: {$ref: "#/components/schemas/EventResourceType"}
+        id: {type: string, description: Object id; empty for a resource that no longer exists.}
+        name: {type: string, description: Object display name at the time of the event.}
+    EventDelivery:
+      type: object
+      description: One channel's delivery outcome for an event.
+      required: [channelId, channelName, status, attempts, lastError, deliveredAt]
+      properties:
+        channelId: {type: string, format: uuid, description: Channel this delivery targets.}
+        channelName: {type: string, description: Channel name at delivery time.}
+        status: {$ref: "#/components/schemas/DeliveryStatus"}
+        attempts: {type: integer, description: Delivery attempts made so far.}
+        lastError: {type: string, nullable: true, maxLength: 1000, description: Most recent failure reason; null after success or before any attempt. Redacted of every secret value.}
+        deliveredAt: {type: string, format: date-time, nullable: true, description: When delivery succeeded; null while pending or failed.}
+    Event:
+      type: object
+      description: One notification event (Shared contracts, Other operations and Dedupe keys rows). Duplicate conditions are suppressed once at emission time (docs/notifications.md#dedupe); every event on this feed already passed that check.
+      required: [id, kind, at, orgId, severity, resource, summary, details, deliveries]
+      properties:
+        id: {type: string, format: uuid, description: Event id.}
+        kind: {$ref: "#/components/schemas/EventKind"}
+        at: {type: string, format: date-time, description: When it happened.}
+        orgId: {type: string, format: uuid, nullable: true, description: Owning org; null for a global event, for example backup.*.}
+        severity: {$ref: "#/components/schemas/Severity"}
+        resource: {$ref: "#/components/schemas/EventResource"}
+        summary: {type: string, maxLength: 500, description: Human-readable one-line summary.}
+        details:
+          type: object
+          additionalProperties: true
+          description: Event-specific fields, for example a certificate's notAfter or a monitor's fingerprint. Never carries key material, KEK ids or Vault addresses.
+        deliveries: {type: array, items: {$ref: "#/components/schemas/EventDelivery"}, description: Delivery outcome per matched channel.}
+    EventPage:
+      type: object
+      description: One page of events (Shared contracts, Other operations row).
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Event"}, description: Events, newest first.}
+        nextCursor: {type: string, nullable: true, description: Cursor for the next (older) page; null on the last page.}
+    MonitorState:
+      type: string
+      enum: [unknown, ok, mismatch, expiring, unreachable]
+      description: A monitor's most recently observed state; unknown before its first check.
+    Monitor:
+      type: object
+      description: A TLS endpoint CertForge polls on a schedule (Shared contracts, Monitor operations row).
+      required: [id, orgId, name, host, port, sni, intervalSeconds, expectedCertificateId, expectedCertificateName, enabled, state, lastCheckedAt, nextCheckAt, lastFingerprint, lastNotAfter, lastIssuer, lastError, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid, description: Monitor id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, minLength: 1, maxLength: 100, description: Unique name in the org.}
+        host: {type: string, maxLength: 253, description: Hostname or IP address to connect to.}
+        port: {type: integer, minimum: 1, maximum: 65535, description: TCP port to connect to.}
+        sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; null uses host.}
+        intervalSeconds: {type: integer, minimum: 300, maximum: 86400, description: Seconds between scheduled checks.}
+        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A CertForge certificate the observed leaf is compared against; null skips the mismatch check.}
+        expectedCertificateName: {type: string, nullable: true, description: That certificate's name, for display; null when expectedCertificateId is null.}
+        enabled: {type: boolean, description: Checked on the scan schedule and countable toward the org's monitor limit.}
+        state: {$ref: "#/components/schemas/MonitorState"}
+        lastCheckedAt: {type: string, format: date-time, nullable: true, description: When the most recent check ran; null before the first check.}
+        nextCheckAt: {type: string, format: date-time, nullable: true, description: When the next scheduled check is due.}
+        lastFingerprint: {type: string, nullable: true, description: SHA-256 fingerprint (hex) of the observed leaf; null before the first successful check.}
+        lastNotAfter: {type: string, format: date-time, nullable: true, description: Expiry of the observed leaf; null before the first successful check.}
+        lastIssuer: {type: string, nullable: true, maxLength: 1000, description: Issuer of the observed leaf; null before the first successful check.}
+        lastError: {type: string, nullable: true, maxLength: 1000, description: Most recent check failure; null after a successful check or before any check.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    MonitorInput:
+      type: object
+      description: Fields to create or update a monitor.
+      required: [name, host]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Unique name in the org.}
+        host: {type: string, maxLength: 253, description: Hostname or IP address to connect to.}
+        port: {type: integer, minimum: 1, maximum: 65535, default: 443, description: TCP port to connect to. Default 443.}
+        sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; omitted or null uses host.}
+        intervalSeconds: {type: integer, minimum: 300, maximum: 86400, default: 3600, description: Seconds between scheduled checks. Default 3600.}
+        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null skips the mismatch check.}
+        enabled: {type: boolean, default: true, description: Checked on the scan schedule. Default true.}
+    BackupSchedule:
+      type: string
+      enum: [off, daily, weekly]
+      description: The scheduled backup cadence (settings section backup, field schedule).
+    BackupStatus:
+      type: object
+      description: Backup configuration and the most recent outcome (Shared contracts, Other operations row).
+      required: [schedule, escrowConfirmed, directory, lastSuccessAt, lastFailureAt, lastError, lastSizeBytes, lastFile, nextAt]
+      properties:
+        schedule: {$ref: "#/components/schemas/BackupSchedule"}
+        escrowConfirmed: {type: boolean, description: The backup section's kekEscrowConfirmed; createBackup and the scheduled job both require this before writing an archive.}
+        directory: {type: string, nullable: true, description: Where scheduled backups are written; null while schedule is off.}
+        lastSuccessAt: {type: string, format: date-time, nullable: true, description: When a backup (scheduled or on demand) last completed; null if none ever has.}
+        lastFailureAt: {type: string, format: date-time, nullable: true, description: When a backup last failed; null if none ever has.}
+        lastError: {type: string, nullable: true, maxLength: 1000, description: The last failure's reason; null after a success or before any attempt.}
+        lastSizeBytes: {type: integer, format: int64, nullable: true, description: Size of the last successful archive, in bytes; null if none ever has.}
+        lastFile: {type: string, nullable: true, description: File name of the last successful scheduled archive; null for an on-demand download or before any scheduled backup.}
+        nextAt: {type: string, format: date-time, nullable: true, description: When the next scheduled backup is due; null while schedule is off.}
+    SmtpTestRequest:
+      type: object
+      description: Recipient for testSmtpSettings.
+      required: [to]
+      properties:
+        to: {type: string, format: email, description: Address to send the test email to.}
+    ServerInfo:
+      type: object
+      description: The running server's identity.
+      required: [version]
+      properties:
+        version: {type: string, description: Build version string, for example the git describe output baked in at build time.}

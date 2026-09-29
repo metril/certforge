@@ -250,7 +250,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher,
-		KEKHealth: kekHealth,
+		KEKHealth: kekHealth, Version: version,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

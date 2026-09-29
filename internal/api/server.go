@@ -100,6 +100,11 @@ type Deps struct {
 
 	// AuditVerifyTTL caches GET /audit/verify's result; zero means 60 s.
 	AuditVerifyTTL time.Duration
+
+	// Version is the running build's version string, returned by
+	// getServerInfo (Phase 6A Task 2; cmd/certforge's main.version, wired
+	// in cmd/certforge/serve.go). Empty answers {version: ""}.
+	Version string
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.

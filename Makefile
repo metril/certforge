@@ -13,6 +13,7 @@ COMPOSE_TEST_ABS := docker compose -p certforge-e2e -f $(CURDIR)/deploy/compose.
 generate:
 	@if [ -f sqlc.yaml ]; then $(GO) run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate; fi
 	@if [ -f api/openapi.yaml ]; then mkdir -p internal/api/gen && $(GO) run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -config api/oapi-codegen.yaml api/openapi.yaml; fi
+	@if [ -f api/oapi-codegen.client.yaml ]; then mkdir -p internal/api/client && $(GO) run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -config api/oapi-codegen.client.yaml api/openapi.yaml; fi
 	$(GO) generate ./internal/challenge/...
 	@if [ -d web ]; then npm --prefix web run gen; fi
 
