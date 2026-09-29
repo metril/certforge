@@ -2254,8 +2254,8 @@ export interface components {
             orgId: string;
             /** @description Unique name in the org. */
             name: string;
-            /** @description Preset code; meaningless for a private CA. */
-            preset: components["schemas"]["CAPresetCode"];
+            /** @description Preset code; absent for a private CA (localca, vaultpki), which has none. */
+            preset?: components["schemas"]["CAPresetCode"];
             /** @description ACME directory URL; empty for a private CA. */
             directoryUrl: string;
             /** @description Extra PEM roots for a private ACME server (acme), or the CA's own trust anchor for a private kind: for localca the root PEM (generated), or for an import the last certificate of importPem; for vaultpki the CA certificate read from Vault at create. */

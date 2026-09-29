@@ -88,6 +88,15 @@ WHERE g.id = ANY(sqlc.arg(ids)::uuid[]) AND g.removed_at IS NULL;
 -- agents.Service.render/OnVersion (clientOf's doc comment).
 SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL;
 
+-- name: LiveGrantIDsForCertAny :many
+-- LiveGrantsNeedKeyTx's own version of LiveGrantIDsForCert (final review
+-- finding 3): every live grant of cert_id, agent-run or server-run alike.
+-- A server grant needs a key too (its target's own includeKey, or its
+-- layout's), so the keyless-upload gate must see it — unlike every other
+-- caller of "live grants of a cert" in this file, which must keep
+-- excluding server grants (see LiveGrantIDsForCert's own comment).
+SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL;
+
 -- name: LiveGrantIDsForExtraCert :many
 -- Live grants whose layout bundles cert_id as an extra certificate: a new
 -- version of an extra certificate must re-render these grants too, not

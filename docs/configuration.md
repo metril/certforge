@@ -19,6 +19,18 @@ CertForge is configured from the web UI. The environment only carries what the s
 | `CF_KEK_VAULT_ROLE_ID` | with `CF_KEK_VAULT_SECRET_ID[_FILE]` | – | AppRole role id |
 | `CF_KEK_VAULT_SECRET_ID` | with `CF_KEK_VAULT_ROLE_ID` | – | AppRole secret id |
 | `CF_KEK_VAULT_SECRET_ID_FILE` | see above | – | Path to a file holding the secret id |
+| `CF_KEK_PREVIOUS` | no | – | A retired KEK (32 random bytes, base64) still needed to decrypt rows a rewrap hasn't reached yet; see `docs/operations.md#rewrap` |
+| `CF_KEK_PREVIOUS_FILE` | see above | – | Path to a file with the previous KEK |
+| `CF_KEK_PREVIOUS_VAULT_ADDR` | no | – | A retired Vault (or OpenBao) Transit KEK's address, in place of `CF_KEK_PREVIOUS[_FILE]` |
+| `CF_KEK_PREVIOUS_VAULT_TRANSIT_KEY` | with `CF_KEK_PREVIOUS_VAULT_ADDR` | – | Its Transit key name |
+| `CF_KEK_PREVIOUS_VAULT_MOUNT` | no | `transit` | Its Transit secrets engine mount |
+| `CF_KEK_PREVIOUS_VAULT_NAMESPACE` | no | – | Its Vault Enterprise namespace |
+| `CF_KEK_PREVIOUS_VAULT_CA_FILE` | no | – | Path to a PEM bundle of extra CAs to trust for its TLS |
+| `CF_KEK_PREVIOUS_VAULT_TOKEN` | one auth method, with `CF_KEK_PREVIOUS_VAULT_ADDR` | – | Its Vault token (token auth) |
+| `CF_KEK_PREVIOUS_VAULT_TOKEN_FILE` | see above | – | Path to a file holding its token |
+| `CF_KEK_PREVIOUS_VAULT_ROLE_ID` | with `CF_KEK_PREVIOUS_VAULT_SECRET_ID[_FILE]` | – | Its AppRole role id |
+| `CF_KEK_PREVIOUS_VAULT_SECRET_ID` | with `CF_KEK_PREVIOUS_VAULT_ROLE_ID` | – | Its AppRole secret id |
+| `CF_KEK_PREVIOUS_VAULT_SECRET_ID_FILE` | see above | – | Path to a file holding its secret id |
 | `CF_LISTEN_HTTP` | no | `:8080` | UI and API listener |
 | `CF_LISTEN_AGENT` | no | `:8443` | Agent listener: TLS with agent client certificates, serves only `/agent/v1/*`. Must be reached directly or through TCP/TLS passthrough, never a TLS-terminating proxy. |
 | `CF_BASE_URL` | no | – | Public URL. The setup wizard stores its own value in Settings → General, which takes precedence |

@@ -2881,13 +2881,13 @@ components:
     CA:
       type: object
       description: A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for.
-      required: [id, orgId, name, preset, directoryUrl, trustBundlePem, eabKid, hasEab, resolvers, shared, type, config, storedSecrets, createdAt, updatedAt]
+      required: [id, orgId, name, directoryUrl, trustBundlePem, eabKid, hasEab, resolvers, shared, type, config, storedSecrets, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: CA id.}
         orgId: {type: string, format: uuid, description: Owning org.}
         name: {type: string, description: Unique name in the org.}
         preset:
-          description: Preset code; meaningless for a private CA.
+          description: Preset code; absent for a private CA (localca, vaultpki), which has none.
           allOf:
             - $ref: "#/components/schemas/CAPresetCode"
         directoryUrl: {type: string, description: ACME directory URL; empty for a private CA.}

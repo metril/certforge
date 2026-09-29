@@ -83,7 +83,28 @@ func newAgentFixture(t *testing.T) *agentFixture {
 		Settings: agents.StaticSettings(agents.Settings{}, "https://cf.example.test"), Log: slog.Default()}
 	f.srv.d.Queries = q
 	f.srv.d.Agents = svc
-	f.srv.d.Issuance.RenameHook = svc.ResyncCertificateRename
+	// Same as cmd/certforge/serve.go (final review finding 5): a rename
+	// also re-enqueues the renamed certificate's own live server grants,
+	// not only its agent grants.
+	dispatcher := f.srv.d.Dispatcher
+	f.srv.d.Issuance.RenameHook = func(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (func(), error) {
+		agentNudge, err := svc.ResyncCertificateRename(ctx, q, certID)
+		if err != nil {
+			return nil, err
+		}
+		deployNudge, err := dispatcher.ResyncCertificateRename(ctx, q, certID)
+		if err != nil {
+			return nil, err
+		}
+		return func() {
+			if agentNudge != nil {
+				agentNudge()
+			}
+			if deployNudge != nil {
+				deployNudge()
+			}
+		}, nil
+	}
 	// Same as issuanceSvc.Listeners in cmd/certforge/serve.go: a stored
 	// version (issued, or Task 13's UploadCertificate/UploadVersion)
 	// re-renders any grant already on the certificate.

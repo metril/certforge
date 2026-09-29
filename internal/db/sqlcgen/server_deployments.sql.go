@@ -37,6 +37,44 @@ func (q *Queries) LiveServerGrantIDsForCert(ctx context.Context, certID uuid.UUI
 	return items, nil
 }
 
+const liveServerGrantsForExtraCert = `-- name: LiveServerGrantsForExtraCert :many
+SELECT g.id, ce.current_version_id FROM client_cert_grants g
+JOIN output_specs o ON o.id = g.output_spec_id
+JOIN certificates ce ON ce.id = g.cert_id
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND $1::uuid = ANY(o.extra_cert_ids)
+`
+
+type LiveServerGrantsForExtraCertRow struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+}
+
+// Dispatcher.OnVersion's own version of agents' LiveGrantIDsForExtraCert
+// (final review finding 5): live server grants whose layout bundles
+// cert_id as an extra certificate, with each grant's own certificate's
+// current_version_id — the version to redeploy is the grant's own
+// certificate's current version, not cert_id's (cert_id here is only the
+// extra certificate whose new version triggered this).
+func (q *Queries) LiveServerGrantsForExtraCert(ctx context.Context, certID uuid.UUID) ([]LiveServerGrantsForExtraCertRow, error) {
+	rows, err := q.db.Query(ctx, liveServerGrantsForExtraCert, certID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LiveServerGrantsForExtraCertRow{}
+	for rows.Next() {
+		var i LiveServerGrantsForExtraCertRow
+		if err := rows.Scan(&i.ID, &i.CurrentVersionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markServerDeploymentDeployed = `-- name: MarkServerDeploymentDeployed :exec
 UPDATE server_deployments SET status = 'deployed', deployed_at = now(), last_error = '', updated_at = now()
 WHERE grant_id = $1 AND version_id = $2

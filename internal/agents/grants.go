@@ -15,6 +15,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/render"
 )
 
@@ -183,18 +184,20 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	return nil
 }
 
-// LiveGrantsNeedKeyTx reports whether any live grant of certID has a
-// layout that needs a key or a deploy target (Traefik always renders
-// fullchain + key), using q (tx-scoped when called from a transaction that
-// already holds a lock serializing this read against a concurrent
-// createGrant/updateGrant — see issuance.Service.KeylessGrantHook, wired to
-// this function in cmd/certforge/serve.go — or pool-scoped otherwise). A
-// plain function, not a *Service method: issuance.KeylessGrantHook's type
-// takes a *sqlcgen.Queries, not an internal/agents.Service (which
-// internal/issuance must not import, R7), so this is wired directly by
-// value.
+// LiveGrantsNeedKeyTx reports whether any live grant of certID — agent-run
+// or server-run alike (final review finding 3: a server grant needs a key
+// too, whenever its target has includeKey or its layout does) — has a
+// layout that needs a key or a deploy target that always needs one
+// (Traefik always renders fullchain + key), using q (tx-scoped when called
+// from a transaction that already holds a lock serializing this read
+// against a concurrent createGrant/updateGrant — see
+// issuance.Service.KeylessGrantHook, wired to this function in
+// cmd/certforge/serve.go — or pool-scoped otherwise). A plain function, not
+// a *Service method: issuance.KeylessGrantHook's type takes a
+// *sqlcgen.Queries, not an internal/agents.Service (which internal/issuance
+// must not import, R7), so this is wired directly by value.
 func LiveGrantsNeedKeyTx(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (bool, error) {
-	ids, err := q.LiveGrantIDsForCert(ctx, certID)
+	ids, err := q.LiveGrantIDsForCertAny(ctx, certID)
 	if err != nil || len(ids) == 0 {
 		return false, err
 	}
@@ -204,7 +207,17 @@ func LiveGrantsNeedKeyTx(ctx context.Context, q *sqlcgen.Queries, certID uuid.UU
 	}
 	for _, r := range rows {
 		if r.TargetType != nil {
-			return true, nil
+			if *r.TargetType == deploy.TypeVaultKV {
+				includeKey, err := targetIncludeKeyOf(r.TargetConfig)
+				if err != nil {
+					return false, err
+				}
+				if includeKey {
+					return true, nil
+				}
+			} else {
+				return true, nil
+			}
 		}
 		if len(r.LayoutFiles) == 0 {
 			continue
@@ -218,6 +231,19 @@ func LiveGrantsNeedKeyTx(ctx context.Context, q *sqlcgen.Queries, certID uuid.UU
 		}
 	}
 	return false, nil
+}
+
+// targetIncludeKeyOf reads a server-run target's own includeKey config
+// field (mirrors internal/api's own includeKeyOf; only vault-kv has one
+// today, and this package must not import internal/api).
+func targetIncludeKeyOf(cfg []byte) (bool, error) {
+	var c struct {
+		IncludeKey bool `json:"includeKey"`
+	}
+	if err := json.Unmarshal(cfg, &c); err != nil {
+		return false, err
+	}
+	return c.IncludeKey, nil
 }
 
 // LiveGrantsNeedKey is LiveGrantsNeedKeyTx over the service's own

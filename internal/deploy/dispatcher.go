@@ -79,9 +79,13 @@ func (d *Dispatcher) log() *slog.Logger {
 
 // OnVersion implements issuance.VersionListener: every live server grant of
 // certID gets its server_deployments row reset to pending and a fresh
-// certforge_server_deploy job. Errors are logged only (OnVersion cannot
-// fail the issuance that triggered it); one grant's failure does not stop
-// the others.
+// certforge_server_deploy job — including a live server grant of a
+// *different* certificate whose layout bundles certID as an extra
+// certificate (final review finding 5): that grant's own material changes
+// too (the extra certificate it renders alongside its own), so it must
+// redeploy on certID's own current version, not certID's. Errors are
+// logged only (OnVersion cannot fail the issuance that triggered it); one
+// grant's failure does not stop the others.
 func (d *Dispatcher) OnVersion(ctx context.Context, certID, versionID uuid.UUID) {
 	ids, err := d.Q.LiveServerGrantIDsForCert(ctx, certID)
 	if err != nil {
@@ -93,6 +97,47 @@ func (d *Dispatcher) OnVersion(ctx context.Context, certID, versionID uuid.UUID)
 			d.log().Error("deploy: server grant not enqueued", "grant", id, "cert", certID, "version", versionID, "err", err)
 		}
 	}
+	extras, err := d.Q.LiveServerGrantsForExtraCert(ctx, certID)
+	if err != nil {
+		d.log().Error("deploy: server grants (as extra certificate) not enqueued for a new certificate version", "cert", certID, "version", versionID, "err", err)
+		return
+	}
+	for _, g := range extras {
+		if g.CurrentVersionID == nil {
+			continue
+		}
+		if err := d.enqueueTx(ctx, g.ID, g.CurrentVersionID); err != nil {
+			d.log().Error("deploy: server grant (as extra certificate) not enqueued", "grant", g.ID, "extraCert", certID, "err", err)
+		}
+	}
+}
+
+// ResyncCertificateRename implements the issuance.RenameHook shape (only
+// ever wired into it combined with agents.Service.ResyncCertificateRename,
+// in cmd/certforge/serve.go): final review finding 5, second half. A
+// rename does not create a new version, but a vault-kv target's default
+// path template embeds the certificate's own name ({name},
+// deploy.VaultKVConfig/docs/deploy-targets.md), so a live server grant of
+// the renamed certificate must redeploy to write its material at the new
+// path. Nothing here needs q (tx-scoped, but this shape's rename commits
+// with no server-deploy-specific write of its own) — the returned nudge,
+// run after the rename commits exactly like OnVersion normally runs after
+// an issuance commits, looks the certificate's current version up fresh
+// and re-enqueues through OnVersion itself, which also covers this
+// certificate's own extra-cert grants (harmless, idempotent, if any lists
+// it as an extra rather than its own).
+func (d *Dispatcher) ResyncCertificateRename(ctx context.Context, _ *sqlcgen.Queries, certID uuid.UUID) (func(), error) {
+	return func() {
+		rows, err := d.Q.CurrentVersionsForCerts(ctx, []uuid.UUID{certID})
+		if err != nil {
+			d.log().Error("deploy: server grants not re-enqueued after a certificate rename", "cert", certID, "err", err)
+			return
+		}
+		if len(rows) == 0 || rows[0].CurrentVersionID == nil {
+			return
+		}
+		d.OnVersion(ctx, certID, *rows[0].CurrentVersionID)
+	}, nil
 }
 
 // enqueueTx upserts grantID's server_deployments row pending on versionID

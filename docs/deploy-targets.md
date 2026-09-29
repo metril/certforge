@@ -60,9 +60,9 @@ Runs on the server, not an agent — its grants are client-less ("server grants"
 | `keys.cert` | `cert.pem` | Document field the leaf certificate PEM is written under. |
 | `keys.chain` | `chain.pem` | Document field the intermediate chain PEM is written under. |
 | `keys.key` | `privkey.pem` | Document field the private key PEM is written under, when `includeKey` is set. |
-| `includeKey` | `false` | Also write the private key. A grant onto a target with this set needs `keys:export` (checked when the grant is created, not when the target itself is saved). |
+| `includeKey` | `false` | Also write the private key. `keys:export` is checked wherever this can end up true: setting or keeping it on the target itself (`createDeployTarget`/`updateDeployTarget`), and creating or updating a grant onto a target that has it set (`createServerGrant`/`updateServerGrant`). A grant's own layout may not render a key without it either — a PEM layout file with a `key`/`combined` part is 422 on a target without `includeKey`, not silently dropped. |
 
-Without a layout, the document gets exactly `keys.fullchain`/`keys.cert`/`keys.chain` (plus `keys.key` when `includeKey`). With a layout, each of the layout's own output files is written under its own file name instead (e.g. a `keystore.p12` file lands at the `keystore.p12` field); a key-bearing layout file (a `key`/`combined` PEM part, any DER `key`, or any p12/jks file) is dropped the same way, unless `includeKey`.
+Without a layout, the document gets exactly `keys.fullchain`/`keys.cert`/`keys.chain` (plus `keys.key` when `includeKey`). With a layout, each of the layout's own output files is written under its own file name instead (e.g. an `/etc/ssl/web.pem` file lands at the `web.pem` field); a server grant's layout may only render PEM files (see Grants and status below), and among those a `key`/`combined` part is refused outright (422, not silently dropped) unless the target has `includeKey`.
 
 Each deploy is one `PUT <mount>/data/<path>` (`internal/vault.Client.KVPut`), overwriting the whole document — nothing is merged with what was there before.
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -178,7 +179,29 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
-	issuanceSvc.RenameHook = agentSvc.ResyncCertificateRename
+	// Final review finding 5: a rename also re-enqueues the renamed
+	// certificate's own live server grants (agentSvc's hook only re-renders
+	// agent-run grants), composed into one RenameHook so both commit inside
+	// UpdateCertificate's own transaction and both nudges run after it
+	// commits.
+	issuanceSvc.RenameHook = func(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (func(), error) {
+		agentNudge, err := agentSvc.ResyncCertificateRename(ctx, q, certID)
+		if err != nil {
+			return nil, err
+		}
+		deployNudge, err := dispatcher.ResyncCertificateRename(ctx, q, certID)
+		if err != nil {
+			return nil, err
+		}
+		return func() {
+			if agentNudge != nil {
+				agentNudge()
+			}
+			if deployNudge != nil {
+				deployNudge()
+			}
+		}, nil
+	}
 	// Same listener as issueWorker.Listeners above: an uploaded version
 	// (Task 13) re-renders any grant already on the certificate exactly
 	// like a freshly issued one does.

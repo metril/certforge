@@ -242,8 +242,27 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	if in.Type == CATypeVaultPKI {
 		return s.updateVaultPKICA(ctx, orgID, id, in)
 	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return CA{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+
+	// Final review finding 1: re-read cur under FOR UPDATE. The read above
+	// was outside any lock, only to decide type and dispatch; eab_hmac must
+	// be read and written back inside the same lock a concurrent rewrap's
+	// CAS on this row would take, or the write below could silently
+	// overwrite a freshly rewrapped blob with the stale one read here
+	// (TestRewrapCASLosesRaceSafely) — the same pattern updateLocalCA
+	// already uses via LockCA.
+	cur, err = q.LockCA(ctx, sqlcgen.LockCAParams{ID: id, OrgID: orgID})
+	if err != nil {
+		return CA{}, notFound(err)
+	}
 	if in.DirectoryURL != cur.DirectoryUrl {
-		n, err := s.q.CountCAUsers(ctx, id)
+		n, err := q.CountCAUsers(ctx, id)
 		if err != nil {
 			return CA{}, err
 		}
@@ -264,10 +283,13 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	if err != nil {
 		return CA{}, err
 	}
-	row, err := s.q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfg, Preset: in.Preset,
+	row, err := q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfg, Preset: in.Preset,
 		DirectoryUrl: in.DirectoryURL, TrustBundlePem: in.TrustBundlePEM, EabKid: in.EABKid, EabHmac: sealed, Resolvers: in.Resolvers})
 	if err != nil {
 		return CA{}, dbErr(err, "name")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CA{}, err
 	}
 	return caFromRow(row)
 }

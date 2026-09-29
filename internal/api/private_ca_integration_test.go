@@ -63,6 +63,12 @@ func TestLocalCACRUDMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 		ca := res.(gen.CreateCa201JSONResponse)
+		// final review finding 7: preset is meaningless for a private CA
+		// and is now omitted (nullable/optional), not forced through the
+		// CAPresetCode enum as an empty string.
+		if ca.Preset != nil {
+			t.Fatalf("preset = %v, want nil for a localca CA", *ca.Preset)
+		}
 		if ca.TrustBundlePem == "" || !strings.Contains(ca.TrustBundlePem, "CERTIFICATE") {
 			t.Fatalf("trustBundlePem = %q", ca.TrustBundlePem)
 		}

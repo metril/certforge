@@ -651,6 +651,36 @@ func (q *Queries) LiveGrantIDsForCert(ctx context.Context, certID uuid.UUID) ([]
 	return items, nil
 }
 
+const liveGrantIDsForCertAny = `-- name: LiveGrantIDsForCertAny :many
+SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL
+`
+
+// LiveGrantsNeedKeyTx's own version of LiveGrantIDsForCert (final review
+// finding 3): every live grant of cert_id, agent-run or server-run alike.
+// A server grant needs a key too (its target's own includeKey, or its
+// layout's), so the keyless-upload gate must see it — unlike every other
+// caller of "live grants of a cert" in this file, which must keep
+// excluding server grants (see LiveGrantIDsForCert's own comment).
+func (q *Queries) LiveGrantIDsForCertAny(ctx context.Context, certID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, liveGrantIDsForCertAny, certID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const liveGrantIDsForExtraCert = `-- name: LiveGrantIDsForExtraCert :many
 SELECT g.id FROM client_cert_grants g
 JOIN output_specs o ON o.id = g.output_spec_id

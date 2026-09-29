@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -372,7 +373,11 @@ func TestUpdateLayoutServerGrantPEMOnly(t *testing.T) {
 // checks createServerGrant does, not just the PEM-only format check — a
 // layout edit that newly needs a key is gated exactly like a create would
 // be, both for the caller's own permission and for the certificate having
-// a stored key at all.
+// a stored key at all. Both grants here live on an includeKey:true target
+// (final review finding 4 changed what a key-needing layout on an
+// includeKey:false target means — always 422, not a permission gate; see
+// TestServerGrantKeyLayoutRequiresIncludeKey), so keyLayoutID's own gate
+// is purely the keys:export/has-key one this test targets.
 func TestServerGrantUpdateNeedsKeyGate(t *testing.T) {
 	f := newAgentFixture(t)
 	op := f.as("operator")
@@ -381,19 +386,21 @@ func TestServerGrantUpdateNeedsKeyGate(t *testing.T) {
 	plainLayoutID := f.layout(t, "plain", "/etc/ssl/plain.pem")
 	keyLayoutID := f.pemKeyLayout(t, "keyed", "/etc/ssl/plain.key")
 
-	// A keyed certificate on a target with includeKey false: creating with
-	// the plain layout needs no keys:export.
-	targetID, _ := f.serverTarget(t, "vault", nil)
+	// includeKey:true (created by admin, targetCreator's own rule): any
+	// grant onto it needs keys:export regardless of its layout.
+	targetID, _ := f.serverTarget(t, "vault", map[string]interface{}{"includeKey": true})
 	certID, _ := f.currentCert(t, "web")
-	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+	res, err := f.srv.CreateServerGrant(admin, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
 		Body: &gen.ServerGrantInput{CertificateId: certID, LayoutId: &plainLayoutID}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	g := res.(gen.CreateServerGrant201JSONResponse)
 
-	// Editing its layout to one that needs a key is 403 for operator, 200
-	// for admin (who holds keys:export).
+	// Editing its layout to one that also needs a key is 403 for operator,
+	// 200 for admin (who holds keys:export) — the target already needs one
+	// regardless, so this isolates the keys:export gate from finding 4's
+	// new includeKey-mismatch 422.
 	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
 		Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), LayoutId: &keyLayoutID}})
 	wantStatus(t, err, 403)
@@ -405,8 +412,11 @@ func TestServerGrantUpdateNeedsKeyGate(t *testing.T) {
 		t.Fatalf("grant.update audit details missing includeKey: %s", d)
 	}
 
-	// A keyless certificate: even an admin (keys:export held) gets the
-	// has-key 422 when the new layout needs one.
+	// A keyless certificate on an includeKey:true target: even an admin
+	// (keys:export held) gets the has-key 422 — at create time, since
+	// finding 4 means the has-key check now only ever runs alongside
+	// includeKey:true, which gates unconditionally regardless of layout
+	// (the plain layout here needs no key of its own).
 	leafDER, _, _ := realCert(t, "server-grant-keyless.example.test", 9601)
 	body := pemCert(leafDER)
 	ures, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
@@ -415,14 +425,39 @@ func TestServerGrantUpdateNeedsKeyGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	keylessCertID := ures.(gen.UploadCertificate201JSONResponse).Id
-	targetID2, _ := f.serverTarget(t, "vault2", nil)
-	res2, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID2,
+	targetID2, _ := f.serverTarget(t, "vault2", map[string]interface{}{"includeKey": true})
+	_, err = f.srv.CreateServerGrant(admin, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID2,
 		Body: &gen.ServerGrantInput{CertificateId: keylessCertID, LayoutId: &plainLayoutID}})
+	wantStatus(t, err, 422)
+}
+
+// TestServerGrantKeyLayoutRequiresIncludeKey covers the final review
+// finding 4 controller ruling: a layout that renders a private key on a
+// target without includeKey is refused (422) at both create and update,
+// regardless of the caller's own permissions (even an admin holding
+// keys:export) — Dispatcher.Deploy only ever fetches a key when the
+// target's own includeKey is set, so this combination could never actually
+// be deployed; it must never be storable in the first place.
+func TestServerGrantKeyLayoutRequiresIncludeKey(t *testing.T) {
+	f := newAgentFixture(t)
+	admin := f.as("admin")
+
+	plainLayoutID := f.layout(t, "plain2", "/etc/ssl/plain2.pem")
+	keyLayoutID := f.pemKeyLayout(t, "keyed2", "/etc/ssl/plain2.key")
+	targetID, _ := f.serverTarget(t, "vault-nokey", nil)
+	certID, _ := f.currentCert(t, "web2")
+
+	_, err := f.srv.CreateServerGrant(admin, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, LayoutId: &keyLayoutID}})
+	wantStatus(t, err, 422)
+
+	res, err := f.srv.CreateServerGrant(admin, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, LayoutId: &plainLayoutID}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	g2 := res2.(gen.CreateServerGrant201JSONResponse)
-	_, err = f.srv.UpdateGrant(admin, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g2.Id,
+	g := res.(gen.CreateServerGrant201JSONResponse)
+	_, err = f.srv.UpdateGrant(admin, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
 		Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), LayoutId: &keyLayoutID}})
 	wantStatus(t, err, 422)
 }
@@ -617,5 +652,190 @@ func TestServerDeployFailureRecorded(t *testing.T) {
 	}
 	if !strings.Contains(lastError, "permission denied") {
 		t.Fatalf("last_error lost the underlying error text: %q", lastError)
+	}
+}
+
+// TestServerGrantExtraCertRedeployed covers final review finding 5 (first
+// half): OnVersion also enqueues live server grants whose layout's
+// extra_cert_ids contains the certificate that just got a new version —
+// the grant's own certificate did not change, so it redeploys onto its
+// own current version, not the extra certificate's new one.
+func TestServerGrantExtraCertRedeployed(t *testing.T) {
+	f := newAgentFixture(t)
+	ctx := context.Background()
+	op := f.as("operator")
+
+	extraCertID, _ := f.currentCert(t, "extra")
+	certID, v1 := f.currentCert(t, "main")
+
+	files, err := json.Marshal([]delivery.OutputFile{{Path: "/etc/ssl/main.pem", Format: "pem", Parts: []string{"fullchain"}, Mode: "0644"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := f.q.CreateLayout(ctx, sqlcgen.CreateLayoutParams{OrgID: f.org, Name: "extra-layout", Files: files, ExtraCertIds: []uuid.UUID{extraCertID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	targetID, _ := f.serverTarget(t, "vault-extra", nil)
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, LayoutId: &layout.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateServerGrant201JSONResponse)
+	if f.deployJobs.count(g.Id, v1) != 1 {
+		t.Fatalf("deploy jobs at create = %d, want 1", f.deployJobs.count(g.Id, v1))
+	}
+
+	extraV2 := f.secondVersion(t, extraCertID, "e2")
+	f.srv.d.Dispatcher.OnVersion(ctx, extraCertID, extraV2)
+
+	// The grant's own certificate's current version (v1, unchanged) is
+	// what gets redeployed, not the extra certificate's new version.
+	if f.deployJobs.count(g.Id, v1) != 2 {
+		t.Fatalf("deploy jobs for the grant's own version after the extra cert's new version = %d, want 2", f.deployJobs.count(g.Id, v1))
+	}
+	if status, vid, _ := f.serverDeployment(t, g.Id); status != "pending" || vid == nil || *vid != v1 {
+		t.Fatalf("deployment after extra-cert OnVersion = %s %v, want pending %s", status, vid, v1)
+	}
+}
+
+// TestServerGrantRedeploysOnCertificateRename covers final review finding
+// 5 (second half): a certificate rename re-enqueues its own live server
+// grants (Dispatcher.ResyncCertificateRename, composed into serve.go's
+// RenameHook alongside agents.Service.ResyncCertificateRename) — a
+// vault-kv target's default path embeds the certificate's own name
+// ({name}), so the grant must redeploy to write its material at the new
+// path even though the version itself did not change.
+func TestServerGrantRedeploysOnCertificateRename(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+
+	targetID, _ := f.serverTarget(t, "vault-rename", nil)
+	certID, v1 := f.currentCert(t, "rename-me")
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateServerGrant201JSONResponse)
+	if f.deployJobs.count(g.Id, v1) != 1 {
+		t.Fatalf("deploy jobs at create = %d, want 1", f.deployJobs.count(g.Id, v1))
+	}
+
+	if _, err := f.srv.UpdateCertificate(op, gen.UpdateCertificateRequestObject{OrgId: f.org, Id: certID,
+		Body: &gen.CertificateInput{Name: "renamed-now", CommonName: "rename-me.example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if f.deployJobs.count(g.Id, v1) != 2 {
+		t.Fatalf("deploy jobs after rename = %d, want 2", f.deployJobs.count(g.Id, v1))
+	}
+	if status, vid, _ := f.serverDeployment(t, g.Id); status != "pending" || vid == nil || *vid != v1 {
+		t.Fatalf("deployment after rename = %s %v, want pending %s", status, vid, v1)
+	}
+}
+
+// TestServerGrantUploadVersionKeylessGate422 covers final review finding 3
+// (first half): LiveGrantsNeedKeyTx (UploadVersion's own keyless-upload
+// gate, R10) now sees live server grants too, not only agent grants — a
+// server grant on an includeKey:true target needs a key exactly like a
+// Traefik agent target already does, so uploading a keyless version onto
+// a certificate a live server grant depends on is refused (409, the same
+// ConflictError this hook has always returned for an agent grant), not
+// silently accepted and left for the next deploy to fail with no key to
+// render.
+func TestServerGrantUploadVersionKeylessGate422(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	admin := f.as("admin")
+
+	targetID, _ := f.serverTarget(t, "vault-upload-gate", map[string]interface{}{"includeKey": true})
+
+	// An uploaded (unmanaged) certificate with a key, so UploadCertificateVersion applies to it.
+	leaf1DER, _, key1PKCS8 := realCert(t, "server-grant-upload-gate.example.test", 9701)
+	body1 := pemCert(leaf1DER)
+	keyBody1 := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key1PKCS8}))
+	ures, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateUpload{Name: "server-grant-upload-gate", CertificatePem: &body1, PrivateKeyPem: &keyBody1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	certID := ures.(gen.UploadCertificate201JSONResponse).Id
+
+	_, err = f.srv.CreateServerGrant(admin, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leaf2DER, _, _ := realCert(t, "server-grant-upload-gate.example.test", 9702)
+	body2 := pemCert(leaf2DER)
+	_, err = f.srv.UploadCertificateVersion(op, gen.UploadCertificateVersionRequestObject{OrgId: f.org, Id: certID,
+		Body: &gen.CertificateVersionUpload{CertificatePem: &body2}})
+	wantStatus(t, err, 409)
+}
+
+// TestUpdateDeployTargetIncludeKeyNeedsLiveGrantKeys covers final review
+// finding 3 (second half): UpdateDeployTarget turning includeKey on is
+// refused (422) when a live server grant on this target has a certificate
+// with no stored key — the same has-key rule createServerGrant already
+// runs, now also enforced at the target level so a target can never end
+// up needing a key none of its grants can supply.
+func TestUpdateDeployTargetIncludeKeyNeedsLiveGrantKeys(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	admin := f.as("admin")
+
+	targetID, _ := f.serverTarget(t, "vault-target-gate", nil)
+	leafDER, _, _ := realCert(t, "server-target-gate-keyless.example.test", 9702)
+	body := pemCert(leafDER)
+	ures, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateUpload{Name: "server-target-gate-keyless", CertificatePem: &body}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keylessCertID := ures.(gen.UploadCertificate201JSONResponse).Id
+	if _, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: keylessCertID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.srv.UpdateDeployTarget(admin, gen.UpdateDeployTargetRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.DeployTargetInput{Name: "vault-target-gate", Type: gen.DeployTargetType("vault-kv"), Config: map[string]interface{}{"includeKey": true}}})
+	wantStatus(t, err, 422)
+}
+
+// TestServerGrantDependentsListed covers final review finding 2:
+// LayoutDependents/DeployTargetDependents used to INNER JOIN clients,
+// which excludes a server grant (client_id IS NULL) entirely — deleting a
+// layout or target used only by a server grant silently succeeded (the
+// 409's own len(deps)>0 check saw nothing) instead of naming the
+// still-live grant. Both now LEFT JOIN clients and name the deploy target
+// in place of a client for a server grant's row.
+func TestServerGrantDependentsListed(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault-dep", nil)
+	certID, _ := f.currentCert(t, "web-dep")
+	layoutID := f.layout(t, "dep-layout", "/etc/ssl/dep.pem")
+
+	if _, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, LayoutId: &layoutID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := f.srv.DeleteLayout(op, gen.DeleteLayoutRequestObject{OrgId: f.org, Id: layoutID})
+	wantStatus(t, err, 409)
+	var he *HTTPError
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, "vault-dep/web-dep") {
+		t.Fatalf("DeleteLayout 409 = %v, want it to name the target/certificate (vault-dep/web-dep)", err)
+	}
+
+	_, err = f.srv.DeleteDeployTarget(op, gen.DeleteDeployTargetRequestObject{OrgId: f.org, Id: targetID})
+	wantStatus(t, err, 409)
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, "vault-dep/web-dep") {
+		t.Fatalf("DeleteDeployTarget 409 = %v, want it to name the target/certificate (vault-dep/web-dep)", err)
 	}
 }

@@ -386,7 +386,11 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.d.Queries.WithTx(tx)
-	cur, err := q.GetLayout(ctx, sqlcgen.GetLayoutParams{ID: r.Id, OrgID: r.OrgId})
+	// Final review finding 1: FOR UPDATE (LockLayout, not plain GetLayout)
+	// — the kept password below is read and written back unchanged, so a
+	// concurrent rewrap's CAS on this row's password column must not be
+	// able to land between this read and UpdateLayout's own write.
+	cur, err := q.LockLayout(ctx, sqlcgen.LockLayoutParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("layout %s", r.Id)
 	}
@@ -725,6 +729,23 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	}
 	if cur.Type != string(r.Body.Type) {
 		return nil, unprocessable("type", "a deploy target's type cannot change")
+	}
+	// Final review finding 3: an update turning includeKey on is refused
+	// (422) when any live server grant on this target has a certificate
+	// with no stored key — the same has-key rule createServerGrant/
+	// updateServerGrant already run (requireKeyIfNeeded), run here too so
+	// the target itself can never end up needing a key none of its grants
+	// can supply.
+	if includeKey, err := includeKeyOf(cfg); err != nil {
+		return nil, err
+	} else if includeKey {
+		name, err := q.TargetKeylessGrantCertificate(ctx, &r.Id)
+		if err == nil {
+			return nil, unprocessable("config", fmt.Sprintf("certificate %q has no stored private key; this target's includeKey needs one", name))
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
 	}
 	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: name, Config: cfg, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {

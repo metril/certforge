@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/kek"
 	"github.com/metril/certforge/internal/settings"
 )
@@ -293,5 +296,129 @@ func TestRewrapAllEightColumns(t *testing.T) {
 	}
 	if err := store.VerifyCanary(ctx); err != nil {
 		t.Fatalf("canary does not verify under the active envelope after the rewrap: %v", err)
+	}
+}
+
+// TestRewrapCASLosesRaceSafely covers final review finding 1:
+// issuance.Store.UpdateCA (the ACME branch) now locks the cas row FOR
+// UPDATE (LockCA) across its read of eab_hmac and its write of the same,
+// kept-unchanged value, instead of a plain, unlocked GetCA — so a
+// concurrent rewrap's CAS on that same row can never land between the read
+// and the write and be silently clobbered by the stale (pre-rewrap) blob
+// UpdateCA read earlier. The concurrent writer here is a minimal,
+// single-row simulation of RewrapWorker's own CAS step (rewrapBlob's
+// "sealed under a previous KEK" branch: decrypt under A, re-encrypt under
+// B, conditional UPDATE) rather than a full kek.RewrapWorker.Work() run —
+// Work() visits six other, empty tables before it ever reaches this row,
+// which makes it consistently slower than UpdateCA's own one or two round
+// trips and starves the race of any real window; this minimal version has
+// comparable latency, giving the interleaving this fix closes a genuine
+// chance to occur. Under real Postgres row locking the outcome is still
+// deterministic regardless of which goroutine's transaction reaches the
+// row first: the other blocks behind it until it commits — so the final
+// eab_hmac must always end up sealed under the active KEK (B), never
+// reverted to the previous one (A) the rewrap moved it off of. Twenty
+// iterations, each racing a fresh CA row, to exercise both lock orders.
+func TestRewrapCASLosesRaceSafely(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+
+	kekA := testKey(21)
+	wrapperA := crypto.NewStaticWrapper(crypto.KeyID(kekA), kekA)
+	envA := crypto.NewEnvelope(wrapperA)
+
+	kekB := testKey(22)
+	wrapperB := crypto.NewStaticWrapper(crypto.KeyID(kekB), kekB)
+	env := crypto.NewEnvelope(wrapperB, wrapperA)
+
+	org, err := q.CreateOrg(ctx, sqlcgen.CreateOrgParams{Slug: "rewrap-race", Name: "Rewrap Race"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := issuance.NewStore(pool, crypto.EnvelopeBox{Env: env}, nil)
+
+	for i := 0; i < 20; i++ {
+		eabBlob, err := envA.Encrypt(ctx, []byte("eab hmac"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ca, err := q.CreateCA(ctx, sqlcgen.CreateCAParams{
+			OrgID: org.ID, Name: fmt.Sprintf("ca-race-%d", i), Type: "acme", Config: []byte("{}"), Preset: "letsencrypt",
+			DirectoryUrl: "https://acme.example/directory", EabHmac: eabBlob.Marshal(), Resolvers: []string{},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// start is a rendezvous (same pattern as internal/api's
+		// TestGrantKeylessRace): both goroutines block on it and are
+		// released by one close, so their transactions begin as close to
+		// simultaneously as the Go scheduler allows.
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		var updateErr, rewrapErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, updateErr = store.UpdateCA(ctx, org.ID, ca.ID, issuance.CAInput{
+				Name: ca.Name, Preset: "letsencrypt", DirectoryURL: ca.DirectoryUrl, Resolvers: []string{},
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			row, err := q.GetCA(ctx, sqlcgen.GetCAParams{ID: ca.ID, OrgID: org.ID})
+			if err != nil {
+				rewrapErr = err
+				return
+			}
+			var b crypto.Blob
+			if err := b.Unmarshal(row.EabHmac); err != nil {
+				rewrapErr = err
+				return
+			}
+			if b.KEKID == wrapperB.ID() {
+				return // already rewrapped by an earlier pass; nothing to do
+			}
+			pt, err := env.Decrypt(ctx, b)
+			if err != nil {
+				rewrapErr = err
+				return
+			}
+			nb, err := env.Encrypt(ctx, pt)
+			if err != nil {
+				rewrapErr = err
+				return
+			}
+			// The CAS itself: only applies if eab_hmac still equals what
+			// was just read, exactly like Store.CAS (internal/kek/rewrap.go).
+			_, rewrapErr = pool.Exec(ctx, `UPDATE cas SET eab_hmac = $1 WHERE id = $2 AND eab_hmac = $3`, nb.Marshal(), ca.ID, row.EabHmac)
+		}()
+		close(start)
+		wg.Wait()
+
+		if updateErr != nil {
+			t.Fatalf("iteration %d: UpdateCA: %v", i, updateErr)
+		}
+		if rewrapErr != nil {
+			t.Fatalf("iteration %d: rewrap: %v", i, rewrapErr)
+		}
+
+		row, err := q.GetCA(ctx, sqlcgen.GetCAParams{ID: ca.ID, OrgID: org.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b crypto.Blob
+		if err := b.Unmarshal(row.EabHmac); err != nil {
+			t.Fatalf("iteration %d: eab_hmac unmarshal: %v", i, err)
+		}
+		if b.KEKID != wrapperB.ID() {
+			t.Fatalf("iteration %d: eab_hmac sealed under %q, want active %q (the rewrap was lost)", i, b.KEKID, wrapperB.ID())
+		}
+		pt, err := env.Decrypt(ctx, b)
+		if err != nil || string(pt) != "eab hmac" {
+			t.Fatalf("iteration %d: eab_hmac decrypt = %q, %v", i, pt, err)
+		}
 	}
 }

@@ -329,9 +329,21 @@ func includeKeyOf(cfg []byte) (bool, error) {
 // a keyed grant's layout unchecked). needsKey mirrors CreateServerGrant's
 // own rule: the target's own includeKey, or the layout's own
 // delivery.NeedsKey.
+//
+// Final review finding 4 (controller ruling): a layout that needs a key on
+// a target without includeKey is refused outright (422), not merely gated
+// on keys:export — Dispatcher.Deploy fetches the certificate's key only
+// when includeKey is set (internal/deploy/dispatcher.go), so a key-bearing
+// layout on a target without it can never actually be rendered; letting it
+// through here (even for a caller who holds keys:export) would only fail
+// opaquely at deploy time.
 func (s *Server) requireKeyIfNeeded(ctx context.Context, q *sqlcgen.Queries, orgID, certID uuid.UUID, includeKey bool, layoutFiles []delivery.OutputFile) error {
-	if !includeKey && !delivery.NeedsKey(layoutFiles) {
+	layoutNeedsKey := delivery.NeedsKey(layoutFiles)
+	if !includeKey && !layoutNeedsKey {
 		return nil
+	}
+	if layoutNeedsKey && !includeKey {
+		return unprocessable("layoutId", "this layout renders a private key, but the target does not includeKey")
 	}
 	if _, err := authorize(ctx, authz.ActionKeysExport, &orgID); err != nil {
 		return err

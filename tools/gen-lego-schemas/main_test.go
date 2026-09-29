@@ -231,6 +231,33 @@ func TestInfobloxCACertificateIsServerPath(t *testing.T) {
 	}
 }
 
+// TestGenerateDocsFileBackedCredentialsSection covers final-review finding
+// 6: docs/dns-providers.md must explain transip's and hyperone's
+// file-backed credentials (internal/challenge.fileBacked) under a
+// "## File-backed credentials" heading, whose GitHub-slug anchor is
+// #file-backed-credentials.
+func TestGenerateDocsFileBackedCredentialsSection(t *testing.T) {
+	out := t.TempDir()
+	docs := filepath.Join(out, "dns-providers.md")
+	if err := generate("testdata", out, docs); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(docs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, "## File-backed credentials") {
+		t.Fatal("missing '## File-backed credentials' heading")
+	}
+	for _, want := range []string{"transip", "hyperone",
+		"TRANSIP_PRIVATE_KEY", "TRANSIP_PRIVATE_KEY_PATH", "HYPERONE_PASSPORT", "HYPERONE_PASSPORT_LOCATION"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("file-backed credentials section missing %q:\n%s", want, s)
+		}
+	}
+}
+
 func TestGenerateIsDeterministic(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
 	if err := generate("testdata", a, filepath.Join(a, "d.md")); err != nil {

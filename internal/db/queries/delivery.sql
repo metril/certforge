@@ -4,6 +4,17 @@ SELECT * FROM output_specs WHERE org_id = $1 ORDER BY lower(name), id;
 -- name: GetLayout :one
 SELECT * FROM output_specs WHERE id = $1 AND org_id = $2;
 
+-- name: LockLayout :one
+-- Final review finding 1: UpdateLayout reads the row FOR UPDATE (not plain
+-- GetLayout) before deciding whether to keep the stored password
+-- unchanged, so a concurrent rewrap's CAS on this same row's password
+-- column (internal/kek/rewrap.go) cannot commit between this read and
+-- UpdateLayout's own write — which would otherwise write the stale,
+-- pre-rewrap blob back over it, losing the rewrap
+-- (TestRewrapCASLosesRaceSafely). UpdateLayout already runs in its own
+-- transaction, so this is the same row, only a stronger lock.
+SELECT * FROM output_specs WHERE id = $1 AND org_id = $2 FOR UPDATE;
+
 -- name: CreateLayout :one
 INSERT INTO output_specs (org_id, name, files, password, extra_cert_ids) VALUES ($1, $2, $3, $4, $5) RETURNING *;
 
@@ -36,13 +47,18 @@ WHERE g.output_spec_id = sqlc.arg(id) AND g.removed_at IS NULL AND v.private_key
 ORDER BY ce.name LIMIT 1;
 
 -- name: LayoutDependents :many
-SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
+-- Final review finding 2: client_id is LEFT JOINed (a server grant has
+-- none) so a layout used only by server grants still lists its dependents
+-- instead of silently reporting none; client_name names the deploy target
+-- for a server grant (there is no client to name).
+SELECT COALESCE(c.name, t.name) AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g
-JOIN clients c ON c.id = g.client_id
+LEFT JOIN clients c ON c.id = g.client_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN output_specs o ON o.id = g.output_spec_id
 WHERE g.output_spec_id = sqlc.arg(id) AND o.org_id = sqlc.arg(org_id)
-ORDER BY c.name, ce.name LIMIT 6;
+ORDER BY COALESCE(c.name, t.name), ce.name LIMIT 6;
 
 -- name: LockCertsForExtra :many
 -- Locks FOR KEY SHARE the candidate extra certificates a layout write
@@ -79,19 +95,39 @@ WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) RETURNING *;
 -- name: DeleteDeployTarget :execrows
 DELETE FROM deploy_targets WHERE id = $1 AND org_id = $2;
 
+-- name: TargetKeylessGrantCertificate :one
+-- UpdateDeployTarget's own version of LayoutKeylessGrantCertificate (final
+-- review finding 3): the name of one certificate (first, by name) with a
+-- live server grant on this target whose current version has no stored
+-- key. Used when an update turns includeKey on, so the update is refused
+-- (422) before storing a config that would make the next deploy fail with
+-- no key to render, instead of discovering it opaquely at deploy time.
+-- client_id IS NULL: a server grant only (see LiveGrantIDsForCert's own
+-- comment on this filter) — an agent-run target has no includeKey at all.
+-- pgx.ErrNoRows means none found (nothing to refuse).
+SELECT ce.name FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN certificate_versions v ON v.id = ce.current_version_id
+WHERE g.deploy_target_id = sqlc.arg(id) AND g.removed_at IS NULL AND g.client_id IS NULL AND v.private_key IS NULL
+ORDER BY ce.name LIMIT 1;
+
 -- name: DeployTargetGrantCounts :many
 SELECT t.id, count(g.id)::bigint AS grants
 FROM deploy_targets t LEFT JOIN client_cert_grants g ON g.deploy_target_id = t.id AND g.removed_at IS NULL
 WHERE t.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY t.id;
 
 -- name: DeployTargetDependents :many
-SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
+-- Final review finding 2: client_id is LEFT JOINed (a server grant has
+-- none) so a target used only by server grants still lists its dependents;
+-- client_name names the target itself for a server grant (there is no
+-- client to name — the target is the very thing being deleted).
+SELECT COALESCE(c.name, t.name) AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g
-JOIN clients c ON c.id = g.client_id
+LEFT JOIN clients c ON c.id = g.client_id
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.deploy_target_id = sqlc.arg(id) AND t.org_id = sqlc.arg(org_id)
-ORDER BY c.name, ce.name LIMIT 6;
+ORDER BY COALESCE(c.name, t.name), ce.name LIMIT 6;
 
 -- name: ListHooks :many
 SELECT * FROM hooks WHERE org_id = $1 ORDER BY lower(name), id;

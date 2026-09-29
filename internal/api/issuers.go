@@ -18,7 +18,12 @@ import (
 // set) — no key bytes ever reach config; that lives only in secret_cfg,
 // which caOut never reads.
 func (s *Server) caOut(ctx context.Context, c issuance.CA) gen.CA {
-	out := gen.CA{Id: c.ID, OrgId: c.OrgID, Name: c.Name, Preset: gen.CAPresetCode(c.Preset), DirectoryUrl: c.DirectoryURL,
+	var preset *gen.CAPresetCode
+	if c.Preset != "" {
+		p := gen.CAPresetCode(c.Preset)
+		preset = &p
+	}
+	out := gen.CA{Id: c.ID, OrgId: c.OrgID, Name: c.Name, Preset: preset, DirectoryUrl: c.DirectoryURL,
 		TrustBundlePem: c.TrustBundlePEM, EabKid: c.EABKid, HasEab: c.HasEAB, Resolvers: c.Resolvers,
 		Shared: c.Shared, Type: gen.CaType(c.Type), StoredSecrets: []string{},
 		NotBefore: c.NotBefore, NotAfter: c.NotAfter, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}

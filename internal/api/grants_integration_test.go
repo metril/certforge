@@ -1177,6 +1177,9 @@ func TestCATypeMapped(t *testing.T) {
 	if ca.Type != gen.CaType("acme") || len(ca.Config) != 0 || len(ca.StoredSecrets) != 0 {
 		t.Fatalf("ca = %+v", ca)
 	}
+	if ca.Preset == nil || *ca.Preset != gen.CAPresetCode("letsencrypt") {
+		t.Fatalf("acme CA preset = %v, want letsencrypt", ca.Preset)
+	}
 	if ca.NotBefore != nil || ca.NotAfter != nil || ca.CrlUrl != nil {
 		t.Fatalf("acme CA must carry no CA-material dates or CRL URL: %+v", ca)
 	}

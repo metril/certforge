@@ -56,3 +56,15 @@ WHERE g.id = sqlc.arg(id) AND g.client_id IS NULL AND g.removed_at IS NULL;
 -- Dispatcher.OnVersion's own version of LiveGrantIDsForCert: every live
 -- server grant of cert_id, never agents.Service's.
 SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL AND client_id IS NULL;
+
+-- name: LiveServerGrantsForExtraCert :many
+-- Dispatcher.OnVersion's own version of agents' LiveGrantIDsForExtraCert
+-- (final review finding 5): live server grants whose layout bundles
+-- cert_id as an extra certificate, with each grant's own certificate's
+-- current_version_id — the version to redeploy is the grant's own
+-- certificate's current version, not cert_id's (cert_id here is only the
+-- extra certificate whose new version triggered this).
+SELECT g.id, ce.current_version_id FROM client_cert_grants g
+JOIN output_specs o ON o.id = g.output_spec_id
+JOIN certificates ce ON ce.id = g.cert_id
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND sqlc.arg(cert_id)::uuid = ANY(o.extra_cert_ids);

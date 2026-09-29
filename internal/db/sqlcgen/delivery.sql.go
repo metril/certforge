@@ -165,13 +165,13 @@ func (q *Queries) DeleteLayout(ctx context.Context, arg DeleteLayoutParams) (int
 }
 
 const deployTargetDependents = `-- name: DeployTargetDependents :many
-SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
+SELECT COALESCE(c.name, t.name) AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g
-JOIN clients c ON c.id = g.client_id
+LEFT JOIN clients c ON c.id = g.client_id
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.deploy_target_id = $1 AND t.org_id = $2
-ORDER BY c.name, ce.name LIMIT 6
+ORDER BY COALESCE(c.name, t.name), ce.name LIMIT 6
 `
 
 type DeployTargetDependentsParams struct {
@@ -185,6 +185,10 @@ type DeployTargetDependentsRow struct {
 	Removing        bool   `json:"removing"`
 }
 
+// Final review finding 2: client_id is LEFT JOINed (a server grant has
+// none) so a target used only by server grants still lists its dependents;
+// client_name names the target itself for a server grant (there is no
+// client to name — the target is the very thing being deleted).
 func (q *Queries) DeployTargetDependents(ctx context.Context, arg DeployTargetDependentsParams) ([]DeployTargetDependentsRow, error) {
 	rows, err := q.db.Query(ctx, deployTargetDependents, arg.ID, arg.OrgID)
 	if err != nil {
@@ -382,13 +386,14 @@ func (q *Queries) HookGrantCounts(ctx context.Context, ids []uuid.UUID) ([]HookG
 }
 
 const layoutDependents = `-- name: LayoutDependents :many
-SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
+SELECT COALESCE(c.name, t.name) AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g
-JOIN clients c ON c.id = g.client_id
+LEFT JOIN clients c ON c.id = g.client_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN output_specs o ON o.id = g.output_spec_id
 WHERE g.output_spec_id = $1 AND o.org_id = $2
-ORDER BY c.name, ce.name LIMIT 6
+ORDER BY COALESCE(c.name, t.name), ce.name LIMIT 6
 `
 
 type LayoutDependentsParams struct {
@@ -402,6 +407,10 @@ type LayoutDependentsRow struct {
 	Removing        bool   `json:"removing"`
 }
 
+// Final review finding 2: client_id is LEFT JOINed (a server grant has
+// none) so a layout used only by server grants still lists its dependents
+// instead of silently reporting none; client_name names the deploy target
+// for a server grant (there is no client to name).
 func (q *Queries) LayoutDependents(ctx context.Context, arg LayoutDependentsParams) ([]LayoutDependentsRow, error) {
 	rows, err := q.db.Query(ctx, layoutDependents, arg.ID, arg.OrgID)
 	if err != nil {
@@ -678,6 +687,63 @@ func (q *Queries) LockHook(ctx context.Context, arg LockHookParams) (Hook, error
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const lockLayout = `-- name: LockLayout :one
+SELECT id, org_id, name, files, created_at, updated_at, password, extra_cert_ids FROM output_specs WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type LockLayoutParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Final review finding 1: UpdateLayout reads the row FOR UPDATE (not plain
+// GetLayout) before deciding whether to keep the stored password
+// unchanged, so a concurrent rewrap's CAS on this same row's password
+// column (internal/kek/rewrap.go) cannot commit between this read and
+// UpdateLayout's own write — which would otherwise write the stale,
+// pre-rewrap blob back over it, losing the rewrap
+// (TestRewrapCASLosesRaceSafely). UpdateLayout already runs in its own
+// transaction, so this is the same row, only a stronger lock.
+func (q *Queries) LockLayout(ctx context.Context, arg LockLayoutParams) (OutputSpec, error) {
+	row := q.db.QueryRow(ctx, lockLayout, arg.ID, arg.OrgID)
+	var i OutputSpec
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Files,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Password,
+		&i.ExtraCertIds,
+	)
+	return i, err
+}
+
+const targetKeylessGrantCertificate = `-- name: TargetKeylessGrantCertificate :one
+SELECT ce.name FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN certificate_versions v ON v.id = ce.current_version_id
+WHERE g.deploy_target_id = $1 AND g.removed_at IS NULL AND g.client_id IS NULL AND v.private_key IS NULL
+ORDER BY ce.name LIMIT 1
+`
+
+// UpdateDeployTarget's own version of LayoutKeylessGrantCertificate (final
+// review finding 3): the name of one certificate (first, by name) with a
+// live server grant on this target whose current version has no stored
+// key. Used when an update turns includeKey on, so the update is refused
+// (422) before storing a config that would make the next deploy fail with
+// no key to render, instead of discovering it opaquely at deploy time.
+// client_id IS NULL: a server grant only (see LiveGrantIDsForCert's own
+// comment on this filter) — an agent-run target has no includeKey at all.
+// pgx.ErrNoRows means none found (nothing to refuse).
+func (q *Queries) TargetKeylessGrantCertificate(ctx context.Context, id *uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, targetKeylessGrantCertificate, id)
+	var name string
+	err := row.Scan(&name)
+	return name, err
 }
 
 const updateDeployTarget = `-- name: UpdateDeployTarget :one
