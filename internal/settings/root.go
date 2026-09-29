@@ -83,6 +83,26 @@ func (s *Store) EnsureRoot(ctx context.Context, legacy map[string][]byte) ([]byt
 	return s.GetSecret(ctx, RootKey)
 }
 
+// SealedRoot returns the raw crypto.root settings row: a marshalled
+// crypto.Blob, still sealed. Backup's Write (internal/backup, Task 10)
+// records this unchanged as Header.RootSealed, so Restore can later prove
+// its configured KEK unseals the exact same bytes before writing anything,
+// and can compare the freshly restored row against it byte for byte
+// before committing.
+func (s *Store) SealedRoot(ctx context.Context) ([]byte, error) {
+	row, err := s.q.GetSetting(ctx, RootKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("settings: get %s: %w", RootKey, err)
+	}
+	if row.Secret == nil {
+		return nil, ErrNotFound
+	}
+	return row.Secret, nil
+}
+
 // rootSeed picks the bytes to seal as the root on first creation.
 func (s *Store) rootSeed(ctx context.Context, legacy map[string][]byte) ([]byte, error) {
 	canaryKEKID, present, err := s.canaryKEKID(ctx)

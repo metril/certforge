@@ -78,6 +78,32 @@ func TestMigrateConcurrent(t *testing.T) {
 	}
 }
 
+// TestMigrateToRunsRiver covers Task 10's Restore path: MigrateTo must
+// apply river's own schema (migrateRiver) the same way Migrate does, not
+// just goose's tables, so a restored database has somewhere for
+// certforge_backup_schedule and every other river job to land.
+func TestMigrateToRunsRiver(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Empty(t)
+
+	if err := db.MigrateTo(ctx, pool, 13); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := db.Version(ctx, pool); err != nil || v != 13 {
+		t.Fatalf("version = %d, err = %v, want 13", v, err)
+	}
+
+	var n int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM information_schema.tables
+		WHERE table_schema = 'public' AND table_name = 'river_job'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatal("river_job table missing after MigrateTo: river migration did not run")
+	}
+}
+
 func TestOrgQueries(t *testing.T) {
 	ctx := context.Background()
 	_, q := dbtest.New(t)

@@ -249,3 +249,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Phase 6A batch-2 review fixes: an SMTP send now aborts within its context's bound instead of only after its own (up to 60s) connection timeout; an ntfy channel with no stored token no longer needs one "re-entered" just because its server address changed; a webhook channel's `authHeader`/`signingSecret` can no longer silently carry over to a freshly changed `url`; a notification channel's `to`/email fields are now actually validated against their schema's email format.
 - Prometheus metrics endpoint behind a bearer token.
 - External TLS monitors with fingerprint, expiry and reachability checks.
+- Encrypted pure-Go backup archive format with snapshot dump and verified, transactional restore.

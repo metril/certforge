@@ -18,6 +18,13 @@ A short summary of where secrets are (and are not) allowed to surface, gathered 
 - `EnsureRoot` runs before the KEK canary check on every boot. A root failure aborts startup outright — unlike a canary failure, which only degrades `/readyz` — because writing audit events (or anything else) under a key derived from the wrong root would fork the chain in a way `Rechain`/`Check` can never repair.
 - The root secret itself is never logged, never appears in `/readyz` or the API, and is `clear()`ed from memory once every key for that boot has been derived from it.
 
+## Backup encryption
+
+- A backup archive is encrypted with a key derived from the same root secret every other derived key comes from (`#root-secret`), never from the KEK's raw bytes: `DeriveKey(DeriveKey(root, "certforge-backup"), hex(salt))`, with a fresh random 16-byte salt per archive, so no two backups ever share a stream key even when nothing else about the database has changed. See `docs/operations.md#backup` for the file format and `docs/adr/0018-encrypted-backup-offline-restore.md` for why.
+- The header — format version, creation time, migration version, KEK id(s), the salt, and the sealed `crypto.root` row itself — is deliberately plaintext: identifying a backup or checking which KEK it needs takes no key. Every encrypted chunk is bound to the header's exact bytes through its authenticated data, so nothing in the header can be changed without every chunk after it failing to decrypt.
+- Restoring a backup requires the exact KEK (active or previous) that sealed it. `Header.RootSealed` is checked first, before the database is touched at all: a KEK that cannot unseal it fails immediately (`backup.ErrKEKMismatch`) rather than partially loading anything. There is no way to restore a backup without its KEK — escrow the KEK (`#kek-handling`) wherever backups are kept.
+- A restored `crypto.root` row and the KEK canary are both re-verified, inside the same transaction that loaded them, before that transaction is allowed to commit. Either check failing (a crafted or corrupted archive, not merely the wrong KEK) rolls the whole restore back — the target database is left exactly as it was before the attempt, never partially loaded.
+
 ## Local admin, sessions, and CSRF
 
 - The local admin is break-glass access. There is at most one, enforced by a partial unique index. Its password (12 to 1024 characters) is stored as argon2id (64 MiB, t=3, p=2, 16-byte salt). Logins for a missing user spend the same time as a real check.

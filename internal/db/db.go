@@ -61,6 +61,28 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return migrateRiver(ctx, pool)
 }
 
+// MigrateTo applies migrations up to and including version, never past it,
+// then river's own schema (migrateRiver), the same as Migrate. Restore
+// (internal/backup, Task 10) uses this to bring a database to exactly the
+// version a backup's header declares (or this binary's minimum, whichever
+// is newer) before loading, rather than racing ahead to whatever later
+// migration this binary happens to also embed.
+func MigrateTo(ctx context.Context, pool *pgxpool.Pool, version int64) error {
+	p, sqlDB, err := newProvider(pool)
+	if err != nil {
+		return err
+	}
+	_, upErr := p.UpTo(ctx, version)
+	closeErr := sqlDB.Close() // see Migrate's comment on closing before migrateRiver runs
+	if upErr != nil {
+		return fmt.Errorf("db: migrate to %d: %w", version, upErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("db: migrate to %d: close goose connection: %w", version, closeErr)
+	}
+	return migrateRiver(ctx, pool)
+}
+
 // Version returns the current schema version.
 func Version(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 	p, sqlDB, err := newProvider(pool)
