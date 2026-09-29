@@ -29,6 +29,7 @@ import (
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/kek"
 	"github.com/metril/certforge/internal/meta"
+	"github.com/metril/certforge/internal/monitor"
 	"github.com/metril/certforge/internal/notify"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
@@ -116,6 +117,12 @@ type Deps struct {
 	// in cmd/certforge/serve.go). nil answers 404, same as the handler
 	// itself does while the "prometheus" section is disabled.
 	Metrics http.Handler
+
+	// Monitors is external-monitor CRUD and the inline check (Phase 6A
+	// Task 9: internal/api/monitors.go). Wired in cmd/certforge/serve.go
+	// (Task 14), alongside monitor.Service's own river registration
+	// (ScanWorker/CheckWorker).
+	Monitors *monitor.Service
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.
