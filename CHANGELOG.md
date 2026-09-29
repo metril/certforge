@@ -132,6 +132,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Revoke versions issued by a private CA.
 - Settings → Integrations configures and tests the Vault connection.
 - Settings shows the encryption key, previous keys and rewrap progress.
+- Vault KV deploy target in the web UI.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

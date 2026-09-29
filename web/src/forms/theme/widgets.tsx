@@ -1,23 +1,37 @@
 import { enumOptionsIndexForValue, enumOptionsValueForIndex, type RegistryWidgetsType, type WidgetProps } from '@rjsf/utils';
 import { ChipSet } from '@/components/ChipSet';
 import { Combobox } from '@/components/Combobox';
+import { PermissionTip } from '@/components/PermissionTip';
 import { SecretInput } from '@/components/SecretInput';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Textarea } from '@/components/ui/textarea';
 
+// `ui:options.permission`/`ui:options.allowed` (Task 8: vault-kv's includeKey,
+// gated on keys:export) disables the switch, behind a PermissionTip, only
+// while turning it ON would need the permission the caller lacks — a stored
+// `true` stays visible and interactable so the operator can still turn it
+// off; the server enforces the permission either way.
 function SwitchWidget({ id, value, onChange, disabled, readonly, label, schema, options }: WidgetProps) {
-  return (
+  const permission = typeof options.permission === 'string' ? options.permission : undefined;
+  const gated = permission !== undefined && options.allowed !== true && value !== true;
+  const control = (
     <SwitchField
       id={id}
       label={label || schema.title || id}
       helpText={schema.description}
       checked={value === true}
       onCheckedChange={(v) => onChange(v)}
-      disabled={disabled || readonly}
+      disabled={disabled || readonly || gated}
       onText={typeof options.onText === 'string' ? options.onText : 'On'}
       offText={typeof options.offText === 'string' ? options.offText : 'Off'}
     />
+  );
+  if (!gated) return control;
+  return (
+    <PermissionTip allowed={false} action={permission}>
+      {control}
+    </PermissionTip>
   );
 }
 

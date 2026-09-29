@@ -1,11 +1,22 @@
-import { Eye, Pencil, Trash2 } from 'lucide-react';
+import { Eye, Pencil, Send, Trash2 } from 'lucide-react';
 import { plural } from '@/api/queries/certificates';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-/** Edit (or View, read-only) and Delete; Delete is blocked while grants use the item. */
-export function RowActions({ name, grantCount, canWrite, onOpen, onDelete }: { name: string; grantCount: number; canWrite: boolean; onOpen: () => void; onDelete: () => void }) {
+type Props = {
+  name: string;
+  grantCount: number;
+  canWrite: boolean;
+  onOpen: () => void;
+  onDelete: () => void;
+  /** Task 8: a server-run deploy target's own grants live on its detail sheet, not a client's. */
+  onGrants?: () => void;
+};
+
+/** Edit (or View, read-only), an optional Grants action (server-run deploy
+ * targets), and Delete; Delete is blocked while grants use the item. */
+export function RowActions({ name, grantCount, canWrite, onOpen, onDelete, onGrants }: Props) {
   const blocked = grantCount > 0;
   const del = (
     <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite || blocked} aria-label={`Delete ${name}`} onClick={onDelete}>
@@ -17,6 +28,11 @@ export function RowActions({ name, grantCount, canWrite, onOpen, onDelete }: { n
       <Button variant="ghost" size="icon-sm" className="size-7" aria-label={canWrite ? `Edit ${name}` : `View ${name}`} onClick={onOpen}>
         {canWrite ? <Pencil className="size-3.5" aria-hidden /> : <Eye className="size-3.5" aria-hidden />}
       </Button>
+      {onGrants && (
+        <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Grants ${name}`} onClick={onGrants}>
+          <Send className="size-3.5" aria-hidden />
+        </Button>
+      )}
       {!canWrite ? (
         <PermissionTip allowed={false} action="delivery:write" side="left">
           {del}

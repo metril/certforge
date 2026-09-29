@@ -299,10 +299,21 @@ export const help = {
   'grant.autoRemediate': { text: 'On drift, reinstall the files automatically instead of only reporting it.', learnMore: 'agent.md#drift' },
   'grant.files': { text: 'Expected digests come from the server; installed ones from the agent’s last report.', learnMore: 'agent.md#drift' },
   'grant.forceRemove': { text: 'Deletes the grant now and leaves any files on the host for the agent to clean up later. Use it when the agent is gone for good.' },
+  // Task 8: server-run targets and their grants (grant.serverTarget disables
+  // a server-run target in the client grant sheet; serverDeployment.status
+  // covers ServerDeploymentChip).
+  'grant.serverTarget': { text: 'Server-side targets need no client. Grant them from the target’s detail.', learnMore: 'deploy-targets.md#vault-kv' },
+  'serverDeployment.status': {
+    text: 'Pending is queued and Deployed is written. Failed shows the error, and Redeploy retries.',
+    learnMore: 'deploy-targets.md#vault-kv',
+  },
   'deploy.redeploy': { text: 'Asks the agent to reinstall the current version and report again.' },
   'hook.exit': { text: 'Exit status. -1 means the agent refused it, it failed to start, or it timed out.', learnMore: 'agent.md#hooks-and-the-allowlist' },
   'target.type': { text: 'How the target is driven. Its fields come from the type’s schema.', learnMore: 'deploy-targets.md#traefik' },
-  'target.runsOn': { text: 'Agent targets run on the client after it writes the grant’s files.', learnMore: 'agent.md#traefik-integration' },
+  // Task 8: replaces the agent-only copy now that vault-kv runs on the server.
+  'target.runsOn': { text: 'Agent: a client writes the files on its host. Server: CertForge writes them itself.', learnMore: 'deploy-targets.md#vault-kv' },
+  'target.vaultKv': { text: 'CertForge writes the files to Vault KV itself. No client is involved.', learnMore: 'deploy-targets.md#vault-kv' },
+  'target.includeKey': { text: 'Also write the private key to Vault. Needs the keys:export permission.', learnMore: 'deploy-targets.md#vault-kv' },
   'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
   'layout.path': { text: 'Absolute path on the client host, one per file.', learnMore: 'agent.md#file-layouts' },
   'layout.parts': { text: "Joined in the order picked. extra adds each extra certificate's leaf and chain." },

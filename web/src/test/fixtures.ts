@@ -573,6 +573,48 @@ export const traefikSchema = {
   },
 } as ProviderSchema;
 
+// Mirrors internal/deploy/vaultkv.go's vaultKVSchema verbatim (Task 8); the
+// display name matches cmd/certforge/serve.go's deployReg.Register call.
+export const vaultKvSchema = {
+  code: 'vault-kv',
+  name: 'Vault KV (runs on server)',
+  aliases: [],
+  schema: {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    title: 'Vault KV',
+    description:
+      "Writes a certificate's files as one document in a Vault (or OpenBao) KV v2 secrets engine. Runs on the server; needs Settings → Integrations → Vault to be configured first.",
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      mount: {
+        type: 'string', pattern: '^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$', default: 'secret',
+        title: 'Mount', description: 'Vault KV v2 secrets engine mount path.',
+      },
+      path: {
+        type: 'string', default: 'certforge/{org}/{name}',
+        title: 'Path',
+        description:
+          'Secret path within the mount. May use {org} (org slug), {cert} (certificate id) and {name} (certificate name); no other placeholder is allowed. The rendered path must not start with / or contain ..',
+      },
+      keys: {
+        type: 'object', additionalProperties: false,
+        title: 'Document fields', description: 'KV document field name each PEM part is written under.',
+        properties: {
+          fullchain: { type: 'string', default: 'fullchain.pem', title: 'Fullchain field' },
+          cert: { type: 'string', default: 'cert.pem', title: 'Certificate field' },
+          chain: { type: 'string', default: 'chain.pem', title: 'Chain field' },
+          key: { type: 'string', default: 'privkey.pem', title: 'Private key field' },
+        },
+      },
+      includeKey: {
+        type: 'boolean', default: false,
+        title: 'Include private key', description: 'Also write the private key. A grant onto a target with this set needs keys:export.',
+      },
+    },
+  },
+} as ProviderSchema;
+
 export function makeAttempt(p: Partial<Attempt> = {}): Attempt {
   return {
     id: 'a-1',

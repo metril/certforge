@@ -18,6 +18,7 @@ import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { PHASE_LABEL } from '@/lib/clientStatus';
+import { help } from '@/lib/help';
 
 type Props = { orgId: string; client: Client; grants: Grant[]; editing?: Grant; onOpenChange: (open: boolean) => void };
 
@@ -175,7 +176,11 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
                   setTargetId(v);
                   setErrors((e) => ({ ...e, where: undefined }));
                 }}
-                options={targets.map((t) => ({ value: t.id, label: t.name, hint: typeName(t.type) }))}
+                options={targets.map((t) =>
+                  t.runsOn === 'server'
+                    ? { value: t.id, label: t.name, disabled: true, hint: help['grant.serverTarget'].text }
+                    : { value: t.id, label: t.name, hint: typeName(t.type) },
+                )}
                 placeholder="No target"
                 emptyText="No deploy targets yet."
               />

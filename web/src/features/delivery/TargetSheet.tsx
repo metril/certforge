@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -12,10 +12,19 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
+import { useMe } from '@/lib/org';
+import { can } from '@/lib/permissions';
 
 type Props = { orgId: string; target?: DeployTarget; types: ProviderSchema[]; readOnly: boolean; onOpenChange: (open: boolean) => void };
 
+// Task 8: the only server-run target type today (deploy.RunsOn mirrors this
+// same single-type check server-side); a target's own `runsOn` (derived from
+// its type) isn't in GET /meta/schemas' entries, only on a saved DeployTarget.
+const SERVER_TYPES = new Set(['vault-kv']);
+const runsOnHint = (code: string) => (SERVER_TYPES.has(code) ? 'Runs on server' : 'Runs on agent');
+
 export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Props) {
+  const me = useMe();
   const save = useSaveDeployTarget(orgId);
   const formRef = useRef<SchemaFormHandle>(null);
   const [name, setName] = useState(target?.name ?? '');
@@ -32,6 +41,23 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     setConfig({});
     setExtra(null);
   };
+  const canExportKeys = can(me, 'keys:export', orgId);
+  // vault-kv's own uiSchema: includeKey gated behind keys:export, keys/path
+  // in the mono font, path's placeholder (the schema's `default`, which
+  // buildUiSchema doesn't surface as a placeholder).
+  const uiSchemaOverrides = useMemo(() => {
+    if (type !== 'vault-kv') return undefined;
+    return {
+      includeKey: { 'ui:options': { permission: 'keys:export', allowed: canExportKeys } },
+      path: { 'ui:options': { mono: true }, 'ui:placeholder': 'certforge/{org}/{name}' },
+      keys: {
+        fullchain: { 'ui:options': { mono: true } },
+        cert: { 'ui:options': { mono: true } },
+        chain: { 'ui:options': { mono: true } },
+        key: { 'ui:options': { mono: true } },
+      },
+    };
+  }, [type, canExportKeys]);
 
   const submit = async () => {
     setFormError(null);
@@ -77,14 +103,14 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               }}
             />
           </Field>
-          <Field id="target-type" label="Type" help="target.type">
+          <Field id="target-type" label="Type" help={type === 'vault-kv' ? 'target.vaultKv' : 'target.type'}>
             {types.length <= 5 ? (
               <SegmentedControl<string>
                 id="target-type"
                 aria-label="Type"
                 value={type}
                 onChange={changeType}
-                options={types.map((t) => ({ value: t.code, label: t.name, disabled: !!target || readOnly }))}
+                options={types.map((t) => ({ value: t.code, label: t.name, disabled: !!target || readOnly, hint: runsOnHint(t.code) }))}
               />
             ) : (
               <Combobox
@@ -92,7 +118,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
                 aria-label="Type"
                 value={type}
                 onChange={changeType}
-                options={types.map((t) => ({ value: t.code, label: t.name }))}
+                options={types.map((t) => ({ value: t.code, label: t.name, hint: runsOnHint(t.code) }))}
                 placeholder="Pick a type"
                 emptyText="No type matches."
                 disabled={!!target || readOnly}
@@ -109,6 +135,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
             }}
             readonly={readOnly}
             extraErrors={extra ?? undefined}
+            uiSchemaOverrides={uiSchemaOverrides}
           />
           {formError && (
             <p role="alert" className="flex items-center gap-1.5 text-sm">

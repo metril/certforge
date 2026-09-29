@@ -98,7 +98,10 @@ function ObjectFieldTemplate({ properties }: ObjectFieldTemplateProps) {
 function BaseInputTemplate(props: BaseInputTemplateProps) {
   const { id, htmlName, value, required, disabled, readonly, autofocus, placeholder, onChange, onChangeOverride, onBlur, onFocus, options, schema, type, rawErrors } = props;
   const inputProps = getInputProps(schema, type, options);
-  const mono = schema.format === 'uri' || schema.format === 'hostname' || schema.format === 'ipv4';
+  // `ui:options.mono` (Task 8: vault-kv's path and KV document field names)
+  // opts a plain string field into the mono font alongside the formats that
+  // already imply a machine value.
+  const mono = schema.format === 'uri' || schema.format === 'hostname' || schema.format === 'ipv4' || options.mono === true;
   return (
     <Input
       id={id}

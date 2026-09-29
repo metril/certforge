@@ -1,8 +1,9 @@
 import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
+import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, makeCert, makeClient, makeGrant, makeHook, makeLayout, makeTarget, problem, traefikSchema, url } from '@/test/fixtures';
+import { authHandlers, makeCert, makeClient, makeGrant, makeHook, makeLayout, makeTarget, problem, targetVaultKv, traefikSchema, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: { certificateId: string }[];
@@ -170,4 +171,19 @@ it('shows hooks in run order and saves the reordered list', async () => {
   expect(order()).toEqual([expect.stringMatching(/^1\.notify/), expect.stringMatching(/^2\.reload nginx/)]);
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ hookIds: ['h-2', 'h-1'] }));
+});
+
+// Task 8: a server-run target (vault-kv) is never grantable to a client;
+// it shows disabled with a tooltip, never hidden (Deviation 5A R9/R6).
+it('shows a server-run target disabled in the deploy target picker', async () => {
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv] })));
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  await user.click(await within(sheet).findByRole('combobox', { name: 'Deploy target' }));
+  const opt = await screen.findByRole('option', { name: new RegExp(`^${targetVaultKv.name}`) });
+  expect(opt).toHaveAttribute('aria-disabled', 'true');
+  await user.hover(opt);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(help['grant.serverTarget'].text);
+  await user.click(opt);
+  expect(screen.getByRole('combobox', { name: 'Deploy target' })).toBeInTheDocument();
 });

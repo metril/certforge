@@ -3,7 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Grant } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, makeClient, makeDeployment, makeGrant, makeHook, makeLayout, makeTarget, meWith, org, problem, url } from '@/test/fixtures';
+import { authHandlers, grantServer, iso, makeClient, makeDeployment, makeGrant, makeHook, makeLayout, makeTarget, meWith, org, problem, targetVaultKv, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const a = 'aa'.repeat(32);
@@ -194,4 +194,34 @@ it('shows a toast when redeploy fails', async () => {
   await findLoadedTable();
   await user.click(screen.getByRole('button', { name: 'Redeploy www' }));
   expect(await screen.findByText('agent unreachable')).toBeInTheDocument();
+});
+
+// Task 8 (Review Focus: nullable grant fields never crash the client grants
+// tab): Grant.clientId/clientName/deployment are nullable for a server grant
+// (5a-facts.md); this endpoint is client-scoped and never actually returns
+// one today, but the table must still render a runsOn:'server' row safely
+// rather than dereferencing `deployment!`.
+it('renders a server grant row with a Server chip and its own deployment chip, without crashing', async () => {
+  grants = [{ ...grantServer, certificateName: 'api', deployTargetId: targetVaultKv.id }];
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetVaultKv] })));
+  renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  const row = rowOf('api');
+  expect(within(row).getByText('Server')).toBeInTheDocument();
+  expect(within(row).getByText(targetVaultKv.name)).toBeInTheDocument();
+  expect(within(row).getByText('Deployed')).toBeInTheDocument();
+});
+
+// ServerDeploymentChip: a failed status shows the server's own lastError as
+// its tooltip (UI conventions table), separate from the withHelp icon's
+// generic serverDeployment.status explanation.
+it('shows a failed server grant\'s lastError as the chip\'s own tooltip', async () => {
+  grants = [{ ...grantServer, certificateName: 'api', deployTargetId: targetVaultKv.id, serverDeployment: { status: 'failed', versionId: 'v-1', lastError: 'vault: permission denied', deployedAt: null, updatedAt: iso(0) } }];
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetVaultKv] })));
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  const row = rowOf('api');
+  const chip = within(row).getByText('Failed');
+  await user.hover(chip);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('vault: permission denied');
 });

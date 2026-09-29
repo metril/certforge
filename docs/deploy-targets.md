@@ -48,7 +48,7 @@ Example YAML for `dir: /data/traefik`, `pathPrefix: /etc/traefik/dynamic`, `defa
 
 Compose example: see [agent.md](agent.md#traefik-integration).
 
-## Vault KV {#vault-kv}
+## Vault KV
 
 Runs on the server, not an agent — its grants are client-less ("server grants") and have no client to enroll or check in. Writes a certificate's rendered files as one document in a Vault (or OpenBao) [KV v2](https://developer.hashicorp.com/vault/docs/secrets/kv/kv-v2) secrets engine. Settings → Integrations → Vault must be configured first (see [vault.md](vault.md#integrations)); every write uses that section's token/AppRole, never a credential stored on the target itself.
 

@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeTarget, meWith, org, problem, traefikSchema, url } from '@/test/fixtures';
+import { authHandlers, makeTarget, meWith, org, problem, targetVaultKv, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: unknown;
@@ -173,4 +173,59 @@ it('puts a name-conflict 409 under Name and any other 409 in the page alert', as
   const alert = await within(sheet).findByText('Used by web-1/www.');
   expect(alert.closest('[role="alert"]')).toBeInTheDocument();
   expect(within(sheet).getByLabelText('Name')).not.toHaveAttribute('aria-invalid', 'true');
+});
+
+// Task 8: the Vault KV target type and its includeKey gating.
+it('shows vault-kv in the type picker with a "runs on server" hint', async () => {
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  await user.hover(within(sheet).getByRole('radio', { name: 'Vault KV (runs on server)' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Runs on server');
+});
+
+it('shows a "runs on agent" hint for a client-side target type', async () => {
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  await user.hover(within(sheet).getByRole('radio', { name: 'Traefik (file provider)' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Runs on agent');
+});
+
+it('creates a vault-kv target with its default config', async () => {
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  await user.type(within(sheet).getByLabelText('Name'), 'vault-store');
+  await user.click(within(sheet).getByRole('radio', { name: 'Vault KV (runs on server)' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toMatchObject({ name: 'vault-store', type: 'vault-kv', config: { includeKey: false } }));
+});
+
+it('disables includeKey without keys:export, with a tooltip naming it', async () => {
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))),
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })),
+  );
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  await user.click(within(sheet).getByRole('radio', { name: 'Vault KV (runs on server)' }));
+  const sw = await within(sheet).findByRole('switch', { name: 'Include private key' });
+  expect(sw).toBeDisabled();
+  await user.hover(sw);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the keys:export permission');
+});
+
+it('shows Server for a vault-kv row and a Grants action that opens its detail', async () => {
+  server.use(
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })),
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv] })),
+  );
+  const { user, router } = renderRoute('/o/acme/delivery/targets');
+  await screen.findByRole('table', { name: 'Deploy targets' });
+  const row = rowOf(targetVaultKv.name);
+  expect(within(row).getByText('Server')).toBeInTheDocument();
+  expect(within(rowOf('edge traefik')).getByText('Agent')).toBeInTheDocument();
+  await user.click(within(row).getByRole('button', { name: `Grants ${targetVaultKv.name}` }));
+  expect(router.state.location.search).toMatchObject({ view: targetVaultKv.id });
 });

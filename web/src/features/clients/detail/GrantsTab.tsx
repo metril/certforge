@@ -1,7 +1,7 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronDown, Pencil, RotateCw, Trash2 } from 'lucide-react';
+import { ChevronDown, Pencil, RotateCw, Server, Trash2 } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
 import { grantsQuery, useDeleteGrant, useRedeployGrant } from '@/api/queries/grants';
@@ -11,6 +11,8 @@ import { DeploymentChip } from '@/components/DeploymentChip';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
+import { ServerDeploymentChip } from '@/components/ServerDeploymentChip';
+import { ToneChip } from '@/components/StatusChip';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -62,6 +64,31 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   const writable = canWrite && client.status !== 'revoked';
   const layoutName = (id: string | null) => (id ? (layouts.find((l) => l.id === id)?.name ?? '…') : '–');
   const targetName = (id: string | null) => (id ? (targets.find((t) => t.id === id)?.name ?? '…') : '–');
+  // Task 8: Grant.clientId/clientName/deployment are nullable for a
+  // runsOn:'server' grant (5a-facts.md); this endpoint is client-scoped and
+  // never actually returns one, but the table must render one safely rather
+  // than dereferencing `deployment!` if it ever does.
+  const targetCell = (g: Grant) =>
+    g.runsOn === 'server' ? (
+      <span className="inline-flex items-center gap-1">
+        <ToneChip tone="neutral" icon={Server} label="Server" />
+        <span className="truncate">{targetName(g.deployTargetId)}</span>
+      </span>
+    ) : (
+      targetName(g.deployTargetId)
+    );
+  const stateCell = (g: Grant) =>
+    g.runsOn === 'server' ? (
+      <span className="inline-flex items-center gap-1.5">
+        <ServerDeploymentChip status={g.serverDeployment!.status} lastError={g.serverDeployment!.lastError} withHelp />
+        {g.serverDeployment!.deployedAt && <span className="text-xs text-ink-muted">{relTime(g.serverDeployment!.deployedAt)}</span>}
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1">
+        <DeploymentChip state={g.deployment!.state} withHelp />
+        {toggleButton(g)}
+      </span>
+    );
   // Only the row actually being redeployed shows as busy; other rows stay
   // clickable while one redeploy is in flight.
   const redeploying = (g: Grant) => redeploy.isPending && redeploy.variables === g.id;
@@ -102,7 +129,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   if (grants.length === 0) return <EmptyState message="No certificates granted yet.">{emptyAction}</EmptyState>;
 
   const toggle = (g: Grant) => onOpen(open === g.id ? undefined : g.id);
-  const attention = (g: Grant) => g.deployment?.state === 'drift' || g.deployment?.state === 'failed';
+  const attention = (g: Grant) => g.deployment?.state === 'drift' || g.deployment?.state === 'failed' || g.serverDeployment?.status === 'failed';
   const startRemoving = (g: Grant) => {
     setForce(false);
     setRemoving(g);
@@ -202,18 +229,13 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
                   <TableCell className="py-1">{certLink(g)}</TableCell>
                   <TableCell className="py-1">{DELIVERY_LABEL[g.delivery]}</TableCell>
                   <TableCell className="truncate py-1">{layoutName(g.layoutId)}</TableCell>
-                  <TableCell className="truncate py-1">{targetName(g.deployTargetId)}</TableCell>
+                  <TableCell className="truncate py-1">{targetCell(g)}</TableCell>
                   <TableCell className="py-1 tabular-nums">{g.hookIds.length || '–'}</TableCell>
                   <TableCell className="py-1">{g.autoRemediate ? 'On' : 'Off'}</TableCell>
-                  <TableCell className="py-1">
-                    <span className="inline-flex items-center gap-1">
-                      <DeploymentChip state={g.deployment!.state} withHelp />
-                      {toggleButton(g)}
-                    </span>
-                  </TableCell>
+                  <TableCell className="py-1">{stateCell(g)}</TableCell>
                   <TableCell className="py-1 text-right">{actions(g)}</TableCell>
                 </TableRow>
-                {open === g.id && (
+                {open === g.id && g.deployment && (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={8} className="whitespace-normal bg-subtle/40">
                       {detail(g)}
@@ -230,16 +252,20 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
             <li key={g.id} className="grid gap-2 rounded-md border border-border bg-panel p-3">
               <div className="flex items-center justify-between gap-2">
                 {certLink(g)}
-                <DeploymentChip state={g.deployment!.state} withHelp />
+                {g.runsOn === 'server' ? (
+                  <ServerDeploymentChip status={g.serverDeployment!.status} lastError={g.serverDeployment!.lastError} withHelp />
+                ) : (
+                  <DeploymentChip state={g.deployment!.state} withHelp />
+                )}
               </div>
               <span className="truncate text-xs text-ink-muted">
                 {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)} · {g.hookIds.length || '–'} hooks · Auto-remediate {g.autoRemediate ? 'On' : 'Off'}
               </span>
               <div className="flex items-center justify-between">
-                {toggleButton(g)}
+                {g.deployment ? toggleButton(g) : <span />}
                 {actions(g)}
               </div>
-              {open === g.id && detail(g)}
+              {open === g.id && g.deployment && detail(g)}
             </li>
           ))}
         </ul>

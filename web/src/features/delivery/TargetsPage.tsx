@@ -33,7 +33,10 @@ export function TargetsPage() {
   const metaQ = useQuery(metaSchemasQuery);
   const del = useDeleteDeployTarget(org.id);
   const [deleting, setDeleting] = useState<DeployTarget | null>(null);
-  const openSheet = (id: string | undefined) => void navigate({ search: { edit: id }, replace: id === undefined });
+  const openSheet = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, edit: id, view: undefined }), replace: id === undefined });
+  // Task 8 owns the `view` param (a server target's own Grants action); Task
+  // 9 renders the detail sheet it opens and its own not-found handling.
+  const openView = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, view: id, edit: undefined }) });
   const types = metaQ.data?.deployTargets ?? [];
   const typeName = (code: string) => types.find((t) => t.code === code)?.name ?? code;
   const targets = q.data ?? [];
@@ -114,7 +117,7 @@ export function TargetsPage() {
                 <TableRow key={t.id} className="h-9">
                   <TableCell className={cn('truncate py-1 font-semibold', stickyCol)}>{t.name}</TableCell>
                   <TableCell className="truncate py-1">{typeName(t.type)}</TableCell>
-                  <TableCell className="py-1">Agent</TableCell>
+                  <TableCell className="py-1">{t.runsOn === 'server' ? 'Server' : 'Agent'}</TableCell>
                   <TableCell title={String((t.config as { dir?: unknown }).dir ?? '')} className="truncate py-1 font-mono text-xs">
                     {String((t.config as { dir?: unknown }).dir ?? '–')}
                   </TableCell>
@@ -122,7 +125,14 @@ export function TargetsPage() {
                     <UsedBy count={t.grantCount} />
                   </TableCell>
                   <TableCell className="py-1 text-right">
-                    <RowActions name={t.name} grantCount={t.grantCount} canWrite={canWrite} onOpen={() => openSheet(t.id)} onDelete={() => setDeleting(t)} />
+                    <RowActions
+                      name={t.name}
+                      grantCount={t.grantCount}
+                      canWrite={canWrite}
+                      onOpen={() => openSheet(t.id)}
+                      onDelete={() => setDeleting(t)}
+                      onGrants={t.runsOn === 'server' ? () => openView(t.id) : undefined}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
