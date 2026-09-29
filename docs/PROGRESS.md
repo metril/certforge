@@ -288,7 +288,7 @@ Phase 5A complete; 5B (issuers and vault web UI) builds on it.
 | 4 | Wizard and attempts for private CAs | done | 307fd10 |
 | 5 | Revoke a version | done | 2a72519 |
 | 6 | Settings → Integrations | done | b667b52 |
-| 7 | Encryption key card | planned | – |
+| 7 | Encryption key card | done | pending |
 | 8 | Vault KV target and grant fallout | planned | – |
 | 9 | Deploy-target detail and server grants | planned | – |
 | 10 | Docs pass and Playwright | planned | – |

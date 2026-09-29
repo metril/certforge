@@ -73,7 +73,7 @@ Enrolment tokens pin the CA that signs the listener certificate, so tokens creat
 
 ## KEK rotation
 
-CertForge's key-encryption key (KEK) can be rotated live, with no downtime and no offline migration step (ADR 0014). `GET /api/v1/keys/status` reports the active KEK's identity, any previous KEKs still configured, a canary round-trip and the most recent rewrap's progress.
+CertForge's key-encryption key (KEK) can be rotated live, with no downtime and no offline migration step (ADR 0014). `GET /api/v1/keys/status` reports the active KEK's identity, any previous KEKs still configured, a canary round-trip and the most recent rewrap's progress. Settings → Backup and keys' **Encryption key** card (`docs/web-ui.md`) shows all of this and starts a rewrap without leaving the browser.
 
 **Static → static** (a new `CF_KEK`/`CF_KEK_FILE` value):
 1. Move the current value to `CF_KEK_PREVIOUS` (or `CF_KEK_PREVIOUS_FILE`), set the new value as `CF_KEK`/`CF_KEK_FILE`, and restart.

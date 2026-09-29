@@ -14,7 +14,11 @@ export function useStartRewrap() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => call(api.POST('/keys/rewrap')),
-    meta: { success: 'Rewrap started' },
+    // silent (Task 7, same precedent as useRevokeVersion/useRotateCa): a 409
+    // ("a rewrap is already running") is caught and toasted explicitly by
+    // EncryptionKeyCard with its own fixed copy and a refetch, instead of
+    // the mutation cache's generic error toast firing too.
+    meta: { silent: true, success: 'Rewrap started' },
     onSuccess: (data: KeysStatus) => qc.setQueryData(['keys-status'], data),
   });
 }

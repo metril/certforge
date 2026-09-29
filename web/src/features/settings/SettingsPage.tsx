@@ -5,9 +5,9 @@ import { canAnywhere } from '@/lib/permissions';
 import { AccessPage } from './access/AccessPage';
 import { AgentsSection } from './agents/AgentsSection';
 import { AuthenticationSection } from './AuthenticationSection';
+import { EncryptionKeyCard } from './EncryptionKeyCard';
 import { IntegrationsSection } from './IntegrationsSection';
 import { IssuanceDefaultsSection } from './IssuanceDefaultsSection';
-import { KekStatus } from './KekStatus';
 import { OrgsList } from './OrgsList';
 import { SchemaSection } from './SchemaSection';
 import { SECTIONS, type SectionSlug } from './sections';
@@ -55,7 +55,7 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
           {section === 'integrations' && <IntegrationsSection />}
           {section === 'backup' && (
             <>
-              <KekStatus />
+              <EncryptionKeyCard />
               <SchemaSection section="backup" />
             </>
           )}

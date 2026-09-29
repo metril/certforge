@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, ca, meWith, url } from '@/test/fixtures';
+import { authHandlers, ca, keysStatic, meWith, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 // I4 (flaky "saves the General section from its schema"): SettingsPage
@@ -51,6 +51,7 @@ beforeEach(() => {
       }),
     ),
     http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })),
+    http.get(url('/keys/status'), () => HttpResponse.json(keysStatic)),
     // Mirrors internal/issuance/defaults.go's BuiltinDefaults() in `value`
     // (preflight A8/A9: caId, accountId, propagationSeconds stay absent
     // until explicitly saved) and internal/settings/store.go's GetSection
@@ -114,21 +115,16 @@ it('lists organizations read-only under General', async () => {
   expect(screen.getByText('acme')).toBeInTheDocument();
 });
 
-it('shows the KEK status from /readyz and saves the escrow switch', async () => {
+// Task 7: the Encryption key card (fed by GET /keys/status) replaces
+// KekStatus (which read /readyz's checks.kek); its own coverage
+// (kind/canary/previous/rewrap/permissions/polling) lives in keys.test.tsx.
+it('shows the encryption key card and saves the escrow switch', async () => {
   const { user } = renderRoute('/settings/backup');
-  expect(await screen.findByText('OK')).toBeInTheDocument();
+  expect(await screen.findByText('Static')).toBeInTheDocument();
+  expect(screen.getByText('Canary OK')).toBeInTheDocument();
   await user.click(screen.getByRole('switch', { name: 'KEK escrow confirmed' }));
   await user.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(puts.backup).toEqual({ kekEscrowConfirmed: true }));
-});
-
-it('shows a failed KEK check once, without repeating the chip word as raw text', async () => {
-  server.use(http.get('*/readyz', () => HttpResponse.json({ status: 'unavailable', checks: { database: 'ok', kek: 'failed' } })));
-  renderRoute('/settings/backup');
-  expect(await screen.findByText('Failed')).toBeInTheDocument();
-  // fetchReadiness sets message to the raw "failed" string; it must not
-  // also render as its own line once the chip already says "Failed".
-  expect(screen.queryByText('failed')).toBeNull();
 });
 
 it('shows each Org-tab field badge from the effective endpoint, not a raw-value comparison', async () => {

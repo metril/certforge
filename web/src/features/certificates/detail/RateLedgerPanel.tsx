@@ -3,19 +3,11 @@ import { ShieldOff } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { rateLedgerQuery, RATE_LIMIT_LABEL } from '@/api/queries/rateLedger';
 import { ErrorState } from '@/components/ErrorState';
+import { Meter, type MeterTone } from '@/components/Meter';
 import { ToneChip } from '@/components/StatusChip';
 import { relTime } from '@/lib/time';
-import { cn } from '@/lib/utils';
 
-type Tone = 'valid' | 'expiring' | 'failed';
-
-const FILL: Record<Tone, string> = {
-  valid: 'bg-valid',
-  expiring: 'bg-expiring',
-  failed: 'bg-failed',
-};
-
-function meterTone(count: number, max: number): Tone {
+function meterTone(count: number, max: number): MeterTone {
   const pct = count / max;
   if (pct >= 1) return 'failed';
   if (pct >= 0.8) return 'expiring';
@@ -64,9 +56,7 @@ export function RateLedgerPanel({ orgId, caId, certId }: { orgId: string; caId?:
           </span>
           {it.max > 0 ? (
             <>
-              <div className="h-1.5 min-w-16 flex-1 bg-subtle">
-                <div className={cn('h-full', FILL[meterTone(it.count, it.max)])} style={{ width: `${Math.min(100, (it.count / it.max) * 100)}%` }} />
-              </div>
+              <Meter value={it.count} max={it.max} tone={meterTone(it.count, it.max)} label={`${RATE_LIMIT_LABEL[it.limit]} usage`} />
               <span className="font-mono">
                 {it.count} / {it.max}
               </span>

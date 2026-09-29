@@ -99,9 +99,27 @@ export const help = {
   },
   'org.slugPermanent': { text: 'Slugs are part of every URL, so they never change.' },
   'org.deleteCascade': { text: 'Its issuance defaults and revoked-key history are removed with it.' },
-  'backup.kek': {
-    text: 'Whether the key-encryption key is loaded and passes its startup check.',
-    learnMore: 'configuration.md#the-kek',
+  // Task 7: the Encryption key card. Replaces the now-deleted KekStatus and
+  // its own 'backup.kek' entry (no longer referenced by any component).
+  'keys.kind': {
+    text: 'Static: a key from the environment. Vault Transit: the key never leaves Vault.',
+    learnMore: 'operations.md#kek-rotation',
+  },
+  'keys.canary': {
+    text: 'Proves the active key decrypts a known value.',
+    learnMore: 'operations.md#kek-rotation',
+  },
+  'keys.previous': {
+    text: 'Older keys still accepted for reading. Rewrap, then remove them from the environment.',
+    learnMore: 'operations.md#kek-rotation',
+  },
+  'keys.rewrap': {
+    text: 'Re-encrypts every sealed value with the active key. It resumes where it stopped.',
+    learnMore: 'operations.md#rewrap',
+  },
+  'keys.rewrapNoPrevious': {
+    text: 'Nothing to rewrap: no previous key is configured.',
+    learnMore: 'operations.md#rewrap',
   },
   'defaults.caId': { text: 'CA used when a certificate does not pick one.' },
   'defaults.accountId': { text: 'ACME account used to order from that CA.' },
