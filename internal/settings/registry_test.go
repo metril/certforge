@@ -3,6 +3,7 @@ package settings
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -106,6 +107,36 @@ func TestAddCheck(t *testing.T) {
 	}
 	if err := r.AddCheck("missing", nil); err == nil {
 		t.Fatal("AddCheck on unknown section succeeded")
+	}
+}
+
+// TestBackupSettingsDirectoryRules covers Phase 6A Task 1's extended
+// "backup" section: directory is required once schedule is not off, must be
+// absolute, and must be a writable directory (checkBackupDirectory creates
+// and removes a probe file).
+func TestBackupSettingsDirectoryRules(t *testing.T) {
+	sec, ok := DefaultRegistry().Section("backup")
+	if !ok {
+		t.Fatal("backup missing")
+	}
+	if err := sec.Validate(sec.Default); err != nil {
+		t.Fatalf("default rejected: %v", err)
+	}
+	if err := sec.Validate([]byte(`{"schedule":"off"}`)); err != nil {
+		t.Fatalf("schedule off, no directory: %v", err)
+	}
+	if err := sec.Validate([]byte(`{"schedule":"daily"}`)); err == nil {
+		t.Fatal("schedule daily, no directory: accepted")
+	}
+	if err := sec.Validate([]byte(`{"schedule":"daily","directory":"relative/path"}`)); err == nil {
+		t.Fatal("relative directory: accepted")
+	}
+	dir := t.TempDir()
+	if err := sec.Validate([]byte(fmt.Sprintf(`{"schedule":"daily","directory":%q}`, dir))); err != nil {
+		t.Fatalf("writable directory: %v", err)
+	}
+	if err := sec.Validate([]byte(`{"schedule":"weekly","directory":"/certforge-test-nonexistent-dir"}`)); err == nil {
+		t.Fatal("nonexistent directory: accepted")
 	}
 }
 

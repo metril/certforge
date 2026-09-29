@@ -301,6 +301,60 @@ func (q *Queries) RewrapDnsProviderCredentialsSecretCAS(ctx context.Context, arg
 	return result.RowsAffected(), nil
 }
 
+const rewrapNotificationChannelsPage = `-- name: RewrapNotificationChannelsPage :many
+SELECT id, secret_cfg FROM notification_channels
+WHERE secret_cfg IS NOT NULL AND ($2::uuid IS NULL OR id > $2)
+ORDER BY id LIMIT $1
+`
+
+type RewrapNotificationChannelsPageParams struct {
+	Limit int32      `json:"limit"`
+	After *uuid.UUID `json:"after"`
+}
+
+type RewrapNotificationChannelsPageRow struct {
+	ID        uuid.UUID `json:"id"`
+	SecretCfg []byte    `json:"secret_cfg"`
+}
+
+func (q *Queries) RewrapNotificationChannelsPage(ctx context.Context, arg RewrapNotificationChannelsPageParams) ([]RewrapNotificationChannelsPageRow, error) {
+	rows, err := q.db.Query(ctx, rewrapNotificationChannelsPage, arg.Limit, arg.After)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RewrapNotificationChannelsPageRow{}
+	for rows.Next() {
+		var i RewrapNotificationChannelsPageRow
+		if err := rows.Scan(&i.ID, &i.SecretCfg); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rewrapNotificationChannelsSecretCAS = `-- name: RewrapNotificationChannelsSecretCAS :execrows
+UPDATE notification_channels SET secret_cfg = $2 WHERE id = $1 AND secret_cfg = $3
+`
+
+type RewrapNotificationChannelsSecretCASParams struct {
+	ID          uuid.UUID `json:"id"`
+	SecretCfg   []byte    `json:"secret_cfg"`
+	SecretCfg_2 []byte    `json:"secret_cfg_2"`
+}
+
+func (q *Queries) RewrapNotificationChannelsSecretCAS(ctx context.Context, arg RewrapNotificationChannelsSecretCASParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rewrapNotificationChannelsSecretCAS, arg.ID, arg.SecretCfg, arg.SecretCfg_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rewrapOutputSpecsPage = `-- name: RewrapOutputSpecsPage :many
 SELECT id, password FROM output_specs
 WHERE password IS NOT NULL AND ($2::uuid IS NULL OR id > $2)

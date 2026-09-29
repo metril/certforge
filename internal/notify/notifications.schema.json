@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Notifications",
+  "description": "Behaviour shared by every notification channel: the SSRF policy for channel URLs, and the thresholds that trigger expiry and renewal-failure events.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "allowLoopbackUrls": {
+      "type": "boolean",
+      "title": "Allow loopback and private URLs",
+      "description": "Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback, link-local and private-network hosts. Off by default (SSRF protection).",
+      "default": false
+    },
+    "expiryWarningDays": {
+      "type": "integer",
+      "title": "Expiry warning (days)",
+      "description": "How many days before a certificate version's notAfter a cert.expiring event is raised.",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 7
+    },
+    "failureThreshold": {
+      "type": "integer",
+      "title": "Renewal failure threshold",
+      "description": "Consecutive renewal failures for one certificate before a cert.renewal_failed event is raised, at most once per day.",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 3
+    }
+  }
+}

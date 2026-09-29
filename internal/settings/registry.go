@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -267,15 +269,79 @@ const backupSchema = `{
       "title": "KEK escrow confirmed",
       "description": "The KEK is stored safely outside this server. Backups refuse to run until this is on.",
       "default": false
+    },
+    "schedule": {
+      "type": "string",
+      "title": "Schedule",
+      "description": "How often an encrypted backup is written to disk automatically.",
+      "enum": ["off", "daily", "weekly"],
+      "default": "off"
+    },
+    "retainCount": {
+      "type": "integer",
+      "title": "Retain count",
+      "description": "Number of scheduled backup files kept on disk before the oldest is pruned.",
+      "minimum": 1,
+      "maximum": 90,
+      "default": 7
+    },
+    "directory": {
+      "type": "string",
+      "title": "Directory",
+      "description": "Absolute path on the server where scheduled backups are written. Required once schedule is not off, and must be a writable directory.",
+      "maxLength": 1024,
+      "pattern": "^/"
     }
   }
 }`
+
+// checkBackupDirectory enforces what the schema alone cannot express
+// (Shared contract, Settings row): directory is required, must be an
+// absolute path and must be a writable directory once schedule is not off.
+// Writability is checked by actually creating and removing a probe file,
+// not just statting the directory (a directory can exist and still be
+// read-only to the server's process).
+func checkBackupDirectory(raw json.RawMessage) error {
+	var b struct {
+		Schedule  string `json:"schedule"`
+		Directory string `json:"directory"`
+	}
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return err
+	}
+	schedule := b.Schedule
+	if schedule == "" {
+		schedule = "off"
+	}
+	if schedule == "off" {
+		return nil
+	}
+	if b.Directory == "" {
+		return errors.New("directory is required when schedule is not off")
+	}
+	if !filepath.IsAbs(b.Directory) {
+		return fmt.Errorf("directory %q must be an absolute path", b.Directory)
+	}
+	info, err := os.Stat(b.Directory)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("directory %q is not a directory", b.Directory)
+	}
+	probe := filepath.Join(b.Directory, ".certforge-write-test")
+	if err := os.WriteFile(probe, nil, 0o600); err != nil {
+		return fmt.Errorf("directory %q is not writable: %w", b.Directory, err)
+	}
+	_ = os.Remove(probe)
+	return nil
+}
 
 // DefaultRegistry returns a registry with the sections owned by Phase 1A.
 // Other packages add theirs (for example issuance_defaults) with MustRegister.
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
 	r.MustRegister("general", json.RawMessage(generalSchema), json.RawMessage(`{}`))
-	r.MustRegister("backup", json.RawMessage(backupSchema), json.RawMessage(`{"kekEscrowConfirmed":false}`))
+	r.MustRegister("backup", json.RawMessage(backupSchema), json.RawMessage(`{"kekEscrowConfirmed":false,"schedule":"off","retainCount":7}`))
+	if err := r.AddCheck("backup", checkBackupDirectory); err != nil {
+		panic(err)
+	}
 	return r
 }

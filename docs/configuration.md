@@ -137,9 +137,51 @@ The same page lists the agent CAs with rotate and retire (see operations.md → 
 
 certforge-agent itself (the binary running alongside Traefik or another target) is configured by its own environment variables on the client host, not this page — in particular `CF_WRITE_ALLOW` and `CF_HOOK_ALLOW`, the directories and executables it is allowed to touch; both are empty (nothing allowed) by default. See [agent.md → Environment](agent.md#environment).
 
-### Backup and keys
+### Backup section
 
-Shows the key-encryption key's status (from `/readyz`'s `kek` check) and the **KEK escrow confirmed** switch, which must be on before scheduled backups run.
+Shows the key-encryption key's status (from `/readyz`'s `kek` check) and controls scheduled, encrypted backups (section `backup`; the archive format, `certforge backup`/`restore` and the scheduling job land in later Phase 6A tasks).
+
+| Field | Default | Meaning |
+|---|---|---|
+| KEK escrow confirmed (`kekEscrowConfirmed`) | off | The KEK is stored safely outside this server. Must be on before any backup (scheduled or manual) runs. |
+| Schedule (`schedule`) | off | `off`, `daily` or `weekly`. |
+| Retain count (`retainCount`) | 7 | Number of scheduled backup files kept before the oldest is pruned (1–90). |
+| Directory (`directory`) | — | Absolute path on the server where scheduled backups are written. Required once schedule is not off, and must already exist and be writable (a probe file is created and removed on save). |
+
+### SMTP section
+
+Global settings for the SMTP server CertForge uses to deliver email notification channels, served by `GET/PUT /api/v1/settings/smtp` (section `smtp`; a web UI page and the notifier itself land in later Phase 6A tasks).
+
+| Field | Default | Meaning |
+|---|---|---|
+| Host (`host`) | — | SMTP server hostname. |
+| Port (`port`) | 587 | SMTP server port (1–65535). |
+| Username (`username`) | — | SMTP authentication username. Leave empty for no authentication. |
+| Password (`password`) | — | SMTP authentication password; write-only. |
+| From address (`from`) | — | Envelope and header From address. Required once `host` is set. |
+| Security (`security`) | starttls | `starttls`, `tls` or `none`. |
+| Timeout in seconds (`timeoutSeconds`) | 10 | Per-connection timeout for SMTP calls (1–60). |
+
+A username may only be set when `security` is `starttls` or `tls` — plaintext-authenticated sessions are rejected. A PUT that changes `host` or `port` must re-send `password`, rather than relying on `__unchanged__`, since a stored password cannot be assumed to be valid — or safe to send — to a different server.
+
+### Prometheus section
+
+Global settings gating and securing the `/metrics` endpoint, served by `GET/PUT /api/v1/settings/prometheus` (section `prometheus`; the endpoint itself lands in a later Phase 6A task).
+
+| Field | Default | Meaning |
+|---|---|---|
+| Enabled (`enabled`) | off | Serves `GET /metrics` when on; 404 when off. |
+| Bearer token (`bearerToken`) | — | Token the scraper must send as `Authorization: Bearer <token>` (16–256 characters); write-only. Required once `enabled` is on, either freshly sent or already stored from an earlier save. |
+
+### Notifications section
+
+Global settings shared across every notification channel, served by `GET/PUT /api/v1/settings/notifications` (section `notifications`; channels themselves land in a later Phase 6A task).
+
+| Field | Default | Meaning |
+|---|---|---|
+| Allow loopback and private URLs (`allowLoopbackUrls`) | off | Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback, link-local and private-network hosts. Off by default (SSRF protection). |
+| Expiry warning (days) (`expiryWarningDays`) | 7 | How many days before a certificate version's `notAfter` a `cert.expiring` event is raised (1–60). |
+| Renewal failure threshold (`failureThreshold`) | 3 | Consecutive renewal failures for one certificate before a `cert.renewal_failed` event is raised, at most once per day (1–10). |
 
 ### Vault section
 

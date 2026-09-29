@@ -146,6 +146,34 @@ func TestDeliveryActions(t *testing.T) {
 	}
 }
 
+// TestAlertsActionsAndScopes covers Phase 6A Task 1's alerts:read/write
+// actions and API key scopes (Shared contract): viewer is read-only,
+// operator (and org-admin, via AllActions minus globalOnly) gets write, and
+// an alerts:read-scoped key can never write.
+func TestAlertsActionsAndScopes(t *testing.T) {
+	org := uuid.New()
+	viewer, operator := principal(RoleViewer, &org), principal(RoleOperator, &org)
+	if !Can(viewer, ActionAlertsRead, &org) || Can(viewer, ActionAlertsWrite, &org) {
+		t.Fatal("viewer: alerts:read only")
+	}
+	if !Can(operator, ActionAlertsRead, &org) || !Can(operator, ActionAlertsWrite, &org) {
+		t.Fatal("operator: alerts:read and alerts:write")
+	}
+
+	readKey := principal(RoleAdmin, nil)
+	readKey.Kind = authn.KindAPIKey
+	readKey.APIKey = &authn.APIKeyInfo{Scopes: []string{"alerts:read"}, OrgID: &org}
+	if !Can(readKey, ActionAlertsRead, &org) || Can(readKey, ActionAlertsWrite, &org) {
+		t.Fatal("alerts:read key cannot write")
+	}
+
+	for _, s := range []string{"alerts:read", "alerts:write"} {
+		if !slices.Contains(APIKeyScopes, s) || ScopeGrant[s] == "" || len(scopeActions[s]) == 0 {
+			t.Fatalf("scope %s not registered", s)
+		}
+	}
+}
+
 func TestAgentPrincipalCannotUseHumanAPI(t *testing.T) {
 	org := uuid.New()
 	p := authn.Principal{Kind: authn.KindAgent, ClientID: uuid.New(), OrgID: org,

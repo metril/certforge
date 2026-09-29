@@ -11,7 +11,7 @@ Single status file. Updated in every commit that completes a task.
 | 3 | Agent | done | [design](design.md) | [3A](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) · [3B](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md) | 2026-09-25 | 2026-09-26 |
 | 4 | Issuance breadth and formats | done | [design](design.md) | [4A](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) · [4B](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) | 2026-09-27 | 2026-09-27 |
 | 5 | Vault and private CA | done | [design](design.md) | [5A](superpowers/plans/2026-09-27-phase-5a-vault-private-ca-backend.md) · [5B](superpowers/plans/2026-09-27-phase-5b-issuers-vault-web-ui.md) | 2026-09-27 | 2026-09-29 |
-| 6 | Ops | planned | [design](design.md) | – | – | – |
+| 6 | Ops | in progress | [design](design.md) | [6A](superpowers/plans/2026-09-29-phase-6a-ops-backend.md) · [6B](superpowers/plans/2026-09-29-phase-6b-alerts-backup-web-ui.md) | 2026-09-29 | – |
 | 7 | Deploy targets | planned | [design](design.md) | – | – | – |
 
 ## Active phase tasks
@@ -293,6 +293,30 @@ Phase 5A complete; 5B (issuers and vault web UI) builds on it.
 | 9 | Deploy-target detail and server grants | done | 2735a7a |
 | 10 | Docs pass and Playwright | done | 226c697 |
 
+### Phase 6: Ops — in progress (started 2026-09-29)
+
+Phase 6 is split into two plans: 6A ops backend (schema, settings sections and authz, OpenAPI contract and generated client, event model and delivery, HTTP notifiers, SMTP notifier, channels and events API, event sources, Prometheus metrics, external monitors, encrypted backup archive format, backup/restore CLI and serve lock, backup API and schedule, cfctl, wiring and close-out, ops e2e) and 6B alerts and backup web UI. Plan 6A: [ops backend](superpowers/plans/2026-09-29-phase-6a-ops-backend.md). Plan 6B: [alerts, backup and web UI](superpowers/plans/2026-09-29-phase-6b-alerts-backup-web-ui.md).
+
+#### Phase 6A tasks
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Schema, settings sections, authz | done | pending |
+| 2 | OpenAPI contract and generated client | planned | – |
+| 3 | Event model, emitter, delivery, httpx | planned | – |
+| 4 | HTTP notifiers | planned | – |
+| 5 | SMTP notifier and SMTP test | planned | – |
+| 6 | Channels and events API | planned | – |
+| 7 | Event sources | planned | – |
+| 8 | Prometheus metrics | planned | – |
+| 9 | External monitors | planned | – |
+| 10 | Backup archive format | planned | – |
+| 11 | backup and restore CLI, serve lock | planned | – |
+| 12 | Backup API, schedule, readiness | planned | – |
+| 13 | cfctl | planned | – |
+| 14 | Wiring and close-out | planned | – |
+| 15 | Ops e2e | planned | – |
+
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.
@@ -465,6 +489,20 @@ Phase 5A complete; 5B (issuers and vault web UI) builds on it.
 - 5B batch 3 review fixes (Task 6): `SchemaSection` gains two optional hooks — `mapSaveError(message, value, schema)` (overrides the default `fieldErrorFromMessage` mapping of a failed save's error) and `prepareBody(value)` (transforms the value sent to Save, separate from what's rendered/drafted). `IntegrationsSection.tsx` uses both: `mapVaultSaveError` routes the generic 422 "re-enter the token" to `secretId` when `authMethod === 'approle'`, `token` otherwise (it was always mapped to the literal, and under AppRole hidden, `token` field); `pruneAuthMethod` drops the inactive method's field (`token` under `approle`, `roleId`/`secretId` under `token`) from both the Save and Test bodies before sending, since the server's `checkSettings` 422s on that field being present at all (even as the `__unchanged__` sentinel) — `ui:widget: 'hidden'` alone only stopped it from being edited, not from being sent, so a section with a stored token could never switch to AppRole. `VaultTest`'s result-clearing effect now keys on `JSON.stringify(value)` instead of the `value` object reference, which changed on every `SchemaSection` render (not just an edit) and could clear a just-shown result on an unrelated refetch. `integrations.test.tsx`'s "vault secrets not cached" now types and saves a real token and checks it isn't serialised anywhere in the query cache (not just that the mutation cache is empty, which it always would be). `EncryptionKeyCard.tsx`'s previous-key chips truncate with the full id in `title`, matching Key ID's own treatment. `keys.test.tsx`'s "static key basics" now hovers and asserts the `keys.rewrapNoPrevious` tooltip text instead of only `disabled`. Known gap (unchanged): `vault.approle`'s tooltip (the auth-method segmented control) has no "Learn more" link — `SchemaForm`'s only per-field tooltip override is a raw-text `ui:description`, which `FieldTemplate` renders via `<HelpTip text=.../>`, not `<HelpTip id=.../>`; there's no existing mechanism to attach a `help.ts` id (and its `learnMore`) to a schema-driven field's tooltip without a broader `SchemaForm`/`FieldTemplate` change, which is out of this fix's scope.
 - 5B batch 4 review fixes (Task 9 + Task 3 fallout): `TargetDetailSheet.tsx`'s "Edit layout" row action now reuses `newGrantAllowed`/`newGrantReason` (New server grant's own gating) instead of only checking `clients:write` — `updateServerGrant`'s `requireKeyIfNeeded` gate (`internal/api/grants.go`) needs `keys:export` on any edit to a grant on an `includeKey` target, not just create; its header now also shows the target's type name as visible text next to the title (previously sr-only only, contradicting `docs/web-ui.md`'s own "the header repeats its type"). `CaDetailSheet.tsx`'s plain-text expiry line (relTime) and `ValidityBar`'s own "full" legend (relDays) could show different day counts for the same instant; the plain-text line now renders (with `relDays`, the same formatter) only when `ValidityBar` itself doesn't — the two are mutually exclusive on the same `notBefore`/`notAfter` presence check, so no duplicate line and no formatter mismatch. Batch 3's "known gap" above is now half-closed: `forms/theme/widgets.tsx`'s `SwitchWidget` reads `options.description` (which `getUiOptions` fills from a field's own `ui:description`) ahead of `schema.description`, so a boolean/Switch field can now get a `help.ts`-sourced tooltip override the same way any other field already could via `FieldTemplate`'s `rawDescription` — `TargetSheet.tsx`'s `includeKey` override is the first user (`help['target.includeKey']`, previously dead code, now wired in in place of the shorter server-schema description); it still has no "Learn more" link, same limitation as the `vault.approle` case, since `SwitchField`'s `helpText` prop takes a raw string, not a `HelpKey`.
 - 5B final review fix wave: `invalidateGrants` (`api/queries/grants.ts`) now also invalidates `['deploy-targets', orgId]` and `['layouts', orgId]` — a server grant counts toward its own target's `grantCount` (`internal/db/queries/delivery.sql`'s `DeployTargetGrantCounts`, no `client_id` filter), so creating or removing one from `TargetDetailSheet` left the Targets list's "Used by" count and Delete-blocking stale behind it (the sheet's own `targetGrantsQuery` was already correctly invalidated; the *other* list wasn't). `e2e/issuers.spec.ts`'s 375 px test now seeds its own `e2e-local-375` CA and `e2e-vault-kv-375` deploy target through the admin API (same `adminOrg()`/dispose-before-page-login pattern as the 'server grant' test above it), instead of depending on the two tests before it in file order for `e2e-local`/`e2e-vault-kv` to already exist — closes the same self-contained ruling the file's own :101 comment states for 'server grant'. `docs/web-ui.md`'s Grants section now says Edit layout also needs `keys:export` on an `includeKey` target, matching batch 4's own fix. `CHANGELOG.md`'s batch 1 review-fixes entry moved from `### Added` to `### Changed` (batches 2–4 were already there); Task 10's own PROGRESS row commit cell filled in (`226c697`) — the 5B task table is now complete; the phase row itself stays `in progress` until this branch merges.
+
+- 6A: R1 (client config) — oapi-codegen v2.4.1 takes one package/output per config, so the client target is a second file, `api/oapi-codegen.client.yaml` (`package: client`, `output: internal/api/client/client.gen.go`); `TestNoStubsRemain` skips `client/` the same way it skips `gen/`.
+- 6A: R2 (prune) — the 5-minute job is `issuance.EnqueueDue`, and issuance must not import notify, so the 90-day event prune runs in `certforge_notify_scan` (hourly) instead.
+- 6A: R2 (fail outside a tx) — `fail()` writes with no transaction (`FinishAttempt(ctx, nil, …)`, then `MarkFailed`); `Emit` with a nil tx opens its own. The hook is `issuance.FailureListener`, called after `MarkFailed` succeeds.
+- 6A: R3/R10 (webhook secrets) — a webhook URL can carry a token, so webhook `url` is secret; a new `authHeader🔒` carries an `Authorization` value; `headers` rejects `Authorization`, `Cookie`, `Proxy-Authorization`, `Host`, `Content-Type`, `X-CertForge-*` and any name containing `token`, `key`, `secret` or `auth` (422); httpx never follows redirects and ignores proxy env vars.
+- 6A: R3 (secret re-entry) — changing a readable URL field (ntfy `server`, homeassistant `baseUrl`) while its secret is `__unchanged__` gives 422 "re-enter the secret", the same rule as Vault.
+- 6A: R5 (dedupe) — the monitor dedupe key adds a `state_changed_at` column (`monitor.<state>:<id>:<fp>:<state_changed_at unix>`), since a `(monitor, state, last_fp)` key alone would silence every later episode of a state forever; a transition is a compare-and-set on `state`, so two racing checks emit once.
+- 6A: R6 (header hashes) — per-table `rows`/`sha256` move into an encrypted final tar entry `manifest.json` (the header lists table names only), since the header is written before the snapshot is read and the API path streams. Stream key: `DeriveKey(DeriveKey(root, "certforge-backup"), hex(salt))`.
+- 6A: R6 (lock) — `serve` holds `pg_try_advisory_lock_shared(backup.ServeLockKey)` on a dedicated connection for its lifetime; `restore` takes it exclusively, so a running server blocks a restore and a server cannot start mid-restore.
+- 6A: R6 (FK order) — some tables reference each other (for example `certificates.current_version_id`), so no load order satisfies every foreign key; migration 00013 makes every non-river foreign key `DEFERRABLE INITIALLY IMMEDIATE` (behaviour unchanged) and restore loads under `SET CONSTRAINTS ALL DEFERRED`.
+- 6A: R7 (version) — `getServerInfo` GET `/server-info` → `ServerInfo{version}` (any authenticated principal) is added for `cfctl status`, since no operation returned the server version.
+- 6A: R9 (events page) — `listEvents` returns `EventPage` (`{items, nextCursor}`), matching every other paginated list (for example `listAuditEvents`).
+- 6A: R10 (rewrap) — `notification_channels.secret_cfg` is appended to `kek.Tables` and the `RewrapTable` enum.
+- 6A: R11 (monitor target) — Traefik serves plain HTTP only and no deployed certificate is served in the e2e stack; the e2e adds a `websecure` `:8443` TLS entrypoint and its own dynamic Traefik file (the issued leaf and key as the default certificate, plus a catch-all router to `noop@internal`); the monitor targets `traefik:8443`.
 
 ## Known gaps
 

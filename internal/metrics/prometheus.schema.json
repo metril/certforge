@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Prometheus",
+  "description": "Exposes a bearer-token-protected /metrics endpoint for Prometheus to scrape.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enabled",
+      "description": "Serves GET /metrics when on; the endpoint returns 404 when off.",
+      "default": false
+    },
+    "bearerToken": {
+      "type": "string",
+      "title": "Bearer token",
+      "description": "Token the scraper must send as \"Authorization: Bearer <token>\". Required once enabled.",
+      "secret": true,
+      "minLength": 16,
+      "maxLength": 256
+    }
+  }
+}

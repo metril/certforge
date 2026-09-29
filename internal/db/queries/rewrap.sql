@@ -69,3 +69,11 @@ ORDER BY id LIMIT $1;
 
 -- name: RewrapCertificateVersionsKeyCAS :execrows
 UPDATE certificate_versions SET private_key = $2 WHERE id = $1 AND private_key = $3;
+
+-- name: RewrapNotificationChannelsPage :many
+SELECT id, secret_cfg FROM notification_channels
+WHERE secret_cfg IS NOT NULL AND (sqlc.narg(after)::uuid IS NULL OR id > sqlc.narg(after))
+ORDER BY id LIMIT $1;
+
+-- name: RewrapNotificationChannelsSecretCAS :execrows
+UPDATE notification_channels SET secret_cfg = $2 WHERE id = $1 AND secret_cfg = $3;

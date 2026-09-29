@@ -42,6 +42,8 @@ const (
 	ActionAPIKeysWrite  Action = "apikeys:write"
 	ActionDeliveryRead  Action = "delivery:read"
 	ActionDeliveryWrite Action = "delivery:write"
+	ActionAlertsRead    Action = "alerts:read"
+	ActionAlertsWrite   Action = "alerts:write"
 )
 
 // Roles, matching the role_bindings.role check constraint.
@@ -63,6 +65,7 @@ var AllActions = []Action{
 	ActionSitesRead, ActionSitesWrite, ActionBindingsRead, ActionBindingsWrite,
 	ActionAPIKeysRead, ActionAPIKeysWrite,
 	ActionDeliveryRead, ActionDeliveryWrite,
+	ActionAlertsRead, ActionAlertsWrite,
 }
 
 var globalOnly = map[Action]bool{
@@ -74,20 +77,22 @@ var sharedRead = map[Action]bool{ActionOrgsRead: true, ActionSettingsRead: true,
 var viewerActions = []Action{
 	ActionOrgsRead, ActionSettingsRead, ActionCAsRead, ActionAccountsRead,
 	ActionDNSCredsRead, ActionCertsRead, ActionClientsRead, ActionSitesRead,
-	ActionDeliveryRead,
+	ActionDeliveryRead, ActionAlertsRead,
 }
 
 // APIKeyScopes are the scopes an API key may carry (docs/design.md, plus
-// Phase 3's clients:read and delivery scopes).
+// Phase 3's clients:read and delivery scopes, and Phase 6A's alerts scopes).
 var APIKeyScopes = []string{"certs:read", "certs:write", "certs:issue", "keys:export",
-	"clients:read", "clients:write", "delivery:read", "delivery:write", "admin"}
+	"clients:read", "clients:write", "delivery:read", "delivery:write",
+	"alerts:read", "alerts:write", "admin"}
 
 // ScopeGrant is the action the creator must hold, in the key's org (or
 // globally for an org-less key), to put a scope on a key.
 var ScopeGrant = map[string]Action{
 	"certs:read": ActionCertsRead, "certs:write": ActionCertsWrite, "certs:issue": ActionCertsIssue,
 	"keys:export": ActionKeysExport, "clients:read": ActionClientsRead, "clients:write": ActionClientsWrite,
-	"delivery:read": ActionDeliveryRead, "delivery:write": ActionDeliveryWrite, "admin": ActionSettingsWrite,
+	"delivery:read": ActionDeliveryRead, "delivery:write": ActionDeliveryWrite,
+	"alerts:read": ActionAlertsRead, "alerts:write": ActionAlertsWrite, "admin": ActionSettingsWrite,
 }
 
 var scopeActions = map[string][]Action{
@@ -99,6 +104,8 @@ var scopeActions = map[string][]Action{
 	"clients:write":  {ActionClientsRead, ActionClientsWrite},
 	"delivery:read":  {ActionDeliveryRead},
 	"delivery:write": {ActionDeliveryRead, ActionDeliveryWrite},
+	"alerts:read":    {ActionAlertsRead},
+	"alerts:write":   {ActionAlertsRead, ActionAlertsWrite},
 	"admin":          AllActions,
 }
 
@@ -106,7 +113,8 @@ var roleActions = map[string]map[Action]bool{
 	RoleAdmin:    set(AllActions),
 	RoleOrgAdmin: set(slices.DeleteFunc(slices.Clone(AllActions), func(a Action) bool { return globalOnly[a] })),
 	RoleOperator: set(slices.Concat(viewerActions, []Action{
-		ActionAccountsWrite, ActionDNSCredsWrite, ActionCertsWrite, ActionCertsIssue, ActionClientsWrite, ActionDeliveryWrite,
+		ActionAccountsWrite, ActionDNSCredsWrite, ActionCertsWrite, ActionCertsIssue, ActionClientsWrite,
+		ActionDeliveryWrite, ActionAlertsWrite,
 	})),
 	RoleViewer:  set(viewerActions),
 	RoleAuditor: set(slices.Concat(viewerActions, []Action{ActionAuditRead})),

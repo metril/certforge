@@ -299,6 +299,92 @@ func TestRewrapAllEightColumns(t *testing.T) {
 	}
 }
 
+// TestRewrapIncludesChannels covers Phase 6A Task 1 (Deviations R10):
+// notification_channels.secret_cfg is appended to kek.Tables, so a channel
+// secret sealed under KEK A is rewrapped to B along with everything else.
+// notification_channels has no sqlc query of its own yet (Task 6 adds
+// channel creation); a direct INSERT/UPDATE is enough to seed it here, the
+// same way TestRewrapAllEightColumns seeds cas.secret_cfg.
+func TestRewrapIncludesChannels(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+
+	kekA := testKey(31)
+	wrapperA := crypto.NewStaticWrapper(crypto.KeyID(kekA), kekA)
+	envA := crypto.NewEnvelope(wrapperA)
+
+	org, err := q.CreateOrg(ctx, sqlcgen.CreateOrgParams{Slug: "rewrap-channels", Name: "Rewrap Channels"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	secretBlob, err := envA.Encrypt(ctx, []byte(`{"authHeader":"Bearer s3cret"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var channelID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO notification_channels (org_id, name, type, secret_cfg) VALUES ($1, 'c1', 'webhook', $2) RETURNING id`,
+		org.ID, secretBlob.Marshal(),
+	).Scan(&channelID); err != nil {
+		t.Fatal(err)
+	}
+
+	kekB := testKey(32)
+	wrapperB := crypto.NewStaticWrapper(crypto.KeyID(kekB), kekB)
+	env := crypto.NewEnvelope(wrapperB, wrapperA)
+	store := settings.NewStore(q, env)
+	auditKey := testKey(33)
+	aud := audit.New(pool, auditKey)
+
+	svc := &kek.Service{
+		Env: env, Settings: store, Pool: pool, Audit: aud,
+		Info: kek.Info{Kind: "static", KEKID: wrapperB.ID(), Previous: []kek.Ref{{Kind: "static", KEKID: wrapperA.ID()}}},
+	}
+	w := &kek.RewrapWorker{Service: svc}
+	if err := w.Work(ctx, &river.Job[kek.RewrapArgs]{}); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Rewrap == nil || st.Rewrap.Running || st.Rewrap.Remaining != 0 {
+		t.Fatalf("rewrap status = %+v", st.Rewrap)
+	}
+	found := false
+	for _, ts := range st.Rewrap.Tables {
+		if ts.Table != kek.TableNotificationChannels {
+			continue
+		}
+		found = true
+		if ts.Rewrapped != 1 || ts.Remaining != 0 {
+			t.Fatalf("notification_channels table status = %+v", ts)
+		}
+	}
+	if !found {
+		t.Fatal("notification_channels not present in rewrap status")
+	}
+
+	var raw []byte
+	if err := pool.QueryRow(ctx, `SELECT secret_cfg FROM notification_channels WHERE id = $1`, channelID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var b crypto.Blob
+	if err := b.Unmarshal(raw); err != nil {
+		t.Fatal(err)
+	}
+	if b.KEKID != wrapperB.ID() {
+		t.Fatalf("secret_cfg still sealed under %q, want active %q", b.KEKID, wrapperB.ID())
+	}
+	envBOnly := crypto.NewEnvelope(wrapperB)
+	pt, err := envBOnly.Decrypt(ctx, b)
+	if err != nil || string(pt) != `{"authHeader":"Bearer s3cret"}` {
+		t.Fatalf("decrypt under active envelope = %q, %v", pt, err)
+	}
+}
+
 // TestRewrapCASLosesRaceSafely covers final review finding 1:
 // issuance.Store.UpdateCA (the ACME branch) now locks the cas row FOR
 // UPDATE (LockCA) across its read of eab_hmac and its write of the same,

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Email (SMTP)",
+  "description": "SMTP server CertForge uses to deliver email notification channels.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "host": {
+      "type": "string",
+      "title": "Host",
+      "description": "SMTP server hostname.",
+      "maxLength": 253
+    },
+    "port": {
+      "type": "integer",
+      "title": "Port",
+      "description": "SMTP server port.",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 587
+    },
+    "username": {
+      "type": "string",
+      "title": "Username",
+      "description": "SMTP authentication username. Leave empty for no authentication.",
+      "maxLength": 256
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "description": "SMTP authentication password, used when username is set.",
+      "secret": true
+    },
+    "from": {
+      "type": "string",
+      "title": "From address",
+      "description": "Envelope and header From address. Required once host is set.",
+      "format": "email"
+    },
+    "security": {
+      "type": "string",
+      "title": "Security",
+      "description": "How the SMTP connection is secured. A username requires starttls or tls.",
+      "enum": ["starttls", "tls", "none"],
+      "default": "starttls"
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "title": "Timeout (seconds)",
+      "description": "Per-connection timeout for SMTP calls.",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 10
+    }
+  },
+  "dependentRequired": {
+    "host": ["from"]
+  }
+}

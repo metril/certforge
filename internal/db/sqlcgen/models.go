@@ -203,6 +203,28 @@ type EnrollmentToken struct {
 	CreatedAt time.Time  `json:"created_at"`
 }
 
+type ExternalMonitor struct {
+	ID              uuid.UUID  `json:"id"`
+	OrgID           uuid.UUID  `json:"org_id"`
+	Name            string     `json:"name"`
+	Host            string     `json:"host"`
+	Port            int32      `json:"port"`
+	Sni             *string    `json:"sni"`
+	IntervalSeconds int32      `json:"interval_seconds"`
+	ExpectedCertID  *uuid.UUID `json:"expected_cert_id"`
+	Enabled         bool       `json:"enabled"`
+	State           string     `json:"state"`
+	StateChangedAt  time.Time  `json:"state_changed_at"`
+	LastCheckedAt   *time.Time `json:"last_checked_at"`
+	NextCheckAt     time.Time  `json:"next_check_at"`
+	LastFingerprint string     `json:"last_fingerprint"`
+	LastNotAfter    *time.Time `json:"last_not_after"`
+	LastIssuer      string     `json:"last_issuer"`
+	LastError       string     `json:"last_error"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
 type Hook struct {
 	ID             uuid.UUID `json:"id"`
 	OrgID          uuid.UUID `json:"org_id"`
@@ -257,6 +279,45 @@ type ManualDnsPending struct {
 	ExpiresAt   time.Time  `json:"expires_at"`
 	ConfirmedAt *time.Time `json:"confirmed_at"`
 	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type NotificationChannel struct {
+	ID          uuid.UUID `json:"id"`
+	OrgID       uuid.UUID `json:"org_id"`
+	Name        string    `json:"name"`
+	Type        string    `json:"type"`
+	Config      []byte    `json:"config"`
+	SecretCfg   []byte    `json:"secret_cfg"`
+	Events      []string  `json:"events"`
+	MinSeverity string    `json:"min_severity"`
+	AllOrgs     bool      `json:"all_orgs"`
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type NotificationDelivery struct {
+	EventID     uuid.UUID  `json:"event_id"`
+	ChannelID   uuid.UUID  `json:"channel_id"`
+	Attempts    int32      `json:"attempts"`
+	Status      string     `json:"status"`
+	LastError   string     `json:"last_error"`
+	DeliveredAt *time.Time `json:"delivered_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type NotificationEvent struct {
+	ID           uuid.UUID  `json:"id"`
+	OrgID        *uuid.UUID `json:"org_id"`
+	Kind         string     `json:"kind"`
+	Severity     string     `json:"severity"`
+	ResourceType string     `json:"resource_type"`
+	ResourceID   string     `json:"resource_id"`
+	ResourceName string     `json:"resource_name"`
+	Summary      string     `json:"summary"`
+	Details      []byte     `json:"details"`
+	DedupeKey    string     `json:"dedupe_key"`
+	At           time.Time  `json:"at"`
 }
 
 type Org struct {
