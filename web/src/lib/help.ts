@@ -185,6 +185,12 @@ export const help = {
   'download.alias': { text: 'Name of the key entry in the keystore. Empty uses the certificate name.' },
   'download.noKey': { text: 'This version has no stored private key, so only certificate parts are available.' },
   'cert.versions': { text: 'Every certificate issued for this entry. The dashed segment is the successor.' },
+  // Task 5: revoking a private-CA certificate version.
+  'version.revoke': { text: "Adds this version to the CA's revocation list. It cannot be undone.", learnMore: 'private-ca.md#revocation' },
+  'version.revokeReason': {
+    text: 'Recorded in the CRL entry. Use Key compromise if the private key leaked.',
+    learnMore: 'private-ca.md#revocation',
+  },
   'overview.horizon': {
     text: 'One tick per certificate at its expiry, coloured by state. Drag across the strip to list a range.',
     learnMore: 'web-ui.md#overview',

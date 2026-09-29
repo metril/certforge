@@ -129,6 +129,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Create Built-in and Vault PKI CAs from the CAs screen.
 - Private CA detail with trust bundle, CRL URLs and rotation.
 - Phase 5B batch 1 review fixes: a Built-in CA's edit form now seeds only the localca schema's own fields, not the read-only `imported`/`issuingPem`/`retired`/`revokedCount` `additionalProperties: false` rejected — Save silently did nothing for every existing Built-in CA; the private CA detail sheet no longer crashes for a never-rotated CA, whose `retired` list is `null` on the wire, not `[]`; its two disabled-control tooltips (no CRL / cannot rotate an imported CA) now use the standard help tooltip body, keeping their "Learn more" link; the locked-type hint reuses its `help.ts` entry instead of a duplicated string.
+- Revoke versions issued by a private CA.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

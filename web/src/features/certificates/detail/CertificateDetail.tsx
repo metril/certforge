@@ -120,6 +120,7 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
             orgId={org.id}
             onDownload={(versionId) => setDownload({ open: true, versionId })}
             onRenew={renewNow}
+            canRevoke={can(me, 'certs:issue', org.id)}
           />
         </TabsContent>
         <TabsContent value="attempts" className="pt-4">
