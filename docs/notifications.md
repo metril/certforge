@@ -9,9 +9,7 @@ severity match. `internal/notify` is the event model, the emitter and the
 per-channel delivery job; `internal/notify/httpx` is the outbound HTTP
 client every HTTP-based notifier (webhook, Discord, ntfy, Home Assistant)
 and every external monitor shares. This page covers the event model, channel
-configuration, the four HTTP notifiers' wire formats and the outbound URL
-policy; SMTP's own wire format and `testSmtpSettings` land with Task 5's
-documentation update.
+configuration, every notifier's wire format and the outbound URL policy.
 
 ## Channels
 
@@ -23,11 +21,22 @@ events, gated to a global admin). `GET /api/v1/meta/schemas`'s `notifiers[]`
 lists each type's JSON Schema — `title`, `description` and a `secret: true`
 marker per field drive the settings UI's form, tooltips and which fields are
 stored encrypted. A field marked secret is never read back: `GET
-.../channels/{id}` reports `storedSecrets` (the secret field names that
-currently have a value) instead of the value itself. `POST
-.../channels/{id}/test` sends a synthetic `test` event to that one channel
-only, inline, bypassing the dedupe and delivery-job path below, so an
-operator gets an immediate delivered/failed result.
+.../channels/{id}`, `GET .../channels` and every write response report
+`storedSecrets` (the secret field names that currently have a value) and a
+computed `summary` (≤ 200 characters) — a short, non-secret display line,
+never derived from a value that could itself carry a secret:
+`url.Hostname()` alone for `webhook` and `homeassistant`'s `baseUrl` (never
+the scheme, port, path, query or userinfo — any of which could hold a
+token), `"<server host>/<topic>"` for `ntfy`, the fixed string "Discord
+webhook" for `discord`, and the `to` recipients joined by `", "` for
+`smtp` — instead of the value itself. `POST .../channels/{id}/test` sends a
+synthetic `test` event to that one channel only: it does write a
+`notification_events` row (dedupe key `test:<random uuid>`) and one
+`notification_deliveries` row, the same as a real event, but never goes
+through `Emit`/`MatchingChannels` — no other channel ever receives it — and
+sends inline, under a 10 s bound, rather than through the async delivery
+job, so the caller gets an immediate `delivered`/`failed` `DeliveryResult`
+with a `durationMs`. A `test` works on a disabled channel too.
 
 `(*notify.Registry).ValidateConfig(type, cfg)` is every channel write's
 single validation entry point: it checks `cfg` — the channel's full
@@ -38,7 +47,29 @@ header name for `webhook`, `webhookUrl`'s scheme for `discord`, `webhookId`'s
 character set for `homeassistant`. Those three checks live in Go rather than
 the schema itself, because the field they check is secret and the schema
 validator would otherwise echo the rejected value into its own error text.
-Channel CRUD and the events list themselves land with Task 6's API.
+The outbound URL policy (below) is re-checked at create/update time too,
+against the field that determines each type's destination host (`url` for
+`webhook`, `webhookUrl` for `discord`, `server` for `ntfy`, `baseUrl` for
+`homeassistant`), on top of the re-check every `Send` already does at dial
+time — `smtp` has no URL field of its own.
+
+An update's secret fields (schema `secret: true`) accept `__unchanged__` or
+may simply be left out of `config` entirely; either keeps the stored value.
+An empty string `""` clears it. `type` cannot change once created (422 "type
+cannot change"); `name` is unique per org (409 on a duplicate); an org holds
+at most 50 channels (422 once reached). `allOrgs: true` — on create or
+update, whether or not it is already set — needs a global admin (`admin`
+role, or an API key scoped `admin`; 403 "all-orgs channels need a global
+admin" otherwise); `listChannels` includes another org's `allOrgs` channel
+only when the caller is themselves a global admin. `ntfy`'s `server` and
+`homeassistant`'s `baseUrl` are their own type's re-entry field (Vault's own
+rule, `docs/security.md`): changing it while that type's one secret field
+(`token`, `webhookId`) is kept `__unchanged__`/omitted is a 422 "re-enter the
+secret" — the old secret would otherwise silently carry over to what may be
+a different destination.
+
+`GET /api/v1/orgs/{orgId}/channels/{id}` and `.../channels` need
+`alerts:read`; every other channel operation needs `alerts:write`.
 
 ## Events
 
@@ -74,10 +105,21 @@ event filter and minimum severity are.
 
 Each channel independently filters what it receives: `events` (empty means
 every kind), `minSeverity` (info/warning/critical, inclusive) and its org
-scope. A `test` event (`POST
-/api/v1/orgs/{orgId}/channels/{id}/test`) is sent to that one channel only,
-inline, bypassing the emit/delivery-job path entirely — it never touches
-`notification_events`.
+scope. A `test` event (`POST /api/v1/orgs/{orgId}/channels/{id}/test`,
+above) is sent to that one channel only, inline, bypassing `Emit`/
+`MatchingChannels` and the async delivery job — but it is still recorded
+like any other event (a `notification_events` row and one
+`notification_deliveries` row for that channel).
+
+`GET /api/v1/orgs/{orgId}/events` (`alerts:read`) lists the org's own
+events plus every global event, newest first, keyset-paginated by
+`(at, id)`: `?cursor=` is the previous page's opaque `nextCursor`, `null`
+on the last page. `?kind=` is repeatable (a set; omit for every kind),
+`?severity=` is a minimum (the same inclusive rank `minSeverity` uses) and
+`?since=` bounds `at`. Each `Event` carries its own `deliveries[]` — one
+entry per channel that event matched, with that delivery's `status`,
+`attempts`, `lastError` (redacted, like every other channel-facing error
+text) and `deliveredAt`.
 
 ## Dedupe
 

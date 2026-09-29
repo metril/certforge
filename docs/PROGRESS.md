@@ -305,8 +305,8 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | 2 | OpenAPI contract and generated client | done | 57c5d02 |
 | 3 | Event model, emitter, delivery, httpx | done | f13836b |
 | 4 | HTTP notifiers | done | c79ce12 |
-| 5 | SMTP notifier and SMTP test | done | pending |
-| 6 | Channels and events API | planned | – |
+| 5 | SMTP notifier and SMTP test | done | 7f51b57 |
+| 6 | Channels and events API | done | pending |
 | 7 | Event sources | planned | – |
 | 8 | Prometheus metrics | planned | – |
 | 9 | External monitors | planned | – |

@@ -244,3 +244,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Webhook, Discord, ntfy and Home Assistant notifiers.
 - Phase 6A batch-1 review fixes: a notification delivery failure's error is now redacted before it ever reaches river's own job storage and logging, not just `notification_deliveries.last_error`; a transport error from the outbound HTTP client now names only the target host, never a secret-bearing path or query string; the Prometheus bearer token's 16-character minimum now applies to a fresh value only, so re-saving with the unchanged-token sentinel no longer 422s; the SMTP re-entry rule no longer blocks an unauthenticated relay from changing host or port; emitting an event now requires a dedupe key and always uses the kind's own fixed resource type.
 - SMTP email notifier and a send-test endpoint.
+- Notification channel management, send-test and the events list API.

@@ -63,10 +63,12 @@ type ConfigChecker interface {
 }
 
 // registryEntry is one registered Notifier plus its compiled config schema
-// (compiled once, at Register, rather than on every ValidateConfig call).
+// (compiled once, at Register, rather than on every ValidateConfig call)
+// and the schema's secret property names (also computed once, at Register).
 type registryEntry struct {
 	notifier Notifier
 	schema   *jsonschema.Schema
+	secrets  []string
 }
 
 // Registry holds the known Notifier implementations, keyed by Type().
@@ -93,7 +95,25 @@ func (r *Registry) Register(n Notifier) {
 	if err != nil {
 		panic(fmt.Sprintf("notify: notifier type %q schema: %v", n.Type(), err))
 	}
-	r.entries[n.Type()] = registryEntry{notifier: n, schema: schema}
+	secrets, err := secretProps(n.Schema())
+	if err != nil {
+		panic(fmt.Sprintf("notify: notifier type %q schema: %v", n.Type(), err))
+	}
+	r.entries[n.Type()] = registryEntry{notifier: n, schema: schema, secrets: secrets}
+}
+
+// SecretKeys returns typ's config schema properties marked "secret": true
+// (Task 6's channel create/update: which submitted config fields go to
+// notification_channels.secret_cfg instead of config). ok is false for an
+// unregistered type.
+func (r *Registry) SecretKeys(typ string) (keys []string, ok bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	e, ok := r.entries[typ]
+	if !ok {
+		return nil, false
+	}
+	return e.secrets, true
 }
 
 // Get looks up a Notifier by channel type.
@@ -159,4 +179,49 @@ func compileNotifierSchema(typ string, raw []byte) (*jsonschema.Schema, error) {
 		return nil, err
 	}
 	return c.Compile(url)
+}
+
+// secretProps returns schema's top-level properties marked "secret": true,
+// sorted (close to the rule internal/settings.secretProps enforces on a
+// settings section's secret properties: string type only, and never
+// combined with pattern/enum/const/format — jsonschema v6 echoes a failed
+// pattern/enum/const/format check's rejected instance value into its error
+// text, which would leak the secret itself into a 422 body; ConfigChecker's
+// doc comment is why webhook/discord/homeassistant enforce their secret
+// fields' own format in Go instead). Unlike a settings section, a notifier
+// schema's secret property may be "required": Task 6's ValidateConfig call
+// always runs against a fully resolved config — an update's Unchanged
+// sentinel already merged back to the stored value — never the raw,
+// possibly-omitted request body a settings section validates directly, so
+// there is no create/update path where a required secret could be
+// legitimately absent (discord's webhookUrl is both required and secret).
+func secretProps(schema []byte) ([]string, error) {
+	var doc struct {
+		Properties map[string]struct {
+			Secret  bool            `json:"secret"`
+			Type    any             `json:"type"`
+			Pattern string          `json:"pattern"`
+			Enum    json.RawMessage `json:"enum"`
+			Const   json.RawMessage `json:"const"`
+			Format  string          `json:"format"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &doc); err != nil {
+		return nil, err
+	}
+	var out []string
+	for k, p := range doc.Properties {
+		if !p.Secret {
+			continue
+		}
+		if p.Type != "string" {
+			return nil, fmt.Errorf("secret property %q must have type string", k)
+		}
+		if p.Pattern != "" || len(p.Enum) > 0 || len(p.Const) > 0 || p.Format != "" {
+			return nil, fmt.Errorf("secret property %q cannot use pattern, enum, const, or format", k)
+		}
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out, nil
 }

@@ -7,9 +7,184 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const channelsLastDelivery = `-- name: ChannelsLastDelivery :many
+SELECT DISTINCT ON (channel_id) channel_id, status, last_error, delivered_at, updated_at
+FROM notification_deliveries
+WHERE channel_id = ANY($1::uuid[])
+ORDER BY channel_id, updated_at DESC
+`
+
+type ChannelsLastDeliveryRow struct {
+	ChannelID   uuid.UUID  `json:"channel_id"`
+	Status      string     `json:"status"`
+	LastError   string     `json:"last_error"`
+	DeliveredAt *time.Time `json:"delivered_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// One row per channel (its most recently updated delivery), backing
+// Channel.lastDelivery. A channel with no delivery yet is simply absent
+// from the result (the caller treats a missing id as null).
+func (q *Queries) ChannelsLastDelivery(ctx context.Context, channelIds []uuid.UUID) ([]ChannelsLastDeliveryRow, error) {
+	rows, err := q.db.Query(ctx, channelsLastDelivery, channelIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChannelsLastDeliveryRow{}
+	for rows.Next() {
+		var i ChannelsLastDeliveryRow
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.Status,
+			&i.LastError,
+			&i.DeliveredAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countNotificationChannels = `-- name: CountNotificationChannels :one
+
+SELECT count(*) FROM notification_channels WHERE org_id = $1
+`
+
+// ---- Task 6: channel CRUD, lastDelivery and the events list ----
+// CreateChannel's per-org limit check (Shared contract: "at most 50
+// channels per org").
+func (q *Queries) CountNotificationChannels(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countNotificationChannels, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createNotificationChannel = `-- name: CreateNotificationChannel :one
+INSERT INTO notification_channels (org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at
+`
+
+type CreateNotificationChannelParams struct {
+	OrgID       uuid.UUID `json:"org_id"`
+	Name        string    `json:"name"`
+	Type        string    `json:"type"`
+	Config      []byte    `json:"config"`
+	SecretCfg   []byte    `json:"secret_cfg"`
+	Events      []string  `json:"events"`
+	MinSeverity string    `json:"min_severity"`
+	AllOrgs     bool      `json:"all_orgs"`
+	Enabled     bool      `json:"enabled"`
+}
+
+func (q *Queries) CreateNotificationChannel(ctx context.Context, arg CreateNotificationChannelParams) (NotificationChannel, error) {
+	row := q.db.QueryRow(ctx, createNotificationChannel,
+		arg.OrgID,
+		arg.Name,
+		arg.Type,
+		arg.Config,
+		arg.SecretCfg,
+		arg.Events,
+		arg.MinSeverity,
+		arg.AllOrgs,
+		arg.Enabled,
+	)
+	var i NotificationChannel
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Config,
+		&i.SecretCfg,
+		&i.Events,
+		&i.MinSeverity,
+		&i.AllOrgs,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteNotificationChannel = `-- name: DeleteNotificationChannel :execrows
+DELETE FROM notification_channels WHERE id = $1 AND org_id = $2
+`
+
+type DeleteNotificationChannelParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) DeleteNotificationChannel(ctx context.Context, arg DeleteNotificationChannelParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteNotificationChannel, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const eventDeliveries = `-- name: EventDeliveries :many
+SELECT d.event_id, d.channel_id, c.name AS channel_name, d.attempts, d.status, d.last_error, d.delivered_at
+FROM notification_deliveries d
+JOIN notification_channels c ON c.id = d.channel_id
+WHERE d.event_id = ANY($1::uuid[])
+ORDER BY d.event_id, c.name
+`
+
+type EventDeliveriesRow struct {
+	EventID     uuid.UUID  `json:"event_id"`
+	ChannelID   uuid.UUID  `json:"channel_id"`
+	ChannelName string     `json:"channel_name"`
+	Attempts    int32      `json:"attempts"`
+	Status      string     `json:"status"`
+	LastError   string     `json:"last_error"`
+	DeliveredAt *time.Time `json:"delivered_at"`
+}
+
+// listEvents' deliveries[] (Shared contract: EventDelivery, channelName
+// "at delivery time"). notification_deliveries.channel_id cascades on the
+// channel's own delete, so a delivery row can never outlive its channel —
+// an INNER JOIN is safe, not a LEFT JOIN.
+func (q *Queries) EventDeliveries(ctx context.Context, eventIds []uuid.UUID) ([]EventDeliveriesRow, error) {
+	rows, err := q.db.Query(ctx, eventDeliveries, eventIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EventDeliveriesRow{}
+	for rows.Next() {
+		var i EventDeliveriesRow
+		if err := rows.Scan(
+			&i.EventID,
+			&i.ChannelID,
+			&i.ChannelName,
+			&i.Attempts,
+			&i.Status,
+			&i.LastError,
+			&i.DeliveredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const getNotificationChannel = `-- name: GetNotificationChannel :one
 SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels WHERE id = $1
@@ -82,6 +257,35 @@ func (q *Queries) GetNotificationEvent(ctx context.Context, id uuid.UUID) (Notif
 	return i, err
 }
 
+const getOrgNotificationChannel = `-- name: GetOrgNotificationChannel :one
+SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels WHERE id = $1 AND org_id = $2
+`
+
+type GetOrgNotificationChannelParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) GetOrgNotificationChannel(ctx context.Context, arg GetOrgNotificationChannelParams) (NotificationChannel, error) {
+	row := q.db.QueryRow(ctx, getOrgNotificationChannel, arg.ID, arg.OrgID)
+	var i NotificationChannel
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Config,
+		&i.SecretCfg,
+		&i.Events,
+		&i.MinSeverity,
+		&i.AllOrgs,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertNotificationDelivery = `-- name: InsertNotificationDelivery :exec
 INSERT INTO notification_deliveries (event_id, channel_id) VALUES ($1, $2)
 ON CONFLICT (event_id, channel_id) DO NOTHING
@@ -135,6 +339,165 @@ func (q *Queries) InsertNotificationEvent(ctx context.Context, arg InsertNotific
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const listOrgEvents = `-- name: ListOrgEvents :many
+SELECT id, org_id, kind, severity, resource_type, resource_id, resource_name, summary, details, dedupe_key, at FROM notification_events
+WHERE (org_id = $1 OR org_id IS NULL)
+  AND (NOT $2::bool OR kind = ANY($3::text[]))
+  AND (NOT $4::bool OR
+       (CASE severity WHEN 'critical' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END) >=
+       (CASE $5::text WHEN 'critical' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END))
+  AND (NOT $6::bool OR at >= $7::timestamptz)
+  AND (NOT $8::bool OR (at, id) < ($9::timestamptz, $10::uuid))
+ORDER BY at DESC, id DESC
+LIMIT $11::int
+`
+
+type ListOrgEventsParams struct {
+	OrgID       *uuid.UUID `json:"org_id"`
+	HasKinds    bool       `json:"has_kinds"`
+	Kinds       []string   `json:"kinds"`
+	HasSeverity bool       `json:"has_severity"`
+	MinSeverity string     `json:"min_severity"`
+	HasSince    bool       `json:"has_since"`
+	Since       time.Time  `json:"since"`
+	HasCursor   bool       `json:"has_cursor"`
+	BeforeAt    time.Time  `json:"before_at"`
+	BeforeID    uuid.UUID  `json:"before_id"`
+	PageLimit   int32      `json:"page_limit"`
+}
+
+// listEvents (Shared contract, Other operations row): the org's own events
+// plus every global (org_id NULL) event, newest first, keyset-paginated on
+// (at, id) since two events can share the same at timestamp. severity is a
+// minimum (the same rank comparison MatchingChannels uses); kind, when
+// given, is a set (the caller repeats ?kind=).
+func (q *Queries) ListOrgEvents(ctx context.Context, arg ListOrgEventsParams) ([]NotificationEvent, error) {
+	rows, err := q.db.Query(ctx, listOrgEvents,
+		arg.OrgID,
+		arg.HasKinds,
+		arg.Kinds,
+		arg.HasSeverity,
+		arg.MinSeverity,
+		arg.HasSince,
+		arg.Since,
+		arg.HasCursor,
+		arg.BeforeAt,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NotificationEvent{}
+	for rows.Next() {
+		var i NotificationEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Kind,
+			&i.Severity,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.ResourceName,
+			&i.Summary,
+			&i.Details,
+			&i.DedupeKey,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrgNotificationChannels = `-- name: ListOrgNotificationChannels :many
+SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels
+WHERE org_id = $1
+   OR ($2::bool AND all_orgs AND org_id != $1)
+ORDER BY lower(name), id
+`
+
+type ListOrgNotificationChannelsParams struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	IncludeAllOrgs bool      `json:"include_all_orgs"`
+}
+
+// listChannels (Shared contract, Channel operations row): the org's own
+// channels, plus — only when include_all_orgs is set by the caller (a
+// global admin) — every other org's all_orgs channel. A non-admin caller
+// passes include_all_orgs=false and sees only its own org's rows, whether
+// or not they are themselves all_orgs.
+func (q *Queries) ListOrgNotificationChannels(ctx context.Context, arg ListOrgNotificationChannelsParams) ([]NotificationChannel, error) {
+	rows, err := q.db.Query(ctx, listOrgNotificationChannels, arg.OrgID, arg.IncludeAllOrgs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NotificationChannel{}
+	for rows.Next() {
+		var i NotificationChannel
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.Type,
+			&i.Config,
+			&i.SecretCfg,
+			&i.Events,
+			&i.MinSeverity,
+			&i.AllOrgs,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockOrgNotificationChannel = `-- name: LockOrgNotificationChannel :one
+SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type LockOrgNotificationChannelParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// DeleteChannel's own lock (global-constraints Locking row: "channel
+// delete locks FOR UPDATE"), taken before the delete in the same
+// transaction so a concurrent Emit's FOR KEY SHARE (MatchingChannels)
+// serializes against it instead of racing it.
+func (q *Queries) LockOrgNotificationChannel(ctx context.Context, arg LockOrgNotificationChannelParams) (NotificationChannel, error) {
+	row := q.db.QueryRow(ctx, lockOrgNotificationChannel, arg.ID, arg.OrgID)
+	var i NotificationChannel
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Config,
+		&i.SecretCfg,
+		&i.Events,
+		&i.MinSeverity,
+		&i.AllOrgs,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const markNotificationDeliveryDelivered = `-- name: MarkNotificationDeliveryDelivered :exec
@@ -222,4 +585,53 @@ func (q *Queries) MatchingChannels(ctx context.Context, arg MatchingChannelsPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateNotificationChannel = `-- name: UpdateNotificationChannel :one
+UPDATE notification_channels SET name = $1, config = $2, secret_cfg = $3,
+       events = $4, min_severity = $5, all_orgs = $6,
+       enabled = $7, updated_at = now()
+WHERE id = $8 AND org_id = $9 RETURNING id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at
+`
+
+type UpdateNotificationChannelParams struct {
+	Name        string    `json:"name"`
+	Config      []byte    `json:"config"`
+	SecretCfg   []byte    `json:"secret_cfg"`
+	Events      []string  `json:"events"`
+	MinSeverity string    `json:"min_severity"`
+	AllOrgs     bool      `json:"all_orgs"`
+	Enabled     bool      `json:"enabled"`
+	ID          uuid.UUID `json:"id"`
+	OrgID       uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) UpdateNotificationChannel(ctx context.Context, arg UpdateNotificationChannelParams) (NotificationChannel, error) {
+	row := q.db.QueryRow(ctx, updateNotificationChannel,
+		arg.Name,
+		arg.Config,
+		arg.SecretCfg,
+		arg.Events,
+		arg.MinSeverity,
+		arg.AllOrgs,
+		arg.Enabled,
+		arg.ID,
+		arg.OrgID,
+	)
+	var i NotificationChannel
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Config,
+		&i.SecretCfg,
+		&i.Events,
+		&i.MinSeverity,
+		&i.AllOrgs,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

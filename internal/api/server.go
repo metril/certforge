@@ -29,6 +29,7 @@ import (
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/kek"
 	"github.com/metril/certforge/internal/meta"
+	"github.com/metril/certforge/internal/notify"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
 	"github.com/metril/certforge/internal/vault"
@@ -105,6 +106,11 @@ type Deps struct {
 	// getServerInfo (Phase 6A Task 2; cmd/certforge's main.version, wired
 	// in cmd/certforge/serve.go). Empty answers {version: ""}.
 	Version string
+
+	// Notify is channel CRUD, send-test and the events list (Phase 6A Task
+	// 6: internal/api/{channels,events}.go). Wired in cmd/certforge/serve.go
+	// (Task 14), alongside the notify.DeliverWorker river registration.
+	Notify *notify.Service
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.
