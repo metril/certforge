@@ -134,6 +134,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Vault KV deploy target in the web UI.
 - Grant certificates to server-side targets from the target's detail.
 - Web API layer for alerts, monitors, events and backups.
+- Alerts area with a notification channels table.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

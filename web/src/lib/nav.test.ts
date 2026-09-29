@@ -22,11 +22,15 @@ it('does not match an unrelated path', () => {
   expect(isNavPathActive('/o/acme/issuers', '/o/acme/certificates')).toBe(false);
 });
 
-it('enables Clients, also under All orgs, and keeps Alerts for later', () => {
+it('enables Clients, also under All orgs', () => {
   const items = NAV.flatMap((g) => g.items);
   expect(items.find((i) => i.label === 'Clients')?.target).toBe('clients');
-  expect(items.find((i) => i.label === 'Alerts')?.target).toBeUndefined();
   expect(ALL_ORGS_TARGETS.has('clients')).toBe(true);
+});
+
+it('alerts enabled and denied in all orgs', () => {
+  expect(NAV.flatMap((g) => g.items).find((i) => i.label === 'Alerts')?.target).toBe('alerts');
+  expect(ALL_ORGS_TARGETS.has('alerts')).toBe(false);
 });
 
 it('enables Delivery for one org only', () => {

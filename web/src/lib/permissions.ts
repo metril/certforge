@@ -54,7 +54,13 @@ export function isGlobalAdmin(me: Pick<Me, 'bindings'>): boolean {
   return me.bindings.some((b) => b.role === 'admin' && b.orgId === null);
 }
 
-export const API_KEY_SCOPES: ApiKeyScope[] = ['certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'delivery:read', 'delivery:write', 'admin'];
+// 6A's own ApiKeyScope enum gained alerts:read/alerts:write (30decfd); the
+// 6B Task 1 decision line flagged this list as the follow-up that closes
+// the gap now that the schema type actually has them.
+export const API_KEY_SCOPES: ApiKeyScope[] = [
+  'certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write',
+  'delivery:read', 'delivery:write', 'alerts:read', 'alerts:write', 'admin',
+];
 
 // Mirror of authz.ScopeGrant.
 const SCOPE_GRANT: Record<ApiKeyScope, Action> = {

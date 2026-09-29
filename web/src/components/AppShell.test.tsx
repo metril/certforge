@@ -52,18 +52,23 @@ it('shows eight items; enabled items link, the rest are disabled with a tooltip'
     ['Certificates', '/o/acme/certificates'],
     ['Clients', '/o/acme/clients'],
     ['Delivery', '/o/acme/delivery'],
+    ['Alerts', '/o/acme/alerts/channels'],
     ['Issuers', '/o/acme/issuers'],
     ['Audit log', '/o/acme/audit'],
     ['Settings', '/settings/general'],
   ];
   for (const [name, href] of links) expect(within(nav).getByRole('link', { name })).toHaveAttribute('href', href);
   expect(within(nav).getByRole('link', { name: 'Certificates' })).toHaveAttribute('aria-current', 'page');
-  for (const name of ['Alerts']) {
-    expect(within(nav).getByText(name).closest('[aria-disabled="true"]')).not.toBeNull();
-  }
   expect(within(nav).getByText('Operate')).toBeInTheDocument();
-  act(() => (within(nav).getByText('Alerts').closest('[aria-disabled="true"]') as HTMLElement).focus());
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Available in a later phase');
+});
+
+// 6B Task 2: Alerts moved from the disabled LATER row to a real link.
+it('alerts nav links to channels', async () => {
+  viewport(true);
+  server.use(...authHandlers({ authed: true }));
+  renderRoute('/o/acme/certificates');
+  const nav = await screen.findByRole('navigation', { name: 'Main' });
+  expect(within(nav).getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/o/acme/alerts/channels');
 });
 
 it('renders an icon rail with accessible names below 1280 px', async () => {

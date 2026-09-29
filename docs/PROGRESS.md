@@ -322,7 +322,7 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | API layer, libs, permissions, fixtures, HealthStrip | done | 58161df |
-| 2 | Alerts shell and channels table | planned | – |
+| 2 | Alerts shell and channels table | done | pending |
 | 3 | Channel sheet and Send test | planned | – |
 | 4 | Monitors | planned | – |
 | 5 | Events log | planned | – |
@@ -630,3 +630,4 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 - 6B (Deviations, `notifications` settings section): has no dedicated nav entry; it lives in Settings → Integrations, between Email and Prometheus.
 - 6B (Deviations, Playwright monitor): the e2e Traefik `:8443` default certificate is written only by the Go e2e, so the Playwright monitor targets the always-up agent listener `certforge:8443` and expects a deterministic Mismatch, not OK.
 - 6B Task 1: `API_KEY_SCOPES`/the scope → action map in `lib/permissions.ts` do not gain `alerts:read`/`alerts:write` as the brief specified — the shipped `ApiKeyScope` schema type (`api/openapi.yaml`) has no `alerts:*` values even though `internal/authz/authz.go`'s `APIKeyScopes`/`ScopeGrant` already support them (a real 6A spec gap); `ACTIONS`/`ROLE_ACTIONS`/`isGlobalAdmin` gained `alerts:read`/`alerts:write` as specified, since those are plain TS types, not schema-derived. Flagged for a follow-up fixing `ApiKeyScope`'s enum.
+- 6B Task 2: the follow-up above is now closed — the 6A final review fix wave already added `alerts:read`/`alerts:write` to `ApiKeyScope` (`schema.d.ts`), so this task adds them to `API_KEY_SCOPES` (the map already had the two entries). `DeliveryChip` (new, `features/alerts/DeliveryChip.tsx`) takes a `kind: 'channel' | 'event'` discriminated union so it renders correctly for both a channel row's own last delivery (this task) and an event row's per-channel delivery (task 5), sharing one tooltip format. The Events column's kind/`+N`/"All events" chips are a small local style (no existing plain, non-status chip component fit); `alerts/monitors.tsx` and `alerts/events.tsx` render a bare `EmptyState` component directly as their route's `component`, to be replaced by `MonitorsPage`/`EventsPage` in tasks 4 and 5. `AlertsLayout`'s `HelpTip` sits beside each tab `Link`, not inside it (a `HelpTip` is a `<button>`, which cannot nest inside the tab's `<a>`).

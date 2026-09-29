@@ -1,6 +1,6 @@
 import { Bell, Gauge, Landmark, ScrollText, Server, Settings, ShieldCheck, Truck, type LucideIcon } from 'lucide-react';
 
-export type NavTarget = 'overview' | 'certificates' | 'clients' | 'issuers' | 'delivery' | 'audit' | 'settings';
+export type NavTarget = 'overview' | 'certificates' | 'clients' | 'issuers' | 'delivery' | 'alerts' | 'audit' | 'settings';
 export type NavItem = { label: string; icon: LucideIcon; target?: NavTarget };
 
 export const LATER = 'Available in a later phase';
@@ -14,8 +14,8 @@ export function targetNeedsOrg(target: NavTarget): boolean {
 
 // Spec "Web UI design" navigation table: three groups, eight items. Phase 1
 // enabled Overview, Certificates, Issuers, and Settings; Phase 2B added
-// Audit log; Phase 3B added Clients and Delivery (`target` set on each).
-// Alerts remains disabled with the LATER tooltip, never hidden.
+// Audit log; Phase 3B added Clients and Delivery (`target` set on each);
+// 6B Task 2 enables Alerts.
 export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Operate',
@@ -30,7 +30,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { label: 'Issuers', icon: Landmark, target: 'issuers' },
       { label: 'Delivery', icon: Truck, target: 'delivery' },
-      { label: 'Alerts', icon: Bell },
+      { label: 'Alerts', icon: Bell, target: 'alerts' },
     ],
   },
   {

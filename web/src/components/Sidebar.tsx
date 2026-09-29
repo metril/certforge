@@ -104,6 +104,12 @@ const TargetLink = forwardRef<
           {children}
         </Link>
       );
+    case 'alerts':
+      return (
+        <Link to="/o/$org/alerts/channels" params={{ org }} {...common}>
+          {children}
+        </Link>
+      );
     case 'audit':
       return (
         <Link to="/o/$org/audit" params={{ org }} {...common}>

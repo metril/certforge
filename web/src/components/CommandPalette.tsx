@@ -56,6 +56,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const canReadClients = allOrgs ? canAnywhere(me, 'clients:read') : !!org && can(me, 'clients:read', org.id);
   const canWriteClients = !!org && can(me, 'clients:write', org.id);
   const canReadDelivery = !!org && can(me, 'delivery:read', org.id);
+  const canReadAlerts = !!org && can(me, 'alerts:read', org.id);
   const { data: certs = [] } = useQuery({ ...allCertificatesQuery(org?.id ?? ''), enabled: open && !!org && (canReadCerts || canIssue) });
   // M7: under All orgs there's no single org to scope the request to, but the
   // GET /clients cross-org listing (already used by the clients list's own
@@ -116,6 +117,13 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                   { label: 'Delivery: Deploy targets', keywords: ['traefik', 'target'], go: () => void navigate({ to: '/o/$org/delivery/targets', params: { org: org.slug } }) },
                   { label: 'Delivery: File layouts', keywords: ['layout', 'files', 'output', 'pem'], go: () => void navigate({ to: '/o/$org/delivery/layouts', params: { org: org.slug } }) },
                   { label: 'Delivery: Hooks', keywords: ['hook', 'reload', 'command'], go: () => void navigate({ to: '/o/$org/delivery/hooks', params: { org: org.slug } }) },
+                ]
+              : []),
+            ...(canReadAlerts
+              ? [
+                  { label: 'Alerts: Channels', keywords: ['notifications', 'webhook', 'email', 'discord', 'ntfy'], go: () => void navigate({ to: '/o/$org/alerts/channels', params: { org: org.slug } }) },
+                  { label: 'Alerts: Monitors', keywords: ['tls', 'monitor', 'scan'], go: () => void navigate({ to: '/o/$org/alerts/monitors', params: { org: org.slug } }) },
+                  { label: 'Alerts: Events', keywords: ['events', 'deliveries'], go: () => void navigate({ to: '/o/$org/alerts/events', params: { org: org.slug } }) },
                 ]
               : []),
             ...(canReadAudit

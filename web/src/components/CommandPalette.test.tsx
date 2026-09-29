@@ -207,6 +207,9 @@ it('shows every org-scoped page entry for an org-admin', async () => {
   expect(within(dialog).getByText('Issuers: DNS credentials')).toBeInTheDocument();
   expect(within(dialog).getByText('Settings: Access')).toBeInTheDocument();
   expect(within(dialog).getByText('New certificate')).toBeInTheDocument();
+  expect(within(dialog).getByText('Alerts: Channels')).toBeInTheDocument();
+  expect(within(dialog).getByText('Alerts: Monitors')).toBeInTheDocument();
+  expect(within(dialog).getByText('Alerts: Events')).toBeInTheDocument();
 });
 
 // Task 2 (Phase 5B): the palette's own shortcut into the kind-aware CaSheet,
@@ -278,6 +281,21 @@ it('hides Enrol client and Delivery pages without the permissions', async () => 
   expect(await within(dialog).findByText('Clients')).toBeInTheDocument();
   expect(within(dialog).queryByText('Enrol client')).not.toBeInTheDocument();
   expect(within(dialog).queryByText('Delivery: Deploy targets')).not.toBeInTheDocument();
+});
+
+// 6B Task 2: the three Alerts page entries need alerts:read, same gating
+// as Delivery's own page entries above.
+it('alerts entries need alerts:read', async () => {
+  permissionOverride = { can: (a) => a === 'certs:read', canAnywhere: () => false };
+  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByPlaceholderText('www.example.com');
+  expect(within(dialog).queryByText('Alerts: Channels')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Alerts: Monitors')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Alerts: Events')).not.toBeInTheDocument();
 });
 
 // Task 10: Import certificates and Upload certificate, next to New

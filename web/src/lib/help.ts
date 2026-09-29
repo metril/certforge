@@ -371,6 +371,28 @@ export const help = {
   'import.ca': { text: 'The CA that renews these certificates from now on. It needs an ACME account in this org.' },
   'import.action': { text: 'Create adds the certificate. Skip gives the reason, such as a name already in use.' },
   'import.hasKey': { text: "Without a key the certificate can't be deployed with key files until its first renewal." },
+  // Task 2 (Phase 6B): the Alerts area — tabs, channels table.
+  'alerts.channels': {
+    text: 'Where CertForge sends events: webhooks, email, chat and push services.',
+    learnMore: 'notifications.md#channels',
+  },
+  'channel.allOrgs': {
+    text: 'Receives events from every organization. Only a global admin can set it.',
+    learnMore: 'notifications.md#channels',
+  },
+  'channel.lastDelivery': {
+    text: 'Result of the most recent delivery to this channel, tests included.',
+    learnMore: 'notifications.md#events',
+  },
+  'channel.limit': { text: 'An organization can have at most 50 channels.' },
+  'alerts.monitors': {
+    text: 'Checks which certificate a TLS endpoint serves and alerts when it changes.',
+    learnMore: 'monitoring.md#external-monitors',
+  },
+  'alerts.events': {
+    text: 'Events from the last 90 days and where each one was delivered.',
+    learnMore: 'notifications.md#events',
+  },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MeBinding } from '@/api/types';
 import { org, org2, meWith } from '@/test/fixtures';
-import { can, canAnywhere, canGrantScope, hasGlobalBinding, isGlobalAdmin, type Action } from './permissions';
+import { API_KEY_SCOPES, can, canAnywhere, canGrantScope, hasGlobalBinding, isGlobalAdmin, type Action } from './permissions';
 
 const A = 'org-a';
 const B = 'org-b';
@@ -72,6 +72,18 @@ it('canGrantScope intersects with the creator role', () => {
   expect(canGrantScope(oa, 'admin', A)).toBe(false);
   expect(canGrantScope(oa, 'keys:export', A)).toBe(false);
   expect(canGrantScope(me({ role: 'admin', orgId: null }), 'admin', null)).toBe(true);
+});
+
+// 6B Task 2: the ApiKeyScope schema type gained alerts:read/alerts:write in
+// the 6A fix wave (30decfd) — API_KEY_SCOPES and its scope->action grant
+// map must actually offer them, not just the plain-TS Action union.
+it('API_KEY_SCOPES offers alerts scopes, grantable by an alerts writer', () => {
+  expect(API_KEY_SCOPES).toContain('alerts:read');
+  expect(API_KEY_SCOPES).toContain('alerts:write');
+  const operator = me({ role: 'operator', orgId: A });
+  expect(canGrantScope(operator, 'alerts:read', A)).toBe(true);
+  expect(canGrantScope(operator, 'alerts:write', A)).toBe(true);
+  expect(canGrantScope(me({ role: 'viewer', orgId: A }), 'alerts:write', A)).toBe(false);
 });
 
 // Fix round 1 (review, Important #1): an independent matrix, transcribed by
