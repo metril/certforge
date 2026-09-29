@@ -178,6 +178,11 @@ function ChannelCard({ channel, org, me, onOpen }: { channel: Channel; org: Org;
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => {
+        // A bubbled Enter/Space from the nested Enabled switch must reach
+        // its own default toggle action, not open the sheet on top of it
+        // (batch 1 review) — only the card's own keydown (focused directly,
+        // e.g. via Tab) opens it.
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onOpen();
@@ -212,7 +217,10 @@ export function ChannelsPage() {
   const q = useQuery(channelsQuery(org.id));
   const channels = q.data ?? [];
   const canWrite = can(me, 'alerts:write', org.id);
-  const atLimit = channels.length >= CHANNEL_LIMIT;
+  // The 50-cap is per org: `channels` also carries other orgs' allOrgs rows
+  // a global admin sees here, which must not count against this org's own
+  // limit (batch 1 review).
+  const atLimit = channels.filter((c) => c.orgId === org.id).length >= CHANNEL_LIMIT;
   const addAllowed = canWrite && !atLimit;
   const openSheet = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, edit: id }), replace: id === undefined });
   const columns = useMemo(() => channelColumns(me, org), [me, org]);

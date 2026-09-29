@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
 import { createChannel, deleteChannel, updateChannel } from '@/api/queries/channels';
 import { metaSchemasQuery } from '@/api/queries/dns';
-import type { Channel, ChannelInput, ChannelType, EventKind, Severity } from '@/api/types';
+import { UNCHANGED, type Channel, type ChannelInput, type ChannelType, type EventKind, type Severity } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
-import { fieldErrorFromMessage, withSecretSentinels } from '@/forms/uiSchema';
+import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { canWriteChannel, TYPE_META } from '@/lib/channels';
 import { SEVERITY_META } from '@/lib/events';
 import type { HelpKey } from '@/lib/help';
@@ -75,9 +75,20 @@ function initialDraft(channel?: Channel): Draft {
  * dirty check and the submit payload can't depend on the timing of. Both
  * normalize through this first, so a config with the sentinel already
  * applied and one that hasn't gotten there yet compare and submit
- * identically. */
+ * identically.
+ *
+ * This only fills a key that's missing outright (`undefined`), unlike
+ * `forms/uiSchema.ts`'s `withSecretSentinels` — that one also treats a live
+ * `''` as untouched, which would turn SecretInput's own Remove (which emits
+ * `''` deliberately, to clear the stored secret) silently back into
+ * `__unchanged__` (batch 1 review). */
 function normalizedConfig(schema: RJSFSchema, config: Record<string, unknown>, storedSecrets: string[]): Record<string, unknown> {
-  return withSecretSentinels(schema, config, storedSecrets);
+  const secrets = new Set(secretKeys(schema));
+  const out = { ...config };
+  for (const k of storedSecrets) {
+    if (secrets.has(k) && out[k] === undefined) out[k] = UNCHANGED;
+  }
+  return out;
 }
 
 /** The fields Send test's "saved config" check (dirty) cares about — every

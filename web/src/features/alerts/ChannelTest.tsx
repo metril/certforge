@@ -64,7 +64,7 @@ export function ChannelTest({ channel, orgId, dirty, canWrite }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <PermissionTip allowed={canWrite} action="alerts:write" reason={reason}>
+      <PermissionTip allowed={canWrite && !dirty} action="alerts:write" reason={reason}>
         <Button type="button" variant="outline" size="sm" disabled={disabled || !canWrite} onClick={() => void run()}>
           <Send className="size-3.5" aria-hidden />
           {testing ? 'Testing…' : 'Send test'}

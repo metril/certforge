@@ -145,6 +145,24 @@ it('edit sends sentinel for stored secrets', async () => {
   expect(put!.config).toEqual({ url: '__unchanged__' });
 });
 
+// Batch 1 review: `withSecretSentinels` (forms/uiSchema.ts) fills the
+// sentinel for ANY empty value, including SecretInput's own Remove (which
+// emits ''), so a Remove was silently turned back into __unchanged__ (the
+// stored secret's old value) instead of clearing it.
+it("remove stored secret sends '' and marks dirty", async () => {
+  channels = [makeChannel({ storedSecrets: ['url'], config: {} })];
+  const { user } = renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  expect(await within(sheet).findByRole('button', { name: 'Send test' })).toBeEnabled();
+  await user.click(within(sheet).getByRole('button', { name: 'Remove URL' }));
+  // Query fresh: going from allowed to disabled swaps PermissionTip's own
+  // wrapper (fragment -> Tooltip), remounting the button under a new node.
+  expect(within(sheet).getByRole('button', { name: 'Send test' })).toBeDisabled();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(put).toBeDefined());
+  expect(put!.config).toEqual({ url: '' });
+});
+
 it('re-enter secret maps to token field', async () => {
   channels = [makeChannel({ id: 'ch-ntfy', name: 'push', type: 'ntfy', storedSecrets: ['token'], config: { server: 'https://ntfy.sh', topic: 'certforge' } })];
   server.use(http.patch(url('/orgs/:orgId/channels/:id'), () => problem(422, 'Invalid config: re-enter the secret')));
@@ -205,7 +223,15 @@ it('send test disabled while dirty', async () => {
   const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
   expect(within(sheet).getByRole('button', { name: 'Send test' })).toBeEnabled();
   await user.type(within(sheet).getByLabelText('Name'), '!');
-  expect(within(sheet).getByRole('button', { name: 'Send test' })).toBeDisabled();
+  // Query fresh: going from allowed to disabled swaps PermissionTip's own
+  // wrapper (fragment -> Tooltip), remounting the button under a new node.
+  const sendTest = within(sheet).getByRole('button', { name: 'Send test' });
+  expect(sendTest).toBeDisabled();
+  // Batch 1 review: `PermissionTip allowed={canWrite}` (ignoring dirty)
+  // returned bare children whenever the caller could write, so the
+  // disabled-while-dirty button had no explaining tooltip at all.
+  await user.hover(sendTest);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Save your changes first');
 });
 
 it('send test disabled for new channel', async () => {

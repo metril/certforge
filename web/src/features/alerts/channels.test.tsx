@@ -149,3 +149,31 @@ it('empty state', async () => {
   expect(await screen.findByText('No channels yet.')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Add channel' })).toBeInTheDocument();
 });
+
+// Batch 1 review: the 50-channel cap counted every listed row, including
+// other orgs' allOrgs channels a global admin also sees here, wrongly
+// disabling Add well below this org's own 50.
+it('add allowed below the org limit despite foreign allOrgs rows', async () => {
+  const own = Array.from({ length: 10 }, (_, i) => makeChannel({ id: `own-${i}`, name: `own-${i}` }));
+  const foreign = Array.from({ length: 45 }, (_, i) => makeChannel({ id: `foreign-${i}`, name: `foreign-${i}`, orgId: org2.id, allOrgs: true }));
+  channels = [...own, ...foreign];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'admin', orgId: null }], [org, org2]))));
+  renderRoute('/o/acme/alerts/channels');
+  expect(await screen.findByRole('button', { name: 'Add channel' })).toBeEnabled();
+});
+
+// Batch 1 review: the mobile card's own onKeyDown caught Enter/Space
+// bubbling up from the nested Enabled switch, preventDefault'd (which also
+// suppresses the switch's own default toggle) and opened the sheet instead
+// — the switch couldn't be toggled by keyboard below `md`.
+it('card: switch toggles by keyboard without opening the sheet', async () => {
+  stubViewport(false);
+  channels = [makeChannel()];
+  const { user, router } = renderRoute('/o/acme/alerts/channels');
+  const sw = await screen.findByRole('switch', { name: 'Enabled ops-webhook' });
+  sw.focus();
+  await user.keyboard(' ');
+  await waitFor(() => expect(patched).toBeDefined());
+  expect(patched!.body.enabled).toBe(false);
+  expect(router.state.location.search).toEqual({});
+});
