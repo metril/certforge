@@ -254,3 +254,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - `certforge backup` and `certforge restore` commands with an offline-only restore lock.
 - Backup download API, scheduled backups with retention, and a backup readiness check.
 - cfctl operator CLI.
+- Phase 6A batch-4 review fixes: a backup archive's header now reads the sealed root secret live from its own snapshot instead of a value captured once at boot or before the CLI's own transaction, so an archive taken any time after a KEK rewrap job re-seals that row is restorable again; a failed on-demand backup now logs a server-side trace instead of leaving none; the scheduled backup job's `backup.completed`/`backup.failed` notification events, the failure audit row and the 1 hour retry backoff are now covered by tests.

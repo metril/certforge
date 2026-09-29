@@ -43,16 +43,11 @@ func (b backupEnv) writeOpts(ctx context.Context, t *testing.T) backup.WriteOpts
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := b.store.SealedRoot(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := b.store.EnsureCanary(ctx); err != nil {
 		t.Fatal(err)
 	}
 	return backup.WriteOpts{
 		BaseKey:    crypto.DeriveKey(root, "certforge-backup"),
-		RootSealed: sealed,
 		KEKID:      b.env.KEKID(),
 		AppVersion: "test",
 	}
@@ -337,8 +332,15 @@ func TestRestoreKEKMismatchWritesNothing(t *testing.T) {
 
 // TestRestoreRootMismatchRollsBack covers a crafted archive whose settings
 // CSV holds a different crypto.root than the header's own RootSealed: the
-// KEK check passes (RootSealed itself is untouched), but the freshly
-// loaded row disagrees, and the whole restore must roll back.
+// KEK check passes (RootSealed itself decodes fine), but the freshly
+// loaded row disagrees, and the whole restore must roll back. Write itself
+// can no longer produce this archive (batch-4 review, Critical: it now
+// always reads crypto.root live from the very snapshot it dumps from, so
+// the two can never disagree) — this test instead simulates a
+// hand-crafted or buggy archive via backup.WriteWithRootForTest
+// (internal/backup/export_test.go), proving restoreLoad's own
+// root-consistency check is real defense in depth, independent of
+// whatever produced the archive.
 func TestRestoreRootMismatchRollsBack(t *testing.T) {
 	ctx := context.Background()
 	srcPool, srcQ := dbtest.New(t)
@@ -346,24 +348,27 @@ func TestRestoreRootMismatchRollsBack(t *testing.T) {
 	be := newBackupEnv(srcQ, testKey(6))
 	opts := be.writeOpts(ctx, t)
 
-	// A second, differently-sealed root: same KEK (so it decodes fine),
-	// different plaintext, standing in for a settings CSV a hostile or
-	// buggy tool swapped out after the fact.
+	// A forged root: same KEK (so it decodes fine), different plaintext,
+	// deliberately different from what the source database's own
+	// settings.secret row (and therefore the dumped settings.csv) holds.
 	forged, err := be.env.Encrypt(ctx, bytes.Repeat([]byte{0xEE}, 32))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srcPool.Exec(ctx, `UPDATE settings SET secret = $1 WHERE key = $2`, forged.Marshal(), settings.RootKey); err != nil {
+
+	tx, err := srcPool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var archive bytes.Buffer
-	if _, err := backup.Write(ctx, srcPool, &archive, opts); err != nil {
+	if _, err := backup.WriteWithRootForTest(ctx, tx, &archive, opts, forged.Marshal()); err != nil {
 		t.Fatal(err)
 	}
-	// opts.RootSealed is the ORIGINAL sealed root (captured before the
-	// forged UPDATE above); the dumped settings.csv now carries the
-	// forged one, so the two disagree exactly as the scenario requires.
+	// The header now carries the forged root; the dumped settings.csv
+	// (read from the same snapshot as every other table) still carries
+	// the real one, so the two disagree exactly as the scenario requires.
 
 	dstPool := dbtest.Empty(t)
 
@@ -463,5 +468,106 @@ func TestWriteHeaderMatchesSnapshot(t *testing.T) {
 	}
 	if after != before {
 		t.Fatalf("snapshot saw version change from %d to %d; REPEATABLE READ should have hidden it", before, after)
+	}
+}
+
+// TestServiceStreamSurvivesRootRewrapBetweenConstructionAndStream is the
+// batch-4 review's Critical regression test. Before the fix, a
+// backup.Service captured crypto.root's sealed bytes once (at
+// construction, mirroring serve.go's old boot-time capture) and reused
+// them in every archive's header; a KEK rewrap job re-sealing that same
+// row under a newly active KEK — entirely independent of when any backup
+// runs — left every later archive's header disagreeing with the row it
+// actually dumped, and restoreLoad's byte-equality check rejected it with
+// ErrTampered. This test rewraps the row (simulating what
+// kek.RewrapWorker does during a KEK rotation, without needing the full
+// rewrap job) strictly between constructing the Service and calling
+// Stream, then proves the resulting archive still restores cleanly: Write
+// now reads crypto.root live from its own snapshot (write.go's
+// readRootSealed), so the header and the dumped settings.csv row always
+// agree regardless of this timing.
+func TestServiceStreamSurvivesRootRewrapBetweenConstructionAndStream(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+
+	kekA, kekB := testKey(21), testKey(22)
+	// envA: only KEK-A configured, the "boot-time" envelope a server
+	// starts with before any rotation.
+	envA := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(kekA), kekA))
+	storeA := settings.NewStore(q, envA)
+	root, err := storeA.EnsureRoot(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storeA.EnsureCanary(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Service construction: BaseKey is derived from the plaintext root
+	// (rewrap-proof on its own, since rewrap never changes the plaintext)
+	// — only the header's RootSealed used to be captured at this same
+	// moment, which is exactly what this test proves no longer happens.
+	svc := &backup.Service{
+		Pool: pool, Settings: storeA,
+		BaseKey: crypto.DeriveKey(root, "certforge-backup"), KEKID: envA.KEKID(), AppVersion: "test",
+	}
+
+	// Simulate a completed KEK rotation's rewrap: KEK-B is now active,
+	// KEK-A kept as previous (matching a real post-rotation envelope), and
+	// crypto.root is re-sealed under KEK-B — a fresh nonce/ciphertext for
+	// the identical plaintext, exactly what kek.RewrapWorker would leave
+	// behind, done directly here rather than through the full rewrap job.
+	envB := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(kekB), kekB), crypto.NewStaticWrapper(crypto.KeyID(kekA), kekA))
+	rewrapped, err := envB.Encrypt(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE settings SET secret = $1 WHERE key = $2`, rewrapped.Marshal(), settings.RootKey); err != nil {
+		t.Fatal(err)
+	}
+
+	var archive bytes.Buffer
+	if _, err := svc.Stream(ctx, &archive); err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	dstPool := dbtest.Empty(t)
+	restoreOpts := backup.RestoreOpts{
+		Unseal: func(ctx context.Context, sealed []byte) ([]byte, error) {
+			var blob crypto.Blob
+			if err := blob.Unmarshal(sealed); err != nil {
+				return nil, err
+			}
+			return envB.Decrypt(ctx, blob)
+		},
+		VerifyCanary: func(ctx context.Context, tx pgx.Tx) error {
+			var raw []byte
+			if err := tx.QueryRow(ctx, `SELECT secret FROM settings WHERE key = $1`, settings.CanaryKey).Scan(&raw); err != nil {
+				return err
+			}
+			var blob crypto.Blob
+			if err := blob.Unmarshal(raw); err != nil {
+				return err
+			}
+			pt, err := envB.Decrypt(ctx, blob)
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(pt, crypto.CanaryPlaintext) {
+				return settings.ErrCanaryMismatch
+			}
+			return nil
+		},
+	}
+	if _, err := backup.Restore(ctx, dstPool, bytes.NewReader(archive.Bytes()), restoreOpts); err != nil {
+		t.Fatalf("restore after a rewrap between Service construction and Stream: %v", err)
+	}
+
+	var restoredRoot []byte
+	if err := dstPool.QueryRow(ctx, `SELECT secret FROM settings WHERE key = $1`, settings.RootKey).Scan(&restoredRoot); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(restoredRoot, rewrapped.Marshal()) {
+		t.Fatal("restored crypto.root does not match the rewrapped (KEK-B-sealed) row")
 	}
 }

@@ -14,14 +14,30 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/backup"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/dbtest"
+	"github.com/metril/certforge/internal/notify"
 	"github.com/metril/certforge/internal/settings"
 )
+
+// fakeBackupEventInserter is notify.Inserter backed by memory — the same
+// shape monitor_fixture_integration_test.go's own fakeMonitorEventInserter
+// uses, redefined here since that one lives in the white-box "api"
+// package, not "api_test". Emit's own notification_events/
+// notification_deliveries rows are real SQL writes regardless of which
+// Inserter backs the (never actually queued in these tests) river
+// delivery job.
+type fakeBackupEventInserter struct{}
+
+func (fakeBackupEventInserter) InsertTx(_ context.Context, _ pgx.Tx, _ river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+	return &rivertype.JobInsertResult{Job: &rivertype.JobRow{}}, nil
+}
 
 // backupTestKey is the same fixed static KEK newTestEnvOpts uses internally
 // (testenv_integration_test.go), reused here (same convention as
@@ -32,8 +48,15 @@ var backupTestKey = bytes.Repeat([]byte{7}, 32)
 
 // withBackup returns a newTestEnvOpts option wiring d.Backup from d's own
 // already-constructed Settings/Pool/Auditor/Log (set before opts run): the
-// real root secret and its sealed form, so backup.Service.Stream produces
-// a genuinely restorable archive.
+// real root secret, so backup.Service.Stream produces a genuinely
+// restorable archive (Write itself reads the sealed crypto.root row live,
+// from its own snapshot — batch-4 review — so this fixture no longer
+// captures one). Emitter is a real notify.Emitter against d's own Pool
+// (fakeBackupEventInserter only stands in for the river delivery job —
+// Emit's own notification_events/notification_deliveries rows are real
+// SQL writes either way), so TestScheduledBackupEmitsEvent and
+// TestScheduledBackupFailureRecordsEventAuditAndBackoff (batch-4 review)
+// can assert on the actual event rows a scheduled run raises.
 func withBackup(t *testing.T) func(*api.Deps) {
 	t.Helper()
 	return func(d *api.Deps) {
@@ -42,17 +65,14 @@ func withBackup(t *testing.T) func(*api.Deps) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sealed, err := d.Settings.SealedRoot(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
 		if err := d.Settings.EnsureCanary(ctx); err != nil {
 			t.Fatal(err)
 		}
 		d.Backup = &backup.Service{
 			Pool: d.Pool, Settings: d.Settings, Audit: d.Auditor, Log: d.Log,
-			BaseKey: crypto.DeriveKey(root, "certforge-backup"), RootSealed: sealed,
-			KEKID: crypto.KeyID(backupTestKey), AppVersion: "test",
+			Emitter: &notify.Emitter{Pool: d.Pool, River: fakeBackupEventInserter{}, Log: d.Log},
+			BaseKey: crypto.DeriveKey(root, "certforge-backup"),
+			KEKID:   crypto.KeyID(backupTestKey), AppVersion: "test",
 		}
 	}
 }
@@ -269,10 +289,12 @@ func TestBackupAPIRestoreRoundTrip(t *testing.T) {
 }
 
 // TestScheduledBackupEmitsEvent: RunScheduled, run directly against a real
-// database and directory, writes a retained file and records a status the
-// API reports, without going through the hourly river job itself (the
-// river wiring is exercised by RegisterRiver's own use in
-// cmd/certforge/serve.go, not re-tested here).
+// database and directory, writes a retained file, records a status the API
+// reports, and raises backup.completed with the file's own dedupe key
+// (batch-4 review: asserted against the real notification_events row, not
+// just "no event" against a nil Emitter) — without going through the
+// hourly river job itself (the river wiring is exercised by
+// RegisterRiver's own use in cmd/certforge/serve.go, not re-tested here).
 func TestScheduledBackupEmitsEvent(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	dir := t.TempDir()
@@ -298,6 +320,12 @@ func TestScheduledBackupEmitsEvent(t *testing.T) {
 		t.Fatalf("status = %+v", st)
 	}
 
+	wantDedupe := "backup.completed:" + entries[0]
+	kind, dedupe := e.notificationEvent(t, wantDedupe)
+	if kind != "backup.completed" || dedupe != wantDedupe {
+		t.Fatalf("event kind/dedupe = %q/%q, want backup.completed/%q", kind, dedupe, wantDedupe)
+	}
+
 	// Running again immediately must no-op: the daily cadence isn't due yet.
 	if err := e.deps.Backup.RunScheduled(context.Background()); err != nil {
 		t.Fatalf("RunScheduled (second run): %v", err)
@@ -309,6 +337,82 @@ func TestScheduledBackupEmitsEvent(t *testing.T) {
 	if len(entries2) != 1 {
 		t.Fatalf("second immediate run wrote another file: %v", entries2)
 	}
+}
+
+// TestScheduledBackupFailureRecordsEventAuditAndBackoff (batch-4 review):
+// a due run against an unwritable directory (here, one whose parent does
+// not exist — portable across a root-run test container, unlike a chmod
+// 0000 directory a root process would simply ignore) fails at
+// os.OpenFile, and the failure is recorded on every surface the contract
+// promises: Status's lastFailureAt/lastError, a backup.failed audit row
+// (system actor), a backup.failed notification event, and — the 1 h
+// backoff — a second immediate run does not retry (no new audit row, no
+// new event, lastFailureAt unchanged).
+func TestScheduledBackupFailureRecordsEventAuditAndBackoff(t *testing.T) {
+	e := newTestEnvOpts(t, withBackup(t))
+	badDir := "/nonexistent-" + t.Name() + "/backups"
+	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: badDir})
+
+	if err := e.deps.Backup.RunScheduled(context.Background()); err != nil {
+		t.Fatalf("RunScheduled: %v", err)
+	}
+
+	st, err := e.deps.Backup.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.LastFailureAt == nil || st.LastError == "" {
+		t.Fatalf("status = %+v, want a recorded failure", st)
+	}
+	firstFailureAt := *st.LastFailureAt
+
+	if n := e.auditCount(t, "backup.failed"); n != 1 {
+		t.Fatalf("backup.failed audit count = %d, want 1", n)
+	}
+
+	kind, dedupe := e.notificationEventByKind(t, "backup.failed")
+	if kind != "backup.failed" || !strings.HasPrefix(dedupe, "backup.failed:") {
+		t.Fatalf("event kind/dedupe = %q/%q", kind, dedupe)
+	}
+
+	// The 1 h backoff: a second immediate run must not retry.
+	if err := e.deps.Backup.RunScheduled(context.Background()); err != nil {
+		t.Fatalf("RunScheduled (second run): %v", err)
+	}
+	if n := e.auditCount(t, "backup.failed"); n != 1 {
+		t.Fatalf("backup.failed audit count after a second immediate run = %d, want still 1 (1 h backoff)", n)
+	}
+	st2, err := e.deps.Backup.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st2.LastFailureAt == nil || !st2.LastFailureAt.Equal(firstFailureAt) {
+		t.Fatalf("lastFailureAt changed on a second immediate run: %v -> %v (want unchanged, 1 h backoff)", firstFailureAt, st2.LastFailureAt)
+	}
+}
+
+// notificationEvent looks up one notification_events row by its exact
+// dedupe key, failing the test if it is missing.
+func (e *testEnv) notificationEvent(t *testing.T, dedupeKey string) (kind, dedupe string) {
+	t.Helper()
+	err := e.deps.Pool.QueryRow(context.Background(),
+		`SELECT kind, dedupe_key FROM notification_events WHERE dedupe_key = $1`, dedupeKey).Scan(&kind, &dedupe)
+	if err != nil {
+		t.Fatalf("notification_events dedupe_key=%q: %v", dedupeKey, err)
+	}
+	return kind, dedupe
+}
+
+// notificationEventByKind looks up the (expected single) notification_events
+// row of the given kind, failing the test if it is missing.
+func (e *testEnv) notificationEventByKind(t *testing.T, kind string) (gotKind, dedupe string) {
+	t.Helper()
+	err := e.deps.Pool.QueryRow(context.Background(),
+		`SELECT kind, dedupe_key FROM notification_events WHERE kind = $1`, kind).Scan(&gotKind, &dedupe)
+	if err != nil {
+		t.Fatalf("notification_events kind=%q: %v", kind, err)
+	}
+	return gotKind, dedupe
 }
 
 func readDirNames(dir string) ([]string, error) {

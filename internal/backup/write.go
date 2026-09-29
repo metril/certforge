@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/crypto"
+	"github.com/metril/certforge/internal/settings"
 )
 
 // WriteOpts configures Write.
@@ -27,9 +28,6 @@ type WriteOpts struct {
 	// this once and keeps it, deriving before clearing the root itself
 	// from memory). Write never sees the plaintext root.
 	BaseKey []byte
-	// RootSealed is the raw crypto.root settings row (settings.SealedRoot):
-	// a marshalled crypto.Blob, recorded in the header unchanged.
-	RootSealed []byte
 	// KEKID is the active envelope's KEK id, recorded as
 	// Header.ActiveKEKID.
 	KEKID string
@@ -63,6 +61,38 @@ func Write(ctx context.Context, pool *pgxpool.Pool, w io.Writer, opts WriteOpts)
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // read-only; always safe, no-op if never committed (it never is)
 
+	rootSealed, err := readRootSealed(ctx, tx)
+	if err != nil {
+		return Summary{}, err
+	}
+	return writeTx(ctx, tx, w, opts, rootSealed)
+}
+
+// readRootSealed reads the crypto.root settings row from within tx —
+// batch-4 review, Critical: a value captured outside this snapshot (at
+// serve boot, or once before BEGIN in the CLI) can go stale the moment a
+// KEK rewrap re-seals the row, since rewrap runs as its own periodic job
+// independent of any backup. Reading it live, inside the exact same
+// REPEATABLE READ snapshot the "settings" table itself is dumped from,
+// guarantees Header.RootSealed and the dumped settings.csv row always
+// agree by construction, for any KEK rotation/rewrap timing.
+func readRootSealed(ctx context.Context, tx pgx.Tx) ([]byte, error) {
+	var sealed []byte
+	if err := tx.QueryRow(ctx, `SELECT secret FROM settings WHERE key = $1`, settings.RootKey).Scan(&sealed); err != nil {
+		return nil, fmt.Errorf("backup: read root: %w", err)
+	}
+	return sealed, nil
+}
+
+// writeTx is Write's implementation once the snapshot transaction and the
+// header's rootSealed are both already resolved. It is split out from
+// Write so write_restore_integration_test.go's
+// TestRestoreRootMismatchRollsBack can pass a deliberately wrong
+// rootSealed — simulating a hand-crafted or buggy archive, independent of
+// Write's own (now-guaranteed-consistent) behavior — to prove
+// restoreLoad's own root check is real defense in depth, not merely an
+// assumption Write happens to uphold.
+func writeTx(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSealed []byte) (Summary, error) {
 	version, err := snapshotVersion(ctx, tx)
 	if err != nil {
 		return Summary{}, err
@@ -81,7 +111,7 @@ func Write(ctx context.Context, pool *pgxpool.Pool, w io.Writer, opts WriteOpts)
 		MigrationVersion: version,
 		ActiveKEKID:      opts.KEKID,
 		PreviousKEKIDs:   opts.PreviousKEKIDs,
-		RootSealed:       opts.RootSealed,
+		RootSealed:       rootSealed,
 		Salt:             salt,
 		Tables:           Manifest,
 	}

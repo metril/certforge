@@ -67,6 +67,15 @@ func (s *Server) CreateBackup(ctx context.Context, _ gen.CreateBackupRequestObje
 	go func() {
 		summary, err := s.d.Backup.Stream(ctx, pw)
 		if err != nil {
+			// A Stream error otherwise only reaches the client as a
+			// truncated connection (abortingReader's panic; net/http
+			// silences an ErrAbortHandler panic entirely, no log of its
+			// own) — logged here so a failed on-demand backup leaves a
+			// server-side trace (batch-4 review). Write's own errors never
+			// embed key material or other secrets (wrapped fmt.Errorf
+			// around table names, SQL errors and I/O failures only), so
+			// this needs no separate redaction step.
+			s.d.Log.Error("backup: on-demand stream failed", "err", err)
 			_ = pw.CloseWithError(err)
 			return
 		}

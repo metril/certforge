@@ -66,10 +66,6 @@ func runBackup(ctx context.Context, args []string, stdout io.Writer) error {
 		return fmt.Errorf("root secret: %w", err)
 	}
 	defer clear(root)
-	sealedRoot, err := store.SealedRoot(ctx)
-	if err != nil {
-		return fmt.Errorf("sealed root: %w", err)
-	}
 
 	prevIDs := make([]string, len(previousKEKs))
 	for i, w := range previousKEKs {
@@ -77,7 +73,6 @@ func runBackup(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	opts := backup.WriteOpts{
 		BaseKey:        crypto.DeriveKey(root, "certforge-backup"),
-		RootSealed:     sealedRoot,
 		KEKID:          active.ID(),
 		PreviousKEKIDs: prevIDs,
 		AppVersion:     version,

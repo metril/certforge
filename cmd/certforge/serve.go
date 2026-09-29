@@ -80,11 +80,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// backupBaseKey feeds backup.Service.Stream (Deviations R6): derived
 	// here, before clear(root), the same way auditKey/oidcKey are — Write
 	// never sees the plaintext root itself, only this already-derived key.
+	// RootSealed is not captured here (batch-4 review, Critical): Write
+	// now reads the live crypto.root row itself, inside its own snapshot
+	// transaction, so it can never go stale against a KEK rewrap that runs
+	// between boot and any later backup.
 	backupBaseKey := crypto.DeriveKey(root, "certforge-backup")
-	rootSealed, err := store.SealedRoot(ctx)
-	if err != nil {
-		return fmt.Errorf("sealed root: %w", err)
-	}
 	clear(root)
 	canaryOK := true
 	if err := store.EnsureCanary(ctx); err != nil {
@@ -221,7 +221,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// nothing, same convention as kek.Service's nil-safe Audit).
 	backupSvc := &backup.Service{
 		Pool: pool, Settings: store, Audit: aud, Log: log,
-		BaseKey: backupBaseKey, RootSealed: rootSealed, KEKID: env.KEKID(),
+		BaseKey: backupBaseKey, KEKID: env.KEKID(),
 		PreviousKEKIDs: previousKEKIDs, AppVersion: version,
 	}
 	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log,

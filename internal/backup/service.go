@@ -45,12 +45,16 @@ type Service struct {
 	Emitter *notify.Emitter
 	Log     *slog.Logger
 
-	// BaseKey, RootSealed, KEKID, PreviousKEKIDs and AppVersion feed
-	// WriteOpts directly (serve.go derives BaseKey once at boot, before
-	// clear(root): Deviations R6). BaseKey must be cleared by the caller
-	// at process shutdown, not by Service.
+	// BaseKey, KEKID, PreviousKEKIDs and AppVersion feed WriteOpts directly
+	// (serve.go derives BaseKey once at boot, before clear(root):
+	// Deviations R6). BaseKey must be cleared by the caller at process
+	// shutdown, not by Service. RootSealed is deliberately not a field
+	// here (batch-4 review, Critical): Write now reads the current
+	// crypto.root row live, inside its own snapshot transaction, instead
+	// of trusting a value the caller captured once and may have gone
+	// stale since (a KEK rewrap re-seals the row independently of any
+	// backup).
 	BaseKey        []byte
-	RootSealed     []byte
 	KEKID          string
 	PreviousKEKIDs []string
 	AppVersion     string
@@ -90,7 +94,6 @@ func (s *Service) Stream(ctx context.Context, w io.Writer) (Summary, error) {
 	}
 	return Write(ctx, s.Pool, w, WriteOpts{
 		BaseKey:        s.BaseKey,
-		RootSealed:     s.RootSealed,
 		KEKID:          s.KEKID,
 		PreviousKEKIDs: s.PreviousKEKIDs,
 		AppVersion:     s.AppVersion,
