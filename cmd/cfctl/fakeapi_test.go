@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -19,15 +20,24 @@ type route struct {
 // path" and fails the test if any request lacks the expected bearer
 // token — every cfctl command test runs through this, so a command that
 // ever dropped the Authorization header would fail its own test rather
-// than silently talking to the server unauthenticated.
+// than silently talking to the server unauthenticated. route.path is the
+// operation path as the OpenAPI spec itself declares it (for example
+// "/server-info", matching api/openapi.yaml's paths key), not the real
+// server's route: newClients' apiBase appends the spec's own "/api/v1"
+// servers prefix to whatever --url/CFCTL_URL gives, so every request this
+// fake server actually receives carries that prefix too (caught by
+// TestOpsAgainstCompose, task-15-brief, against the real server — every
+// route here used to match by accident, since testEnv also passed srv.URL
+// bare with no /api/v1, the same bug newClients itself had).
 func newFakeAPI(t *testing.T, token string, routes ...route) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+token {
 			t.Errorf("Authorization header = %q, want %q (request %s %s)", got, "Bearer "+token, r.Method, r.URL.Path)
 		}
+		p := strings.TrimPrefix(r.URL.Path, "/api/v1")
 		for _, rt := range routes {
-			if rt.method == r.Method && rt.path == r.URL.Path {
+			if rt.method == r.Method && rt.path == p {
 				rt.handle(w, r)
 				return
 			}

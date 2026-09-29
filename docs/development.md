@@ -64,6 +64,8 @@ overridable, useful when the defaults are already taken:
 | `CF_CHALLTESTSRV_PORT` | `18055` | pebble-challtestsrv management API (also sets `CF_E2E_CHALLTESTSRV`; the breadth e2e adds the A records Pebble's http-01/tls-alpn-01 validation resolves against here, and independently `docker inspect`s the certforge/traefik/agent containers' compose-network IPs to point them at) |
 | `CF_VAULT_PORT` | `8200` | dev-mode Vault (also sets `CF_E2E_VAULT`, `http://localhost:$CF_VAULT_PORT`, for the Vault e2e's own direct reads of the KV document and Vault's PKI CA) |
 | `CF_E2E_VAULT_TOKEN` | `certforge-e2e-root` | Vault's dev-mode root token (`VAULT_DEV_ROOT_TOKEN_ID`); also the value `deploy/e2e/vault-init.sh` sets as the e2e AppRole's fixed `secret_id` (`custom-secret-id`, deterministic rather than Vault-generated, so a rerun never needs to re-read it) |
+| `CF_MAILPIT_PORT` | `18025` | mailpit's HTTP API (the ops e2e's "smtp" settings section always points at `mailpit:1025` over the compose network; the host-side test reads delivered messages back through this published port) |
+| `CF_E2E_SINK_PORT` | `18090` | Not a compose port: the host address the ops e2e's own webhook sink listens on (`0.0.0.0:$CF_E2E_SINK_PORT`), reached by the compose server as `http://host.docker.internal:$CF_E2E_SINK_PORT/hook` (`deploy/compose.test.yaml`'s `certforge.extra_hosts: host.docker.internal:host-gateway`). A host firewall that blocks inbound connections from the Docker bridge network (rather than just the loopback interface) needs a rule allowing it, the same as any other container-to-host traffic. |
 
 The issuance e2e test drives the compose server through its own HTTP API
 (`CF_E2E_BASE_URL`), the same way a real client would; it never talks to
@@ -113,11 +115,53 @@ healthy) enables transit and pki, verifies dev-mode's default `secret/`
 kv-v2 mount, and writes a fixed AppRole `role_id`/`secret_id` to
 `../.e2e/vault` for this test's own second boot to read. `make e2e` runs
 this test as its own `go test -run TestVaultAgainstCompose` invocation
-after the rest of the suite passes (`-skip TestVaultAgainstCompose` on the
-first), since it is the only test that restarts and reconfigures the
-server out from under the rest of the stack. OpenBao is untested even with
-this e2e in place — see [vault.md#openbao](vault.md#openbao) — it runs a
-real HashiCorp Vault image, never OpenBao.
+after the rest of the suite (and `TestOpsAgainstCompose`, below) passes
+(`-skip 'TestVaultAgainstCompose|TestOpsAgainstCompose'` on the first
+run), since it is the only test that restarts and reconfigures the server
+out from under the rest of the stack. OpenBao is untested even with this
+e2e in place — see [vault.md#openbao](vault.md#openbao) — it runs a real
+HashiCorp Vault image, never OpenBao.
+
+`test/e2e/ops_test.go`'s `TestOpsAgainstCompose` (Phase 6A Task 15) proves
+6A end to end: a webhook channel and an SMTP channel, both filtered to
+`cert.issued` and `test`, receive an issued certificate's `cert.issued`
+event — the webhook delivery is checked against a plain `net/http` server
+the test itself runs on `0.0.0.0:$CF_E2E_SINK_PORT` (reached by the compose
+server as `http://host.docker.internal:$CF_E2E_SINK_PORT/hook`, see the
+port table above), its `X-CertForge-Signature` verified as a real
+HMAC-SHA256 over the body; the SMTP delivery is read back through
+mailpit's own HTTP API (`CF_MAILPIT_PORT`), checking the subject and that
+the body contains the certificate's name. `listEvents` shows both
+deliveries `delivered`. An external monitor (`GET /orgs/{orgId}/monitors`)
+targets `traefik:8443`, a `websecure` TLS entrypoint `deploy/compose.test.
+yaml`'s Traefik service gains for this test alone (`--entrypoints.
+websecure.http.tls=true`); the test writes the issued leaf and key
+straight to `.e2e/traefik/ops/{fullchain.pem,privkey.pem}` and a dynamic
+file (`.e2e/traefik/certforge-ops.yml`) setting them as that entrypoint's
+default certificate plus a catch-all router to `noop@internal` — nothing
+here goes through an agent grant, so this is the one point in the whole
+e2e suite where a certificate is actually served over TLS to a monitor
+(see docs/PROGRESS.md Known gaps for what this does not cover). `checkMonitor`
+is polled until `ok` with `lastFingerprint` equal to the issued version's
+own fingerprint. `GET /metrics` is checked unauthenticated (401, empty
+body) and with the `prometheus` section's bearer token (200,
+`certforge_certificates{` present). `.e2e/cfctl`, built by the `e2e`
+target (`go build -o .e2e/cfctl ./cmd/cfctl`) against an admin-scoped API
+key (`scopes: ["admin"]`, the only `ApiKeyScope` broad enough to cover
+`alerts:*`/`settings:*`/`backup`), runs `status`, `certs list --all
+--json` (recording every certificate id, paginated or not), and `backup
+create --out .e2e/ops.cfbak`, whose header this test parses directly by
+the documented framing (magic, length-prefixed JSON) rather than
+importing `internal/backup`. The last step stops `certforge`, drops and
+recreates the compose `postgres` service's `certforge` database with
+`psql`, restores with `docker compose run --rm -T certforge restore --in -
+--yes < .e2e/ops.cfbak`, restarts `certforge`, waits for `/readyz`, and
+checks `cfctl certs list --json`'s ids and `GET /audit/verify`
+(`verifyAuditChain`, shared with `TestVaultAgainstCompose`) both survive
+the restore unchanged. `make e2e` runs this test as its own `go test -run
+TestOpsAgainstCompose` invocation, between the main suite and
+`TestVaultAgainstCompose`, since its own last step also restarts
+`certforge` out from under the rest of the stack.
 
 The same stack and the same `CF_HTTP_PORT` override are used by the browser
 smoke test below (`web/e2e/`); it just drives the running server with a real

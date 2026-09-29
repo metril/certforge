@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -98,21 +99,37 @@ func runWithEnv(ctx context.Context, args []string, stdout, stderr io.Writer, ge
 // bearer-token request editor. The token is set only here, as an
 // Authorization header on outgoing requests; it never appears in any
 // value cfctl prints or logs.
+//
+// The generated client (api/oapi-codegen.client.yaml) builds every request
+// path relative to the server argument it is given, exactly as declared
+// under the spec's own `servers: [{url: /api/v1}]` entry — it never adds
+// that prefix itself (docs/cfctl.md documents --url/CFCTL_URL as the
+// server's bare base URL, for example "https://certforge.example.com",
+// the same address the web UI's own origin uses), so apiBase appends it
+// here, once, for both clients.
 func newClients(cfg Config, timeout time.Duration) (*client.ClientWithResponses, *client.APIClient, error) {
 	hc := &http.Client{Timeout: timeout}
 	auth := client.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+cfg.Token)
 		return nil
 	})
-	cwr, err := client.NewClientWithResponses(cfg.URL, client.WithHTTPClient(hc), auth)
+	base := apiBase(cfg.URL)
+	cwr, err := client.NewClientWithResponses(base, client.WithHTTPClient(hc), auth)
 	if err != nil {
 		return nil, nil, err
 	}
-	raw, err := client.NewClient(cfg.URL, client.WithHTTPClient(hc), auth)
+	raw, err := client.NewClient(base, client.WithHTTPClient(hc), auth)
 	if err != nil {
 		return nil, nil, err
 	}
 	return cwr, raw, nil
+}
+
+// apiBase turns a server's bare base URL into the /api/v1 base the
+// generated client's request builders resolve every operation path
+// against.
+func apiBase(url string) string {
+	return strings.TrimRight(url, "/") + "/api/v1"
 }
 
 // commandTable maps a top-level command name to its handler. Every

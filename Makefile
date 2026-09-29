@@ -49,10 +49,14 @@ deploy/secrets/kek:
 
 e2e: deploy/secrets/kek
 	rm -rf .e2e && mkdir -p .e2e/agent-data .e2e/traefik .e2e/ssl .e2e/vault && chmod 0777 .e2e/vault
-	export CF_E2E_UID=$$(id -u) CF_E2E_GID=$$(id -g) CF_VAULT_PORT=$${CF_VAULT_PORT:-8200} CF_E2E_VAULT_TOKEN=$${CF_E2E_VAULT_TOKEN:-certforge-e2e-root}; \
+	export CF_E2E_UID=$$(id -u) CF_E2E_GID=$$(id -g) CF_VAULT_PORT=$${CF_VAULT_PORT:-8200} CF_E2E_VAULT_TOKEN=$${CF_E2E_VAULT_TOKEN:-certforge-e2e-root} CF_MAILPIT_PORT=$${CF_MAILPIT_PORT:-18025} CF_E2E_SINK_PORT=$${CF_E2E_SINK_PORT:-18090}; \
 	$(COMPOSE_TEST) --profile e2e up -d --build --wait; up_status=$$?; \
 	if [ $$up_status -ne 0 ]; then \
 		$(COMPOSE_TEST) --profile e2e down -v; exit $$up_status; \
+	fi; \
+	$(GO) build -o .e2e/cfctl ./cmd/cfctl; build_status=$$?; \
+	if [ $$build_status -ne 0 ]; then \
+		$(COMPOSE_TEST) --profile e2e down -v; exit $$build_status; \
 	fi; \
 	export CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} \
 		CF_E2E_PEBBLE_MGMT=https://localhost:$${CF_PEBBLE_MGMT_PORT:-15000} \
@@ -62,8 +66,13 @@ e2e: deploy/secrets/kek
 		CF_E2E_COMPOSE="$(COMPOSE_TEST_ABS)" \
 		CF_E2E_COMPOSE_VAULT_FILE=$(CURDIR)/deploy/compose.vault.yaml \
 		CF_E2E_VAULT=http://localhost:$${CF_VAULT_PORT} \
-		CF_E2E_VAULT_ADDR=$${CF_E2E_VAULT_ADDR:-http://vault:8200}; \
-	$(GO) test -tags e2e -count=1 -timeout 20m -skip TestVaultAgainstCompose ./test/e2e/...; status=$$?; \
+		CF_E2E_VAULT_ADDR=$${CF_E2E_VAULT_ADDR:-http://vault:8200} \
+		CF_MAILPIT_PORT=$${CF_MAILPIT_PORT} \
+		CF_E2E_SINK_PORT=$${CF_E2E_SINK_PORT}; \
+	$(GO) test -tags e2e -count=1 -timeout 20m -skip 'TestVaultAgainstCompose|TestOpsAgainstCompose' ./test/e2e/...; status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		$(GO) test -tags e2e -count=1 -timeout 10m -run TestOpsAgainstCompose ./test/e2e/...; status=$$?; \
+	fi; \
 	if [ $$status -eq 0 ]; then \
 		$(GO) test -tags e2e -count=1 -timeout 15m -run TestVaultAgainstCompose ./test/e2e/...; status=$$?; \
 	fi; \

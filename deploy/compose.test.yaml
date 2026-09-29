@@ -21,6 +21,14 @@ services:
     depends_on:
       dex:
         condition: service_healthy
+    # Task 15: the host-side go test process runs its own webhook sink on
+    # CF_E2E_SINK_PORT (host, 0.0.0.0), and the webhook channel it creates
+    # points at http://host.docker.internal:<port>/hook so the server
+    # (inside this container) can reach it; host-gateway is Docker's own
+    # special extra_hosts value, resolving to whatever address routes to
+    # the host regardless of the host's actual IP.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
   pebble:
     image: ghcr.io/letsencrypt/pebble:2.10.1
     command: -config test/config/pebble-config.json -strict -dnsserver challtestsrv:8053
@@ -56,12 +64,17 @@ services:
       # the server itself still reaches challtestsrv over the compose
       # network (challtestsrv:8055) for its dns-01 TXT records.
       - "${CF_CHALLTESTSRV_PORT:-18055}:8055"
-  # ACME http-01 routing only (Task 15): Pebble's http-01 validation for
-  # agent.e2e resolves to this container, not the agent's own IP, so the
-  # only way it succeeds is through the per-grant ACME router file the
-  # agent writes under .e2e/traefik (deviation R4) once a grant with an
-  # acmeServiceUrl target exists. TLS serving of the deployed certificate
-  # is not exercised; see docs/PROGRESS.md Known gaps.
+  # ACME http-01 routing (Task 15's own agent grant, see the agent service
+  # below): Pebble's http-01 validation for agent.e2e resolves to this
+  # container, not the agent's own IP, so the only way it succeeds is
+  # through the per-grant ACME router file the agent writes under
+  # .e2e/traefik (deviation R4) once a grant with an acmeServiceUrl target
+  # exists. TLS serving of an agent-deployed layout certificate
+  # (certforge-<name>.yml) is still not exercised; see docs/PROGRESS.md
+  # Known gaps. Separately (Task 15, R11), the websecure entrypoint below
+  # serves a certificate the e2e test itself writes directly (not through
+  # an agent grant) so TestOpsAgainstCompose's external monitor has a real
+  # TLS endpoint reachable over the compose network at traefik:8443.
   traefik:
     profiles: [e2e]
     image: traefik:v3.1
@@ -76,6 +89,14 @@ services:
       # router actually forwarding a challenge.
       - --entrypoints.traefik.address=:8081
       - --api.insecure=true
+      # Task 15 (R11): a second entrypoint, TLS terminated at the
+      # entrypoint itself (http.tls=true, no router-level tls: {} needed),
+      # serving whatever certforge-ops.yml's dynamic file sets as this
+      # store's defaultCertificate. Not published to the host: only the
+      # compose server dials it (TestOpsAgainstCompose's monitor targets
+      # traefik:8443 over the compose network, never from the host).
+      - --entrypoints.websecure.address=:8443
+      - --entrypoints.websecure.http.tls=true
     volumes:
       - ../.e2e/traefik:/etc/traefik/dynamic:ro
   agent:
@@ -141,6 +162,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+  # Task 15: SMTP sink for TestOpsAgainstCompose's email channel. The
+  # compose server sends to mailpit:1025 (its "smtp" settings section
+  # host, over the compose network); the host-side go test reads delivered
+  # messages back through mailpit's own HTTP API, published at
+  # CF_MAILPIT_PORT. No healthcheck: the test polls the HTTP API itself
+  # (bounded) before relying on it, the same way waitForPebbleReady does
+  # for Pebble's management API.
+  mailpit:
+    profiles: [e2e]
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "${CF_MAILPIT_PORT:-18025}:8025"
   # Task 14: dev-mode Vault for the Transit KEK, vaultpki, vault-kv and the
   # readiness check's own "vault" entry. Dev mode is in-memory and always
   # unsealed with a fixed root token, which is exactly what the e2e's

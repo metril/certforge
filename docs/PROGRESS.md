@@ -314,8 +314,8 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | 11 | backup and restore CLI, serve lock | done | 345e547 |
 | 12 | Backup API, schedule, readiness | done | ddc3fc4 |
 | 13 | cfctl | done | fae56d4 |
-| 14 | Wiring and close-out | done | pending |
-| 15 | Ops e2e | planned | – |
+| 14 | Wiring and close-out | done | ee4d348 |
+| 15 | Ops e2e | done | pending |
 
 ## Decisions made during implementation
 
@@ -506,6 +506,7 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 
 ## Known gaps
 
+- 6A Task 15: the external monitor e2e (`TestOpsAgainstCompose`) only proves TLS reachability against Traefik's own e2e-only `websecure:8443` entrypoint, whose dynamic file (`certforge-ops.yml`) the test writes directly, not through an agent grant or any deploy target. No deploy target serves a monitored certificate over TLS in production, or in any other e2e stack — the 4A/3A gaps below (agent-deployed layout certificates never served over TLS in e2e either) still stand.
 - 4A final fix wave: the Traefik ACME router's rule matches `Host()` on the certificate's own names, but carries no `entryPoints`, so it listens on every entrypoint Traefik's static config defines; there is no per-entrypoint pin.
 - 3A Task 15: the e2e checks the Traefik YAML byte for byte, and 4A Task 15 now also runs a real Traefik container for ACME routing (`certforge-acme-<name>.yml`), but TLS serving of the deployed certificate (`certforge-<name>.yml`, the layout PEMs) is not checked.
 - 3B: `make e2e-web` (Playwright with the compose agent) is not in CI, like the rest of the browser suite.
