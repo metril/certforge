@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useState, type Dispatch, type ReactNode } from 'react';
+import { useEffect, useMemo, useReducer, useState, type Dispatch, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CircleAlert, CircleMinus } from 'lucide-react';
@@ -132,6 +132,21 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
     setSubmitError(null);
     rawDispatch(action);
   };
+
+  // Batch 2 review (Minor): an edited certificate can load with an
+  // accountId override but no caId override of its own, where the
+  // *inherited* default CA already happens to be private — clearing
+  // accountId only when the user actually touches caId (IssuanceDefaultsForm)
+  // never fires here, since caId is never touched, and Options may never
+  // even be visited before Save. Reconcile it as soon as `privateCa` is
+  // known, at any step, so an unrelated Save doesn't 422 with "account
+  // belongs to a different CA".
+  useEffect(() => {
+    if (privateCa && state.overrides.accountId != null) {
+      dispatch({ type: 'setOverrides', overrides: { ...state.overrides, accountId: null } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privateCa, state.overrides.accountId]);
 
   function goToStep(i: number) {
     setSubmitError(null);

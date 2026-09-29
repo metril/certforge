@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type Dispatch } from 'react';
+import { useEffect, useMemo, useState, type Dispatch, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleMinus } from 'lucide-react';
 import { allCertificatesQuery } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { dnsCredentialsQuery, metaSchemasQuery } from '@/api/queries/dns';
 import type { ProviderSchema } from '@/api/types';
+import { HelpTipBody } from '@/components/HelpTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { Label } from '@/components/ui/label';
@@ -42,8 +43,33 @@ function VerificationModeControl({ privateCa }: { privateCa: boolean }) {
             />
           </div>
         </TooltipTrigger>
-        <TooltipContent>{help[helpKey].text}</TooltipContent>
+        <TooltipContent>
+          <HelpTipBody entry={help[helpKey]} />
+        </TooltipContent>
       </Tooltip>
+    </div>
+  );
+}
+
+/** Wraps children with the dimmed/non-interactive treatment for a private
+ * effective CA: `aria-disabled`, `pointer-events-none` (mouse) and `inert`
+ * (batch 2 review, Minor: `pointer-events-none` alone still lets a
+ * keyboard user tab into and edit the rules editor — `inert` removes it
+ * from the tab order and blocks input entirely). `inert` is a plain DOM
+ * attribute, not yet in this project's @types/react (18.3), so it's set
+ * imperatively through a ref rather than as a JSX prop. */
+function Dimmed({ active, children }: { active: boolean; children: ReactNode }) {
+  return (
+    <div
+      ref={(el) => {
+        if (!el) return;
+        if (active) el.setAttribute('inert', '');
+        else el.removeAttribute('inert');
+      }}
+      aria-disabled={active || undefined}
+      className={active ? 'pointer-events-none opacity-50' : undefined}
+    >
+      {children}
     </div>
   );
 }
@@ -94,7 +120,7 @@ export function VerificationStep({ orgId, state, dispatch, inherited, privateCa 
   return (
     <div className="grid gap-6">
       <VerificationModeControl privateCa={privateCa} />
-      <div aria-disabled={privateCa || undefined} className={privateCa ? 'pointer-events-none opacity-50' : undefined}>
+      <Dimmed active={privateCa}>
         <VerificationRulesEditor
           rules={state.rules}
           onChange={(rules) => dispatch({ type: 'setRules', rules })}
@@ -102,14 +128,14 @@ export function VerificationStep({ orgId, state, dispatch, inherited, privateCa 
           clients={clients}
           onAddCredential={setPickerFor}
         />
-      </div>
-      <div aria-disabled={privateCa || undefined} className={privateCa ? 'pointer-events-none opacity-50' : undefined}>
+      </Dimmed>
+      <Dimmed active={privateCa}>
         {privateCa ? (
           <NotNeededCoverage names={state.names} />
         ) : (
           <CoveragePanel items={coverage(state.names, state.rules, inherited, clients)} credentials={creds} clients={clients} />
         )}
-      </div>
+      </Dimmed>
       <ProviderPicker
         open={pickerFor !== null}
         onOpenChange={(o) => !o && setPickerFor(null)}

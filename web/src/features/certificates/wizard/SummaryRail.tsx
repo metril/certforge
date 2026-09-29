@@ -37,14 +37,22 @@ export function SummaryRail({ orgId, state, inherited, privateCa }: { orgId: str
     ['Verification', privateCa ? 'Not needed' : ruleSummary(state.rules)],
     [
       'Coverage',
-      <span className="inline-flex items-center gap-1">
-        {cov.length > 0 && covered === cov.length ? (
-          <CircleCheck className="size-4 text-valid" aria-hidden />
-        ) : (
-          <CircleAlert className="size-4 text-expiring" aria-hidden />
-        )}
-        {covered} of {cov.length} names
-      </span>,
+      // Batch 2 review (Important, controller ruling): a private effective
+      // CA needs no coverage at all — "Not needed", neutral, no alert
+      // icon — not a "0 of N names" warning for something that was never
+      // required.
+      privateCa ? (
+        'Not needed'
+      ) : (
+        <span className="inline-flex items-center gap-1">
+          {cov.length > 0 && covered === cov.length ? (
+            <CircleCheck className="size-4 text-valid" aria-hidden />
+          ) : (
+            <CircleAlert className="size-4 text-expiring" aria-hidden />
+          )}
+          {covered} of {cov.length} names
+        </span>
+      ),
     ],
     ['CA', show('caId')],
     ['Key type', show('keyType')],

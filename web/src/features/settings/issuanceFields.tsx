@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { accountsQuery } from '@/api/queries/accounts';
 import { casQuery } from '@/api/queries/cas';
@@ -298,7 +298,7 @@ export function fieldFromTitle(title: string): FieldKey | null {
   return ISSUANCE_FIELDS.some((f) => f.key === name) ? (name as FieldKey) : null;
 }
 
-type FormProps = {
+export type FormProps = {
   value: IssuanceDefaults;
   onChange: (v: IssuanceDefaults) => void;
   inherited: (k: FieldKey) => EffectiveValue;
@@ -324,6 +324,22 @@ function effectiveCa(value: IssuanceDefaults, inherited: FormProps['inherited'],
 export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, exclude = [], error, pending }: FormProps) {
   const eca = effectiveCa(value, inherited, ctx.cas);
   const privateCa = !!eca && isPrivate(eca);
+  // Batch 2 review (Minor): the onChange interception above only fires when
+  // the user actually touches caId — it never runs for a certificate that
+  // loads (e.g. the wizard's edit route) already carrying an accountId
+  // override with no caId override of its own, whose *inherited* default
+  // CA already happens to be private (set by org/global defaults, or by
+  // this same certificate's caId override having been removed in an
+  // earlier session). Reconcile that stale combination as soon as it's
+  // seen, so an unrelated Save doesn't 422 with "account belongs to a
+  // different CA".
+  useEffect(() => {
+    if (privateCa && value.accountId != null) onChange({ ...value, accountId: null });
+    // Only re-run when the reconciled condition itself changes; onChange
+    // and value are covered indirectly (a clear changes value.accountId to
+    // null, which flips the condition straight back to false).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privateCa, value.accountId]);
   return (
     <div className="grid">
       {ISSUANCE_FIELDS.filter((f) => !exclude.includes(f.key)).map((f) => {

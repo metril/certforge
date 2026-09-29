@@ -82,6 +82,49 @@ it('409 toasts already revoked', async () => {
   expect(await screen.findByText('Already revoked')).toBeInTheDocument();
 });
 
+// Batch 2 review (Important): a revoke updates the CA's config.revokedCount
+// server-side, so ['cas', orgId] must be refetched too, not only
+// ['versions', orgId, certId] — otherwise the CA detail's revoked count
+// (Task 3) goes stale until some unrelated navigation happens to refetch it.
+it('revoke success also refreshes the CAs list (revokedCount)', async () => {
+  let casCalls = 0;
+  server.use(
+    http.post(url('/orgs/org-1/certificates/c-1/versions/v-1/revoke'), () => HttpResponse.json({ ...cert.currentVersion!, revokedAt: iso(0) })),
+  );
+  const { user } = setup();
+  await screen.findByRole('button', { name: `Revoke version ${serial}` });
+  server.use(
+    http.get(url('/orgs/org-1/cas'), () => {
+      casCalls++;
+      return HttpResponse.json([caLocal]);
+    }),
+  );
+  await user.click(screen.getByRole('button', { name: `Revoke version ${serial}` }));
+  const dialog = await screen.findByRole('dialog', { name: `Revoke version ${serial}?` });
+  await user.type(within(dialog).getByLabelText(/Type/), 'Revoke');
+  await user.click(within(dialog).getByRole('button', { name: 'Revoke' }));
+  await waitFor(() => expect(casCalls).toBeGreaterThan(0));
+});
+
+it('409 also refreshes the CAs list', async () => {
+  server.use(http.post(url('/orgs/org-1/certificates/c-1/versions/v-1/revoke'), () => problem(409, 'already revoked')));
+  const { user } = setup();
+  await screen.findByRole('button', { name: `Revoke version ${serial}` });
+  let casCalls = 0;
+  server.use(
+    http.get(url('/orgs/org-1/cas'), () => {
+      casCalls++;
+      return HttpResponse.json([caLocal]);
+    }),
+  );
+  await user.click(screen.getByRole('button', { name: `Revoke version ${serial}` }));
+  const dialog = await screen.findByRole('dialog', { name: `Revoke version ${serial}?` });
+  await user.type(within(dialog).getByLabelText(/Type/), 'Revoke');
+  await user.click(within(dialog).getByRole('button', { name: 'Revoke' }));
+  await waitFor(() => expect(screen.getAllByText('Already revoked').length).toBeGreaterThan(0));
+  await waitFor(() => expect(casCalls).toBeGreaterThan(0));
+});
+
 it('needs certs:issue', async () => {
   const canRevoke = can(meWith([{ role: 'viewer', orgId: org.id }]), 'certs:issue', org.id);
   setup({ canRevoke });

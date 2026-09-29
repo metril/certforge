@@ -218,7 +218,14 @@ export function useRevokeVersion(orgId: string, certId: string) {
     mutationFn: ({ vid, reason }: { vid: string; reason: RevocationReason }) =>
       call(api.POST('/orgs/{orgId}/certificates/{id}/versions/{vid}/revoke', { params: { path: { orgId, id: certId, vid } }, body: { reason } })),
     meta: { silent: true, success: 'Version revoked' },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['versions', orgId, certId] }),
+    // Batch 2 review (Important): a successful revoke also bumps the CA's
+    // own config.revokedCount server-side (Task 3's private CA detail), so
+    // ['cas', orgId] needs refetching too, not only this certificate's own
+    // versions.
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['versions', orgId, certId] });
+      void qc.invalidateQueries({ queryKey: ['cas', orgId] });
+    },
   });
 }
 

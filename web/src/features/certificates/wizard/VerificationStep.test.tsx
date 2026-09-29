@@ -187,13 +187,24 @@ it('private CA marks not needed', async () => {
   expect(within(seg).getByRole('radio', { name: 'Not needed' })).toBeDisabled();
   expect(within(seg).getByRole('radio', { name: 'Needed' })).toBeDisabled();
   await user.hover(seg);
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Private CAs sign without proving control of the names.');
+  const tooltip = await screen.findByRole('tooltip');
+  expect(tooltip).toHaveTextContent('Private CAs sign without proving control of the names.');
+  // Batch 2 review (Minor): the tooltip must keep the help entry's
+  // learnMore link, not just its bare text.
+  expect(within(tooltip).getByRole('link', { name: 'Learn more' })).toBeInTheDocument();
 
   const editorList = screen.getByRole('list', { name: 'Verification rules' });
-  expect(editorList.closest('[aria-disabled="true"]')).toBeTruthy();
+  const editorWrap = editorList.closest('[aria-disabled="true"]');
+  expect(editorWrap).toBeTruthy();
+  // Batch 2 review (Minor): pointer-events-none alone leaves the editor
+  // reachable and editable by keyboard — inert removes it from the tab
+  // order and blocks input entirely.
+  expect(editorWrap).toHaveAttribute('inert', '');
 
   const coverage = screen.getByRole('region', { name: 'Coverage' });
-  expect(coverage.closest('[aria-disabled="true"]')).toBeTruthy();
+  const coverageWrap = coverage.closest('[aria-disabled="true"]');
+  expect(coverageWrap).toBeTruthy();
+  expect(coverageWrap).toHaveAttribute('inert', '');
   expect(within(coverage).getAllByText('Not needed')).toHaveLength(3);
   expect(within(coverage).getByText('www.example.com')).toBeInTheDocument();
   expect(within(coverage).getByText('api.other.net')).toBeInTheDocument();

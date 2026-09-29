@@ -55,7 +55,11 @@ export function RevokeVersionDialog({ open, onOpenChange, orgId, certId, version
         } catch (e) {
           if (e instanceof ApiError && e.status === 409) {
             toast.error('Already revoked');
+            // Batch 2 review (Important): the version raced someone else's
+            // revoke, which already bumped the CA's revokedCount — refresh
+            // both, same as the success path.
             void qc.invalidateQueries({ queryKey: ['versions', orgId, certId] });
+            void qc.invalidateQueries({ queryKey: ['cas', orgId] });
             return;
           }
           if (e instanceof ApiError && e.status === 422) {

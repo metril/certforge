@@ -321,6 +321,13 @@ it('private inherited CA enables next with no coverage', async () => {
   expect(within(coverage).getByText('Not needed')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
   expect(screen.getByRole('button', { name: 'Issue certificate' })).not.toBeDisabled();
+  // Batch 2 review (Important): SummaryRail's own Coverage row must also
+  // read "Not needed", neutral and without the alert icon it shows for a
+  // genuinely uncovered name — not "0 of 1 names" next to a warning icon.
+  const summary = screen.getByRole('complementary', { name: 'Summary' });
+  const summaryCoverageRow = within(summary).getByText('Coverage').closest('div')!;
+  expect(summaryCoverageRow).toHaveTextContent('Not needed');
+  expect(summaryCoverageRow.querySelector('svg')).toBeNull();
 });
 
 it('choosing private CA in options updates step label', async () => {
@@ -351,6 +358,29 @@ it('create body for localca: sends empty verificationRules for the private effec
   await screen.findByRole('radiogroup', { name: 'Verification' });
   await user.click(screen.getByRole('button', { name: 'Issue certificate' }));
   await waitFor(() => expect((created as Record<string, unknown>).verificationRules).toEqual([]));
+});
+
+// Batch 2 review (Minor): a certificate can load into the edit route with a
+// stale accountId override and no caId override, where the *inherited*
+// default CA already happens to be private — saved straight from
+// Verification, without ever visiting Options, so the fix must not depend
+// on Options mounting.
+it('edit mode: a stale account override on an already-private inherited CA is cleared before save', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+    http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ overrides: { accountId: 'acc-1' } }))),
+    http.put(url('/orgs/org-1/certificates/c-1'), async ({ request }) => {
+      updated = await request.json();
+      return HttpResponse.json(makeCert({ overrides: {} }));
+    }),
+  );
+  const { user } = renderRoute('/o/acme/certificates/c-1/edit');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.click(screen.getByRole('button', { name: 'Next' })); // -> Verification; Options never visited
+  await screen.findByRole('radiogroup', { name: 'Verification' });
+  await user.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect((updated as Record<string, unknown>).overrides).toMatchObject({ accountId: null }));
 });
 
 it('edit mode: a name change reissues, PUTs, and lands on Attempts', async () => {

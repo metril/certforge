@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { DnsCredential, IssuanceDefaults } from '@/api/types';
 import { account, ca, caLocal, makeClient } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
-import { fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, IssuanceDefaultsForm, ISSUANCE_FIELDS, rulesSummary, type FieldCtx } from './issuanceFields';
+import { fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, IssuanceDefaultsForm, ISSUANCE_FIELDS, rulesSummary, type FieldCtx, type FormProps } from './issuanceFields';
 
 const ctx: FieldCtx = { cas: [], accounts: [], credentials: [], clients: [] };
 const renewPolicy = ISSUANCE_FIELDS.find((f) => f.key === 'renewPolicy')!;
@@ -190,6 +190,24 @@ describe('IssuanceDefaultsForm disables the account field for a private effectiv
     await user.click(await screen.findByText(caLocal.name));
     expect(screen.getByRole('switch', { name: 'Override ACME account' })).not.toBeChecked();
     expect(screen.getByRole('switch', { name: 'Override ACME account' })).toBeDisabled();
+  });
+
+  // Batch 2 review (Minor): a certificate can be loaded (e.g. into the
+  // wizard's edit route) with an accountId override but no caId override,
+  // where the *inherited* default CA already happens to be private —
+  // saving unchanged used to still send the stale accountId and 422
+  // ("account belongs to a different CA"). Clearing on the caId field's own
+  // onChange (the test above) never fires here, since caId is never
+  // touched — the form must reconcile this on its own once it sees the
+  // combination on render.
+  it('clears an existing account override at init for an already-private inherited CA', () => {
+    const inheritedPrivate = (k: Parameters<FormProps['inherited']>[0]) => (k === 'caId' ? { value: caLocal.id, source: 'org' as const } : emptyEff);
+    function HInit() {
+      const [value, setValue] = useState<IssuanceDefaults>({ accountId: 'acc-1' });
+      return <IssuanceDefaultsForm value={value} onChange={setValue} inherited={inheritedPrivate} ctx={{ ...ctx, cas: [ca, caLocal], accounts: [account] }} />;
+    }
+    renderUI(<HInit />);
+    expect(screen.getByRole('switch', { name: 'Override ACME account' })).not.toBeChecked();
   });
 });
 
