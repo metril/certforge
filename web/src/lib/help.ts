@@ -445,6 +445,8 @@ export const help = {
   'monitor.interval': { text: 'How often CertForge checks the endpoint.', learnMore: 'monitoring.md#external-monitors' },
   'monitor.check': { text: 'Checks the endpoint now and updates its state.', learnMore: 'monitoring.md#external-monitors' },
   'monitor.limit': { text: 'An organization can have at most 500 monitors.' },
+  // Task 5 (Phase 6B): the events log.
+  'event.severity': { text: 'Shows events at or above this severity.', learnMore: 'notifications.md#events' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

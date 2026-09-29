@@ -325,7 +325,7 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | 2 | Alerts shell and channels table | done | 9ad1062 |
 | 3 | Channel sheet and Send test | done | 9454253 |
 | 4 | Monitors | done | d544236 |
-| 5 | Events log | planned | – |
+| 5 | Events log | done | pending |
 | 6 | Settings → Integrations: Email, Notifications, Prometheus | planned | – |
 | 7 | Settings → Backup and keys | planned | – |
 | 8 | Overview monitor attention | planned | – |
