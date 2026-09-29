@@ -37,7 +37,14 @@ import (
 // KEK) and must be deferred by the caller. On any error, closeFn has
 // already been called for everything built so far — the caller need not
 // call it again.
-func buildKEK(ctx context.Context, cfg config.Config, log *slog.Logger) (active crypto.KeyWrapper, previous []crypto.KeyWrapper, legacy map[string][]byte, closeFn func(), err error) {
+//
+// activeHealth reports the active KEK's own Vault reachability (its
+// sys/health, via the same client Login already authenticated above) and is
+// nil when the active KEK is static — there is nothing to probe. serve.go
+// wires it to api.Deps.KEKHealth for /readyz's "vault" check (Task 13);
+// previous KEKs never need one, since /readyz only ever reports on the
+// active KEK.
+func buildKEK(ctx context.Context, cfg config.Config, log *slog.Logger) (active crypto.KeyWrapper, previous []crypto.KeyWrapper, legacy map[string][]byte, activeHealth func(context.Context) error, closeFn func(), err error) {
 	legacy = map[string][]byte{}
 	var closers []func()
 	closeAll := func() {
@@ -46,45 +53,46 @@ func buildKEK(ctx context.Context, cfg config.Config, log *slog.Logger) (active 
 		}
 	}
 
-	active, err = buildOneKEK(ctx, cfg.KEK, log, "vault transit kek", legacy, &closers)
+	active, activeHealth, err = buildOneKEK(ctx, cfg.KEK, log, "vault transit kek", legacy, &closers)
 	if err != nil {
 		closeAll()
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	for _, pc := range cfg.PreviousKEKs {
-		w, err := buildOneKEK(ctx, pc, log, "vault transit kek (previous)", legacy, &closers)
+		w, _, err := buildOneKEK(ctx, pc, log, "vault transit kek (previous)", legacy, &closers)
 		if err != nil {
 			closeAll()
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		if w.ID() == active.ID() {
 			closeAll()
-			return nil, nil, nil, nil, errors.New("kek: CF_KEK_PREVIOUS* names the same key as the active KEK (CF_KEK/CF_KEK_VAULT_*)")
+			return nil, nil, nil, nil, nil, errors.New("kek: CF_KEK_PREVIOUS* names the same key as the active KEK (CF_KEK/CF_KEK_VAULT_*)")
 		}
 		previous = append(previous, w)
 	}
-	return active, previous, legacy, closeAll, nil
+	return active, previous, legacy, activeHealth, closeAll, nil
 }
 
 // buildOneKEK builds a single KeyWrapper from kc: a static KeyWrapper over
 // its bytes (also recorded in legacy), or a Vault Transit one (logged with
-// logMsg, its Vault client's Close appended to *closers).
-func buildOneKEK(ctx context.Context, kc config.KEKConfig, log *slog.Logger, logMsg string, legacy map[string][]byte, closers *[]func()) (crypto.KeyWrapper, error) {
+// logMsg, its Vault client's Close appended to *closers). health is nil for
+// a static KEK.
+func buildOneKEK(ctx context.Context, kc config.KEKConfig, log *slog.Logger, logMsg string, legacy map[string][]byte, closers *[]func()) (w crypto.KeyWrapper, health func(context.Context) error, err error) {
 	if kc.Kind == config.KEKKindVaultTransit {
-		w, closeFn, err := buildTransitKEK(ctx, kc.Vault, log, logMsg)
+		w, health, closeFn, err := buildTransitKEK(ctx, kc.Vault, log, logMsg)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		*closers = append(*closers, closeFn)
-		return w, nil
+		return w, health, nil
 	}
 	key := kc.Key
-	w := crypto.NewStaticWrapper(crypto.KeyID(key), key)
-	legacy[w.ID()] = key
-	return w, nil
+	sw := crypto.NewStaticWrapper(crypto.KeyID(key), key)
+	legacy[sw.ID()] = key
+	return sw, nil, nil
 }
 
-func buildTransitKEK(ctx context.Context, vk *config.VaultKEK, log *slog.Logger, logMsg string) (crypto.KeyWrapper, func(), error) {
+func buildTransitKEK(ctx context.Context, vk *config.VaultKEK, log *slog.Logger, logMsg string) (crypto.KeyWrapper, func(context.Context) error, func(), error) {
 	vc, err := vault.New(vault.Config{
 		Addr:      vk.Addr,
 		Namespace: vk.Namespace,
@@ -92,22 +100,26 @@ func buildTransitKEK(ctx context.Context, vk *config.VaultKEK, log *slog.Logger,
 		Auth:      vaultKEKAuth(vk),
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("vault kek: %w", err)
+		return nil, nil, nil, fmt.Errorf("vault kek: %w", err)
 	}
 	if err := vc.Login(ctx); err != nil {
-		return nil, nil, fmt.Errorf("vault kek: login: %w", err)
+		return nil, nil, nil, fmt.Errorf("vault kek: login: %w", err)
 	}
 	// LookupSelf is the reachability check: TokenAuth's Login is a no-op,
 	// so this is the first real request to Vault either way, and it also
 	// seeds the lease info Start's renewal loop would otherwise fetch on
 	// its own first tick.
 	if _, err := vc.LookupSelf(ctx); err != nil {
-		return nil, nil, fmt.Errorf("vault kek: %w", err)
+		return nil, nil, nil, fmt.Errorf("vault kek: %w", err)
 	}
 	vc.Start(ctx)
 	log.Info(logMsg, "addr", vk.Addr, "mount", vk.Mount, "key", vk.Key)
 	w := crypto.NewTransitWrapper(vaultTransitAPI{vc}, vk.Addr, vk.Mount, vk.Key)
-	return w, vc.Close, nil
+	health := func(ctx context.Context) error {
+		_, err := vc.Health(ctx)
+		return err
+	}
+	return w, health, vc.Close, nil
 }
 
 func vaultKEKAuth(vk *config.VaultKEK) vault.Auth {

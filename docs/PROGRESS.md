@@ -272,8 +272,8 @@ Phase 5 is split into two plans: 5A vault and private CA backend (schema, Vault 
 | 9 | Issuance kind gate | done | d0681ee |
 | 10 | Server deploy targets and vault-kv | done | 36915db |
 | 11 | Client-less grants and dispatcher | done | e1f32f9 |
-| 12 | File-backed DNS credentials | done | pending |
-| 13 | Vault readiness and wiring | planned | – |
+| 12 | File-backed DNS credentials | done | 407b0be |
+| 13 | Vault readiness and wiring | done | pending |
 | 14 | Vault and private-CA e2e | planned | – |
 
 ## Decisions made during implementation

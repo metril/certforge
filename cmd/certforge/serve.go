@@ -47,7 +47,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return err
 	}
 	q := sqlcgen.New(pool)
-	active, previousKEKs, legacyKEKs, closeKEK, err := buildKEK(ctx, cfg, log)
+	active, previousKEKs, legacyKEKs, kekHealth, closeKEK, err := buildKEK(ctx, cfg, log)
 	if err != nil {
 		return fmt.Errorf("kek: %w", err)
 	}
@@ -219,6 +219,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher,
+		KEKHealth: kekHealth,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

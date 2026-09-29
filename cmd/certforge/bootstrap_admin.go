@@ -51,7 +51,7 @@ func runBootstrapAdmin(ctx context.Context, args []string, stdout io.Writer) err
 	if err := db.Migrate(ctx, pool); err != nil {
 		return err
 	}
-	active, previousKEKs, legacyKEKs, closeKEK, err := buildKEK(ctx, cfg, slog.Default())
+	active, previousKEKs, legacyKEKs, _, closeKEK, err := buildKEK(ctx, cfg, slog.Default())
 	if err != nil {
 		return fmt.Errorf("kek: %w", err)
 	}

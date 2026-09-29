@@ -73,6 +73,13 @@ type Deps struct {
 	// vaultpki CA operation with a "not configured" 422.
 	Vault *vault.Provider
 
+	// KEKHealth reports the active KEK's own Vault reachability (its
+	// sys/health) and is set only when the KEK is Transit (cmd/certforge's
+	// buildKEK); nil means the KEK is static and has nothing to probe.
+	// Backs /readyz's "vault" check (Task 13): a KEKHealth error makes the
+	// server not ready, unlike a failure from Vault alone (below).
+	KEKHealth func(ctx context.Context) error
+
 	// Deploy holds server-run deploy target types (vault-kv, Task 10). A
 	// nil registry (or a type it does not hold) makes CreateDeployTarget/
 	// UpdateDeployTarget reject the type with 422, same as an unregistered
@@ -102,6 +109,12 @@ type Server struct {
 	verifyMu  sync.Mutex
 	verifyAt  time.Time
 	verifyRes gen.AuditChainStatus
+
+	// vaultMu/vaultAt/vaultErr cache /readyz's "vault" sys/health probe for
+	// vaultCacheTTL (Task 13); see health.go's vaultCheck.
+	vaultMu  sync.Mutex
+	vaultAt  time.Time
+	vaultErr error
 }
 
 var _ gen.StrictServerInterface = (*Server)(nil)

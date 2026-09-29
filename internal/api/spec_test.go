@@ -1,6 +1,9 @@
 package api
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -185,5 +188,35 @@ func TestPhase5OperationsDeclared(t *testing.T) {
 		if !slices.Contains(sw.Components.Schemas["Grant"].Value.Required, f) {
 			t.Errorf("Grant.required missing %s", f)
 		}
+	}
+}
+
+// TestNoStubsRemain proves internal/api/phase5_stubs.go (Task 2's 501
+// placeholders for the operations this file's TestPhase5OperationsDeclared
+// lists) is gone and nothing else in the package answers with a stub 501:
+// every operationId's *Server method is a real handler now that Tasks
+// 5-13 have landed. Mirrors the acceptance check `grep -rn "Not
+// implemented" internal/api`.
+func TestNoStubsRemain(t *testing.T) {
+	if _, err := os.Stat("phase5_stubs.go"); err == nil {
+		t.Fatal("internal/api/phase5_stubs.go still exists")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		b, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return rerr
+		}
+		if strings.Contains(string(b), "Not implemented") {
+			t.Errorf("%s: 501 stub remains", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
