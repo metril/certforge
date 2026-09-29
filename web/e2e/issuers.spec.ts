@@ -161,10 +161,18 @@ test('server grant', async ({ page }) => {
   await expect(page.getByText('Redeploy queued')).toBeVisible();
 });
 
-// Runs after the two tests above (workers: 1, file order — same convention
-// as clients.spec.ts's own 375 px test): 'e2e-local' and 'e2e-vault-kv'
-// already exist.
 test('issuers, delivery and vault settings screens do not scroll sideways at 375 px', async ({ page }) => {
+  // Self-contained (pre-flight ruling — same as 'server grant' above, and
+  // :101's own comment): final review found this depending on 'CA kind
+  // switching' and 'server grant' running first, in file order, for
+  // 'e2e-local'/'e2e-vault-kv' to exist — seeds its own CA and target
+  // through the admin API instead, under distinct names, before the page
+  // ever signs in (a page sign-in revokes this API session's own login).
+  const { api, headers, orgId } = await adminOrg();
+  await body(api.post(`/api/v1/orgs/${orgId}/cas`, { headers, data: { name: 'e2e-local-375', type: 'localca', config: { subject: { commonName: 'e2e-local-375' } } } }));
+  await body(api.post(`/api/v1/orgs/${orgId}/deploy-targets`, { headers, data: { name: 'e2e-vault-kv-375', type: 'vault-kv', config: {} } }));
+  await api.dispose();
+
   await page.goto('/login');
   await signInLocal(page);
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
@@ -174,15 +182,15 @@ test('issuers, delivery and vault settings screens do not scroll sideways at 375
   await page.goto(`/o/${E2E.orgSlug}/issuers/cas`);
   await expect(page.getByRole('heading', { level: 1, name: 'Issuers' })).toBeVisible();
   await noScroll();
-  await page.getByRole('table').getByRole('row', { name: /^e2e-local/ }).click();
-  await expect(page.getByRole('dialog', { name: 'e2e-local' })).toBeVisible();
+  await page.getByRole('table').getByRole('row', { name: /^e2e-local-375/ }).click();
+  await expect(page.getByRole('dialog', { name: 'e2e-local-375' })).toBeVisible();
   await noScroll();
   await page.keyboard.press('Escape');
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await noScroll();
-  await page.getByRole('table', { name: 'Deploy targets' }).getByRole('row', { name: /^e2e-vault-kv/ }).getByRole('button', { name: 'Grants e2e-vault-kv' }).click();
-  await expect(page.getByRole('dialog', { name: 'e2e-vault-kv' })).toBeVisible();
+  await page.getByRole('table', { name: 'Deploy targets' }).getByRole('row', { name: /^e2e-vault-kv-375/ }).getByRole('button', { name: 'Grants e2e-vault-kv-375' }).click();
+  await expect(page.getByRole('dialog', { name: 'e2e-vault-kv-375' })).toBeVisible();
   await noScroll();
   await page.keyboard.press('Escape');
 

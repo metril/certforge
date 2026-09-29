@@ -83,6 +83,40 @@ it('create posts certificate and layout', async () => {
   await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: 'l-1' }));
 });
 
+it('creating and deleting a server grant refetches the targets list', async () => {
+  // Final review: a server grant counts toward its target's own grantCount
+  // (internal/db/queries/delivery.sql's DeployTargetGrantCounts), so the
+  // Targets table behind this sheet must refetch too, not just the grants
+  // list and certificates — otherwise its "Used by" count and Delete
+  // blocking go stale.
+  let targetGets = 0;
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => {
+      targetGets++;
+      return HttpResponse.json({ items: [makeTarget(), targetVaultKv] });
+    }),
+  );
+  const { user } = openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await within(dialog).findByRole('table', { name: 'Grants' });
+  const afterOpen = targetGets;
+
+  await user.click(within(dialog).getByRole('button', { name: 'New server grant' }));
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
+  await user.click(await screen.findByRole('option', { name: /^api/ }));
+  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null }));
+  await waitFor(() => expect(targetGets).toBeGreaterThan(afterOpen));
+  const afterCreate = targetGets;
+
+  await user.click(within(dialog).getByRole('button', { name: 'Remove www' }));
+  const confirm = await screen.findByRole('dialog', { name: 'Remove grant?' });
+  await user.type(within(confirm).getByRole('textbox'), 'www');
+  await user.click(within(confirm).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(deleted).toEqual([grantServer.id]));
+  await waitFor(() => expect(targetGets).toBeGreaterThan(afterCreate));
+});
+
 it('non-PEM layouts disabled', async () => {
   server.use(
     http.get(url('/orgs/org-1/layouts'), () =>

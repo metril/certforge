@@ -30,7 +30,11 @@ export const targetGrantsQuery = (orgId: string, targetId: string) =>
   });
 
 /** Anything that changes a grant moves client counts, deployments and the
- * certificates list's Grants column. */
+ * certificates list's Grants column. A server grant also moves its own
+ * deploy target's `grantCount` (Delete blocking, "Used by") and, when it
+ * bundles one, its layout's `grantCount` too (final review: creating or
+ * deleting one left the Targets list's "Used by" count and Delete-blocking
+ * stale — internal/db/queries/delivery.sql:114 counts server grants there). */
 export async function invalidateGrants(qc: QueryClient, orgId: string): Promise<void> {
   await Promise.all(
     [
@@ -41,6 +45,8 @@ export async function invalidateGrants(qc: QueryClient, orgId: string): Promise<
       ['clients', 'all'],
       ['certs', orgId],
       ['certs', 'all', 'every'],
+      ['deploy-targets', orgId],
+      ['layouts', orgId],
     ].map((queryKey) => qc.invalidateQueries({ queryKey })),
   );
 }
