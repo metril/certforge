@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -107,8 +108,23 @@ func runWithEnv(ctx context.Context, args []string, stdout, stderr io.Writer, ge
 // server's bare base URL, for example "https://certforge.example.com",
 // the same address the web UI's own origin uses), so apiBase appends it
 // here, once, for both clients.
+//
+// hc deliberately carries no http.Client.Timeout: that bounds the whole
+// round trip including reading the response body, which would cut off
+// "backup create" and "certs download" partway through any archive or
+// bundle that legitimately takes longer than --timeout to stream (batch-5
+// review). timeout instead bounds only connecting (net.Dialer) and the
+// wait for response headers (Transport.ResponseHeaderTimeout) — once
+// headers arrive, the body itself has no deadline, matching the
+// documented --timeout as "per-request timeout" in the sense every other
+// cfctl command means it (a small JSON response's body follows its
+// headers immediately either way).
 func newClients(cfg Config, timeout time.Duration) (*client.ClientWithResponses, *client.APIClient, error) {
-	hc := &http.Client{Timeout: timeout}
+	hc := &http.Client{Transport: &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: timeout}).DialContext,
+		TLSHandshakeTimeout:   timeout,
+		ResponseHeaderTimeout: timeout,
+	}}
 	auth := client.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+cfg.Token)
 		return nil

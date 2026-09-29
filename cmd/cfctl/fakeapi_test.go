@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // route is one fake-server handler, matched by exact method and path.
@@ -50,10 +51,20 @@ func newFakeAPI(t *testing.T, token string, routes ...route) *httptest.Server {
 }
 
 // testEnv builds an *env wired to srv with the given token and org, for
-// tests that call a command function directly rather than going through run.
+// tests that call a command function directly rather than going through
+// run. Its clients carry no timeout at all (0), same as every other
+// fakeapi test.
 func testEnv(t *testing.T, srv *httptest.Server, token, org string, jsonOut bool, stdout, stderr *bytes.Buffer) *env {
 	t.Helper()
-	cwr, raw, err := newClients(Config{URL: srv.URL, Token: token}, 0)
+	return testEnvTimeout(t, srv, token, org, jsonOut, 0, stdout, stderr)
+}
+
+// testEnvTimeout is testEnv with an explicit --timeout, for the one test
+// (TestBackupCreateSlowBodySurvivesTimeout) that needs a real, short one to
+// prove a slow response body is not bounded by it (batch-5 review).
+func testEnvTimeout(t *testing.T, srv *httptest.Server, token, org string, jsonOut bool, timeout time.Duration, stdout, stderr *bytes.Buffer) *env {
+	t.Helper()
+	cwr, raw, err := newClients(Config{URL: srv.URL, Token: token}, timeout)
 	if err != nil {
 		t.Fatal(err)
 	}

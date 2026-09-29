@@ -371,6 +371,9 @@ func TestOpsAgainstCompose(t *testing.T) {
 		"overrides":         map[string]any{"caId": ca.ID, "accountId": acct.ID, "keyType": "ec256"},
 	}, &cert)
 	certPath := "/api/v1/orgs/" + orgID + "/certificates/" + cert.ID
+	// 3 minutes, not waitFor60: real ACME issuance through Pebble
+	// legitimately exceeds the 60 s wait-loop bound (batch-5 review
+	// ruling; same exemption issuance_test.go's own "active" wait takes).
 	activeCtx, activeCancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer activeCancel()
 	cert = waitFor(activeCtx, t, "active", func() (certOut, bool) {

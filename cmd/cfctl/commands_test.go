@@ -391,6 +391,46 @@ func TestBackupCreateStreamsToFile(t *testing.T) {
 	}
 }
 
+// TestBackupCreateSlowBodySurvivesTimeout covers batch-5 review finding 1:
+// --timeout must bound connecting and the wait for response headers, never
+// the whole body — a real archive can legitimately take longer than
+// --timeout to stream. The fake server writes and flushes one byte at a
+// time with a delay between each, so the body alone takes several times
+// longer than the tiny timeout given to newClients; backupCreate must
+// still finish successfully.
+func TestBackupCreateSlowBodySurvivesTimeout(t *testing.T) {
+	archiveBytes := []byte("CFBAK1\nfake-archive-that-streams-slowly-past-the-timeout")
+	srv := newFakeAPI(t, "tok", route{"POST", "/backup", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		for _, b := range archiveBytes {
+			_, _ = w.Write([]byte{b})
+			if flusher != nil {
+				flusher.Flush()
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}})
+	dir := t.TempDir()
+	out := filepath.Join(dir, "backup.cfbak")
+	var stdout, stderr bytes.Buffer
+	// len(archiveBytes) * 5ms is well over ten times this timeout: headers
+	// arrive instantly (WriteHeader runs before the slow loop), so only a
+	// whole-body cap would ever make this time out.
+	e := testEnvTimeout(t, srv, "tok", "", false, 20*time.Millisecond, &stdout, &stderr)
+	if code := backupCreate(context.Background(), e, []string{"--out", out}); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, archiveBytes) {
+		t.Fatalf("data = %q, want %q", data, archiveBytes)
+	}
+}
+
 // TestBackupCreateLeavesNoTempFileOnError covers the failure half of the
 // same contract: a stream that breaks partway through must not leave a
 // temp file behind either.
