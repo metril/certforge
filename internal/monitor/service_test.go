@@ -6,29 +6,36 @@ import (
 	"time"
 )
 
-// TestStateDerivation is the Task 9 brief's own table: expected match/
-// mismatch, unset expected matches none, expiring < 14 d, unreachable.
+// TestStateDerivation is the Task 9 brief's own table, as corrected by
+// batch-3 review finding 1: with expectedCertificateId set, the leaf must
+// match that certificate's current fingerprint; with it unset, the leaf
+// must match *some* certificate's current version in the org
+// (fpKnownInOrg) — "against no version in the org" was the wrong reading
+// (it used to mean "skip the check"), not "there is nothing to mismatch
+// against".
 func TestStateDerivation(t *testing.T) {
 	now := time.Now()
 	soon := now.Add(7 * 24 * time.Hour) // inside ExpiringWithin (14d)
 	far := now.Add(90 * 24 * time.Hour) // outside ExpiringWithin
 	cases := []struct {
-		name        string
-		obs         Observation
-		expectedFP  string
-		hasExpected bool
-		want        string
+		name         string
+		obs          Observation
+		expectedFP   string
+		hasExpected  bool
+		fpKnownInOrg bool
+		want         string
 	}{
-		{"unreachable wins over everything", Observation{Err: errors.New("dial: refused")}, "abc", true, "unreachable"},
-		{"expected set and matches, far notAfter: ok", Observation{Fingerprint: "abc", NotAfter: far}, "abc", true, "ok"},
-		{"expected set and differs: mismatch", Observation{Fingerprint: "def", NotAfter: far}, "abc", true, "mismatch"},
-		{"expected unset: never mismatches, matches none", Observation{Fingerprint: "anything", NotAfter: far}, "", false, "ok"},
-		{"expiring within 14d, no expected", Observation{Fingerprint: "abc", NotAfter: soon}, "", false, "expiring"},
-		{"expiring beats a matching expected (still within 14d)", Observation{Fingerprint: "abc", NotAfter: soon}, "abc", true, "expiring"},
+		{"unreachable wins over everything", Observation{Err: errors.New("dial: refused")}, "abc", true, false, "unreachable"},
+		{"expected set and matches, far notAfter: ok", Observation{Fingerprint: "abc", NotAfter: far}, "abc", true, false, "ok"},
+		{"expected set and differs: mismatch", Observation{Fingerprint: "def", NotAfter: far}, "abc", true, false, "mismatch"},
+		{"expected unset, fp known in org, far notAfter: ok", Observation{Fingerprint: "anything", NotAfter: far}, "", false, true, "ok"},
+		{"expected unset, fp not known in org: mismatch", Observation{Fingerprint: "anything", NotAfter: far}, "", false, false, "mismatch"},
+		{"expiring within 14d, no expected, fp known", Observation{Fingerprint: "abc", NotAfter: soon}, "", false, true, "expiring"},
+		{"expiring beats a matching expected (still within 14d)", Observation{Fingerprint: "abc", NotAfter: soon}, "abc", true, false, "expiring"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := deriveState(c.obs, c.expectedFP, c.hasExpected, now)
+			got := deriveState(c.obs, c.expectedFP, c.hasExpected, c.fpKnownInOrg, now)
 			if got != c.want {
 				t.Errorf("deriveState() = %q, want %q", got, c.want)
 			}

@@ -330,6 +330,32 @@ func (q *Queries) ListMonitors(ctx context.Context, orgID uuid.UUID) ([]ListMoni
 	return items, nil
 }
 
+const monitorFingerprintKnownInOrg = `-- name: MonitorFingerprintKnownInOrg :one
+SELECT EXISTS (
+    SELECT 1 FROM certificates c
+    JOIN certificate_versions v ON v.id = c.current_version_id
+    WHERE c.org_id = $1 AND v.sha256_fp = $2
+) AS known
+`
+
+type MonitorFingerprintKnownInOrgParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	Sha256Fp string    `json:"sha256_fp"`
+}
+
+// When a monitor has no expectedCertificateId, mismatch is judged against
+// the org as a whole (batch-3 review finding 1): the observed leaf's
+// fingerprint must match the current version of *some* certificate this
+// org already manages, or the state is mismatch. Only current versions
+// count — an old, superseded version's fingerprint no longer vouches for
+// what a monitor should currently be seeing.
+func (q *Queries) MonitorFingerprintKnownInOrg(ctx context.Context, arg MonitorFingerprintKnownInOrgParams) (bool, error) {
+	row := q.db.QueryRow(ctx, monitorFingerprintKnownInOrg, arg.OrgID, arg.Sha256Fp)
+	var known bool
+	err := row.Scan(&known)
+	return known, err
+}
+
 const transitionMonitorState = `-- name: TransitionMonitorState :execrows
 UPDATE external_monitors
 SET state = $2, state_changed_at = $3, last_checked_at = $4, next_check_at = $5,
@@ -377,7 +403,10 @@ func (q *Queries) TransitionMonitorState(ctx context.Context, arg TransitionMoni
 const updateMonitor = `-- name: UpdateMonitor :one
 UPDATE external_monitors
 SET name = $3, host = $4, port = $5, sni = $6, interval_seconds = $7, expected_cert_id = $8, enabled = $9,
-    state = $10, state_changed_at = $11, next_check_at = $12, updated_at = now()
+    state = CASE WHEN $10::bool THEN 'unknown' ELSE state END,
+    state_changed_at = CASE WHEN $10::bool THEN now() ELSE state_changed_at END,
+    next_check_at = CASE WHEN $10::bool THEN now() ELSE next_check_at END,
+    updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at
 `
@@ -392,11 +421,19 @@ type UpdateMonitorParams struct {
 	IntervalSeconds int32      `json:"interval_seconds"`
 	ExpectedCertID  *uuid.UUID `json:"expected_cert_id"`
 	Enabled         bool       `json:"enabled"`
-	State           string     `json:"state"`
-	StateChangedAt  time.Time  `json:"state_changed_at"`
-	NextCheckAt     time.Time  `json:"next_check_at"`
+	ResetState      bool       `json:"reset_state"`
 }
 
+// state/state_changed_at/next_check_at are written only when reset_state is
+// true (a CASE, not a value Go read earlier and passes back): batch-3
+// review finding 4 — passing back a Go-side snapshot of those three columns
+// overwrites a concurrent check's own CAS transition (TransitionMonitorState)
+// whenever it lands between this update's read and its write, silently
+// reverting the state it just committed and letting the next check
+// transition (and emit) a second time for the same condition. Reading
+// "state"/etc. on the right-hand side of their own CASE means Postgres
+// evaluates them from the row this UPDATE itself just locked, never from a
+// value carried in from outside the statement.
 func (q *Queries) UpdateMonitor(ctx context.Context, arg UpdateMonitorParams) (ExternalMonitor, error) {
 	row := q.db.QueryRow(ctx, updateMonitor,
 		arg.ID,
@@ -408,9 +445,7 @@ func (q *Queries) UpdateMonitor(ctx context.Context, arg UpdateMonitorParams) (E
 		arg.IntervalSeconds,
 		arg.ExpectedCertID,
 		arg.Enabled,
-		arg.State,
-		arg.StateChangedAt,
-		arg.NextCheckAt,
+		arg.ResetState,
 	)
 	var i ExternalMonitor
 	err := row.Scan(

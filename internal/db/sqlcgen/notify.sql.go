@@ -648,17 +648,18 @@ const scanAgentCertExpiringClients = `-- name: ScanAgentCertExpiringClients :man
 SELECT c.id AS client_id, c.org_id, c.name AS client_name, c.agent_cert_serial, c.agent_cert_not_after
 FROM clients c
 WHERE c.status = 'active' AND c.agent_cert_not_after IS NOT NULL
-  AND c.agent_cert_not_after < $1::timestamptz
+  AND c.agent_cert_not_after < $1::timestamptz AND c.agent_cert_not_after >= $2::timestamptz
   AND NOT EXISTS (
     SELECT 1 FROM notification_events e
     WHERE e.dedupe_key = 'agent.cert_expiring:' || c.id::text || ':' || c.agent_cert_serial
   )
 ORDER BY c.agent_cert_not_after, c.id
-LIMIT $2::int
+LIMIT $3::int
 `
 
 type ScanAgentCertExpiringClientsParams struct {
 	Cutoff    time.Time `json:"cutoff"`
+	Since     time.Time `json:"since"`
 	PageLimit int32     `json:"page_limit"`
 }
 
@@ -673,9 +674,10 @@ type ScanAgentCertExpiringClientsRow struct {
 // agent.cert_expiring (task-7 brief): an active client whose own agent
 // certificate expires within the (fixed, non-configurable)
 // notify.AgentCertExpiryWindow. Keyed by agent_cert_serial, so a renewed
-// agent certificate (a fresh serial) is a new condition.
+// agent certificate (a fresh serial) is a new condition. agent_cert_not_after
+// >= since: same prune-window reasoning as ScanExpiredCertificateVersions.
 func (q *Queries) ScanAgentCertExpiringClients(ctx context.Context, arg ScanAgentCertExpiringClientsParams) ([]ScanAgentCertExpiringClientsRow, error) {
-	rows, err := q.db.Query(ctx, scanAgentCertExpiringClients, arg.Cutoff, arg.PageLimit)
+	rows, err := q.db.Query(ctx, scanAgentCertExpiringClients, arg.Cutoff, arg.Since, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -704,11 +706,16 @@ const scanExpiredCertificateVersions = `-- name: ScanExpiredCertificateVersions 
 SELECT c.id AS cert_id, c.org_id, c.common_name, cv.id AS version_id, cv.not_after
 FROM certificates c
 JOIN certificate_versions cv ON cv.id = c.current_version_id
-WHERE cv.not_after <= now()
+WHERE cv.not_after <= now() AND cv.not_after >= $1::timestamptz
   AND NOT EXISTS (SELECT 1 FROM notification_events e WHERE e.dedupe_key = 'cert.expired:' || cv.id::text)
 ORDER BY cv.not_after, c.id
-LIMIT $1::int
+LIMIT $2::int
 `
+
+type ScanExpiredCertificateVersionsParams struct {
+	Since     time.Time `json:"since"`
+	PageLimit int32     `json:"page_limit"`
+}
 
 type ScanExpiredCertificateVersionsRow struct {
 	CertID     uuid.UUID `json:"cert_id"`
@@ -720,8 +727,13 @@ type ScanExpiredCertificateVersionsRow struct {
 
 // cert.expired (task-7 brief): the current version, not_after <= now, not
 // yet emitted for (same NOT EXISTS shape as ScanExpiringCertificateVersions).
-func (q *Queries) ScanExpiredCertificateVersions(ctx context.Context, pageLimit int32) ([]ScanExpiredCertificateVersionsRow, error) {
-	rows, err := q.db.Query(ctx, scanExpiredCertificateVersions, pageLimit)
+// not_after >= since (batch-3 review finding 2) bounds this to versions
+// that expired within the prune window: PruneOldNotificationEvents deletes
+// the dedupe row (notification_events) after EventRetention, so a
+// certificate that has sat expired for longer than that would otherwise
+// pass NOT EXISTS again and re-emit the same condition every prune cycle.
+func (q *Queries) ScanExpiredCertificateVersions(ctx context.Context, arg ScanExpiredCertificateVersionsParams) ([]ScanExpiredCertificateVersionsRow, error) {
+	rows, err := q.db.Query(ctx, scanExpiredCertificateVersions, arg.Since, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -808,13 +820,19 @@ JOIN deployments d ON d.grant_id = g.id
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN clients cl ON cl.id = g.client_id
 WHERE g.removed_at IS NULL AND d.state IN ('failed', 'drift') AND d.version_id IS NOT NULL
+  AND d.updated_at >= $1::timestamptz
   AND NOT EXISTS (
     SELECT 1 FROM notification_events e
     WHERE e.dedupe_key = 'deploy.' || d.state || ':' || g.id::text || ':' || d.version_id::text
   )
 ORDER BY d.updated_at, g.id
-LIMIT $1::int
+LIMIT $2::int
 `
+
+type ScanFailedOrDriftedDeploymentsParams struct {
+	Since     time.Time `json:"since"`
+	PageLimit int32     `json:"page_limit"`
+}
 
 type ScanFailedOrDriftedDeploymentsRow struct {
 	GrantID         uuid.UUID  `json:"grant_id"`
@@ -831,8 +849,12 @@ type ScanFailedOrDriftedDeploymentsRow struct {
 // keyed by its deployed version_id, not yet emitted for. A grant with no
 // version_id yet (never deployed) never matches state IN ('failed',
 // 'drift') in the first place (its state is still 'pending').
-func (q *Queries) ScanFailedOrDriftedDeployments(ctx context.Context, pageLimit int32) ([]ScanFailedOrDriftedDeploymentsRow, error) {
-	rows, err := q.db.Query(ctx, scanFailedOrDriftedDeployments, pageLimit)
+// updated_at >= since (batch-3 review finding 2, same reasoning as
+// ScanExpiredCertificateVersions): a deployment that has sat failed/drifted
+// longer than EventRetention would otherwise re-emit once its original
+// dedupe row is pruned.
+func (q *Queries) ScanFailedOrDriftedDeployments(ctx context.Context, arg ScanFailedOrDriftedDeploymentsParams) ([]ScanFailedOrDriftedDeploymentsRow, error) {
+	rows, err := q.db.Query(ctx, scanFailedOrDriftedDeployments, arg.Since, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -867,13 +889,19 @@ JOIN server_deployments sd ON sd.grant_id = g.id
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.removed_at IS NULL AND sd.status = 'failed' AND sd.version_id IS NOT NULL
+  AND sd.updated_at >= $1::timestamptz
   AND NOT EXISTS (
     SELECT 1 FROM notification_events e
     WHERE e.dedupe_key = 'deploy.failed:' || g.id::text || ':' || sd.version_id::text
   )
 ORDER BY sd.updated_at, g.id
-LIMIT $1::int
+LIMIT $2::int
 `
+
+type ScanFailedServerDeploymentsParams struct {
+	Since     time.Time `json:"since"`
+	PageLimit int32     `json:"page_limit"`
+}
 
 type ScanFailedServerDeploymentsRow struct {
 	GrantID         uuid.UUID  `json:"grant_id"`
@@ -887,9 +915,10 @@ type ScanFailedServerDeploymentsRow struct {
 // deploy.failed for server-run grants (task-7 brief:
 // "server_deployments.status failed"): server_deployments has no drift
 // state (no agent reports installed files back for a server target), so
-// this only ever emits deploy.failed.
-func (q *Queries) ScanFailedServerDeployments(ctx context.Context, pageLimit int32) ([]ScanFailedServerDeploymentsRow, error) {
-	rows, err := q.db.Query(ctx, scanFailedServerDeployments, pageLimit)
+// this only ever emits deploy.failed. updated_at >= since: same prune-window
+// reasoning as ScanFailedOrDriftedDeployments.
+func (q *Queries) ScanFailedServerDeployments(ctx context.Context, arg ScanFailedServerDeploymentsParams) ([]ScanFailedServerDeploymentsRow, error) {
+	rows, err := q.db.Query(ctx, scanFailedServerDeployments, arg.Since, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -918,18 +947,20 @@ func (q *Queries) ScanFailedServerDeployments(ctx context.Context, pageLimit int
 const scanOfflineClients = `-- name: ScanOfflineClients :many
 SELECT c.id AS client_id, c.org_id, c.name AS client_name, c.last_seen
 FROM clients c
-WHERE c.status = 'active' AND c.last_seen IS NOT NULL AND c.last_seen < $1::timestamptz
+WHERE c.status = 'active' AND c.last_seen IS NOT NULL
+  AND c.last_seen < $1::timestamptz AND c.last_seen >= $2::timestamptz
   AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.client_id = c.id AND g.removed_at IS NULL)
   AND NOT EXISTS (
     SELECT 1 FROM notification_events e
     WHERE e.dedupe_key = 'client.offline:' || c.id::text || ':' || extract(epoch FROM c.last_seen)::bigint::text
   )
 ORDER BY c.last_seen, c.id
-LIMIT $2::int
+LIMIT $3::int
 `
 
 type ScanOfflineClientsParams struct {
 	Cutoff    time.Time `json:"cutoff"`
+	Since     time.Time `json:"since"`
 	PageLimit int32     `json:"page_limit"`
 }
 
@@ -947,8 +978,11 @@ type ScanOfflineClientsRow struct {
 // by its first heartbeat). The dedupe key is keyed on last_seen itself, so
 // a client that reconnects and later goes offline again is a fresh
 // condition (a new last_seen value never seen in dedupe_key before).
+// last_seen >= since: same prune-window reasoning as
+// ScanExpiredCertificateVersions — otherwise a client offline for over
+// EventRetention re-emits once its dedupe row is pruned.
 func (q *Queries) ScanOfflineClients(ctx context.Context, arg ScanOfflineClientsParams) ([]ScanOfflineClientsRow, error) {
-	rows, err := q.db.Query(ctx, scanOfflineClients, arg.Cutoff, arg.PageLimit)
+	rows, err := q.db.Query(ctx, scanOfflineClients, arg.Cutoff, arg.Since, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}

@@ -4,7 +4,11 @@ package monitor_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,10 +44,19 @@ func TestScanEnqueuesDueOnly(t *testing.T) {
 	}
 }
 
-// TestMonitorTransitionEmitsOnce: two concurrent checks of the same
-// monitor, both observing the same resulting state (unreachable), emit
-// exactly one event — the R5 compare-and-set (Deviations R5, Task 9
-// brief).
+// TestMonitorTransitionEmitsOnce: two checks of the same monitor that
+// genuinely overlap — both must read state "ok" before either can write —
+// and both observe the same resulting state (unreachable) emit exactly one
+// event: the R5 compare-and-set, not a coincidence of Emit's own dedupe key
+// (Deviations R5, Task 9 brief; batch-3 review finding 5). Dial is
+// overridden with a barrier that only releases once both goroutines have
+// reached it — placed after Service.Check's own GetByID, so both are
+// guaranteed to have read the same pre-transition row — and Now is
+// overridden to hand each call a distinct second, so a same-second Emit
+// dedupe key could not itself be what collapses this to one event: if the
+// CAS in TransitionState did not exist, both calls would still reach
+// Emit, each with its own state_changed_at second, and Emit would insert
+// two rows.
 func TestMonitorTransitionEmitsOnce(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	org := dbtest.Org(t, pool)
@@ -51,8 +64,22 @@ func TestMonitorTransitionEmitsOnce(t *testing.T) {
 	svc := newService(pool, ins)
 	allowLoopback(t, svc.Settings)
 
-	port := closedPort(t)
-	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "flaky", host: "127.0.0.1", port: port, state: "ok"})
+	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "flaky", host: "unused.invalid", state: "ok"})
+
+	var atBarrier sync.WaitGroup
+	atBarrier.Add(2)
+	release := make(chan struct{})
+	svc.Dial = func(string, int, string, bool) monitor.Observation {
+		atBarrier.Done()
+		<-release
+		return monitor.Observation{Err: errors.New("simulated: connection refused")}
+	}
+	var tick int64
+	base := time.Now()
+	svc.Now = func() time.Time {
+		n := atomic.AddInt64(&tick, 1)
+		return base.Add(time.Duration(n) * time.Second) // a distinct second per call
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -65,6 +92,10 @@ func TestMonitorTransitionEmitsOnce(t *testing.T) {
 			}
 		}()
 	}
+	go func() {
+		atBarrier.Wait()
+		close(release)
+	}()
 	wg.Wait()
 	close(errs)
 	for err := range errs {
@@ -81,7 +112,10 @@ func TestMonitorTransitionEmitsOnce(t *testing.T) {
 
 // TestCheckMonitorInline: a single check against a reachable TLS fixture
 // with no expected certificate and a far notAfter resolves to ok, well
-// within InlineTimeout (checkMonitor's own 15s bound).
+// within InlineTimeout (checkMonitor's own 15s bound). With no
+// expectedCertificateId, "ok" needs the observed leaf's fingerprint to
+// match some certificate's current version in the org (batch-3 review
+// finding 1), so the fixture's own certificate is seeded as one first.
 func TestCheckMonitorInline(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	org := dbtest.Org(t, pool)
@@ -91,6 +125,8 @@ func TestCheckMonitorInline(t *testing.T) {
 
 	notAfter := time.Now().Add(90 * 24 * time.Hour)
 	leafDER, key := selfSignedCert(t, "inline.example.test", notAfter)
+	fp := sha256.Sum256(leafDER)
+	insertCertWithFingerprint(t, pool, org, "inline-cert", hex.EncodeToString(fp[:]), notAfter)
 	port := listenTLS(t, leafDER, key)
 	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "inline", host: "127.0.0.1", port: port,
 		sni: strPtr("inline.example.test"), state: "unknown"})

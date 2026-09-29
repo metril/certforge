@@ -4,12 +4,15 @@ package notify_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/metril/certforge/internal/db/dbtest"
+	"github.com/metril/certforge/internal/notify"
 )
 
 // TestExpiryScanOncePerVersion: two scans of the same expiring version emit
@@ -97,6 +100,82 @@ func TestExpiredScan(t *testing.T) {
 	}
 	if got := eventCount(t, pool, "cert.expired"); got != 1 {
 		t.Fatalf("events after scan 2 = %d, want still 1", got)
+	}
+}
+
+// TestExpiredScanRespectsRetentionWindow: batch-3 review finding 2 — once
+// a condition's own dedupe row has aged out of notification_events (the
+// hourly prune deletes anything older than EventRetention), the scan must
+// not treat the still-ongoing condition as new again. Deleting the dedupe
+// row directly stands in for the passage of time the real prune needs;
+// moving Sources' own clock far enough forward that the version's fixed
+// not_after now also predates the retention window is what actually
+// exercises ScanExpiredCertificateVersions' own since bound — without it,
+// NOT EXISTS alone (dedupe row gone) would let this re-emit.
+func TestExpiredScanRespectsRetentionWindow(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, name: "all-events"})
+
+	certID := insertCert(t, pool, org, "ancient", "ancient.example.test", nil)
+	v1 := insertVersion(t, pool, certID, time.Now().Add(-24*time.Hour), uuid.Nil)
+	setCurrentVersion(t, pool, certID, v1)
+
+	s := newSources(pool, &fakeInserter{})
+	if err := s.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, pool, "cert.expired"); got != 1 {
+		t.Fatalf("events after scan 1 = %d, want 1", got)
+	}
+
+	if _, err := pool.Exec(ctx, `DELETE FROM notification_events WHERE dedupe_key = $1`, "cert.expired:"+v1.String()); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(notify.EventRetention + 24*time.Hour)
+	s.Now = func() time.Time { return future }
+
+	if err := s.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, pool, "cert.expired"); got != 0 {
+		t.Fatalf("events after prune + retention window = %d, want 0 (must not re-emit)", got)
+	}
+}
+
+// TestServerDeployFailedRedactsHost: batch-3 review finding 3 — a
+// server-run deployment's stored last_error can be a raw Vault transport
+// error embedding the Vault address (a *url.Error's own Error() text,
+// which vault.Redact never strips — it only scrubs a token/secretId it
+// still holds, not the address). The resulting deploy.failed event's
+// details must never carry that host or the underlying dial address (R10).
+func TestServerDeployFailedRedactsHost(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, name: "all-events"})
+
+	serverTarget := insertDeployTarget(t, pool, org, "server-target", "server")
+	serverCert := insertCert(t, pool, org, "server-cert", "server.example.test", nil)
+	serverVersion := insertVersion(t, pool, serverCert, time.Now().Add(90*24*time.Hour), uuid.Nil)
+	const host = "vault.internal.example.net"
+	vaultErr := `vault: request PUT "https://` + host + `:8200/v1/secret/data/certs/server-cert": dial tcp 10.0.5.7:8200: connect: connection refused`
+	grantID := insertServerGrant(t, pool, serverCert, serverTarget, "failed", serverVersion, vaultErr)
+
+	s := newSources(pool, &fakeInserter{})
+	if err := s.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, pool, "deploy.failed"); got != 1 {
+		t.Fatalf("deploy.failed events = %d, want 1", got)
+	}
+	details := eventDetails(t, pool, fmt.Sprintf("deploy.failed:%s:%s", grantID, serverVersion))
+	if strings.Contains(details, host) {
+		t.Errorf("deploy.failed details leaked the Vault host: %s", details)
+	}
+	if strings.Contains(details, "10.0.5.7") {
+		t.Errorf("deploy.failed details leaked the dial address: %s", details)
 	}
 }
 

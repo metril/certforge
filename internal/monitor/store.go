@@ -117,6 +117,13 @@ func (s *Store) CertificateFingerprint(ctx context.Context, certID uuid.UUID) (s
 	return s.Q.CertificateCurrentFingerprint(ctx, certID)
 }
 
+// FingerprintKnownInOrg reports whether fp is some certificate's current
+// version in orgID (batch-3 review finding 1: an unset expectedCertificateId
+// checks the observed leaf against the org as a whole, not against nothing).
+func (s *Store) FingerprintKnownInOrg(ctx context.Context, orgID uuid.UUID, fp string) (bool, error) {
+	return s.Q.MonitorFingerprintKnownInOrg(ctx, sqlcgen.MonitorFingerprintKnownInOrgParams{OrgID: orgID, Sha256Fp: fp})
+}
+
 // Create stores a new monitor. A unique-violation on (org_id, name) or a
 // foreign-key violation on org_id is left to the caller (api.pgCode), the
 // same convention channels.go/delivery.go use.
@@ -138,19 +145,18 @@ func (s *Store) Create(ctx context.Context, orgID uuid.UUID, in Input) (Monitor,
 }
 
 // Update replaces a monitor's fields. resetState is the caller's own
-// resetsState(cur, in) decision (Shared contract, updateMonitor): true sets
-// state back to unknown and nextCheckAt to now, false keeps both as they
-// were on cur.
-func (s *Store) Update(ctx context.Context, orgID, id uuid.UUID, in Input, cur Monitor, resetState bool) (Monitor, error) {
-	state, stateChangedAt, nextCheckAt := cur.State, cur.StateChangedAt, cur.NextCheckAt
-	if resetState {
-		now := time.Now()
-		state, stateChangedAt, nextCheckAt = "unknown", now, now
-	}
+// ResetsState(cur, in) decision (Shared contract, updateMonitor): true sets
+// state back to unknown and nextCheckAt to now; false leaves state,
+// state_changed_at and next_check_at exactly as they are in the database at
+// write time — a SQL CASE (UpdateMonitor), not a value read earlier and
+// passed back in, so a concurrent check's own CAS transition
+// (TransitionState) landing between the caller's read and this write is
+// never silently reverted (batch-3 review finding 4).
+func (s *Store) Update(ctx context.Context, orgID, id uuid.UUID, in Input, resetState bool) (Monitor, error) {
 	r, err := s.Q.UpdateMonitor(ctx, sqlcgen.UpdateMonitorParams{
 		ID: id, OrgID: orgID, Name: in.Name, Host: in.Host, Port: int32(in.Port), Sni: in.SNI,
 		IntervalSeconds: int32(in.IntervalSeconds), ExpectedCertID: in.ExpectedCertID, Enabled: in.Enabled,
-		State: state, StateChangedAt: stateChangedAt, NextCheckAt: nextCheckAt,
+		ResetState: resetState,
 	})
 	if err != nil {
 		return Monitor{}, notFoundErr(err)

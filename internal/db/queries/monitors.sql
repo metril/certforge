@@ -44,11 +44,37 @@ JOIN certificate_versions v ON v.id = c.current_version_id
 WHERE c.id = $1;
 
 -- name: UpdateMonitor :one
+-- state/state_changed_at/next_check_at are written only when reset_state is
+-- true (a CASE, not a value Go read earlier and passes back): batch-3
+-- review finding 4 — passing back a Go-side snapshot of those three columns
+-- overwrites a concurrent check's own CAS transition (TransitionMonitorState)
+-- whenever it lands between this update's read and its write, silently
+-- reverting the state it just committed and letting the next check
+-- transition (and emit) a second time for the same condition. Reading
+-- "state"/etc. on the right-hand side of their own CASE means Postgres
+-- evaluates them from the row this UPDATE itself just locked, never from a
+-- value carried in from outside the statement.
 UPDATE external_monitors
 SET name = $3, host = $4, port = $5, sni = $6, interval_seconds = $7, expected_cert_id = $8, enabled = $9,
-    state = $10, state_changed_at = $11, next_check_at = $12, updated_at = now()
+    state = CASE WHEN sqlc.arg(reset_state)::bool THEN 'unknown' ELSE state END,
+    state_changed_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE state_changed_at END,
+    next_check_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE next_check_at END,
+    updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING *;
+
+-- name: MonitorFingerprintKnownInOrg :one
+-- When a monitor has no expectedCertificateId, mismatch is judged against
+-- the org as a whole (batch-3 review finding 1): the observed leaf's
+-- fingerprint must match the current version of *some* certificate this
+-- org already manages, or the state is mismatch. Only current versions
+-- count — an old, superseded version's fingerprint no longer vouches for
+-- what a monitor should currently be seeing.
+SELECT EXISTS (
+    SELECT 1 FROM certificates c
+    JOIN certificate_versions v ON v.id = c.current_version_id
+    WHERE c.org_id = $1 AND v.sha256_fp = $2
+) AS known;
 
 -- name: DeleteMonitor :execrows
 DELETE FROM external_monitors WHERE id = $1 AND org_id = $2;

@@ -65,17 +65,26 @@ var badStates = map[string]bool{"mismatch": true, "expiring": true, "unreachable
 
 // deriveState computes a check's resulting state (Task 9 brief: "The state
 // order is unreachable > mismatch > expiring > ok"). obs.Err set (the host
-// was unreachable, or its own dial policy rejected it) always wins;
-// otherwise a set expectedFingerprint that does not match obs.Fingerprint
-// is a mismatch (Deviations R5: "against the expected certificate's
-// current version, or, when unset, against no version in the org" — hasExpected
-// false skips this check entirely); otherwise a leaf expiring within
-// ExpiringWithin of now is expiring; otherwise ok.
-func deriveState(obs Observation, expectedFingerprint string, hasExpected bool, now time.Time) string {
+// was unreachable, or its own dial policy rejected it) always wins. The
+// mismatch check always runs (batch-3 review finding 1 — the brief's
+// "against the expected certificate's current version, or, when unset,
+// against no version in the org" means the comparison set is either just
+// that one certificate, or every certificate in the org, never "skip the
+// check entirely"): with an expected certificate, the leaf must match its
+// fingerprint; with none set, the leaf must match *some* certificate's
+// current version in the org (fpKnownInOrg) — an arbitrary, CertForge-unmanaged
+// endpoint therefore mismatches by default once monitored with no
+// expectedCertificateId, the same way it would if compared against a
+// specific certificate it happens not to be running. Otherwise, a leaf
+// expiring within ExpiringWithin of now is expiring; otherwise ok.
+func deriveState(obs Observation, expectedFingerprint string, hasExpected, fpKnownInOrg bool, now time.Time) string {
 	if obs.Err != nil {
 		return "unreachable"
 	}
-	if hasExpected && obs.Fingerprint != expectedFingerprint {
+	switch {
+	case hasExpected && obs.Fingerprint != expectedFingerprint:
+		return "mismatch"
+	case !hasExpected && !fpKnownInOrg:
 		return "mismatch"
 	}
 	if !obs.NotAfter.After(now.Add(ExpiringWithin)) {
@@ -141,17 +150,28 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 	obs := s.dial()(m.Host, m.Port, effectiveSNI(m), allowLoopback)
 
 	var expectedFP string
+	var fpKnownInOrg bool
 	hasExpected := m.ExpectedCertID != nil
-	if hasExpected {
+	switch {
+	case hasExpected:
 		fp, err := s.Store.CertificateFingerprint(ctx, *m.ExpectedCertID)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return Monitor{}, err
 		}
 		expectedFP = fp // "" (never matches) when the certificate has no current version
+	case obs.Err == nil:
+		// Only worth a query when the host was actually reached — an
+		// unreachable observation carries no fingerprint to look up, and
+		// deriveState never consults fpKnownInOrg once obs.Err is set.
+		known, err := s.Store.FingerprintKnownInOrg(ctx, m.OrgID, obs.Fingerprint)
+		if err != nil {
+			return Monitor{}, err
+		}
+		fpKnownInOrg = known
 	}
 
 	now := s.now()
-	newState := deriveState(obs, expectedFP, hasExpected, now)
+	newState := deriveState(obs, expectedFP, hasExpected, fpKnownInOrg, now)
 	metrics.MonitorChecks.WithLabelValues(newState).Inc()
 
 	lastFP, lastIssuer, lastNotAfter, lastError := m.LastFingerprint, m.LastIssuer, m.LastNotAfter, ""

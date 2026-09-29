@@ -10,7 +10,7 @@ Fields (`MonitorInput`):
 - `host` (hostname or literal IP, ≤ 253 characters) and `port` (default `443`). `host` follows the same loopback/link-local policy as a notification channel's URL (Settings → Notifications → "Allow loopback/private URLs"; see [notifications.md#url-policy](notifications.md#url-policy)) — an internal address is refused unless that setting is on.
 - `sni` (optional; defaults to `host`) — the TLS server name to send, for a host that serves more than one certificate by SNI.
 - `intervalSeconds` (300–86400, default `3600`) — how often the scheduled scan checks this monitor.
-- `expectedCertificateId` (optional) — a certificate already managed by this org; when set, the monitor also checks the presented leaf's fingerprint against that certificate's *current version*. Omitted or null skips the mismatch check entirely (the monitor still tracks reachability and expiry).
+- `expectedCertificateId` (optional) — a certificate already managed by this org. The mismatch check always runs: with `expectedCertificateId` set, the presented leaf's fingerprint must match that certificate's *current version*; omitted or null does not skip the check — instead the leaf must match the current version of *some* certificate in the org, so a monitor pointed at a host CertForge does not manage anything for will read as `mismatch` unless `expectedCertificateId` is set to name it.
 
 A check dials `host:port` with a 10 second timeout, sends `sni` (or `host`) as the TLS `ServerName`, and captures whatever leaf certificate is presented — the handshake itself never fails on an untrusted or mismatched chain (`InsecureSkipVerify`, capture-only); the observed leaf is then compared against the system trust store *separately*, and that result (if any) travels in the resulting event's `details.chainError`, never as its own state.
 
@@ -23,9 +23,9 @@ Editing `host`, `port`, `sni` or `expectedCertificateId` resets `state` to `unkn
 | State | Meaning |
 |---|---|
 | `unknown` | No check has completed yet (just created, or just edited in a way that resets state — see above). |
-| `ok` | Reachable; the leaf matches `expectedCertificateId`'s current version (when set) and does not expire within 14 days. |
-| `mismatch` | Reachable, but the leaf's fingerprint does not match `expectedCertificateId`'s current version. Never reached when `expectedCertificateId` is unset. |
-| `expiring` | Reachable (and matching, when `expectedCertificateId` is set), but the leaf expires within 14 days. |
+| `ok` | Reachable; the leaf matches `expectedCertificateId`'s current version, or — when unset — the current version of some certificate in the org; and does not expire within 14 days. |
+| `mismatch` | Reachable, but the leaf's fingerprint does not match `expectedCertificateId`'s current version, or — when unset — does not match any certificate's current version in the org. |
+| `expiring` | Reachable and matching (as `ok` defines matching), but the leaf expires within 14 days. |
 | `unreachable` | The dial or TLS handshake failed (refused, timed out, or the host policy rejected it), or no certificate was presented. |
 
 State order on a conflict between conditions is `unreachable` > `mismatch` > `expiring` > `ok` — an unreachable host is reported as such even if it happens to also be within its expiry window from the last successful check, and a mismatch is reported ahead of an otherwise-fine expiry. An event fires only on a genuine transition (the new state differs from the old, and the write actually won a race against a concurrent check of the same monitor — see [notifications.md#dedupe](notifications.md#dedupe)); `monitor.recovered` fires only when the *previous* state was `mismatch`, `expiring` or `unreachable` and the new one is `ok` — moving from `unknown` straight to `ok` (a monitor's first-ever successful check) is not itself a "recovery" and raises no event.

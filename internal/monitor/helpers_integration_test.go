@@ -215,15 +215,30 @@ func listenTLS(t *testing.T, leafDER []byte, key *ecdsa.PrivateKey) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
-// closedPort returns a port with nothing listening (bound then immediately
-// released), for an "unreachable" fixture that fails fast.
-func closedPort(t *testing.T) int {
+// insertCertWithFingerprint inserts a certificate (and its sole, current
+// version) whose sha256_fp is fp — a monitor with no expectedCertificateId
+// mismatches unless the observed leaf matches some certificate's current
+// version in the org (batch-3 review finding 1), so a test exercising the
+// "ok"/"expiring" path with no expectedCertificateId set needs one of
+// these seeded first.
+func insertCertWithFingerprint(t *testing.T, pool *pgxpool.Pool, orgID uuid.UUID, name, fp string, notAfter time.Time) uuid.UUID {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	var certID uuid.UUID
+	if err := pool.QueryRow(context.Background(),
+		`INSERT INTO certificates (org_id, name, common_name, sans) VALUES ($1, $2, $2, '{}') RETURNING id`,
+		orgID, name).Scan(&certID); err != nil {
+		t.Fatalf("insert certificate: %v", err)
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	_ = ln.Close()
-	return port
+	var versionID uuid.UUID
+	if err := pool.QueryRow(context.Background(), `
+		INSERT INTO certificate_versions (cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, source)
+		VALUES ($1, $2, now() - interval '1 day', $3, $4, 'ec256', 'leaf', 'issued') RETURNING id`,
+		certID, uuid.NewString()[:12], notAfter, fp).Scan(&versionID); err != nil {
+		t.Fatalf("insert certificate_version: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE certificates SET current_version_id = $2, status = 'active' WHERE id = $1`, certID, versionID); err != nil {
+		t.Fatalf("set current version: %v", err)
+	}
+	return certID
 }

@@ -201,7 +201,7 @@ func (s *Server) UpdateMonitor(ctx context.Context, r gen.UpdateMonitorRequestOb
 		return nil, mapMonitorErr(err, r.Id)
 	}
 	resetState := monitor.ResetsState(cur, in)
-	m, err := s.d.Monitors.Store.Update(ctx, r.OrgId, r.Id, in, cur, resetState)
+	m, err := s.d.Monitors.Store.Update(ctx, r.OrgId, r.Id, in, resetState)
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("A monitor named %q exists in this org.", in.Name)
 	}

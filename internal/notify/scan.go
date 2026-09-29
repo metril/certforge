@@ -58,6 +58,14 @@ func (s *Sources) RegisterRiver(workers *river.Workers) []*river.PeriodicJob {
 // job instead, since every source below depends on one or the other.
 func (s *Sources) Scan(ctx context.Context) error {
 	now := s.now()
+	// since bounds every scan below that has no other natural lower bound
+	// (batch-3 review finding 2): PruneOldNotificationEvents deletes a
+	// condition's dedupe row after EventRetention, so a scan with no lower
+	// time bound of its own would see NOT EXISTS pass again for a condition
+	// that is still ongoing but older than the prune window, and re-emit it.
+	// scanExpiring needs no such bound (its not_after > now() is itself
+	// always in the future, never eligible for pruning).
+	since := now.Add(-EventRetention)
 	set, err := Current(ctx, s.Settings)
 	if err != nil {
 		return fmt.Errorf("notify: scan settings: %w", err)
@@ -70,16 +78,16 @@ func (s *Sources) Scan(ctx context.Context) error {
 	if err := s.scanExpiring(ctx, now, set.ExpiryWarningDays); err != nil {
 		s.log().Error("notify: cert.expiring scan failed", "err", err)
 	}
-	if err := s.scanExpired(ctx); err != nil {
+	if err := s.scanExpired(ctx, since); err != nil {
 		s.log().Error("notify: cert.expired scan failed", "err", err)
 	}
-	if err := s.scanDeployments(ctx); err != nil {
+	if err := s.scanDeployments(ctx, since); err != nil {
 		s.log().Error("notify: deploy scan failed", "err", err)
 	}
-	if err := s.scanOffline(ctx, offline); err != nil {
+	if err := s.scanOffline(ctx, offline, since); err != nil {
 		s.log().Error("notify: client.offline scan failed", "err", err)
 	}
-	if err := s.scanAgentCertExpiring(ctx, now); err != nil {
+	if err := s.scanAgentCertExpiring(ctx, now, since); err != nil {
 		s.log().Error("notify: agent.cert_expiring scan failed", "err", err)
 	}
 	if _, err := s.Q.PruneOldNotificationEvents(ctx, now.Add(-EventRetention)); err != nil {
@@ -111,8 +119,9 @@ func (s *Sources) scanExpiring(ctx context.Context, now time.Time, warningDays i
 	return nil
 }
 
-func (s *Sources) scanExpired(ctx context.Context) error {
-	rows, err := s.Q.ScanExpiredCertificateVersions(ctx, scanLimit)
+func (s *Sources) scanExpired(ctx context.Context, since time.Time) error {
+	rows, err := s.Q.ScanExpiredCertificateVersions(ctx, sqlcgen.ScanExpiredCertificateVersionsParams{
+		Since: since, PageLimit: scanLimit})
 	if err != nil {
 		return err
 	}
@@ -136,8 +145,9 @@ func (s *Sources) scanExpired(ctx context.Context) error {
 // grants (client_cert_grants/deployments) and deploy.failed for
 // server-run grants (client_cert_grants/server_deployments, which has no
 // drift state of its own — task-7 brief).
-func (s *Sources) scanDeployments(ctx context.Context) error {
-	rows, err := s.Q.ScanFailedOrDriftedDeployments(ctx, scanLimit)
+func (s *Sources) scanDeployments(ctx context.Context, since time.Time) error {
+	rows, err := s.Q.ScanFailedOrDriftedDeployments(ctx, sqlcgen.ScanFailedOrDriftedDeploymentsParams{
+		Since: since, PageLimit: scanLimit})
 	if err != nil {
 		return err
 	}
@@ -148,7 +158,7 @@ func (s *Sources) scanDeployments(ctx context.Context) error {
 		kind := "deploy." + r.State // "deploy.failed" or "deploy.drift"
 		details := map[string]any{"target": r.TargetName}
 		if r.State == "failed" {
-			details["lastError"] = r.Error
+			details["lastError"] = redactURLs(r.Error)
 		}
 		ev := Event{
 			Kind:      kind,
@@ -163,7 +173,8 @@ func (s *Sources) scanDeployments(ctx context.Context) error {
 		}
 	}
 
-	srows, err := s.Q.ScanFailedServerDeployments(ctx, scanLimit)
+	srows, err := s.Q.ScanFailedServerDeployments(ctx, sqlcgen.ScanFailedServerDeploymentsParams{
+		Since: since, PageLimit: scanLimit})
 	if err != nil {
 		return err
 	}
@@ -171,12 +182,18 @@ func (s *Sources) scanDeployments(ctx context.Context) error {
 		if r.VersionID == nil {
 			continue // defensive: the query already filters this out
 		}
+		// A server-run target's last_error can be a raw Vault transport
+		// error (e.g. a *url.Error whose Error() embeds the request URL;
+		// vault.Redact only strips the token/secretId, not the address
+		// itself) — redactURLs strips any embedded URL or dial address
+		// before it ever reaches an event's details (R10, batch-3 review
+		// finding 3).
 		ev := Event{
 			Kind:      "deploy.failed",
 			OrgID:     &r.OrgID,
 			Resource:  Resource{ID: r.GrantID.String(), Name: r.CertificateName + " → " + r.TargetName},
 			Summary:   fmt.Sprintf("Deployment of %s to %s failed", r.CertificateName, r.TargetName),
-			Details:   map[string]any{"target": r.TargetName, "lastError": r.LastError},
+			Details:   map[string]any{"target": r.TargetName, "lastError": redactURLs(r.LastError)},
 			DedupeKey: fmt.Sprintf("deploy.failed:%s:%s", r.GrantID, r.VersionID),
 		}
 		if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
@@ -186,8 +203,8 @@ func (s *Sources) scanDeployments(ctx context.Context) error {
 	return nil
 }
 
-func (s *Sources) scanOffline(ctx context.Context, cutoff time.Time) error {
-	rows, err := s.Q.ScanOfflineClients(ctx, sqlcgen.ScanOfflineClientsParams{Cutoff: cutoff, PageLimit: scanLimit})
+func (s *Sources) scanOffline(ctx context.Context, cutoff, since time.Time) error {
+	rows, err := s.Q.ScanOfflineClients(ctx, sqlcgen.ScanOfflineClientsParams{Cutoff: cutoff, Since: since, PageLimit: scanLimit})
 	if err != nil {
 		return err
 	}
@@ -210,10 +227,10 @@ func (s *Sources) scanOffline(ctx context.Context, cutoff time.Time) error {
 	return nil
 }
 
-func (s *Sources) scanAgentCertExpiring(ctx context.Context, now time.Time) error {
+func (s *Sources) scanAgentCertExpiring(ctx context.Context, now, since time.Time) error {
 	cutoff := now.Add(AgentCertExpiryWindow)
 	rows, err := s.Q.ScanAgentCertExpiringClients(ctx, sqlcgen.ScanAgentCertExpiringClientsParams{
-		Cutoff: cutoff, PageLimit: scanLimit})
+		Cutoff: cutoff, Since: since, PageLimit: scanLimit})
 	if err != nil {
 		return err
 	}
