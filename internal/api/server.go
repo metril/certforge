@@ -79,6 +79,13 @@ type Deps struct {
 	// type today.
 	Deploy *deploy.Registry
 
+	// Dispatcher enqueues certforge_server_deploy for client-less (server)
+	// grants: createServerGrant and the server-grant paths of
+	// updateGrant/redeployGrant (Task 11) call it from their own
+	// transaction. It is also registered as an issuance.VersionListener
+	// and river worker in cmd/certforge/serve.go, not here.
+	Dispatcher *deploy.Dispatcher
+
 	// DNSTestTimeout bounds POST .../dns-credentials/{id}/test; zero means
 	// the 2-minute default (a test override, since lego's Present/CleanUp
 	// take no context and can't be preempted, only raced against a timer).

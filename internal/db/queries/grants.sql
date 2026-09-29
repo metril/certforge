@@ -83,24 +83,34 @@ LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = ANY(sqlc.arg(ids)::uuid[]) AND g.removed_at IS NULL;
 
 -- name: LiveGrantIDsForCert :many
-SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL;
+-- client_id IS NOT NULL: a server grant (Task 11) is deployed by
+-- internal/deploy.Dispatcher, its own issuance.VersionListener, never by
+-- agents.Service.render/OnVersion (clientOf's doc comment).
+SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL;
 
 -- name: LiveGrantIDsForExtraCert :many
 -- Live grants whose layout bundles cert_id as an extra certificate: a new
 -- version of an extra certificate must re-render these grants too, not
--- only the grants of cert_id's own certificate.
+-- only the grants of cert_id's own certificate. client_id IS NOT NULL: see
+-- LiveGrantIDsForCert.
 SELECT g.id FROM client_cert_grants g
 JOIN output_specs o ON o.id = g.output_spec_id
-WHERE g.removed_at IS NULL AND sqlc.arg(cert_id)::uuid = ANY(o.extra_cert_ids);
+WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND sqlc.arg(cert_id)::uuid = ANY(o.extra_cert_ids);
 
 -- name: LiveGrantIDsUsingLayout :many
-SELECT id FROM client_cert_grants WHERE output_spec_id = $1 AND removed_at IS NULL;
+-- client_id IS NOT NULL: see LiveGrantIDsForCert.
+SELECT id FROM client_cert_grants WHERE output_spec_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL;
 
 -- name: LiveGrantIDsUsingTarget :many
-SELECT id FROM client_cert_grants WHERE deploy_target_id = $1 AND removed_at IS NULL;
+-- client_id IS NOT NULL: a server grant's deploy_target_id names the
+-- server-run target itself (not an agent-side Traefik target), and its
+-- redeploy path never goes through agents.Resync; see LiveGrantIDsForCert.
+SELECT id FROM client_cert_grants WHERE deploy_target_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL;
 
 -- name: LiveGrantIDsUsingHook :many
-SELECT id FROM client_cert_grants WHERE sqlc.arg(hook_id)::uuid = ANY(hook_ids) AND removed_at IS NULL;
+-- client_id IS NOT NULL: see LiveGrantIDsForCert (a server grant never has
+-- hooks today, but this keeps the invariant explicit).
+SELECT id FROM client_cert_grants WHERE sqlc.arg(hook_id)::uuid = ANY(hook_ids) AND removed_at IS NULL AND client_id IS NOT NULL;
 
 -- name: CountLiveGrantsByCert :many
 SELECT cert_id, count(*)::bigint AS grants FROM client_cert_grants
@@ -156,8 +166,12 @@ WHERE c.id = sqlc.arg(cert_id)::uuid;
 
 -- name: LockTargetForGrant :one
 -- Locks the deploy target FOR SHARE before a grant references it, for the
--- same reason as LockLayoutForGrant.
-SELECT id FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE;
+-- same reason as LockLayoutForGrant. runs_on rides along so checkRefs can
+-- refuse a client grant (createGrant/updateGrant) referencing a
+-- server-run target (Task 11 pre-flight ruling: a client on a server
+-- target is a 422, the mirror of createServerGrant's own agent-target
+-- check) without a second round trip to the same now-locked row.
+SELECT id, runs_on FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE;
 
 -- name: GrantClientIDs :many
 -- Cheap grant id -> client id lookup (no joins), used to isolate a
@@ -192,7 +206,7 @@ SELECT g.id FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id
-WHERE g.removed_at IS NULL AND ce.current_version_id IS NOT NULL
+WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND ce.current_version_id IS NOT NULL
   AND (d.version_id IS DISTINCT FROM ce.current_version_id
        OR d.extra_version_ids IS DISTINCT FROM (
             SELECT COALESCE(array_agg(ec.current_version_id ORDER BY x.ord), '{}'::uuid[])
@@ -209,6 +223,71 @@ WHERE g.removed_at IS NULL AND ce.current_version_id IS NOT NULL
 -- no FK (it is a plain array), so this lock is what keeps a hook id from
 -- going dangling.
 SELECT id FROM hooks WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND org_id = sqlc.arg(org_id) FOR SHARE;
+
+-- ---- server grants (Task 11: client-less grants on a server-run deploy
+-- target). Every query below scopes by deploy_targets.org_id through the
+-- target join (pre-flight ruling), the way the queries above scope by
+-- clients.org_id.
+
+-- name: LockServerTarget :one
+-- Locks the deploy target FOR SHARE, org-scoped, before a server grant
+-- references it (same reason as LockTargetForGrant); the caller checks
+-- runs_on = 'server' itself (an agent-run target is a 422, not a 404).
+SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE;
+
+-- name: CreateServerGrant :one
+-- client_id is NULL, delivery is always 'push' (there is no agent pull
+-- schedule for a server grant), hook_ids is empty (hooks are agent-side).
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate)
+VALUES (NULL, $1, 'push', $2, $3, '{}', false) RETURNING *;
+
+-- name: LockServerGrant :one
+-- Org-scoped through deploy_targets.org_id (pre-flight ruling): locks only
+-- the grant row (FOR UPDATE OF g) even though the target row is joined to
+-- check org_id, so this never blocks a concurrent deploy-target update.
+SELECT g.* FROM client_cert_grants g
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = $2
+FOR UPDATE OF g;
+
+-- name: UpdateServerGrantLayout :one
+-- A server grant's only editable field (Shared contract: updateGrant on a
+-- server grant is layoutId only).
+UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), updated_at = now()
+WHERE id = sqlc.arg(id) RETURNING *;
+
+-- name: GrantRunsOn :one
+-- Tells updateGrant/deleteGrant/redeployGrant which of the two grant kinds
+-- id is, org-scoped through the matching join either way, in one round
+-- trip; pgx.ErrNoRows means id is not a grant of orgId at all (either
+-- kind), a 404. Deliberately no removed_at filter: deleteGrant must still
+-- reach a removal-pending client grant (force, or its own soft-delete
+-- confirmation path, both go through lockGrantAny); updateGrant and
+-- redeployGrant 404 a removed grant themselves, through their own
+-- downstream lock query (lockGrant, LockServerGrant), unchanged by this
+-- routing step.
+SELECT (CASE WHEN g.client_id IS NOT NULL THEN 'agent' ELSE 'server' END)::text AS runs_on
+FROM client_cert_grants g
+LEFT JOIN clients c ON c.id = g.client_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.id = $1
+  AND ((g.client_id IS NOT NULL AND c.org_id = $2) OR (g.client_id IS NULL AND t.org_id = $2));
+
+-- name: ServerGrantViews :many
+SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
+       g.output_spec_id, g.hook_ids, g.auto_remediate, g.created_at, g.updated_at,
+       sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at
+FROM client_cert_grants g
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN server_deployments sd ON sd.grant_id = g.id
+WHERE g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = sqlc.arg(org_id)
+  AND (sqlc.narg(target_id)::uuid IS NULL OR g.deploy_target_id = sqlc.narg(target_id)::uuid)
+  AND (sqlc.narg(grant_id)::uuid IS NULL OR g.id = sqlc.narg(grant_id)::uuid)
+ORDER BY lower(ce.name), g.id;
+
+-- name: CertificateCurrentVersion :one
+SELECT current_version_id FROM certificates WHERE id = $1;
 
 -- name: CheckGrantRefs :one
 SELECT

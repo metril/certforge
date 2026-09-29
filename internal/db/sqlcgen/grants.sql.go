@@ -68,6 +68,17 @@ func (q *Queries) CertificateCurrentHasKey(ctx context.Context, certID uuid.UUID
 	return i, err
 }
 
+const certificateCurrentVersion = `-- name: CertificateCurrentVersion :one
+SELECT current_version_id FROM certificates WHERE id = $1
+`
+
+func (q *Queries) CertificateCurrentVersion(ctx context.Context, id uuid.UUID) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, certificateCurrentVersion, id)
+	var current_version_id *uuid.UUID
+	err := row.Scan(&current_version_id)
+	return current_version_id, err
+}
+
 const certificateDeployments = `-- name: CertificateDeployments :many
 SELECT g.id AS grant_id, g.client_id, c.name AS client_name, c.status AS client_status, c.last_seen AS client_last_seen, c.site_id, g.delivery,
        g.output_spec_id AS layout_id, o.name AS layout_name, g.deploy_target_id, t.name AS deploy_target_name,
@@ -363,6 +374,40 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (Clien
 	return i, err
 }
 
+const createServerGrant = `-- name: CreateServerGrant :one
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate)
+VALUES (NULL, $1, 'push', $2, $3, '{}', false) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq
+`
+
+type CreateServerGrantParams struct {
+	CertID         uuid.UUID  `json:"cert_id"`
+	OutputSpecID   *uuid.UUID `json:"output_spec_id"`
+	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
+}
+
+// client_id is NULL, delivery is always 'push' (there is no agent pull
+// schedule for a server grant), hook_ids is empty (hooks are agent-side).
+func (q *Queries) CreateServerGrant(ctx context.Context, arg CreateServerGrantParams) (ClientCertGrant, error) {
+	row := q.db.QueryRow(ctx, createServerGrant, arg.CertID, arg.OutputSpecID, arg.DeployTargetID)
+	var i ClientCertGrant
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.CertID,
+		&i.Delivery,
+		&i.OutputSpecID,
+		&i.DeployTargetID,
+		&i.HookIds,
+		&i.AutoRemediate,
+		&i.RemovedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RemovedRevision,
+		&i.RedeploySeq,
+	)
+	return i, err
+}
+
 const deleteGrantRow = `-- name: DeleteGrantRow :exec
 DELETE FROM client_cert_grants WHERE id = $1
 `
@@ -403,6 +448,36 @@ func (q *Queries) GrantClientIDs(ctx context.Context, ids []uuid.UUID) ([]GrantC
 		return nil, err
 	}
 	return items, nil
+}
+
+const grantRunsOn = `-- name: GrantRunsOn :one
+SELECT (CASE WHEN g.client_id IS NOT NULL THEN 'agent' ELSE 'server' END)::text AS runs_on
+FROM client_cert_grants g
+LEFT JOIN clients c ON c.id = g.client_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.id = $1
+  AND ((g.client_id IS NOT NULL AND c.org_id = $2) OR (g.client_id IS NULL AND t.org_id = $2))
+`
+
+type GrantRunsOnParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Tells updateGrant/deleteGrant/redeployGrant which of the two grant kinds
+// id is, org-scoped through the matching join either way, in one round
+// trip; pgx.ErrNoRows means id is not a grant of orgId at all (either
+// kind), a 404. Deliberately no removed_at filter: deleteGrant must still
+// reach a removal-pending client grant (force, or its own soft-delete
+// confirmation path, both go through lockGrantAny); updateGrant and
+// redeployGrant 404 a removed grant themselves, through their own
+// downstream lock query (lockGrant, LockServerGrant), unchanged by this
+// routing step.
+func (q *Queries) GrantRunsOn(ctx context.Context, arg GrantRunsOnParams) (string, error) {
+	row := q.db.QueryRow(ctx, grantRunsOn, arg.ID, arg.OrgID)
+	var runs_on string
+	err := row.Scan(&runs_on)
+	return runs_on, err
 }
 
 const grantSources = `-- name: GrantSources :many
@@ -550,9 +625,12 @@ func (q *Queries) GrantViews(ctx context.Context, arg GrantViewsParams) ([]Grant
 }
 
 const liveGrantIDsForCert = `-- name: LiveGrantIDsForCert :many
-SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL
+SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL
 `
 
+// client_id IS NOT NULL: a server grant (Task 11) is deployed by
+// internal/deploy.Dispatcher, its own issuance.VersionListener, never by
+// agents.Service.render/OnVersion (clientOf's doc comment).
 func (q *Queries) LiveGrantIDsForCert(ctx context.Context, certID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, liveGrantIDsForCert, certID)
 	if err != nil {
@@ -576,12 +654,13 @@ func (q *Queries) LiveGrantIDsForCert(ctx context.Context, certID uuid.UUID) ([]
 const liveGrantIDsForExtraCert = `-- name: LiveGrantIDsForExtraCert :many
 SELECT g.id FROM client_cert_grants g
 JOIN output_specs o ON o.id = g.output_spec_id
-WHERE g.removed_at IS NULL AND $1::uuid = ANY(o.extra_cert_ids)
+WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND $1::uuid = ANY(o.extra_cert_ids)
 `
 
 // Live grants whose layout bundles cert_id as an extra certificate: a new
 // version of an extra certificate must re-render these grants too, not
-// only the grants of cert_id's own certificate.
+// only the grants of cert_id's own certificate. client_id IS NOT NULL: see
+// LiveGrantIDsForCert.
 func (q *Queries) LiveGrantIDsForExtraCert(ctx context.Context, certID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, liveGrantIDsForExtraCert, certID)
 	if err != nil {
@@ -603,9 +682,11 @@ func (q *Queries) LiveGrantIDsForExtraCert(ctx context.Context, certID uuid.UUID
 }
 
 const liveGrantIDsUsingHook = `-- name: LiveGrantIDsUsingHook :many
-SELECT id FROM client_cert_grants WHERE $1::uuid = ANY(hook_ids) AND removed_at IS NULL
+SELECT id FROM client_cert_grants WHERE $1::uuid = ANY(hook_ids) AND removed_at IS NULL AND client_id IS NOT NULL
 `
 
+// client_id IS NOT NULL: see LiveGrantIDsForCert (a server grant never has
+// hooks today, but this keeps the invariant explicit).
 func (q *Queries) LiveGrantIDsUsingHook(ctx context.Context, hookID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, liveGrantIDsUsingHook, hookID)
 	if err != nil {
@@ -627,9 +708,10 @@ func (q *Queries) LiveGrantIDsUsingHook(ctx context.Context, hookID uuid.UUID) (
 }
 
 const liveGrantIDsUsingLayout = `-- name: LiveGrantIDsUsingLayout :many
-SELECT id FROM client_cert_grants WHERE output_spec_id = $1 AND removed_at IS NULL
+SELECT id FROM client_cert_grants WHERE output_spec_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL
 `
 
+// client_id IS NOT NULL: see LiveGrantIDsForCert.
 func (q *Queries) LiveGrantIDsUsingLayout(ctx context.Context, outputSpecID *uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, liveGrantIDsUsingLayout, outputSpecID)
 	if err != nil {
@@ -651,9 +733,12 @@ func (q *Queries) LiveGrantIDsUsingLayout(ctx context.Context, outputSpecID *uui
 }
 
 const liveGrantIDsUsingTarget = `-- name: LiveGrantIDsUsingTarget :many
-SELECT id FROM client_cert_grants WHERE deploy_target_id = $1 AND removed_at IS NULL
+SELECT id FROM client_cert_grants WHERE deploy_target_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL
 `
 
+// client_id IS NOT NULL: a server grant's deploy_target_id names the
+// server-run target itself (not an agent-side Traefik target), and its
+// redeploy path never goes through agents.Resync; see LiveGrantIDsForCert.
 func (q *Queries) LiveGrantIDsUsingTarget(ctx context.Context, deployTargetID *uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, liveGrantIDsUsingTarget, deployTargetID)
 	if err != nil {
@@ -835,8 +920,77 @@ func (q *Queries) LockLayoutForGrant(ctx context.Context, arg LockLayoutForGrant
 	return i, err
 }
 
+const lockServerGrant = `-- name: LockServerGrant :one
+SELECT g.id, g.client_id, g.cert_id, g.delivery, g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.removed_at, g.created_at, g.updated_at, g.removed_revision, g.redeploy_seq FROM client_cert_grants g
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = $2
+FOR UPDATE OF g
+`
+
+type LockServerGrantParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Org-scoped through deploy_targets.org_id (pre-flight ruling): locks only
+// the grant row (FOR UPDATE OF g) even though the target row is joined to
+// check org_id, so this never blocks a concurrent deploy-target update.
+func (q *Queries) LockServerGrant(ctx context.Context, arg LockServerGrantParams) (ClientCertGrant, error) {
+	row := q.db.QueryRow(ctx, lockServerGrant, arg.ID, arg.OrgID)
+	var i ClientCertGrant
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.CertID,
+		&i.Delivery,
+		&i.OutputSpecID,
+		&i.DeployTargetID,
+		&i.HookIds,
+		&i.AutoRemediate,
+		&i.RemovedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RemovedRevision,
+		&i.RedeploySeq,
+	)
+	return i, err
+}
+
+const lockServerTarget = `-- name: LockServerTarget :one
+
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
+`
+
+type LockServerTargetParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// ---- server grants (Task 11: client-less grants on a server-run deploy
+// target). Every query below scopes by deploy_targets.org_id through the
+// target join (pre-flight ruling), the way the queries above scope by
+// clients.org_id.
+// Locks the deploy target FOR SHARE, org-scoped, before a server grant
+// references it (same reason as LockTargetForGrant); the caller checks
+// runs_on = 'server' itself (an agent-run target is a 422, not a 404).
+func (q *Queries) LockServerTarget(ctx context.Context, arg LockServerTargetParams) (DeployTarget, error) {
+	row := q.db.QueryRow(ctx, lockServerTarget, arg.ID, arg.OrgID)
+	var i DeployTarget
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.RunsOn,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const lockTargetForGrant = `-- name: LockTargetForGrant :one
-SELECT id FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
+SELECT id, runs_on FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
 `
 
 type LockTargetForGrantParams struct {
@@ -844,13 +998,22 @@ type LockTargetForGrantParams struct {
 	OrgID uuid.UUID `json:"org_id"`
 }
 
+type LockTargetForGrantRow struct {
+	ID     uuid.UUID `json:"id"`
+	RunsOn string    `json:"runs_on"`
+}
+
 // Locks the deploy target FOR SHARE before a grant references it, for the
-// same reason as LockLayoutForGrant.
-func (q *Queries) LockTargetForGrant(ctx context.Context, arg LockTargetForGrantParams) (uuid.UUID, error) {
+// same reason as LockLayoutForGrant. runs_on rides along so checkRefs can
+// refuse a client grant (createGrant/updateGrant) referencing a
+// server-run target (Task 11 pre-flight ruling: a client on a server
+// target is a 422, the mirror of createServerGrant's own agent-target
+// check) without a second round trip to the same now-locked row.
+func (q *Queries) LockTargetForGrant(ctx context.Context, arg LockTargetForGrantParams) (LockTargetForGrantRow, error) {
 	row := q.db.QueryRow(ctx, lockTargetForGrant, arg.ID, arg.OrgID)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
+	var i LockTargetForGrantRow
+	err := row.Scan(&i.ID, &i.RunsOn)
+	return i, err
 }
 
 const markGrantRemoved = `-- name: MarkGrantRemoved :exec
@@ -912,12 +1075,86 @@ func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *u
 	return items, nil
 }
 
+const serverGrantViews = `-- name: ServerGrantViews :many
+SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
+       g.output_spec_id, g.hook_ids, g.auto_remediate, g.created_at, g.updated_at,
+       sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at
+FROM client_cert_grants g
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN server_deployments sd ON sd.grant_id = g.id
+WHERE g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = $1
+  AND ($2::uuid IS NULL OR g.deploy_target_id = $2::uuid)
+  AND ($3::uuid IS NULL OR g.id = $3::uuid)
+ORDER BY lower(ce.name), g.id
+`
+
+type ServerGrantViewsParams struct {
+	OrgID    uuid.UUID  `json:"org_id"`
+	TargetID *uuid.UUID `json:"target_id"`
+	GrantID  *uuid.UUID `json:"grant_id"`
+}
+
+type ServerGrantViewsRow struct {
+	ID                  uuid.UUID   `json:"id"`
+	DeployTargetID      *uuid.UUID  `json:"deploy_target_id"`
+	CertID              uuid.UUID   `json:"cert_id"`
+	CertificateName     string      `json:"certificate_name"`
+	Delivery            string      `json:"delivery"`
+	OutputSpecID        *uuid.UUID  `json:"output_spec_id"`
+	HookIds             []uuid.UUID `json:"hook_ids"`
+	AutoRemediate       bool        `json:"auto_remediate"`
+	CreatedAt           time.Time   `json:"created_at"`
+	UpdatedAt           time.Time   `json:"updated_at"`
+	Status              *string     `json:"status"`
+	VersionID           *uuid.UUID  `json:"version_id"`
+	LastError           *string     `json:"last_error"`
+	DeployedAt          *time.Time  `json:"deployed_at"`
+	DeploymentUpdatedAt *time.Time  `json:"deployment_updated_at"`
+}
+
+func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsParams) ([]ServerGrantViewsRow, error) {
+	rows, err := q.db.Query(ctx, serverGrantViews, arg.OrgID, arg.TargetID, arg.GrantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ServerGrantViewsRow{}
+	for rows.Next() {
+		var i ServerGrantViewsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeployTargetID,
+			&i.CertID,
+			&i.CertificateName,
+			&i.Delivery,
+			&i.OutputSpecID,
+			&i.HookIds,
+			&i.AutoRemediate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Status,
+			&i.VersionID,
+			&i.LastError,
+			&i.DeployedAt,
+			&i.DeploymentUpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const staleDeploymentGrantIDs = `-- name: StaleDeploymentGrantIDs :many
 SELECT g.id FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id
-WHERE g.removed_at IS NULL AND ce.current_version_id IS NOT NULL
+WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND ce.current_version_id IS NOT NULL
   AND (d.version_id IS DISTINCT FROM ce.current_version_id
        OR d.extra_version_ids IS DISTINCT FROM (
             SELECT COALESCE(array_agg(ec.current_version_id ORDER BY x.ord), '{}'::uuid[])
@@ -977,6 +1214,39 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (Clien
 		arg.AutoRemediate,
 		arg.ID,
 	)
+	var i ClientCertGrant
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.CertID,
+		&i.Delivery,
+		&i.OutputSpecID,
+		&i.DeployTargetID,
+		&i.HookIds,
+		&i.AutoRemediate,
+		&i.RemovedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RemovedRevision,
+		&i.RedeploySeq,
+	)
+	return i, err
+}
+
+const updateServerGrantLayout = `-- name: UpdateServerGrantLayout :one
+UPDATE client_cert_grants SET output_spec_id = $1, updated_at = now()
+WHERE id = $2 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq
+`
+
+type UpdateServerGrantLayoutParams struct {
+	OutputSpecID *uuid.UUID `json:"output_spec_id"`
+	ID           uuid.UUID  `json:"id"`
+}
+
+// A server grant's only editable field (Shared contract: updateGrant on a
+// server grant is layoutId only).
+func (q *Queries) UpdateServerGrantLayout(ctx context.Context, arg UpdateServerGrantLayoutParams) (ClientCertGrant, error) {
+	row := q.db.QueryRow(ctx, updateServerGrantLayout, arg.OutputSpecID, arg.ID)
 	var i ClientCertGrant
 	err := row.Scan(
 		&i.ID,

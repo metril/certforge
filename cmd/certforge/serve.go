@@ -106,6 +106,10 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	issuanceStore := issuance.NewStore(pool, box, store)
 	issuanceStore.SetVault(vaultProvider)
 	certStore := certstore.New(pool, box)
+	// dispatcher.River is set right after riverClient exists below (same
+	// construct-then-wire order as keysSvc): RegisterRiver only needs the
+	// Dispatcher pointer, not River itself, to register DeployWorker.
+	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: deployReg, Certs: certStore, Log: log}
 	agentSettings, err := agents.NewSettingsSource(store, sections, cfg.BaseURL)
 	if err != nil {
 		return err
@@ -134,7 +138,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Box: box, Auditor: aud, Settings: agentSettings, Log: log}
 	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
 	issueWorker.Log = log
-	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc)
+	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc, dispatcher)
 	// Shared with api.Deps.HTTPTokens below; set on the worker before
 	// riverClient.Start so a server http-01 rule can already be served by
 	// the time the first job runs.
@@ -165,11 +169,12 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// the Service pointer, not River itself, to register RewrapWorker.
 	keysSvc := &kek.Service{Env: env, Settings: store, Pool: pool, Audit: aud, Info: keysInfo, Log: log}
 	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log,
-		agentListener.RegisterRiver, agentSvc.RegisterRiver, keysSvc.RegisterRiver)
+		agentListener.RegisterRiver, agentSvc.RegisterRiver, keysSvc.RegisterRiver, dispatcher.RegisterRiver)
 	if err != nil {
 		return fmt.Errorf("river client: %w", err)
 	}
 	keysSvc.River = riverClient
+	dispatcher.River = riverClient
 	issuanceSvc := issuance.NewService(issuanceStore, certStore, riverClient)
 	issuanceSvc.Auditor = aud
 	issuanceSvc.Log = log
@@ -177,7 +182,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// Same listener as issueWorker.Listeners above: an uploaded version
 	// (Task 13) re-renders any grant already on the certificate exactly
 	// like a freshly issued one does.
-	issuanceSvc.Listeners = append(issuanceSvc.Listeners, agentSvc)
+	issuanceSvc.Listeners = append(issuanceSvc.Listeners, agentSvc, dispatcher)
 	// Backs UploadVersion's keyless-grant rule (fix round 1); see
 	// issuance.Service.KeylessGrantHook and agents.LiveGrantsNeedKeyTx's own
 	// doc comments for why this is wired as a plain function value.
@@ -213,7 +218,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
-		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg,
+		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher,
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

@@ -6,10 +6,12 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -56,6 +58,44 @@ type apiFixture struct {
 	org           uuid.UUID
 	settingsStore *settings.Store
 	sections      *settings.Registry
+	deployJobs    *fakeDeployJobs
+}
+
+// fakeDeployJobs is a deploy.Inserter recording every certforge_server_deploy
+// job InsertTx receives, so a test can assert what was enqueued and then
+// drive Dispatcher.Deploy directly (these fixtures run no live river
+// worker loop).
+type fakeDeployJobs struct {
+	mu      sync.Mutex
+	queued  map[string]bool // "grantID|versionID" while not completed
+	inserts []deploy.DeployArgs
+}
+
+func newFakeDeployJobs() *fakeDeployJobs { return &fakeDeployJobs{queued: map[string]bool{}} }
+
+func (j *fakeDeployJobs) InsertTx(_ context.Context, _ pgx.Tx, a river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+	da := a.(deploy.DeployArgs)
+	key := da.GrantID.String() + "|" + da.VersionID.String()
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	dup := j.queued[key]
+	j.queued[key] = true
+	j.inserts = append(j.inserts, da)
+	return &rivertype.JobInsertResult{Job: &rivertype.JobRow{}, UniqueSkippedAsDuplicate: dup}, nil
+}
+
+// count returns how many times a DeployArgs{grantID, versionID} was
+// inserted (including duplicates skipped by uniqueness).
+func (j *fakeDeployJobs) count(grantID, versionID uuid.UUID) int {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	n := 0
+	for _, a := range j.inserts {
+		if a.GrantID == grantID && a.VersionID == versionID {
+			n++
+		}
+	}
+	return n
 }
 
 // setVaultSettings stores raw as the "vault" global settings section
@@ -109,10 +149,12 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	svc.NewRegistrar = func(issuance.CA) issuance.Registrar { return &fakeRegistrar{} }
 	svc.Auditor = aud
 	svc.Log = slog.Default()
-	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
-		Settings: settingsStore, Sections: sections, Vault: vaultProvider, Deploy: deployReg}}
+	deployJobs := newFakeDeployJobs()
+	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: deployReg, Certs: certs, River: deployJobs, Log: slog.Default()}
+	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Queries: q, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
+		Settings: settingsStore, Sections: sections, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher}}
 	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, box: box, org: dbtest.Org(t, pool),
-		settingsStore: settingsStore, sections: sections}
+		settingsStore: settingsStore, sections: sections, deployJobs: deployJobs}
 }
 
 // as returns a context for a user holding role in the fixture org; admin is
@@ -149,6 +191,33 @@ func (f *apiFixture) issuedCert(t *testing.T, name string) (issuance.Certificate
 		t.Fatal(err)
 	}
 	return c, v
+}
+
+// secondVersion inserts a second certificate_versions row for an existing
+// certID and makes it current, returning its id: TestServerGrantLifecycle
+// (Task 11) uses this to exercise a new version enqueuing a fresh server
+// deploy, the same way agents.syncFixture.version/setCurrent do for a
+// client grant's own re-render tests.
+func (f *apiFixture) secondVersion(t *testing.T, certID uuid.UUID, serial string) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := f.store.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := f.certs.Insert(ctx, tx, certID, &signer.Issued{LeafDER: []byte("leaf-" + serial), ChainDER: [][]byte{[]byte("int-" + serial)},
+		PrivateKeyPKCS8: []byte("secret-key-" + serial), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), Serial: serial},
+		"ec256", certstore.InsertOpts{Source: "issued"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET current_version_id = $2 WHERE id = $1`, certID, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	return v.ID
 }
 
 func wantStatus(t *testing.T, err error, status int) {

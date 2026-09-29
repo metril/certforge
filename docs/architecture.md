@@ -194,6 +194,22 @@ A new certificate version is rendered by `agents.Service.OnVersion` (the `issuan
 
 Two grants on one client may never write the same path — including a Traefik target's generated `certs/<SafeName>/*` files, so two certificates whose names share a `SafeName` collide — checked across the client's live grants and any still awaiting removal (their last-rendered `expected` paths count, falling back to their layout/target definition when nothing was ever rendered); a conflicting create, update, layout/target update or certificate rename returns 409. Deleting a grant of a client that has ever actually applied a revision marks it `removed_at` and bumps the revision so the agent can delete its files on its own schedule; the row is only deleted once the agent's next report confirms the files are gone. A grant of a client that is revoked, or is pending and has never applied any revision (no agent ever could have written its files), has no agent to act on it, so the delete removes the row at once — including a client that re-enrolled after deploying, which keeps the soft-delete path since files from before the re-enrolment may still be on disk. Deleting a certificate locks it and counts its live and removal-pending grants (not just live ones, since `cert_id` cascades) in one transaction; creating a grant locks the certificate in a compatible-but-exclusive mode, so the two can never race each other into a dangling grant.
 
+### Server-side deploy {#server-side-deploy}
+
+A server-run deploy target (`vault-kv`; `internal/deploy.RunsOn`) has no agent, so its grants ("server grants": `client_cert_grants.client_id NULL`, `deploy_target_id` set) never enter the flow above — `agents.render`, `OnVersion` and `SweepDeployments` all exclude them (`client_id IS NOT NULL`), and a grant's `Grant.runsOn`/`Grant.serverDeployment` in place of `deployment` tells the two kinds apart in the API. `internal/deploy.Dispatcher` is their own, parallel `issuance.VersionListener`, registered in `cmd/certforge/serve.go` alongside `agents.Service`:
+
+```mermaid
+flowchart LR
+  V[IssueWorker commits a version] -->|OnVersion| P[(server_deployments: pending)]
+  P --> J[certforge_server_deploy job]
+  C[createServerGrant / redeployGrant / layout change] --> P
+  J --> T[deploy.Target.Deploy]
+  T -->|ok| K[(server_deployments: deployed)]
+  T -->|error| F[(server_deployments: failed, last_error)]
+```
+
+`Dispatcher.OnVersion` upserts every live server grant of the certificate to `pending` and enqueues `certforge_server_deploy{grantId, versionId}` (unique per grant while queued or running, so a burst of versions never stacks duplicate jobs; retried up to 5 times with backoff on failure). `createServerGrant`, `redeployGrant` and a server grant's own `updateGrant` (layout change) call the same upsert-and-enqueue (`Dispatcher.EnqueueTx`) from their own transaction, so the grant write and the first deploy attempt commit together. `DeployWorker` renders the certificate's own material — a layout's files (PEM parts only; a server grant's layout may never hold a p12/jks/DER file) or, without one, the four canonical PEM parts (the key only when the target's `includeKey` is set) — and hands them to the target's own `Deploy`. A failure records a truncated (≤ 1000 characters) `last_error`; every `internal/vault.Client` error a `Target` implementation returns is already redacted of any token or secretId before `Dispatcher` ever sees it, so `last_error` is safe to show as-is. Deleting a server grant removes its row (and, by cascade, its `server_deployments` row) at once — there is no agent to wait on, so there is no removal-pending state the way a client grant has.
+
 ## Agent protocol
 
 The agent listener (`CF_LISTEN_AGENT`, mutual TLS against the internal agent CA — ADR 0009) serves `/agent/v1/*`, a small `net/http` surface separate from the OpenAPI-documented `/api/v1/*`. Every route but `/agent/v1/enroll` runs behind `requireAgent`, which admits only a client certificate the agent CA store still trusts, mapped by its embedded client id to an `active` client whose serial matches the newest one issued to it.

@@ -131,10 +131,18 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 		}
 	}
 	if in.TargetID != nil {
-		if _, err := q.LockTargetForGrant(ctx, sqlcgen.LockTargetForGrantParams{ID: *in.TargetID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
+		t, err := q.LockTargetForGrant(ctx, sqlcgen.LockTargetForGrantParams{ID: *in.TargetID, OrgID: orgID})
+		if errors.Is(err, pgx.ErrNoRows) {
 			return invalid("deployTargetId", "deploy target %s is not in this org", *in.TargetID)
 		} else if err != nil {
 			return err
+		}
+		// A client grant (this package) never targets a server-run type
+		// (vault-kv): the mirror of createServerGrant's own "agent target"
+		// 422 (Task 11 pre-flight ruling). createServerGrant/updateServerGrant
+		// (internal/api/grants.go) are the only path onto a server-run target.
+		if t.RunsOn != "agent" {
+			return invalid("deployTargetId", "deploy target %s runs on the server, not an agent; grant it from the deploy target instead", *in.TargetID)
 		}
 	}
 	// Locks the certificate FOR KEY SHARE before inserting/updating a row

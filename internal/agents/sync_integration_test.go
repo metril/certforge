@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -660,5 +661,32 @@ func TestBatchRenderKeyedByVersionAndKeyFlag(t *testing.T) {
 	wantExtraDigest := delivery.Digest(wantExtraFiles[0].Data)
 	if got := f.expectedDigest(t, gB); got != wantExtraDigest {
 		t.Fatalf("gB's extra part did not re-render onto A's new version: got %s, want %s", got, wantExtraDigest)
+	}
+}
+
+// TestCreateGrantRefusesServerRunTarget covers the Task 11 pre-flight
+// ruling's mirror image: a client grant (this package's CreateGrant) may
+// never reference a server-run deploy target (vault-kv) — that is
+// createServerGrant's job (internal/api/grants.go). 422, not a panic or a
+// silently-accepted grant an agent could never actually deploy.
+func TestCreateGrantRefusesServerRunTarget(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	c := f.client(t, "c1")
+	certID := f.cert(t, "web")
+
+	b, err := json.Marshal(map[string]any{"mount": "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dt, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "vault", Type: "vault-kv", RunsOn: "server", Config: b})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &dt.ID})
+	var ae *Error
+	if !errors.As(err, &ae) || ae.Kind != KindInvalid {
+		t.Fatalf("CreateGrant onto a server-run target: err = %v, want KindInvalid", err)
 	}
 }
