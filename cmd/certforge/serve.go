@@ -112,6 +112,16 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	deployReg := deploy.NewRegistry()
 	deployReg.Register("Vault KV (runs on server)", deploy.VaultKV{Vault: vaultProvider})
 	deploy.AddToMeta(deployReg, metaReg)
+	// notifySettings reads the live "notifications" section on every Send
+	// (never cached): notify.SettingsFunc's doc comment.
+	notifySettings := func(ctx context.Context) (notify.Settings, error) { return notify.Current(ctx, store) }
+	notifyReg := notify.NewRegistry()
+	notifyReg.Register(notify.Webhook{Settings: notifySettings})
+	notifyReg.Register(notify.Discord{Settings: notifySettings})
+	notifyReg.Register(notify.Ntfy{Settings: notifySettings})
+	notifyReg.Register(notify.HomeAssistant{Settings: notifySettings})
+	// Task 5 registers "smtp"; Task 6 wires notifyReg into notify.Service and DeliverWorker.
+	notify.AddToMeta(notifyReg, metaReg)
 	issuanceStore := issuance.NewStore(pool, box, store)
 	issuanceStore.SetVault(vaultProvider)
 	certStore := certstore.New(pool, box)

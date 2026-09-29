@@ -241,3 +241,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Schema for notification channels, events, deliveries and external monitors; SMTP, Prometheus and notification settings; alerts permissions.
 - OpenAPI contract for alerts, monitors, events, backup and SMTP test; generated Go client.
 - Notification events with deduplication and retried per-channel delivery.
+- Webhook, Discord, ntfy and Home Assistant notifiers.

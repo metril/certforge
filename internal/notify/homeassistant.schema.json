@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Home Assistant",
+  "description": "Calls a Home Assistant webhook automation trigger with the event.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["baseUrl", "webhookId"],
+  "properties": {
+    "baseUrl": {
+      "type": "string",
+      "title": "Base URL",
+      "description": "Home Assistant base URL, for example https://homeassistant.local:8123.",
+      "pattern": "^https?://[^/\\s]+(/.*)?$",
+      "maxLength": 2048
+    },
+    "webhookId": {
+      "type": "string",
+      "title": "Webhook ID",
+      "description": "The webhook trigger's ID, as configured on the Home Assistant automation's Webhook trigger.",
+      "maxLength": 128,
+      "secret": true
+    },
+    "caPem": {
+      "type": "string",
+      "title": "CA certificate (PEM)",
+      "description": "Additional trusted root certificate(s), PEM-encoded.",
+      "maxLength": 65536
+    }
+  }
+}

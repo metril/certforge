@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ntfy",
+  "description": "Publishes the event as a push notification through ntfy.sh or a self-hosted ntfy server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["topic"],
+  "properties": {
+    "server": {
+      "type": "string",
+      "title": "Server",
+      "description": "ntfy server base URL.",
+      "pattern": "^https?://[^/\\s]+(/.*)?$",
+      "maxLength": 2048,
+      "default": "https://ntfy.sh"
+    },
+    "topic": {
+      "type": "string",
+      "title": "Topic",
+      "description": "ntfy topic to publish to.",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "token": {
+      "type": "string",
+      "title": "Access token",
+      "description": "ntfy access token, sent as a Bearer Authorization header. Leave empty for a public topic.",
+      "maxLength": 1024,
+      "secret": true
+    },
+    "caPem": {
+      "type": "string",
+      "title": "CA certificate (PEM)",
+      "description": "Additional trusted root certificate(s) for a self-hosted server, PEM-encoded.",
+      "maxLength": 65536
+    }
+  }
+}

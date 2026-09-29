@@ -9,6 +9,7 @@
 package notify
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -53,6 +54,27 @@ type Settings struct {
 	AllowLoopbackURLs bool `json:"allowLoopbackUrls"`
 	ExpiryWarningDays int  `json:"expiryWarningDays"`
 	FailureThreshold  int  `json:"failureThreshold"`
+}
+
+// Current reads the live "notifications" settings section: its stored
+// value, or the section's own default when it was never saved. Every HTTP
+// notifier's Send (task-4 brief: "the live notifications.allowLoopbackUrls")
+// calls this on every delivery rather than caching a value read at
+// boot — an operator can flip allowLoopbackUrls at any time, and Send must
+// see the change on its very next attempt.
+func Current(ctx context.Context, store *settings.Store) (Settings, error) {
+	var raw json.RawMessage
+	err := store.Get(ctx, settings.SectionKey(SectionName), &raw)
+	if errors.Is(err, settings.ErrNotFound) {
+		raw = json.RawMessage(notificationsSettingsDefault)
+	} else if err != nil {
+		return Settings{}, err
+	}
+	var s Settings
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return Settings{}, err
+	}
+	return s, nil
 }
 
 // RegisterSettings adds the "smtp" and "notifications" sections and the

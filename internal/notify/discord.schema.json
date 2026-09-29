@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Discord",
+  "description": "Posts the event as an embed through a Discord incoming webhook.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["webhookUrl"],
+  "properties": {
+    "webhookUrl": {
+      "type": "string",
+      "title": "Webhook URL",
+      "description": "Discord incoming webhook URL (Server Settings -> Integrations -> Webhooks). Must be https.",
+      "maxLength": 2048,
+      "secret": true
+    }
+  }
+}

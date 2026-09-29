@@ -175,6 +175,46 @@ metaReg.Add(meta.KindDNSProvider, meta.Entry{Code: "cloudflare", Name: "Cloudfla
 
 It appears in `GET /api/v1/meta/schemas`, and the UI renders its form from the schema.
 
+## Adding a notifier
+
+A notifier delivers one `notify.Event` to one `notification_channels.type`
+(`internal/notify/{webhook,discord,ntfy,homeassistant}.go` are the four HTTP
+ones; `smtp.go` is the mail one). Implement `notify.Notifier`:
+
+```go
+type Notifier interface {
+    Type() string
+    Name() string
+    Schema() []byte
+    Send(ctx context.Context, ev Event, target Target, cfg map[string]any, secrets map[string]string) error
+}
+```
+
+`Schema()` is an embedded JSON Schema (`//go:embed foo.schema.json`); mark a
+field `"secret": true` to store it encrypted, split from `cfg` into `Send`'s
+own `secrets` map. **Never give a secret property a `pattern`, `enum`,
+`const` or `format` keyword** — a failed one echoes the rejected value into
+the schema validator's error text, which would leak the secret into a
+stored `last_error` or a 422 body (the same rule
+`internal/settings.secretProps` enforces for settings sections). Validate a
+secret field's shape in Go instead, through `notify.ConfigChecker`:
+
+```go
+func (MyNotifier) CheckConfig(cfg map[string]any) error { /* cfg is the full, pre-split input */ }
+```
+
+`(*notify.Registry).ValidateConfig(type, cfg)` runs the schema first, then
+`CheckConfig` when the notifier implements it — Task 6's channel
+create/update calls it before splitting secrets out.
+
+An HTTP notifier builds its own `httpx.Client` in `Send` (never a shared
+one, since `caPem` and the loopback policy are channel- and moment-specific)
+and always calls `httpx.CheckURL` immediately before dialing, even though
+the same URL was already checked at channel create/update — see
+[`notifications.md#url-policy`](notifications.md#url-policy). Register the
+type in `cmd/certforge/serve.go` (`notifyReg.Register(...)`); it then
+appears in `GET /api/v1/meta/schemas` via `notify.AddToMeta`.
+
 ## Frontend
 
 The web UI lives in `web/` (Vite, React 18, TypeScript strict, Tailwind 4, shadcn/ui on Radix).

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Webhook",
+  "description": "Sends the event as a JSON POST to any HTTP(S) endpoint, optionally HMAC-signed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url"],
+  "properties": {
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "description": "Endpoint CertForge sends the event to. Kept secret: a token embedded in the URL should not be exposed once saved.",
+      "maxLength": 2048,
+      "secret": true
+    },
+    "authHeader": {
+      "type": "string",
+      "title": "Authorization header",
+      "description": "Sent verbatim as the request's Authorization header, for example \"Bearer <token>\".",
+      "maxLength": 1024,
+      "secret": true
+    },
+    "headers": {
+      "type": "object",
+      "title": "Extra headers",
+      "description": "Additional headers sent with every request. A credential-looking name (Authorization, Cookie, or one containing token, key, secret or auth) is rejected; use authHeader for a credential instead.",
+      "maxProperties": 20,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z0-9-]{1,64}$": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "signingSecret": {
+      "type": "string",
+      "title": "Signing secret",
+      "description": "HMAC-SHA256 key for the X-CertForge-Signature header. Leave empty to send the request unsigned.",
+      "minLength": 16,
+      "maxLength": 256,
+      "secret": true
+    },
+    "caPem": {
+      "type": "string",
+      "title": "CA certificate (PEM)",
+      "description": "Additional trusted root certificate(s) for this endpoint, PEM-encoded.",
+      "maxLength": 65536
+    }
+  }
+}

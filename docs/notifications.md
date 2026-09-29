@@ -8,9 +8,37 @@ channel (Settings → Channels, `GET/POST/PATCH/DELETE
 severity match. `internal/notify` is the event model, the emitter and the
 per-channel delivery job; `internal/notify/httpx` is the outbound HTTP
 client every HTTP-based notifier (webhook, Discord, ntfy, Home Assistant)
-and every external monitor shares. This page covers the event model and
-the outbound URL policy; channel configuration and the notifier wire
-formats land with Task 4/5's own documentation update.
+and every external monitor shares. This page covers the event model, channel
+configuration, the four HTTP notifiers' wire formats and the outbound URL
+policy; SMTP's own wire format and `testSmtpSettings` land with Task 5's
+documentation update.
+
+## Channels
+
+A notification channel (Settings → Channels) is one delivery destination: a
+`type` (`webhook`, `smtp`, `discord`, `ntfy` or `homeassistant`), that
+type's own config, an event filter (`events`, empty meaning every kind) and
+minimum severity, and an org scope (`allOrgs` widens it to every org's
+events, gated to a global admin). `GET /api/v1/meta/schemas`'s `notifiers[]`
+lists each type's JSON Schema — `title`, `description` and a `secret: true`
+marker per field drive the settings UI's form, tooltips and which fields are
+stored encrypted. A field marked secret is never read back: `GET
+.../channels/{id}` reports `storedSecrets` (the secret field names that
+currently have a value) instead of the value itself. `POST
+.../channels/{id}/test` sends a synthetic `test` event to that one channel
+only, inline, bypassing the dedupe and delivery-job path below, so an
+operator gets an immediate delivered/failed result.
+
+`(*notify.Registry).ValidateConfig(type, cfg)` is every channel write's
+single validation entry point: it checks `cfg` — the channel's full
+submitted config, secret values included, before they are split out to
+encrypted storage — against the type's JSON Schema, then the notifier's own
+extra check when it has one (`notify.ConfigChecker`): a credential-looking
+header name for `webhook`, `webhookUrl`'s scheme for `discord`, `webhookId`'s
+character set for `homeassistant`. Those three checks live in Go rather than
+the schema itself, because the field they check is secret and the schema
+validator would otherwise echo the rejected value into its own error text.
+Channel CRUD and the events list themselves land with Task 6's API.
 
 ## Events
 
@@ -95,6 +123,127 @@ Each delivery is retried independently by river (`certforge_notify_deliver`,
 five attempts) with its own `attempts`/`status`/`last_error` on
 `notification_deliveries` — a channel failing does not block or retry any
 other channel's own delivery of the same event.
+
+## Webhook payload
+
+Webhook and Home Assistant send the same JSON body (`internal/notify.Payload`):
+
+```json
+{
+  "id": "5b1e4b0a-...",
+  "kind": "cert.expiring",
+  "at": "2026-09-29T12:00:00Z",
+  "severity": "warning",
+  "org": {"id": "8f2c...", "name": "Acme"},
+  "resource": {"type": "certificate", "id": "c1a9...", "name": "example.com"},
+  "summary": "example.com expires in 7 days",
+  "details": {"notAfter": "2026-10-06T00:00:00Z"}
+}
+```
+
+`org` is `null` for a global event (`backup.*`). `details` only ever holds
+the keys `internal/notify/payload.go`'s per-kind allowlist names for that
+`kind` — never key material, a KEK id or a Vault address, whatever an
+`Event` happened to carry in its own `Details` map.
+
+A webhook request also carries:
+
+| Header | Value |
+|---|---|
+| `Content-Type` | `application/json` |
+| `User-Agent` | `CertForge/<version>` |
+| `X-CertForge-Event` | the event's `kind` |
+| `X-CertForge-Delivery` | the event's `id` |
+| `X-CertForge-Signature` | `sha256=<hex HMAC>`, sent only when the channel has a `signingSecret` — see Signature below |
+| `Authorization` | the channel's `authHeader`, sent verbatim, when set |
+
+Plus any extra `headers` the channel configures (at most 20, name
+`^[A-Za-z0-9-]{1,64}$`, value ≤ 1024 characters). A credential-looking name —
+`Authorization`, `Cookie`, `Proxy-Authorization`, `Host`, `Content-Type`,
+anything starting `X-CertForge-`, or any name containing `token`, `key`,
+`secret` or `auth` — is rejected at save time; use `authHeader` for a bearer
+token or similar credential instead.
+
+## Signature
+
+When a webhook channel has a `signingSecret` (16–256 characters),
+`X-CertForge-Signature` is `sha256=` followed by the lowercase-hex
+HMAC-SHA256 of the exact request body, keyed by that secret. Verify it by
+recomputing the same HMAC over the raw bytes you received — not a
+re-serialized copy; JSON key order or whitespace differences would change
+the digest — and comparing in constant time:
+
+```go
+mac := hmac.New(sha256.New, []byte(signingSecret))
+mac.Write(body) // the raw request body, unparsed
+expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+if !hmac.Equal([]byte(expected), []byte(r.Header.Get("X-CertForge-Signature"))) {
+    http.Error(w, "bad signature", http.StatusUnauthorized)
+    return
+}
+```
+
+```python
+import hashlib, hmac
+
+expected = "sha256=" + hmac.new(signing_secret.encode(), body, hashlib.sha256).hexdigest()
+if not hmac.compare_digest(expected, request.headers.get("X-CertForge-Signature", "")):
+    abort(401)
+```
+
+## Discord
+
+A `discord` channel's `webhookUrl` (must be `https`) receives one embed per
+event:
+
+```json
+{
+  "username": "CertForge",
+  "allowed_mentions": {"parse": []},
+  "embeds": [{
+    "title": "example.com expires in 7 days",
+    "description": "notAfter: 2026-10-06T00:00:00Z",
+    "color": 15844367,
+    "timestamp": "2026-09-29T12:00:00Z",
+    "fields": [
+      {"name": "Kind", "value": "cert.expiring"},
+      {"name": "Resource", "value": "example.com (certificate)"}
+    ],
+    "footer": {"text": "Acme"}
+  }]
+}
+```
+
+`title` is the event's `summary`, truncated to 256 characters. `description`
+lists the same allowlisted `details` the Webhook payload sends, one
+`key: value` line per entry (empty when there are none), truncated to 4096.
+`color` is `0x3B82F6` for info, `0xF59E0B` for warning, `0xEF4444` for
+critical. `footer` is left out entirely for a global event, which has no
+org to name. `allowed_mentions.parse` is always an empty array, so an
+event's `summary` or `details` can never ping a role or `@everyone`.
+
+## ntfy
+
+An `ntfy` channel POSTs the event's `summary` as plain text to
+`<server>/<topic>` (`server` defaults to `https://ntfy.sh`), with:
+
+| Header | Value |
+|---|---|
+| `Title` | `CertForge` or `CertForge — <org>`, with CR/LF and every non-printable character stripped, truncated to 200 characters |
+| `Priority` | `3` for info, `4` for warning, `5` for critical |
+| `X-Tags` | `<severity>,<kind with every . replaced by _>` — for example `warning,cert_expiring` |
+| `Authorization` | `Bearer <token>`, when the channel has one |
+
+## Home Assistant
+
+A `homeassistant` channel POSTs the Webhook payload body (above) to
+`<baseUrl>/api/webhook/<webhookId>` — a trailing slash on `baseUrl`, if any,
+is stripped first, so the joined path never has a double slash. `webhookId`
+must match `^[A-Za-z0-9_-]{1,128}$` (checked before it is ever placed in a
+URL — it is otherwise concatenated straight into the request path) and is
+stored encrypted like any other channel secret. Trigger a Home Assistant
+automation on a `webhook` trigger with this ID, and read the JSON body's
+`kind`, `severity`, `resource` and `summary` fields in its actions.
 
 ## URL policy
 
