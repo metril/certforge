@@ -282,8 +282,8 @@ Phase 5A complete; 5B (issuers and vault web UI) builds on it.
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | API layer, kinds, fixtures, HealthStrip | done | pending |
-| 2 | CAs list and kind-aware CaSheet | planned | – |
+| 1 | API layer, kinds, fixtures, HealthStrip | done | 99ca706 |
+| 2 | CAs list and kind-aware CaSheet | done | pending |
 | 3 | Private CA detail sheet | planned | – |
 | 4 | Wizard and attempts for private CAs | planned | – |
 | 5 | Revoke a version | planned | – |

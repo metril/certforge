@@ -4,7 +4,7 @@ import { beforeEach, expect, it } from 'vitest';
 import type { CA, CAInput } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, meWith, presets, problem, url } from '@/test/fixtures';
+import { authHandlers, ca, caLocal, caVaultPki, meWith, metaSigners, presets, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let cas: CA[];
@@ -213,4 +213,133 @@ it('disables Add/Edit/Delete CA for an org-admin (cas:write is global-only)', as
   expect(await screen.findByRole('button', { name: 'Add CA' })).toBeDisabled();
   expect(screen.getByRole('button', { name: "Edit Let's Encrypt" })).toBeDisabled();
   expect(screen.getByRole('button', { name: "Delete Let's Encrypt" })).toBeDisabled();
+});
+
+// Task 2: CA types with built-in and Vault PKI forms.
+
+function withSigners() {
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [], notifiers: [], signers: metaSigners })));
+}
+
+it('type chip and endpoint per kind', async () => {
+  cas = [ca, caLocal, caVaultPki];
+  renderRoute('/o/acme/issuers/cas');
+  await screen.findByText(ca.name);
+  const rows = screen.getAllByRole('row').slice(1); // drop the header row
+  expect(within(rows[0]!).getByText('ACME')).toBeInTheDocument();
+  expect(within(rows[0]!).getByText(ca.directoryUrl)).toBeInTheDocument();
+  expect(within(rows[1]!).getByText('Built-in CA')).toBeInTheDocument();
+  // caLocal's name and its endpoint (subject common name) are both "Internal CA".
+  expect(within(rows[1]!).getAllByText('Internal CA')).toHaveLength(2);
+  // caVaultPki's name is also literally "Vault PKI" (fixture), same as the kind label.
+  expect(within(rows[2]!).getAllByText('Vault PKI')).toHaveLength(2);
+  expect(within(rows[2]!).getByText('pki/certforge')).toBeInTheDocument();
+});
+
+it('filter by type', async () => {
+  cas = [ca, caLocal, caVaultPki];
+  renderRoute('/o/acme/issuers/cas?type=localca');
+  const table = await screen.findByRole('table');
+  // caLocal's name and its endpoint (subject common name) are both "Internal CA".
+  expect(within(table).getAllByText('Internal CA')).toHaveLength(2);
+  expect(within(table).queryByText(ca.name)).not.toBeInTheDocument();
+  expect(within(table).queryByText('Vault PKI')).not.toBeInTheDocument();
+  expect(within(table).getAllByRole('row')).toHaveLength(2); // header + Internal CA
+});
+
+it('kind switch keeps drafts', async () => {
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await user.click(await within(sheet).findByRole('button', { name: /^Custom/ }));
+  const dirInput = within(sheet).getByLabelText('Directory URL');
+  await user.clear(dirInput);
+  await user.type(dirInput, 'https://ca.example.com/dir');
+  await user.click(within(sheet).getByRole('radio', { name: 'Built-in CA' }));
+  await user.click(within(sheet).getByRole('radio', { name: 'ACME' }));
+  expect(within(sheet).getByLabelText('Directory URL')).toHaveValue('https://ca.example.com/dir');
+});
+
+it('localca create posts type and config', async () => {
+  withSigners();
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=new&kind=localca');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await user.type(within(sheet).getByLabelText('Name'), 'Internal CA');
+  await user.type(await within(sheet).findByLabelText('Common name'), 'Internal CA');
+  await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
+  await waitFor(() => expect(posted).toBeDefined());
+  expect(posted).toMatchObject({
+    name: 'Internal CA',
+    type: 'localca',
+    config: { subject: { commonName: 'Internal CA' } },
+  });
+  expect(posted).not.toHaveProperty('preset');
+});
+
+it('import switch reveals PEM fields', async () => {
+  withSigners();
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=new&kind=localca');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  expect(await within(sheet).findByLabelText('Common name')).toBeInTheDocument();
+  expect(within(sheet).queryByLabelText('Import: certificate chain')).not.toBeInTheDocument();
+  await user.click(within(sheet).getByRole('switch', { name: 'Import existing CA' }));
+  expect(within(sheet).queryByLabelText('Common name')).not.toBeInTheDocument();
+  expect(within(sheet).getByLabelText('Import: certificate chain')).toBeInTheDocument();
+  expect(within(sheet).getByLabelText('Import: private key')).toBeInTheDocument();
+});
+
+it('vaultpki without vault settings shows link', async () => {
+  withSigners();
+  // test/server.ts's default /settings/vault has no address.
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await user.click(within(sheet).getByRole('radio', { name: 'Vault PKI' }));
+  expect(await within(sheet).findByText(/Vault is not configured/)).toBeInTheDocument();
+  expect(within(sheet).getByRole('link', { name: /Settings/ })).toBeInTheDocument();
+  expect(within(sheet).getByRole('button', { name: 'Save CA' })).toBeEnabled();
+});
+
+it('type locked on edit', async () => {
+  cas = [caLocal];
+  withSigners();
+  renderRoute('/o/acme/issuers/cas?edit=ca-local-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Internal CA' });
+  expect(within(sheet).getByRole('radio', { name: 'ACME' })).toBeDisabled();
+  expect(within(sheet).getByRole('radio', { name: 'Built-in CA' })).toBeDisabled();
+  expect(within(sheet).getByRole('radio', { name: 'Vault PKI' })).toBeDisabled();
+});
+
+it('import key not cached', async () => {
+  withSigners();
+  server.use(
+    http.post(url('/orgs/org-1/cas'), async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json({ ...caLocal, id: 'ca-9', name: (posted as CAInput).name }, { status: 201 });
+    }),
+  );
+  const { user, queryClient } = renderRoute('/o/acme/issuers/cas?edit=new&kind=localca');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await user.type(within(sheet).getByLabelText('Name'), 'Imported CA');
+  await user.click(within(sheet).getByRole('switch', { name: 'Import existing CA' }));
+  await user.type(within(sheet).getByLabelText('Import: certificate chain'), '-----BEGIN CERTIFICATE-----');
+  await user.type(within(sheet).getByLabelText('Import: private key'), '-----BEGIN PRIVATE KEY-----');
+  await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(queryClient.getMutationCache().getAll()).toEqual([]);
+  expect(JSON.stringify(queryClient.getQueryCache().getAll())).not.toContain('BEGIN PRIVATE KEY');
+});
+
+it('private row opens view', async () => {
+  cas = [caLocal];
+  const { router, user } = renderRoute('/o/acme/issuers/cas');
+  const nameCells = await screen.findAllByText('Internal CA');
+  await user.click(nameCells[0]!);
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ view: 'ca-local-1' }));
+  expect(router.state.location.search).not.toHaveProperty('edit');
+});
+
+it('read-only user sees disabled Save', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }]))));
+  renderRoute('/o/acme/issuers/cas?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  expect(within(sheet).getByRole('button', { name: 'Save CA' })).toBeDisabled();
 });

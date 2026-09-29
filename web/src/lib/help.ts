@@ -37,6 +37,19 @@ export const help = {
   'status.expired': { text: 'The current certificate is past its expiry date.' },
   'status.revoked': { text: 'The certificate was revoked and will not renew.' },
   'cert.validity': { text: 'Bar spans issue to expiry. Hatching marks the renewal window; the notch is now.' },
+  'ca.type': {
+    text: 'ACME proves control of names to a CA. Built-in CA and Vault PKI sign directly, for internal names.',
+    learnMore: 'private-ca.md#model',
+  },
+  'ca.typeLocked': { text: 'The type cannot change after creation.' },
+  'ca.import': {
+    text: 'Use an existing issuing certificate and key instead of generating a root. Imported CAs cannot rotate.',
+    learnMore: 'private-ca.md#import',
+  },
+  'ca.vaultPki': {
+    text: 'Vault signs with this mount and role. The connection is set in Settings → Integrations.',
+    learnMore: 'vault.md#pki',
+  },
   'ca.preset': { text: 'Presets fill in the directory URL. Custom takes any ACME server.' },
   'ca.directoryUrl': { text: 'The ACME directory endpoint of the CA.' },
   'ca.trustBundle': { text: 'PEM roots for a private ACME server, such as step-ca or Pebble.' },

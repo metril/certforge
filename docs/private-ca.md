@@ -6,7 +6,7 @@ no I/O of its own. It backs CAs of kind `localca` (see `docs/api.md`'s CA
 schema); the CA lifecycle, persistence and public CRL routes are wired
 separately (`internal/issuance`, Phase 5A Task 7).
 
-## Model {#model}
+## Model
 
 A `localca` CA is two certificates:
 
@@ -30,7 +30,7 @@ can never outlive the issuing certificate that signed it. Leaves carry
 configured, a CRL distribution point pointing at that issuing certificate's
 CRL (`<baseUrl>/crl/<caId>/<issuerSerial>.crl`).
 
-## Import {#import}
+## Import
 
 An operator can bring their own issuing certificate instead of generating
 one: `Import(certPEM, keyPEM, crl, now)` takes a PEM bundle (the issuing
@@ -52,7 +52,7 @@ imported root); otherwise there is no local root and trust is the top of
 the supplied chain as-is. An import never needs a root private key —
 `Rotate` is only available for a generated root whose key was kept.
 
-## Rotation {#rotation}
+## Rotation
 
 `Rotate(root, rootKeyPKCS8, cfg, now)` signs a fresh issuing intermediate
 under the existing root and returns new `Material`; the caller persists it
@@ -66,7 +66,7 @@ Leaves issued under a retired intermediate keep verifying against it
 unchanged: rotation never touches previously issued certificates, only
 which intermediate signs the next one.
 
-## CRL {#crl}
+## CRL
 
 `BuildCRL(issuer, key, revoked, number, now)` signs a CRL with
 `x509.CreateRevocationList`: `ThisUpdate` is `now`, `NextUpdate` is
@@ -89,7 +89,7 @@ issuer's specific route. The route answers 404 for an unknown CA id, a
 non-localca CA, `crl: false`, or an unknown issuer serial alike: a probing
 client learns nothing from the response.
 
-## Revocation {#revocation}
+## Revocation
 
 `POST /orgs/{orgId}/certificates/{id}/versions/{vid}/revoke` revokes one
 issued leaf (private CAs only — 422 "not supported for ACME CAs yet" for a
@@ -102,7 +102,7 @@ which appends the leaf to the CA's revoked list and bumps `crl_number` —
 so the very next CRL build already lists it. Revoking an
 already-revoked version is 409.
 
-## Trust {#trust}
+## Trust
 
 A `localca` CA's `config` (public) and `secret_cfg` (sealed) columns
 together hold everything the CA needs:

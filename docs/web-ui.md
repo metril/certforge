@@ -44,6 +44,18 @@ An unmanaged certificate (uploaded — import takes over renewals, so an importe
 
 A certificate's **Deployments** tab lists every client that holds it: connection, site, delivery, the grant's layout and deploy target (each opens it under Delivery), deployment state, whether the installed files match the current version, and **Redeploy**. The client name opens that client with the grant expanded. The certificates list's **Grants** column counts these.
 
+## Issuers
+
+`/o/:org/issuers/cas` lists every certificate authority — ACME, Built-in CA and Vault PKI — with a **Type** chip (ACME, Built-in CA, Vault PKI) and an above-the-table segmented filter (All / ACME / Built-in CA / Vault PKI, kept in the URL as `?type=`, wrapping below `md`). Endpoint shows the ACME directory URL, the Built-in CA's common name, or the Vault mount/role; Expires shows the issuing certificate's validity (Built-in CA, Vault PKI) or a dash for ACME. Clicking an ACME row opens the edit sheet (`?edit=`); clicking a private CA's row opens its detail sheet (`?view=`) — see [private-ca.md](private-ca.md#model). An empty filtered view reads "No Built-in CA yet." (or Vault PKI), with **Add CA**.
+
+**Add/Edit CA** starts with a **Type** segmented control (locked once created — the type cannot change), then Name, then a kind-specific body:
+
+- **ACME** — the preset cards, directory URL, trust bundle and EAB fields, unchanged.
+- **Built-in CA** — an **Import existing CA** switch. Off shows Subject (common name, organization, country), key type, root and issuing validity, and the always-editable "Max leaf validity" and "Publish CRL". On hides those and shows the issuing certificate chain and its private key as PEM. On edit, Subject/key type/validity are shown read-only (immutable after create) and the import fields disappear entirely; only "Max leaf validity" and "Publish CRL" are sent.
+- **Vault PKI** — mount, role and leaf TTL. Without Settings → Integrations → Vault configured, an inline note links there; Save stays enabled (the server rejects the save).
+
+The command palette's **Issuers: New private CA** jumps straight to a new Built-in CA (`?edit=new&kind=localca`), gated the same as **Issuers: CAs**.
+
 ## Delivery
 
 `/o/:org/delivery` holds what grants use, in tabs. **Deploy targets** lists each target's type, where it runs (the agent), its directory and how many grants use it. **Add target** picks a type and fills the form the type publishes (for Traefik: the directory the agent writes to, the same directory as Traefik sees it, whether this is the default certificate, and the TLS stores). A target in use cannot be deleted; the delete button says how many grants use it. Viewers can open a target read-only. Delivery is per org, so it is not offered under All orgs.

@@ -12,11 +12,11 @@ export const presetsQuery = queryOptions({
 });
 
 // Direct call (not useMutation): a private CA's create/edit body can carry
-// config.importKeyPem, a secret (global constraints, "Secrets") — Task 2's
-// kind-aware CaSheet calls this and invalidates ['cas', orgId] itself
-// instead of going through the mutation cache. Replaces useSaveCa below for
-// that sheet; useSaveCa stays for now since it still backs the acme-only
-// CaSheet until Task 2 rebuilds it.
+// config.importKeyPem, a secret (global constraints, "Secrets") — the
+// kind-aware CaSheet (task 2) calls this for every kind and invalidates
+// ['cas', orgId] itself instead of going through the mutation cache, so the
+// secret never sits in the MutationCache. Replaced useSaveCa below, which
+// task 2 removed once CaSheet was its only caller.
 export function saveCa(qc: QueryClient, orgId: string, body: CAInput, id?: string): Promise<CA> {
   return (
     id
@@ -37,24 +37,6 @@ export function useRotateCa(orgId: string) {
   return useMutation({
     mutationFn: (id: string) => rotateCa(orgId, id),
     meta: { success: 'CA rotated' },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cas', orgId] }),
-  });
-}
-
-export function useSaveCa(orgId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id?: string; body: CAInput }) =>
-      id
-        ? call(api.PUT('/orgs/{orgId}/cas/{id}', { params: { path: { orgId, id } }, body }))
-        : call(api.POST('/orgs/{orgId}/cas', { params: { path: { orgId } }, body })),
-    // Fix round 1 (#6): 422/409 already show inline in CaSheet; a toast too
-    // would be redundant (and, for a 422 mapped to a field, out of context).
-    meta: { silent: true, success: 'CA saved' },
-    // Fix round 1 (Task 9 review, Important — same exposure applies here):
-    // the mutation's variables (the EAB HMAC) would otherwise sit in the
-    // MutationCache for the default 5-minute gcTime.
-    gcTime: 0,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cas', orgId] }),
   });
 }

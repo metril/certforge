@@ -332,32 +332,54 @@ export const grantServer: Grant = {
 
 // GET /meta/schemas' signers entries (Shared contracts "Meta"): localca's
 // LocalCaConfig (importKeyPem is the secret field) and vaultpki's
-// VaultPkiConfig.
+// VaultPkiConfig. Mirrors internal/signer/localca/meta.go's ConfigSchema and
+// internal/signer/vaultpki/meta.go's ConfigSchema verbatim (fix round: the
+// original fixture approximated field titles/enums/constraints instead of
+// copying the real Go JSON Schema literals).
 export const metaSigners: ProviderSchema[] = [
   {
     code: 'localca',
-    name: 'Built-in CA',
+    name: 'Private CA (built-in)',
     aliases: [],
     schema: {
       type: 'object',
+      title: 'Private CA (built-in)',
+      description:
+        "CertForge's built-in root-plus-issuing-intermediate CA. Generates its own key material, or imports an operator-supplied issuing certificate and key.",
+      additionalProperties: false,
       required: ['subject'],
       properties: {
         subject: {
           type: 'object',
+          title: 'Subject',
+          description: 'Root and issuing certificate subject. Immutable after create.',
+          additionalProperties: false,
           required: ['commonName'],
           properties: {
-            commonName: { type: 'string', title: 'Common name' },
-            organization: { type: 'string', title: 'Organization' },
-            country: { type: 'string', title: 'Country' },
+            commonName: { type: 'string', minLength: 1, maxLength: 64, title: 'Common name' },
+            organization: { type: 'string', maxLength: 64, title: 'Organization' },
+            country: { type: 'string', pattern: '^[A-Z]{2}$', title: 'Country', description: 'ISO 3166-1 alpha-2 code.' },
           },
         },
-        keyType: { type: 'string', title: 'Key type', default: 'ec256' },
-        rootValidityYears: { type: 'integer', title: 'Root validity (years)', default: 10 },
-        issuingValidityYears: { type: 'integer', title: 'Issuing validity (years)', default: 3 },
-        maxLeafDays: { type: 'integer', title: 'Longest leaf validity (days)', default: 397 },
-        crl: { type: 'boolean', title: 'Publish a CRL', default: true },
-        importPem: { type: 'string', title: 'Import: certificate chain' },
-        importKeyPem: { type: 'string', title: 'Import: private key', secret: true },
+        keyType: {
+          type: 'string', enum: ['ec256', 'ec384', 'rsa2048', 'rsa4096'], default: 'ec256',
+          title: 'Key type', description: 'Key algorithm for the root and issuing keys. Immutable after create.',
+        },
+        rootValidityYears: { type: 'integer', minimum: 1, maximum: 30, default: 10, title: 'Root validity (years)', description: 'Immutable after create.' },
+        issuingValidityYears: { type: 'integer', minimum: 1, maximum: 10, default: 3, title: 'Issuing validity (years)', description: 'Immutable after create.' },
+        maxLeafDays: {
+          type: 'integer', minimum: 1, maximum: 825, default: 397,
+          title: 'Max leaf validity (days)', description: 'Longest validity this CA will issue a leaf for. Editable after create.',
+        },
+        crl: { type: 'boolean', default: true, title: 'Publish CRL', description: 'Publish a CRL at GET /crl/{caId}.crl. Editable after create.' },
+        importPem: {
+          type: 'string', title: 'Import: certificate chain',
+          description: 'Create only, immutable after: PEM to import instead of generating a root — the issuing certificate followed by its chain (the last certificate is the trust anchor).',
+        },
+        importKeyPem: {
+          type: 'string', secret: true, title: 'Import: private key',
+          description: "Create only, immutable after: PEM private key for importPem's issuing certificate. Never returned.",
+        },
       },
     },
   },
@@ -367,11 +389,20 @@ export const metaSigners: ProviderSchema[] = [
     aliases: [],
     schema: {
       type: 'object',
+      title: 'Vault PKI',
+      description: "A private CA backed by Vault's (or OpenBao's) PKI secrets engine. Requires Settings → Integrations → Vault to be configured first.",
+      additionalProperties: false,
       required: ['role'],
       properties: {
-        mount: { type: 'string', title: 'Mount', default: 'pki' },
-        role: { type: 'string', title: 'Role' },
-        ttl: { type: 'string', title: 'Leaf TTL' },
+        mount: {
+          type: 'string', pattern: '^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$', default: 'pki',
+          title: 'Mount', description: 'Vault PKI secrets engine mount path.',
+        },
+        role: { type: 'string', minLength: 1, maxLength: 128, title: 'Role', description: 'Vault PKI role to sign leaves against.' },
+        ttl: {
+          type: 'string', title: 'TTL',
+          description: "Go duration string for issued leaf validity, 1h to 19800h (825 days); Vault's own role or mount ceiling still applies.",
+        },
       },
     },
   },

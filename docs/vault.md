@@ -9,7 +9,7 @@ configures the address, namespace, authentication and TLS trust it uses;
 `internal/vault.Provider` (Phase 5, Task 8) turns those settings into a
 live, cached client.
 
-## Transit KEK {#transit-kek}
+## Transit KEK
 
 Vault Transit can back the server's key-encryption key (KEK) in place of a
 static `CF_KEK`/`CF_KEK_FILE` value. It is bootstrap configuration, set with
@@ -42,7 +42,7 @@ secret decouples those derived keys from the KEK's own bytes, and why an
 existing install with no static KEK at all cannot seed that root the first
 time it boots on Transit.
 
-## Integrations {#integrations}
+## Integrations
 
 Settings → Integrations → Vault (`GET`/`PUT /api/v1/settings/vault`) is how
 the running server itself reaches Vault or OpenBao for everything other
@@ -82,7 +82,7 @@ following the section over to what may be a different Vault install. The
 very first save of the section is always allowed, since there is nothing
 yet to compare against.
 
-### AppRole {#approle}
+### AppRole
 
 For `authMethod: approle`, create a role with a policy scoped to the
 features actually used (see the table below), then set `roleId` and
@@ -136,7 +136,7 @@ Grant the narrowest policy for the features actually used:
 | Token self-service (renewal) | `auth/token/lookup-self`, `auth/token/renew-self` | `read`/`update` (usually already default-policy) |
 | Health check | `sys/health` | unauthenticated |
 
-## PKI {#pki}
+## PKI
 
 A CA of kind `vaultpki` (`CAInput.type: vaultpki`, `config`: `mount`
 default `pki`, `role`, optional `ttl`) issues and revokes through Vault's
@@ -176,13 +176,13 @@ The PKI role needs, at minimum:
 - The `sign` policy capability on `<mount>/sign/<role>` (see the table
   above), plus `read` on `<mount>/cert/ca` and `update` on `<mount>/revoke`.
 
-## KV {#kv}
+## KV
 
 The `vault-kv` deploy target (`internal/deploy`) writes a certificate's rendered files as one document in a KV v2 secrets engine, `PUT <mount>/data/<path>` (`Client.KVPut`), instead of writing files to an agent's filesystem. It runs on the server — see [deploy-targets.md#vault-kv](deploy-targets.md#vault-kv) for its config (mount, path template, document field names, `includeKey`) and how a layout changes the document's shape. Like `vaultpki`, it goes through `internal/vault.Provider`, so it always uses whatever Settings → Integrations → Vault currently holds; there is no separate credential on the target itself.
 
 The KV path is a template (`{org}`/`{cert}`/`{name}`, resolved per deploy) rendered before the write, then checked against the same rules a stored file path would need: no leading `/`, no `..`, and only `A-Za-z0-9._/-`. The policy needs `create`/`update` on `<mount>/data/<path>` (see the table above) — `KVPut` never reads a path back, so no `read` capability is needed for this target.
 
-## OpenBao {#openbao}
+## OpenBao
 
 OpenBao is API-compatible for every path this client uses — Transit, KV
 v2, PKI, AppRole and token auth — but untested against a real OpenBao

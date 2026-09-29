@@ -126,6 +126,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Private CA creation, import, rotation, revocation and public CRLs.
 - Certificates issue from private CAs without ACME steps.
 - Server-side deploy target framework and the Vault KV target.
+- Create Built-in and Vault PKI CAs from the CAs screen.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

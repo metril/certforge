@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { PageHeader } from '@/components/PageHeader';
 import { TAB_ACTIVE, TAB_LINK, TabLabel } from '@/components/TabLabel';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { LATER } from '@/lib/nav';
 import { useOrg } from '@/lib/org';
 
+// Task 2: private CAs are no longer a separate, disabled tab — the CAs tab
+// itself now covers every kind (Type chip, filter, kind-aware CaSheet).
 export function IssuersLayout({ children }: { children: ReactNode }) {
   const { slug: org } = useOrg();
   return (
@@ -21,14 +21,6 @@ export function IssuersLayout({ children }: { children: ReactNode }) {
         <Link to="/o/$org/issuers/dns" params={{ org }} className={TAB_LINK} activeProps={TAB_ACTIVE} aria-label="DNS credentials">
           <TabLabel full="DNS credentials" short="DNS" />
         </Link>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span role="link" aria-disabled="true" tabIndex={0} className={`${TAB_LINK} cursor-not-allowed opacity-50`}>
-              Private CAs
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{LATER}</TooltipContent>
-        </Tooltip>
       </nav>
       {children}
     </>

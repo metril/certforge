@@ -95,6 +95,16 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             ...(canReadCas
               ? [{ label: 'Issuers: CAs', keywords: ['ca', 'acme', 'directory'], go: () => void navigate({ to: '/o/$org/issuers/cas', params: { org: org.slug } }) }]
               : []),
+            ...(canReadCas
+              ? [
+                  {
+                    label: 'Issuers: New private CA',
+                    keywords: ['private', 'built-in', 'vault', 'pki', 'root'],
+                    go: () =>
+                      void navigate({ to: '/o/$org/issuers/cas', params: { org: org.slug }, search: { edit: 'new', kind: 'localca' } }),
+                  },
+                ]
+              : []),
             ...(canReadAccounts
               ? [{ label: 'Issuers: ACME accounts', keywords: ['account'], go: () => void navigate({ to: '/o/$org/issuers/accounts', params: { org: org.slug } }) }]
               : []),

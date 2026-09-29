@@ -209,6 +209,30 @@ it('shows every org-scoped page entry for an org-admin', async () => {
   expect(within(dialog).getByText('New certificate')).toBeInTheDocument();
 });
 
+// Task 2 (Phase 5B): the palette's own shortcut into the kind-aware CaSheet,
+// pre-selecting Built-in CA (task-2-brief: same gating as "Issuers: CAs").
+it('new private CA entry navigates to a new localca CA', async () => {
+  server.use(...certificateHandlers(makeCert({ id: 'c-10', name: 'edge' })));
+  const { router, user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await user.click(await within(dialog).findByText('Issuers: New private CA'));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/issuers/cas'));
+  expect(router.state.location.search).toMatchObject({ edit: 'new', kind: 'localca' });
+});
+
+it('hides the new private CA entry without cas:read, same as Issuers: CAs', async () => {
+  permissionOverride = { can: (a) => a !== 'cas:read', canAnywhere: () => true };
+  server.use(...certificateHandlers(makeCert({ id: 'c-11', name: 'edge' })));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByPlaceholderText('www.example.com');
+  expect(within(dialog).queryByText('Issuers: New private CA')).not.toBeInTheDocument();
+});
+
 // Review fix: the palette's own dialog is exempt from the global suppress
 // selector for Ctrl/Cmd-K specifically, so a second press — even with the
 // search input focused — closes it instead of being swallowed the same way
