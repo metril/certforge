@@ -7,8 +7,6 @@
     "title": "TransIP",
     "type": "object",
     "additionalProperties": false,
-    "unsupported": true,
-    "unsupportedReason": "requires a private key file; supported when file-backed credentials arrive in Phase 5",
     "properties": {
       "TRANSIP_ACCOUNT_NAME": {
         "type": "string",
@@ -23,6 +21,13 @@
         "description": "Time between DNS propagation check in seconds (Default: 10)",
         "secret": false,
         "x-group": "additional"
+      },
+      "TRANSIP_PRIVATE_KEY": {
+        "type": "string",
+        "title": "TRANSIP_PRIVATE_KEY",
+        "description": "PEM-encoded private key, inline; alternative to TRANSIP_PRIVATE_KEY_PATH",
+        "secret": true,
+        "x-group": "credentials"
       },
       "TRANSIP_PRIVATE_KEY_PATH": {
         "type": "string",

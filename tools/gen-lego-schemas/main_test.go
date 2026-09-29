@@ -161,36 +161,61 @@ func TestOracleCloudHasInlinePrivateKeyField(t *testing.T) {
 	}
 }
 
-// TestTransipMarkedUnsupported (fix round 2, item 2): transip's only
-// credential input is TRANSIP_PRIVATE_KEY_PATH, a serverPath field with no
-// inline alternative, so the provider is entirely unusable through the API
-// and must be flagged rather than silently offered and always failing.
-func TestTransipMarkedUnsupported(t *testing.T) {
+// TestTransipHasInlinePrivateKeyField (Phase 5 task 12): transip's only
+// lego-native credential input is TRANSIP_PRIVATE_KEY_PATH, a serverPath
+// field with no lego-native inline alternative; extraCredentialFields adds
+// TRANSIP_PRIVATE_KEY as certforge's own inline field (internal/challenge's
+// fileBacked writes it to a private temp file and points
+// TRANSIP_PRIVATE_KEY_PATH at it), so the provider is no longer flagged
+// unsupported, while TRANSIP_PRIVATE_KEY_PATH itself must still be rejected
+// directly (serverPath stays true).
+func TestTransipHasInlinePrivateKeyField(t *testing.T) {
 	f := readRealSchema(t, "transip")
-	if !f.Schema.Unsupported {
-		t.Fatal("transip must be marked unsupported: its only credential field is a serverPath one")
+	p, ok := f.Schema.Properties["TRANSIP_PRIVATE_KEY"]
+	if !ok {
+		t.Fatal("missing TRANSIP_PRIVATE_KEY: transip has no usable inline credential field")
 	}
-	if f.Schema.UnsupportedReason == "" {
-		t.Error("transip's unsupportedReason must not be empty")
+	if !p.Secret {
+		t.Errorf("TRANSIP_PRIVATE_KEY secret = false, want true")
 	}
-	p, ok := f.Schema.Properties["TRANSIP_PRIVATE_KEY_PATH"]
-	if !ok || !p.ServerPath {
-		t.Errorf("TRANSIP_PRIVATE_KEY_PATH = %+v, ok=%v; want a serverPath field", p, ok)
+	if p.ServerPath {
+		t.Errorf("TRANSIP_PRIVATE_KEY serverPath = true, want false (it is the inline alternative to TRANSIP_PRIVATE_KEY_PATH)")
+	}
+	if f.Schema.Unsupported {
+		t.Error("transip must not be marked unsupported now that it has an inline credential field")
+	}
+	path, ok := f.Schema.Properties["TRANSIP_PRIVATE_KEY_PATH"]
+	if !ok || !path.ServerPath {
+		t.Errorf("TRANSIP_PRIVATE_KEY_PATH = %+v, ok=%v; want a serverPath field", path, ok)
 	}
 }
 
-// TestHyperoneMarkedUnsupported (fix wave item 9): hyperone's only
-// credential material is a passport file; HYPERONE_PASSPORT_LOCATION only
-// customizes where lego looks for it on the server's own filesystem, it
-// does not accept the passport content inline, so the provider is entirely
-// unusable through the API like transip.
-func TestHyperoneMarkedUnsupported(t *testing.T) {
+// TestHyperoneHasInlinePassportField (Phase 5 task 12): hyperone's only
+// lego-native credential material is a passport file;
+// HYPERONE_PASSPORT_LOCATION only customizes where lego looks for it on the
+// server's own filesystem and does not accept the passport content inline.
+// extraCredentialFields adds HYPERONE_PASSPORT as certforge's own inline
+// field, so the provider is no longer flagged unsupported, while
+// HYPERONE_PASSPORT_LOCATION must still be rejected directly: it has no
+// _FILE/_PATH suffix, so it needs forceServerPath, not just serverPathSuffix.
+func TestHyperoneHasInlinePassportField(t *testing.T) {
 	f := readRealSchema(t, "hyperone")
-	if !f.Schema.Unsupported {
-		t.Fatal("hyperone must be marked unsupported: its only credential material is a passport file")
+	p, ok := f.Schema.Properties["HYPERONE_PASSPORT"]
+	if !ok {
+		t.Fatal("missing HYPERONE_PASSPORT: hyperone has no usable inline credential field")
 	}
-	if f.Schema.UnsupportedReason == "" {
-		t.Error("hyperone's unsupportedReason must not be empty")
+	if !p.Secret {
+		t.Errorf("HYPERONE_PASSPORT secret = false, want true")
+	}
+	if p.ServerPath {
+		t.Errorf("HYPERONE_PASSPORT serverPath = true, want false (it is the inline alternative to HYPERONE_PASSPORT_LOCATION)")
+	}
+	if f.Schema.Unsupported {
+		t.Error("hyperone must not be marked unsupported now that it has an inline credential field")
+	}
+	loc, ok := f.Schema.Properties["HYPERONE_PASSPORT_LOCATION"]
+	if !ok || !loc.ServerPath {
+		t.Errorf("HYPERONE_PASSPORT_LOCATION = %+v, ok=%v; want a serverPath field", loc, ok)
 	}
 }
 

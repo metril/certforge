@@ -7,8 +7,6 @@
     "title": "HyperOne",
     "type": "object",
     "additionalProperties": false,
-    "unsupported": true,
-    "unsupportedReason": "requires a passport file (HYPERONE_PASSPORT_LOCATION only customizes where lego looks for one, it does not accept the passport content inline); supported when file-backed credentials arrive in Phase 5",
     "properties": {
       "HYPERONE_API_URL": {
         "type": "string",
@@ -31,11 +29,19 @@
         "secret": false,
         "x-group": "additional"
       },
+      "HYPERONE_PASSPORT": {
+        "type": "string",
+        "title": "HYPERONE_PASSPORT",
+        "description": "Passport file contents (JSON), inline; alternative to HYPERONE_PASSPORT_LOCATION",
+        "secret": true,
+        "x-group": "credentials"
+      },
       "HYPERONE_PASSPORT_LOCATION": {
         "type": "string",
         "title": "HYPERONE_PASSPORT_LOCATION",
         "description": "Allows to pass custom passport file location (default ~/.h1/passport.json)",
         "secret": false,
+        "serverPath": true,
         "x-group": "additional"
       },
       "HYPERONE_POLLING_INTERVAL": {

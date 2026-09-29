@@ -6,12 +6,7 @@ Fields marked secret are write-only: the API never returns them, and a PUT with 
 
 The lego `exec` provider (runs an arbitrary program on the server) and `manual` provider (reads stdin) are not offered here; use verification rule method `manual-dns` instead.
 
-A field marked `serverPath: true` (usually a name ending `_FILE` or `_PATH`, plus a handful of fields overridden individually where the name doesn't follow that convention) names a path on lego's own host filesystem; the API rejects a value for these with a 422. Most providers with such a field also have an inline field carrying the same material (used instead); a provider whose *only* input is that file has no inline alternative and is marked `unsupported: true` below — not offered until file-backed credentials arrive in Phase 5.
-
-### Not yet supported
-
-- **HyperOne** (`hyperone`): requires a passport file (HYPERONE_PASSPORT_LOCATION only customizes where lego looks for one, it does not accept the passport content inline); supported when file-backed credentials arrive in Phase 5
-- **TransIP** (`transip`): requires a private key file; supported when file-backed credentials arrive in Phase 5
+A field marked `serverPath: true` (usually a name ending `_FILE` or `_PATH`, plus a handful of fields overridden individually where the name doesn't follow that convention) names a path on lego's own host filesystem; the API rejects a value for these with a 422. Most providers with such a field also have an inline field carrying the same material (used instead, written to a private server-side temp file for the provider to read and removed once it has); a provider whose *only* input is that file, with no inline field added for it yet, is marked `unsupported: true` below.
 
 ## Joohoi's ACME-DNS
 
@@ -918,10 +913,9 @@ Code: `hurricane`. Website: <https://dns.he.net/>
 
 Code: `hyperone`. Website: <https://www.hyperone.com>
 
-**Not supported yet:** requires a passport file (HYPERONE_PASSPORT_LOCATION only customizes where lego looks for one, it does not accept the passport content inline); supported when file-backed credentials arrive in Phase 5
-
 | Field | Group | Secret | Description |
 |---|---|---|---|
+| `HYPERONE_PASSPORT` | credentials | yes | Passport file contents (JSON), inline; alternative to HYPERONE_PASSPORT_LOCATION |
 | `HYPERONE_API_URL` | additional | no | Allows to pass custom API Endpoint to be used in the challenge (default https://api.hyperone.com/v2) |
 | `HYPERONE_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `HYPERONE_LOCATION_ID` | additional | no | Specifies location (region) to be used in API calls. (default pl-waw-1) |
@@ -1858,11 +1852,10 @@ Code: `timewebcloud`. Website: <https://timeweb.cloud/>
 
 Code: `transip`. Website: <https://www.transip.nl/>
 
-**Not supported yet:** requires a private key file; supported when file-backed credentials arrive in Phase 5
-
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `TRANSIP_ACCOUNT_NAME` | credentials | no | Account name |
+| `TRANSIP_PRIVATE_KEY` | credentials | yes | PEM-encoded private key, inline; alternative to TRANSIP_PRIVATE_KEY_PATH |
 | `TRANSIP_PRIVATE_KEY_PATH` | credentials | no | Private key path |
 | `TRANSIP_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
 | `TRANSIP_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 600) |

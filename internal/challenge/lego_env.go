@@ -40,8 +40,22 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 			return nil, fmt.Errorf("%s: %q is a write-only sentinel and cannot be built into a live provider", k, Unchanged)
 		}
 	}
+	// buildCfg swaps a file-backed provider's inline credential for a path
+	// into a private temp dir; cfg itself (with the inline value) is kept
+	// for Scrub below, so a leaked credential value is still redacted.
+	// Both transip and hyperone read the file eagerly during construction,
+	// so dir is safe to remove as soon as construction returns, success or
+	// not.
+	buildCfg, dir, err := withFileBackedCreds(code, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if dir != "" {
+		defer os.RemoveAll(dir)
+	}
+
 	if e.factory != nil {
-		p, err := e.factory(cfg)
+		p, err := e.factory(buildCfg)
 		if err != nil {
 			return p, Scrub(err, code, cfg)
 		}
@@ -49,7 +63,7 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 	}
 	envMu.Lock()
 	defer envMu.Unlock()
-	restore := isolateEnv(e.secret, cfg)
+	restore := isolateEnv(e.secret, buildCfg)
 	defer restore()
 	p, err := newByName(e.meta.Code)
 	if err != nil {

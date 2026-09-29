@@ -107,13 +107,32 @@ func TestCreateDNSCredentialRejectsServerPathField(t *testing.T) {
 	wantStatus(t, err, http.StatusUnprocessableEntity)
 }
 
-// Fix round 2, item 2: transip has no usable credential field through this
-// API (its only input is a server-side file), so it must be rejected
-// outright rather than accepted and always failing at issuance time.
-func TestCreateDNSCredentialRejectsUnsupportedProvider(t *testing.T) {
+// Phase 5 task 12: transip's file-backed credential is now usable through
+// this API via its inline TRANSIP_PRIVATE_KEY field (internal/challenge's
+// fileBacked writes it to a private server-side temp file for lego's
+// TRANSIP_PRIVATE_KEY_PATH to read), so it is no longer rejected outright.
+func TestCreateDNSCredentialAcceptsTransipInlineKey(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "ti", ProviderCode: "transip", Config: map[string]string{
+			"TRANSIP_ACCOUNT_NAME": "acct", "TRANSIP_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := res.(gen.CreateDNSCredential201JSONResponse)
+	if c.StoredSecrets == nil || len(*c.StoredSecrets) != 1 || (*c.StoredSecrets)[0] != "TRANSIP_PRIVATE_KEY" {
+		t.Fatalf("credential = %+v", c)
+	}
+}
+
+// Phase 5 task 12: TRANSIP_PRIVATE_KEY_PATH names a path on the server's
+// own filesystem and must still be rejected directly, same as before —
+// only the new inline field is accepted.
+func TestCreateDNSCredentialRejectsTransipServerPathField(t *testing.T) {
 	f := newAPIFixture(t)
 	_, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
-		Body: &gen.DNSCredentialInput{Name: "ti", ProviderCode: "transip", Config: map[string]string{}}})
+		Body: &gen.DNSCredentialInput{Name: "ti2", ProviderCode: "transip", Config: map[string]string{
+			"TRANSIP_PRIVATE_KEY_PATH": "/etc/secrets/transip.key"}}})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
 }
 
