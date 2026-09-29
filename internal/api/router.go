@@ -16,6 +16,7 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/webui"
 )
 
@@ -34,7 +35,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 	s := &Server{d: d}
 	r := chi.NewRouter()
-	r.Use(recoverer(d.Log), securityHeaders)
+	r.Use(recoverer(d.Log), metrics.Middleware, securityHeaders)
 	// Public, unauthenticated, outside /api/v1 and out of the OpenAPI
 	// document (docs/api.md instead); registered before the SPA fallback so
 	// it never falls through to index.html. A wildcard, not {token}, so a
@@ -68,6 +69,19 @@ func NewRouter(d Deps) http.Handler {
 	mountDocs(r)
 	r.Get("/healthz", s.healthz)
 	r.Get("/readyz", s.readyz)
+	// Public, unauthenticated Prometheus scrape target (Shared contract):
+	// not under /api/v1, outside the OpenAPI document (docs/api.md
+	// instead), same convention as the ACME challenge and CRL routes
+	// above. d.Metrics is nil only in narrow unit-test fixtures that never
+	// hit this route; the handler itself 404s while the "prometheus"
+	// section is disabled and 401s a missing/wrong bearer token.
+	r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if d.Metrics == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		d.Metrics.ServeHTTP(w, r)
+	})
 	r.Route("/api/v1", func(v1 chi.Router) {
 		v1.Use(withClientIP(d.AuthSettings), s.limitLogins(d.LoginLimiter, loginLimiterSettings, d.Auditor, d.Log), requireJSON, authn.Middleware(authn.MiddlewareOptions{
 			Sessions: d.Sessions, Queries: d.Queries, Public: isPublic, Fail: Write, Log: d.Log,

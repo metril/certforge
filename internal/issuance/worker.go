@@ -19,6 +19,7 @@ import (
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/signer"
 )
 
@@ -148,6 +149,10 @@ func (w *IssueWorker) Work(ctx context.Context, job *river.Job[IssueArgs]) error
 
 // Issue performs one attempt for certID.
 func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
+	// start bounds certforge_issuance_duration_seconds (metrics.
+	// IssuanceDuration): captured before CreateAttempt so the observation
+	// covers the whole attempt, success or failure alike.
+	start := w.Now()
 	cert, err := w.Store.CertificateByID(ctx, certID)
 	if errors.Is(err, ErrNotFound) {
 		return nil // deleted while queued
@@ -183,7 +188,7 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 			// carries an ACME error type, so fail's failed-validation write
 			// never triggers regardless, and eff is only otherwise used for
 			// that.
-			if ferr := w.fail(bg, cert, attemptID, tl, Effective{}, fmt.Errorf("panic: %v", r)); ferr != nil {
+			if ferr := w.fail(bg, cert, attemptID, tl, Effective{}, fmt.Errorf("panic: %v", r), start); ferr != nil {
 				w.Log.Error("finish attempt after panic", "attempt", attemptID, "err", ferr)
 			}
 			panic(r)
@@ -191,9 +196,9 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 	}()
 	iss, eff, err := w.run(ctx, cert, attemptID, tl)
 	if err != nil {
-		return w.fail(bg, cert, attemptID, tl, eff, err)
+		return w.fail(bg, cert, attemptID, tl, eff, err, start)
 	}
-	if err := w.succeed(bg, cert, attemptID, tl, iss, eff); err != nil {
+	if err := w.succeed(bg, cert, attemptID, tl, iss, eff, start); err != nil {
 		// succeed's own transaction rolled back, so the attempt row is still
 		// "running"; best-effort finish it as failed instead of leaving it
 		// stuck until FailStaleAttempts eventually catches it. This is an
@@ -601,7 +606,7 @@ func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Eff
 	return r, manual, r.Validate()
 }
 
-func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, iss *signer.Issued, eff Effective) error {
+func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, iss *signer.Issued, eff Effective, start time.Time) error {
 	tx, err := w.Store.Begin(ctx)
 	if err != nil {
 		return err
@@ -653,6 +658,8 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
+	metrics.IssuanceAttempts.WithLabelValues("success").Inc()
+	metrics.IssuanceDuration.Observe(w.Now().Sub(start).Seconds())
 	w.notifyVersion(ctx, cert.ID, v.ID)
 	polled := cert
 	polled.CurrentVersionID, polled.NextRenewAt, polled.FailureCount = &v.ID, &next, 0
@@ -709,7 +716,7 @@ func (w *IssueWorker) notifyVersion(ctx context.Context, certID, versionID uuid.
 // the CA, reports no HTTP status at all, fix round 1), a failed_validation
 // row is recorded against it (Deviations R7) — best-effort, logged rather
 // than failing the whole attempt-finish on a write error.
-func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, eff Effective, cause error) error {
+func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, eff Effective, cause error, start time.Time) error {
 	now := w.Now()
 	failures := cert.FailureCount + 1
 	var acmeType string
@@ -765,6 +772,8 @@ func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid
 	// failure) so a listener's FailureInfo-adjacent nextAttemptAt detail is
 	// accurate, not stale.
 	cert.NextRenewAt = &next
+	metrics.IssuanceAttempts.WithLabelValues("failed").Inc()
+	metrics.IssuanceDuration.Observe(w.Now().Sub(start).Seconds())
 	w.notifyFailure(ctx, cert, failures, ClassifyFailure(lastFailedStep(steps), cause))
 	return nil
 }

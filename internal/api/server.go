@@ -111,6 +111,11 @@ type Deps struct {
 	// 6: internal/api/{channels,events}.go). Wired in cmd/certforge/serve.go
 	// (Task 14), alongside the notify.DeliverWorker river registration.
 	Notify *notify.Service
+
+	// Metrics serves GET /metrics (Phase 6A Task 8: metrics.Handler, wired
+	// in cmd/certforge/serve.go). nil answers 404, same as the handler
+	// itself does while the "prometheus" section is disabled.
+	Metrics http.Handler
 }
 
 // Server implements gen.StrictServerInterface, one file per resource.

@@ -36,6 +36,10 @@ Login is auth code with PKCE and a nonce; accounts are matched by (issuer, subje
 
 A key can do at most what its creator can do right now, restricted to its scopes and to its org when it has one; it stops working when revoked, expired, or when its creator is disabled. Keys cannot create keys. The API-key path is taken only for `Authorization: Bearer cf_<prefix>_<secret>` — any other scheme or bearer content (a reverse proxy's `Basic` header, an upstream JWT) is ignored and the request falls through to its cookie session, if any; when a request carries both a valid bearer and a cookie, the bearer decides the outcome and needs no CSRF header.
 
+## Metrics token
+
+`GET /metrics` (Settings → Prometheus) is gated by a bearer token (16–256 characters), required whenever the section is enabled — the same "required when enabled" rule Settings → SMTP applies to its password. The token is stored sealed (a secret settings property, like every other section's secrets), never echoed back on read, and a request's `Authorization: Bearer <token>` header is compared against it with `subtle.ConstantTimeCompare`. A missing or wrong token gets 401 with an empty body (never a hint about which part was wrong) and `WWW-Authenticate: Bearer`; the section disabled gets 404 instead, so an unauthenticated prober cannot tell "wrong token" from "not exposed at all". See [monitoring.md#prometheus](monitoring.md#prometheus).
+
 ## Authorization
 
 Roles: `admin` (everything, including CAs, KEK, global settings, key export), `org-admin` (everything within its org except global-only actions), `operator` (certificates, credentials, accounts, clients, issue and renew), `viewer` (read-only, no secrets), `auditor` (viewer plus audit log). Global-only actions: settings:write, orgs:write, cas:write, keys:export, users:write. users:read is readable by any role that holds it in some org (org-admins pick users for bindings). Agents never pass `Can()`; they use their own mTLS listener. Phase 1 seeds only the global `admin` binding for the local admin. See [ADR 0007](adr/0007-rbac-bindings-and-api-keys.md) for how role bindings and API keys fit together.

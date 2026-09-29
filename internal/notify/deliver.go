@@ -15,6 +15,7 @@ import (
 
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/notify/httpx"
 )
 
@@ -104,11 +105,13 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 	}
 
 	if !channel.Enabled {
+		metrics.NotificationsTotal.WithLabelValues(channel.Type, "failed").Inc()
 		return w.terminalFail(ctx, job, "channel disabled")
 	}
 
 	notifier, ok := w.Registry.Get(channel.Type)
 	if !ok {
+		metrics.NotificationsTotal.WithLabelValues(channel.Type, "failed").Inc()
 		return w.terminalFail(ctx, job, fmt.Sprintf("unknown channel type %q", channel.Type))
 	}
 
@@ -140,6 +143,7 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 
 	sendErr := notifier.Send(sendCtx, toEvent(eventRow), target, cfg, secrets)
 	if sendErr != nil {
+		metrics.NotificationsTotal.WithLabelValues(channel.Type, "failed").Inc()
 		return w.recordFailure(ctx, job, sendErr, secrets)
 	}
 	if err := w.Q.MarkNotificationDeliveryDelivered(ctx, sqlcgen.MarkNotificationDeliveryDeliveredParams{
@@ -147,6 +151,7 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 	}); err != nil {
 		w.log().Error("notify: delivery success not recorded", "event", job.Args.EventID, "channel", job.Args.ChannelID, "err", err)
 	}
+	metrics.NotificationsTotal.WithLabelValues(channel.Type, "delivered").Inc()
 	return nil
 }
 

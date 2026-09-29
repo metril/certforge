@@ -123,7 +123,7 @@ Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never
 | `GET /backup/status` | backup schedule and last outcome (arriving in Phase 6A; 501 today) |
 | `GET /server-info` | running server version; any authenticated principal (Phase 6A) |
 
-`GET /metrics` (not under `/api/v1`, outside the OpenAPI document, like `/crl` above) is a Prometheus scrape target, gated by the `prometheus` settings section; it arrives in Phase 6A Task 8 and 404s until then.
+`GET /metrics` (not under `/api/v1`, outside the OpenAPI document, like `/crl` above) is a Prometheus scrape target, gated by Settings → Prometheus: 404 while `enabled` is false, else a bearer token (`Authorization: Bearer <token>`, constant-time compared) is required — a missing or wrong one is 401 with an empty body and `WWW-Authenticate: Bearer`. See [monitoring.md#prometheus](monitoring.md#prometheus) and [monitoring.md#metrics-reference](monitoring.md#metrics-reference).
 
 `internal/api/client` (Phase 6A Task 2) is a generated Go client for this API (`api/oapi-codegen.client.yaml`), used by `cmd/cfctl` (arriving in Phase 6A Task 13).
 

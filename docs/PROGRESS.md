@@ -308,7 +308,7 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | 5 | SMTP notifier and SMTP test | done | 7f51b57 |
 | 6 | Channels and events API | done | c62109b |
 | 7 | Event sources | done | eee5c80 |
-| 8 | Prometheus metrics | planned | – |
+| 8 | Prometheus metrics | done | pending |
 | 9 | External monitors | planned | – |
 | 10 | Backup archive format | planned | – |
 | 11 | backup and restore CLI, serve lock | planned | – |

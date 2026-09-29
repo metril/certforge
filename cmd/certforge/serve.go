@@ -97,6 +97,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	if err := metrics.RegisterSettings(sections); err != nil {
 		return err
 	}
+	// The DB-backed Collector is registered once, here: Registry (a package
+	// var) is otherwise only holding the Go/process collectors and the
+	// package-level counters/histogram, wired in internal/metrics/metrics.go's
+	// own init().
+	metrics.Registry.MustRegister(metrics.NewCollector(pool, store, version))
 	authSettings, err := authn.NewSettingsSource(store, sections)
 	if err != nil {
 		return err
@@ -263,7 +268,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher,
-		KEKHealth: kekHealth, Version: version,
+		KEKHealth: kekHealth, Version: version, Metrics: metrics.Handler(store, sections),
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{
