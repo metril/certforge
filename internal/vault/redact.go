@@ -100,3 +100,18 @@ func scrubRaw(msg string, raw json.RawMessage) string {
 	}
 	return msg
 }
+
+// scrubSecrets is scrubRaw plus extra: values merged in from the section's
+// already-stored secrets (Provider.Test, when raw's own token/secretId is
+// empty or "__unchanged__") never appear in raw itself, so scrubRaw alone
+// would miss them if either ever surfaced in a Vault error message.
+func scrubSecrets(msg string, raw json.RawMessage, extra ...string) string {
+	msg = scrubRaw(msg, raw)
+	for _, v := range extra {
+		if v == "" {
+			continue
+		}
+		msg = strings.ReplaceAll(msg, v, "[redacted]")
+	}
+	return msg
+}

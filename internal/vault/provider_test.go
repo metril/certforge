@@ -150,3 +150,34 @@ func TestVaultTestScrubsSecrets(t *testing.T) {
 		t.Fatalf("error leaks secretId: %s", res.Error)
 	}
 }
+
+// TestVaultTestScrubsMergedSecrets covers batch-4's finding: Test
+// unconditionally merges both the section's stored token and secretId
+// (provider.go's own s.Token/s.SecretID lines), regardless of which one
+// authMethod actually uses — so a secretId left over from a previous
+// approle configuration is merged into s even while testing "token" auth,
+// and never becomes part of c.auth (TokenAuth), so Client.Redact's own
+// AppRoleAuth-only special case never sees it. Only Test's own extra scrub
+// pass over every merged secret (not just raw's own fields) catches it.
+func TestVaultTestScrubsMergedSecrets(t *testing.T) {
+	fv := newFakeVault()
+	defer fv.Close()
+	fv.handle(http.MethodGet, "/v1/sys/health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"initialized": true, "sealed": false, "version": "1.18.0"})
+	})
+	fv.handle(http.MethodGet, "/v1/auth/token/lookup-self", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 403, map[string]any{"errors": []string{`permission denied for secret_id "stored-secret-ABC"`}})
+	})
+
+	src := &fakeSettingsSource{secrets: map[string]string{"token": "t1", "secretId": "stored-secret-ABC"}}
+	p := &Provider{store: src, sec: testVaultSection(t)}
+
+	raw := json.RawMessage(`{"address":"` + fv.URL() + `","authMethod":"token"}`)
+	res := p.Test(context.Background(), raw)
+	if res.OK {
+		t.Fatal("expected a lookup-self failure")
+	}
+	if strings.Contains(res.Error, "stored-secret-ABC") {
+		t.Fatalf("error leaks a merged-but-unused stored secretId: %s", res.Error)
+	}
+}

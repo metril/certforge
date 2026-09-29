@@ -161,18 +161,18 @@ func (p *Provider) Test(ctx context.Context, raw json.RawMessage) TestResult {
 
 	c, err := clientFromSettings(s)
 	if err != nil {
-		return TestResult{OK: false, Error: scrubRaw(err.Error(), raw)}
+		return TestResult{OK: false, Error: scrubSecrets(err.Error(), raw, s.Token, s.SecretID)}
 	}
 	if err := c.Login(ctx); err != nil {
-		return TestResult{OK: false, Error: scrubRaw(c.Redact(err).Error(), raw)}
+		return TestResult{OK: false, Error: scrubSecrets(c.Redact(err).Error(), raw, s.Token, s.SecretID)}
 	}
 	health, err := c.Health(ctx)
 	if err != nil {
-		return TestResult{OK: false, Error: scrubRaw(c.Redact(err).Error(), raw)}
+		return TestResult{OK: false, Error: scrubSecrets(c.Redact(err).Error(), raw, s.Token, s.SecretID)}
 	}
 	info, err := c.LookupSelf(ctx)
 	if err != nil {
-		return TestResult{OK: false, Error: scrubRaw(c.Redact(err).Error(), raw)}
+		return TestResult{OK: false, Error: scrubSecrets(c.Redact(err).Error(), raw, s.Token, s.SecretID)}
 	}
 	return TestResult{OK: true, TokenTTLSeconds: int(info.TTL.Seconds()), Policies: info.Policies, Version: health.Version}
 }

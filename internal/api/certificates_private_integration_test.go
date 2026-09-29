@@ -100,6 +100,17 @@ func TestPrivateCAAccountOverride422(t *testing.T) {
 	if !strings.Contains(err.Error(), "account belongs to a different CA") {
 		t.Fatalf("err = %v, want it to mention the CA mismatch", err)
 	}
+
+	// batch-4: the conflict must be caught inside the create transaction
+	// (validateDefaultsTx), before any row is committed — not discovered
+	// only once certOut's own EffectiveFor call renders the response.
+	var n int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM certificates WHERE org_id = $1 AND name = $2`, f.org, "override").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("certificate rows = %d, want 0 (a rejected create must not leave a row behind)", n)
+	}
 }
 
 // TestInheritedAccountIgnoredForPrivate (Task 9): an ACME account inherited
@@ -136,6 +147,94 @@ func TestInheritedAccountIgnoredForPrivate(t *testing.T) {
 	}
 	if c.Effective.AccountId != nil && c.Effective.AccountId.Value != nil {
 		t.Fatalf("effective accountId = %+v, want dropped (nil) for a private CA", c.Effective.AccountId)
+	}
+}
+
+// TestGetCertificateSurvivesCADriftToPrivate (batch-4, finding 2): a
+// certificate's own accountId override was valid when it was created (its
+// caId, inherited from org defaults at the time, was still the account's
+// own ACME CA); once org defaults later move to a private CA, GET must
+// still succeed (200) with the now-incompatible account silently dropped —
+// never a 422 on the read path, which would otherwise make an existing,
+// once-valid certificate suddenly unreadable.
+func TestGetCertificateSurvivesCADriftToPrivate(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	acmeCA := createACMECA(t, f, "DriftACME")
+	acct := insertACMEAccount(t, f, acmeCA.Id)
+	local := createLocalCA(t, f, "DriftLocal")
+
+	if err := f.store.PutOrgDefaults(ctx, f.org, issuance.Defaults{CAID: &acmeCA.Id}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.srv.CreateCertificate(f.as("operator"), gen.CreateCertificateRequestObject{OrgId: f.org, Body: &gen.CertificateInput{
+		Name: "drift", CommonName: "drift.example.test",
+		Overrides: &gen.IssuanceDefaults{AccountId: ptrT(acct.ID)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := res.(gen.CreateCertificate201JSONResponse)
+
+	// Org defaults now point at a private CA; the certificate's own
+	// accountId override was never touched.
+	if err := f.store.PutOrgDefaults(ctx, f.org, issuance.Defaults{CAID: &local.Id}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := f.srv.GetCertificate(f.as("operator"), gen.GetCertificateRequestObject{OrgId: f.org, Id: created.Id})
+	if err != nil {
+		t.Fatalf("GetCertificate: %v (must not 422 on the read path)", err)
+	}
+	c := got.(gen.GetCertificate200JSONResponse)
+	if c.Effective.CaId == nil || c.Effective.CaId.Value == nil || *c.Effective.CaId.Value != local.Id {
+		t.Fatalf("effective caId = %+v, want %s", c.Effective.CaId, local.Id)
+	}
+	if c.Effective.AccountId != nil && c.Effective.AccountId.Value != nil {
+		t.Fatalf("effective accountId = %+v, want dropped (nil) once the effective CA is private", c.Effective.AccountId)
+	}
+}
+
+// TestListCertificatesDropsInheritedAccountForPrivate (batch-4, finding 3):
+// ListCertificates must apply the same private-CA/account reconciliation
+// GET does, not the raw issuance.Resolve merge — otherwise a listed
+// certificate would show an ACME account that GET itself never shows.
+func TestListCertificatesDropsInheritedAccountForPrivate(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	local := createLocalCA(t, f, "ListDropLocal")
+	acmeCA := createACMECA(t, f, "ListDropACME")
+	acct := insertACMEAccount(t, f, acmeCA.Id)
+
+	if err := f.settingsStore.Set(ctx, settings.SectionKey(issuance.SettingsKey), issuance.Defaults{AccountID: &acct.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.PutOrgDefaults(ctx, f.org, issuance.Defaults{CAID: &local.Id}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.srv.CreateCertificate(f.as("operator"), gen.CreateCertificateRequestObject{OrgId: f.org, Body: &gen.CertificateInput{
+		Name: "listed", CommonName: "listed.example.test",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := f.srv.ListCertificates(f.as("operator"), gen.ListCertificatesRequestObject{OrgId: f.org})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := res.(gen.ListCertificates200JSONResponse)
+	var found bool
+	for _, item := range out.Items {
+		if item.Name != "listed" {
+			continue
+		}
+		found = true
+		if item.Effective.AccountId != nil && item.Effective.AccountId.Value != nil {
+			t.Fatalf("listed effective accountId = %+v, want dropped (nil) for a private CA", item.Effective.AccountId)
+		}
+	}
+	if !found {
+		t.Fatal("certificate not found in the list")
 	}
 }
 

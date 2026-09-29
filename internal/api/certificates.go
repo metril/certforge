@@ -163,7 +163,9 @@ func (s *Server) ListAllCertificates(ctx context.Context, r gen.ListAllCertifica
 // The effective config (global and per-org defaults) and every
 // certificate's current version on this page are each loaded once for the
 // whole page, not once per certificate; org defaults are cached per org so
-// a cross-org page does not re-fetch them per row.
+// a cross-org page does not re-fetch them per row. An inherited ACME
+// account is dropped for a private effective CA exactly as GET does
+// (issuance.DropAccountForPrivateCA), with the CA itself cached per id.
 func (s *Server) listCerts(ctx context.Context, orgIDs []uuid.UUID, status, q, sort *string, limit *int, cursor *string) (gen.CertificateList, error) {
 	p, err := parseCertList(status, q, sort, limit, cursor)
 	if err != nil {
@@ -199,9 +201,26 @@ func (s *Server) listCerts(ctx context.Context, orgIDs []uuid.UUID, status, q, s
 	if err != nil {
 		return gen.CertificateList{}, err
 	}
+	// cas caches one CA row per distinct id resolved on this page (like
+	// orgDefaults above), so DropAccountForPrivateCA's reconciliation —
+	// the same rule EffectiveFor applies on GET — costs at most one extra
+	// query per distinct CA, not one per certificate.
+	cas := map[uuid.UUID]issuance.CA{}
 	items := make([]gen.Certificate, 0, len(pg.Certificates))
 	for _, c := range pg.Certificates {
 		eff := issuance.Resolve(global, orgDefaults[c.OrgID], c.Overrides)
+		if eff.CAID.Value != nil && eff.AccountID.Value != nil {
+			ca, ok := cas[*eff.CAID.Value]
+			if !ok {
+				var caErr error
+				ca, caErr = s.d.Issuance.Store.GetCA(ctx, c.OrgID, *eff.CAID.Value)
+				if caErr != nil {
+					return gen.CertificateList{}, caErr
+				}
+				cas[*eff.CAID.Value] = ca
+			}
+			eff = issuance.DropAccountForPrivateCA(eff, ca)
+		}
 		var v *certstore.Version
 		if c.CurrentVersionID != nil {
 			if vv, ok := versions[*c.CurrentVersionID]; ok {

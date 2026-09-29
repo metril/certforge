@@ -250,7 +250,12 @@ func (s *Service) importOne(ctx context.Context, orgID uuid.UUID, over Defaults,
 	// CreateCertificate. Unlike a business-level skip, this failing means
 	// caID itself has gone missing from under the whole request, so it
 	// propagates as a real error rather than skipping just this one item.
-	if err := s.Store.validateDefaultsTx(ctx, s.Store.q.WithTx(tx), orgID, over, false, nil); err != nil {
+	// aboveCAID nil: an imported/uploaded certificate is unmanaged (never
+	// issued or renewed by CertForge), so the write-time accountId-vs-
+	// inherited-CA check batch-4 added for prepareCertTx does not apply
+	// here — over.CAID/AccountID, when set at all, are still checked
+	// against each other (the existing same-level check below).
+	if err := s.Store.validateDefaultsTx(ctx, s.Store.q.WithTx(tx), orgID, over, nil, false, nil); err != nil {
 		return ImportItem{}, err
 	}
 

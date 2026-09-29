@@ -109,13 +109,17 @@ func (s *Store) OrgDefaults(ctx context.Context, orgID uuid.UUID) (Defaults, err
 // until this transaction ends, instead of the two racing past each other
 // into a dangling reference.
 func (s *Store) PutOrgDefaults(ctx context.Context, orgID uuid.UUID, d Defaults) error {
+	g, err := s.GlobalDefaults(ctx)
+	if err != nil {
+		return err
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
-	if err := s.validateDefaultsTx(ctx, q, orgID, d, false, nil); err != nil {
+	if err := s.validateDefaultsTx(ctx, q, orgID, d, g.CAID, false, nil); err != nil {
 		return err
 	}
 	b, err := json.Marshal(d)
@@ -139,15 +143,17 @@ func (s *Store) EffectiveFor(ctx context.Context, c Certificate) (Effective, err
 }
 
 // effective resolves global, org and cert levels, then reconciles the
-// resolved account against the resolved CA (Task 9 contract): a private CA
-// (localca, vaultpki) has no ACME account. When both are set and the CA is
-// private, an account inherited from org or global defaults is dropped
-// silently (the certificate itself never asked for it); an account set
-// explicitly on the certificate's own overrides is instead a
-// *ValidationError (422 at the API) — a real conflict the caller should
-// know about, not something to silently override. GetCA is skipped
-// whenever either side is already nil, since there is nothing to
-// reconcile.
+// resolved account against the resolved CA: a private CA (localca,
+// vaultpki) has no ACME account. This is the read path (GET/list, the
+// post-issuance ARI poll, worker.run's own resolve) — batch-4 review: it
+// must never 422 here, only drop an account that does not belong (issuance
+// itself already fails with a clear message downstream when that matters,
+// same as any other CA/account mismatch). The write path's own conflict
+// check (a certificate's own accountId override against its own or an
+// inherited CA) lives in validateDefaultsTx instead, inside the
+// create/update transaction, so a rejected combination is never committed
+// in the first place. GetCA is skipped whenever either side is already
+// nil, since there is nothing to reconcile.
 func (s *Store) effective(ctx context.Context, orgID uuid.UUID, cert Defaults) (Effective, error) {
 	g, err := s.GlobalDefaults(ctx)
 	if err != nil {
@@ -165,14 +171,19 @@ func (s *Store) effective(ctx context.Context, orgID uuid.UUID, cert Defaults) (
 	if err != nil {
 		return Effective{}, err
 	}
-	if !ca.Private() {
-		return eff, nil
+	return DropAccountForPrivateCA(eff, ca), nil
+}
+
+// DropAccountForPrivateCA drops eff.AccountID when ca is private (localca,
+// vaultpki have no ACME account); eff is returned unchanged otherwise.
+// Exported so a caller that already has both an Effective and its CA in
+// hand — listCerts's own batched-and-cached resolution, for one — applies
+// exactly the same rule effective (above) does, instead of re-deriving it.
+func DropAccountForPrivateCA(eff Effective, ca CA) Effective {
+	if ca.Private() {
+		eff.AccountID = Field[*uuid.UUID]{Value: nil, Source: SourceDefault}
 	}
-	if eff.AccountID.Source == SourceCert {
-		return Effective{}, &ValidationError{"accountId", "account belongs to a different CA"}
-	}
-	eff.AccountID = Field[*uuid.UUID]{Value: nil, Source: SourceDefault}
-	return eff, nil
+	return eff
 }
 
 // globalDefaultsReference reports whether the global issuance_defaults
@@ -295,8 +306,15 @@ func validateDefaultsShape(d Defaults) error {
 // to validateRulesOrgTx; see prepareCertTx. preLocked is nil except from
 // prepareCertTx, which locks d.VerificationRules's clients together with
 // in.Rules's own in one combined pass (see prepareCertTx) rather than
-// leaving this call to lock them again separately.
-func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults, renaming bool, preLocked map[uuid.UUID]sqlcgen.Client) error {
+// leaving this call to lock them again separately. aboveCAID is the CAID
+// that would apply if d itself leaves caId unset (the org level's own caId
+// for a certificate's overrides, else the global level's) — batch-4
+// review: an accountId set at this level is checked against the CA that
+// would actually be effective, not only one this same level also happens
+// to set, so a certificate whose accountId conflicts with an inherited CA
+// (private or otherwise) is rejected here, inside the write transaction,
+// instead of committing and only failing later on read (EffectiveFor).
+func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults, aboveCAID *uuid.UUID, renaming bool, preLocked map[uuid.UUID]sqlcgen.Client) error {
 	if err := validateDefaultsShape(d); err != nil {
 		return err
 	}
@@ -328,7 +346,11 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 			}
 			return err
 		}
-		if d.CAID != nil && a.CaID != *d.CAID {
+		effCAID := d.CAID
+		if effCAID == nil {
+			effCAID = aboveCAID
+		}
+		if effCAID != nil && a.CaID != *effCAID {
 			return &ValidationError{"accountId", "account belongs to a different CA"}
 		}
 	}
@@ -672,7 +694,23 @@ func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uui
 	if err := s.validateRulesOrgTx(ctx, q, orgID, in.Rules, renaming, clients); err != nil {
 		return err
 	}
-	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides, renaming, clients)
+	// aboveCAID is what caId would resolve to if in.Overrides itself leaves
+	// it unset: org defaults, else global — the same precedence Resolve
+	// uses, computed here (non-tx reads, like validateDefaultsTx's own
+	// PutOrgDefaults caller) only for the accountId-vs-effective-CA check.
+	g, err := s.GlobalDefaults(ctx)
+	if err != nil {
+		return err
+	}
+	o, err := s.OrgDefaults(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	aboveCAID := o.CAID
+	if aboveCAID == nil {
+		aboveCAID = g.CAID
+	}
+	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides, aboveCAID, renaming, clients)
 }
 
 // CreateCertificate stores a definition, due for issuance now. Runs inside

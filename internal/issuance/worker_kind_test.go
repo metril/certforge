@@ -30,10 +30,26 @@ func TestPrivateCASkipsACMESteps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Seed an org accountId (f.ca/f.acct, both ACME — valid on their own)
+	// explicitly, so this certificate's own accountId override to a
+	// private CA inherits a real, non-nil account to drop: the doc
+	// comment's "inherited account dropped" claim is otherwise never
+	// actually exercised (runPrivate ignores AccountID regardless of its
+	// value, so nothing here would fail if the account were not dropped).
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{CAID: &f.ca.ID, AccountID: &f.acct.ID}); err != nil {
+		t.Fatal(err)
+	}
 	c, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "priv", CommonName: "priv.example.test",
 		Overrides: Defaults{CAID: &ca.ID}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	eff, err := f.store.EffectiveFor(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eff.AccountID.Value != nil {
+		t.Fatalf("effective accountId = %v, want dropped (nil): the org default (%s) belongs to an ACME CA, not this certificate's private one", *eff.AccountID.Value, f.acct.ID)
 	}
 
 	certs := certstore.New(f.pool, cryptotest.PrefixBox{})
