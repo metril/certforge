@@ -60,7 +60,7 @@ e2e: deploy/secrets/kek
 		CF_E2E_COMPOSE="$(COMPOSE_TEST_ABS)" \
 		CF_E2E_COMPOSE_VAULT_FILE=$(CURDIR)/deploy/compose.vault.yaml \
 		CF_E2E_VAULT=http://localhost:$${CF_VAULT_PORT} \
-		CF_E2E_VAULT_ADDR=http://vault:8200; \
+		CF_E2E_VAULT_ADDR=$${CF_E2E_VAULT_ADDR:-http://vault:8200}; \
 	$(GO) test -tags e2e -count=1 -timeout 20m -skip TestVaultAgainstCompose ./test/e2e/...; status=$$?; \
 	if [ $$status -eq 0 ]; then \
 		$(GO) test -tags e2e -count=1 -timeout 15m -run TestVaultAgainstCompose ./test/e2e/...; status=$$?; \
@@ -83,7 +83,7 @@ e2e-web: deploy/secrets/kek
 	fi; \
 	CF_E2E_BASE_URL=http://localhost:$${CF_HTTP_PORT:-8080} \
 	CF_E2E_AGENT_DIR=$(CURDIR)/.e2e \
-	CF_E2E_VAULT_ADDR=http://vault:8200 \
+	CF_E2E_VAULT_ADDR=$${CF_E2E_VAULT_ADDR:-http://vault:8200} \
 	CF_E2E_VAULT_TOKEN=$${CF_E2E_VAULT_TOKEN} \
 	npm --prefix web run e2e; status=$$?; $(COMPOSE_TEST) --profile e2e down -v; exit $$status
 

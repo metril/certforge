@@ -115,6 +115,15 @@ type Server struct {
 	vaultMu  sync.Mutex
 	vaultAt  time.Time
 	vaultErr error
+
+	// vaultSectionMu/vaultSectionAt/vaultSectionErr cache a second, separate
+	// sys/health probe of the "vault" Integrations section's own client
+	// (batch 6 review): under a Transit KEK, vaultMu above only proves the
+	// KEK's own Vault is reachable, not a section configured at a different
+	// address, so the two are probed and cached independently.
+	vaultSectionMu  sync.Mutex
+	vaultSectionAt  time.Time
+	vaultSectionErr error
 }
 
 var _ gen.StrictServerInterface = (*Server)(nil)

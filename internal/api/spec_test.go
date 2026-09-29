@@ -196,7 +196,9 @@ func TestPhase5OperationsDeclared(t *testing.T) {
 // lists) is gone and nothing else in the package answers with a stub 501:
 // every operationId's *Server method is a real handler now that Tasks
 // 5-13 have landed. Mirrors the acceptance check `grep -rn "Not
-// implemented" internal/api`.
+// implemented" internal/api`, and (batch 6 review) also fails on a literal
+// `StatusNotImplemented` anywhere in the package — the brief's actual
+// requirement is no 501 handler at all, not just none using this string.
 func TestNoStubsRemain(t *testing.T) {
 	if _, err := os.Stat("phase5_stubs.go"); err == nil {
 		t.Fatal("internal/api/phase5_stubs.go still exists")
@@ -204,8 +206,19 @@ func TestNoStubsRemain(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if err != nil {
 			return err
+		}
+		// gen/ is oapi-codegen output: it always emits an "Unimplemented"
+		// fallback StrictServerInterface (returning StatusNotImplemented
+		// for every operation) as boilerplate, whether or not anything
+		// wires it up — api.Server never does — so it is not a stub this
+		// test can meaningfully flag.
+		if d.IsDir() && d.Name() == "gen" {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
 		}
 		b, rerr := os.ReadFile(path)
 		if rerr != nil {
@@ -213,6 +226,9 @@ func TestNoStubsRemain(t *testing.T) {
 		}
 		if strings.Contains(string(b), "Not implemented") {
 			t.Errorf("%s: 501 stub remains", path)
+		}
+		if strings.Contains(string(b), "StatusNotImplemented") {
+			t.Errorf("%s: StatusNotImplemented remains", path)
 		}
 		return nil
 	})

@@ -23,6 +23,12 @@ import (
 // certificate), published by deploy/compose.test.yaml's vault service.
 func vaultHostAddr() string { return envOr("CF_E2E_VAULT", "http://localhost:8200") }
 
+// vaultInClusterAddr is where the running certforge server itself reaches
+// Vault, over the compose network (batch 6 review: the Makefile exports
+// this too, `${CF_E2E_VAULT_ADDR:-http://vault:8200}`, rather than either
+// side hard-coding it).
+func vaultInClusterAddr() string { return envOr("CF_E2E_VAULT_ADDR", "http://vault:8200") }
+
 // vaultToken is the dev-mode root token, also VAULT_DEV_ROOT_TOKEN_ID for
 // the compose vault service and the input deploy/e2e/vault-init.sh's
 // custom-secret-id call uses as the AppRole's fixed secret_id.
@@ -56,6 +62,18 @@ func runSh(ctx context.Context, t *testing.T, extraEnv []string, command string)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%s: %v\n%s", command, err, out)
 	}
+}
+
+// waitFor60 derives its own bounded (<= 60 s) context from parent and polls
+// with waitFor (global constraint: every wait loop is bounded, at most
+// 60 s, never sharing a longer-lived context another wait loop also uses —
+// batch 6 review). parent is only the outer deadline these individual
+// windows nest inside, never itself passed to waitFor directly.
+func waitFor60[T any](parent context.Context, t *testing.T, what string, poll func() (T, bool)) T {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
+	defer cancel()
+	return waitFor(ctx, t, what, poll)
 }
 
 type readyzOut struct {
@@ -199,9 +217,7 @@ func TestVaultAgainstCompose(t *testing.T) {
 	dir := envOr("CF_E2E_AGENT_DIR", "../../.e2e")
 	roleIDPath := filepath.Join(dir, "vault", "role_id")
 	secretIDPath := filepath.Join(dir, "vault", "secret_id")
-	waitCtx, waitCancel := context.WithTimeout(ctx, 60*time.Second)
-	defer waitCancel()
-	waitFor(waitCtx, t, "vault-init AppRole files", func() (bool, bool) {
+	waitFor60(ctx, t, "vault-init AppRole files", func() (bool, bool) {
 		_, err1 := os.Stat(roleIDPath)
 		_, err2 := os.Stat(secretIDPath)
 		return err1 == nil && err2 == nil, err1 == nil && err2 == nil
@@ -225,10 +241,8 @@ func TestVaultAgainstCompose(t *testing.T) {
 	// excluded from the project and the reference is "undefined".
 	runSh(ctx, t, []string{"CF_KEK_VAULT_ROLE_ID=" + roleID},
 		withVaultOverride+" --profile e2e up -d --no-deps --force-recreate certforge")
-	readyCtx, readyCancel := context.WithTimeout(ctx, 60*time.Second)
-	defer readyCancel()
-	waitFor(readyCtx, t, "readyz after Transit restart", func() (int, bool) {
-		code, _ := getReadyz(readyCtx, t)
+	waitFor60(ctx, t, "readyz after Transit restart", func() (int, bool) {
+		code, _ := getReadyz(ctx, t)
 		return code, code == http.StatusOK
 	})
 	// The session store is Postgres-backed, so c's cookie is still good
@@ -236,16 +250,24 @@ func TestVaultAgainstCompose(t *testing.T) {
 	// restart step relies on the same thing) — no need to log in again.
 	verifyAuditChain(ctx, t, c)
 
-	// 2. Rewrap: start it, then poll /keys/status to completion.
+	// 2. Rewrap: start it, then poll /keys/status until it stops running
+	// (successfully or not — polling past a failure until the timeout
+	// would only replace a clear error with a useless "timed out").
 	c.call(ctx, t, http.MethodPost, "/api/v1/keys/rewrap", nil, nil)
-	rewrapCtx, rewrapCancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer rewrapCancel()
-	status := waitFor(rewrapCtx, t, "rewrap finished", func() (keysStatusOut, bool) {
+	status := waitFor60(ctx, t, "rewrap finished", func() (keysStatusOut, bool) {
 		var st keysStatusOut
 		c.call(ctx, t, http.MethodGet, "/api/v1/keys/status", nil, &st)
-		done := st.Rewrap != nil && st.Rewrap.FinishedAt != nil && st.Rewrap.Remaining == 0
-		return st, done
+		return st, st.Rewrap != nil && !st.Rewrap.Running
 	})
+	if status.Rewrap == nil {
+		t.Fatal("no rewrap status after starting a rewrap")
+	}
+	if status.Rewrap.Error != nil {
+		t.Fatalf("rewrap error: %s", *status.Rewrap.Error)
+	}
+	if status.Rewrap.FinishedAt == nil || status.Rewrap.Remaining != 0 {
+		t.Fatalf("rewrap stopped running without finishing cleanly: %+v", status.Rewrap)
+	}
 	if status.Kind != "vault-transit" {
 		t.Fatalf("kind = %q, want vault-transit", status.Kind)
 	}
@@ -260,9 +282,6 @@ func TestVaultAgainstCompose(t *testing.T) {
 	}
 	if !foundStatic {
 		t.Fatalf("previous = %+v, want a static entry", status.Previous)
-	}
-	if status.Rewrap.Error != nil {
-		t.Fatalf("rewrap error: %s", *status.Rewrap.Error)
 	}
 
 	// 3. localca: create, issue, renew, download, verify chain, CRL,
@@ -279,12 +298,10 @@ func TestVaultAgainstCompose(t *testing.T) {
 		"overrides": map[string]any{"caId": ca.ID},
 	}, &localCert)
 	localCertPath := "/api/v1/orgs/" + orgID + "/certificates/" + localCert.ID
-	// Shared by every "active" poll below (localca issue, localca renew,
-	// vaultpki issue): none of them wait on an external CA the way ACME
-	// issuance does, so 3 minutes is generous for all three combined.
-	activeCtx, activeCancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer activeCancel()
-	localCert = waitFor(activeCtx, t, "localca cert active", func() (certOut, bool) {
+	// None of the "active" polls below (localca issue, localca renew,
+	// vaultpki issue) wait on an external CA the way ACME issuance does, so
+	// 60 s is generous for each on its own.
+	localCert = waitFor60(ctx, t, "localca cert active", func() (certOut, bool) {
 		var cur certOut
 		c.call(ctx, t, http.MethodGet, localCertPath, nil, &cur)
 		return cur, cur.Status == "active" || cur.FailureCount > 0
@@ -294,12 +311,12 @@ func TestVaultAgainstCompose(t *testing.T) {
 	}
 
 	c.call(ctx, t, http.MethodPost, localCertPath+"/renew", nil, nil)
-	waitFor(ctx, t, "localca renewed", func() (int, bool) {
+	waitFor60(ctx, t, "localca renewed", func() (int, bool) {
 		var versions []versionOut
 		c.call(ctx, t, http.MethodGet, localCertPath+"/versions", nil, &versions)
 		return len(versions), len(versions) == 2
 	})
-	localCert = waitFor(activeCtx, t, "localca active after renewal", func() (certOut, bool) {
+	localCert = waitFor60(ctx, t, "localca active after renewal", func() (certOut, bool) {
 		var cur certOut
 		c.call(ctx, t, http.MethodGet, localCertPath, nil, &cur)
 		return cur, cur.Status == "active"
@@ -348,7 +365,7 @@ func TestVaultAgainstCompose(t *testing.T) {
 	if !ok {
 		t.Fatalf("could not parse serial %q as hex", revoked.Serial)
 	}
-	waitFor(ctx, t, "CRL lists the revoked serial", func() ([]byte, bool) {
+	waitFor60(ctx, t, "CRL lists the revoked serial", func() ([]byte, bool) {
 		der := getBody(ctx, t, baseURL()+"/crl/"+ca.ID+".crl")
 		list, perr := x509.ParseRevocationList(der)
 		if perr != nil {
@@ -365,7 +382,7 @@ func TestVaultAgainstCompose(t *testing.T) {
 	// 4. vaultpki: configure Settings -> Integrations -> Vault, test it,
 	// create a vaultpki CA, issue, chain root equals Vault's own PKI CA.
 	vaultSettings := map[string]any{
-		"address": "http://vault:8200", "authMethod": "token", "token": vaultToken(),
+		"address": vaultInClusterAddr(), "authMethod": "token", "token": vaultToken(),
 	}
 	c.call(ctx, t, http.MethodPut, "/api/v1/settings/vault", vaultSettings, nil)
 	var testResult vaultTestResultOut
@@ -390,7 +407,7 @@ func TestVaultAgainstCompose(t *testing.T) {
 		"overrides": map[string]any{"caId": pkiCA.ID},
 	}, &pkiCert)
 	pkiCertPath := "/api/v1/orgs/" + orgID + "/certificates/" + pkiCert.ID
-	pkiCert = waitFor(activeCtx, t, "vaultpki cert active", func() (certOut, bool) {
+	pkiCert = waitFor60(ctx, t, "vaultpki cert active", func() (certOut, bool) {
 		var cur certOut
 		c.call(ctx, t, http.MethodGet, pkiCertPath, nil, &cur)
 		return cur, cur.Status == "active" || cur.FailureCount > 0
@@ -434,7 +451,7 @@ func TestVaultAgainstCompose(t *testing.T) {
 	var grant grantOut
 	c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/deploy-targets/"+target.ID+"/grants",
 		map[string]any{"certificateId": localCert.ID}, &grant)
-	grant = waitFor(ctx, t, "server grant deployed", func() (grantOut, bool) {
+	grant = waitFor60(ctx, t, "server grant deployed", func() (grantOut, bool) {
 		var items []grantOut
 		c.call(ctx, t, http.MethodGet, "/api/v1/orgs/"+orgID+"/deploy-targets/"+target.ID+"/grants", nil, &items)
 		for _, g := range items {
@@ -482,11 +499,12 @@ func TestVaultAgainstCompose(t *testing.T) {
 	if !ok || gotFullchain == "" {
 		t.Fatalf("KV document missing fullchain.pem: keys=%v", kv.Data.Data)
 	}
-	if !strings.Contains(gotFullchain, string(fullchain[:64])) {
-		// A loose but meaningful check: the KV document's fullchain must
-		// start the same way the version downloaded via the API did (both
-		// are the same version's rendered fullchain.pem).
-		t.Fatalf("KV fullchain.pem does not match the certificate's own fullchain")
+	if gotFullchain != string(fullchain) {
+		// Both are the same version's rendered fullchain.pem — the vault-kv
+		// target writes render.File.Data verbatim, byte for byte identical
+		// to what the download endpoint served earlier in this test.
+		t.Fatalf("KV fullchain.pem (%d bytes) does not match the certificate's own fullchain (%d bytes)",
+			len(gotFullchain), len(fullchain))
 	}
 	if _, ok := kv.Data.Data["privkey.pem"]; ok {
 		t.Fatal("KV document has privkey.pem, but includeKey was never set")
@@ -495,17 +513,13 @@ func TestVaultAgainstCompose(t *testing.T) {
 	// 6. Vault down: pause (never stop — dev mode is in-memory), /readyz
 	// goes 503 with checks.vault = failed, then recovers on unpause.
 	runSh(ctx, t, nil, base+" pause vault")
-	pauseCtx, pauseCancel := context.WithTimeout(ctx, 60*time.Second)
-	defer pauseCancel()
-	waitFor(pauseCtx, t, "readyz reports vault failed", func() (readyzOut, bool) {
-		code, out := getReadyz(pauseCtx, t)
+	waitFor60(ctx, t, "readyz reports vault failed", func() (readyzOut, bool) {
+		code, out := getReadyz(ctx, t)
 		return out, code == http.StatusServiceUnavailable && out.Checks["vault"] == "failed"
 	})
 	runSh(ctx, t, nil, base+" unpause vault")
-	unpauseCtx, unpauseCancel := context.WithTimeout(ctx, 60*time.Second)
-	defer unpauseCancel()
-	waitFor(unpauseCtx, t, "readyz ready again", func() (int, bool) {
-		code, _ := getReadyz(unpauseCtx, t)
+	waitFor60(ctx, t, "readyz ready again", func() (int, bool) {
+		code, _ := getReadyz(ctx, t)
 		return code, code == http.StatusOK
 	})
 }

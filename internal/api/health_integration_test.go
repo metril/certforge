@@ -145,6 +145,31 @@ func TestReadyzVaultFailedForTransitKEK(t *testing.T) {
 	}
 }
 
+// TestReadyzVaultDegradedUnderTransitKEK (batch 6 review): a Transit KEK
+// whose own probe succeeds must not skip the separately configured
+// Integrations section — a broken section address reports "degraded", not
+// "ok", even though the KEK's own Vault is healthy and the server stays
+// ready (Shared contract: "failed" only when the KEK's own probe fails).
+func TestReadyzVaultDegradedUnderTransitKEK(t *testing.T) {
+	e := newTestEnvOpts(t, func(d *api.Deps) {
+		d.KEKHealth = func(context.Context) error { return nil }
+	})
+	csrf, _ := e.seedAdminSession()
+	if err := e.deps.Settings.EnsureCanary(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	resp, body := e.do(http.MethodPut, "/api/v1/settings/vault", //nolint:bodyclose // testEnv.doRaw closes the body
+		map[string]any{"address": "http://127.0.0.1:1", "authMethod": "token", "token": "t1"}, csrf)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("seed vault settings: %d %s", resp.StatusCode, body)
+	}
+
+	code, b := readyz(t, e.srv.URL)
+	if code != http.StatusOK || b.Status != "ready" || b.Checks["vault"] != "degraded" || b.Checks["kek"] != "ok" {
+		t.Fatalf("degraded under transit: %d %+v", code, b)
+	}
+}
+
 // TestReadyzVaultCached covers the Shared contract's 30 s cache on the
 // sys/health probe: two /readyz calls back to back must not call KEKHealth
 // twice.

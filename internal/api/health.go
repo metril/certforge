@@ -47,44 +47,67 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 
 // vaultCheck reports /readyz's "vault" check (Shared contract): present
 // only when Deps.KEKHealth is set (the KEK is Transit) or Deps.Vault has an
-// address configured (the Integrations section). The underlying sys/health
-// probe is cached for vaultCacheTTL; only its own error is cached, never
-// the address or token that reached it, so nothing beyond the word below
-// ever reaches the response body or this cache.
+// address configured (the Integrations section). The two are separate
+// Vault configurations that can point at different addresses, so both are
+// probed (each cached independently, vaultCacheTTL) whenever configured,
+// not just the KEK's own — a batch 6 review fix: a Transit KEK's healthy
+// probe used to skip the Integrations section's probe entirely, so a
+// broken section address could never surface. Only its own error is
+// cached, never the address or token that reached it, so nothing beyond
+// the word below ever reaches the response body or this cache.
 //
 // A KEK-Transit failure is "failed": the server cannot decrypt without it.
 // An Integrations-section failure is "degraded": Vault there only backs
 // vaultpki/vault-kv, which fail their own way without it, so the rest of
-// the server stays usable.
+// the server stays usable. The KEK's own failure wins when both fail.
 func (s *Server) vaultCheck(ctx context.Context) (word string, present bool) {
 	transit := s.d.KEKHealth != nil
-	if !transit && (s.d.Vault == nil || !s.d.Vault.Configured(ctx)) {
+	sectionConfigured := s.d.Vault != nil && s.d.Vault.Configured(ctx)
+	if !transit && !sectionConfigured {
 		return "", false
 	}
+	if transit && s.probeKEKVault(ctx) != nil {
+		return "failed", true
+	}
+	if sectionConfigured && s.probeSectionVault(ctx) != nil {
+		return "degraded", true
+	}
+	return "ok", true
+}
 
+// probeKEKVault runs (and caches, vaultCacheTTL) Deps.KEKHealth, the
+// Transit KEK's own reachability probe.
+func (s *Server) probeKEKVault(ctx context.Context) error {
 	s.vaultMu.Lock()
 	defer s.vaultMu.Unlock()
 	if time.Since(s.vaultAt) >= vaultCacheTTL {
+		err := s.d.KEKHealth(ctx)
+		s.vaultAt, s.vaultErr = time.Now(), err
+		if err != nil {
+			s.d.Log.Warn("readyz: KEK vault health check failed", "err", err)
+		}
+	}
+	return s.vaultErr
+}
+
+// probeSectionVault runs (and caches, vaultCacheTTL) a sys/health probe
+// against the "vault" Integrations section's own client.
+func (s *Server) probeSectionVault(ctx context.Context) error {
+	s.vaultSectionMu.Lock()
+	defer s.vaultSectionMu.Unlock()
+	if time.Since(s.vaultSectionAt) >= vaultCacheTTL {
 		var err error
-		if transit {
-			err = s.d.KEKHealth(ctx)
-		} else if c, cerr := s.d.Vault.Client(ctx); cerr != nil {
+		if c, cerr := s.d.Vault.Client(ctx); cerr != nil {
 			err = cerr
 		} else {
 			_, err = c.Health(ctx)
 		}
-		s.vaultAt, s.vaultErr = time.Now(), err
+		s.vaultSectionAt, s.vaultSectionErr = time.Now(), err
 		if err != nil {
-			s.d.Log.Warn("readyz: vault health check failed", "err", err)
+			s.d.Log.Warn("readyz: vault section health check failed", "err", err)
 		}
 	}
-	if s.vaultErr != nil {
-		if transit {
-			return "failed", true
-		}
-		return "degraded", true
-	}
-	return "ok", true
+	return s.vaultSectionErr
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
