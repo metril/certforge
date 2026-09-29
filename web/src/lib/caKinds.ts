@@ -1,3 +1,4 @@
+import { Globe, Landmark, Vault, type LucideIcon } from 'lucide-react';
 import type { CA, CaType } from '@/api/types';
 import { EXPIRING_DAYS, type Tone } from './status';
 import { DAY } from './time';
@@ -8,6 +9,10 @@ export const KIND_LABEL: Record<CaType, string> = {
   localca: 'Built-in CA',
   vaultpki: 'Vault PKI',
 };
+
+/** UI conventions: the Type chip's icon per kind, shared by the CAs list
+ * and the private CA detail sheet (task 3). */
+export const KIND_ICON: Record<CaType, LucideIcon> = { acme: Globe, localca: Landmark, vaultpki: Vault };
 
 /** The CA's kind, defaulting to acme when the CA itself isn't known yet
  * (a new-CA sheet before the operator picks a kind). */

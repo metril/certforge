@@ -56,6 +56,8 @@ A certificate's **Deployments** tab lists every client that holds it: connection
 
 The command palette's **Issuers: New private CA** jumps straight to a new Built-in CA (`?edit=new&kind=localca`), gated the same as **Issuers: CAs**.
 
+**Private CA detail** (`?view=<id>`, Built-in CA and Vault PKI only) shows the issuing certificate's validity bar and expiry, a Download button for the trust bundle (`<SafeName>-ca.pem`), and an **Edit** button. Built-in CA adds Subject, key type, max leaf days, an Imported chip when applicable, its CRL URL (a "CRL off" chip or a "Set the base URL" link to Settings → General when unpublished), the revoked count, and a chip per retired issuer (serial, "until" date) that copies that issuer's own CRL URL, disabled when it has none. Built-in CA also has **Rotate issuing certificate**, disabled for imported CAs, behind a confirm dialog that issues a fresh intermediate from the held root.
+
 ## Delivery
 
 `/o/:org/delivery` holds what grants use, in tabs. **Deploy targets** lists each target's type, where it runs (the agent), its directory and how many grants use it. **Add target** picks a type and fills the form the type publishes (for Traefik: the directory the agent writes to, the same directory as Traefik sees it, whether this is the default certificate, and the TLS stores). A target in use cannot be deleted; the delete button says how many grants use it. Viewers can open a target read-only. Delivery is per org, so it is not offered under All orgs.

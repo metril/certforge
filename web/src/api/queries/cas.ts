@@ -36,7 +36,10 @@ export function useRotateCa(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => rotateCa(orgId, id),
-    meta: { success: 'CA rotated' },
+    // silent (task 3, same precedent as useRotateAgentCA): fired from
+    // ConfirmDestructive, whose own inline banner would otherwise duplicate
+    // the global error toast a 422 already shows.
+    meta: { silent: true, success: 'Issuing certificate rotated' },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cas', orgId] }),
   });
 }

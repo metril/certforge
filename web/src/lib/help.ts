@@ -52,9 +52,22 @@ export const help = {
   },
   'ca.preset': { text: 'Presets fill in the directory URL. Custom takes any ACME server.' },
   'ca.directoryUrl': { text: 'The ACME directory endpoint of the CA.' },
-  'ca.trustBundle': { text: 'PEM roots for a private ACME server, such as step-ca or Pebble.' },
+  // Renamed from 'ca.trustBundle' (task 3): that key now names the private
+  // CA detail sheet's own trust-bundle download, a different field.
+  'ca.importTrustBundle': { text: 'PEM roots for a private ACME server, such as step-ca or Pebble.' },
   'ca.eab': { text: 'External account binding ties orders to your account at the CA. Some CAs require it.' },
   'ca.resolvers': { text: 'DNS servers used to check propagation. Leave empty for the system resolvers.' },
+  // Task 3: private CA detail sheet.
+  'ca.expiry': { text: 'When the issuing certificate expires. Leaf certificates never outlive it.', learnMore: 'private-ca.md#model' },
+  'ca.trustBundle': { text: 'Install on clients so they trust certificates from this CA.', learnMore: 'private-ca.md#trust' },
+  'ca.retiredNoCrl': { text: 'No CRL for this issuer. CRL is off or the base URL is unset.', learnMore: 'private-ca.md#crl' },
+  'ca.crl': { text: "Revocation list served without sign-in. Each leaf points at its own issuer's list.", learnMore: 'private-ca.md#crl' },
+  'ca.retired': {
+    text: "Earlier issuing certificates, kept until their last leaf expires. Click to copy that issuer's CRL URL.",
+    learnMore: 'private-ca.md#rotation',
+  },
+  'ca.rotate': { text: 'Issues a new intermediate from the held root. Existing certificates stay valid.', learnMore: 'private-ca.md#rotation' },
+  'ca.rotateImported': { text: 'Imported CAs have no root key here, so they cannot rotate.', learnMore: 'private-ca.md#import' },
   'account.email': { text: 'The CA sends expiry and policy notices here.' },
   'account.status': { text: 'Status reported by the CA. Only valid accounts can order certificates.' },
   'dns.provider': { text: 'The DNS host that serves your zone. CertForge writes TXT records there.' },

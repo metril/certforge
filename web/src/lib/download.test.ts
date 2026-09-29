@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { filenameFrom } from './download';
+import { filenameFrom, safeName } from './download';
 
 it.each([
   ['attachment; filename="www.zip"', 'www.zip'],
@@ -13,4 +13,14 @@ it.each([
   ["attachment; filename*=UTF-8''bad%zzfile.pem", 'bad%zzfile.pem'],
 ])('filenameFrom(%s) = %s', (cd, expected) => {
   expect(filenameFrom(new Response('', { headers: cd ? { 'Content-Disposition': cd } : {} }), 'fallback.pem')).toBe(expected);
+});
+
+it.each([
+  ['Internal CA', 'internal-ca'],
+  ['  Weird!! Name..', 'weird-name'],
+  ['', 'cert'],
+  ['---', 'cert'],
+  ['a'.repeat(150), 'a'.repeat(100)],
+])('safeName(%s) = %s', (input, expected) => {
+  expect(safeName(input)).toBe(expected);
 });

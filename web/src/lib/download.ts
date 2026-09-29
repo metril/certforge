@@ -27,6 +27,21 @@ export function filenameFrom(res: Response, fallback: string): string {
   return plain ? basename(plain[1]!) : fallback;
 }
 
+const UNSAFE_NAME = /[^a-z0-9._-]+/g;
+const EDGE_DOTS_HYPHENS = /^[-.]+|[-.]+$/g;
+
+/** Mirrors `internal/delivery.SafeName` (Go): lowercases, any run of
+ * characters other than `a-z0-9._-` becomes one hyphen, no leading or
+ * trailing dot/hyphen, truncated to 100 characters (trimmed again), and
+ * "cert" when nothing is left. Used to build a client-generated filename
+ * (task 3's trust bundle download) that reads the same as the server's own
+ * SafeName-based names elsewhere. */
+export function safeName(s: string): string {
+  let n = s.toLowerCase().replace(UNSAFE_NAME, '-').replace(EDGE_DOTS_HYPHENS, '');
+  if (n.length > 100) n = n.slice(0, 100).replace(EDGE_DOTS_HYPHENS, '');
+  return n || 'cert';
+}
+
 /** Triggers a browser save of `blob` as `filename` via a throwaway anchor. */
 export function saveBlob(blob: Blob, filename: string): void {
   const href = URL.createObjectURL(blob);

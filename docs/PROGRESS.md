@@ -283,8 +283,8 @@ Phase 5A complete; 5B (issuers and vault web UI) builds on it.
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | API layer, kinds, fixtures, HealthStrip | done | 99ca706 |
-| 2 | CAs list and kind-aware CaSheet | done | pending |
-| 3 | Private CA detail sheet | planned | – |
+| 2 | CAs list and kind-aware CaSheet | done | c836759 |
+| 3 | Private CA detail sheet | done | pending |
 | 4 | Wizard and attempts for private CAs | planned | – |
 | 5 | Revoke a version | planned | – |
 | 6 | Settings → Integrations | planned | – |
@@ -458,6 +458,7 @@ Phase 5A complete; 5B (issuers and vault web UI) builds on it.
 - 5B plan Deviations R12 (wizard order): the CA is chosen in Options (step 3), after Verification (step 2); "Not needed" follows the effective CA (the override, or else the inherited one) and updates live, rules the user never touched are sent as `[]`, and the Options account field is disabled for a private CA since the contract answers an account override with 422.
 - 5B plan Deviations R7 (health strip): `KekStatus.tsx` (which reads `/readyz` `checks.kek`) is replaced by the Encryption key card's `canaryOk` (Task 7); HealthStrip still shows a failed `kek` check.
 - 5B Task 1: `api/queries/cas.ts`'s new `saveCa` (a direct call, per the plan's "replaces useSaveCa") is added alongside the existing `useSaveCa`, which stays wired into the current acme-only `CaSheet.tsx` until Task 2 rebuilds it as the kind-aware sheet — removing `useSaveCa` now would leave that untouched file broken. `caKinds.crlUrlFor(ca)` is a plain accessor for `ca.crlUrl` (the current issuer's CRL only, no serial argument); a retired issuer's own CRL URL comes straight off `CA.config.retired[].crlUrl`, never through this helper.
+- 5B Task 3: `lib/help.ts`'s pre-existing `ca.trustBundle` key (the ACME "PEM roots for a private ACME server" field in `CaKindBody.tsx`) is renamed to `ca.importTrustBundle` so the brief's own `ca.trustBundle` (the detail sheet's trust bundle download) can use that exact key without colliding. `KIND_ICON` (the Type chip's icon per kind) moves from `CasPage.tsx` into `lib/caKinds.ts` so `CaDetailSheet.tsx` can share it. `useRotateCa`'s mutation gains `meta.silent: true` (its success text also changes to "Issuing certificate rotated", matching the brief) — `useRotateAgentCA` is the exact precedent: every mutation fired from inside a `ConfirmDestructive` across the codebase sets `silent`, since the dialog's own inline error banner would otherwise duplicate the global toast. `web/src/lib/download.ts` gains `safeName`, a client-side port of Go's `internal/delivery.SafeName`, since the trust bundle download has no server response to read a `Content-Disposition` filename from. `CasPage.tsx`'s `viewing` lookup requires `isPrivate(c)` (an acme id in `?view=` — never produced by this page's own navigation — falls through to the existing not-found sheet instead of mounting `CaDetailSheet` with fields it doesn't have); its `openView` also replaces the history entry when closing, mirroring `openSheet`.
 
 ## Known gaps
 

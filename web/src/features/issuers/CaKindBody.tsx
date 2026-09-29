@@ -164,7 +164,7 @@ function AcmeBody({
             />
           </Field>
           {custom && (
-            <Field id="ca-trust" label="Trust bundle" help="ca.trustBundle" optional>
+            <Field id="ca-trust" label="Trust bundle" help="ca.importTrustBundle" optional>
               <Textarea
                 id="ca-trust"
                 rows={5}

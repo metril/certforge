@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { CircleCheck, CircleX, Clock, Globe, Landmark, Lock, Pencil, Plus, Trash2, Vault, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, Clock, Lock, Pencil, Plus, Trash2, type LucideIcon } from 'lucide-react';
 import { casQuery, useDeleteCa } from '@/api/queries/cas';
 import type { CA, CaType } from '@/api/types';
 import { errorMessage } from '@/api/errors';
@@ -15,12 +15,13 @@ import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { caTone, isPrivate, KIND_LABEL, kindOf } from '@/lib/caKinds';
+import { caTone, isPrivate, KIND_ICON, KIND_LABEL, kindOf } from '@/lib/caKinds';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import type { Tone } from '@/lib/status';
 import { relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { CaDetailSheet } from './CaDetailSheet';
 import { CaSheet } from './CaSheet';
 
 // Fix round 1 (#3/#4): first column stays put while the row scrolls
@@ -28,7 +29,6 @@ import { CaSheet } from './CaSheet';
 // scrolled-under cells don't show through.
 const stickyCol = 'sticky left-0 z-10 bg-panel';
 
-const KIND_ICON: Record<CaType, LucideIcon> = { acme: Globe, localca: Landmark, vaultpki: Vault };
 const EXPIRY_ICON: Partial<Record<Tone, LucideIcon>> = { valid: CircleCheck, expiring: Clock, expired: CircleX };
 
 function endpointOf(c: CA): string {
@@ -51,7 +51,7 @@ export function CasPage() {
   // cas:write is global-only (internal/authz/authz.go): only a global
   // binding grants it, so orgId here is purely documentation of that.
   const canWrite = can(me, 'cas:write', org.id);
-  const { edit, kind, type } = useSearch({ from: '/_app/o/$org/issuers/cas' });
+  const { edit, view, kind, type } = useSearch({ from: '/_app/o/$org/issuers/cas' });
   const navigate = useNavigate({ from: '/o/$org/issuers/cas' });
   const { data: cas = [], isPending, isError, error, refetch } = useQuery(casQuery(org.id));
   const del = useDeleteCa(org.id);
@@ -61,10 +61,16 @@ export function CasPage() {
   // sheet closes the other (task-2-brief).
   const openSheet = (id: string | undefined, newKind?: CaType) =>
     void navigate({ search: (prev) => ({ ...prev, edit: id, view: undefined, kind: newKind }), replace: id === undefined });
-  const openView = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, edit: undefined, view: id }) });
+  const openView = (id: string | undefined) =>
+    void navigate({ search: (prev) => ({ ...prev, edit: undefined, view: id }), replace: id === undefined });
   const setFilter = (v: CaType | 'all') => void navigate({ search: (prev) => ({ ...prev, type: v === 'all' ? undefined : v }) });
   const editing = cas.find((c) => c.id === edit);
-  const notFound = !isPending && !isError && !!edit && edit !== 'new' && !editing;
+  // A private CA's detail sheet (task 3); an acme id in ?view= (never
+  // produced by this page's own navigation) also falls through to notFound.
+  const viewing = cas.find((c) => c.id === view && isPrivate(c));
+  const editNotFound = !isPending && !isError && !!edit && edit !== 'new' && !editing;
+  const viewNotFound = !isPending && !isError && !!view && !viewing;
+  const notFound = editNotFound || viewNotFound;
   const filtered = type ? cas.filter((c) => kindOf(c) === type) : cas;
 
   return (
@@ -173,15 +179,18 @@ export function CasPage() {
         // Mount only once the CA is loaded so the form initialises from it.
         <CaSheet key={edit} orgId={org.id} open ca={editing} initialKind={kind} onOpenChange={(o) => !o && openSheet(undefined)} />
       )}
+      {viewing && (
+        <CaDetailSheet key={view} orgId={org.id} ca={viewing} onEdit={() => openSheet(viewing.id)} onOpenChange={(o) => !o && openView(undefined)} />
+      )}
       {notFound && (
-        <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
+        <Sheet open onOpenChange={(o) => !o && (editNotFound ? openSheet(undefined) : openView(undefined))}>
           <SheetContent side="right" className="w-full sm:max-w-lg">
             <SheetHeader>
               <SheetTitle>CA not found</SheetTitle>
               <SheetDescription>It may have been deleted.</SheetDescription>
             </SheetHeader>
             <div className="px-4">
-              <Button onClick={() => openSheet(undefined)}>Back to CAs</Button>
+              <Button onClick={() => (editNotFound ? openSheet(undefined) : openView(undefined))}>Back to CAs</Button>
             </div>
           </SheetContent>
         </Sheet>
