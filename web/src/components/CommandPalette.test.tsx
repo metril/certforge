@@ -316,6 +316,17 @@ it('hides Import certificates and Upload certificate for a viewer', async () => 
   expect(within(dialog).queryByText('Upload certificate')).not.toBeInTheDocument();
 });
 
+it('settings integrations entry', async () => {
+  server.use(...authHandlers({ authed: true }));
+  const { router, user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'openbao');
+  await user.click(await within(dialog).findByText('Settings: Integrations'));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/settings/integrations'));
+});
+
 it('hides Import certificates and Upload certificate under All orgs', async () => {
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),

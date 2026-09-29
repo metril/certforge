@@ -1,7 +1,8 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
-import { settingsQuery, useSaveSettings, type SectionId } from '@/api/queries/settings';
+import { saveSettingsDirect, settingsQuery, useSaveSettings, type SectionId } from '@/api/queries/settings';
 import { errorMessage } from '@/api/errors';
 import { Button } from '@/components/ui/button';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
@@ -38,17 +39,30 @@ export function SchemaSection({
   help,
   actions,
   uiSchemaOverrides,
+  saveMode,
 }: {
   section: SectionId;
   title?: string;
   help?: HelpKey;
   actions?: (value: Record<string, unknown>) => ReactNode;
-  /** Forwarded to `SchemaForm` (fix round 1, Task 10: Agent URL's extra tooltip caveat). */
-  uiSchemaOverrides?: UiSchema;
+  /** Forwarded to `SchemaForm` (fix round 1, Task 10: Agent URL's extra
+   * tooltip caveat). A function form (Task 6: Vault's token/roleId/secretId
+   * hidden by the live `authMethod`) is re-evaluated against the section's
+   * current (possibly unsaved) value on every render, the same live draft
+   * `actions` already receives. */
+  uiSchemaOverrides?: UiSchema | ((value: Record<string, unknown>) => UiSchema);
+  /** 'direct' (Task 6): saves through `saveSettingsDirect` instead of
+   * `useSaveSettings`'s `useMutation` — the Vault section's `token`/
+   * `secretId` must never sit in the mutation cache (global constraints,
+   * "Secrets"). The query cache is invalidated the same way either mode
+   * would, so the form still shows the freshly-saved value afterward. */
+  saveMode?: 'direct';
 }) {
   const me = useMe();
+  const qc = useQueryClient();
   const q = useQuery(settingsQuery(section));
   const save = useSaveSettings(section);
+  const [savingDirect, setSavingDirect] = useState(false);
   const formRef = useRef<SchemaFormHandle>(null);
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
   const [saveError, setSaveError] = useState<ErrorSchema | null>(null);
@@ -80,6 +94,7 @@ export function SchemaSection({
   const schema = q.data.schema as RJSFSchema;
   const stored = q.data.storedSecrets;
   const value = draft ?? withSecretSentinels(schema, q.data.value ?? {}, stored);
+  const resolvedUiSchemaOverrides = typeof uiSchemaOverrides === 'function' ? uiSchemaOverrides(value) : uiSchemaOverrides;
   // A schema with nothing writable at all (every property readOnly) has no
   // Save button regardless of permission — there's genuinely nothing to
   // persist. Otherwise the block always renders; `canWrite` alone decides
@@ -97,17 +112,28 @@ export function SchemaSection({
         storedSecrets={stored}
         readonly={!canWrite}
         extraErrors={saveError ?? undefined}
-        uiSchemaOverrides={uiSchemaOverrides}
+        uiSchemaOverrides={resolvedUiSchemaOverrides}
       />
       {hasWritableField && (
         <div className="flex flex-wrap gap-2">
           <PermissionTip allowed={canWrite} action="settings:write">
             <Button
-              disabled={!canWrite || !draft || save.isPending}
+              disabled={!canWrite || !draft || save.isPending || savingDirect}
               onClick={async () => {
                 if (!formRef.current?.validate()) return;
                 try {
-                  await save.mutateAsync(value);
+                  if (saveMode === 'direct') {
+                    setSavingDirect(true);
+                    try {
+                      await saveSettingsDirect(section, value);
+                      await qc.invalidateQueries({ queryKey: ['settings', section] });
+                      toast.success('Settings saved');
+                    } finally {
+                      setSavingDirect(false);
+                    }
+                  } else {
+                    await save.mutateAsync(value);
+                  }
                   setDraft(null);
                   setSaveError(null);
                 } catch (e) {
@@ -117,7 +143,10 @@ export function SchemaSection({
                   // these plain schema sections' JSON-Schema-check errors
                   // (fix round 1, Take now #6) — this additionally highlights
                   // that field inline, when the message names one. The draft
-                  // stays either way so nothing typed is lost.
+                  // stays either way so nothing typed is lost. Direct mode
+                  // (Task 6) has no mutation cache to surface its own toast,
+                  // so it's shown here explicitly, same message either way.
+                  if (saveMode === 'direct') toast.error(errorMessage(e));
                   setSaveError(fieldErrorFromMessage(schema, errorMessage(e)));
                 }
               }}
@@ -130,7 +159,13 @@ export function SchemaSection({
               Discard changes
             </Button>
           )}
-          {canWrite && actions?.(value)}
+          {/* Task 6 (review focus: "a control the caller cannot use is shown
+              disabled, never hidden"): SchemaSection no longer hides actions
+              for a non-writer itself — Vault's own Test connection stays
+              visible-but-disabled behind its own PermissionTip.
+              AuthenticationSection's Test connection keeps its pre-5B hidden
+              behavior by returning null from its own `actions` callback. */}
+          {actions?.(value)}
         </div>
       )}
     </div>

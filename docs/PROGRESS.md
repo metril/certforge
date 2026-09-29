@@ -286,8 +286,8 @@ Phase 5A complete; 5B (issuers and vault web UI) builds on it.
 | 2 | CAs list and kind-aware CaSheet | done | c836759 |
 | 3 | Private CA detail sheet | done | 61e3a9a |
 | 4 | Wizard and attempts for private CAs | done | 307fd10 |
-| 5 | Revoke a version | done | pending |
-| 6 | Settings → Integrations | planned | – |
+| 5 | Revoke a version | done | 2a72519 |
+| 6 | Settings → Integrations | done | pending |
 | 7 | Encryption key card | planned | – |
 | 8 | Vault KV target and grant fallout | planned | – |
 | 9 | Deploy-target detail and server grants | planned | – |

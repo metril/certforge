@@ -81,6 +81,22 @@ export const help = {
     text: 'Apply to every org. Staging CAs are counted but never blocked.',
     learnMore: 'configuration.md#issuance',
   },
+  'settings.vault': {
+    text: 'Connection used by Vault PKI CAs and Vault KV targets. OpenBao speaks the same API but is untested.',
+    learnMore: 'vault.md#openbao',
+  },
+  'vault.test': {
+    text: "Logs in with the values in the form and reports the token's lifetime. Nothing is saved.",
+    learnMore: 'vault.md#integrations',
+  },
+  'vault.approle': {
+    text: 'Role ID and secret ID from an AppRole with the policies in the docs.',
+    learnMore: 'vault.md#approle',
+  },
+  'vault.transitKek': {
+    text: "The key-encryption key is wrapped by this Vault's Transit engine. It is set by environment variables.",
+    learnMore: 'vault.md#transit-kek',
+  },
   'org.slugPermanent': { text: 'Slugs are part of every URL, so they never change.' },
   'org.deleteCascade': { text: 'Its issuance defaults and revoked-key history are removed with it.' },
   'backup.kek': {

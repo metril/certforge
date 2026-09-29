@@ -8,6 +8,8 @@ import type { AuthenticationTestResult } from '@/api/types';
 import { CopyField } from '@/components/CopyField';
 import { Field } from '@/components/Field';
 import { Button } from '@/components/ui/button';
+import { useMe } from '@/lib/org';
+import { can } from '@/lib/permissions';
 import { GroupMappings } from './GroupMappings';
 import { SchemaSection } from './SchemaSection';
 
@@ -25,6 +27,12 @@ export function AuthenticationSection() {
   // base URL (general.baseUrl, else CF_BASE_URL) plus the callback path,
   // never window.location — a reverse proxy or a different hostname per
   // visitor would otherwise show the wrong value.
+  const me = useMe();
+  // SchemaSection (Task 6) stopped gating `actions` on settings:write itself
+  // (Vault's own Test connection needs to stay visible-but-disabled for a
+  // non-writer) — this section keeps its own pre-5B behavior of hiding Test
+  // connection entirely for a viewer.
+  const canWrite = can(me, 'settings:write');
   const methods = useQuery(authMethodsQuery);
   const test = useTestAuthentication();
   const [result, setResult] = useState<AuthenticationTestResult | null>(null);
@@ -47,11 +55,13 @@ export function AuthenticationSection() {
       )}
       <SchemaSection
         section="authentication"
-        actions={(value) => (
-          <Button type="button" variant="outline" disabled={!value.issuer || test.isPending} onClick={() => void runTest(String(value.issuer))}>
-            {test.isPending ? 'Testing…' : 'Test connection'}
-          </Button>
-        )}
+        actions={(value) =>
+          canWrite ? (
+            <Button type="button" variant="outline" disabled={!value.issuer || test.isPending} onClick={() => void runTest(String(value.issuer))}>
+              {test.isPending ? 'Testing…' : 'Test connection'}
+            </Button>
+          ) : null
+        }
       />
       {result && <TestResult result={result} />}
       <GroupMappings />

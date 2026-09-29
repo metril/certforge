@@ -130,6 +130,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     { label: 'Settings: Authentication', keywords: ['oidc', 'sso', 'single sign-on', 'groups'], go: () => void navigate({ to: '/settings/$section', params: { section: 'authentication' } }) },
     { label: 'Settings: Issuance defaults', keywords: ['defaults', 'renewal', 'key type'], go: () => void navigate({ to: '/settings/$section', params: { section: 'issuance-defaults' } }) },
     { label: 'Settings: Agents', keywords: ['agent ca', 'listener', 'rotation', 'heartbeat'], go: () => void navigate({ to: '/settings/$section', params: { section: 'agents' } }) },
+    { label: 'Settings: Integrations', keywords: ['vault', 'approle', 'openbao', 'integrations'], go: () => void navigate({ to: '/settings/$section', params: { section: 'integrations' } }) },
     { label: 'Settings: Backup and keys', keywords: ['kek', 'backup'], go: () => void navigate({ to: '/settings/$section', params: { section: 'backup' } }) },
   ];
 

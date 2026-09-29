@@ -1,19 +1,16 @@
 import { Link } from '@tanstack/react-router';
 import { PageHeader } from '@/components/PageHeader';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMe } from '@/lib/org';
-import { LATER } from '@/lib/nav';
 import { canAnywhere } from '@/lib/permissions';
 import { AccessPage } from './access/AccessPage';
 import { AgentsSection } from './agents/AgentsSection';
 import { AuthenticationSection } from './AuthenticationSection';
+import { IntegrationsSection } from './IntegrationsSection';
 import { IssuanceDefaultsSection } from './IssuanceDefaultsSection';
 import { KekStatus } from './KekStatus';
 import { OrgsList } from './OrgsList';
 import { SchemaSection } from './SchemaSection';
 import { SECTIONS, type SectionSlug } from './sections';
-
-const LATER_SECTIONS = ['Integrations'];
 
 const item = 'flex h-9 items-center px-3 text-sm text-ink-muted hover:bg-subtle hover:text-ink';
 
@@ -40,16 +37,6 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
               {s.label}
             </Link>
           ))}
-          {LATER_SECTIONS.map((label) => (
-            <Tooltip key={label}>
-              <TooltipTrigger asChild>
-                <span role="link" aria-disabled="true" tabIndex={0} className={`${item} cursor-not-allowed opacity-50`}>
-                  {label}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="right">{LATER}</TooltipContent>
-            </Tooltip>
-          ))}
         </nav>
         <section aria-labelledby="settings-title" className="min-w-0">
           <h2 id="settings-title" className="mb-4 text-lg font-semibold">
@@ -65,6 +52,7 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
           {section === 'authentication' && <AuthenticationSection />}
           {section === 'issuance-defaults' && <IssuanceDefaultsSection />}
           {section === 'agents' && <AgentsSection />}
+          {section === 'integrations' && <IntegrationsSection />}
           {section === 'backup' && (
             <>
               <KekStatus />
