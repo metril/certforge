@@ -79,8 +79,19 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
           <RotateCw className="size-3.5" aria-hidden />
         </Button>
       </PermissionTip>
-      <PermissionTip allowed={canWrite} action="clients:write" side="left">
-        <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} aria-label={`Edit layout for ${g.certificateName}`} onClick={() => openForm(g)}>
+      {/* Batch 4 review: updateServerGrant's own requireKeyIfNeeded gate
+          means an includeKey target's grants need keys:export to edit at
+          all, not just clients:write — same reasoning as newGrantAllowed
+          above, reused here rather than only checking clients:write. */}
+      <PermissionTip allowed={newGrantAllowed} action={newGrantReason} side="left">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          disabled={!newGrantAllowed}
+          aria-label={`Edit layout for ${g.certificateName}`}
+          onClick={() => openForm(g)}
+        >
           <Pencil className="size-3.5" aria-hidden />
         </Button>
       </PermissionTip>
@@ -153,6 +164,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
           <div className="flex items-start justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <SheetTitle>{target.name}</SheetTitle>
+              <span className="text-xs text-ink-muted">{typeName}</span>
               <ToneChip tone="neutral" icon={Server} label="Runs on server" />
               {includeKey && <ToneChip tone="neutral" icon={KeyRound} label="Includes key" />}
             </div>

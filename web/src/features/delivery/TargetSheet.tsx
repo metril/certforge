@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
+import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 
@@ -48,7 +49,11 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const uiSchemaOverrides = useMemo(() => {
     if (type !== 'vault-kv') return undefined;
     return {
-      includeKey: { 'ui:options': { permission: 'keys:export', allowed: canExportKeys } },
+      // Batch 4 review: target.includeKey existed but was never referenced —
+      // wired in here as the switch's own tooltip (widgets.tsx's SwitchWidget
+      // now prefers options.description, which getUiOptions fills from
+      // ui:description) instead of the schema's own shorter description.
+      includeKey: { 'ui:description': help['target.includeKey'].text, 'ui:options': { permission: 'keys:export', allowed: canExportKeys } },
       path: { 'ui:options': { mono: true }, 'ui:placeholder': 'certforge/{org}/{name}' },
       keys: {
         fullchain: { 'ui:options': { mono: true } },

@@ -15,11 +15,15 @@ import { Textarea } from '@/components/ui/textarea';
 function SwitchWidget({ id, value, onChange, disabled, readonly, label, schema, options }: WidgetProps) {
   const permission = typeof options.permission === 'string' ? options.permission : undefined;
   const gated = permission !== undefined && options.allowed !== true && value !== true;
+  // getUiOptions strips a field's own `ui:description` into options.description
+  // (batch 4 review: a caller-supplied tooltip, e.g. target.includeKey, was
+  // otherwise unreachable here — FieldTemplate's own rawDescription/HelpTip
+  // never renders for a boolean field, only this widget's own helpText).
   const control = (
     <SwitchField
       id={id}
       label={label || schema.title || id}
-      helpText={schema.description}
+      helpText={typeof options.description === 'string' ? options.description : schema.description}
       checked={value === true}
       onCheckedChange={(v) => onChange(v)}
       disabled={disabled || readonly || gated}

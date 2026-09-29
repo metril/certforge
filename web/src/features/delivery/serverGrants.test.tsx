@@ -149,6 +149,26 @@ it('includeKey needs keys:export', async () => {
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the keys:export permission');
 });
 
+it('edit layout needs keys:export on an includeKey target', async () => {
+  // Batch 4 review: updateServerGrant's requireKeyIfNeeded gate means an
+  // includeKey target needs keys:export to edit any grant's layout, not
+  // just clients:write — a clients:write-only operator must see Edit
+  // layout disabled with that reason, same as New server grant.
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))),
+    http.get(url('/orgs/org-1/deploy-targets'), () =>
+      HttpResponse.json({ items: [{ ...targetVaultKv, config: { ...targetVaultKv.config, includeKey: true } }] }),
+    ),
+  );
+  const { user } = openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  const table = await within(dialog).findByRole('table', { name: 'Grants' });
+  const editBtn = within(table).getByRole('button', { name: 'Edit layout for www' });
+  expect(editBtn).toBeDisabled();
+  await user.hover(editBtn);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the keys:export permission');
+});
+
 it('needs clients:write', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
   const { user } = openDetail();

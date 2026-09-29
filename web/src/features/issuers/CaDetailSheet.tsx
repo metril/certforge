@@ -18,7 +18,7 @@ import { help } from '@/lib/help';
 import { safeName, saveBlob } from '@/lib/download';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { fmtDate, relTime } from '@/lib/time';
+import { fmtDate, relDays } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 type Subject = { commonName: string; organization?: string; country?: string };
@@ -157,14 +157,22 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
         <div className="grid gap-5 px-4">
           <section className="grid gap-2">
             <h3 className="text-sm font-semibold">Issuing certificate</h3>
-            {ca.notBefore && ca.notAfter && <ValidityBar notBefore={ca.notBefore} notAfter={ca.notAfter} tone={caTone(ca.notAfter)} size="full" />}
-            <div className="flex items-center gap-1.5 text-xs">
-              <span>
-                Expires <span className="font-mono">{ca.notAfter ? fmtDate(ca.notAfter) : '–'}</span>
-                {ca.notAfter && <span className="text-ink-muted"> ({relTime(ca.notAfter)})</span>}
-              </span>
-              <HelpTip id="ca.expiry" />
-            </div>
+            {ca.notBefore && ca.notAfter ? (
+              <ValidityBar notBefore={ca.notBefore} notAfter={ca.notAfter} tone={caTone(ca.notAfter)} size="full" />
+            ) : (
+              // ValidityBar's own "full" legend already renders "Expires
+              // <date> (<relDays>)" — this is only a fallback for the dates
+              // it needs being absent, using the same formatter so the two
+              // never show different day counts for the same instant
+              // (batch 4 review: relTime floors, relDays doesn't).
+              <div className="flex items-center gap-1.5 text-xs">
+                <span>
+                  Expires <span className="font-mono">{ca.notAfter ? fmtDate(ca.notAfter) : '–'}</span>
+                  {ca.notAfter && <span className="text-ink-muted"> ({relDays(ca.notAfter)})</span>}
+                </span>
+                <HelpTip id="ca.expiry" />
+              </div>
+            )}
             {local && (
               <>
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">

@@ -68,10 +68,10 @@ test('CA kind switching', async ({ page }) => {
   await table.getByRole('row', { name: /^e2e-local/ }).click();
   const detail = page.getByRole('dialog', { name: 'e2e-local' });
   await expect(detail).toBeVisible();
-  // .first(): the validity bar's own sr-only accessible name repeats
-  // "Expires ..." (occasionally off by a day from the plain text below it,
-  // each computed at its own render tick), so this matches two elements.
-  await expect(detail.getByText(/Expires/).first()).toBeVisible();
+  // Batch 4 review: the detail sheet's own plain-text expiry line only
+  // renders when ValidityBar can't (missing dates), so this now matches
+  // exactly one element — ValidityBar's own "full" legend.
+  await expect(detail.getByText(/Expires/)).toBeVisible();
 
   const dl = page.waitForEvent('download');
   await detail.getByRole('button', { name: 'Download', exact: true }).click();
