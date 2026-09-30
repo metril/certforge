@@ -191,9 +191,9 @@ test('issuers, delivery and vault settings screens do not scroll sideways at 375
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await noScroll();
-  // Task 3: below md the list stacks as `<ul aria-label="Deploy targets">`
-  // cards, not a table (targets.test.tsx's own "stacks as cards below md").
-  await page.getByRole('list', { name: 'Deploy targets' }).getByRole('listitem', { name: /^e2e-vault-kv-375/ }).getByRole('button', { name: 'Grants e2e-vault-kv-375' }).click();
+  // Below md the list stacks as cards inside `<ul aria-label="Deploy targets">`;
+  // a listitem has no accessible name, so target the unique Grants button.
+  await page.getByRole('list', { name: 'Deploy targets' }).getByRole('button', { name: 'Grants e2e-vault-kv-375' }).click();
   await expect(page.getByRole('dialog', { name: 'e2e-vault-kv-375' })).toBeVisible();
   await noScroll();
   await page.keyboard.press('Escape');
