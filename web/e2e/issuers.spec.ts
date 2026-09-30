@@ -205,3 +205,58 @@ test('issuers, delivery and vault settings screens do not scroll sideways at 375
   await page.goto('/settings/backup');
   await noScroll();
 });
+
+test('DNS credential auth methods', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+
+  await page.goto(`/o/${E2E.orgSlug}/issuers/dns`);
+  await page.getByRole('button', { name: 'Add credential' }).first().click();
+  await page.getByRole('combobox').fill('cloudfl');
+  await page.getByRole('option', { name: /Cloudflare/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Add Cloudflare credential' });
+  await expect(sheet).toBeVisible();
+  await sheet.getByLabel('Name', { exact: true }).fill('e2e-cf-methods');
+
+  const methods = sheet.getByRole('radiogroup', { name: 'Authenticate with' });
+  await expect(methods.getByRole('radio', { name: 'Email + API key' })).toBeVisible();
+  await expect(methods.getByRole('radio', { name: 'API token' })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Advanced' })).toBeVisible();
+  await expect(sheet.getByLabel('CLOUDFLARE_TTL')).toHaveCount(0);
+
+  // Only the selected method's fields show; the CLOUDFLARE_* aliases never do.
+  await methods.getByRole('radio', { name: 'Email + API key' }).click();
+  await expect(sheet.getByLabel('CF_API_EMAIL')).toBeVisible();
+  await expect(sheet.getByLabel('CF_DNS_API_TOKEN')).toHaveCount(0);
+  await methods.getByRole('radio', { name: 'API token' }).click();
+  await expect(sheet.getByLabel('CF_DNS_API_TOKEN')).toBeVisible();
+  await expect(sheet.getByLabel('CF_API_EMAIL')).toHaveCount(0);
+  await expect(sheet.getByLabel('CF_API_KEY')).toHaveCount(0);
+  await expect(sheet.getByLabel(/^CLOUDFLARE_/)).toHaveCount(0);
+
+  await sheet.getByLabel('CF_DNS_API_TOKEN').fill('e2e-token');
+  await sheet.getByRole('button', { name: 'Save credential' }).click();
+  await expect(sheet).toBeHidden();
+
+  const row = page.getByRole('table').getByRole('row', { name: /^e2e-cf-methods/ });
+  await expect(row).toBeVisible();
+
+  await row.getByRole('button', { name: 'Edit e2e-cf-methods' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit e2e-cf-methods' });
+  await expect(edit.getByRole('radio', { name: 'API token' })).toBeChecked();
+  // Stored secret: shown as stored, not as an empty editable input.
+  await expect(edit.getByRole('textbox', { name: 'CF_DNS_API_TOKEN' })).toHaveCount(0);
+  await expect(edit.getByText('CF_DNS_API_TOKEN')).toBeVisible();
+  await expect(edit.getByLabel('CF_API_EMAIL')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(edit).toBeHidden();
+
+  // Clean up so other specs are unaffected.
+  await page.getByRole('table').getByRole('row', { name: /^e2e-cf-methods/ }).getByRole('button', { name: 'Delete e2e-cf-methods' }).click();
+  const confirm = page.getByRole('dialog', { name: 'Delete credential' });
+  await confirm.getByRole('textbox').fill('e2e-cf-methods');
+  await confirm.getByRole('button', { name: 'Delete credential' }).click();
+  await expect(confirm).toBeHidden();
+  await expect(page.getByRole('row', { name: /^e2e-cf-methods/ })).toHaveCount(0);
+});
