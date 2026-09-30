@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { CircleAlert } from 'lucide-react';
+import { ChevronDown, CircleAlert } from 'lucide-react';
 import type { RJSFSchema } from '@rjsf/utils';
 import { useSaveCredential } from '@/api/queries/dns';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -7,10 +7,13 @@ import type { DnsCredential, DnsCredentialInput, ProviderSchema } from '@/api/ty
 import { UNCHANGED } from '@/api/types';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
+import { advancedSchema, authMethodsOf, hasAdvancedValue, inferMethod, methodKeys, methodSchema } from '@/forms/authMethods';
 import { secretKeys, withSecretSentinels } from '@/forms/uiSchema';
 
 type Props = {
@@ -38,13 +41,24 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
   const schema = useMemo(() => (provider?.schema ?? { type: 'object', properties: {} }) as RJSFSchema, [provider]);
   const storedSecrets = useMemo(() => credential?.storedSecrets ?? [], [credential]);
   const secretKeyList = useMemo(() => secretKeys(schema), [schema]);
-  const nonSecretKeys = useMemo(() => Object.keys(schema.properties ?? {}).filter((k) => !secretKeyList.includes(k)), [schema, secretKeyList]);
+  const methods = useMemo(() => authMethodsOf(schema), [schema]);
+  const advSchema = useMemo(() => advancedSchema(schema), [schema]);
+  const advKeys = useMemo(() => Object.keys(advSchema.properties ?? {}), [advSchema]);
   const initialPublic = useRef<Record<string, string>>(credential?.config ?? {});
 
   const [name, setName] = useState(credential?.name ?? provider?.name ?? '');
   const [config, setConfig] = useState<Record<string, unknown>>(() =>
     credential ? withSecretSentinels(schema, (credential.config ?? {}) as Record<string, unknown>, storedSecrets) : {},
   );
+  const [methodId, setMethodId] = useState<string | undefined>(() =>
+    inferMethod(methods, (credential?.config ?? {}) as Record<string, unknown>, storedSecrets)?.id,
+  );
+  const method = methods.find((m) => m.id === methodId) ?? methods[0];
+  const mainSchema = useMemo(() => (method ? methodSchema(schema, method) : schema), [schema, method]);
+  const [advOpen] = useState(() => hasAdvancedValue(schema, (credential?.config ?? {}) as Record<string, unknown>));
+  const advFormRef = useRef<SchemaFormHandle>(null);
+  const shownKeys = useMemo(() => (method ? [...methodKeys(method), ...advKeys] : Object.keys(schema.properties ?? {})), [method, advKeys, schema]);
+  const nonSecretKeys = useMemo(() => shownKeys.filter((k) => !secretKeyList.includes(k)), [shownKeys, secretKeyList]);
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<{ field: string | null; message: string } | null>(null);
 
@@ -56,10 +70,26 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
   const secretsStillUnchanged = !!credential && storedSecrets.some((k) => config[k] === UNCHANGED);
   const showSecretsNotice = publicChanged && secretsStillUnchanged;
 
+  // Keep values for keys both methods share (and non-method keys like the
+  // Advanced ones); drop the rest, stored-secret sentinels included. A stored
+  // secret the new method shows is re-seeded so switching back keeps it.
+  function switchMethod(id: string) {
+    const next = methods.find((m) => m.id === id);
+    if (!next || next.id === method?.id) return;
+    const nextKeys = new Set(methodKeys(next));
+    const anyMethodKey = new Set(methods.flatMap(methodKeys));
+    const kept = Object.fromEntries(Object.entries(config).filter(([k]) => nextKeys.has(k) || !anyMethodKey.has(k)));
+    const seeded = credential ? withSecretSentinels(schema, kept, storedSecrets.filter((k) => nextKeys.has(k))) : kept;
+    setMethodId(id);
+    setConfig(seeded);
+  }
+
   async function submit() {
     setSubmitted(true);
     setServerError(null);
-    const formOk = formRef.current?.validate() ?? true;
+    const mainOk = formRef.current?.validate() ?? true;
+    const advOk = advFormRef.current?.validate() ?? true;
+    const formOk = mainOk && advOk;
     if (!provider || !name.trim() || !formOk) return;
     const body: DnsCredentialInput = {
       name: name.trim(),
@@ -115,7 +145,35 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
           <Field id="cred-name" label="Name" error={submitted && !name.trim() ? 'Required' : serverError?.field === 'name' ? serverError.message : null}>
             <Input id="cred-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Cloudflare prod" />
           </Field>
-          <SchemaForm ref={formRef} schema={schema} value={config} onChange={setConfig} storedSecrets={storedSecrets} />
+          {methods.length > 1 && (
+            <div className="grid gap-1.5">
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                Authenticate with <HelpTip id="dns.authMethod" />
+              </div>
+              <SegmentedControl
+                aria-label="Authenticate with"
+                value={method?.id ?? ''}
+                onChange={switchMethod}
+                options={methods.map((m) => ({ value: m.id, label: m.label }))}
+              />
+            </div>
+          )}
+          {method && method.fields.length === 0 && method.optional.length === 0 ? (
+            <p className="text-sm text-ink-muted">Uses the server&apos;s own environment credentials.</p>
+          ) : (
+            <SchemaForm key={method?.id} ref={formRef} schema={mainSchema} value={config} onChange={setConfig} storedSecrets={storedSecrets} />
+          )}
+          {advKeys.length > 0 && (
+            <Collapsible defaultOpen={advOpen}>
+              <CollapsibleTrigger className="flex items-center gap-1 text-sm font-semibold">
+                <ChevronDown className="size-4" aria-hidden />
+                Advanced
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-3">
+                <SchemaForm ref={advFormRef} schema={advSchema} value={config} onChange={setConfig} storedSecrets={storedSecrets} />
+              </CollapsibleContent>
+            </Collapsible>
+          )}
           {showSecretsNotice && (
             <p className="text-xs text-ink-muted">Connection settings changed — stored secrets above must be re-entered before saving.</p>
           )}

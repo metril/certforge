@@ -71,6 +71,7 @@ export const help = {
   'account.email': { text: 'The CA sends expiry and policy notices here.' },
   'account.status': { text: 'Status reported by the CA. Only valid accounts can order certificates.' },
   'dns.provider': { text: 'The DNS host that serves your zone. CertForge writes TXT records there.' },
+  'dns.authMethod': { text: 'Some providers accept more than one kind of credential. Pick the one you have; only its fields are shown.' },
   'dns.usedBy': { text: 'Certificates and issuance defaults whose verification rules use this credential.' },
   'dns.test': { text: 'Creates and removes a test TXT record in the zone.' },
   'settings.orgs': {
