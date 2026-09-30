@@ -345,8 +345,8 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 | 4 | OpenAPI and target/grant API | done | 6e0b103 |
 | 5 | Server dispatcher on the registry | done | ab96d11 |
 | 6 | Agent execution for file targets | done | aca3869 |
-| 7 | `deploy.failed` from the dispatcher | done | pending |
-| 8 | Regression e2e and docs close-out | | |
+| 7 | `deploy.failed` from the dispatcher | done | 3446702 |
+| 8 | Regression e2e and docs close-out | done | pending |
 
 ## Decisions made during implementation
 
@@ -542,6 +542,10 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 - 7A: R4 (enums, accepted) — plain enums with a `description` per field; no `ui:enumNames`.
 - 7A: R16 (httpx) — no httpx change. `targets.HTTPFactory{AllowLoopback}` wraps the existing `httpx.New`, and vendor-facing extensions (body-returning calls, unix sockets, client certs) are deferred.
 - 7A: R7 (existing scan) — `notify/scan.go` already emits `deploy.failed` for server grants (`ScanFailedServerDeployments`) under the same key `deploy.failed:<grantId>:<versionId>`. The immediate emit from `Dispatcher.fail` and the hourly scan (kept as a backstop) dedupe to one event through the unique `dedupe_key`.
+
+## Backlog
+
+- Phase 7 delivered the target framework; vendor targets (Docker secrets, Kubernetes Secret, Proxmox VE, TrueNAS, OPNsense, UniFi, Home Assistant) on demand.
 
 ## Known gaps
 

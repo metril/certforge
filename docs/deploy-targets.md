@@ -1,6 +1,13 @@
 # Deploy targets
 
-A deploy target is what an agent does with a certificate besides writing layout files. Targets are defined per org under Delivery → Targets and chosen per grant. Each type publishes a JSON Schema at `GET /api/v1/meta/schemas` (`deployTargets`), and the UI builds its form from it.
+A deploy target is what an agent does with a certificate besides writing layout files. Targets are defined per org under Delivery → Targets and chosen per grant. Each type publishes a JSON Schema at `GET /api/v1/meta/schemas` (`deployTargets`), and the UI builds its form from it. Shipped today:
+
+| Type | Runs on | Key policy |
+|---|---|---|
+| `traefik` (Traefik) | agent | always |
+| `vault-kv` (Vault KV) | server | optional |
+
+The other seven vendor targets named in `docs/design.md`'s Phases table (Docker secrets, Kubernetes Secret, Proxmox VE, TrueNAS, OPNsense, UniFi, Home Assistant) are backlog — see Runs on and Key policy below for what those columns mean.
 
 ## Traefik
 

@@ -319,6 +319,8 @@ Every implementation registers a type code and JSON Schema. The UI builds forms 
 | 6 | Ops | Notifiers (webhook, SMTP, Discord, ntfy, HA), Prometheus metrics, external monitors, backup/restore (pg_dump + KEK manifest), `cfctl` | 2 |
 | 7 | Deploy targets | Docker secrets, K8s Secret, Home Assistant, UniFi, Proxmox, TrueNAS, OPNsense. Each runs on server or agent. | 3, 4 |
 
+Phase 7 delivered the target framework; vendor targets (Docker secrets, Kubernetes Secret, Proxmox VE, TrueNAS, OPNsense, UniFi, Home Assistant) on demand.
+
 ## Risks
 
 - **lego providers read credentials from env vars.** Build providers under a global mutex (set env, construct, restore), subprocess fallback. Generate schemas from lego's per-provider `.toml`; pin the lego version.
