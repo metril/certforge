@@ -143,7 +143,9 @@ func TestCreateDNSCredentialAcceptsOracleCloudInlineKey(t *testing.T) {
 	f := newAPIFixture(t)
 	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
 		Body: &gen.DNSCredentialInput{Name: "oci", ProviderCode: "oraclecloud", Config: map[string]string{
-			"OCI_PRIVKEY": "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----", "OCI_REGION": "us-phoenix-1"}}})
+			"OCI_PRIVKEY": "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----", "OCI_REGION": "us-phoenix-1",
+			"OCI_TENANCY_OCID": "ocid1.tenancy.oc1..fake", "OCI_USER_OCID": "ocid1.user.oc1..fake",
+			"OCI_PUBKEY_FINGERPRINT": "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99", "OCI_COMPARTMENT_OCID": "ocid1.compartment.oc1..fake"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
