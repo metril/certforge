@@ -448,6 +448,7 @@ export const cloudflare = {
   aliases: ['cf'],
   schema: {
     type: 'object',
+    additionalProperties: false,
     'x-auth-methods': [
       { id: 'api-token', label: 'API token', fields: ['CF_DNS_API_TOKEN'], optional: ['CF_ZONE_API_TOKEN'] },
       { id: 'email-api-key', label: 'Email + API key', fields: ['CF_API_EMAIL', 'CF_API_KEY'], optional: ['CF_ZONE_API_TOKEN'] },

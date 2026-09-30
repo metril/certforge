@@ -56,6 +56,11 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
   const method = methods.find((m) => m.id === methodId) ?? methods[0];
   const mainSchema = useMemo(() => (method ? methodSchema(schema, method) : schema), [schema, method]);
   const [advOpen] = useState(() => hasAdvancedValue(schema, (credential?.config ?? {}) as Record<string, unknown>));
+  const mainKeys = useMemo(() => Object.keys(mainSchema.properties ?? {}), [mainSchema]);
+  // Each form sees and edits only its own keys; the rest of `config` is kept.
+  const pick = (keys: string[]) => Object.fromEntries(Object.entries(config).filter(([k]) => keys.includes(k)));
+  const mergeOwn = (keys: string[]) => (data: Record<string, unknown>) =>
+    setConfig((prev) => ({ ...Object.fromEntries(Object.entries(prev).filter(([k]) => !keys.includes(k))), ...data }));
   const advFormRef = useRef<SchemaFormHandle>(null);
   const shownKeys = useMemo(() => (method ? [...methodKeys(method), ...advKeys] : Object.keys(schema.properties ?? {})), [method, advKeys, schema]);
   const nonSecretKeys = useMemo(() => shownKeys.filter((k) => !secretKeyList.includes(k)), [shownKeys, secretKeyList]);
@@ -162,7 +167,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
           {method && method.fields.length === 0 && method.optional.length === 0 ? (
             <p className="text-sm text-ink-muted">Uses the server&apos;s own environment credentials.</p>
           ) : (
-            <SchemaForm key={method?.id} ref={formRef} schema={mainSchema} value={config} onChange={setConfig} storedSecrets={storedSecrets} />
+            <SchemaForm key={method?.id} ref={formRef} schema={mainSchema} value={method ? pick(mainKeys) : config} onChange={method ? mergeOwn(mainKeys) : setConfig} storedSecrets={storedSecrets} />
           )}
           {advKeys.length > 0 && (
             <Collapsible defaultOpen={advOpen}>
@@ -171,7 +176,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
                 Advanced
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-3">
-                <SchemaForm ref={advFormRef} schema={advSchema} value={config} onChange={setConfig} storedSecrets={storedSecrets} />
+                <SchemaForm ref={advFormRef} schema={advSchema} value={pick(advKeys)} onChange={mergeOwn(advKeys)} storedSecrets={storedSecrets} />
               </CollapsibleContent>
             </Collapsible>
           )}

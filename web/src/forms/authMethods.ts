@@ -45,8 +45,9 @@ export function methodSchema(schema: RJSFSchema, method: AuthMethod): RJSFSchema
   const all = propsOf(schema);
   const keys = methodKeys(method).filter((k) => all[k] && !all[k]!['x-alias-of'] && !all[k]!.serverPath);
   const src = (schema.properties ?? {}) as Record<string, unknown>;
-  const { required: _r, ...rest } = schema;
+  const { required: _r, additionalProperties: _a, ...rest } = schema;
   void _r;
+  void _a;
   return {
     ...rest,
     properties: Object.fromEntries(keys.map((k) => [k, src[k]])) as RJSFSchema['properties'],
@@ -61,8 +62,9 @@ export function advancedSchema(schema: RJSFSchema): RJSFSchema {
   const keys = Object.entries(propsOf(schema))
     .filter(([k, p]) => p['x-group'] === 'additional' && !p['x-alias-of'] && !p.serverPath && !used.has(k))
     .map(([k]) => k);
-  const { required: _r, ...rest } = schema;
+  const { required: _r, additionalProperties: _a, ...rest } = schema;
   void _r;
+  void _a;
   return { ...rest, properties: Object.fromEntries(keys.map((k) => [k, src[k]])) as RJSFSchema['properties'] };
 }
 

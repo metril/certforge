@@ -378,3 +378,25 @@ it('saving a two-method credential sends only the active method and advanced key
   await waitFor(() => expect(put).toBeDefined());
   expect((put as { config: unknown }).config).toEqual({ CF_DNS_API_TOKEN: UNCHANGED, CLOUDFLARE_TTL: '300' });
 });
+
+it('creates with an Advanced value set (additionalProperties false does not block save)', async () => {
+  const { user, sheet } = await openAddCloudflare();
+  await user.type(within(sheet).getByLabelText('CF_DNS_API_TOKEN'), 'tok');
+  await user.click(within(sheet).getByRole('button', { name: 'Advanced' }));
+  await user.type(within(sheet).getByLabelText('CLOUDFLARE_TTL'), '600');
+  await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
+  await waitFor(() =>
+    expect(posted).toEqual({ name: 'Cloudflare', providerCode: 'cloudflare', config: { CF_DNS_API_TOKEN: 'tok', CLOUDFLARE_TTL: '600' } }),
+  );
+});
+
+it('edits a credential with a stored advanced value and stored secret and saves', async () => {
+  creds = [cred];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  await user.type(within(sheet).getByLabelText('Name'), ' 2');
+  await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
+  await waitFor(() => expect(put).toBeDefined());
+  expect(within(sheet).queryByRole('alert')).not.toBeInTheDocument();
+});
