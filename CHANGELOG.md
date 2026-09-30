@@ -142,6 +142,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Traefik and Vault KV targets come from the shared registry.
 - The deploy target sheet shows where each type runs, locks it after create and keeps stored secrets.
 - Playwright covers deploy target runs-on chips and the Vault KV and Traefik sheets.
+- Phase 7B Playwright fix round: `issuers.spec.ts` and `targets.spec.ts` locators updated for the type segment's new accessible name (type name plus its runs-on chip) and the below-`md` card list; a disabled runs-on radio's hover now waits for the sheet's slide-in animation to settle before forcing the hover.
 
 ### Changed
 - Deploy target rows show where each target runs and stack as cards on phones.

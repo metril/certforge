@@ -29,9 +29,13 @@ test('vault-kv sheet runs on server', async ({ page }) => {
   await expect(runsOnServer).toHaveAttribute('aria-checked', 'true');
   const runsOnAgent = sheet.getByRole('radio', { name: 'Agent', exact: true });
   await expect(runsOnAgent).toBeDisabled();
-  // force: true — the disabled ToggleGroup item's own real hover target is
-  // its wrapping tooltip-trigger span (SegmentedControl), same convention
-  // as vault.spec.ts's own disabled Rewrap-now hover.
+  // scrollIntoViewIfNeeded first — it waits for the element to be stable,
+  // which force: true's own hover otherwise skips; without it, a hover
+  // fired while the sheet's 500ms slide-in (ui/sheet.tsx) is still in
+  // progress computes an off-screen coordinate. force: true itself is
+  // still needed for the hover — the disabled button has pointer-events:
+  // none (native <button disabled>), which only force bypasses.
+  await runsOnAgent.scrollIntoViewIfNeeded();
   await runsOnAgent.hover({ force: true });
   await expect(page.getByRole('tooltip')).toContainText(RUNS_ON_FORCED);
 
@@ -85,6 +89,10 @@ test('traefik target runs on agent', async ({ page }) => {
   // "Agent" radio too.
   const editAgent = edit.getByRole('radio', { name: 'Agent', exact: true });
   await expect(editAgent).toBeDisabled();
+  // scrollIntoViewIfNeeded first — see the same-purpose comment above; this
+  // is the site the coordinator's re-run actually caught the race on
+  // ("Element is outside of the viewport" mid the sheet's slide-in).
+  await editAgent.scrollIntoViewIfNeeded();
   await editAgent.hover({ force: true });
   await expect(page.getByRole('tooltip')).toContainText(RUNS_ON_LOCKED);
   await snap(page, 'target-sheet-traefik');
