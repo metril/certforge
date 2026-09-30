@@ -54,7 +54,8 @@ func (s *Store) credFromRow(ctx context.Context, r sqlcgen.DnsProviderCredential
 func splitErr(err error) error {
 	switch {
 	case errors.Is(err, challenge.ErrUnknownField), errors.Is(err, challenge.ErrUnknownProvider),
-		errors.Is(err, challenge.ErrUnchangedOnCreate), errors.Is(err, challenge.ErrServerPath):
+		errors.Is(err, challenge.ErrUnchangedOnCreate), errors.Is(err, challenge.ErrServerPath),
+		errors.Is(err, challenge.ErrNoAuthMethod), errors.Is(err, challenge.ErrAliasConflict):
 		return &ValidationError{Field: "config", Msg: err.Error()}
 	default:
 		return err
