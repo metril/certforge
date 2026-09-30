@@ -85,11 +85,19 @@ SELECT * FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id;
 -- name: GetDeployTarget :one
 SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2;
 
+-- name: DeployTargetForUpdate :one
+-- Phase 7A Task 1: read+lock a target row FOR UPDATE ahead of an update
+-- that decides whether to keep stored secrets unchanged (the same
+-- LockLayout convention: internal/kek/rewrap.go's concurrent CAS on
+-- secret_cfg cannot land between this read and the later write and be
+-- silently clobbered by a stale, pre-rewrap blob).
+SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR UPDATE;
+
 -- name: CreateDeployTarget :one
-INSERT INTO deploy_targets (org_id, name, type, runs_on, config) VALUES ($1, $2, $3, $4, $5) RETURNING *;
+INSERT INTO deploy_targets (org_id, name, type, runs_on, config, secret_cfg) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;
 
 -- name: UpdateDeployTarget :one
-UPDATE deploy_targets SET name = sqlc.arg(name), config = sqlc.arg(config), updated_at = now()
+UPDATE deploy_targets SET name = sqlc.arg(name), config = sqlc.arg(config), secret_cfg = sqlc.arg(secret_cfg), updated_at = now()
 WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) RETURNING *;
 
 -- name: DeleteDeployTarget :execrows

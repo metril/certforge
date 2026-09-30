@@ -66,14 +66,16 @@ const (
 	TableAgentCAs               RewrapTable = "agent_cas"
 	TableCertificateVersions    RewrapTable = "certificate_versions"
 	TableNotificationChannels   RewrapTable = "notification_channels"
+	TableDeployTargets          RewrapTable = "deploy_targets"
 )
 
-// Tables is the fixed visit order. notification_channels is last
-// (Deviations R10, appended, not inserted): it is a Phase 6A addition to an
-// already-fixed visit order, not a reordering of it.
+// Tables is the fixed visit order. notification_channels and
+// deploy_targets are each appended, not inserted, as their phases added
+// them (Deviations R10, 7A's Global Constraints): deploy_targets is last.
 var Tables = []RewrapTable{
 	TableSettings, TableCAs, TableAcmeAccounts, TableDNSProviderCredentials,
 	TableOutputSpecs, TableAgentCAs, TableCertificateVersions, TableNotificationChannels,
+	TableDeployTargets,
 }
 
 // tableColumns lists each table's sealed columns, in the order a row's
@@ -88,6 +90,7 @@ var tableColumns = map[RewrapTable][]string{
 	TableAgentCAs:               {"key"},
 	TableCertificateVersions:    {"private_key"},
 	TableNotificationChannels:   {"secret_cfg"},
+	TableDeployTargets:          {"secret_cfg"},
 }
 
 // RewrapStatus is a rewrap run's progress, from startRewrap to completion;
@@ -662,6 +665,20 @@ func (s *sqlStore) Page(ctx context.Context, table RewrapTable, after string, li
 			out[i] = Row{PK: r.ID.String(), Cols: map[string][]byte{"secret_cfg": r.SecretCfg}}
 		}
 		return out, nil
+	case TableDeployTargets:
+		a, err := parseAfterUUID(after)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := s.q.RewrapDeployTargetsPage(ctx, sqlcgen.RewrapDeployTargetsPageParams{Limit: limit, After: a})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]Row, len(rows))
+		for i, r := range rows {
+			out[i] = Row{PK: r.ID.String(), Cols: map[string][]byte{"secret_cfg": r.SecretCfg}}
+		}
+		return out, nil
 	default:
 		return nil, fmt.Errorf("kek: unknown rewrap table %q", table)
 	}
@@ -728,6 +745,13 @@ func (s *sqlStore) CAS(ctx context.Context, table RewrapTable, pk, col string, o
 			return false, err
 		}
 		n, err := s.q.RewrapNotificationChannelsSecretCAS(ctx, sqlcgen.RewrapNotificationChannelsSecretCASParams{ID: id, SecretCfg: newVal, SecretCfg_2: oldVal})
+		return n > 0, err
+	case table == TableDeployTargets && col == "secret_cfg":
+		id, err := uuid.Parse(pk)
+		if err != nil {
+			return false, err
+		}
+		n, err := s.q.RewrapDeployTargetsSecretCAS(ctx, sqlcgen.RewrapDeployTargetsSecretCASParams{ID: id, SecretCfg: newVal, SecretCfg_2: oldVal})
 		return n > 0, err
 	default:
 		return false, fmt.Errorf("kek: unknown rewrap column %s.%s", table, col)

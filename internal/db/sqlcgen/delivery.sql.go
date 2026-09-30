@@ -12,15 +12,16 @@ import (
 )
 
 const createDeployTarget = `-- name: CreateDeployTarget :one
-INSERT INTO deploy_targets (org_id, name, type, runs_on, config) VALUES ($1, $2, $3, $4, $5) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at
+INSERT INTO deploy_targets (org_id, name, type, runs_on, config, secret_cfg) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg
 `
 
 type CreateDeployTargetParams struct {
-	OrgID  uuid.UUID `json:"org_id"`
-	Name   string    `json:"name"`
-	Type   string    `json:"type"`
-	RunsOn string    `json:"runs_on"`
-	Config []byte    `json:"config"`
+	OrgID     uuid.UUID `json:"org_id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	RunsOn    string    `json:"runs_on"`
+	Config    []byte    `json:"config"`
+	SecretCfg []byte    `json:"secret_cfg"`
 }
 
 func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTargetParams) (DeployTarget, error) {
@@ -30,6 +31,7 @@ func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTarget
 		arg.Type,
 		arg.RunsOn,
 		arg.Config,
+		arg.SecretCfg,
 	)
 	var i DeployTarget
 	err := row.Scan(
@@ -41,6 +43,7 @@ func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTarget
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SecretCfg,
 	)
 	return i, err
 }
@@ -209,6 +212,37 @@ func (q *Queries) DeployTargetDependents(ctx context.Context, arg DeployTargetDe
 	return items, nil
 }
 
+const deployTargetForUpdate = `-- name: DeployTargetForUpdate :one
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type DeployTargetForUpdateParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Phase 7A Task 1: read+lock a target row FOR UPDATE ahead of an update
+// that decides whether to keep stored secrets unchanged (the same
+// LockLayout convention: internal/kek/rewrap.go's concurrent CAS on
+// secret_cfg cannot land between this read and the later write and be
+// silently clobbered by a stale, pre-rewrap blob).
+func (q *Queries) DeployTargetForUpdate(ctx context.Context, arg DeployTargetForUpdateParams) (DeployTarget, error) {
+	row := q.db.QueryRow(ctx, deployTargetForUpdate, arg.ID, arg.OrgID)
+	var i DeployTarget
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.RunsOn,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SecretCfg,
+	)
+	return i, err
+}
+
 const deployTargetGrantCounts = `-- name: DeployTargetGrantCounts :many
 SELECT t.id, count(g.id)::bigint AS grants
 FROM deploy_targets t LEFT JOIN client_cert_grants g ON g.deploy_target_id = t.id AND g.removed_at IS NULL
@@ -241,7 +275,7 @@ func (q *Queries) DeployTargetGrantCounts(ctx context.Context, ids []uuid.UUID) 
 }
 
 const getDeployTarget = `-- name: GetDeployTarget :one
-SELECT id, org_id, name, type, runs_on, config, created_at, updated_at FROM deploy_targets WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg FROM deploy_targets WHERE id = $1 AND org_id = $2
 `
 
 type GetDeployTargetParams struct {
@@ -261,6 +295,7 @@ func (q *Queries) GetDeployTarget(ctx context.Context, arg GetDeployTargetParams
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SecretCfg,
 	)
 	return i, err
 }
@@ -520,7 +555,7 @@ func (q *Queries) LayoutsListingExtraCert(ctx context.Context, arg LayoutsListin
 }
 
 const listDeployTargets = `-- name: ListDeployTargets :many
-SELECT id, org_id, name, type, runs_on, config, created_at, updated_at FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id
 `
 
 func (q *Queries) ListDeployTargets(ctx context.Context, orgID uuid.UUID) ([]DeployTarget, error) {
@@ -541,6 +576,7 @@ func (q *Queries) ListDeployTargets(ctx context.Context, orgID uuid.UUID) ([]Dep
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SecretCfg,
 		); err != nil {
 			return nil, err
 		}
@@ -747,21 +783,23 @@ func (q *Queries) TargetKeylessGrantCertificate(ctx context.Context, id *uuid.UU
 }
 
 const updateDeployTarget = `-- name: UpdateDeployTarget :one
-UPDATE deploy_targets SET name = $1, config = $2, updated_at = now()
-WHERE id = $3 AND org_id = $4 RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at
+UPDATE deploy_targets SET name = $1, config = $2, secret_cfg = $3, updated_at = now()
+WHERE id = $4 AND org_id = $5 RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg
 `
 
 type UpdateDeployTargetParams struct {
-	Name   string    `json:"name"`
-	Config []byte    `json:"config"`
-	ID     uuid.UUID `json:"id"`
-	OrgID  uuid.UUID `json:"org_id"`
+	Name      string    `json:"name"`
+	Config    []byte    `json:"config"`
+	SecretCfg []byte    `json:"secret_cfg"`
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
 }
 
 func (q *Queries) UpdateDeployTarget(ctx context.Context, arg UpdateDeployTargetParams) (DeployTarget, error) {
 	row := q.db.QueryRow(ctx, updateDeployTarget,
 		arg.Name,
 		arg.Config,
+		arg.SecretCfg,
 		arg.ID,
 		arg.OrgID,
 	)
@@ -775,6 +813,7 @@ func (q *Queries) UpdateDeployTarget(ctx context.Context, arg UpdateDeployTarget
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SecretCfg,
 	)
 	return i, err
 }

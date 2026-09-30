@@ -77,3 +77,13 @@ ORDER BY id LIMIT $1;
 
 -- name: RewrapNotificationChannelsSecretCAS :execrows
 UPDATE notification_channels SET secret_cfg = $2 WHERE id = $1 AND secret_cfg = $3;
+
+-- name: RewrapDeployTargetsPage :many
+-- Phase 7A Task 1 (Deviations R10): deploy_targets.secret_cfg, appended
+-- last to internal/kek.Tables.
+SELECT id, secret_cfg FROM deploy_targets
+WHERE secret_cfg IS NOT NULL AND (sqlc.narg(after)::uuid IS NULL OR id > sqlc.narg(after))
+ORDER BY id LIMIT $1;
+
+-- name: RewrapDeployTargetsSecretCAS :execrows
+UPDATE deploy_targets SET secret_cfg = $2 WHERE id = $1 AND secret_cfg = $3;

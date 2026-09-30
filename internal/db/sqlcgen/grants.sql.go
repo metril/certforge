@@ -988,7 +988,7 @@ func (q *Queries) LockServerGrant(ctx context.Context, arg LockServerGrantParams
 
 const lockServerTarget = `-- name: LockServerTarget :one
 
-SELECT id, org_id, name, type, runs_on, config, created_at, updated_at FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
 `
 
 type LockServerTargetParams struct {
@@ -1015,6 +1015,7 @@ func (q *Queries) LockServerTarget(ctx context.Context, arg LockServerTargetPara
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SecretCfg,
 	)
 	return i, err
 }

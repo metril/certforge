@@ -124,6 +124,7 @@ func (q *Queries) MarkServerDeploymentFailed(ctx context.Context, arg MarkServer
 
 const serverDeployGrant = `-- name: ServerDeployGrant :one
 SELECT g.id, g.cert_id, g.deploy_target_id, t.org_id, o.slug AS org_slug, t.type AS target_type, t.config AS target_config,
+       t.secret_cfg AS target_secret_cfg, t.name AS target_name,
        ce.name AS certificate_name, ce.common_name AS certificate_common_name, ce.sans AS certificate_sans,
        ce.current_version_id, ol.files AS layout_files, ol.password AS layout_password, ol.extra_cert_ids AS layout_extra_cert_ids,
        sd.version_id AS pending_version_id
@@ -144,6 +145,8 @@ type ServerDeployGrantRow struct {
 	OrgSlug               string      `json:"org_slug"`
 	TargetType            string      `json:"target_type"`
 	TargetConfig          []byte      `json:"target_config"`
+	TargetSecretCfg       []byte      `json:"target_secret_cfg"`
+	TargetName            string      `json:"target_name"`
 	CertificateName       string      `json:"certificate_name"`
 	CertificateCommonName string      `json:"certificate_common_name"`
 	CertificateSans       []string    `json:"certificate_sans"`
@@ -163,6 +166,10 @@ type ServerDeployGrantRow struct {
 // one has already taken over must never overwrite it). Excludes a removed
 // or client-owned grant (pgx.ErrNoRows there means "nothing left to
 // deploy", not an error: the worker treats it as done).
+// Phase 7A Task 1: t.secret_cfg (a registry Target's Parse needs the
+// stored secrets to deploy) and t.name AS target_name (targets.Redact and
+// deploy.failed both name the target, never its raw config) are added for
+// the registry-driven dispatcher (Task 5).
 func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDeployGrantRow, error) {
 	row := q.db.QueryRow(ctx, serverDeployGrant, id)
 	var i ServerDeployGrantRow
@@ -174,6 +181,8 @@ func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDe
 		&i.OrgSlug,
 		&i.TargetType,
 		&i.TargetConfig,
+		&i.TargetSecretCfg,
+		&i.TargetName,
 		&i.CertificateName,
 		&i.CertificateCommonName,
 		&i.CertificateSans,

@@ -167,6 +167,7 @@ type DeployTarget struct {
 	Config    []byte    `json:"config"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	SecretCfg []byte    `json:"secret_cfg"`
 }
 
 type Deployment struct {

@@ -12,7 +12,7 @@ Single status file. Updated in every commit that completes a task.
 | 4 | Issuance breadth and formats | done | [design](design.md) | [4A](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) · [4B](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) | 2026-09-27 | 2026-09-27 |
 | 5 | Vault and private CA | done | [design](design.md) | [5A](superpowers/plans/2026-09-27-phase-5a-vault-private-ca-backend.md) · [5B](superpowers/plans/2026-09-27-phase-5b-issuers-vault-web-ui.md) | 2026-09-27 | 2026-09-29 |
 | 6 | Ops | done | [design](design.md) | [6A](superpowers/plans/2026-09-29-phase-6a-ops-backend.md) · [6B](superpowers/plans/2026-09-29-phase-6b-alerts-backup-web-ui.md) | 2026-09-29 | 2026-09-29 |
-| 7 | Deploy targets | planned | [design](design.md) | – | – | – |
+| 7 | Deploy targets | in progress | [design](design.md) | [7A](superpowers/plans/2026-09-29-phase-7a-deploy-targets-backend.md) · [7B](superpowers/plans/2026-09-29-phase-7b-deploy-targets-web-ui.md) | 2026-09-29 | – |
 
 ## Active phase tasks
 
@@ -331,6 +331,23 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | 8 | Overview monitor attention | done | 944c250 |
 | 9 | Docs pass and Playwright | done | d8f1ba1 |
 
+### Phase 7: Deploy targets — in progress (started 2026-09-29)
+
+Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rewrap, `targets` core and test types, registry adoption for traefik/vault-kv/meta, OpenAPI and target/grant API, server dispatcher on the registry, agent execution for file targets, `deploy.failed` from the dispatcher, regression e2e and docs close-out) and 7B deploy-targets web UI. Plan 7A: [deploy-targets backend](superpowers/plans/2026-09-29-phase-7a-deploy-targets-backend.md). Plan 7B: [deploy-targets web UI](superpowers/plans/2026-09-29-phase-7b-deploy-targets-web-ui.md).
+
+#### Phase 7A tasks
+
+| # | Task | Status | Commit |
+|---|---|---|---|
+| 1 | Schema 00015, queries, rewrap | done | pending |
+| 2 | `targets` core and test types | | |
+| 3 | Registry adoption: traefik, vault-kv, meta | | |
+| 4 | OpenAPI and target/grant API | | |
+| 5 | Server dispatcher on the registry | | |
+| 6 | Agent execution for file targets | | |
+| 7 | `deploy.failed` from the dispatcher | | |
+| 8 | Regression e2e and docs close-out | | |
+
 ## Decisions made during implementation
 
 - CF_LOG_LEVEL is read from the environment in addition to the spec's bootstrap list, because the log level is needed before the database is reachable.
@@ -517,6 +534,14 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 - 6A: R9 (events page) — `listEvents` returns `EventPage` (`{items, nextCursor}`), matching every other paginated list (for example `listAuditEvents`).
 - 6A: R10 (rewrap) — `notification_channels.secret_cfg` is appended to `kek.Tables` and the `RewrapTable` enum.
 - 6A: R11 (monitor target) — Traefik serves plain HTTP only and no deployed certificate is served in the e2e stack; the e2e adds a `websecure` `:8443` TLS entrypoint and its own dynamic Traefik file (the issued leaf and key as the default certificate, plus a catch-all router to `noop@internal`); the monitor targets `traefik:8443`.
+- 7A: R16 (scope) — the product type codes stay `vault-kv, traefik`, and the OpenAPI `DeployTargetType` enum is unchanged. The registry, not the database, is authoritative for type codes and for type/`runs_on` agreement. Tests may therefore register `targetstest` types without a migration. `TestProductRegistriesHaveNoTestTypes` guards serve and agent wiring.
+- 7A: R3 (migration) — `00014_ops_fixes.sql` already exists, so the migration is `00015_deploy_targets.sql`. `runs_on` already exists (00008). 00015 adds `secret_cfg bytea` and drops `deploy_targets_type_check` and `deploy_targets_type_runs_on_check` (00012), moving both rules into Go (`validTarget`). The `runs_on` backfill is a no-op, because existing rows already satisfy it.
+- 7A: R8/R9 (names) — the OpenAPI component is the existing `SchemaEntry` (R9's `MetaSchemaEntry`), which gains `runsOn?`/`keyPolicy?`. R9's `usedBy` is the existing required `DeployTarget.grantCount`, and the name is kept (5B web reads it). `SchemaEntry.runsOn` uses a new enum `TargetRunsOn` (server\|agent\|either); `DeployTarget.runsOn` keeps `RunsOn` (agent\|server).
+- 7A: R2 (file targets, accepted) — `FileTarget{Files(Request) ([]delivery.File, error); Paths(cfg json.RawMessage, certName string) ([]string, error)}` plus an optional `Reloader{Reload(ctx, Request) (string, error)}`. `Deploy` on a file target returns `Result{Files}` with no side effects. `Paths` serves `agents.grantPaths` without material. `Request.Material` is `*render.Material` (nil for a version-less grant: traefik's ACME router file). `Request` gains `GrantID` and `Names`.
+- 7A: R2 (URL policy, accepted) — `Config` gains `URLs []string`. At create/update the API runs `httpx.CheckURL` on each (server: global `allowLoopbackUrls`; agent: `true`). A reused secret combined with a changed URL gives 422 "re-enter the secret".
+- 7A: R4 (enums, accepted) — plain enums with a `description` per field; no `ui:enumNames`.
+- 7A: R16 (httpx) — no httpx change. `targets.HTTPFactory{AllowLoopback}` wraps the existing `httpx.New`, and vendor-facing extensions (body-returning calls, unix sockets, client certs) are deferred.
+- 7A: R7 (existing scan) — `notify/scan.go` already emits `deploy.failed` for server grants (`ScanFailedServerDeployments`) under the same key `deploy.failed:<grantId>:<versionId>`. The immediate emit from `Dispatcher.fail` and the hourly scan (kept as a backstop) dedupe to one event through the unique `dedupe_key`.
 
 ## Known gaps
 

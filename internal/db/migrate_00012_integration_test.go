@@ -17,8 +17,14 @@ import (
 const pgUniqueViolation = "23505"
 
 // TestMigration00012Constraints covers Phase 5A Task 1's migration: a
-// vault-kv deploy target must run on server, a grant needs a client or a
-// deploy target, and only one live server grant may exist per (target, cert).
+// grant needs a client or a deploy target, and only one live server grant
+// may exist per (target, cert). It no longer covers type/runs_on
+// agreement (a vault-kv target must run on server): Phase 7A Task 1's
+// migration 00015 drops deploy_targets_type_runs_on_check and
+// deploy_targets_type_check from the database, moving that rule into Go
+// (Deviations R3, R16) — dbtest.New always builds the head schema, so this
+// integration test, unlike migrate_00015_integration_test.go's own
+// DownTo/UpTo pair, only ever exercises constraints still standing there.
 func TestMigration00012Constraints(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()
@@ -29,13 +35,6 @@ func TestMigration00012Constraints(t *testing.T) {
 		`INSERT INTO certificates (org_id, name, common_name) VALUES ($1, 'c', 'a.example.test') RETURNING id`,
 		org).Scan(&certID); err != nil {
 		t.Fatal(err)
-	}
-
-	// A vault-kv target must run on server (deploy_targets_type_runs_on_check).
-	_, err := pool.Exec(ctx,
-		`INSERT INTO deploy_targets (org_id, name, type, runs_on) VALUES ($1, 'kv-agent', 'vault-kv', 'agent')`, org)
-	if pe := pgErr(err); pe == nil || pe.Code != pgCheckViolation {
-		t.Fatalf("vault-kv target with runs_on=agent: err = %v, want CHECK violation (SQLSTATE %s)", err, pgCheckViolation)
 	}
 
 	var targetID string
@@ -54,7 +53,7 @@ func TestMigration00012Constraints(t *testing.T) {
 		`INSERT INTO output_specs (org_id, name) VALUES ($1, 'layout') RETURNING id`, org).Scan(&layoutID); err != nil {
 		t.Fatal(err)
 	}
-	_, err = pool.Exec(ctx, `INSERT INTO client_cert_grants (cert_id, output_spec_id) VALUES ($1, $2)`, certID, layoutID)
+	_, err := pool.Exec(ctx, `INSERT INTO client_cert_grants (cert_id, output_spec_id) VALUES ($1, $2)`, certID, layoutID)
 	if pe := pgErr(err); pe == nil || pe.Code != pgCheckViolation || pe.ConstraintName != "client_cert_grants_client_or_target" {
 		t.Fatalf("grant with no client and no target: err = %v, want CHECK violation on client_cert_grants_client_or_target", err)
 	}

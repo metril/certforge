@@ -385,6 +385,92 @@ func TestRewrapIncludesChannels(t *testing.T) {
 	}
 }
 
+// TestRewrapIncludesDeployTargets covers Phase 7A Task 1 (Global
+// Constraints: "RewrapTable gains deploy_targets (last)"): a deploy
+// target's secret_cfg sealed under KEK A is rewrapped to B and still opens.
+// deploy_targets.secret_cfg has no sqlc query of its own that writes it yet
+// (Task 4 wires target create/update to it); a direct UPDATE is enough to
+// seed it here, the same way TestRewrapIncludesChannels seeds
+// notification_channels.secret_cfg.
+func TestRewrapIncludesDeployTargets(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+
+	kekA := testKey(41)
+	wrapperA := crypto.NewStaticWrapper(crypto.KeyID(kekA), kekA)
+	envA := crypto.NewEnvelope(wrapperA)
+
+	org, err := q.CreateOrg(ctx, sqlcgen.CreateOrgParams{Slug: "rewrap-targets", Name: "Rewrap Targets"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	secretBlob, err := envA.Encrypt(ctx, []byte(`{"token":"vault-token"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{
+		OrgID: org.ID, Name: "kv1", Type: "vault-kv", RunsOn: "server", Config: []byte("{}"), SecretCfg: secretBlob.Marshal(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	kekB := testKey(42)
+	wrapperB := crypto.NewStaticWrapper(crypto.KeyID(kekB), kekB)
+	env := crypto.NewEnvelope(wrapperB, wrapperA)
+	store := settings.NewStore(q, env)
+	auditKey := testKey(43)
+	aud := audit.New(pool, auditKey)
+
+	svc := &kek.Service{
+		Env: env, Settings: store, Pool: pool, Audit: aud,
+		Info: kek.Info{Kind: "static", KEKID: wrapperB.ID(), Previous: []kek.Ref{{Kind: "static", KEKID: wrapperA.ID()}}},
+	}
+	w := &kek.RewrapWorker{Service: svc}
+	if err := w.Work(ctx, &river.Job[kek.RewrapArgs]{}); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := svc.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Rewrap == nil || st.Rewrap.Running || st.Rewrap.Remaining != 0 {
+		t.Fatalf("rewrap status = %+v", st.Rewrap)
+	}
+	found := false
+	for _, ts := range st.Rewrap.Tables {
+		if ts.Table != kek.TableDeployTargets {
+			continue
+		}
+		found = true
+		if ts.Rewrapped != 1 || ts.Remaining != 0 {
+			t.Fatalf("deploy_targets table status = %+v", ts)
+		}
+	}
+	if !found {
+		t.Fatal("deploy_targets not present in rewrap status")
+	}
+
+	row, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: target.ID, OrgID: org.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b crypto.Blob
+	if err := b.Unmarshal(row.SecretCfg); err != nil {
+		t.Fatal(err)
+	}
+	if b.KEKID != wrapperB.ID() {
+		t.Fatalf("secret_cfg still sealed under %q, want active %q", b.KEKID, wrapperB.ID())
+	}
+	envBOnly := crypto.NewEnvelope(wrapperB)
+	pt, err := envBOnly.Decrypt(ctx, b)
+	if err != nil || string(pt) != `{"token":"vault-token"}` {
+		t.Fatalf("decrypt under active envelope = %q, %v", pt, err)
+	}
+}
+
 // TestRewrapCASLosesRaceSafely covers final review finding 1:
 // issuance.Store.UpdateCA (the ACME branch) now locks the cas row FOR
 // UPDATE (LockCA) across its read of eab_hmac and its write of the same,
