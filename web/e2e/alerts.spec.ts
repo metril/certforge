@@ -130,6 +130,12 @@ test('monitor check', async ({ page }) => {
   // listener certforge:8443 instead and gets a deterministic Mismatch, never
   // Unknown (Deviations, "Playwright monitor").
   await expect(edit.getByText('Mismatch')).toBeVisible({ timeout: 30_000 });
+  // Brief: "a state chip other than Unknown … and a fingerprint within
+  // 30 s" — the fingerprint (CopyField's own <code>, the sheet's only one)
+  // renders in the same batch as the state chip, so this is bounded by the
+  // same 30 s wait above rather than its own separate timeout.
+  const fingerprint = await edit.locator('code').textContent();
+  expect(fingerprint?.trim()).toMatch(/^[0-9a-f]{64}$/);
   await expect(edit.getByText('Issuer')).toBeVisible();
   await expect(edit.getByText('Expires')).toBeVisible();
   await snap(page, 'monitor-sheet');

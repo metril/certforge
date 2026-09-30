@@ -266,7 +266,13 @@ it('no monitor query in all orgs', async () => {
       HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }, { role: 'viewer', orgId: 'org-2' }, { role: 'viewer', orgId: null }], [org, org2])),
     ),
     http.get(url('/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
-    http.get(url('/orgs/org-1/monitors'), () => {
+    // Any org, not just org-1: under All orgs, `org.id` is the literal
+    // string 'all' (batch 4 review), so a missing `!allOrgs` guard would hit
+    // /orgs/all/monitors — served silently by the default
+    // /orgs/:orgId/monitors handler (test/server.ts) — and never the
+    // literal /orgs/org-1/monitors this watched before, making the old
+    // assertion pass regardless of whether the guard was there.
+    http.get(url('/orgs/:orgId/monitors'), () => {
       requested = true;
       return HttpResponse.json([]);
     }),
