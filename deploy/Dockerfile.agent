@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.23-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
 ARG VERSION=dev
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/certforge-agent ./cmd/certforge-agent
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/certforge-agent ./cmd/certforge-agent
 
 # Runs as root on purpose: applying a layout's owner and group needs chown.
 # Run it with --user to drop that (owner/group are then ignored with one

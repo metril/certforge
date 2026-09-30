@@ -552,6 +552,7 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 - 7A: R4 (enums, accepted) — plain enums with a `description` per field; no `ui:enumNames`.
 - 7A: R16 (httpx) — no httpx change. `targets.HTTPFactory{AllowLoopback}` wraps the existing `httpx.New`, and vendor-facing extensions (body-returning calls, unix sockets, client certs) are deferred.
 - 7A: R7 (existing scan) — `notify/scan.go` already emits `deploy.failed` for server grants (`ScanFailedServerDeployments`) under the same key `deploy.failed:<grantId>:<versionId>`. The immediate emit from `Dispatcher.fail` and the hourly scan (kept as a backstop) dedupe to one event through the unique `dedupe_key`.
+- Release pipeline: `deploy/Dockerfile.server` and `deploy/Dockerfile.agent` build stages now start `FROM --platform=$BUILDPLATFORM` and cross-compile with `GOOS=$TARGETOS GOARCH=$TARGETARCH`, so `docker buildx build --platform linux/amd64,linux/arm64` builds both target arches without QEMU emulation; the final distroless stages run no `RUN` step, so nothing changes there. Plain single-arch `docker build` (ci.yml's `agent-image` job, compose, `make e2e`) is unaffected.
 
 ## Backlog
 

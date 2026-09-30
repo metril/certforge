@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 ARG WITH_WEB=1
 
-FROM node:24-alpine AS webbuild
+FROM --platform=$BUILDPLATFORM node:24-alpine AS webbuild
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -11,15 +11,17 @@ RUN npm run build
 FROM scratch AS web-1
 COPY --from=webbuild /src/web/dist /dist
 
-FROM alpine:3.22 AS web-0
+FROM --platform=$BUILDPLATFORM alpine:3.22 AS web-0
 RUN mkdir -p /dist
 
 FROM web-${WITH_WEB} AS web
 
-FROM golang:1.23-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
 ARG WITH_WEB=1
 ARG GO_TAGS=""
 ARG VERSION=dev
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -27,7 +29,7 @@ COPY . .
 COPY --from=web /dist /tmp/webdist
 RUN set -eux; tags="$GO_TAGS"; \
     if [ "$WITH_WEB" = "1" ]; then rm -rf internal/webui/dist && cp -r /tmp/webdist internal/webui/dist && tags="$tags embedweb"; fi; \
-    CGO_ENABLED=0 go build -trimpath -tags "$tags" -ldflags "-s -w -X main.version=${VERSION}" -o /out/certforge ./cmd/certforge
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -tags "$tags" -ldflags "-s -w -X main.version=${VERSION}" -o /out/certforge ./cmd/certforge
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/certforge /usr/local/bin/certforge
