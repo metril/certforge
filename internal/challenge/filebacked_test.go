@@ -188,9 +188,9 @@ func TestSchemasNoLongerUnsupported(t *testing.T) {
 		}
 	}
 
-	if pub, sec, err := SplitConfig("transip", map[string]string{"TRANSIP_PRIVATE_KEY": "pem"}); err != nil {
+	if pub, sec, err := SplitConfig("transip", map[string]string{"TRANSIP_ACCOUNT_NAME": "acct", "TRANSIP_PRIVATE_KEY": "pem"}); err != nil {
 		t.Fatalf("transip inline field rejected: %v", err)
-	} else if sec["TRANSIP_PRIVATE_KEY"] != "pem" || len(pub) != 0 {
+	} else if sec["TRANSIP_PRIVATE_KEY"] != "pem" || len(pub)+len(sec) != 2 {
 		t.Fatalf("transip inline field not stored as secret: pub=%v sec=%v", pub, sec)
 	}
 	if _, _, err := SplitConfig("transip", map[string]string{"TRANSIP_PRIVATE_KEY_PATH": "/etc/secrets/transip.key"}); err == nil {

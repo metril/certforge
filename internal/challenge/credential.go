@@ -28,6 +28,14 @@ var ErrUnchangedOnCreate = errors.New("value is only valid when updating a store
 // field for the same credential.
 var ErrServerPath = errors.New("reads a file path on the server and is not accepted from the API; use the inline field instead")
 
+// ErrNoAuthMethod is returned when a config satisfies none of the provider's
+// auth methods.
+var ErrNoAuthMethod = errors.New("no complete auth method")
+
+// ErrAliasConflict is returned when an alias key and its canonical key are
+// both set to different values.
+var ErrAliasConflict = errors.New("alias and canonical field set to different values")
+
 // SplitConfig validates cfg against the provider schema and splits it into
 // public (stored as jsonb) and secret (stored encrypted) parts. Empty values
 // are dropped.
@@ -37,6 +45,10 @@ func SplitConfig(code string, cfg map[string]string) (public, secret map[string]
 		return nil, nil, fmt.Errorf("%w %q", ErrUnknownProvider, code)
 	}
 	public, secret = map[string]string{}, map[string]string{}
+	cfg, err = canonicalize(e, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
 	for k, v := range cfg {
 		isSecret, known := e.secret[k]
 		if !known {
@@ -60,7 +72,74 @@ func SplitConfig(code string, cfg map[string]string) (public, secret map[string]
 			public[k] = v
 		}
 	}
+	if err := checkAuth(e, public, secret); err != nil {
+		return nil, nil, err
+	}
 	return public, secret, nil
+}
+
+// canonicalize returns cfg with alias keys renamed to their canonical key.
+// Unknown keys pass through untouched (the caller rejects them). An alias and
+// canonical key both non-empty with different values is ErrAliasConflict.
+func canonicalize(e *entry, cfg map[string]string) (map[string]string, error) {
+	if len(e.aliasOf) == 0 {
+		return cfg, nil
+	}
+	out := make(map[string]string, len(cfg))
+	for k, v := range cfg {
+		if _, isAlias := e.aliasOf[k]; !isAlias {
+			out[k] = v
+		}
+	}
+	keys := make([]string, 0, len(e.aliasOf))
+	for a := range e.aliasOf {
+		keys = append(keys, a)
+	}
+	sort.Strings(keys)
+	for _, a := range keys {
+		v, ok := cfg[a]
+		if !ok {
+			continue
+		}
+		c := e.aliasOf[a]
+		if cur := out[c]; cur != "" && v != "" && cur != v {
+			return nil, fmt.Errorf("%w: %s and %s", ErrAliasConflict, c, a)
+		}
+		if out[c] == "" {
+			out[c] = v
+		}
+	}
+	return out, nil
+}
+
+// checkAuth requires some auth method's fields to all be non-empty in the
+// union of public and secret. Providers without methods are not checked.
+func checkAuth(e *entry, public, secret map[string]string) error {
+	ms := e.meta.AuthMethods
+	if len(ms) == 0 {
+		return nil
+	}
+	for _, m := range ms {
+		ok := true
+		for _, f := range m.Fields {
+			if public[f] == "" && secret[f] == "" {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return nil
+		}
+	}
+	parts := make([]string, len(ms))
+	for i, m := range ms {
+		if len(m.Fields) == 0 {
+			parts[i] = m.Label + " (no fields)"
+		} else {
+			parts[i] = m.Label + " (" + strings.Join(m.Fields, ", ") + ")"
+		}
+	}
+	return fmt.Errorf("%w: supply one of: %s", ErrNoAuthMethod, strings.Join(parts, " | "))
 }
 
 // MergeUpdate applies a full-replacement update. Secret keys set to Unchanged

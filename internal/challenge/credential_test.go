@@ -2,6 +2,7 @@ package challenge
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -74,8 +75,8 @@ func TestMergeUpdateUnchangedSentinel(t *testing.T) {
 // CF_API_KEY here is Unchanged but was never a secret field with a stored
 // value, and no other secret is referenced at all.
 func TestMergeUpdateReusedSecretOnlyWhenFieldIsSecret(t *testing.T) {
-	_, _, changed, reused, err := MergeUpdate("cloudflare", map[string]string{"CF_API_EMAIL": "a@example.com"}, nil,
-		map[string]string{"CF_API_EMAIL": "b@example.com"})
+	_, _, changed, reused, err := MergeUpdate("cloudflare", map[string]string{"CF_API_EMAIL": "a@example.com"}, map[string]string{"CF_DNS_API_TOKEN": "t"},
+		map[string]string{"CF_API_EMAIL": "b@example.com", "CF_DNS_API_TOKEN": "t2"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,5 +85,53 @@ func TestMergeUpdateReusedSecretOnlyWhenFieldIsSecret(t *testing.T) {
 	}
 	if len(changed) != 1 || changed[0] != "CF_API_EMAIL" {
 		t.Fatalf("changedPublic = %v", changed)
+	}
+}
+
+func TestCloudflareHasTwoAuthMethods(t *testing.T) {
+	m, ok := Lookup("cloudflare")
+	if !ok || len(m.AuthMethods) != 2 {
+		t.Fatalf("methods=%v", m.AuthMethods)
+	}
+}
+
+func TestSplitConfigAliasCanonicalized(t *testing.T) {
+	_, sec, err := SplitConfig("cloudflare", map[string]string{"CF_API_EMAIL": "a@b.c", "CLOUDFLARE_API_KEY": "k"})
+	if err != nil || sec["CF_API_KEY"] != "k" || len(sec) != 1 {
+		t.Fatalf("sec=%v err=%v", sec, err)
+	}
+	if _, _, err := SplitConfig("cloudflare", map[string]string{"CF_DNS_API_TOKEN": "a", "CF_API_KEY": "x", "CLOUDFLARE_API_KEY": "y", "CF_API_EMAIL": "e"}); !errors.Is(err, ErrAliasConflict) {
+		t.Fatalf("conflict: %v", err)
+	}
+	if _, _, err := SplitConfig("cloudflare", map[string]string{"CF_API_EMAIL": "e", "CF_API_KEY": "x", "CLOUDFLARE_API_KEY": "x"}); err != nil {
+		t.Fatalf("same value: %v", err)
+	}
+}
+
+func TestSplitConfigAuthMethods(t *testing.T) {
+	for name, cfg := range map[string]map[string]string{
+		"none":    {},
+		"partial": {"CF_API_EMAIL": "e"},
+		"empty":   {"CF_DNS_API_TOKEN": ""},
+	} {
+		_, _, err := SplitConfig("cloudflare", cfg)
+		if !errors.Is(err, ErrNoAuthMethod) {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if name == "none" && !strings.Contains(err.Error(), "API token (CF_DNS_API_TOKEN) | ") && !strings.Contains(err.Error(), "Email + API key (CF_API_EMAIL, CF_API_KEY)") {
+			t.Fatalf("msg: %v", err)
+		}
+	}
+	if _, _, err := SplitConfig("cloudflare", map[string]string{"CF_DNS_API_TOKEN": "t"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := SplitConfig("route53", map[string]string{}); err != nil {
+		t.Fatalf("ambient: %v", err)
+	}
+	if err := Register(ProviderMeta{Code: "unit-nomethods", Name: "x", Schema: []byte(`{"properties":{"A":{"type":"string"}}}`)}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := SplitConfig("unit-nomethods", map[string]string{}); err != nil {
+		t.Fatalf("method-less: %v", err)
 	}
 }
