@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,14 +35,20 @@ import (
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/signer"
 	"github.com/metril/certforge/internal/targets"
+	"github.com/metril/certforge/internal/targets/targetstest"
 )
 
 // testRegistry is the same shape cmd/certforge/serve.go builds: traefik
-// plus vault-kv (Vault nil — no fixture here calls Deploy on it).
+// plus vault-kv (Vault nil — no fixture here calls Deploy on it) — plus
+// targetstest.File ("file-test"), a test-only agent-side FileTarget used
+// only by this package's own tests (never product registries:
+// TestProductRegistriesHaveNoTestTypes/TestAgentImports guard those, not a
+// test fixture like this one).
 func testRegistry() *targets.Registry {
 	reg := targets.NewRegistry()
 	targets.RegisterBuiltins(reg)
 	reg.Register(deploy.VaultKV{})
+	reg.Register(&targetstest.File{Code: "file-test"})
 	return reg
 }
 
@@ -195,6 +202,35 @@ func (f *syncFixture) target(t *testing.T, name string, cfg delivery.TraefikConf
 		t.Fatal(err)
 	}
 	dt, err := f.q.CreateDeployTarget(context.Background(), sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: name, Type: delivery.TargetTraefik, RunsOn: "agent", Config: b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dt.ID
+}
+
+// fileTarget stores a "file-test" (targetstest.File) deploy target: a
+// public config (dir) plus, when secrets is non-empty, a sealed secret_cfg
+// — this only exercises the secret_cfg open+merge round trip
+// (targetOf/openTargetSecrets), not File's own schema (which declares no
+// secret property; targets.Merge does not consult a schema at all).
+func (f *syncFixture) fileTarget(t *testing.T, name, dir string, secrets map[string]string) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	b, err := json.Marshal(map[string]string{"dir": dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sealed []byte
+	if len(secrets) > 0 {
+		sj, err := json.Marshal(secrets)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sealed, err = f.box.Seal(ctx, sj); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dt, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: name, Type: "file-test", RunsOn: "agent", Config: b, SecretCfg: sealed})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -699,5 +735,83 @@ func TestCreateGrantRefusesServerRunTarget(t *testing.T) {
 	var ae *Error
 	if !errors.As(err, &ae) || ae.Kind != KindInvalid {
 		t.Fatalf("CreateGrant onto a server-run target: err = %v, want KindInvalid", err)
+	}
+}
+
+// TestAssignmentCarriesMergedConfig (Phase 7A Task 6): a deploy target's
+// secret_cfg is opened and merged back into its public config
+// (targetOf/openTargetSecrets, targets.Merge) before Assignments sends it
+// to the agent — the same fully resolved shape a server-side dispatcher's
+// Request.Config carries. targetstest.File's own schema declares no secret
+// property; targets.Merge never consults a schema, so this only exercises
+// the secret_cfg round trip itself, independent of any one type's schema.
+func TestAssignmentCarriesMergedConfig(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	f.setCurrent(t, certID, f.version(t, certID, 60, true))
+	dir := t.TempDir()
+	targetID := f.fileTarget(t, "file", dir, map[string]string{"token": "shh"})
+	c := f.client(t, "file-client")
+
+	if _, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID}); err != nil {
+		t.Fatal(err)
+	}
+
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(asg.Grants) != 1 {
+		t.Fatalf("grants %+v", asg.Grants)
+	}
+	a := asg.Grants[0]
+	if a.Target == nil {
+		t.Fatal("assignment has no target")
+	}
+	var cfg map[string]string
+	if err := json.Unmarshal(a.Target.Config, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg["dir"] != dir || cfg["token"] != "shh" {
+		t.Fatalf("Target.Config = %+v, want dir=%s token=shh", cfg, dir)
+	}
+}
+
+// TestAssignmentsNotLogged: a target's secret value, and its own public
+// config, never appear in anything agents.Service logs while building
+// Assignments (Global Constraints, Secrets row).
+func TestAssignmentsNotLogged(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	var buf bytes.Buffer
+	f.svc.Log = slog.New(slog.NewTextHandler(&buf, nil))
+
+	certID := f.cert(t, "web2")
+	f.setCurrent(t, certID, f.version(t, certID, 61, true))
+	dir := t.TempDir()
+	targetID := f.fileTarget(t, "file2", dir, map[string]string{"token": "top-secret-value"})
+	c := f.client(t, "file-client-2")
+	if _, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID}); err != nil {
+		t.Fatal(err)
+	}
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Assignments(ctx, cl); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(buf.String(), "top-secret-value") {
+		t.Fatalf("secret logged: %s", buf.String())
+	}
+	if strings.Contains(buf.String(), dir) {
+		t.Fatalf("target config logged: %s", buf.String())
 	}
 }

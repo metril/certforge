@@ -95,7 +95,16 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 		if err != nil {
 			return agentproto.Assignments{}, err
 		}
-		target := targetOf(r.TargetType, r.TargetConfig)
+		var target *agentproto.Target
+		if r.TargetType != nil {
+			secrets, err := s.openTargetSecrets(ctx, r.TargetSecretCfg)
+			if err != nil {
+				return agentproto.Assignments{}, err
+			}
+			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets); err != nil {
+				return agentproto.Assignments{}, err
+			}
+		}
 		if r.RemovedAt != nil {
 			paths := make([]string, 0, len(specs))
 			for _, f := range specs {

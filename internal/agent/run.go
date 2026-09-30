@@ -88,22 +88,24 @@ type Agent struct {
 // NewTargetsRegistry builds the agent's deploy target registry: every
 // built-in type internal/targets ships (traefik) — never vault-kv, which
 // is server-run only and registers nowhere near the agent binary
-// (TestAgentRegistryHasNoVaultKV, cmd/certforge/registry_test.go). This is
-// the same construction the agent constructor (NewAgent) will wire into
-// Deployer.Reg once registry-driven agent execution lands (Task 6); until
-// then nothing calls it but its own tests.
+// (TestAgentRegistryHasNoVaultKV, cmd/certforge/registry_test.go). NewAgent
+// wires this into Deployer.Reg for production; a test builds its own
+// smaller or larger registry instead where that matters.
 func NewTargetsRegistry() *targets.Registry {
 	reg := targets.NewRegistry()
 	targets.RegisterBuiltins(reg)
 	return reg
 }
 
-// NewAgent wires the production file writer, hook runner and challenge
-// server.
+// NewAgent wires the production file writer, hook runner, deploy target
+// registry and challenge server. AllowLoopback is always true for the
+// agent's own outbound HTTPFactory (Deviations R2): an agent-side target
+// already runs inside whatever network the agent itself reaches.
 func NewAgent(cfg Config, log *slog.Logger, id *Identity) *Agent {
 	files := NewFileWriter(log)
 	return &Agent{Cfg: cfg, Log: log, ID: id, Now: time.Now,
-		Deployer:  &Deployer{Files: files, Hooks: &HookRunner{Allow: cfg.HookAllow}, Log: log, WriteAllow: cfg.WriteAllow},
+		Deployer: &Deployer{Files: files, Hooks: &HookRunner{Allow: cfg.HookAllow}, Log: log, WriteAllow: cfg.WriteAllow,
+			Reg: NewTargetsRegistry(), HTTP: targets.HTTPFactory{AllowLoopback: true}},
 		Challenge: NewChallengeServer(cfg, files, log)}
 }
 

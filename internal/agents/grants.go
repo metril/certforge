@@ -252,11 +252,42 @@ func clientOf(id *uuid.UUID) (uuid.UUID, error) {
 	return *id, nil
 }
 
-func targetOf(typ *string, cfg []byte) *agentproto.Target {
-	if typ == nil {
-		return nil
+// openTargetSecrets opens sealed (a deploy target's secret_cfg; nil/empty
+// for a target with no stored secrets) into its decrypted secret map — the
+// same pattern as s.openPassword and internal/deploy.Dispatcher's own
+// openTargetSecrets, this package's server-side counterpart.
+func (s *Service) openTargetSecrets(ctx context.Context, sealed []byte) (map[string]string, error) {
+	if len(sealed) == 0 {
+		return map[string]string{}, nil
 	}
-	return &agentproto.Target{Type: *typ, Config: json.RawMessage(cfg)}
+	pt, err := s.Box.Open(ctx, sealed)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]string
+	if err := json.Unmarshal(pt, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// targetOf builds the agentproto.Target for one grant's target row: typ
+// nil means no target. secrets is the target's decrypted secret_cfg
+// (openTargetSecrets), merged back into cfg (targets.Merge) so both what
+// Assignments sends an agent and what render hands targets.GrantFiles to
+// compute a grant's expected files see the same fully resolved config a
+// server-side Request.Config carries (Dispatcher.Deploy) — never just the
+// public fields, even though neither shipped type (traefik, vault-kv) has
+// a secret field today.
+func targetOf(typ *string, cfg []byte, secrets map[string]string) (*agentproto.Target, error) {
+	if typ == nil {
+		return nil, nil
+	}
+	merged, err := targets.Merge(json.RawMessage(cfg), secrets)
+	if err != nil {
+		return nil, err
+	}
+	return &agentproto.Target{Type: *typ, Config: merged}, nil
 }
 
 // grantPaths lists the paths a live grant writes (layout files, then its
@@ -443,6 +474,16 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 		if r.Delivery == "push" {
 			push[cid] = true
 		}
+		var target *agentproto.Target
+		if r.TargetType != nil {
+			secrets, err := s.openTargetSecrets(ctx, r.TargetSecretCfg)
+			if err != nil {
+				return nil, nil, err
+			}
+			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets); err != nil {
+				return nil, nil, err
+			}
+		}
 		expected := []byte("[]")
 		extraVersionIDs := []uuid.UUID{}
 		if r.CurrentVersionID != nil {
@@ -478,14 +519,14 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 				}
 			}
 			names := append([]string{r.CertificateCommonName}, r.CertificateSans...)
-			files, err := targets.GrantFiles(s.Reg, &m, extras, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName, names)
+			files, err := targets.GrantFiles(s.Reg, &m, extras, layout, target, r.CertificateName, names)
 			if err != nil {
 				return nil, nil, err
 			}
 			if expected, err = json.Marshal(delivery.Specs(files)); err != nil {
 				return nil, nil, err
 			}
-		} else if target := targetOf(r.TargetType, r.TargetConfig); target != nil {
+		} else if target != nil {
 			// C3: no version yet, so no key material to render a layout or a
 			// target's certificate files from, but the Traefik ACME router
 			// file (GrantFiles with nil material) needs no material at all —

@@ -30,7 +30,8 @@ func (q *Queries) BumpRedeploySeqs(ctx context.Context, ids []uuid.UUID) error {
 const clientAssignments = `-- name: ClientAssignments :many
 SELECT g.id, g.cert_id, ce.name AS certificate_name, ce.common_name AS certificate_common_name,
        ce.sans AS certificate_sans, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
-       d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config
+       d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config,
+       t.secret_cfg AS target_secret_cfg
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
@@ -55,8 +56,16 @@ type ClientAssignmentsRow struct {
 	Fingerprint           *string     `json:"fingerprint"`
 	TargetType            *string     `json:"target_type"`
 	TargetConfig          []byte      `json:"target_config"`
+	TargetSecretCfg       []byte      `json:"target_secret_cfg"`
 }
 
+// t.secret_cfg AS target_secret_cfg (Phase 7A Task 6): agents.Service.Assignments
+// opens it and merges it back into the target's public config
+// (targets.Merge) before sending Target.Config to the agent — the same
+// fully resolved shape a server-side Request.Config carries
+// (Dispatcher.Deploy) — so a registry-driven FileTarget's Files/Paths/
+// Reload see any secret fields it has, not just traefik/vault-kv's own
+// (neither has one today).
 func (q *Queries) ClientAssignments(ctx context.Context, clientID *uuid.UUID) ([]ClientAssignmentsRow, error) {
 	rows, err := q.db.Query(ctx, clientAssignments, clientID)
 	if err != nil {
@@ -81,6 +90,7 @@ func (q *Queries) ClientAssignments(ctx context.Context, clientID *uuid.UUID) ([
 			&i.Fingerprint,
 			&i.TargetType,
 			&i.TargetConfig,
+			&i.TargetSecretCfg,
 		); err != nil {
 			return nil, err
 		}

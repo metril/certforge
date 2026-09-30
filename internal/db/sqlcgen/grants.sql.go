@@ -484,7 +484,7 @@ const grantSources = `-- name: GrantSources :many
 SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name,
        ce.common_name AS certificate_common_name, ce.sans AS certificate_sans, ce.current_version_id,
        o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
-       t.type AS target_type, t.config AS target_config
+       t.type AS target_type, t.config AS target_config, t.secret_cfg AS target_secret_cfg
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id
@@ -506,8 +506,17 @@ type GrantSourcesRow struct {
 	LayoutExtraCertIds    []uuid.UUID `json:"layout_extra_cert_ids"`
 	TargetType            *string     `json:"target_type"`
 	TargetConfig          []byte      `json:"target_config"`
+	TargetSecretCfg       []byte      `json:"target_secret_cfg"`
 }
 
+// t.secret_cfg AS target_secret_cfg (Phase 7A Task 6): Service.render opens
+// it and merges it into the target's config the same way Assignments does
+// (ClientAssignments' own comment), so a grant's expected file set
+// (targets.GrantFiles) is computed from the same fully resolved config the
+// agent will actually render from — never out of step with it because a
+// future FileTarget's Files happened to need a secret field.
+// Reused by LiveGrantsNeedKeyTx, which ignores the new column
+// (NeedsKey only ever needs the public config).
 func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSourcesRow, error) {
 	rows, err := q.db.Query(ctx, grantSources, ids)
 	if err != nil {
@@ -531,6 +540,7 @@ func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSou
 			&i.LayoutExtraCertIds,
 			&i.TargetType,
 			&i.TargetConfig,
+			&i.TargetSecretCfg,
 		); err != nil {
 			return nil, err
 		}

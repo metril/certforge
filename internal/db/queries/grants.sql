@@ -72,10 +72,18 @@ ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, state = '
        expected = EXCLUDED.expected, error = '', extra_version_ids = EXCLUDED.extra_version_ids, updated_at = now();
 
 -- name: GrantSources :many
+-- t.secret_cfg AS target_secret_cfg (Phase 7A Task 6): Service.render opens
+-- it and merges it into the target's config the same way Assignments does
+-- (ClientAssignments' own comment), so a grant's expected file set
+-- (targets.GrantFiles) is computed from the same fully resolved config the
+-- agent will actually render from — never out of step with it because a
+-- future FileTarget's Files happened to need a secret field.
+-- Reused by LiveGrantsNeedKeyTx, which ignores the new column
+-- (NeedsKey only ever needs the public config).
 SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name,
        ce.common_name AS certificate_common_name, ce.sans AS certificate_sans, ce.current_version_id,
        o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
-       t.type AS target_type, t.config AS target_config
+       t.type AS target_type, t.config AS target_config, t.secret_cfg AS target_secret_cfg
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id

@@ -67,6 +67,8 @@ A method the agent has no listener (and, for http-01, no webroot) for replies `c
 
 ## Traefik integration
 
+Traefik is a deploy target rendered from the shared registry (`internal/targets`), the same registry-driven path every agent-side (`runsOn: agent`) target type uses: the agent looks the grant's target type up in its own registry and renders it through the type's `Files`/`Reload`, never a hardcoded switch on "traefik". A client-less, server-run target (today, only Vault KV) is not run by an agent at all — an agent that somehow receives one refuses it outright, since API-driven targets are not run by agents yet.
+
 Share Traefik's file-provider directory with the agent and grant the certificate with a Traefik target (see [deploy-targets.md](deploy-targets.md#traefik)):
 
     services:
