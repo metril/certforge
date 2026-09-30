@@ -1,68 +1,83 @@
 import { useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
-import { CircleAlert } from 'lucide-react';
+import { CircleAlert, Cpu, Server as ServerIcon } from 'lucide-react';
+import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
-import { useSaveDeployTarget } from '@/api/queries/delivery';
-import type { DeployTarget, DeployTargetInput, ProviderSchema } from '@/api/types';
+import { createDeployTarget, updateDeployTarget } from '@/api/queries/delivery';
+import { invalidateGrants } from '@/api/queries/grants';
+import type { DeployTarget, ProviderSchema } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
-import { SegmentedControl } from '@/components/SegmentedControl';
+import { HelpTip } from '@/components/HelpTip';
+import { PermissionTip } from '@/components/PermissionTip';
+import { RunsOnChip } from '@/components/RunsOnChip';
+import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
-import { fieldErrorFromMessage } from '@/forms/uiSchema';
+import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
+import { stripSecretDefaults, storedSecretsFor } from '@/lib/secretForm';
+import { RUNS_ON_META, defaultRunsOn, forcedRunsOn, keyGateBlocks, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 
 type Props = { orgId: string; target?: DeployTarget; types: ProviderSchema[]; readOnly: boolean; onOpenChange: (open: boolean) => void };
 
-// Task 8: the only server-run target type today (deploy.RunsOn mirrors this
-// same single-type check server-side); a target's own `runsOn` (derived from
-// its type) isn't in GET /meta/schemas' entries, only on a saved DeployTarget.
-const SERVER_TYPES = new Set(['vault-kv']);
-const runsOnHint = (code: string) => (SERVER_TYPES.has(code) ? 'Runs on server' : 'Runs on agent');
-
 export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Props) {
   const me = useMe();
-  const save = useSaveDeployTarget(orgId);
+  const qc = useQueryClient();
+  const isSmUp = useMediaQuery('(min-width: 640px)');
   const formRef = useRef<SchemaFormHandle>(null);
   const [name, setName] = useState(target?.name ?? '');
   const [type, setType] = useState<string>(target?.type ?? types[0]!.code);
+  const initialMeta = typeMeta(types, target?.type ?? types[0]!.code) ?? types[0]!;
+  const [runsOn, setRunsOn] = useState<'server' | 'agent'>(target?.runsOn ?? defaultRunsOn(initialMeta));
   const [config, setConfig] = useState<Record<string, unknown>>((target?.config as Record<string, unknown> | undefined) ?? {});
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
-  const schema = (types.find((t) => t.code === type) ?? types[0]!).schema as RJSFSchema;
+  const [saving, setSaving] = useState(false);
+
+  const meta = useMemo(() => typeMeta(types, type) ?? types[0]!, [types, type]);
+  const schema = useMemo(() => stripSecretDefaults(meta.schema as RJSFSchema), [meta]);
+  const canExportKeys = can(me, 'keys:export', orgId);
+  // Locked once the target exists (R3: runsOn/type are immutable after
+  // create) or for a viewer opening it read-only.
+  const locked = !!target || readOnly;
+  const forced = forcedRunsOn(meta);
+  // An either type whose key policy is always needs keys:export the moment
+  // Server is picked (UI conventions "either default"); optional-policy
+  // gating (includeKey) happens on the switch itself, not here.
+  const keyGateServer = meta.runsOn === 'either' && meta.keyPolicy === 'always' && !canExportKeys;
   const title = target ? (readOnly ? target.name : `Edit ${target.name}`) : 'Add deploy target';
+
+  function runsOnOption(mode: 'server' | 'agent'): Pick<SegmentOption<'server' | 'agent'>, 'disabled' | 'hint'> {
+    if (locked) return { disabled: true, hint: help['target.runsOnLocked'].text };
+    if (forced && forced !== mode) return { disabled: true, hint: help['target.runsOnForced'].text };
+    if (mode === 'server' && keyGateServer) return { disabled: true, hint: 'Needs the keys:export permission' };
+    return { disabled: false };
+  }
+
   const changeType = (v: string | undefined) => {
     if (!v) return;
+    const newMeta = typeMeta(types, v) ?? types[0]!;
     setType(v);
     setConfig({});
+    setRunsOn(defaultRunsOn(newMeta));
     setExtra(null);
+    setFormError(null);
   };
-  const canExportKeys = can(me, 'keys:export', orgId);
-  // vault-kv's own uiSchema: includeKey gated behind keys:export, keys/path
-  // in the mono font, path's placeholder (the schema's `default`, which
-  // buildUiSchema doesn't surface as a placeholder).
-  const uiSchemaOverrides = useMemo(() => {
-    if (type !== 'vault-kv') return undefined;
-    return {
-      // Batch 4 review: target.includeKey existed but was never referenced —
-      // wired in here as the switch's own tooltip (widgets.tsx's SwitchWidget
-      // now prefers options.description, which getUiOptions fills from
-      // ui:description) instead of the schema's own shorter description.
-      includeKey: { 'ui:description': help['target.includeKey'].text, 'ui:options': { permission: 'keys:export', allowed: canExportKeys } },
-      path: { 'ui:options': { mono: true }, 'ui:placeholder': 'certforge/{org}/{name}' },
-      keys: {
-        fullchain: { 'ui:options': { mono: true } },
-        cert: { 'ui:options': { mono: true } },
-        chain: { 'ui:options': { mono: true } },
-        key: { 'ui:options': { mono: true } },
-      },
-    };
-  }, [type, canExportKeys]);
+
+  const includeKeyOverride =
+    schema.properties && 'includeKey' in schema.properties
+      ? { includeKey: { 'ui:description': help['target.includeKey'].text, 'ui:options': { permission: 'keys:export', allowed: runsOn !== 'server' || canExportKeys } } }
+      : undefined;
+
+  const blocked = keyGateBlocks(me, orgId, runsOn, meta.keyPolicy, config);
 
   const submit = async () => {
     setFormError(null);
@@ -70,8 +85,13 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     setNameError(nameOk ? null : 'Enter a name.');
     const formOk = formRef.current?.validate() ?? false;
     if (!nameOk || !formOk) return;
+    setSaving(true);
     try {
-      await save.mutateAsync({ id: target?.id, body: { name: name.trim(), type: type as DeployTargetInput['type'], config } });
+      const body = toTargetInput({ name, type, runsOn, config }, schema, storedSecretsFor(target, type), !target);
+      if (target) await updateDeployTarget(orgId, target.id, body);
+      else await createDeployTarget(orgId, body);
+      toast.success('Deploy target saved');
+      await Promise.all([qc.invalidateQueries({ queryKey: ['deploy-targets', orgId] }), invalidateGrants(qc, orgId)]);
       onOpenChange(false);
     } catch (e) {
       const msg = errorMessage(e);
@@ -84,6 +104,8 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
       // page-level alert than silently attached to the wrong field.
       else if (e instanceof ApiError && e.status === 409 && /name/i.test(msg)) setNameError(msg);
       else setFormError(msg);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -108,14 +130,23 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               }}
             />
           </Field>
-          <Field id="target-type" label="Type" help={type === 'vault-kv' ? 'target.vaultKv' : 'target.type'}>
+          <Field id="target-type" label="Type" help={typeHelpKey(type)}>
             {types.length <= 5 ? (
               <SegmentedControl<string>
                 id="target-type"
                 aria-label="Type"
                 value={type}
                 onChange={changeType}
-                options={types.map((t) => ({ value: t.code, label: t.name, disabled: !!target || readOnly, hint: runsOnHint(t.code) }))}
+                options={types.map((t) => ({
+                  value: t.code,
+                  label: (
+                    <span className="inline-flex items-center gap-1.5">
+                      {t.name}
+                      <RunsOnChip mode={t.runsOn ?? 'agent'} compact={!isSmUp} />
+                    </span>
+                  ),
+                  disabled: locked,
+                }))}
               />
             ) : (
               <Combobox
@@ -123,25 +154,44 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
                 aria-label="Type"
                 value={type}
                 onChange={changeType}
-                options={types.map((t) => ({ value: t.code, label: t.name, hint: runsOnHint(t.code) }))}
+                options={types.map((t) => ({ value: t.code, label: t.name, hint: RUNS_ON_META[t.runsOn ?? 'agent'].label }))}
                 placeholder="Pick a type"
                 emptyText="No type matches."
-                disabled={!!target || readOnly}
+                disabled={locked}
               />
             )}
           </Field>
-          <SchemaForm
-            ref={formRef}
-            schema={schema}
-            value={config}
-            onChange={(v) => {
-              setConfig(v);
-              setExtra(null);
-            }}
-            readonly={readOnly}
-            extraErrors={extra ?? undefined}
-            uiSchemaOverrides={uiSchemaOverrides}
-          />
+          <Field id="target-runs-on" label="Runs on" help="target.runsOn">
+            <SegmentedControl<'server' | 'agent'>
+              id="target-runs-on"
+              aria-label="Runs on"
+              value={runsOn}
+              onChange={setRunsOn}
+              options={[
+                { value: 'server', label: <><ServerIcon className="size-4" aria-hidden />Server</>, ...runsOnOption('server') },
+                { value: 'agent', label: <><Cpu className="size-4" aria-hidden />Agent</>, ...runsOnOption('agent') },
+              ]}
+            />
+          </Field>
+          <div className="grid gap-1.5">
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+              Settings
+              {secretKeys(schema).length > 0 && <HelpTip id="target.secrets" />}
+            </span>
+            <SchemaForm
+              ref={formRef}
+              schema={schema}
+              value={config}
+              onChange={(v) => {
+                setConfig(v);
+                setExtra(null);
+              }}
+              storedSecrets={storedSecretsFor(target, type)}
+              readonly={readOnly}
+              extraErrors={extra ?? undefined}
+              uiSchemaOverrides={includeKeyOverride}
+            />
+          </div>
           {formError && (
             <p role="alert" className="flex items-center gap-1.5 text-sm">
               <CircleAlert className="size-4 text-failed" aria-hidden />
@@ -159,9 +209,11 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button disabled={save.isPending} onClick={() => void submit()}>
-                Save
-              </Button>
+              <PermissionTip allowed={!blocked} action="keys:export">
+                <Button disabled={blocked || saving} onClick={() => void submit()}>
+                  Save
+                </Button>
+              </PermissionTip>
             </>
           )}
         </SheetFooter>

@@ -140,6 +140,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Deploy targets can store encrypted secrets.
 - Shared deploy target registry with write-only secret handling.
 - Traefik and Vault KV targets come from the shared registry.
+- The deploy target sheet shows where each type runs, locks it after create and keeps stored secrets.
 
 ### Changed
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.

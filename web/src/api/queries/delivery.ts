@@ -42,22 +42,9 @@ export const deployTargetsQuery = (orgId: string) =>
     queryFn: async () => (await call(api.GET('/orgs/{orgId}/deploy-targets', { params: { path: { orgId } } }))).items,
   });
 
-// Superseded by the plain `createDeployTarget`/`updateDeployTarget` below
-// (task-1-brief.md), which `TargetSheet` (Task 2) calls directly so it can
-// invalidate only after mapping a secret error — kept here only until that
-// task removes TargetSheet's last use of it.
-export function useSaveDeployTarget(orgId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id?: string; body: DeployTargetInput }) =>
-      id
-        ? call(api.PATCH('/orgs/{orgId}/deploy-targets/{id}', { params: { path: { orgId, id } }, body }))
-        : call(api.POST('/orgs/{orgId}/deploy-targets', { params: { path: { orgId } }, body })),
-    meta: { silent: true, success: 'Deploy target saved' },
-    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['deploy-targets', orgId] }), invalidateGrants(qc, orgId)]),
-  });
-}
-
+// `TargetSheet` calls these directly (not through a mutation) so a target
+// secret never sits in TanStack Query's mutation cache — it invalidates
+// itself only after mapping a secret error onto the form.
 export function createDeployTarget(orgId: string, body: DeployTargetInput): Promise<DeployTarget> {
   return call(api.POST('/orgs/{orgId}/deploy-targets', { params: { path: { orgId } }, body }));
 }

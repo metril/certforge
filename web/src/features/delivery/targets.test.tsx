@@ -180,21 +180,16 @@ it('puts a name-conflict 409 under Name and any other 409 in the page alert', as
   expect(within(sheet).getByLabelText('Name')).not.toHaveAttribute('aria-invalid', 'true');
 });
 
-// Task 8: the Vault KV target type and its includeKey gating.
-it('shows vault-kv in the type picker with a "runs on server" hint', async () => {
+// Task 8/7B: the Vault KV target type and its includeKey gating. The type
+// picker's own "runs on" hint is now RunsOnChip inside the segment label
+// (task-2-brief.md), not a hover tooltip — TargetSheet.test.tsx covers the
+// chip itself; this just proves every meta type still gets one.
+it('type segments list every meta type', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+  renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
-  await user.hover(within(sheet).getByRole('radio', { name: 'Vault KV' }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Runs on server');
-});
-
-it('shows a "runs on agent" hint for a client-side target type', async () => {
-  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
-  await user.hover(within(sheet).getByRole('radio', { name: 'Traefik (file provider)' }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Runs on agent');
+  expect(within(sheet).getByRole('radio', { name: /^Traefik \(file provider\)/ })).toBeInTheDocument();
+  expect(within(sheet).getByRole('radio', { name: /^Vault KV/ })).toBeInTheDocument();
 });
 
 it('creates a vault-kv target with its default config', async () => {
@@ -202,7 +197,10 @@ it('creates a vault-kv target with its default config', async () => {
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
   await user.type(within(sheet).getByLabelText('Name'), 'vault-store');
-  await user.click(within(sheet).getByRole('radio', { name: 'Vault KV' }));
+  // RunsOnChip's own visible/aria-label text ("Server") joins the type
+  // name in the radio's accessible name now, so an exact "Vault KV" match
+  // no longer resolves it — anchor on the type name alone instead.
+  await user.click(within(sheet).getByRole('radio', { name: /^Vault KV/ }));
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(posted).toMatchObject({ name: 'vault-store', type: 'vault-kv', config: { includeKey: false } }));
 });
@@ -214,7 +212,7 @@ it('disables includeKey without keys:export, with a tooltip naming it', async ()
   );
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
-  await user.click(within(sheet).getByRole('radio', { name: 'Vault KV' }));
+  await user.click(within(sheet).getByRole('radio', { name: /^Vault KV/ }));
   const sw = await within(sheet).findByRole('switch', { name: 'Include private key' });
   expect(sw).toBeDisabled();
   await user.hover(sw);
