@@ -11,7 +11,7 @@ Single status file. Updated in every commit that completes a task.
 | 3 | Agent | done | [design](design.md) | [3A](superpowers/plans/2026-09-25-phase-3a-agent-backend.md) · [3B](superpowers/plans/2026-09-25-phase-3b-clients-web-ui.md) | 2026-09-25 | 2026-09-26 |
 | 4 | Issuance breadth and formats | done | [design](design.md) | [4A](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) · [4B](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) | 2026-09-27 | 2026-09-27 |
 | 5 | Vault and private CA | done | [design](design.md) | [5A](superpowers/plans/2026-09-27-phase-5a-vault-private-ca-backend.md) · [5B](superpowers/plans/2026-09-27-phase-5b-issuers-vault-web-ui.md) | 2026-09-27 | 2026-09-29 |
-| 6 | Ops | in progress | [design](design.md) | [6A](superpowers/plans/2026-09-29-phase-6a-ops-backend.md) · [6B](superpowers/plans/2026-09-29-phase-6b-alerts-backup-web-ui.md) | 2026-09-29 | – |
+| 6 | Ops | done | [design](design.md) | [6A](superpowers/plans/2026-09-29-phase-6a-ops-backend.md) · [6B](superpowers/plans/2026-09-29-phase-6b-alerts-backup-web-ui.md) | 2026-09-29 | 2026-09-29 |
 | 7 | Deploy targets | planned | [design](design.md) | – | – | – |
 
 ## Active phase tasks
