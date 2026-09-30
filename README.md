@@ -16,6 +16,8 @@ curl -s localhost:8080/readyz
 
 Open http://localhost:8080 and complete the setup wizard (or `POST /api/v1/setup/complete`). The API docs are at http://localhost:8080/api/docs/.
 
+Container images are published to `ghcr.io/metril/certforge` and `ghcr.io/metril/certforge-agent` on every release; pin a version rather than `latest` in production (`docker pull ghcr.io/metril/certforge:<version>`). See the [Releases page](https://github.com/metril/certforge/releases) for versions, images, and `certforge-agent`/`cfctl` binary downloads.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)

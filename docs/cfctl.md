@@ -8,6 +8,23 @@ web UI uses, scriptable from a shell. It talks to a running server only
 (see `operations.md#backup` for the offline `certforge backup`/`restore`
 commands, which do not need one).
 
+## Install
+
+Each [release](https://github.com/metril/certforge/releases) attaches
+static `cfctl_<version>_linux_<amd64|arm64>.tar.gz` tarballs and a
+`SHA256SUMS` file:
+
+```
+curl -fsSLO https://github.com/metril/certforge/releases/download/<version>/cfctl_<version>_linux_amd64.tar.gz
+curl -fsSLO https://github.com/metril/certforge/releases/download/<version>/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+tar -xzf cfctl_<version>_linux_amd64.tar.gz
+sudo install -m 0755 cfctl /usr/local/bin/cfctl
+```
+
+`cfctl version` prints its own build version (`cfctl <version>`) — no
+`--url`/`--token` needed.
+
 ## Config
 
 `cfctl` needs a server URL and an API bearer token (Settings → API keys),

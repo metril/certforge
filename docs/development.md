@@ -190,7 +190,20 @@ Generated code is committed. CI runs `make generate && git diff --exit-code`, so
 
 - One commit per plan task, made only after `make lint test test-integration` passes.
 - Author `metril <1517921+metril@users.noreply.github.com>`. Conventional prefix with scope, for example `feat(authn): ...`.
-- Each commit updates `docs/PROGRESS.md` and `CHANGELOG.md`, plus the docs for the code it changes.
+- Each commit updates `docs/PROGRESS.md`, plus the docs for the code it changes. `CHANGELOG.md` is no longer hand-edited: release-please writes each release's section from the conventional commit messages on `main` (see Releases below).
+
+## Releases
+
+`.github/workflows/release.yml` runs on every push to `main`. [release-please](https://github.com/googleapis/release-please) reads the conventional commits since the last release, and either opens or updates a release PR (bumping the version, writing `CHANGELOG.md`) or, when that PR is merged, tags `vX.Y.Z`, creates the GitHub release, and the same workflow run then publishes both container images (`ghcr.io/metril/certforge`, `ghcr.io/metril/certforge-agent`, linux/amd64+arm64, provenance and SBOM attached, tagged `X.Y.Z`/`X.Y`/`latest`, plus `X` once the project is past `v0.`) and uploads `certforge-agent`/`cfctl` tarballs with a `SHA256SUMS` file to the release. Publishing lives in the same workflow as the tag because a tag created with the default `GITHUB_TOKEN` does not itself trigger other workflows.
+
+A commit's footer can force a release version explicitly with a `Release-As: 1.2.3` trailer; release-please otherwise infers major/minor/patch from `feat`/`fix`/`!`-breaking commits (`bump-minor-pre-major: true`, so a `feat` bumps the minor version, not the major, while the project is at `0.x`).
+
+One-time GitHub settings, needed before the first release PR merges:
+
+- Recommended: add a fine-grained PAT (Contents + Pull requests read/write on `metril/certforge`) as the repo secret `RELEASE_PLEASE_TOKEN`. Without it, the release PR opens with `GITHUB_TOKEN` and gets no `ci.yml` run (GitHub does not run workflows off PRs opened by the default token) — enable Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" instead if you skip the PAT.
+- After the first image publish, set both GHCR packages (`certforge`, `certforge-agent`) to public.
+
+The Go builder image (`golang:1.23-alpine` in both Dockerfiles) is flagged in `docs/PROGRESS.md`'s Known gaps as out of upstream support; bump it before the first release PR is merged, not after.
 
 ## Adding a settings section
 

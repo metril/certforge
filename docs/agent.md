@@ -80,7 +80,7 @@ Share Traefik's file-provider directory with the agent and grant the certificate
         volumes:
           - traefik-dynamic:/etc/traefik/dynamic:ro
       certforge-agent:
-        image: ghcr.io/metril/certforge-agent:latest
+        image: ghcr.io/metril/certforge-agent:<version>
         environment:
           CF_AGENT_TOKEN_FILE: /run/secrets/cf_agent_token
           CF_WRITE_ALLOW: /etc/traefik/dynamic
@@ -94,6 +94,8 @@ Share Traefik's file-provider directory with the agent and grant the certificate
     secrets:
       cf_agent_token:
         file: ./cf_agent_token
+
+(`:latest` also works, but pin `:X.Y.Z` — see [Releases](https://github.com/metril/certforge/releases) — so an agent upgrade is a deliberate change, not whatever merged today.)
 
 Target config: `dir: /etc/traefik/dynamic` (same path in both containers, so `pathPrefix` stays empty). Renewals overwrite the same files and rewrite the YAML, which Traefik's watcher picks up. No Docker socket, no reload command.
 
@@ -121,20 +123,20 @@ A pull-mode agent never receives `trust_bundle_update`. After an agent CA rotati
 
 ## Running with Docker
 
-One command, with the token from Clients → Enrol client:
+One command, with the token from Clients → Enrol client (pin `:X.Y.Z` — see [Releases](https://github.com/metril/certforge/releases) — instead of `:latest` in production):
 
     docker run -d --name certforge-agent --restart unless-stopped \
       -e CF_AGENT_TOKEN='<token>' \
       -e CF_WRITE_ALLOW=/etc/ssl/certforge \
       -v certforge-agent:/data \
       -v /etc/ssl/certforge:/etc/ssl/certforge \
-      ghcr.io/metril/certforge-agent:latest
+      ghcr.io/metril/certforge-agent:<version>
 
 Compose, keeping the token out of the environment, with a Traefik service sharing the deploy target's volume so it actually picks up what the agent writes:
 
     services:
       certforge-agent:
-        image: ghcr.io/metril/certforge-agent:latest
+        image: ghcr.io/metril/certforge-agent:<version>
         restart: unless-stopped
         environment:
           CF_AGENT_TOKEN_FILE: /run/secrets/cf_agent_token
@@ -158,6 +160,18 @@ Compose, keeping the token out of the environment, with a Traefik service sharin
         file: ./cf_agent_token
 
 Mount every directory a layout or target writes to, and list it in `CF_WRITE_ALLOW` (see [Write allowlist](#write-allowlist)) — without it every deploy fails. The image runs as root so layout owners and groups can be applied; with `--user` the agent applies modes only, and `/data` must already be writable by that user — a plain named volume like `certforge-agent:` above is created root-owned on first use, so a non-root `--user` needs either a bind mount you have chowned yourself, or an init step that chowns the volume before the agent starts. The token is needed only until the agent has enrolled; after that the `/data` volume is its identity, so keep it.
+
+## Installing without Docker
+
+Each [release](https://github.com/metril/certforge/releases) attaches static `certforge-agent_<version>_linux_<amd64|arm64>.tar.gz` tarballs and a `SHA256SUMS` file:
+
+    curl -fsSLO https://github.com/metril/certforge/releases/download/<version>/certforge-agent_<version>_linux_amd64.tar.gz
+    curl -fsSLO https://github.com/metril/certforge/releases/download/<version>/SHA256SUMS
+    sha256sum -c --ignore-missing SHA256SUMS
+    tar -xzf certforge-agent_<version>_linux_amd64.tar.gz
+    sudo install -m 0755 certforge-agent /usr/local/bin/certforge-agent
+
+The binary is statically linked (`CGO_ENABLED=0`); it needs no libc or dynamic linker, the same as the container image's own build. Run it directly (`certforge-agent run`), under a systemd unit, or with `certforge-agent pull` from a timer (see [Pull mode](#pull-mode)).
 
 ## Troubleshooting
 
