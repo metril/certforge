@@ -217,6 +217,13 @@ const (
 	VaultTransit KekKind = "vault-transit"
 )
 
+// Defines values for KeyPolicy.
+const (
+	Always   KeyPolicy = "always"
+	Never    KeyPolicy = "never"
+	Optional KeyPolicy = "optional"
+)
+
 // Defines values for KeyType.
 const (
 	Ec256   KeyType = "ec256"
@@ -294,6 +301,7 @@ const (
 	AgentCas               RewrapTable = "agent_cas"
 	Cas                    RewrapTable = "cas"
 	CertificateVersions    RewrapTable = "certificate_versions"
+	DeployTargets          RewrapTable = "deploy_targets"
 	DnsProviderCredentials RewrapTable = "dns_provider_credentials"
 	NotificationChannels   RewrapTable = "notification_channels"
 	OutputSpecs            RewrapTable = "output_specs"
@@ -342,6 +350,13 @@ const (
 	SubjectTypeApikey    SubjectType = "apikey"
 	SubjectTypeOidcGroup SubjectType = "oidc_group"
 	SubjectTypeUser      SubjectType = "user"
+)
+
+// Defines values for TargetRunsOn.
+const (
+	Agent  TargetRunsOn = "agent"
+	Either TargetRunsOn = "either"
+	Server TargetRunsOn = "server"
 )
 
 // Defines values for VaultSettingsAuthMethod.
@@ -1312,7 +1327,7 @@ type DeliveryResult struct {
 // DeliveryStatus Outcome of one delivery attempt to one channel.
 type DeliveryStatus string
 
-// DeployTarget A deploy target the agent drives after writing a grant's files.
+// DeployTarget A deploy target the agent (or the server itself) drives after writing a grant's files.
 type DeployTarget struct {
 	// Config Type-specific configuration
 	Config map[string]interface{} `json:"config"`
@@ -1335,14 +1350,17 @@ type DeployTarget struct {
 	// RunsOn Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
 	RunsOn RunsOn `json:"runsOn"`
 
-	// Type Deploy target type; its config schema is in GET /meta/schemas under deployTargets. vault-kv runs on the server rather than an agent.
+	// StoredSecrets Secret fields that have a stored value.
+	StoredSecrets []string `json:"storedSecrets"`
+
+	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
 	Type DeployTargetType `json:"type"`
 
 	// UpdatedAt Last change.
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// DeployTargetInput A target's name, type and configuration.
+// DeployTargetInput A target's name, type, runsOn and configuration. A secret field of config sent as __unchanged__, or omitted entirely, keeps its stored value; an explicit "" clears it (a required secret cleared this way is 422). Changing any other config field while a secret is kept (reused) needs every secret re-entered (422 "re-enter the secret"). Every URL in config is checked against the URL policy (loopback/link-local allowed on an agent target, gated by the server's allowLoopbackUrls setting on a server target). A server target whose config needs the certificate's private key needs keys:export.
 type DeployTargetInput struct {
 	// Config Configuration valid against the type's schema.
 	Config map[string]interface{} `json:"config"`
@@ -1350,7 +1368,10 @@ type DeployTargetInput struct {
 	// Name Name
 	Name string `json:"name"`
 
-	// Type Deploy target type; its config schema is in GET /meta/schemas under deployTargets. vault-kv runs on the server rather than an agent.
+	// RunsOn Required for a type whose own runsOn is either; optional and must match otherwise. Immutable after create.
+	RunsOn *RunsOn `json:"runsOn,omitempty"`
+
+	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
 	Type DeployTargetType `json:"type"`
 }
 
@@ -1360,7 +1381,7 @@ type DeployTargetList struct {
 	Items []DeployTarget `json:"items"`
 }
 
-// DeployTargetType Deploy target type; its config schema is in GET /meta/schemas under deployTargets. vault-kv runs on the server rather than an agent.
+// DeployTargetType Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
 type DeployTargetType string
 
 // Deployment What a grant should have installed and what the agent last reported.
@@ -1906,6 +1927,9 @@ type KekRef struct {
 	Kind KekKind `json:"kind"`
 }
 
+// KeyPolicy Whether a deploy target type ever needs the certificate's private key — never, only when its own config asks for it (includeKey), or always.
+type KeyPolicy string
+
 // KeyType Certificate key algorithm.
 type KeyType string
 
@@ -2377,7 +2401,7 @@ type RewrapStatus struct {
 	Tables []RewrapTableStatus `json:"tables"`
 }
 
-// RewrapTable A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked last.
+// RewrapTable A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
 type RewrapTable string
 
 // RewrapTableStatus Rewrap progress for one table.
@@ -2391,7 +2415,7 @@ type RewrapTableStatus struct {
 	// Scanned Rows scanned so far.
 	Scanned int64 `json:"scanned"`
 
-	// Table A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked last.
+	// Table A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
 	Table RewrapTable `json:"table"`
 }
 
@@ -2454,8 +2478,14 @@ type SchemaEntry struct {
 	// Code Stable type code, for example cloudflare.
 	Code string `json:"code"`
 
+	// KeyPolicy Whether this type ever needs the certificate's private key; deploy targets only.
+	KeyPolicy *KeyPolicy `json:"keyPolicy,omitempty"`
+
 	// Name Display name.
 	Name string `json:"name"`
+
+	// RunsOn Where this type runs; deploy targets only.
+	RunsOn *TargetRunsOn `json:"runsOn,omitempty"`
 
 	// Schema JSON Schema for the type's configuration. Fields with secret true are write-only.
 	Schema map[string]interface{} `json:"schema"`
@@ -2580,6 +2610,9 @@ type Source string
 
 // SubjectType What a binding's subject names.
 type SubjectType string
+
+// TargetRunsOn Where a deploy target type runs — always the server, always an agent, or either (the operator chooses at create time).
+type TargetRunsOn string
 
 // User A CertForge user.
 type User struct {

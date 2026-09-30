@@ -852,3 +852,57 @@ func TestServerGrantDependentsListed(t *testing.T) {
 		t.Fatalf("DeleteDeployTarget 409 = %v, want it to name the target/certificate (vault-dep/web-dep)", err)
 	}
 }
+
+// TestGrantRunsOnRules covers the generalized runsOn gate on both grant
+// paths (Shared contracts Grants row), using a targetstest.Secret
+// registered Either so the same type can be created both ways: a
+// client-less (server) grant refuses an agent-run target, a client grant
+// refuses a server-run target, and a client-less grant onto a NeedsKey
+// target still needs keys:export — generalized beyond vault-kv's own
+// includeKey field via s.d.Targets.NeedsKey.
+func TestGrantRunsOnRules(t *testing.T) {
+	f := newAgentFixture(t)
+	f.registerTestSecret("test-secret", targets.Either, targets.Optional)
+	op := f.as("operator")
+
+	serverT, err := createTestSecret(t, f, "srv", ptr(gen.RunsOn("server")), map[string]interface{}{"url": "https://example.test", "token": "t1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentT, err := createTestSecret(t, f, "agt", ptr(gen.RunsOn("agent")), map[string]interface{}{"url": "https://example.test", "token": "t1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyT, err := createTestSecret(t, f, "srv-key", ptr(gen.RunsOn("server")),
+		map[string]interface{}{"url": "https://example.test", "token": "t1", "includeKey": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	certID, _ := f.currentCert(t, "web-runson")
+
+	// A client-less grant onto an agent-run target: 422.
+	_, err = f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: agentT.Id,
+		Body: &gen.ServerGrantInput{CertificateId: certID}})
+	wantStatus(t, err, 422)
+	if !strings.Contains(err.Error(), "runs on agents") {
+		t.Fatalf("error = %v, want mention of runs on agents", err)
+	}
+
+	// A client grant onto a server-run target: 422.
+	client := f.activeClient(t, "runson-client")
+	_, err = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: client.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: "pull", DeployTargetId: &serverT.Id}})
+	wantStatus(t, err, 422)
+
+	// A client-less grant onto a NeedsKey target (includeKey, via
+	// s.d.Targets.NeedsKey rather than a vault-kv-specific field): 403
+	// without keys:export, 201 with it.
+	_, err = f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: keyT.Id,
+		Body: &gen.ServerGrantInput{CertificateId: certID}})
+	wantStatus(t, err, 403)
+	if _, err := f.srv.CreateServerGrant(f.as("admin"), gen.CreateServerGrantRequestObject{OrgId: f.org, Id: keyT.Id,
+		Body: &gen.ServerGrantInput{CertificateId: certID}}); err != nil {
+		t.Fatalf("admin create server grant on keyed target: %v", err)
+	}
+}

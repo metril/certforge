@@ -1874,7 +1874,13 @@ paths:
       operationId: createDeployTarget
       tags: [delivery]
       summary: Create a deploy target
-      description: Needs delivery:write. config is validated against the type's schema from GET /meta/schemas (deployTargets).
+      description: >-
+        Needs delivery:write; also keys:export when the resolved config needs the certificate's
+        private key. config is validated against the type's schema from GET /meta/schemas
+        (deployTargets). runsOn is required (422 "choose where this target run") for a type
+        whose own runsOn is either (422 "choose where this target runs" without it), optional and
+        must match the type's forced runsOn otherwise (422 naming it). Every URL in config is
+        checked against the URL policy (422 "address not allowed").
       requestBody:
         required: true
         content:
@@ -1916,7 +1922,16 @@ paths:
       operationId: updateDeployTarget
       tags: [delivery]
       summary: Replace a deploy target
-      description: Needs delivery:write. The type cannot change (422). Every grant using it is re-rendered and its client's revision bumped in the same transaction; 409 when that would make two of a client's grants write one path.
+      description: >-
+        Needs delivery:write; also keys:export when the resolved config needs the certificate's
+        private key, re-checked on every update. type and runsOn cannot change (422). A secret
+        field of config sent as __unchanged__, or omitted, keeps its stored value (422 "<field>
+        has no stored value" when there is none to keep); an explicit "" clears it, and clearing
+        a required secret is its own 422. Changing any other config field while a secret is
+        reused needs every secret re-entered (422 "re-enter the secret"). Every URL in config is
+        checked against the URL policy (422 "address not allowed"). Every grant using it is
+        re-rendered and its client's revision bumped in the same transaction; 409 when that would
+        make two of a client's grants write one path.
       requestBody:
         required: true
         content:
@@ -2951,6 +2966,8 @@ components:
           description: Other codes that select this type; used by search.
           items:
             type: string
+        runsOn: {allOf: [{$ref: "#/components/schemas/TargetRunsOn"}], description: "Where this type runs; deploy targets only."}
+        keyPolicy: {allOf: [{$ref: "#/components/schemas/KeyPolicy"}], description: "Whether this type ever needs the certificate's private key; deploy targets only."}
     MetaSchemas:
       type: object
       description: Pluggable type schemas grouped by kind.
@@ -3130,8 +3147,8 @@ components:
         kekId: {type: string, description: Opaque id identifying this KEK, stable across restarts.}
     RewrapTable:
       type: string
-      enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions, notification_channels]
-      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked last.
+      enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions, notification_channels, deploy_targets]
+      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
     RewrapTableStatus:
       type: object
       description: Rewrap progress for one table.
@@ -4100,32 +4117,49 @@ components:
     DeployTargetType:
       type: string
       enum: [traefik, vault-kv]
-      description: Deploy target type; its config schema is in GET /meta/schemas under deployTargets. vault-kv runs on the server rather than an agent.
+      description: Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
     RunsOn:
       type: string
       enum: [agent, server]
       description: Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
+    TargetRunsOn:
+      type: string
+      enum: [server, agent, either]
+      description: Where a deploy target type runs — always the server, always an agent, or either (the operator chooses at create time).
+    KeyPolicy:
+      type: string
+      enum: [never, optional, always]
+      description: Whether a deploy target type ever needs the certificate's private key — never, only when its own config asks for it (includeKey), or always.
     DeployTarget:
       type: object
-      description: A deploy target the agent drives after writing a grant's files.
-      required: [id, orgId, name, type, runsOn, config, grantCount, createdAt, updatedAt]
+      description: A deploy target the agent (or the server itself) drives after writing a grant's files.
+      required: [id, orgId, name, type, runsOn, config, storedSecrets, grantCount, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: Target id.}
         orgId: {type: string, format: uuid, description: Owning org.}
         name: {type: string, description: Name, unique in the org.}
         type: {$ref: "#/components/schemas/DeployTargetType"}
         runsOn: {$ref: "#/components/schemas/RunsOn"}
-        config: {type: object, additionalProperties: true, description: Type-specific configuration, valid against the type's schema.}
+        config: {type: object, additionalProperties: true, description: Type-specific configuration, valid against the type's schema, with secret fields removed.}
+        storedSecrets: {type: array, items: {type: string}, description: Secret fields that have a stored value.}
         grantCount: {type: integer, description: Live grants using it.}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
     DeployTargetInput:
       type: object
-      description: A target's name, type and configuration.
+      description: >-
+        A target's name, type, runsOn and configuration. A secret field of config sent as
+        __unchanged__, or omitted entirely, keeps its stored value; an explicit "" clears it
+        (a required secret cleared this way is 422). Changing any other config field while a
+        secret is kept (reused) needs every secret re-entered (422 "re-enter the secret").
+        Every URL in config is checked against the URL policy (loopback/link-local allowed on
+        an agent target, gated by the server's allowLoopbackUrls setting on a server target).
+        A server target whose config needs the certificate's private key needs keys:export.
       required: [name, type, config]
       properties:
         name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
         type: {$ref: "#/components/schemas/DeployTargetType"}
+        runsOn: {allOf: [{$ref: "#/components/schemas/RunsOn"}], description: "Required for a type whose own runsOn is either; optional and must match otherwise. Immutable after create."}
         config: {type: object, additionalProperties: true, description: Configuration valid against the type's schema.}
     DeployTargetList:
       type: object

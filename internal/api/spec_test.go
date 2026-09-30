@@ -245,9 +245,61 @@ func TestPhase6OperationsDeclared(t *testing.T) {
 			t.Errorf("Channel.required missing %s", f)
 		}
 	}
+	// RewrapTable's own "walked last" table changed again in Phase 7A
+	// (deploy_targets, TestPhase7SpecDeclared); this only checks
+	// notification_channels is still present, not still last.
+	if !slices.Contains(sw.Components.Schemas["RewrapTable"].Value.Enum, "notification_channels") {
+		t.Error("RewrapTable missing notification_channels")
+	}
+}
+
+// TestPhase7SpecDeclared covers Phase 7A Task 4's OpenAPI deltas: DeployTarget's
+// storedSecrets, the new TargetRunsOn/KeyPolicy enums (and SchemaEntry
+// carrying them), DeployTargetInput's runsOn, and RewrapTable ending with
+// deploy_targets (Task 1 wired the Go side; this is the spec catching up).
+func TestPhase7SpecDeclared(t *testing.T) {
+	sw, err := gen.GetSwagger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(sw.Components.Schemas["DeployTarget"].Value.Required, "storedSecrets") {
+		t.Error("DeployTarget.required missing storedSecrets")
+	}
+	if sw.Components.Schemas["DeployTarget"].Value.Properties["storedSecrets"] == nil {
+		t.Error("DeployTarget.storedSecrets missing")
+	}
+	if sw.Components.Schemas["DeployTargetInput"].Value.Properties["runsOn"] == nil {
+		t.Error("DeployTargetInput.runsOn missing")
+	}
+	wantTargetRunsOn := []string{"server", "agent", "either"}
+	if got := sw.Components.Schemas["TargetRunsOn"].Value.Enum; len(got) != len(wantTargetRunsOn) {
+		t.Errorf("TargetRunsOn = %v, want %v", got, wantTargetRunsOn)
+	} else {
+		for i, v := range wantTargetRunsOn {
+			if got[i] != v {
+				t.Errorf("TargetRunsOn[%d] = %v, want %s", i, got[i], v)
+			}
+		}
+	}
+	wantKeyPolicy := []string{"never", "optional", "always"}
+	if got := sw.Components.Schemas["KeyPolicy"].Value.Enum; len(got) != len(wantKeyPolicy) {
+		t.Errorf("KeyPolicy = %v, want %v", got, wantKeyPolicy)
+	} else {
+		for i, v := range wantKeyPolicy {
+			if got[i] != v {
+				t.Errorf("KeyPolicy[%d] = %v, want %s", i, got[i], v)
+			}
+		}
+	}
+	if sw.Components.Schemas["SchemaEntry"].Value.Properties["runsOn"] == nil {
+		t.Error("SchemaEntry.runsOn missing")
+	}
+	if sw.Components.Schemas["SchemaEntry"].Value.Properties["keyPolicy"] == nil {
+		t.Error("SchemaEntry.keyPolicy missing")
+	}
 	rewrapTables := sw.Components.Schemas["RewrapTable"].Value.Enum
-	if len(rewrapTables) == 0 || rewrapTables[len(rewrapTables)-1] != "notification_channels" {
-		t.Errorf("RewrapTable does not end with notification_channels: %v", rewrapTables)
+	if len(rewrapTables) == 0 || rewrapTables[len(rewrapTables)-1] != "deploy_targets" {
+		t.Errorf("RewrapTable does not end with deploy_targets: %v", rewrapTables)
 	}
 }
 

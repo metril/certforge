@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -17,7 +18,9 @@ import (
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/notify/httpx"
 	"github.com/metril/certforge/internal/render"
+	"github.com/metril/certforge/internal/targets"
 )
 
 // maxLayoutPasswordLen is the contract's LayoutInput.password maxLength;
@@ -543,13 +546,46 @@ func (s *Server) DeleteLayout(ctx context.Context, r gen.DeleteLayoutRequestObje
 
 // ---- deploy targets ----
 
-func targetOut(t sqlcgen.DeployTarget, grants int) (gen.DeployTarget, error) {
+// targetSecrets opens t.SecretCfg (nil/empty for a target with no stored
+// secrets, or old itself nil on create) into its decrypted secret map,
+// mirroring notify's resolveChannelSecrets / issuance's credFromRow — the
+// established pattern for a *_cfg column of this shape.
+func (s *Server) targetSecrets(ctx context.Context, old *sqlcgen.DeployTarget) (map[string]string, error) {
+	if old == nil || len(old.SecretCfg) == 0 {
+		return map[string]string{}, nil
+	}
+	pt, err := s.d.Box.Open(ctx, old.SecretCfg)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]string
+	if err := json.Unmarshal(pt, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// storedSecretKeys returns m's keys, sorted — DeployTarget.storedSecrets.
+func storedSecretKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (s *Server) targetOut(ctx context.Context, t sqlcgen.DeployTarget, grants int) (gen.DeployTarget, error) {
 	cfg := map[string]interface{}{}
 	if err := json.Unmarshal(t.Config, &cfg); err != nil {
 		return gen.DeployTarget{}, err
 	}
+	secrets, err := s.targetSecrets(ctx, &t)
+	if err != nil {
+		return gen.DeployTarget{}, err
+	}
 	return gen.DeployTarget{Id: t.ID, OrgId: t.OrgID, Name: t.Name, Type: gen.DeployTargetType(t.Type), RunsOn: gen.RunsOn(t.RunsOn),
-		Config: cfg, GrantCount: grants, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
+		Config: cfg, StoredSecrets: storedSecretKeys(secrets), GrantCount: grants, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
 }
 
 func (s *Server) targetsOut(ctx context.Context, rows []sqlcgen.DeployTarget) ([]gen.DeployTarget, error) {
@@ -564,7 +600,7 @@ func (s *Server) targetsOut(ctx context.Context, rows []sqlcgen.DeployTarget) ([
 	cm := countMap(counts, func(r sqlcgen.DeployTargetGrantCountsRow) (uuid.UUID, int64) { return r.ID, r.Grants })
 	out := make([]gen.DeployTarget, 0, len(rows))
 	for _, r := range rows {
-		t, err := targetOut(r, cm[r.ID])
+		t, err := s.targetOut(ctx, r, cm[r.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -573,53 +609,165 @@ func (s *Server) targetsOut(ctx context.Context, rows []sqlcgen.DeployTarget) ([
 	return out, nil
 }
 
-// validTarget validates and canonicalizes a deploy target input, returning
-// its name, config to store and derived runsOn: the type is looked up in
-// s.d.Targets and its own Parse validates and canonicalizes the config; an
-// unknown type is 422. runsOn is always derived from the type
-// (targets.Target.RunsOn), never taken from client input —
-// DeployTargetInput has no runsOn field (an Either type, once one exists,
-// is Task 4's job).
-func (s *Server) validTarget(in *gen.DeployTargetInput) (name, runsOn string, cfg []byte, err error) {
-	if in == nil {
-		return "", "", nil, badRequest("missing body")
+// targetAuditDetails is deploy_target.create/update/delete's fixed audit
+// shape (Shared contracts Audit row): the target's identity only, never
+// its config — a secret must never reach an audit record, and even the
+// public config is no longer logged (it used to be).
+func targetAuditDetails(t sqlcgen.DeployTarget) map[string]any {
+	return map[string]any{"targetId": t.ID, "name": t.Name, "type": t.Type, "runsOn": t.RunsOn}
+}
+
+// mapTargetErr maps an error from s.d.Targets.Parse to a 422: the
+// Unchanged-without-stored sentinel (targets.Registry.Parse wraps it
+// "<field>: %w") becomes "<field> has no stored value"; a type's own
+// delivery.FieldError (vault-kv, traefik) keeps its own field; anything
+// else — a targetstest/product type's plain validation error — is a
+// config-level 422 (never a raw internal error: every Parse failure here
+// is caller input, not a server fault).
+func mapTargetErr(err error) error {
+	if errors.Is(err, targets.ErrUnchangedWithoutStored) {
+		field := strings.TrimSuffix(err.Error(), ": "+targets.ErrUnchangedWithoutStored.Error())
+		return unprocessable(field, fmt.Sprintf("%s has no stored value", field))
 	}
-	name, err = cleanName("name", in.Name)
+	var fe *delivery.FieldError
+	if errors.As(err, &fe) {
+		return unprocessable(fe.Field, fe.Msg)
+	}
+	return unprocessable("config", err.Error())
+}
+
+// sameURLSet reports whether a and b hold the same URLs, order
+// independent — validTarget's "did the URL set change" check.
+func sameURLSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]bool, len(a))
+	for _, u := range a {
+		seen[u] = true
+	}
+	for _, u := range b {
+		if !seen[u] {
+			return false
+		}
+	}
+	return true
+}
+
+// validatedTarget is validTarget's resolved shape, ready to store.
+type validatedTarget struct {
+	name      string
+	side      targets.Mode
+	public    []byte
+	secretCfg []byte // sealed; nil when the config has no secrets
+	needsKey  bool
+}
+
+// validTarget validates and canonicalizes a deploy target input against
+// s.d.Targets (Shared contracts, Target operations row): the type is
+// looked up (422 for unknown); the side is resolved (targets.ResolveSide
+// on create — 422 "choose where this target runs" for an Either type with
+// no runsOn, 422 naming the forced mode for a mismatch; old.RunsOn on
+// update, 422 if the input's runsOn disagrees — type and runsOn are both
+// immutable); any currently stored secrets are opened and handed to the
+// registry's own Parse, which resolves __unchanged__/omitted/explicit-""
+// against them; a URL that changed alongside a reused secret is refused
+// ("re-enter the secret" — a stale secret must never silently carry over
+// to a new destination); every URL is checked against the side's URL
+// policy (server: the org's allowLoopbackUrls setting; agent: always
+// allowed — an agent's own network is the operator's to reach); and the
+// resolved secrets are sealed (nil when there are none). old is nil on
+// create.
+func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old *sqlcgen.DeployTarget) (validatedTarget, error) {
+	if in == nil {
+		return validatedTarget{}, badRequest("missing body")
+	}
+	name, err := cleanName("name", in.Name)
 	if err != nil {
-		return "", "", nil, err
+		return validatedTarget{}, err
 	}
 	raw, err := json.Marshal(in.Config)
 	if err != nil {
-		return "", "", nil, badRequest("config is not a JSON object")
+		return validatedTarget{}, badRequest("config is not a JSON object")
 	}
 	typ := string(in.Type)
 	target, ok := s.d.Targets.Get(typ)
 	if !ok {
-		return "", "", nil, unprocessable("type", fmt.Sprintf("unknown deploy target type %q", in.Type))
+		return validatedTarget{}, unprocessable("type", fmt.Sprintf("unknown deploy target type %q", in.Type))
 	}
-	tc, _, err := s.d.Targets.Parse(typ, raw, nil)
+	requested := ""
+	if in.RunsOn != nil {
+		requested = string(*in.RunsOn)
+	}
+	var side targets.Mode
+	if old == nil {
+		side, err = targets.ResolveSide(target, requested)
+		if err != nil {
+			return validatedTarget{}, unprocessable("runsOn", err.Error())
+		}
+	} else {
+		if old.Type != typ {
+			return validatedTarget{}, unprocessable("type", "a deploy target's type cannot change")
+		}
+		side = targets.Mode(old.RunsOn)
+		if requested != "" && targets.Mode(requested) != side {
+			return validatedTarget{}, unprocessable("runsOn", "a deploy target's runsOn cannot change")
+		}
+	}
+	stored, err := s.targetSecrets(ctx, old)
 	if err != nil {
-		return "", "", nil, mapDeliveryErr(err)
+		return validatedTarget{}, err
 	}
-	return name, string(target.RunsOn()), tc.Public, nil
+	cfg, reused, err := s.d.Targets.Parse(typ, raw, stored)
+	if err != nil {
+		return validatedTarget{}, mapTargetErr(err)
+	}
+	if old != nil && len(reused) > 0 {
+		oldCfg, _, err := s.d.Targets.Parse(typ, old.Config, stored)
+		if err != nil {
+			return validatedTarget{}, err
+		}
+		if !sameURLSet(oldCfg.URLs, cfg.URLs) {
+			return validatedTarget{}, unprocessable("config", "re-enter the secret")
+		}
+	}
+	allowLoopback := true
+	if side == targets.Server {
+		if allowLoopback, err = s.monitorAllowLoopback(ctx); err != nil {
+			return validatedTarget{}, err
+		}
+	}
+	for _, u := range cfg.URLs {
+		if err := httpx.CheckURL(u, allowLoopback); err != nil {
+			return validatedTarget{}, unprocessable("config", fmt.Sprintf("%s: address not allowed", u))
+		}
+	}
+	var secretCfg []byte
+	if len(cfg.Secrets) > 0 {
+		secretJSON, err := json.Marshal(cfg.Secrets)
+		if err != nil {
+			return validatedTarget{}, err
+		}
+		if secretCfg, err = s.d.Box.Seal(ctx, secretJSON); err != nil {
+			return validatedTarget{}, err
+		}
+	}
+	return validatedTarget{name: name, side: side, public: cfg.Public, secretCfg: secretCfg, needsKey: cfg.NeedsKey}, nil
 }
 
-// requireKeysExportForIncludeKey requires keys:export when cfg's own
-// includeKey field is true (Shared contracts: DeployTargetInput's
-// includeKey needs keys:export; controller ruling extends this to every
-// create and update, not only server-grant creation — an update is the
-// only other place includeKey can ever become true). cfg is a target's
-// already-canonicalized config (validTarget's own return), so includeKeyOf
-// (internal/api/grants.go) applies unchanged.
-func (s *Server) requireKeysExportForIncludeKey(ctx context.Context, orgID uuid.UUID, cfg []byte) error {
-	includeKey, err := includeKeyOf(cfg)
-	if err != nil {
-		return err
-	}
-	if !includeKey {
+// requireKeysExport requires keys:export when a server-run target's
+// resolved config needs the certificate's private key (Shared contracts:
+// DeployTargetInput's config needs keys:export on a server target whose
+// KeyPolicy makes it need the key; re-checked on every create and update —
+// generalizes the old vault-kv-only requireKeysExportForIncludeKey, and
+// internal/agents.checkRefs runs the mirror check for a client-less grant
+// on a NeedsKey target). An agent-run target never needs this: the agent,
+// not this server, ever sees the key.
+func (s *Server) requireKeysExport(ctx context.Context, orgID uuid.UUID, side targets.Mode, needsKey bool) error {
+	if side != targets.Server || !needsKey {
 		return nil
 	}
-	_, err = authorize(ctx, authz.ActionKeysExport, &orgID)
+	_, err := authorize(ctx, authz.ActionKeysExport, &orgID)
 	return err
 }
 
@@ -663,17 +811,18 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	name, runsOn, cfg, err := s.validTarget(r.Body)
+	vt, err := s.validTarget(ctx, r.Body, nil)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireKeysExportForIncludeKey(ctx, r.OrgId, cfg); err != nil {
+	if err := s.requireKeysExport(ctx, r.OrgId, vt.side, vt.needsKey); err != nil {
 		return nil, err
 	}
-	t, err := s.queries().CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: r.OrgId, Name: name, Type: string(r.Body.Type), RunsOn: runsOn, Config: cfg})
+	t, err := s.queries().CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: r.OrgId, Name: vt.name, Type: string(r.Body.Type),
+		RunsOn: string(vt.side), Config: vt.public, SecretCfg: vt.secretCfg})
 	switch pgCode(err) {
 	case pgUniqueViolation:
-		return nil, conflict("A deploy target named %q exists in this org.", name)
+		return nil, conflict("A deploy target named %q exists in this org.", vt.name)
 	case pgForeignKeyViolation:
 		return nil, notFound("org %s", r.OrgId)
 	}
@@ -681,7 +830,7 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "deploy_target.create", ResourceType: "deploy_target", ResourceID: t.ID.String(), OrgID: &t.OrgID,
-		Details: map[string]any{"name": t.Name, "type": t.Type, "config": json.RawMessage(t.Config)}})
+		Details: targetAuditDetails(t)})
 	out, err := s.targetsOut(ctx, []sqlcgen.DeployTarget{t})
 	if err != nil {
 		return nil, err
@@ -689,21 +838,10 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 	return gen.CreateDeployTarget201JSONResponse(out[0]), nil
 }
 
-// UpdateDeployTarget replaces a deploy target's name and config.
+// UpdateDeployTarget replaces a deploy target's name and config; type and
+// runsOn are immutable (validTarget).
 func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTargetRequestObject) (gen.UpdateDeployTargetResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
-		return nil, err
-	}
-	name, _, cfg, err := s.validTarget(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	// Gated whenever the new config sets includeKey true, whether it was
-	// already true or is only now turning true: an update from a caller
-	// without keys:export must never be the thing that lets a target start
-	// (or keep) writing private keys to Vault (controller ruling, batch-5
-	// review — delivery:write alone used to be enough to flip this).
-	if err := s.requireKeysExportForIncludeKey(ctx, r.OrgId, cfg); err != nil {
 		return nil, err
 	}
 	tx, err := s.d.Pool.Begin(ctx)
@@ -712,36 +850,48 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.d.Queries.WithTx(tx)
-	cur, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: r.Id, OrgID: r.OrgId})
+	// DeployTargetForUpdate (FOR UPDATE, Task 1): validTarget below decides
+	// whether to keep cur's stored secrets unchanged, so a concurrent
+	// rewrap's CAS on secret_cfg must not be able to land between this read
+	// and this update's own write (LockLayout's same convention).
+	cur, err := q.DeployTargetForUpdate(ctx, sqlcgen.DeployTargetForUpdateParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("deploy target %s", r.Id)
 	}
 	if err != nil {
 		return nil, err
 	}
-	if cur.Type != string(r.Body.Type) {
-		return nil, unprocessable("type", "a deploy target's type cannot change")
+	vt, err := s.validTarget(ctx, r.Body, &cur)
+	if err != nil {
+		return nil, err
 	}
-	// Final review finding 3: an update turning includeKey on is refused
+	// Gated whenever the resolved config needs the private key, whether it
+	// was already needed or is only now turning true: an update from a
+	// caller without keys:export must never be the thing that lets a
+	// target start (or keep) writing private keys (controller ruling,
+	// batch-5 review — delivery:write alone used to be enough to flip
+	// this).
+	if err := s.requireKeysExport(ctx, r.OrgId, vt.side, vt.needsKey); err != nil {
+		return nil, err
+	}
+	// Final review finding 3: an update turning needsKey on is refused
 	// (422) when any live server grant on this target has a certificate
 	// with no stored key — the same has-key rule createServerGrant/
 	// updateServerGrant already run (requireKeyIfNeeded), run here too so
 	// the target itself can never end up needing a key none of its grants
 	// can supply.
-	if includeKey, err := includeKeyOf(cfg); err != nil {
-		return nil, err
-	} else if includeKey {
+	if vt.needsKey {
 		name, err := q.TargetKeylessGrantCertificate(ctx, &r.Id)
 		if err == nil {
-			return nil, unprocessable("config", fmt.Sprintf("certificate %q has no stored private key; this target's includeKey needs one", name))
+			return nil, unprocessable("config", fmt.Sprintf("certificate %q has no stored private key; this target needs one", name))
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
 	}
-	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: name, Config: cfg, ID: r.Id, OrgID: r.OrgId})
+	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: vt.name, Config: vt.public, SecretCfg: vt.secretCfg, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {
-		return nil, conflict("A deploy target named %q exists in this org.", name)
+		return nil, conflict("A deploy target named %q exists in this org.", vt.name)
 	}
 	if err != nil {
 		return nil, err
@@ -755,8 +905,7 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	}
 	nudge()
 	s.audit(ctx, audit.Event{Action: "deploy_target.update", ResourceType: "deploy_target", ResourceID: t.ID.String(), OrgID: &t.OrgID,
-		Details: map[string]any{"before": map[string]any{"name": cur.Name, "config": json.RawMessage(cur.Config)},
-			"after": map[string]any{"name": t.Name, "config": json.RawMessage(t.Config)}}})
+		Details: targetAuditDetails(t)})
 	out, err := s.targetsOut(ctx, []sqlcgen.DeployTarget{t})
 	if err != nil {
 		return nil, err
@@ -799,7 +948,7 @@ func (s *Server) DeleteDeployTarget(ctx context.Context, r gen.DeleteDeployTarge
 		return nil, notFound("deploy target %s", r.Id)
 	}
 	s.audit(ctx, audit.Event{Action: "deploy_target.delete", ResourceType: "deploy_target", ResourceID: r.Id.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"name": cur.Name}})
+		Details: targetAuditDetails(cur)})
 	return gen.DeleteDeployTarget204Response{}, nil
 }
 

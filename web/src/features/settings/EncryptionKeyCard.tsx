@@ -33,6 +33,7 @@ const TABLE_LABEL: Record<RewrapTable, string> = {
   agent_cas: 'Agent CAs',
   certificate_versions: 'Certificate versions',
   notification_channels: 'Notification channels',
+  deploy_targets: 'Deploy targets',
 };
 
 const SpinIcon = forwardRef<SVGSVGElement, LucideProps>(function SpinIcon(props, ref) {

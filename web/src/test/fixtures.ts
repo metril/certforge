@@ -322,6 +322,7 @@ export const targetVaultKv: DeployTarget = {
     keys: { fullchain: 'fullchain.pem', cert: 'cert.pem', chain: 'chain.pem', key: 'privkey.pem' },
     includeKey: false,
   },
+  storedSecrets: [],
   grantCount: 1,
   createdAt: iso(-5),
   updatedAt: iso(-5),
@@ -524,7 +525,7 @@ export function makeLayout(p: Partial<Layout> = {}): Layout {
 export function makeTarget(p: Partial<DeployTarget> = {}): DeployTarget {
   return {
     id: 't-1', orgId: org.id, name: 'edge traefik', type: 'traefik', runsOn: 'agent', config: { dir: '/etc/traefik/dynamic' },
-    grantCount: 0, createdAt: iso(-5), updatedAt: iso(-5), ...p,
+    storedSecrets: [], grantCount: 0, createdAt: iso(-5), updatedAt: iso(-5), ...p,
   };
 }
 

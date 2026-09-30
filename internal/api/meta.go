@@ -44,6 +44,17 @@ func (s *Server) schemaEntries(k meta.Kind) ([]gen.SchemaEntry, error) {
 		if len(e.Aliases) > 0 {
 			se.Aliases = &e.Aliases
 		}
+		// e.Attrs is set only for KindDeployTarget entries
+		// (targets.AddToMeta); every other kind's Attrs is nil, so runsOn
+		// and keyPolicy stay unset here too.
+		if v, ok := e.Attrs["runsOn"]; ok {
+			runsOn := gen.TargetRunsOn(v)
+			se.RunsOn = &runsOn
+		}
+		if v, ok := e.Attrs["keyPolicy"]; ok {
+			keyPolicy := gen.KeyPolicy(v)
+			se.KeyPolicy = &keyPolicy
+		}
 		out = append(out, se)
 	}
 	return out, nil

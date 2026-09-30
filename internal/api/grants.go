@@ -309,41 +309,28 @@ func serverLayoutFiles(ctx context.Context, q *sqlcgen.Queries, orgID, layoutID 
 	return files, nil
 }
 
-// includeKeyOf reads a server-run target's own includeKey config field
-// (only vault-kv has one today; any future type that doesn't is treated as
-// false, never needing a key).
-func includeKeyOf(cfg []byte) (bool, error) {
-	var c struct {
-		IncludeKey bool `json:"includeKey"`
-	}
-	if err := json.Unmarshal(cfg, &c); err != nil {
-		return false, err
-	}
-	return c.IncludeKey, nil
-}
-
 // requireKeyIfNeeded is createServerGrant's and updateServerGrant's shared
 // gate (batch-5 review: updateServerGrant used to skip this entirely, so a
 // layout edit that newly needed a key on a keyless certificate stored
 // silently instead of 422ing, and a caller without keys:export could edit
-// a keyed grant's layout unchecked). needsKey mirrors CreateServerGrant's
-// own rule: the target's own includeKey, or the layout's own
-// delivery.NeedsKey.
+// a keyed grant's layout unchecked). needsKey is the target's own
+// reg.NeedsKey (generalizing the old vault-kv-only includeKey field to
+// every type's KeyPolicy), or'd with the layout's own delivery.NeedsKey.
 //
 // Final review finding 4 (controller ruling): a layout that needs a key on
-// a target without includeKey is refused outright (422), not merely gated
-// on keys:export — Dispatcher.Deploy fetches the certificate's key only
-// when includeKey is set (internal/deploy/dispatcher.go), so a key-bearing
-// layout on a target without it can never actually be rendered; letting it
-// through here (even for a caller who holds keys:export) would only fail
-// opaquely at deploy time.
-func (s *Server) requireKeyIfNeeded(ctx context.Context, q *sqlcgen.Queries, orgID, certID uuid.UUID, includeKey bool, layoutFiles []delivery.OutputFile) error {
+// a target that does not is refused outright (422), not merely gated on
+// keys:export — Dispatcher.Deploy fetches the certificate's key only when
+// the target's own config needs it (internal/deploy/dispatcher.go), so a
+// key-bearing layout on a target without it can never actually be
+// rendered; letting it through here (even for a caller who holds
+// keys:export) would only fail opaquely at deploy time.
+func (s *Server) requireKeyIfNeeded(ctx context.Context, q *sqlcgen.Queries, orgID, certID uuid.UUID, needsKey bool, layoutFiles []delivery.OutputFile) error {
 	layoutNeedsKey := delivery.NeedsKey(layoutFiles)
-	if !includeKey && !layoutNeedsKey {
+	if !needsKey && !layoutNeedsKey {
 		return nil
 	}
-	if layoutNeedsKey && !includeKey {
-		return unprocessable("layoutId", "this layout renders a private key, but the target does not includeKey")
+	if layoutNeedsKey && !needsKey {
+		return unprocessable("layoutId", "this layout renders a private key, but the target does not need one")
 	}
 	if _, err := authorize(ctx, authz.ActionKeysExport, &orgID); err != nil {
 		return err
@@ -358,10 +345,13 @@ func (s *Server) requireKeyIfNeeded(ctx context.Context, q *sqlcgen.Queries, org
 	return nil
 }
 
-// serverTargetIncludeKey reads a server grant's own target's includeKey
-// config field, for the update/delete/redeploy audit details (Shared
-// contracts Audit row) and updateServerGrant's requireKeyIfNeeded check.
-func (s *Server) serverTargetIncludeKey(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, targetID *uuid.UUID) (bool, error) {
+// serverTargetNeedsKey reads a server grant's own target's type and
+// config through s.d.Targets.NeedsKey (generalizing the old
+// vault-kv-only includeKey field to every type's KeyPolicy), for the
+// update/delete/redeploy audit details (Shared contracts Audit row, key
+// name "includeKey" kept — grant.* is unchanged) and updateServerGrant's
+// requireKeyIfNeeded check.
+func (s *Server) serverTargetNeedsKey(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, targetID *uuid.UUID) (bool, error) {
 	if targetID == nil {
 		return false, nil
 	}
@@ -369,7 +359,7 @@ func (s *Server) serverTargetIncludeKey(ctx context.Context, q *sqlcgen.Queries,
 	if err != nil {
 		return false, err
 	}
-	return includeKeyOf(t.Config)
+	return s.d.Targets.NeedsKey(t.Type, t.Config)
 }
 
 // CreateServerGrant grants a certificate to a server-run deploy target.
@@ -394,7 +384,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 		return nil, err
 	}
 	if target.RunsOn != "server" {
-		return nil, unprocessable("deployTargetId", "deploy target runs on an agent, not the server")
+		return nil, unprocessable("deployTargetId", "this target runs on agents; pick a client")
 	}
 	if _, err := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: r.Body.CertificateId, OrgID: r.OrgId}); errors.Is(err, pgx.ErrNoRows) {
 		return nil, unprocessable("certificateId", fmt.Sprintf("certificate %s is not in this org", r.Body.CertificateId))
@@ -407,11 +397,11 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 			return nil, err
 		}
 	}
-	includeKey, err := includeKeyOf(target.Config)
+	needsKey, err := s.d.Targets.NeedsKey(target.Type, target.Config)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireKeyIfNeeded(ctx, q, r.OrgId, r.Body.CertificateId, includeKey, layoutFiles); err != nil {
+	if err := s.requireKeyIfNeeded(ctx, q, r.OrgId, r.Body.CertificateId, needsKey, layoutFiles); err != nil {
 		return nil, err
 	}
 
@@ -434,7 +424,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	}
 	s.audit(ctx, audit.Event{Action: "grant.create", ResourceType: "grant", ResourceID: g.ID.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"deployTargetId": r.Id, "certificateId": r.Body.CertificateId, "layoutId": r.Body.LayoutId,
-			"runsOn": "server", "includeKey": includeKey}})
+			"runsOn": "server", "includeKey": needsKey}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, g.ID)
 	if err != nil {
 		return nil, err
@@ -479,7 +469,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	} else if err != nil {
 		return nil, err
 	}
-	includeKey, err := s.serverTargetIncludeKey(ctx, q, r.OrgId, g.DeployTargetID)
+	needsKey, err := s.serverTargetNeedsKey(ctx, q, r.OrgId, g.DeployTargetID)
 	if err != nil {
 		return nil, err
 	}
@@ -497,7 +487,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	// change can newly need a key even when the target's own includeKey
 	// hasn't, and this PATCH's own caller must hold keys:export too, not
 	// just whoever created the grant.
-	if err := s.requireKeyIfNeeded(ctx, q, r.OrgId, g.CertID, includeKey, layoutFiles); err != nil {
+	if err := s.requireKeyIfNeeded(ctx, q, r.OrgId, g.CertID, needsKey, layoutFiles); err != nil {
 		return nil, err
 	}
 	if _, err := q.UpdateServerGrantLayout(ctx, sqlcgen.UpdateServerGrantLayoutParams{ID: r.Id, OutputSpecID: layoutID}); err != nil {
@@ -515,7 +505,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	}
 	s.audit(ctx, audit.Event{Action: "grant.update", ResourceType: "grant", ResourceID: r.Id.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"before": map[string]any{"layoutId": g.OutputSpecID}, "after": map[string]any{"layoutId": layoutID},
-			"runsOn": "server", "includeKey": includeKey}})
+			"runsOn": "server", "includeKey": needsKey}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, r.Id)
 	if err != nil {
 		return nil, err
@@ -540,7 +530,7 @@ func (s *Server) deleteServerGrant(ctx context.Context, orgID, id uuid.UUID) err
 	} else if err != nil {
 		return err
 	}
-	includeKey, err := s.serverTargetIncludeKey(ctx, q, orgID, g.DeployTargetID)
+	needsKey, err := s.serverTargetNeedsKey(ctx, q, orgID, g.DeployTargetID)
 	if err != nil {
 		return err
 	}
@@ -551,7 +541,7 @@ func (s *Server) deleteServerGrant(ctx context.Context, orgID, id uuid.UUID) err
 		return err
 	}
 	s.audit(ctx, audit.Event{Action: "grant.delete", ResourceType: "grant", ResourceID: id.String(), OrgID: &orgID,
-		Details: map[string]any{"deployTargetId": g.DeployTargetID, "certificateId": g.CertID, "runsOn": "server", "includeKey": includeKey}})
+		Details: map[string]any{"deployTargetId": g.DeployTargetID, "certificateId": g.CertID, "runsOn": "server", "includeKey": needsKey}})
 	return nil
 }
 
@@ -570,7 +560,7 @@ func (s *Server) redeployServerGrant(ctx context.Context, r gen.RedeployGrantReq
 	} else if err != nil {
 		return nil, err
 	}
-	includeKey, err := s.serverTargetIncludeKey(ctx, q, r.OrgId, g.DeployTargetID)
+	needsKey, err := s.serverTargetNeedsKey(ctx, q, r.OrgId, g.DeployTargetID)
 	if err != nil {
 		return nil, err
 	}
@@ -585,7 +575,7 @@ func (s *Server) redeployServerGrant(ctx context.Context, r gen.RedeployGrantReq
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "grant.redeploy", ResourceType: "grant", ResourceID: r.Id.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"deployTargetId": g.DeployTargetID, "certificateId": g.CertID, "runsOn": "server", "includeKey": includeKey}})
+		Details: map[string]any{"deployTargetId": g.DeployTargetID, "certificateId": g.CertID, "runsOn": "server", "includeKey": needsKey}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, r.Id)
 	if err != nil {
 		return nil, err
