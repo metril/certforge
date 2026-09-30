@@ -150,7 +150,10 @@ bounded to 1000 candidates per kind per run:
 - **`deploy.failed`** fires once per (grant, version) pair when a live
   grant's own deployment is in state `failed` — an agent-run grant
   (`deployments.state`) or a server-run grant (`server_deployments.status`,
-  which has no drift state of its own).
+  which has no drift state of its own). A server-run grant's first failed
+  attempt also emits immediately from `deploy.Dispatcher` itself, rather
+  than waiting for the next scan; the scan's own pass is only a backstop
+  and adds nothing further, since both use the same dedupe key.
 - **`deploy.drift`** fires once per (grant, version) pair when a live
   agent-run grant's deployment is in state `drift` (what the agent
   installed no longer matches what was rendered); server-run grants have

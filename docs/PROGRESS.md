@@ -345,7 +345,7 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 | 4 | OpenAPI and target/grant API | done | 6e0b103 |
 | 5 | Server dispatcher on the registry | done | ab96d11 |
 | 6 | Agent execution for file targets | done | aca3869 |
-| 7 | `deploy.failed` from the dispatcher | | |
+| 7 | `deploy.failed` from the dispatcher | done | pending |
 | 8 | Regression e2e and docs close-out | | |
 
 ## Decisions made during implementation

@@ -58,6 +58,26 @@ type Inserter interface {
 	InsertTx(ctx context.Context, tx pgx.Tx, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
 }
 
+// Events lets fail raise a deploy.failed notification immediately after a
+// server-run deploy attempt fails (task-7 brief), without this package
+// importing internal/notify directly: internal/notify's own DeployEvents
+// implements this by importing internal/deploy the other way around
+// (Global Constraints: internal/deploy must never import internal/notify).
+// cmd/certforge/serve.go wires the real notify.DeployEvents in; nil (every
+// existing test fixture, unless a test sets it) makes fail skip the emit.
+type Events interface {
+	DeployFailed(ctx context.Context, f DeployFailure) error
+}
+
+// DeployFailure is one failed server-run deploy attempt, ready for
+// Events.DeployFailed to turn into a notify.Event. LastError is already
+// redacted (fail's own targets.Redact pass) — never the raw cause.
+type DeployFailure struct {
+	OrgID, GrantID, VersionID uuid.UUID
+	CertName, TargetName      string
+	LastError                 string
+}
+
 // Dispatcher is the server-side counterpart to an enrolled agent for
 // client-less grants: it hears about every new certificate version
 // (issuance.VersionListener), enqueues certforge_server_deploy for each
@@ -76,9 +96,14 @@ type Dispatcher struct {
 	// org's live "notifications" allowLoopbackUrls setting (cmd/certforge/serve.go) —
 	// a func, not a stored value, because Deploy must always see the
 	// current setting, never one cached at Dispatcher construction time.
-	HTTP  func(ctx context.Context) targets.HTTPFactory
-	River Inserter
-	Log   *slog.Logger
+	HTTP func(ctx context.Context) targets.HTTPFactory
+	// Events, when set, gets a DeployFailed call from fail after every
+	// failed server-run deploy attempt (task-7 brief). nil skips the emit
+	// — the hourly notify.Sources.Scan's own ScanFailedServerDeployments
+	// still catches it later, as a backstop (Deviations R7).
+	Events Events
+	River  Inserter
+	Log    *slog.Logger
 }
 
 func (d *Dispatcher) log() *slog.Logger {
@@ -227,7 +252,7 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 	}
 	target, ok := d.Reg.Get(row.TargetType)
 	if !ok {
-		return d.fail(ctx, grantID, versionID, nil, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
+		return d.fail(ctx, row, versionID, nil, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
 	}
 	// A client-less grant may only ever be created on a target whose
 	// resolved side is server (API's validTarget/CreateServerGrant path);
@@ -235,32 +260,32 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 	// target drifting apart (a type re-registered as agent-only), not the
 	// only guard.
 	if target.RunsOn() == targets.Agent {
-		return d.fail(ctx, grantID, versionID, nil, fmt.Errorf("deploy: %s runs on an agent, not the server", row.TargetName))
+		return d.fail(ctx, row, versionID, nil, fmt.Errorf("deploy: %s runs on an agent, not the server", row.TargetName))
 	}
 
 	secrets, err := d.openTargetSecrets(ctx, row.TargetSecretCfg)
 	if err != nil {
-		return d.fail(ctx, grantID, versionID, nil, err)
+		return d.fail(ctx, row, versionID, nil, err)
 	}
 
 	needsKey, err := d.Reg.NeedsKey(row.TargetType, row.TargetConfig)
 	if err != nil {
-		return d.fail(ctx, grantID, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, secrets, err)
 	}
 
 	m, err := d.Certs.Material(ctx, row.CertID, versionID, needsKey)
 	if err != nil {
-		return d.fail(ctx, grantID, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, secrets, err)
 	}
 
 	files, err := d.renderFiles(ctx, row, m, needsKey)
 	if err != nil {
-		return d.fail(ctx, grantID, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, secrets, err)
 	}
 
 	config, err := targets.Merge(row.TargetConfig, secrets)
 	if err != nil {
-		return d.fail(ctx, grantID, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, secrets, err)
 	}
 
 	req := targets.Request{
@@ -277,7 +302,7 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 		HTTP:        d.HTTP(ctx),
 	}
 	if _, err := target.Deploy(ctx, req); err != nil {
-		return d.fail(ctx, grantID, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, secrets, err)
 	}
 	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID})
 }
@@ -386,12 +411,30 @@ func toRenderFiles(dfiles []delivery.File, specs []delivery.OutputFile) []render
 // additionally run its own redaction (vault-kv: (*vault.Client).Redact)
 // before returning an error, which only makes this a second pass. A
 // failure to write the record is only logged: the job's own error
-// (returned) is what actually drives the retry.
-func (d *Dispatcher) fail(ctx context.Context, grantID, versionID uuid.UUID, secrets map[string]string, cause error) error {
+// (returned) is what actually drives the retry. row is the same row Deploy
+// already fetched (every call site has it in scope): its ID/OrgID/
+// CertificateName/TargetName feed the immediate deploy.failed emit below,
+// so fail takes it instead of a bare grantID.
+func (d *Dispatcher) fail(ctx context.Context, row sqlcgen.ServerDeployGrantRow, versionID uuid.UUID, secrets map[string]string, cause error) error {
 	msg := targets.Redact(cause, secrets, maxLastError)
 	if err := d.Q.MarkServerDeploymentFailed(ctx, sqlcgen.MarkServerDeploymentFailedParams{
-		GrantID: grantID, VersionID: &versionID, LastError: msg}); err != nil {
-		d.log().Error("deploy: server deployment failure not recorded", "grant", grantID, "err", err)
+		GrantID: row.ID, VersionID: &versionID, LastError: msg}); err != nil {
+		d.log().Error("deploy: server deployment failure not recorded", "grant", row.ID, "err", err)
+	}
+	// The immediate emit (task-7 brief, Deviations R7) uses the exact same
+	// DedupeKey as notify/scan.go's ScanFailedServerDeployments
+	// ("deploy.failed:<grantID>:<versionID>"), so the two dedupe to one
+	// notification_events row regardless of which fires first. An emit
+	// error is only logged: Emit itself already committed (or rolled back)
+	// its own transaction, so there is nothing here to undo, and river's
+	// retry is driven by the returned error below, not by this.
+	if d.Events != nil {
+		if err := d.Events.DeployFailed(ctx, DeployFailure{
+			OrgID: row.OrgID, GrantID: row.ID, VersionID: versionID,
+			CertName: row.CertificateName, TargetName: row.TargetName, LastError: msg,
+		}); err != nil {
+			d.log().Error("deploy: deploy.failed not emitted", "grant", row.ID, "err", err)
+		}
 	}
 	return errors.New(msg)
 }

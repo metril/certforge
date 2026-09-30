@@ -161,6 +161,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Server-run deploys go through the shared registry.
 - Agents render deploy targets through the shared registry.
 - Phase 7A batch 2 review fixes: a failed server-run deploy no longer hands river the raw, unredacted cause (only logged and stored under `river_job.errors`) — it now returns the same redacted message already stored on `last_error`; a deploy target's URL-policy 422 no longer echoes the rejected URL (which may carry userinfo or a query-string token) and now names the field instead; a deploy target type's own `Parse` validation error is now redacted of the request's own secret values before it reaches the problem body, the same as every other target error; the agent's grant-id check now compares the assignment's actual `uuid.UUID` against the zero value instead of a string comparison that could never fail.
+- Server-run deploy failures notify immediately.
 
 ### Fixed
 - `authn.Limiter.Allow` read its rate/burst config before taking its lock, racing `Reconfigure`; the check now happens under the lock. Rate-limited login attempts are now audited as `session.login_failed` (`reason: rate_limited`) instead of leaving no record. The limiter's per-key map is now capped at 100k entries, evicting the least-recently-seen key once full, so distinct source addresses cannot grow it without bound.

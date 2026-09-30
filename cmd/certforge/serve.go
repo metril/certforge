@@ -173,7 +173,15 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		HTTP: func(ctx context.Context) targets.HTTPFactory {
 			st, err := notifySettings(ctx)
 			return targets.HTTPFactory{AllowLoopback: err == nil && st.AllowLoopbackURLs}
-		}, Log: log}
+		},
+		// Events: an immediate deploy.failed on every failed server-run
+		// attempt (task-7 brief), deduping with notifySources' hourly
+		// ScanFailedServerDeployments backstop through the same DedupeKey.
+		// notifyEmitter already exists at this point (constructed above,
+		// before dispatcher); this is the one place internal/deploy's
+		// Events interface is bound to internal/notify's implementation,
+		// keeping internal/deploy itself free of any notify import.
+		Events: notify.DeployEvents{E: notifyEmitter}, Log: log}
 	agentSettings, err := agents.NewSettingsSource(store, sections, cfg.BaseURL)
 	if err != nil {
 		return err
