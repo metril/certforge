@@ -107,18 +107,28 @@ test('traefik target runs on agent', async ({ page }) => {
   await expect(table.getByRole('row', { name: new RegExp(`^${name}`) })).toHaveCount(0);
 });
 
-// issuers.spec.ts's own "server grant" and "375 px" tests leave
-// e2e-vault-kv/e2e-vault-kv-375 behind (never deleted); file order
-// (alphabetical, workers: 1) runs it before this file, so the list here is
-// never empty regardless of what the two tests above create and clean up.
 test('targets at 375 px', async ({ page }) => {
   await page.goto('/login');
   await signInLocal(page);
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
+  // Self-contained (batch-2 review): seed our own target instead of relying
+  // on issuers.spec.ts's own leftovers, so this test (and the file run
+  // alone, e.g. --grep) never times out on an empty list.
+  const name = `pw-mobile-${Math.random().toString(36).slice(2, 8)}`;
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
+  await page.getByRole('button', { name: 'Add target' }).click();
+  const addSheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  await addSheet.getByRole('radio', { name: /^Traefik/ }).click();
+  await addSheet.getByLabel('Name', { exact: true }).fill(name);
+  await addSheet.getByLabel('Directory on the agent').fill('/etc/traefik/dynamic');
+  await addSheet.getByRole('button', { name: 'Save' }).click();
+  await expect(addSheet).toBeHidden();
+
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
-  await expect(page.getByRole('list', { name: 'Deploy targets' })).toBeVisible();
+  const list = page.getByRole('list', { name: 'Deploy targets' });
+  await expect(list).toBeVisible();
   expect(await page.evaluate(() => document.scrollingElement!.scrollWidth)).toBeLessThanOrEqual(375);
 
   await page.getByRole('button', { name: 'Add target' }).click();
@@ -132,6 +142,19 @@ test('targets at 375 px', async ({ page }) => {
   await expect(traefik.locator('[aria-label="Agent"]')).toHaveCount(1);
 
   expect(await page.evaluate(() => document.scrollingElement!.scrollWidth)).toBeLessThanOrEqual(375);
+  // batch-2 review: the sheet is a fixed, overflow-y-auto panel — content
+  // too wide scrolls inside it and never widens the page, so the
+  // document-level scrollWidth check above can't catch the sheet's own
+  // overflow. Check the sheet's own box directly.
+  expect(await sheet.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
   await snap(page, 'targets-mobile');
   await sheet.getByRole('button', { name: 'Cancel' }).click();
+  await expect(sheet).toBeHidden();
+
+  await list.getByRole('button', { name: `Delete ${name}` }).click();
+  const confirm = page.getByRole('dialog', { name: 'Delete deploy target' });
+  await confirm.getByLabel(name).fill(name);
+  await confirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(confirm).toBeHidden();
 });
