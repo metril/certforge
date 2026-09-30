@@ -339,8 +339,8 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 
 | # | Task | Status | Commit |
 |---|---|---|---|
-| 1 | Schema 00015, queries, rewrap | done | pending |
-| 2 | `targets` core and test types | | |
+| 1 | Schema 00015, queries, rewrap | done | 8d52f58 |
+| 2 | `targets` core and test types | done | pending |
 | 3 | Registry adoption: traefik, vault-kv, meta | | |
 | 4 | OpenAPI and target/grant API | | |
 | 5 | Server dispatcher on the registry | | |
