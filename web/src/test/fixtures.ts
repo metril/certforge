@@ -529,6 +529,24 @@ export function makeTarget(p: Partial<DeployTarget> = {}): DeployTarget {
   };
 }
 
+// A server-run test-secret target with a stored `token`, for the
+// stored-secret-with-schema-default and secret-leakage tests (task-1-brief.md,
+// preflight ruling). `type: 'test-secret'` isn't in the real DeployTargetType
+// enum (test-only, like testSecretSchema above), hence the cast rather than
+// the `DeployTarget` annotation makeTarget's literals use.
+export const targetTestSecret = {
+  id: 't-test-secret-1',
+  orgId: org.id,
+  name: 'test sink',
+  type: 'test-secret',
+  runsOn: 'server',
+  config: { url: 'https://sink.test' },
+  storedSecrets: ['token'],
+  grantCount: 0,
+  createdAt: iso(-5),
+  updatedAt: iso(-5),
+} as unknown as DeployTarget;
+
 export function makeHook(p: Partial<Hook> = {}): Hook {
   return {
     id: 'h-1', orgId: org.id, name: 'reload nginx', phase: 'post_deploy', argv: ['/usr/sbin/nginx', '-s', 'reload'],
@@ -550,11 +568,15 @@ export function makeAgentCA(p: Partial<AgentCA> = {}): AgentCA {
   };
 }
 
-// Mirrors internal/delivery.TraefikSchema (plan 3A Task 6).
+// Mirrors internal/delivery.TraefikSchema (plan 3A Task 6). runsOn/keyPolicy
+// mirror internal/targets/traefik.go (7a-facts.md #2): agent-run, and
+// keyPolicy always because it writes privkey.pem.
 export const traefikSchema = {
   code: 'traefik',
   name: 'Traefik (file provider)',
   aliases: [],
+  runsOn: 'agent',
+  keyPolicy: 'always',
   schema: {
     type: 'object',
     additionalProperties: false,
@@ -578,12 +600,17 @@ export const traefikSchema = {
   },
 } as ProviderSchema;
 
-// Mirrors internal/deploy/vaultkv.go's vaultKVSchema verbatim (Task 8); the
-// display name matches cmd/certforge/serve.go's deployReg.Register call.
+// Mirrors internal/deploy/vaultkv.go's vaultKVSchema verbatim (Task 8). The
+// display name is bare now that RunsOnChip (7B, R12) carries "runs on
+// server" instead of the name suffix. runsOn/keyPolicy mirror
+// internal/deploy/vaultkv.go (7a-facts.md #2): server-run, keyPolicy
+// optional (only needs the key when includeKey is set).
 export const vaultKvSchema = {
   code: 'vault-kv',
-  name: 'Vault KV (runs on server)',
+  name: 'Vault KV',
   aliases: [],
+  runsOn: 'server',
+  keyPolicy: 'optional',
   schema: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     title: 'Vault KV',
@@ -616,6 +643,26 @@ export const vaultKvSchema = {
         type: 'boolean', default: false,
         title: 'Include private key', description: 'Also write the private key. A grant onto a target with this set needs keys:export.',
       },
+    },
+  },
+} as ProviderSchema;
+
+// Test-only fixture (task-1-brief.md): an `either`-runs-on, `always`-key-policy
+// type with a secret field carrying a schema `default`, so tests can exercise
+// the either-defaults-to-agent rule, the server-side keys:export gate and the
+// stored-secret-default-overwrite guard (stripSecretDefaults) without relying
+// on a shipped type. Never registered in the real product.
+export const testSecretSchema = {
+  code: 'test-secret',
+  name: 'Test secret',
+  aliases: [],
+  runsOn: 'either',
+  keyPolicy: 'always',
+  schema: {
+    type: 'object',
+    properties: {
+      url: { type: 'string', format: 'uri', title: 'URL' },
+      token: { type: 'string', secret: true, default: 'default-token', title: 'Token' },
     },
   },
 } as ProviderSchema;

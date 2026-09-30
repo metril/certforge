@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
 import { createChannel, deleteChannel, updateChannel } from '@/api/queries/channels';
 import { metaSchemasQuery } from '@/api/queries/dns';
-import { UNCHANGED, type Channel, type ChannelInput, type ChannelType, type EventKind, type Severity } from '@/api/types';
+import { type Channel, type ChannelInput, type ChannelType, type EventKind, type Severity } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
@@ -16,12 +16,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
-import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
+import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { canWriteChannel, TYPE_META } from '@/lib/channels';
 import { SEVERITY_META } from '@/lib/events';
 import type { HelpKey } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can, isGlobalAdmin } from '@/lib/permissions';
+import { stripSecretDefaults, withStoredSentinels } from '@/lib/secretForm';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { ChannelTest } from './ChannelTest';
 import { EventKindPicker } from './EventKindPicker';
@@ -69,35 +70,17 @@ function initialDraft(channel?: Channel): Draft {
   };
 }
 
-/** A stored secret the SchemaForm hasn't touched yet reads back as
- * `undefined`, not the `__unchanged__` sentinel — SecretInput/SchemaForm
- * fill it in on mount, but only once their own effect runs, which the
- * dirty check and the submit payload can't depend on the timing of. Both
- * normalize through this first, so a config with the sentinel already
- * applied and one that hasn't gotten there yet compare and submit
- * identically.
- *
- * This only fills a key that's missing outright (`undefined`), unlike
- * `forms/uiSchema.ts`'s `withSecretSentinels` — that one also treats a live
- * `''` as untouched, which would turn SecretInput's own Remove (which emits
- * `''` deliberately, to clear the stored secret) silently back into
- * `__unchanged__` (batch 1 review). */
-function normalizedConfig(schema: RJSFSchema, config: Record<string, unknown>, storedSecrets: string[]): Record<string, unknown> {
-  const secrets = new Set(secretKeys(schema));
-  const out = { ...config };
-  for (const k of storedSecrets) {
-    if (secrets.has(k) && out[k] === undefined) out[k] = UNCHANGED;
-  }
-  return out;
-}
-
 /** The fields Send test's "saved config" check (dirty) cares about — every
- * type's config draft except the active one is irrelevant to what's saved. */
+ * type's config draft except the active one is irrelevant to what's saved.
+ * `config` goes through `withStoredSentinels` (lib/secretForm.ts) before the
+ * comparison, so a config with the stored-secret sentinel already applied
+ * and one that hasn't gotten there yet (SecretInput fills it in only once
+ * its own mount effect runs) compare identically. */
 function snapshot(schema: RJSFSchema, storedSecrets: string[], d: Pick<Draft, 'name' | 'type' | 'events' | 'minSeverity' | 'allOrgs' | 'enabled'> & { config: Record<string, unknown> }): string {
   return JSON.stringify({
     name: d.name,
     type: d.type,
-    config: normalizedConfig(schema, d.config, storedSecrets),
+    config: withStoredSentinels(schema, d.config, storedSecrets),
     events: d.events,
     minSeverity: d.minSeverity,
     allOrgs: d.allOrgs,
@@ -109,7 +92,7 @@ function toInput(d: Draft, schema: RJSFSchema, storedSecrets: string[]): Channel
   return {
     name: d.name,
     type: d.type,
-    config: normalizedConfig(schema, d.configs[d.type], storedSecrets),
+    config: withStoredSentinels(schema, d.configs[d.type], storedSecrets),
     events: d.events,
     minSeverity: d.minSeverity,
     allOrgs: d.allOrgs,
@@ -124,7 +107,6 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   const me = useMe();
   const isSmUp = useMediaQuery('(min-width: 640px)');
   const { data: meta } = useQuery(metaSchemasQuery);
-  const notifiers = meta?.notifiers ?? [];
   const formRef = useRef<SchemaFormHandle>(null);
   const [draft, setDraft] = useState<Draft>(() => initialDraft(channel));
   const [submitted, setSubmitted] = useState(false);
@@ -132,7 +114,14 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   const [configError, setConfigError] = useState<ErrorSchema | undefined>(undefined);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const schema = (notifiers.find((n) => n.code === draft.type)?.schema as RJSFSchema | undefined) ?? { type: 'object', properties: {} };
+  // Stripped so RJSF shows a secret's schema default only as a placeholder,
+  // never fills it into formData — otherwise withStoredSentinels never adds
+  // the sentinel (the key is no longer undefined) and an untouched save
+  // overwrites the stored value with the default (lib/secretForm.ts).
+  const schema = useMemo(() => {
+    const raw = (meta?.notifiers.find((n) => n.code === draft.type)?.schema as RJSFSchema | undefined) ?? { type: 'object', properties: {} };
+    return stripSecretDefaults(raw);
+  }, [meta, draft.type]);
   // Stored secrets only apply to the channel's own (locked, on edit) type.
   const storedSecrets = channel && channel.type === draft.type ? channel.storedSecrets : [];
   const nameOk = draft.name.trim() !== '';

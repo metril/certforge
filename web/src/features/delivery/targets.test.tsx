@@ -28,7 +28,12 @@ beforeEach(() => {
   );
 });
 
-const rowOf = (name: string) => screen.getByText(name, { selector: 'td' }).closest('tr')!;
+// getAllByText + [0]: the Name column comes before the Type column in DOM
+// order, and a target's name can collide with its own type's display name
+// (e.g. a "Vault KV" target of type vault-kv, whose display name is also
+// "Vault KV" now that RunsOnChip — not a name suffix — carries where it
+// runs); the first match is always the Name cell.
+const rowOf = (name: string) => screen.getAllByText(name, { selector: 'td' })[0]!.closest('tr')!;
 
 it('opens from the nav and lists targets with type, directory and use', async () => {
   const { router } = renderRoute('/o/acme/delivery');
@@ -180,7 +185,7 @@ it('shows vault-kv in the type picker with a "runs on server" hint', async () =>
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
-  await user.hover(within(sheet).getByRole('radio', { name: 'Vault KV (runs on server)' }));
+  await user.hover(within(sheet).getByRole('radio', { name: 'Vault KV' }));
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Runs on server');
 });
 
@@ -197,7 +202,7 @@ it('creates a vault-kv target with its default config', async () => {
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
   await user.type(within(sheet).getByLabelText('Name'), 'vault-store');
-  await user.click(within(sheet).getByRole('radio', { name: 'Vault KV (runs on server)' }));
+  await user.click(within(sheet).getByRole('radio', { name: 'Vault KV' }));
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(posted).toMatchObject({ name: 'vault-store', type: 'vault-kv', config: { includeKey: false } }));
 });
@@ -209,7 +214,7 @@ it('disables includeKey without keys:export, with a tooltip naming it', async ()
   );
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
-  await user.click(within(sheet).getByRole('radio', { name: 'Vault KV (runs on server)' }));
+  await user.click(within(sheet).getByRole('radio', { name: 'Vault KV' }));
   const sw = await within(sheet).findByRole('switch', { name: 'Include private key' });
   expect(sw).toBeDisabled();
   await user.hover(sw);

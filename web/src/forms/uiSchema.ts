@@ -56,14 +56,27 @@ function humanize(key: string): string {
     .join(' ');
 }
 
+// UI conventions (7B): a machine value (path, URL, mount) reads better in
+// the mono font — either by format (a URI) or by key name, including a
+// `...Pem` suffix (e.g. vault-kv's keys.key holds a PEM field name, not the
+// PEM itself, but still a filename-shaped machine value).
+const MONO_KEY = /^(dir|path|pathPrefix|mount|url|acmeServiceUrl)$|Pem$/;
+
+function isMonoKey(key: string, p: Prop): boolean {
+  return p.type === 'string' && (p.format === 'uri' || MONO_KEY.test(key));
+}
+
 /**
  * Builds the uiSchema for a provider config form: routes `secret: true`
  * fields to the secret widget with their own stored flag (controller
  * ruling: no global "has secrets" boolean — `storedSecrets` names the
  * fields that already have a value, mirroring `DNSCredential.storedSecrets`),
- * hides `serverPath` fields the API derives itself (and 422s if sent), and
- * falls back to a humanized label / an example placeholder when the schema
- * doesn't supply a title / examples.
+ * hides `serverPath` fields the API derives itself (and 422s if sent), marks
+ * machine values (mono keys, see `isMonoKey`) and every string field nested
+ * under a `keys` object mono (vault-kv's document field names — UI
+ * conventions, replacing the old per-type `uiSchemaOverrides` block), and
+ * falls back to a humanized label / an example or string default as a
+ * placeholder when the schema doesn't supply a title / examples.
  */
 export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string[] } = {}): UiSchema {
   const stored = new Set(opts.storedSecrets ?? []);
@@ -77,6 +90,7 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
     if (typeof p.title !== 'string' || p.title === '') base['ui:title'] = humanize(key);
     const example = Array.isArray(p.examples) && typeof p.examples[0] === 'string' ? p.examples[0] : undefined;
     if (example) base['ui:placeholder'] = example;
+    else if (typeof p.default === 'string' && p.default !== '') base['ui:placeholder'] = p.default;
 
     if (p.secret === true) {
       ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key) } };
@@ -86,6 +100,16 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
       ui[key] = { ...base, 'ui:field': 'listArray' };
     } else if (isHeaderMap(p)) {
       ui[key] = { ...base, 'ui:field': 'headers' };
+    } else if (isMonoKey(key, p)) {
+      ui[key] = { ...base, 'ui:options': { mono: true } };
+    } else if (key === 'keys' && p.type === 'object' && typeof p.properties === 'object') {
+      const nested: UiSchema = { ...base };
+      for (const [subKey, subRaw] of Object.entries(p.properties)) {
+        if (typeof subRaw === 'object' && subRaw !== null && (subRaw as Prop).type === 'string') {
+          nested[subKey] = { 'ui:options': { mono: true } };
+        }
+      }
+      ui[key] = nested;
     } else if (Object.keys(base).length > 0) {
       ui[key] = base;
     }

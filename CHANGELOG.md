@@ -164,6 +164,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Server-run deploy failures notify immediately.
 - Regression e2e for registry-driven deploy targets.
 - Phase 7A final review fix wave: the immediate `deploy.failed` notification now strips an embedded Vault/target transport URL the same way the hourly scan's backstop already did, instead of only the scan winning that redaction when it happened to fire second; a deploy target update's `Parse` error is now redacted against the currently stored secrets too, not only the raw request's own, so a stored write-only secret an `__unchanged__` update's validation error echoes back can no longer reach a 422 body; the "re-enter the secret" docs and OpenAPI description now say a URL change specifically, matching what `validTarget` actually enforces.
+- Schema forms share one stored-secret helper; secret defaults show only as placeholders.
 
 ### Fixed
 - `authn.Limiter.Allow` read its rate/burst config before taking its lock, racing `Reconfigure`; the check now happens under the lock. Rate-limited login attempts are now audited as `session.login_failed` (`reason: rate_limited`) instead of leaving no record. The limiter's per-key map is now capped at 100k entries, evicting the least-recently-seen key once full, so distinct source addresses cannot grow it without bound.

@@ -1,6 +1,19 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { backupStatus, issuanceSettingsSchema, keysStatic, makeImportResult, makeRateLedger, notificationsSettings, prometheusSettings, smtpSettings, url } from './fixtures';
+import {
+  backupStatus,
+  issuanceSettingsSchema,
+  keysStatic,
+  makeImportResult,
+  makeRateLedger,
+  notificationsSettings,
+  prometheusSettings,
+  smtpSettings,
+  testSecretSchema,
+  traefikSchema,
+  url,
+  vaultKvSchema,
+} from './fixtures';
 
 // Adaptation (preflight C8): T4's AppShell test navigates to
 // `/o/acme/certificates` without mocking `/certificates` or `/cas`; once
@@ -54,7 +67,9 @@ export const server = setupServer(
   http.get(url('/orgs/:orgId/hooks'), () => HttpResponse.json({ items: [] })),
   http.get(url('/orgs/:orgId/certificates/:id/deployments'), () => HttpResponse.json({ items: [] })),
   http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: null, names: [], notAfter: null } })),
-  http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [], notifiers: [], signers: [] })),
+  http.get(url('/meta/schemas'), () =>
+    HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [] }),
+  ),
   // Task 1 (Phase 4B): the issuance settings section, the rate ledger, and a
   // dry-run import preview — tests that merely navigate through these
   // routes without caring about their data don't mock them themselves.

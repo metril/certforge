@@ -1,6 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, call } from '../client';
-import type { DeployTargetInput, HookInput, LayoutInput } from '../types';
+import type { DeployTarget, DeployTargetInput, HookInput, LayoutInput } from '../types';
 import { invalidateGrants } from './grants';
 
 export const layoutsQuery = (orgId: string) =>
@@ -42,6 +42,10 @@ export const deployTargetsQuery = (orgId: string) =>
     queryFn: async () => (await call(api.GET('/orgs/{orgId}/deploy-targets', { params: { path: { orgId } } }))).items,
   });
 
+// Superseded by the plain `createDeployTarget`/`updateDeployTarget` below
+// (task-1-brief.md), which `TargetSheet` (Task 2) calls directly so it can
+// invalidate only after mapping a secret error — kept here only until that
+// task removes TargetSheet's last use of it.
 export function useSaveDeployTarget(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -52,6 +56,14 @@ export function useSaveDeployTarget(orgId: string) {
     meta: { silent: true, success: 'Deploy target saved' },
     onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['deploy-targets', orgId] }), invalidateGrants(qc, orgId)]),
   });
+}
+
+export function createDeployTarget(orgId: string, body: DeployTargetInput): Promise<DeployTarget> {
+  return call(api.POST('/orgs/{orgId}/deploy-targets', { params: { path: { orgId } }, body }));
+}
+
+export function updateDeployTarget(orgId: string, id: string, body: DeployTargetInput): Promise<DeployTarget> {
+  return call(api.PATCH('/orgs/{orgId}/deploy-targets/{id}', { params: { path: { orgId, id } }, body }));
 }
 
 export function useDeleteDeployTarget(orgId: string) {

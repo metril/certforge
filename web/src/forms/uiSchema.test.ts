@@ -61,6 +61,37 @@ it('keeps a maxLength-200 string field a single-line input, not a textarea', () 
   expect(buildUiSchema(s).clientId).toBeUndefined();
 });
 
+// 7B Task 1 (UI conventions "Mono keys"): a URI-format field, a field whose
+// key matches the mono-key pattern, and every string nested under a `keys`
+// object (vault-kv's document field names) all render in the mono font —
+// replacing TargetSheet's old per-type `uiSchemaOverrides` block.
+it('mono by key', () => {
+  const s = {
+    type: 'object',
+    properties: {
+      acmeServiceUrl: { type: 'string', format: 'uri', title: 'ACME service URL' },
+      dir: { type: 'string', title: 'Directory' },
+      name: { type: 'string', title: 'Name' },
+      keys: {
+        type: 'object',
+        title: 'Document fields',
+        properties: { fullchain: { type: 'string', title: 'Fullchain field' }, cert: { type: 'string', title: 'Certificate field' } },
+      },
+    },
+  } as unknown as RJSFSchema;
+  const ui = buildUiSchema(s);
+  expect(ui.acmeServiceUrl).toEqual({ 'ui:options': { mono: true } });
+  expect(ui.dir).toEqual({ 'ui:options': { mono: true } });
+  expect(ui.name).toBeUndefined();
+  expect(ui.keys).toEqual({ fullchain: { 'ui:options': { mono: true } }, cert: { 'ui:options': { mono: true } } });
+});
+
+it('default becomes placeholder', () => {
+  const s = { type: 'object', properties: { mount: { type: 'string', title: 'Mount', default: 'secret' } } } as unknown as RJSFSchema;
+  const ui = buildUiSchema(s);
+  expect(ui.mount).toEqual({ 'ui:placeholder': 'secret', 'ui:options': { mono: true } });
+});
+
 // Task 3 (Phase 6B): the webhook notifier's `headers` property is an object
 // keyed by header name (patternProperties, additionalProperties: false, no
 // fixed `properties`) — it must route to the ChannelSheet's HeadersField,

@@ -303,22 +303,27 @@ export const help = {
   // Task 8: server-run targets and their grants (grant.serverTarget disables
   // a server-run target in the client grant sheet; serverDeployment.status
   // covers ServerDeploymentChip).
-  'grant.serverTarget': { text: 'Server-side targets need no client. Grant them from the target’s detail.', learnMore: 'deploy-targets.md#vault-kv' },
+  'grant.serverTarget': { text: 'Server-run targets need no client. Grant them from the target’s detail.', learnMore: 'deploy-targets.md#runs-on' },
   'serverDeployment.status': {
     text: 'Pending is queued and Deployed is written. Failed shows the error, and Redeploy retries.',
     learnMore: 'deploy-targets.md#vault-kv',
   },
   'deploy.redeploy': { text: 'Asks the agent to reinstall the current version and report again.' },
   'hook.exit': { text: 'Exit status. -1 means the agent refused it, it failed to start, or it timed out.', learnMore: 'agent.md#hooks-and-the-allowlist' },
-  'target.type': { text: 'How the target is driven. Its fields come from the type’s schema.', learnMore: 'deploy-targets.md#traefik' },
-  // Task 8: replaces the agent-only copy now that vault-kv runs on the server.
-  'target.runsOn': { text: 'Agent: a client writes the files on its host. Server: CertForge writes them itself.', learnMore: 'deploy-targets.md#vault-kv' },
+  'target.type': { text: 'What the target updates. Its fields come from the type’s schema.', learnMore: 'deploy-targets.md#deploy-targets' },
+  'target.runsOn': { text: 'Server: CertForge pushes each version itself. Agent: a client on the host does it.', learnMore: 'deploy-targets.md#runs-on' },
+  // 7B Task 1 (R12): the type segment's own disabled hint when a type can
+  // only run one way, and the runs-on control's hint once a target exists
+  // (immutable after create — Shared contracts, R3).
+  'target.runsOnForced': { text: 'This type can only run here.', learnMore: 'deploy-targets.md#runs-on' },
+  'target.runsOnLocked': { text: 'Fixed once the target exists. Create a new target to change it.', learnMore: 'deploy-targets.md#runs-on' },
+  'target.secrets': { text: 'Secret fields are stored encrypted and never shown again. Leave one untouched to keep it.', learnMore: 'deploy-targets.md#secrets' },
   'target.vaultKv': { text: 'CertForge writes the files to Vault KV itself. No client is involved.', learnMore: 'deploy-targets.md#vault-kv' },
-  'target.includeKey': { text: 'Also write the private key to Vault. Needs the keys:export permission.', learnMore: 'deploy-targets.md#vault-kv' },
+  'target.includeKey': { text: 'Also send the private key. On the server this needs the keys:export permission.', learnMore: 'deploy-targets.md#vault-kv' },
   'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
   // Task 9: the deploy-target detail sheet's own Grants section and its
   // server grant form's Layout field.
-  'grant.server': { text: 'CertForge writes each new version to this target itself.', learnMore: 'deploy-targets.md#vault-kv' },
+  'grant.server': { text: 'CertForge pushes each new version to this target itself.', learnMore: 'deploy-targets.md#runs-on' },
   'grant.serverLayout': {
     text: "Optional; without one, the target's own key names are used. Only PEM layouts work here.",
     learnMore: 'deploy-targets.md#vault-kv',
