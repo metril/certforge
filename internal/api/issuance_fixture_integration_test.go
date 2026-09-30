@@ -152,7 +152,12 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	svc.Auditor = aud
 	svc.Log = slog.Default()
 	deployJobs := newFakeDeployJobs()
-	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: targetsReg, Certs: certs, River: deployJobs, Log: slog.Default()}
+	// HTTP: no fixture test points a server-run target at a real URL under
+	// loopback restrictions, so this always allows it (same as every other
+	// direct-SQL test fixture's HTTPFactory, e.g. internal/deploy's own).
+	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: targetsReg, Certs: certs, Box: box,
+		HTTP:  func(context.Context) targets.HTTPFactory { return targets.HTTPFactory{AllowLoopback: true} },
+		River: deployJobs, Log: slog.Default()}
 	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Queries: q, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
 		Settings: settingsStore, Sections: sections, Vault: vaultProvider, Targets: targetsReg, Dispatcher: dispatcher}}
 	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, box: box, org: dbtest.Org(t, pool),

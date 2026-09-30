@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -15,7 +14,9 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/render"
@@ -67,6 +68,15 @@ type Dispatcher struct {
 	Q     *sqlcgen.Queries
 	Reg   *targets.Registry
 	Certs *certstore.Store
+	// Box opens a deploy target's secret_cfg (targetSecrets's own doc
+	// comment, internal/api/delivery.go): sealed with the same crypto.Box
+	// the target write path uses to seal it.
+	Box crypto.Box
+	// HTTP builds this deploy's outbound targets.HTTPFactory, reading the
+	// org's live "notifications" allowLoopbackUrls setting (cmd/certforge/serve.go) —
+	// a func, not a stored value, because Deploy must always see the
+	// current setting, never one cached at Dispatcher construction time.
+	HTTP  func(ctx context.Context) targets.HTTPFactory
 	River Inserter
 	Log   *slog.Logger
 }
@@ -198,8 +208,9 @@ func (d *Dispatcher) RegisterRiver(workers *river.Workers) []*river.PeriodicJob 
 // (a fresh OnVersion, or a redeploy, moved the grant on) is stale and does
 // nothing at all, successfully: overwriting Vault with an old certificate
 // and marking it "deployed" would be worse than leaving the newer job to
-// run (batch-5 review). Any other failure records a truncated last_error
-// on server_deployments and is returned so river retries with backoff.
+// run (batch-5 review). Any other failure records a redacted, truncated
+// last_error on server_deployments and is returned so river retries with
+// backoff.
 // DeployWorker.Work calls this for certforge_server_deploy; it is also
 // exported for a test to run one deploy attempt directly, without a live
 // river client.
@@ -216,28 +227,78 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 	}
 	target, ok := d.Reg.Get(row.TargetType)
 	if !ok {
-		return d.fail(ctx, grantID, versionID, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
+		return d.fail(ctx, grantID, versionID, nil, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
 	}
+	// A client-less grant may only ever be created on a target whose
+	// resolved side is server (API's validTarget/CreateServerGrant path);
+	// this is defense in depth against the registry and the grant's own
+	// target drifting apart (a type re-registered as agent-only), not the
+	// only guard.
+	if target.RunsOn() == targets.Agent {
+		return d.fail(ctx, grantID, versionID, nil, fmt.Errorf("deploy: %s runs on an agent, not the server", row.TargetName))
+	}
+
+	secrets, err := d.openTargetSecrets(ctx, row.TargetSecretCfg)
+	if err != nil {
+		return d.fail(ctx, grantID, versionID, nil, err)
+	}
+
 	needsKey, err := d.Reg.NeedsKey(row.TargetType, row.TargetConfig)
 	if err != nil {
-		return d.fail(ctx, grantID, versionID, err)
+		return d.fail(ctx, grantID, versionID, secrets, err)
 	}
 
 	m, err := d.Certs.Material(ctx, row.CertID, versionID, needsKey)
 	if err != nil {
-		return d.fail(ctx, grantID, versionID, err)
+		return d.fail(ctx, grantID, versionID, secrets, err)
 	}
 
 	files, err := d.renderFiles(ctx, row, m, needsKey)
 	if err != nil {
-		return d.fail(ctx, grantID, versionID, err)
+		return d.fail(ctx, grantID, versionID, secrets, err)
 	}
 
-	if _, err := target.Deploy(ctx, targets.Request{OrgSlug: row.OrgSlug, CertID: row.CertID.String(), CertName: row.CertificateName,
-		Files: files, Config: json.RawMessage(row.TargetConfig)}); err != nil {
-		return d.fail(ctx, grantID, versionID, err)
+	config, err := targets.Merge(row.TargetConfig, secrets)
+	if err != nil {
+		return d.fail(ctx, grantID, versionID, secrets, err)
+	}
+
+	req := targets.Request{
+		GrantID:     grantID.String(),
+		OrgSlug:     row.OrgSlug,
+		CertID:      row.CertID.String(),
+		CertName:    row.CertificateName,
+		Names:       append([]string{row.CertificateCommonName}, row.CertificateSans...),
+		Fingerprint: agentproto.CertFingerprint(m.LeafDER),
+		Material:    &m,
+		Files:       files,
+		Config:      config,
+		Side:        targets.Server,
+		HTTP:        d.HTTP(ctx),
+	}
+	if _, err := target.Deploy(ctx, req); err != nil {
+		return d.fail(ctx, grantID, versionID, secrets, err)
 	}
 	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID})
+}
+
+// openTargetSecrets opens sealed (a deploy target's secret_cfg; nil/empty
+// for a target with no stored secrets) into its decrypted secret map,
+// mirroring internal/api/delivery.go's targetSecrets — the established
+// pattern for a *_cfg column of this shape.
+func (d *Dispatcher) openTargetSecrets(ctx context.Context, sealed []byte) (map[string]string, error) {
+	if len(sealed) == 0 {
+		return map[string]string{}, nil
+	}
+	pt, err := d.Box.Open(ctx, sealed)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]string
+	if err := json.Unmarshal(pt, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // renderFiles renders a server grant's own certificate material: its
@@ -309,42 +370,26 @@ func toRenderFiles(dfiles []delivery.File, specs []delivery.OutputFile) []render
 	return out
 }
 
-// fail records a truncated last_error on server_deployments (scoped to
-// versionID, the version this attempt was for — MarkServerDeploymentFailed
-// is a no-op if a newer version has since taken over, same reasoning as
-// Deploy's own guard) and returns cause for river to retry. cause is
-// already redacted of any Vault secret by the time it reaches here: every
-// internal/vault.Client method a Target implementation (vault-kv) calls
-// runs its error through (*vault.Client).Redact before returning it, so
-// this only has to bound the length. A failure to write the record is only
-// logged: the job's own error (returned) is what actually drives the retry.
-func (d *Dispatcher) fail(ctx context.Context, grantID, versionID uuid.UUID, cause error) error {
-	msg := truncateUTF8(cause.Error(), maxLastError)
+// fail records a redacted, truncated last_error on server_deployments
+// (scoped to versionID, the version this attempt was for —
+// MarkServerDeploymentFailed is a no-op if a newer version has since taken
+// over, same reasoning as Deploy's own guard) and returns cause for river
+// to retry. secrets is this attempt's decrypted target secret map (nil
+// before it has been opened, or when opening it is itself what failed) —
+// targets.Redact strips every non-empty value of it, and each one's
+// base64 form, from cause's message before it is ever stored (Global
+// Constraints, Secrets row); a Target implementation may additionally run
+// its own redaction (vault-kv: (*vault.Client).Redact) before returning an
+// error, which only makes this a second pass. A failure to write the
+// record is only logged: the job's own error (returned) is what actually
+// drives the retry.
+func (d *Dispatcher) fail(ctx context.Context, grantID, versionID uuid.UUID, secrets map[string]string, cause error) error {
+	msg := targets.Redact(cause, secrets, maxLastError)
 	if err := d.Q.MarkServerDeploymentFailed(ctx, sqlcgen.MarkServerDeploymentFailedParams{
 		GrantID: grantID, VersionID: &versionID, LastError: msg}); err != nil {
 		d.log().Error("deploy: server deployment failure not recorded", "grant", grantID, "err", err)
 	}
 	return cause
-}
-
-// truncateUTF8 cuts s to at most maxBytes bytes, trimming back further if
-// the cut landed inside a multi-byte rune (an incomplete trailing sequence
-// makes Postgres reject the string outright, since text columns must be
-// valid UTF-8 — losing the whole failure record over a split emoji or
-// accented character would defeat the point of recording one at all).
-func truncateUTF8(s string, maxBytes int) string {
-	if len(s) <= maxBytes {
-		return s
-	}
-	s = s[:maxBytes]
-	for len(s) > 0 {
-		r, size := utf8.DecodeLastRuneInString(s)
-		if r != utf8.RuneError || size != 1 {
-			break
-		}
-		s = s[:len(s)-1]
-	}
-	return s
 }
 
 // uniq returns ids with duplicates removed, preserving first occurrence.

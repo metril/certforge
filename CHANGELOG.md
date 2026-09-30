@@ -158,6 +158,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Phase 5B final review fixes: creating or removing a server grant now also refreshes the deploy targets list and its "Used by" counts and Delete blocking, not just the grant list and certificates.
 - Phase 7A batch 1 review fixes: creating or updating a deploy target without an optional secret field no longer 422s (an omitted secret with no stored value is left absent, not treated the same as `__unchanged__`); the agent no longer treats a non-Traefik target as Traefik just because its config happens to decode as one; `TestAgentImports` and the product-registry tests now check the actual `cmd/certforge`/agent registry constructors instead of a copy built in the test.
 - Deploy targets take write-only secrets and a runs-on choice.
+- Server-run deploys go through the shared registry.
 
 ### Fixed
 - `authn.Limiter.Allow` read its rate/burst config before taking its lock, racing `Reconfigure`; the check now happens under the lock. Rate-limited login attempts are now audited as `session.login_failed` (`reason: rate_limited`) instead of leaving no record. The limiter's per-key map is now capped at 100k entries, evicting the least-recently-seen key once full, so distinct source addresses cannot grow it without bound.

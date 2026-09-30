@@ -165,7 +165,15 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// dispatcher.River is set right after riverClient exists below (same
 	// construct-then-wire order as keysSvc): RegisterRiver only needs the
 	// Dispatcher pointer, not River itself, to register DeployWorker.
-	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: targetsReg, Certs: certStore, Log: log}
+	// HTTP reads the live "notifications" allowLoopbackUrls setting on
+	// every deploy (never cached), same as notifySettings above and
+	// monitorAllowLoopback (internal/api/monitors.go); a settings read
+	// failure denies loopback rather than silently allowing it.
+	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: targetsReg, Certs: certStore, Box: box,
+		HTTP: func(ctx context.Context) targets.HTTPFactory {
+			st, err := notifySettings(ctx)
+			return targets.HTTPFactory{AllowLoopback: err == nil && st.AllowLoopbackURLs}
+		}, Log: log}
 	agentSettings, err := agents.NewSettingsSource(store, sections, cfg.BaseURL)
 	if err != nil {
 		return err
