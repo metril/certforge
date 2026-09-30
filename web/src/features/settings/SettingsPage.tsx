@@ -5,6 +5,7 @@ import { canAnywhere } from '@/lib/permissions';
 import { AccessPage } from './access/AccessPage';
 import { AgentsSection } from './agents/AgentsSection';
 import { AuthenticationSection } from './AuthenticationSection';
+import { BackupSection } from './BackupSection';
 import { EncryptionKeyCard } from './EncryptionKeyCard';
 import { IntegrationsSection } from './IntegrationsSection';
 import { IssuanceDefaultsSection } from './IssuanceDefaultsSection';
@@ -56,7 +57,7 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
           {section === 'backup' && (
             <>
               <EncryptionKeyCard />
-              <SchemaSection section="backup" />
+              <BackupSection />
             </>
           )}
         </section>

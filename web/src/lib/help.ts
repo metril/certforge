@@ -455,6 +455,27 @@ export const help = {
   'settings.notifications': { text: 'Applies to every channel: URL policy, expiry warning and failure threshold.', learnMore: 'configuration.md#notifications-section' },
   'settings.prometheus': { text: 'Serves /metrics for Prometheus behind a bearer token.', learnMore: 'configuration.md#prometheus-section' },
   'prometheus.scrape': { text: 'Scrape this URL with the token as a bearer credential. The token never goes in the URL.', learnMore: 'monitoring.md#metrics-reference' },
+  // Task 7 (Phase 6B): Settings → Backup and keys' status card, actions and schema.
+  'backup.status': {
+    text: 'Result of the last backup the server wrote on its schedule.',
+    learnMore: 'operations.md#backup-schedule',
+  },
+  'backup.now': {
+    text: 'Downloads an encrypted archive of the database. Restoring it needs the same KEK.',
+    learnMore: 'operations.md#backup',
+  },
+  'backup.needsEscrow': {
+    text: 'Confirm the KEK is stored safely first. Without it no backup can be restored.',
+    learnMore: 'operations.md#backup',
+  },
+  'backup.restore': {
+    text: 'Restore runs offline with certforge restore while the server is stopped.',
+    learnMore: 'operations.md#restore',
+  },
+  'settings.backup': {
+    text: 'Scheduled backups go to a directory on the server, keeping the newest files.',
+    learnMore: 'configuration.md#backup-section',
+  },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

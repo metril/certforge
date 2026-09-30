@@ -2,9 +2,15 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Action } from '@/lib/permissions';
+import { saveBlob } from '@/lib/download';
 import { server } from '@/test/server';
 import { authHandlers, makeCert, makeClient, meWith, org, org2, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
+
+// Task 7: "Settings: Back up now" runs the same runBackup helper as
+// BackupSection's own button — same precedent as audit.test.tsx/
+// backup.test.tsx (saveBlob clicks a real anchor jsdom can't navigate).
+vi.mock('@/lib/download', async (orig) => ({ ...(await orig<typeof import('@/lib/download')>()), saveBlob: vi.fn() }));
 
 // Every real role's read actions come as a fixed VIEWER block (see
 // lib/permissions.ts: any role granting certs:read also grants
@@ -360,6 +366,24 @@ it('integrations keywords find smtp and prometheus', async () => {
   await user.clear(input);
   await user.type(input, 'prometheus');
   expect(within(dialog).getByText('Settings: Integrations')).toBeInTheDocument();
+});
+
+// Task 7 (Phase 6B): the palette's own "Settings: Back up now" entry runs
+// the same `runBackup` helper as BackupSection's own "Back up now" button.
+it('back up now entry downloads', async () => {
+  server.use(
+    ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge' })),
+    http.post(url('/backup'), () =>
+      new HttpResponse(new Blob(['data']), { headers: { 'Content-Disposition': 'attachment; filename="certforge-20260101T000000Z.cfbak"' } }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'archive');
+  await user.click(await within(dialog).findByText('Settings: Back up now'));
+  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), 'certforge-20260101T000000Z.cfbak'));
 });
 
 it('hides Import certificates and Upload certificate under All orgs', async () => {

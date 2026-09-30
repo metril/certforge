@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { FileText, FolderInput, Plus, RotateCw, Server, ShieldCheck, Upload } from 'lucide-react';
+import { ApiError } from '@/api/errors';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { runBackup } from '@/features/settings/BackupSection';
 import { ALL_ORGS_SLUG, useMe, useOrgSlugOf } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
 import { renewToastHandlers } from '@/lib/renewToast';
@@ -40,6 +42,8 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   // org must not be able to renew or create in one they didn't choose.
   const org = allOrgs ? undefined : (me.orgs.find((o) => o.slug === params.org) ?? me.orgs[0]);
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const canSettingsWrite = can(me, 'settings:write');
   const renew = useRenewCertificates(org?.id ?? '');
   // Fix round 2 (Important #1): entries the caller can't act on or read are
   // left out, mirroring Sidebar's own per-item gating (audit) and
@@ -144,6 +148,25 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       go: () => void navigate({ to: '/settings/$section', params: { section: 'integrations' } }),
     },
     { label: 'Settings: Backup and keys', keywords: ['kek', 'backup'], go: () => void navigate({ to: '/settings/$section', params: { section: 'backup' } }) },
+    // Task 7 (Phase 6B): runs the same `runBackup` helper as the section's
+    // own "Back up now" button; a 409 (escrow not confirmed) is already
+    // toasted by runBackup, and additionally sends the caller to the
+    // section so they can confirm escrow.
+    ...(canSettingsWrite
+      ? [
+          {
+            label: 'Settings: Back up now',
+            keywords: ['backup', 'download', 'archive'],
+            go: () => {
+              void runBackup(qc).catch((e: unknown) => {
+                if (e instanceof ApiError && e.status === 409) {
+                  void navigate({ to: '/settings/$section', params: { section: 'backup' } });
+                }
+              });
+            },
+          },
+        ]
+      : []),
   ];
 
   return (
