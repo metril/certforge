@@ -135,7 +135,9 @@ test('server grant', async ({ page }) => {
   await page.getByRole('button', { name: 'Add target' }).click();
   const targetSheet = page.getByRole('dialog', { name: 'Add deploy target' });
   await targetSheet.getByLabel('Name', { exact: true }).fill('e2e-vault-kv');
-  await targetSheet.getByRole('radio', { name: 'Vault KV (runs on server)' }).click();
+  // The segment's accessible name is the type name plus its RunsOnChip
+  // label ("Vault KV" + "Server"), not the old parenthetical text.
+  await targetSheet.getByRole('radio', { name: /^Vault KV/ }).click();
   await targetSheet.getByRole('button', { name: 'Save' }).click();
   await expect(targetSheet).toBeHidden();
 

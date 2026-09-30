@@ -141,6 +141,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Shared deploy target registry with write-only secret handling.
 - Traefik and Vault KV targets come from the shared registry.
 - The deploy target sheet shows where each type runs, locks it after create and keeps stored secrets.
+- Playwright covers deploy target runs-on chips and the Vault KV and Traefik sheets.
 
 ### Changed
 - Deploy target rows show where each target runs and stack as cards on phones.

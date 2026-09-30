@@ -12,7 +12,7 @@ Single status file. Updated in every commit that completes a task.
 | 4 | Issuance breadth and formats | done | [design](design.md) | [4A](superpowers/plans/2026-09-27-phase-4a-issuance-breadth.md) · [4B](superpowers/plans/2026-09-27-phase-4b-certificates-web-ui.md) | 2026-09-27 | 2026-09-27 |
 | 5 | Vault and private CA | done | [design](design.md) | [5A](superpowers/plans/2026-09-27-phase-5a-vault-private-ca-backend.md) · [5B](superpowers/plans/2026-09-27-phase-5b-issuers-vault-web-ui.md) | 2026-09-27 | 2026-09-29 |
 | 6 | Ops | done | [design](design.md) | [6A](superpowers/plans/2026-09-29-phase-6a-ops-backend.md) · [6B](superpowers/plans/2026-09-29-phase-6b-alerts-backup-web-ui.md) | 2026-09-29 | 2026-09-29 |
-| 7 | Deploy targets | in progress | [design](design.md) | [7A](superpowers/plans/2026-09-29-phase-7a-deploy-targets-backend.md) · [7B](superpowers/plans/2026-09-29-phase-7b-deploy-targets-web-ui.md) | 2026-09-29 | – |
+| 7 | Deploy targets | done | [design](design.md) | [7A](superpowers/plans/2026-09-29-phase-7a-deploy-targets-backend.md) · [7B](superpowers/plans/2026-09-29-phase-7b-deploy-targets-web-ui.md) | 2026-09-29 | 2026-09-30 |
 
 ## Active phase tasks
 
@@ -348,15 +348,15 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 | 7 | `deploy.failed` from the dispatcher | done | 3446702 |
 | 8 | Regression e2e and docs close-out | done | 07cc457 |
 
-#### Phase 7B tasks
+#### Phase 7B tasks — done (finished 2026-09-30)
 
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Libraries, secret helper extraction, fixtures, help | done | 078b43b |
 | 2 | Target sheet | done | 2f7afb6 |
 | 3 | Targets list | done | 1e2f9fd |
-| 4 | Server grant gating and client grant picker | done | pending |
-| 5 | Playwright and docs close-out | pending | – |
+| 4 | Server grant gating and client grant picker | done | 200861b |
+| 5 | Playwright and docs close-out | done | pending |
 
 ## Decisions made during implementation
 
