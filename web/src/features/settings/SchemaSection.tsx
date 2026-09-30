@@ -42,11 +42,18 @@ export function SchemaSection({
   saveMode,
   mapSaveError,
   prepareBody,
+  onSaved,
 }: {
   section: SectionId;
   title?: string;
   help?: HelpKey;
-  actions?: (value: Record<string, unknown>) => ReactNode;
+  /** `state.dirty` (Task 6): true while there's an unsaved draft — Email's
+   * own Send test email uses it to disable itself and explain why (Review
+   * Focus, "Tests against unsaved drafts"), the same way Task 3's
+   * ChannelTest already does with its own `dirty` prop. Existing callers
+   * that only destructure `value` are unaffected: a function type is
+   * assignable to one with fewer declared parameters. */
+  actions?: (value: Record<string, unknown>, state: { dirty: boolean }) => ReactNode;
   /** Forwarded to `SchemaForm` (fix round 1, Task 10: Agent URL's extra
    * tooltip caveat). A function form (Task 6: Vault's token/roleId/secretId
    * hidden by the live `authMethod`) is re-evaluated against the section's
@@ -76,6 +83,9 @@ export function SchemaSection({
    * *other* method's field is present at all, even as the `__unchanged__`
    * sentinel, so IntegrationsSection drops it here before the request. */
   prepareBody?: (value: Record<string, unknown>) => Record<string, unknown>;
+  /** Runs after a successful save, direct or mutation (Task 6, for Task 7's
+   * later use) — after the draft and any save error are cleared. */
+  onSaved?: () => void;
 }) {
   const me = useMe();
   const qc = useQueryClient();
@@ -112,6 +122,7 @@ export function SchemaSection({
   }
   const schema = q.data.schema as RJSFSchema;
   const stored = q.data.storedSecrets;
+  const dirty = draft !== null;
   const value = draft ?? withSecretSentinels(schema, q.data.value ?? {}, stored);
   const resolvedUiSchemaOverrides = typeof uiSchemaOverrides === 'function' ? uiSchemaOverrides(value) : uiSchemaOverrides;
   // A schema with nothing writable at all (every property readOnly) has no
@@ -156,6 +167,7 @@ export function SchemaSection({
                   }
                   setDraft(null);
                   setSaveError(null);
+                  onSaved?.();
                 } catch (e) {
                   // The mutation's own toast (useSaveSettings isn't silent
                   // here) already surfaces the failure with the server's own
@@ -186,7 +198,7 @@ export function SchemaSection({
               visible-but-disabled behind its own PermissionTip.
               AuthenticationSection's Test connection keeps its pre-5B hidden
               behavior by returning null from its own `actions` callback. */}
-          {actions?.(value)}
+          {actions?.(value, { dirty })}
         </div>
       )}
     </div>

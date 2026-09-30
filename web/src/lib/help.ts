@@ -447,6 +447,14 @@ export const help = {
   'monitor.limit': { text: 'An organization can have at most 500 monitors.' },
   // Task 5 (Phase 6B): the events log.
   'event.severity': { text: 'Shows events at or above this severity.', learnMore: 'notifications.md#events' },
+  // Task 6 (Phase 6B): Settings → Integrations' Email, Notifications and
+  // Prometheus sections.
+  'settings.smtp': { text: 'Mail server used by email channels and the test email.', learnMore: 'configuration.md#smtp-section' },
+  'smtp.testSaved': { text: 'Sends one message using the saved settings. Save your changes first.', learnMore: 'notifications.md#smtp' },
+  'smtp.needsHost': { text: 'Save an SMTP host first.', learnMore: 'configuration.md#smtp-section' },
+  'settings.notifications': { text: 'Applies to every channel: URL policy, expiry warning and failure threshold.', learnMore: 'configuration.md#notifications-section' },
+  'settings.prometheus': { text: 'Serves /metrics for Prometheus behind a bearer token.', learnMore: 'configuration.md#prometheus-section' },
+  'prometheus.scrape': { text: 'Scrape this URL with the token as a bearer credential. The token never goes in the URL.', learnMore: 'monitoring.md#metrics-reference' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;

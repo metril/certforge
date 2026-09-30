@@ -15,7 +15,9 @@ import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
+import { PrometheusScrape } from './PrometheusScrape';
 import { SchemaSection } from './SchemaSection';
+import { SmtpTest } from './SmtpTest';
 
 // authMethod drives which secret field is actually usable: a token
 // exchanged for approle (or vice versa) is never sent, so the unused pair
@@ -152,6 +154,24 @@ function VaultTest({ value }: { value: Record<string, unknown> }) {
   );
 }
 
+// Task 6: the smtp section's own 422s (internal/notify/settings.go's
+// checkSMTPReentry and checkSMTPSettings) name `password` and `username`
+// literally, and both are always visible fields (unlike Vault's
+// authMethod-hidden token/secretId), so this needs no sibling-value lookup
+// — just routes each known message to its field before falling back to the
+// generic mapper.
+function mapSmtpSaveError(message: string, _value: Record<string, unknown>, schema: RJSFSchema): ErrorSchema | null {
+  // A computed property key, same as mapVaultSaveError above: TS treats a
+  // literal `{ password: ... }` cast to `ErrorSchema` as an "insufficient
+  // overlap" mistake, but a `{ [field]: ... }` one as matching its index
+  // signature.
+  let field: string | null = null;
+  if (/\bre-enter the password\b/i.test(message)) field = 'password';
+  else if (/\bauthentication requires tls\b/i.test(message)) field = 'username';
+  if (field) return { [field]: { __errors: [message] } } as ErrorSchema;
+  return fieldErrorFromMessage(schema, message);
+}
+
 export function IntegrationsSection() {
   const keysStatus = useQuery(keysStatusQuery);
   return (
@@ -172,6 +192,22 @@ export function IntegrationsSection() {
         prepareBody={pruneAuthMethod}
         mapSaveError={mapVaultSaveError}
         actions={(value) => <VaultTest value={value} />}
+      />
+      <SchemaSection
+        section="smtp"
+        title="Email (SMTP)"
+        help="settings.smtp"
+        saveMode="direct"
+        mapSaveError={mapSmtpSaveError}
+        actions={(value, { dirty }) => <SmtpTest value={value} dirty={dirty} />}
+      />
+      <SchemaSection section="notifications" title="Notifications" help="settings.notifications" />
+      <SchemaSection
+        section="prometheus"
+        title="Prometheus"
+        help="settings.prometheus"
+        saveMode="direct"
+        actions={(value) => <PrometheusScrape value={value} />}
       />
     </div>
   );

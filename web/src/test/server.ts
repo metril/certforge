@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { backupStatus, issuanceSettingsSchema, keysStatic, makeImportResult, makeRateLedger, url } from './fixtures';
+import { backupStatus, issuanceSettingsSchema, keysStatic, makeImportResult, makeRateLedger, notificationsSettings, prometheusSettings, smtpSettings, url } from './fixtures';
 
 // Adaptation (preflight C8): T4's AppShell test navigates to
 // `/o/acme/certificates` without mocking `/certificates` or `/cas`; once
@@ -90,4 +90,14 @@ export const server = setupServer(
   http.get(url('/orgs/:orgId/monitors'), () => HttpResponse.json([])),
   http.get(url('/orgs/:orgId/events'), () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get(url('/backup/status'), () => HttpResponse.json(backupStatus)),
+  // Phase 6B Task 6: Settings → Integrations' Email, Notifications and
+  // Prometheus sections (now unconditionally rendered alongside Vault), and
+  // PrometheusScrape's own general.baseUrl lookup — tests that merely
+  // navigate through Settings → Integrations don't mock these themselves.
+  http.get(url('/settings/smtp'), () => HttpResponse.json({ section: 'smtp', schema: {}, value: smtpSettings, stored: null, storedSecrets: [] })),
+  http.get(url('/settings/notifications'), () => HttpResponse.json({ section: 'notifications', schema: {}, value: notificationsSettings, stored: null, storedSecrets: [] })),
+  http.get(url('/settings/prometheus'), () => HttpResponse.json({ section: 'prometheus', schema: {}, value: prometheusSettings, stored: null, storedSecrets: [] })),
+  http.get(url('/settings/general'), () =>
+    HttpResponse.json({ section: 'general', schema: {}, value: { baseUrl: 'https://certforge.example.com' }, stored: null, storedSecrets: [] }),
+  ),
 );

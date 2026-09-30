@@ -345,6 +345,23 @@ it('settings integrations entry', async () => {
   await waitFor(() => expect(router.state.location.pathname).toBe('/settings/integrations'));
 });
 
+// Task 6 (Phase 6B): Settings → Integrations gained Email (SMTP),
+// Notifications and Prometheus — the same entry's keywords now also find it
+// by either of those.
+it('integrations keywords find smtp and prometheus', async () => {
+  server.use(...authHandlers({ authed: true }));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const dialog = await screen.findByRole('dialog');
+  const input = within(dialog).getByPlaceholderText('www.example.com');
+  await user.type(input, 'smtp');
+  expect(within(dialog).getByText('Settings: Integrations')).toBeInTheDocument();
+  await user.clear(input);
+  await user.type(input, 'prometheus');
+  expect(within(dialog).getByText('Settings: Integrations')).toBeInTheDocument();
+});
+
 it('hides Import certificates and Upload certificate under All orgs', async () => {
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
