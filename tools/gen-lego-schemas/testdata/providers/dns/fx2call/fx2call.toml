@@ -1,0 +1,11 @@
+Name = "Fx Two Call"
+Code = "fx2call"
+
+[Configuration]
+  [Configuration.Credentials]
+    FX_ROLE = "RAM role"
+    FX_ACCESS_KEY = "Access key"
+    FX_SECRET_KEY = "Secret key"
+    FX_REGION = "Region"
+  [Configuration.Additional]
+    FX_TTL = "TTL"

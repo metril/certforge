@@ -37,6 +37,9 @@ type property struct {
 	Secret      bool   `json:"secret"`
 	ServerPath  bool   `json:"serverPath,omitempty"`
 	Group       string `json:"x-group"`
+	// AliasOf names the canonical field this one duplicates (lego accepts
+	// both spellings); alias fields are never shown as inputs.
+	AliasOf string `json:"x-alias-of,omitempty"`
 }
 
 type schema struct {
@@ -52,6 +55,9 @@ type schema struct {
 	Unsupported       bool                `json:"unsupported,omitempty"`
 	UnsupportedReason string              `json:"unsupportedReason,omitempty"`
 	Properties        map[string]property `json:"properties"`
+	// AuthMethods lists the complete ways to authenticate; the UI offers a
+	// choice and the server requires one to be satisfied.
+	AuthMethods []authMethod `json:"x-auth-methods,omitempty"`
 }
 
 type providerFile struct {
@@ -239,7 +245,11 @@ func generate(legoDir, outDir, docsPath string) error {
 		if t.Code == "" || skipped[t.Code] {
 			continue
 		}
-		files = append(files, convert(t))
+		f, err := convert(filepath.Dir(p), t)
+		if err != nil {
+			return err
+		}
+		files = append(files, f)
 	}
 	// A misresolved lego module dir (for example an empty extracted module
 	// cache) would otherwise glob to zero files and silently wipe outDir.
@@ -274,7 +284,7 @@ func generate(legoDir, outDir, docsPath string) error {
 	return nil
 }
 
-func convert(t providerTOML) providerFile {
+func convert(pkgDir string, t providerTOML) (providerFile, error) {
 	props := map[string]property{}
 	for k, d := range t.Configuration.Credentials {
 		if !validKey.MatchString(k) {
@@ -294,12 +304,27 @@ func convert(t providerTOML) providerFile {
 	for k, d := range extraCredentialFields[t.Code] {
 		props[k] = property{Type: "string", Title: k, Description: d, Secret: isSecret(k), ServerPath: isServerPath(k), Group: "credentials"}
 	}
+	for k, p := range props {
+		if m := aliasRe.FindStringSubmatch(p.Description); m != nil {
+			p.AliasOf = m[1]
+			props[k] = p
+		}
+	}
 	s := schema{Schema: "https://json-schema.org/draft/2020-12/schema", Title: t.Name, Type: "object",
 		AdditionalProperties: false, Properties: props}
 	if reason, ok := unsupportedProviders[t.Code]; ok {
 		s.Unsupported, s.UnsupportedReason = true, reason
+	} else {
+		methods, err := deriveAuthMethods(pkgDir, t, props)
+		if err != nil {
+			return providerFile{}, err
+		}
+		if len(methods) == 0 {
+			return providerFile{}, fmt.Errorf("%s: no auth methods derived from NewDNSProvider and no authOverrides entry", t.Code)
+		}
+		s.AuthMethods = methods
 	}
-	return providerFile{Code: t.Code, Name: t.Name, URL: t.URL, Aliases: t.Aliases, Schema: s}
+	return providerFile{Code: t.Code, Name: t.Name, URL: t.URL, Aliases: t.Aliases, Schema: s}, nil
 }
 
 func renderDocs(files []providerFile) []byte {
@@ -336,6 +361,17 @@ func renderDocs(files []providerFile) []byte {
 		if f.Schema.Unsupported {
 			fmt.Fprintf(&b, "**Not supported yet:** %s\n\n", f.Schema.UnsupportedReason)
 		}
+		if len(f.Schema.AuthMethods) > 0 {
+			var ms []string
+			for _, m := range f.Schema.AuthMethods {
+				fs := "no fields"
+				if len(m.Fields) > 0 {
+					fs = "`" + strings.Join(m.Fields, "`, `") + "`"
+				}
+				ms = append(ms, fmt.Sprintf("**%s** (%s)", m.Label, fs))
+			}
+			fmt.Fprintf(&b, "Auth methods (one is required): %s.\n\n", strings.Join(ms, "; "))
+		}
 		b.WriteString("| Field | Group | Secret | Description |\n|---|---|---|---|\n")
 		keys := make([]string, 0, len(f.Schema.Properties))
 		for k := range f.Schema.Properties {
@@ -355,6 +391,9 @@ func renderDocs(files []providerFile) []byte {
 				secret = "yes"
 			}
 			desc := strings.ReplaceAll(p.Description, "|", `\|`)
+			if p.AliasOf != "" {
+				desc = fmt.Sprintf("Alias of `%s`", p.AliasOf)
+			}
 			fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", k, p.Group, secret, desc)
 		}
 		b.WriteString("\n")

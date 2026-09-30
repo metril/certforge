@@ -1,0 +1,6 @@
+Name = "Fx None"
+Code = "fxnone"
+
+[Configuration]
+  [Configuration.Credentials]
+    FXNONE_TOKEN = "Token"

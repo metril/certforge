@@ -1,0 +1,13 @@
+Name = "Fx Fallback"
+Code = "fxfallback"
+
+[Configuration]
+  [Configuration.Credentials]
+    FB_API_EMAIL = "Email"
+    FB_API_KEY = "API key"
+    FB_DNS_API_TOKEN = "DNS API token"
+    FB_ZONE_API_TOKEN = "Zone API token"
+    FXFALLBACK_EMAIL = "Alias to FB_API_EMAIL"
+    FXFALLBACK_API_KEY = "Alias to FB_API_KEY"
+    FXFALLBACK_DNS_API_TOKEN = "Alias to FB_DNS_API_TOKEN"
+    FXFALLBACK_ZONE_API_TOKEN = "Alias to FB_ZONE_API_TOKEN"

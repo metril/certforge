@@ -272,3 +272,129 @@ func TestGenerateIsDeterministic(t *testing.T) {
 		t.Fatal("output differs between runs")
 	}
 }
+
+func generateFixtures(t *testing.T) (string, string) {
+	t.Helper()
+	out := t.TempDir()
+	docs := filepath.Join(out, "dns-providers.md")
+	if err := generate("testdata", out, docs); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(docs)
+	return out, string(b)
+}
+
+func readGenerated(t *testing.T, out, code string) providerFile {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(out, code+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f providerFile
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func methodSummary(ms []authMethod) string {
+	var parts []string
+	for _, m := range ms {
+		parts = append(parts, m.ID+"="+strings.Join(m.Fields, ",")+"|"+strings.Join(m.Optional, ","))
+	}
+	return strings.Join(parts, " ; ")
+}
+
+func TestAuthMethodsOneCallPerMethod(t *testing.T) {
+	out, _ := generateFixtures(t)
+	f := readGenerated(t, out, "fx2call")
+	want := "role=FX_ROLE|FX_REGION ; access-key-secret-key=FX_ACCESS_KEY,FX_SECRET_KEY|FX_REGION"
+	if got := methodSummary(f.Schema.AuthMethods); got != want {
+		t.Errorf("methods = %q, want %q", got, want)
+	}
+	if got := f.Schema.AuthMethods[0].Label; got != "Role" {
+		t.Errorf("label = %q", got)
+	}
+	fake := readGenerated(t, out, "fakedns")
+	if got := methodSummary(fake.Schema.AuthMethods); got != "api-token=FAKE_API_TOKEN|FAKE_PASSWORD,FAKE_USERNAME" {
+		t.Errorf("fakedns methods = %q", got)
+	}
+}
+
+func TestAuthMethodsFallbackAndAliases(t *testing.T) {
+	out, md := generateFixtures(t)
+	f := readGenerated(t, out, "fxfallback")
+	// Canonical (non-alias) FB_* names; the zone token is satisfied by the
+	// DNS token in the second call, so it is optional, not required.
+	want := "api-email-api-key=FB_API_EMAIL,FB_API_KEY|FB_ZONE_API_TOKEN ; dns-api-token=FB_DNS_API_TOKEN|FB_ZONE_API_TOKEN"
+	if got := methodSummary(f.Schema.AuthMethods); got != want {
+		t.Errorf("methods = %q, want %q", got, want)
+	}
+	if f.Schema.AuthMethods[0].Label != "API email + API key" {
+		t.Errorf("label = %q", f.Schema.AuthMethods[0].Label)
+	}
+	if got := f.Schema.Properties["FXFALLBACK_EMAIL"].AliasOf; got != "FB_API_EMAIL" {
+		t.Errorf("alias-of = %q", got)
+	}
+	if f.Schema.Properties["FB_API_EMAIL"].AliasOf != "" {
+		t.Error("canonical field must not be an alias")
+	}
+	if !strings.Contains(md, "Auth methods") || !strings.Contains(md, "Alias of `FB_API_EMAIL`") {
+		t.Errorf("docs missing auth methods / alias rows:\n%s", md)
+	}
+}
+
+func TestGenerateFailsWithoutAuthMethods(t *testing.T) {
+	err := generate(filepath.Join("testdata", "fail"), t.TempDir(), "")
+	if err == nil || !strings.Contains(err.Error(), "fxnone") {
+		t.Fatalf("want fxnone auth method error, got %v", err)
+	}
+}
+
+func TestOverrideFieldsExistInSchemas(t *testing.T) {
+	for code, ms := range authOverrides {
+		f := readRealSchema(t, code)
+		if got := methodSummary(f.Schema.AuthMethods); got != methodSummary(ms) {
+			t.Errorf("%s: committed schema methods differ from override", code)
+		}
+		for _, m := range ms {
+			if m.Fields == nil {
+				t.Errorf("%s/%s: fields must be non-nil", code, m.ID)
+			}
+			for _, k := range append(append([]string{}, m.Fields...), m.Optional...) {
+				p, ok := f.Schema.Properties[k]
+				if !ok || p.ServerPath {
+					t.Errorf("%s/%s: %s missing or serverPath", code, m.ID, k)
+				}
+			}
+		}
+	}
+}
+
+func TestRealProviderAuthMethods(t *testing.T) {
+	cf := readRealSchema(t, "cloudflare")
+	if got := methodSummary(cf.Schema.AuthMethods); got != "email-api-key=CF_API_EMAIL,CF_API_KEY|CF_ZONE_API_TOKEN ; api-token=CF_DNS_API_TOKEN|CF_ZONE_API_TOKEN" {
+		t.Errorf("cloudflare methods = %q", got)
+	}
+	if cf.Schema.Properties["CLOUDFLARE_DNS_API_TOKEN"].AliasOf != "CF_DNS_API_TOKEN" {
+		t.Error("CLOUDFLARE_DNS_API_TOKEN must alias CF_DNS_API_TOKEN")
+	}
+	r53 := readRealSchema(t, "route53")
+	last := r53.Schema.AuthMethods[len(r53.Schema.AuthMethods)-1]
+	if last.ID != "ambient" || len(last.Fields) != 0 || last.Label != "Server environment credentials" {
+		t.Errorf("route53 ambient method = %+v", last)
+	}
+	al := readRealSchema(t, "alidns")
+	if len(al.Schema.AuthMethods) != 2 {
+		t.Errorf("alidns methods = %+v", al.Schema.AuthMethods)
+	}
+	for _, code := range []string{"transip", "oraclecloud"} {
+		for _, m := range readRealSchema(t, code).Schema.AuthMethods {
+			for _, k := range m.Fields {
+				if readRealSchema(t, code).Schema.Properties[k].ServerPath {
+					t.Errorf("%s: method field %s is serverPath", code, k)
+				}
+			}
+		}
+	}
+}
