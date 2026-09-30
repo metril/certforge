@@ -51,6 +51,27 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "access-key",
+        "label": "Access key",
+        "fields": [
+          "AWS_ACCESS_KEY_ID",
+          "AWS_SECRET_ACCESS_KEY"
+        ],
+        "optional": [
+          "DNS_ZONE"
+        ]
+      },
+      {
+        "id": "ambient",
+        "label": "Server environment credentials",
+        "fields": [],
+        "optional": [
+          "DNS_ZONE"
+        ]
+      }
+    ]
   }
 }

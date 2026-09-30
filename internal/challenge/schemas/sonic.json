@@ -57,6 +57,17 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-id-api-key",
+        "label": "User ID + API key",
+        "fields": [
+          "SONIC_USER_ID",
+          "SONIC_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

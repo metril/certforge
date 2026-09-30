@@ -41,7 +41,8 @@
         "title": "CLOUDFLARE_API_KEY",
         "description": "Alias to CF_API_KEY",
         "secret": true,
-        "x-group": "credentials"
+        "x-group": "credentials",
+        "x-alias-of": "CF_API_KEY"
       },
       "CLOUDFLARE_BASE_URL": {
         "type": "string",
@@ -55,14 +56,16 @@
         "title": "CLOUDFLARE_DNS_API_TOKEN",
         "description": "Alias to CF_DNS_API_TOKEN",
         "secret": true,
-        "x-group": "credentials"
+        "x-group": "credentials",
+        "x-alias-of": "CF_DNS_API_TOKEN"
       },
       "CLOUDFLARE_EMAIL": {
         "type": "string",
         "title": "CLOUDFLARE_EMAIL",
         "description": "Alias to CF_API_EMAIL",
         "secret": false,
-        "x-group": "credentials"
+        "x-group": "credentials",
+        "x-alias-of": "CF_API_EMAIL"
       },
       "CLOUDFLARE_HTTP_TIMEOUT": {
         "type": "string",
@@ -97,8 +100,32 @@
         "title": "CLOUDFLARE_ZONE_API_TOKEN",
         "description": "Alias to CF_ZONE_API_TOKEN",
         "secret": true,
-        "x-group": "credentials"
+        "x-group": "credentials",
+        "x-alias-of": "CF_ZONE_API_TOKEN"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "email-api-key",
+        "label": "Email + API key",
+        "fields": [
+          "CF_API_EMAIL",
+          "CF_API_KEY"
+        ],
+        "optional": [
+          "CF_ZONE_API_TOKEN"
+        ]
+      },
+      {
+        "id": "api-token",
+        "label": "API token",
+        "fields": [
+          "CF_DNS_API_TOKEN"
+        ],
+        "optional": [
+          "CF_ZONE_API_TOKEN"
+        ]
+      }
+    ]
   }
 }

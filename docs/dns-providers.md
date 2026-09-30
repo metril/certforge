@@ -16,6 +16,8 @@ transip and hyperone each read their credential from a file on lego's own host f
 
 Code: `acme-dns` (aliases: `acmedns`). Website: <https://github.com/joohoi/acme-dns>
 
+Auth methods (one is required): **API base** (`ACME_DNS_API_BASE`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `ACME_DNS_API_BASE` | credentials | no | The ACME-DNS API address |
@@ -26,6 +28,8 @@ Code: `acme-dns` (aliases: `acmedns`). Website: <https://github.com/joohoi/acme-
 ## Active24
 
 Code: `active24`. Website: <https://www.active24.cz>
+
+Auth methods (one is required): **API key + Secret** (`ACTIVE24_API_KEY`, `ACTIVE24_SECRET`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -39,6 +43,8 @@ Code: `active24`. Website: <https://www.active24.cz>
 ## Alibaba Cloud DNS
 
 Code: `alidns`. Website: <https://www.alibabacloud.com/product/dns>
+
+Auth methods (one is required): **RAM role** (`ALICLOUD_RAM_ROLE`); **Access key + Secret key** (`ALICLOUD_ACCESS_KEY`, `ALICLOUD_SECRET_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -55,6 +61,8 @@ Code: `alidns`. Website: <https://www.alibabacloud.com/product/dns>
 
 Code: `allinkl`. Website: <https://all-inkl.com>
 
+Auth methods (one is required): **Login + Password** (`ALL_INKL_LOGIN`, `ALL_INKL_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `ALL_INKL_LOGIN` | credentials | no | KAS login |
@@ -66,6 +74,8 @@ Code: `allinkl`. Website: <https://all-inkl.com>
 ## ArvanCloud
 
 Code: `arvancloud`. Website: <https://arvancloud.ir>
+
+Auth methods (one is required): **API key** (`ARVANCLOUD_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -79,6 +89,8 @@ Code: `arvancloud`. Website: <https://arvancloud.ir>
 
 Code: `auroradns`. Website: <https://www.pcextreme.com/dns-health-checks>
 
+Auth methods (one is required): **API key + Secret** (`AURORA_API_KEY`, `AURORA_SECRET`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `AURORA_API_KEY` | credentials | yes | API key or username to used |
@@ -91,6 +103,8 @@ Code: `auroradns`. Website: <https://www.pcextreme.com/dns-health-checks>
 ## Autodns
 
 Code: `autodns`. Website: <https://www.internetx.com/domains/autodns/>
+
+Auth methods (one is required): **User + Password** (`AUTODNS_API_USER`, `AUTODNS_API_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -107,6 +121,8 @@ Code: `autodns`. Website: <https://www.internetx.com/domains/autodns/>
 
 Code: `axelname`. Website: <https://axelname.ru>
 
+Auth methods (one is required): **Nickname + Token** (`AXELNAME_NICKNAME`, `AXELNAME_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `AXELNAME_NICKNAME` | credentials | no | Account nickname |
@@ -120,6 +136,8 @@ Code: `axelname`. Website: <https://axelname.ru>
 
 Code: `azion`. Website: <https://www.azion.com/en/products/edge-dns/>
 
+Auth methods (one is required): **Personal token** (`AZION_PERSONAL_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `AZION_PERSONAL_TOKEN` | credentials | yes | Your Azion personal token. |
@@ -132,6 +150,8 @@ Code: `azion`. Website: <https://www.azion.com/en/products/edge-dns/>
 ## Azure (deprecated)
 
 Code: `azure`. Website: <https://azure.microsoft.com/services/dns/>
+
+Auth methods (one is required): **Client secret** (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`); **Server environment credentials** (no fields).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -151,6 +171,8 @@ Code: `azure`. Website: <https://azure.microsoft.com/services/dns/>
 ## Azure DNS
 
 Code: `azuredns`. Website: <https://azure.microsoft.com/services/dns/>
+
+Auth methods (one is required): **Client secret** (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`); **Server environment credentials** (no fields).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -174,6 +196,8 @@ Code: `azuredns`. Website: <https://azure.microsoft.com/services/dns/>
 
 Code: `baiducloud`. Website: <https://cloud.baidu.com>
 
+Auth methods (one is required): **Access key ID + Secret access key** (`BAIDUCLOUD_ACCESS_KEY_ID`, `BAIDUCLOUD_SECRET_ACCESS_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `BAIDUCLOUD_ACCESS_KEY_ID` | credentials | no | Access key |
@@ -186,6 +210,8 @@ Code: `baiducloud`. Website: <https://cloud.baidu.com>
 
 Code: `bindman`. Website: <https://github.com/labbsr0x/bindman-dns-webhook>
 
+Auth methods (one is required): **Manager address** (`BINDMAN_MANAGER_ADDRESS`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `BINDMAN_MANAGER_ADDRESS` | credentials | no | The server URL, should have scheme, hostname, and port (if required) of the Bindman-DNS Manager server |
@@ -196,6 +222,8 @@ Code: `bindman`. Website: <https://github.com/labbsr0x/bindman-dns-webhook>
 ## Bluecat
 
 Code: `bluecat`. Website: <https://www.bluecatnetworks.com>
+
+Auth methods (one is required): **Server URL + User name + Password + Config name + DNS view** (`BLUECAT_SERVER_URL`, `BLUECAT_USER_NAME`, `BLUECAT_PASSWORD`, `BLUECAT_CONFIG_NAME`, `BLUECAT_DNS_VIEW`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -214,6 +242,8 @@ Code: `bluecat`. Website: <https://www.bluecatnetworks.com>
 
 Code: `bookmyname`. Website: <https://www.bookmyname.com/>
 
+Auth methods (one is required): **Username + Password** (`BOOKMYNAME_USERNAME`, `BOOKMYNAME_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `BOOKMYNAME_PASSWORD` | credentials | yes | Password |
@@ -226,6 +256,8 @@ Code: `bookmyname`. Website: <https://www.bookmyname.com/>
 ## Brandit (deprecated)
 
 Code: `brandit`. Website: <https://www.brandit.com/>
+
+Auth methods (one is required): **Key + Username** (`BRANDIT_API_KEY`, `BRANDIT_API_USERNAME`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -240,6 +272,8 @@ Code: `brandit`. Website: <https://www.brandit.com/>
 
 Code: `bunny`. Website: <https://bunny.net>
 
+Auth methods (one is required): **API key** (`BUNNY_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `BUNNY_API_KEY` | credentials | yes | API key |
@@ -250,6 +284,8 @@ Code: `bunny`. Website: <https://bunny.net>
 ## Checkdomain
 
 Code: `checkdomain`. Website: <https://checkdomain.de/>
+
+Auth methods (one is required): **Token** (`CHECKDOMAIN_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -264,6 +300,8 @@ Code: `checkdomain`. Website: <https://checkdomain.de/>
 
 Code: `civo`. Website: <https://civo.com>
 
+Auth methods (one is required): **Token** (`CIVO_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `CIVO_TOKEN` | credentials | yes | Authentication token |
@@ -274,6 +312,8 @@ Code: `civo`. Website: <https://civo.com>
 ## CloudDNS
 
 Code: `clouddns`. Website: <https://vshosting.eu/>
+
+Auth methods (one is required): **Client ID + Email + Password** (`CLOUDDNS_CLIENT_ID`, `CLOUDDNS_EMAIL`, `CLOUDDNS_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -289,16 +329,18 @@ Code: `clouddns`. Website: <https://vshosting.eu/>
 
 Code: `cloudflare`. Website: <https://www.cloudflare.com/dns/>
 
+Auth methods (one is required): **Email + API key** (`CF_API_EMAIL`, `CF_API_KEY`); **API token** (`CF_DNS_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `CF_API_EMAIL` | credentials | no | Account email |
 | `CF_API_KEY` | credentials | yes | API key |
 | `CF_DNS_API_TOKEN` | credentials | yes | API token with DNS:Edit permission (since v3.1.0) |
 | `CF_ZONE_API_TOKEN` | credentials | yes | API token with Zone:Read permission (since v3.1.0) |
-| `CLOUDFLARE_API_KEY` | credentials | yes | Alias to CF_API_KEY |
-| `CLOUDFLARE_DNS_API_TOKEN` | credentials | yes | Alias to CF_DNS_API_TOKEN |
-| `CLOUDFLARE_EMAIL` | credentials | no | Alias to CF_API_EMAIL |
-| `CLOUDFLARE_ZONE_API_TOKEN` | credentials | yes | Alias to CF_ZONE_API_TOKEN |
+| `CLOUDFLARE_API_KEY` | credentials | yes | Alias of `CF_API_KEY` |
+| `CLOUDFLARE_DNS_API_TOKEN` | credentials | yes | Alias of `CF_DNS_API_TOKEN` |
+| `CLOUDFLARE_EMAIL` | credentials | no | Alias of `CF_API_EMAIL` |
+| `CLOUDFLARE_ZONE_API_TOKEN` | credentials | yes | Alias of `CF_ZONE_API_TOKEN` |
 | `CLOUDFLARE_BASE_URL` | additional | no | API base URL (Default: https://api.cloudflare.com/client/v4) |
 | `CLOUDFLARE_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: ) |
 | `CLOUDFLARE_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
@@ -308,6 +350,8 @@ Code: `cloudflare`. Website: <https://www.cloudflare.com/dns/>
 ## ClouDNS
 
 Code: `cloudns`. Website: <https://www.cloudns.net>
+
+Auth methods (one is required): **Password** (`CLOUDNS_AUTH_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -322,6 +366,8 @@ Code: `cloudns`. Website: <https://www.cloudns.net>
 ## Cloud.ru
 
 Code: `cloudru`. Website: <https://cloud.ru>
+
+Auth methods (one is required): **Service instance ID + Key ID + Secret** (`CLOUDRU_SERVICE_INSTANCE_ID`, `CLOUDRU_KEY_ID`, `CLOUDRU_SECRET`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -338,6 +384,8 @@ Code: `cloudru`. Website: <https://cloud.ru>
 
 Code: `cloudxns`. Website: <https://github.com/go-acme/lego/issues/2323>
 
+Auth methods (one is required): **API key + secret key** (`CLOUDXNS_API_KEY`, `CLOUDXNS_SECRET_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `CLOUDXNS_API_KEY` | credentials | yes | The API key |
@@ -350,6 +398,8 @@ Code: `cloudxns`. Website: <https://github.com/go-acme/lego/issues/2323>
 ## ConoHa v2
 
 Code: `conoha`. Website: <https://www.conoha.jp/>
+
+Auth methods (one is required): **Tenant ID + API username + API password** (`CONOHA_TENANT_ID`, `CONOHA_API_USERNAME`, `CONOHA_API_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -366,6 +416,8 @@ Code: `conoha`. Website: <https://www.conoha.jp/>
 
 Code: `conohav3`. Website: <https://www.conoha.jp/>
 
+Auth methods (one is required): **Tenant ID + API user ID + API password** (`CONOHAV3_TENANT_ID`, `CONOHAV3_API_USER_ID`, `CONOHAV3_API_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `CONOHAV3_API_PASSWORD` | credentials | yes | The API password |
@@ -381,6 +433,8 @@ Code: `conohav3`. Website: <https://www.conoha.jp/>
 
 Code: `constellix`. Website: <https://constellix.com>
 
+Auth methods (one is required): **API key + Secret key** (`CONSTELLIX_API_KEY`, `CONSTELLIX_SECRET_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `CONSTELLIX_API_KEY` | credentials | yes | User API key |
@@ -393,6 +447,8 @@ Code: `constellix`. Website: <https://constellix.com>
 ## Core-Networks
 
 Code: `corenetworks`. Website: <https://www.core-networks.de/>
+
+Auth methods (one is required): **Login + Password** (`CORENETWORKS_LOGIN`, `CORENETWORKS_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -407,6 +463,8 @@ Code: `corenetworks`. Website: <https://www.core-networks.de/>
 ## CPanel/WHM
 
 Code: `cpanel`. Website: <https://cpanel.net/>
+
+Auth methods (one is required): **Username + Token + Base URL** (`CPANEL_USERNAME`, `CPANEL_TOKEN`, `CPANEL_BASE_URL`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -423,6 +481,8 @@ Code: `cpanel`. Website: <https://cpanel.net/>
 
 Code: `derak`. Website: <https://derak.cloud/>
 
+Auth methods (one is required): **API key** (`DERAK_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DERAK_API_KEY` | credentials | yes | The API key |
@@ -436,6 +496,8 @@ Code: `derak`. Website: <https://derak.cloud/>
 
 Code: `desec`. Website: <https://desec.io>
 
+Auth methods (one is required): **Token** (`DESEC_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DESEC_TOKEN` | credentials | yes | Domain token |
@@ -447,6 +509,8 @@ Code: `desec`. Website: <https://desec.io>
 ## Designate DNSaaS for Openstack
 
 Code: `designate`. Website: <https://docs.openstack.org/designate/latest/>
+
+Auth methods (one is required): **Username + password** (`OS_AUTH_URL`, `OS_USERNAME`, `OS_PASSWORD`); **Application credential** (`OS_AUTH_URL`, `OS_APPLICATION_CREDENTIAL_ID`, `OS_APPLICATION_CREDENTIAL_SECRET`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -470,6 +534,8 @@ Code: `designate`. Website: <https://docs.openstack.org/designate/latest/>
 
 Code: `digitalocean`. Website: <https://www.digitalocean.com/docs/networking/dns/>
 
+Auth methods (one is required): **Auth token** (`DO_AUTH_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DO_AUTH_TOKEN` | credentials | yes | Authentication token |
@@ -482,6 +548,8 @@ Code: `digitalocean`. Website: <https://www.digitalocean.com/docs/networking/dns
 ## DirectAdmin
 
 Code: `directadmin`. Website: <https://www.directadmin.com>
+
+Auth methods (one is required): **API URL + Username + Password** (`DIRECTADMIN_API_URL`, `DIRECTADMIN_USERNAME`, `DIRECTADMIN_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -498,6 +566,8 @@ Code: `directadmin`. Website: <https://www.directadmin.com>
 
 Code: `dnshomede`. Website: <https://www.dnshome.de>
 
+Auth methods (one is required): **Credentials** (`DNSHOMEDE_CREDENTIALS`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DNSHOMEDE_CREDENTIALS` | credentials | yes | Comma-separated list of domain:password credential pairs |
@@ -510,6 +580,8 @@ Code: `dnshomede`. Website: <https://www.dnshome.de>
 
 Code: `dnsimple`. Website: <https://dnsimple.com/>
 
+Auth methods (one is required): **OAuth token** (`DNSIMPLE_OAUTH_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DNSIMPLE_OAUTH_TOKEN` | credentials | yes | OAuth token |
@@ -521,6 +593,8 @@ Code: `dnsimple`. Website: <https://dnsimple.com/>
 ## DNS Made Easy
 
 Code: `dnsmadeeasy`. Website: <https://dnsmadeeasy.com/>
+
+Auth methods (one is required): **Key + Secret** (`DNSMADEEASY_API_KEY`, `DNSMADEEASY_API_SECRET`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -536,6 +610,8 @@ Code: `dnsmadeeasy`. Website: <https://dnsmadeeasy.com/>
 
 Code: `dnspod`. Website: <https://www.dnspod.com/>
 
+Auth methods (one is required): **API key** (`DNSPOD_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DNSPOD_API_KEY` | credentials | yes | The user token |
@@ -547,6 +623,8 @@ Code: `dnspod`. Website: <https://www.dnspod.com/>
 ## Domain Offensive (do.de)
 
 Code: `dode`. Website: <https://www.do.de/>
+
+Auth methods (one is required): **Token** (`DODE_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -561,6 +639,8 @@ Code: `dode`. Website: <https://www.do.de/>
 
 Code: `domeneshop` (aliases: `domainnameshop`). Website: <https://domene.shop>
 
+Auth methods (one is required): **Token + Secret** (`DOMENESHOP_API_TOKEN`, `DOMENESHOP_API_SECRET`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DOMENESHOP_API_SECRET` | credentials | yes | API secret |
@@ -573,6 +653,8 @@ Code: `domeneshop` (aliases: `domainnameshop`). Website: <https://domene.shop>
 
 Code: `dreamhost`. Website: <https://www.dreamhost.com>
 
+Auth methods (one is required): **API key** (`DREAMHOST_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DREAMHOST_API_KEY` | credentials | yes | The API key |
@@ -583,6 +665,8 @@ Code: `dreamhost`. Website: <https://www.dreamhost.com>
 ## Duck DNS
 
 Code: `duckdns`. Website: <https://www.duckdns.org/>
+
+Auth methods (one is required): **Token** (`DUCKDNS_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -596,6 +680,8 @@ Code: `duckdns`. Website: <https://www.duckdns.org/>
 ## Dyn
 
 Code: `dyn`. Website: <https://dyn.com/>
+
+Auth methods (one is required): **Customer name + User name + Password** (`DYN_CUSTOMER_NAME`, `DYN_USER_NAME`, `DYN_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -611,6 +697,8 @@ Code: `dyn`. Website: <https://dyn.com/>
 
 Code: `dyndnsfree`. Website: <https://www.dyndnsfree.de>
 
+Auth methods (one is required): **Username + Password** (`DYNDNSFREE_USERNAME`, `DYNDNSFREE_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DYNDNSFREE_PASSWORD` | credentials | yes | Password |
@@ -623,6 +711,8 @@ Code: `dyndnsfree`. Website: <https://www.dyndnsfree.de>
 
 Code: `dynu`. Website: <https://www.dynu.com/>
 
+Auth methods (one is required): **API key** (`DYNU_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `DYNU_API_KEY` | credentials | yes | API key |
@@ -634,6 +724,8 @@ Code: `dynu`. Website: <https://www.dynu.com/>
 ## EasyDNS
 
 Code: `easydns`. Website: <https://easydns.com/>
+
+Auth methods (one is required): **Token + Key** (`EASYDNS_TOKEN`, `EASYDNS_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -649,6 +741,8 @@ Code: `easydns`. Website: <https://easydns.com/>
 ## Akamai EdgeDNS
 
 Code: `edgedns` (aliases: `fastdns`). Website: <https://www.akamai.com/us/en/products/security/edge-dns.jsp>
+
+Auth methods (one is required): **EdgeGrid credentials** (`AKAMAI_HOST`, `AKAMAI_CLIENT_TOKEN`, `AKAMAI_CLIENT_SECRET`, `AKAMAI_ACCESS_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -667,6 +761,8 @@ Code: `edgedns` (aliases: `fastdns`). Website: <https://www.akamai.com/us/en/pro
 
 Code: `efficientip`. Website: <https://efficientip.com/>
 
+Auth methods (one is required): **Username + Password + Hostname + DNS name** (`EFFICIENTIP_USERNAME`, `EFFICIENTIP_PASSWORD`, `EFFICIENTIP_HOSTNAME`, `EFFICIENTIP_DNS_NAME`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `EFFICIENTIP_DNS_NAME` | credentials | no | DNS name (ex: dns.smart) |
@@ -683,6 +779,8 @@ Code: `efficientip`. Website: <https://efficientip.com/>
 
 Code: `epik`. Website: <https://www.epik.com/>
 
+Auth methods (one is required): **Signature** (`EPIK_SIGNATURE`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `EPIK_SIGNATURE` | credentials | yes | Epik API signature (https://registrar.epik.com/account/api-settings/) |
@@ -694,6 +792,8 @@ Code: `epik`. Website: <https://www.epik.com/>
 ## Exoscale
 
 Code: `exoscale`. Website: <https://www.exoscale.com/>
+
+Auth methods (one is required): **Key + Secret** (`EXOSCALE_API_KEY`, `EXOSCALE_API_SECRET`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -709,6 +809,8 @@ Code: `exoscale`. Website: <https://www.exoscale.com/>
 
 Code: `f5xc`. Website: <https://www.f5.com/products/distributed-cloud-services>
 
+Auth methods (one is required): **API token + Tenant name + Group name** (`F5XC_API_TOKEN`, `F5XC_TENANT_NAME`, `F5XC_GROUP_NAME`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `F5XC_API_TOKEN` | credentials | yes | API token |
@@ -723,6 +825,8 @@ Code: `f5xc`. Website: <https://www.f5.com/products/distributed-cloud-services>
 
 Code: `freemyip`. Website: <https://freemyip.com/>
 
+Auth methods (one is required): **Token** (`FREEMYIP_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `FREEMYIP_TOKEN` | credentials | yes | Account token |
@@ -736,6 +840,8 @@ Code: `freemyip`. Website: <https://freemyip.com/>
 
 Code: `gandi`. Website: <https://www.gandi.net>
 
+Auth methods (one is required): **API key** (`GANDI_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `GANDI_API_KEY` | credentials | yes | API key |
@@ -747,6 +853,8 @@ Code: `gandi`. Website: <https://www.gandi.net>
 ## Gandi Live DNS (v5)
 
 Code: `gandiv5`. Website: <https://www.gandi.net>
+
+Auth methods (one is required): **Personal access token** (`GANDIV5_PERSONAL_ACCESS_TOKEN`); **API key (deprecated)** (`GANDIV5_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -760,6 +868,8 @@ Code: `gandiv5`. Website: <https://www.gandi.net>
 ## Google Cloud
 
 Code: `gcloud`. Website: <https://cloud.google.com>
+
+Auth methods (one is required): **Service account key** (`GCE_SERVICE_ACCOUNT`); **Server environment credentials** (no fields).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -777,6 +887,8 @@ Code: `gcloud`. Website: <https://cloud.google.com>
 
 Code: `gcore`. Website: <https://gcore.com/dns/>
 
+Auth methods (one is required): **Permanent API token** (`GCORE_PERMANENT_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `GCORE_PERMANENT_API_TOKEN` | credentials | yes | Permanent API token (https://gcore.com/blog/permanent-api-token-explained/) |
@@ -788,6 +900,8 @@ Code: `gcore`. Website: <https://gcore.com/dns/>
 ## Glesys
 
 Code: `glesys`. Website: <https://glesys.com/>
+
+Auth methods (one is required): **User + Key** (`GLESYS_API_USER`, `GLESYS_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -802,6 +916,8 @@ Code: `glesys`. Website: <https://glesys.com/>
 
 Code: `godaddy`. Website: <https://godaddy.com>
 
+Auth methods (one is required): **Key + Secret** (`GODADDY_API_KEY`, `GODADDY_API_SECRET`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `GODADDY_API_KEY` | credentials | yes | API key |
@@ -815,6 +931,8 @@ Code: `godaddy`. Website: <https://godaddy.com>
 
 Code: `googledomains`. Website: <https://github.com/go-acme/lego/issues/2553>
 
+Auth methods (one is required): **Access token** (`GOOGLE_DOMAINS_ACCESS_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `GOOGLE_DOMAINS_ACCESS_TOKEN` | credentials | yes | Access token |
@@ -825,6 +943,8 @@ Code: `googledomains`. Website: <https://github.com/go-acme/lego/issues/2553>
 ## Hetzner
 
 Code: `hetzner`. Website: <https://hetzner.com>
+
+Auth methods (one is required): **API key** (`HETZNER_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -837,6 +957,8 @@ Code: `hetzner`. Website: <https://hetzner.com>
 ## Hosting.de
 
 Code: `hostingde`. Website: <https://www.hosting.de/>
+
+Auth methods (one is required): **API key** (`HOSTINGDE_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -851,6 +973,8 @@ Code: `hostingde`. Website: <https://www.hosting.de/>
 
 Code: `hosttech`. Website: <https://www.hosttech.eu/>
 
+Auth methods (one is required): **API key** (`HOSTTECH_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `HOSTTECH_API_KEY` | credentials | yes | API login |
@@ -864,6 +988,8 @@ Code: `hosttech`. Website: <https://www.hosttech.eu/>
 
 Code: `httpnet`. Website: <https://www.http.net/>
 
+Auth methods (one is required): **API key** (`HTTPNET_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `HTTPNET_API_KEY` | credentials | yes | API key |
@@ -876,6 +1002,8 @@ Code: `httpnet`. Website: <https://www.http.net/>
 ## HTTP request
 
 Code: `httpreq`. Website: </lego/dns/httpreq/>
+
+Auth methods (one is required): **Endpoint** (`HTTPREQ_ENDPOINT`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -891,6 +1019,8 @@ Code: `httpreq`. Website: </lego/dns/httpreq/>
 
 Code: `huaweicloud`. Website: <https://huaweicloud.com>
 
+Auth methods (one is required): **Access key ID + Secret access key + Region** (`HUAWEICLOUD_ACCESS_KEY_ID`, `HUAWEICLOUD_SECRET_ACCESS_KEY`, `HUAWEICLOUD_REGION`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `HUAWEICLOUD_ACCESS_KEY_ID` | credentials | no | Access key ID |
@@ -905,6 +1035,8 @@ Code: `huaweicloud`. Website: <https://huaweicloud.com>
 
 Code: `hurricane`. Website: <https://dns.he.net/>
 
+Auth methods (one is required): **Tokens** (`HURRICANE_TOKENS`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `HURRICANE_TOKENS` | credentials | yes | TXT record names and tokens |
@@ -916,6 +1048,8 @@ Code: `hurricane`. Website: <https://dns.he.net/>
 ## HyperOne
 
 Code: `hyperone`. Website: <https://www.hyperone.com>
+
+Auth methods (one is required): **Passport** (`HYPERONE_PASSPORT`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -932,6 +1066,8 @@ Code: `hyperone`. Website: <https://www.hyperone.com>
 
 Code: `ibmcloud`. Website: <https://www.ibm.com/cloud/>
 
+Auth methods (one is required): **Username + API key** (`SOFTLAYER_USERNAME`, `SOFTLAYER_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SOFTLAYER_API_KEY` | credentials | yes | Classic Infrastructure API key |
@@ -944,6 +1080,8 @@ Code: `ibmcloud`. Website: <https://www.ibm.com/cloud/>
 ## Internet Initiative Japan
 
 Code: `iij`. Website: <https://www.iij.ad.jp/en/>
+
+Auth methods (one is required): **API access key + API secret key + Do service code** (`IIJ_API_ACCESS_KEY`, `IIJ_API_SECRET_KEY`, `IIJ_DO_SERVICE_CODE`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -958,6 +1096,8 @@ Code: `iij`. Website: <https://www.iij.ad.jp/en/>
 
 Code: `iijdpf`. Website: <https://www.iij.ad.jp/en/biz/dns-pfm/>
 
+Auth methods (one is required): **API token + DPM service code** (`IIJ_DPF_API_TOKEN`, `IIJ_DPF_DPM_SERVICE_CODE`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `IIJ_DPF_API_TOKEN` | credentials | yes | API token |
@@ -970,6 +1110,8 @@ Code: `iijdpf`. Website: <https://www.iij.ad.jp/en/biz/dns-pfm/>
 ## Infoblox
 
 Code: `infoblox`. Website: <https://www.infoblox.com/>
+
+Auth methods (one is required): **Host + Username + Password** (`INFOBLOX_HOST`, `INFOBLOX_USERNAME`, `INFOBLOX_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -990,6 +1132,8 @@ Code: `infoblox`. Website: <https://www.infoblox.com/>
 
 Code: `infomaniak`. Website: <https://www.infomaniak.com/>
 
+Auth methods (one is required): **Access token** (`INFOMANIAK_ACCESS_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `INFOMANIAK_ACCESS_TOKEN` | credentials | yes | Access token |
@@ -1003,6 +1147,8 @@ Code: `infomaniak`. Website: <https://www.infomaniak.com/>
 
 Code: `internetbs`. Website: <https://internetbs.net>
 
+Auth methods (one is required): **API key + Password** (`INTERNET_BS_API_KEY`, `INTERNET_BS_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `INTERNET_BS_API_KEY` | credentials | yes | API key |
@@ -1015,6 +1161,8 @@ Code: `internetbs`. Website: <https://internetbs.net>
 ## INWX
 
 Code: `inwx`. Website: <https://www.inwx.de/en>
+
+Auth methods (one is required): **Username + Password** (`INWX_USERNAME`, `INWX_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1030,6 +1178,8 @@ Code: `inwx`. Website: <https://www.inwx.de/en>
 
 Code: `ionos`. Website: <https://ionos.com>
 
+Auth methods (one is required): **API key** (`IONOS_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `IONOS_API_KEY` | credentials | yes | API key `<prefix>.<secret>` https://developer.hosting.ionos.com/docs/getstarted |
@@ -1042,6 +1192,8 @@ Code: `ionos`. Website: <https://ionos.com>
 
 Code: `ipv64`. Website: <https://ipv64.net/>
 
+Auth methods (one is required): **API key** (`IPV64_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `IPV64_API_KEY` | credentials | yes | Account API Key |
@@ -1052,6 +1204,8 @@ Code: `ipv64`. Website: <https://ipv64.net/>
 ## iwantmyname
 
 Code: `iwantmyname`. Website: <https://iwantmyname.com>
+
+Auth methods (one is required): **Username + Password** (`IWANTMYNAME_USERNAME`, `IWANTMYNAME_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1065,6 +1219,8 @@ Code: `iwantmyname`. Website: <https://iwantmyname.com>
 ## Joker
 
 Code: `joker`. Website: <https://joker.com>
+
+Auth methods (one is required): **Username + password** (`JOKER_USERNAME`, `JOKER_PASSWORD`); **API key** (`JOKER_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1082,6 +1238,8 @@ Code: `joker`. Website: <https://joker.com>
 
 Code: `liara`. Website: <https://liara.ir>
 
+Auth methods (one is required): **API key** (`LIARA_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `LIARA_API_KEY` | credentials | yes | The API key |
@@ -1093,6 +1251,8 @@ Code: `liara`. Website: <https://liara.ir>
 ## Amazon Lightsail
 
 Code: `lightsail`. Website: <https://aws.amazon.com/lightsail/>
+
+Auth methods (one is required): **Access key** (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`); **Server environment credentials** (no fields).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1107,6 +1267,8 @@ Code: `lightsail`. Website: <https://aws.amazon.com/lightsail/>
 
 Code: `limacity`. Website: <https://www.lima-city.de>
 
+Auth methods (one is required): **API key** (`LIMACITY_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `LIMACITY_API_KEY` | credentials | yes | The API key |
@@ -1120,6 +1282,8 @@ Code: `limacity`. Website: <https://www.lima-city.de>
 
 Code: `linode` (aliases: `linodev4`). Website: <https://www.linode.com/>
 
+Auth methods (one is required): **Token** (`LINODE_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `LINODE_TOKEN` | credentials | yes | API token |
@@ -1131,6 +1295,8 @@ Code: `linode` (aliases: `linodev4`). Website: <https://www.linode.com/>
 ## Liquid Web
 
 Code: `liquidweb`. Website: <https://liquidweb.com>
+
+Auth methods (one is required): **Username + Password** (`LWAPI_USERNAME`, `LWAPI_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1147,6 +1313,8 @@ Code: `liquidweb`. Website: <https://liquidweb.com>
 
 Code: `loopia`. Website: <https://loopia.com>
 
+Auth methods (one is required): **User + Password** (`LOOPIA_API_USER`, `LOOPIA_API_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `LOOPIA_API_PASSWORD` | credentials | yes | API password |
@@ -1161,6 +1329,8 @@ Code: `loopia`. Website: <https://loopia.com>
 
 Code: `luadns`. Website: <https://luadns.com>
 
+Auth methods (one is required): **Username + Token** (`LUADNS_API_USERNAME`, `LUADNS_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `LUADNS_API_TOKEN` | credentials | yes | API token |
@@ -1174,6 +1344,8 @@ Code: `luadns`. Website: <https://luadns.com>
 
 Code: `mailinabox`. Website: <https://mailinabox.email>
 
+Auth methods (one is required): **Base URL + Email + Password** (`MAILINABOX_BASE_URL`, `MAILINABOX_EMAIL`, `MAILINABOX_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `MAILINABOX_BASE_URL` | credentials | no | Base API URL (ex: https://box.example.com) |
@@ -1185,6 +1357,8 @@ Code: `mailinabox`. Website: <https://mailinabox.email>
 ## ManageEngine CloudDNS
 
 Code: `manageengine`. Website: <https://clouddns.manageengine.com>
+
+Auth methods (one is required): **ID + Secret** (`MANAGEENGINE_CLIENT_ID`, `MANAGEENGINE_CLIENT_SECRET`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1198,6 +1372,8 @@ Code: `manageengine`. Website: <https://clouddns.manageengine.com>
 
 Code: `metaname`. Website: <https://metaname.net>
 
+Auth methods (one is required): **Account reference + API key** (`METANAME_ACCOUNT_REFERENCE`, `METANAME_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `METANAME_ACCOUNT_REFERENCE` | credentials | no | The four-digit reference of a Metaname account |
@@ -1210,6 +1386,8 @@ Code: `metaname`. Website: <https://metaname.net>
 
 Code: `metaregistrar`. Website: <https://metaregistrar.com/>
 
+Auth methods (one is required): **API token** (`METAREGISTRAR_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `METAREGISTRAR_API_TOKEN` | credentials | yes | The API token |
@@ -1221,6 +1399,8 @@ Code: `metaregistrar`. Website: <https://metaregistrar.com/>
 ## mijn.host
 
 Code: `mijnhost`. Website: <https://mijn.host/>
+
+Auth methods (one is required): **API key** (`MIJNHOST_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1235,6 +1415,8 @@ Code: `mijnhost`. Website: <https://mijn.host/>
 
 Code: `mittwald`. Website: <https://www.mittwald.de/>
 
+Auth methods (one is required): **Token** (`MITTWALD_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `MITTWALD_TOKEN` | credentials | yes | API token |
@@ -1247,6 +1429,8 @@ Code: `mittwald`. Website: <https://www.mittwald.de/>
 ## myaddr.{tools,dev,io}
 
 Code: `myaddr`. Website: <https://myaddr.tools/>
+
+Auth methods (one is required): **Private keys mapping** (`MYADDR_PRIVATE_KEYS_MAPPING`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1261,6 +1445,8 @@ Code: `myaddr`. Website: <https://myaddr.tools/>
 
 Code: `mydnsjp`. Website: <https://www.mydns.jp>
 
+Auth methods (one is required): **Master ID + Password** (`MYDNSJP_MASTER_ID`, `MYDNSJP_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `MYDNSJP_MASTER_ID` | credentials | no | Master ID |
@@ -1272,6 +1458,8 @@ Code: `mydnsjp`. Website: <https://www.mydns.jp>
 ## MythicBeasts
 
 Code: `mythicbeasts`. Website: <https://www.mythic-beasts.com/>
+
+Auth methods (one is required): **Username + Password** (`MYTHICBEASTS_USERNAME`, `MYTHICBEASTS_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1288,6 +1476,8 @@ Code: `mythicbeasts`. Website: <https://www.mythic-beasts.com/>
 
 Code: `namecheap`. Website: <https://www.namecheap.com>
 
+Auth methods (one is required): **User + Key** (`NAMECHEAP_API_USER`, `NAMECHEAP_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NAMECHEAP_API_KEY` | credentials | yes | API key |
@@ -1302,6 +1492,8 @@ Code: `namecheap`. Website: <https://www.namecheap.com>
 
 Code: `namedotcom`. Website: <https://www.name.com>
 
+Auth methods (one is required): **Username + API token** (`NAMECOM_USERNAME`, `NAMECOM_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NAMECOM_API_TOKEN` | credentials | yes | API token |
@@ -1315,6 +1507,8 @@ Code: `namedotcom`. Website: <https://www.name.com>
 
 Code: `namesilo`. Website: <https://www.namesilo.com/>
 
+Auth methods (one is required): **API key** (`NAMESILO_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NAMESILO_API_KEY` | credentials | yes | Client ID |
@@ -1325,6 +1519,8 @@ Code: `namesilo`. Website: <https://www.namesilo.com/>
 ## NearlyFreeSpeech.NET
 
 Code: `nearlyfreespeech`. Website: <https://nearlyfreespeech.net/>
+
+Auth methods (one is required): **API key + Login** (`NEARLYFREESPEECH_API_KEY`, `NEARLYFREESPEECH_LOGIN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1340,6 +1536,8 @@ Code: `nearlyfreespeech`. Website: <https://nearlyfreespeech.net/>
 
 Code: `netcup`. Website: <https://www.netcup.eu/>
 
+Auth methods (one is required): **Customer number + API key + API password** (`NETCUP_CUSTOMER_NUMBER`, `NETCUP_API_KEY`, `NETCUP_API_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NETCUP_API_KEY` | credentials | yes | API key |
@@ -1353,6 +1551,8 @@ Code: `netcup`. Website: <https://www.netcup.eu/>
 
 Code: `netlify`. Website: <https://www.netlify.com>
 
+Auth methods (one is required): **Token** (`NETLIFY_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NETLIFY_TOKEN` | credentials | yes | Token |
@@ -1364,6 +1564,8 @@ Code: `netlify`. Website: <https://www.netlify.com>
 ## Nicmanager
 
 Code: `nicmanager`. Website: <https://www.nicmanager.com/>
+
+Auth methods (one is required): **Password** (`NICMANAGER_API_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1382,6 +1584,8 @@ Code: `nicmanager`. Website: <https://www.nicmanager.com/>
 
 Code: `nicru`. Website: <https://nic.ru/>
 
+Auth methods (one is required): **User + Password + Service ID + Secret** (`NICRU_USER`, `NICRU_PASSWORD`, `NICRU_SERVICE_ID`, `NICRU_SECRET`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NICRU_PASSWORD` | credentials | yes | Password for an account in RU CENTER |
@@ -1397,6 +1601,8 @@ Code: `nicru`. Website: <https://nic.ru/>
 
 Code: `nifcloud`. Website: <https://www.nifcloud.com/>
 
+Auth methods (one is required): **Access key ID + Secret access key** (`NIFCLOUD_ACCESS_KEY_ID`, `NIFCLOUD_SECRET_ACCESS_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NIFCLOUD_ACCESS_KEY_ID` | credentials | no | Access key |
@@ -1410,6 +1616,8 @@ Code: `nifcloud`. Website: <https://www.nifcloud.com/>
 
 Code: `njalla`. Website: <https://njal.la>
 
+Auth methods (one is required): **Token** (`NJALLA_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NJALLA_TOKEN` | credentials | yes | API token |
@@ -1421,6 +1629,8 @@ Code: `njalla`. Website: <https://njal.la>
 ## Nodion
 
 Code: `nodion`. Website: <https://www.nodion.com>
+
+Auth methods (one is required): **API token** (`NODION_API_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1434,6 +1644,8 @@ Code: `nodion`. Website: <https://www.nodion.com>
 
 Code: `ns1`. Website: <https://ns1.com>
 
+Auth methods (one is required): **API key** (`NS1_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `NS1_API_KEY` | credentials | yes | API key |
@@ -1445,6 +1657,8 @@ Code: `ns1`. Website: <https://ns1.com>
 ## Oracle Cloud
 
 Code: `oraclecloud`. Website: <https://cloud.oracle.com/home>
+
+Auth methods (one is required): **API signing key** (`OCI_PRIVKEY`, `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_PUBKEY_FINGERPRINT`, `OCI_REGION`, `OCI_COMPARTMENT_OCID`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1465,6 +1679,8 @@ Code: `oraclecloud`. Website: <https://cloud.oracle.com/home>
 
 Code: `otc`. Website: <https://cloud.telekom.de/en>
 
+Auth methods (one is required): **Domain name + User name + Password + Project name** (`OTC_DOMAIN_NAME`, `OTC_USER_NAME`, `OTC_PASSWORD`, `OTC_PROJECT_NAME`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `OTC_DOMAIN_NAME` | credentials | no | Domain name |
@@ -1481,6 +1697,8 @@ Code: `otc`. Website: <https://cloud.telekom.de/en>
 ## OVH
 
 Code: `ovh`. Website: <https://www.ovh.com/>
+
+Auth methods (one is required): **Application key** (`OVH_ENDPOINT`, `OVH_APPLICATION_KEY`, `OVH_APPLICATION_SECRET`, `OVH_CONSUMER_KEY`); **OAuth2** (`OVH_ENDPOINT`, `OVH_CLIENT_ID`, `OVH_CLIENT_SECRET`); **Access token** (`OVH_ENDPOINT`, `OVH_ACCESS_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1500,6 +1718,8 @@ Code: `ovh`. Website: <https://www.ovh.com/>
 
 Code: `pdns`. Website: <https://www.powerdns.com/>
 
+Auth methods (one is required): **Key + URL** (`PDNS_API_KEY`, `PDNS_API_URL`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `PDNS_API_KEY` | credentials | yes | API key |
@@ -1515,6 +1735,8 @@ Code: `pdns`. Website: <https://www.powerdns.com/>
 
 Code: `plesk`. Website: <https://www.plesk.com/>
 
+Auth methods (one is required): **Server base URL + Username + Password** (`PLESK_SERVER_BASE_URL`, `PLESK_USERNAME`, `PLESK_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `PLESK_PASSWORD` | credentials | yes | API password |
@@ -1529,6 +1751,8 @@ Code: `plesk`. Website: <https://www.plesk.com/>
 
 Code: `porkbun`. Website: <https://porkbun.com/>
 
+Auth methods (one is required): **Secret API key + API key** (`PORKBUN_SECRET_API_KEY`, `PORKBUN_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `PORKBUN_API_KEY` | credentials | yes | API key |
@@ -1541,6 +1765,8 @@ Code: `porkbun`. Website: <https://porkbun.com/>
 ## Rackspace
 
 Code: `rackspace`. Website: <https://www.rackspace.com/>
+
+Auth methods (one is required): **User + API key** (`RACKSPACE_USER`, `RACKSPACE_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1555,6 +1781,8 @@ Code: `rackspace`. Website: <https://www.rackspace.com/>
 
 Code: `rainyun`. Website: <https://www.rainyun.com>
 
+Auth methods (one is required): **API key** (`RAINYUN_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `RAINYUN_API_KEY` | credentials | yes | API key |
@@ -1566,6 +1794,8 @@ Code: `rainyun`. Website: <https://www.rainyun.com>
 ## RcodeZero
 
 Code: `rcodezero`. Website: <https://www.rcodezero.at/>
+
+Auth methods (one is required): **API token** (`RCODEZERO_API_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1579,6 +1809,8 @@ Code: `rcodezero`. Website: <https://www.rcodezero.at/>
 
 Code: `regfish`. Website: <https://regfish.de/>
 
+Auth methods (one is required): **API key** (`REGFISH_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `REGFISH_API_KEY` | credentials | yes | API key |
@@ -1590,6 +1822,8 @@ Code: `regfish`. Website: <https://regfish.de/>
 ## reg.ru
 
 Code: `regru`. Website: <https://www.reg.ru/>
+
+Auth methods (one is required): **Username + Password** (`REGRU_USERNAME`, `REGRU_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1605,6 +1839,8 @@ Code: `regru`. Website: <https://www.reg.ru/>
 ## RFC2136
 
 Code: `rfc2136`. Website: <https://www.rfc-editor.org/rfc/rfc2136.html>
+
+Auth methods (one is required): **Nameserver** (`RFC2136_NAMESERVER`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1623,6 +1859,8 @@ Code: `rfc2136`. Website: <https://www.rfc-editor.org/rfc/rfc2136.html>
 
 Code: `rimuhosting`. Website: <https://rimuhosting.com>
 
+Auth methods (one is required): **API key** (`RIMUHOSTING_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `RIMUHOSTING_API_KEY` | credentials | yes | User API key |
@@ -1634,6 +1872,8 @@ Code: `rimuhosting`. Website: <https://rimuhosting.com>
 ## Amazon Route 53
 
 Code: `route53`. Website: <https://aws.amazon.com/route53/>
+
+Auth methods (one is required): **Access key** (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`); **Server environment credentials** (no fields).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1657,6 +1897,8 @@ Code: `route53`. Website: <https://aws.amazon.com/route53/>
 
 Code: `safedns`. Website: <https://www.ukfast.co.uk/dns-hosting.html>
 
+Auth methods (one is required): **Auth token** (`SAFEDNS_AUTH_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SAFEDNS_AUTH_TOKEN` | credentials | yes | Authentication token |
@@ -1668,6 +1910,8 @@ Code: `safedns`. Website: <https://www.ukfast.co.uk/dns-hosting.html>
 ## Sakura Cloud
 
 Code: `sakuracloud`. Website: <https://cloud.sakura.ad.jp/>
+
+Auth methods (one is required): **Token + Token secret** (`SAKURACLOUD_ACCESS_TOKEN`, `SAKURACLOUD_ACCESS_TOKEN_SECRET`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1682,6 +1926,8 @@ Code: `sakuracloud`. Website: <https://cloud.sakura.ad.jp/>
 
 Code: `scaleway`. Website: <https://developers.scaleway.com/>
 
+Auth methods (one is required): **Secret key** (`SCW_SECRET_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SCW_PROJECT_ID` | credentials | no | Project to use (optional) |
@@ -1695,6 +1941,8 @@ Code: `scaleway`. Website: <https://developers.scaleway.com/>
 
 Code: `selectel`. Website: <https://kb.selectel.com/>
 
+Auth methods (one is required): **API token** (`SELECTEL_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SELECTEL_API_TOKEN` | credentials | yes | API token |
@@ -1707,6 +1955,8 @@ Code: `selectel`. Website: <https://kb.selectel.com/>
 ## Selectel v2
 
 Code: `selectelv2`. Website: <https://selectel.ru>
+
+Auth methods (one is required): **Username + Password + Account ID + Project ID** (`SELECTELV2_USERNAME`, `SELECTELV2_PASSWORD`, `SELECTELV2_ACCOUNT_ID`, `SELECTELV2_PROJECT_ID`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1724,6 +1974,8 @@ Code: `selectelv2`. Website: <https://selectel.ru>
 
 Code: `selfhostde`. Website: <https://www.selfhost.de>
 
+Auth methods (one is required): **Username + Password + Records mapping** (`SELFHOSTDE_USERNAME`, `SELFHOSTDE_PASSWORD`, `SELFHOSTDE_RECORDS_MAPPING`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SELFHOSTDE_PASSWORD` | credentials | yes | Password |
@@ -1738,6 +1990,8 @@ Code: `selfhostde`. Website: <https://www.selfhost.de>
 
 Code: `servercow`. Website: <https://servercow.de/>
 
+Auth methods (one is required): **Username + Password** (`SERVERCOW_USERNAME`, `SERVERCOW_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SERVERCOW_PASSWORD` | credentials | yes | API password |
@@ -1750,6 +2004,8 @@ Code: `servercow`. Website: <https://servercow.de/>
 ## Shellrent
 
 Code: `shellrent`. Website: <https://www.shellrent.com/>
+
+Auth methods (one is required): **Username + Token** (`SHELLRENT_USERNAME`, `SHELLRENT_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1764,6 +2020,8 @@ Code: `shellrent`. Website: <https://www.shellrent.com/>
 
 Code: `simply`. Website: <https://www.simply.com/en/domains/>
 
+Auth methods (one is required): **Account name + API key** (`SIMPLY_ACCOUNT_NAME`, `SIMPLY_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SIMPLY_ACCOUNT_NAME` | credentials | no | Account name |
@@ -1776,6 +2034,8 @@ Code: `simply`. Website: <https://www.simply.com/en/domains/>
 ## Sonic
 
 Code: `sonic`. Website: <https://www.sonic.com/>
+
+Auth methods (one is required): **User ID + API key** (`SONIC_USER_ID`, `SONIC_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1791,6 +2051,8 @@ Code: `sonic`. Website: <https://www.sonic.com/>
 
 Code: `spaceship`. Website: <https://www.spaceship.com/>
 
+Auth methods (one is required): **Key + Secret** (`SPACESHIP_API_KEY`, `SPACESHIP_API_SECRET`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SPACESHIP_API_KEY` | credentials | yes | API key |
@@ -1803,6 +2065,8 @@ Code: `spaceship`. Website: <https://www.spaceship.com/>
 ## Stackpath
 
 Code: `stackpath`. Website: <https://www.stackpath.com/>
+
+Auth methods (one is required): **Client ID + Client secret + Stack ID** (`STACKPATH_CLIENT_ID`, `STACKPATH_CLIENT_SECRET`, `STACKPATH_STACK_ID`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1817,6 +2081,8 @@ Code: `stackpath`. Website: <https://www.stackpath.com/>
 
 Code: `technitium`. Website: <https://technitium.com/>
 
+Auth methods (one is required): **Server base URL + API token** (`TECHNITIUM_SERVER_BASE_URL`, `TECHNITIUM_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `TECHNITIUM_API_TOKEN` | credentials | yes | API token |
@@ -1829,6 +2095,8 @@ Code: `technitium`. Website: <https://technitium.com/>
 ## Tencent Cloud DNS
 
 Code: `tencentcloud`. Website: <https://cloud.tencent.com/product/cns>
+
+Auth methods (one is required): **ID + Key** (`TENCENTCLOUD_SECRET_ID`, `TENCENTCLOUD_SECRET_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1845,6 +2113,8 @@ Code: `tencentcloud`. Website: <https://cloud.tencent.com/product/cns>
 
 Code: `timewebcloud`. Website: <https://timeweb.cloud/>
 
+Auth methods (one is required): **Auth token** (`TIMEWEBCLOUD_AUTH_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `TIMEWEBCLOUD_AUTH_TOKEN` | credentials | yes | Authentication token |
@@ -1855,6 +2125,8 @@ Code: `timewebcloud`. Website: <https://timeweb.cloud/>
 ## TransIP
 
 Code: `transip`. Website: <https://www.transip.nl/>
+
+Auth methods (one is required): **Account name + Private key** (`TRANSIP_ACCOUNT_NAME`, `TRANSIP_PRIVATE_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1869,6 +2141,8 @@ Code: `transip`. Website: <https://www.transip.nl/>
 
 Code: `ultradns`. Website: <https://vercara.com/authoritative-dns>
 
+Auth methods (one is required): **Username + Password** (`ULTRADNS_USERNAME`, `ULTRADNS_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `ULTRADNS_PASSWORD` | credentials | yes | API Password |
@@ -1881,6 +2155,8 @@ Code: `ultradns`. Website: <https://vercara.com/authoritative-dns>
 ## Variomedia
 
 Code: `variomedia`. Website: <https://www.variomedia.de/>
+
+Auth methods (one is required): **API token** (`VARIOMEDIA_API_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1895,6 +2171,8 @@ Code: `variomedia`. Website: <https://www.variomedia.de/>
 
 Code: `vegadns`. Website: <https://github.com/shupp/VegaDNS-API>
 
+Auth methods (one is required): **Vegadns URL** (`VEGADNS_URL`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SECRET_VEGADNS_KEY` | credentials | yes | API key |
@@ -1908,6 +2186,8 @@ Code: `vegadns`. Website: <https://github.com/shupp/VegaDNS-API>
 
 Code: `vercel`. Website: <https://vercel.com>
 
+Auth methods (one is required): **API token** (`VERCEL_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `VERCEL_API_TOKEN` | credentials | yes | Authentication token |
@@ -1920,6 +2200,8 @@ Code: `vercel`. Website: <https://vercel.com>
 ## Versio.[nl|eu|uk]
 
 Code: `versio`. Website: <https://www.versio.nl/domeinnamen>
+
+Auth methods (one is required): **Username + Password** (`VERSIO_USERNAME`, `VERSIO_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1936,6 +2218,8 @@ Code: `versio`. Website: <https://www.versio.nl/domeinnamen>
 
 Code: `vinyldns`. Website: <https://www.vinyldns.io>
 
+Auth methods (one is required): **Access key + Secret key + Host** (`VINYLDNS_ACCESS_KEY`, `VINYLDNS_SECRET_KEY`, `VINYLDNS_HOST`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `VINYLDNS_ACCESS_KEY` | credentials | yes | The VinylDNS API key |
@@ -1948,6 +2232,8 @@ Code: `vinyldns`. Website: <https://www.vinyldns.io>
 ## VK Cloud
 
 Code: `vkcloud`. Website: <https://mcs.mail.ru/>
+
+Auth methods (one is required): **Project ID + Username + Password** (`VK_CLOUD_PROJECT_ID`, `VK_CLOUD_USERNAME`, `VK_CLOUD_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -1965,6 +2251,8 @@ Code: `vkcloud`. Website: <https://mcs.mail.ru/>
 
 Code: `volcengine`. Website: <https://www.volcengine.com/>
 
+Auth methods (one is required): **Accesskey + Secretkey** (`VOLC_ACCESSKEY`, `VOLC_SECRETKEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `VOLC_ACCESSKEY` | credentials | yes | Access Key ID (AK) |
@@ -1981,6 +2269,8 @@ Code: `volcengine`. Website: <https://www.volcengine.com/>
 
 Code: `vscale`. Website: <https://vscale.io/>
 
+Auth methods (one is required): **API token** (`VSCALE_API_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `VSCALE_API_TOKEN` | credentials | yes | API token |
@@ -1994,6 +2284,8 @@ Code: `vscale`. Website: <https://vscale.io/>
 
 Code: `vultr`. Website: <https://www.vultr.com/>
 
+Auth methods (one is required): **API key** (`VULTR_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `VULTR_API_KEY` | credentials | yes | API key |
@@ -2006,6 +2298,8 @@ Code: `vultr`. Website: <https://www.vultr.com/>
 
 Code: `webnames`. Website: <https://www.webnames.ru/>
 
+Auth methods (one is required): **API key** (`WEBNAMES_API_KEY`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `WEBNAMES_API_KEY` | credentials | yes | Domain API key |
@@ -2016,6 +2310,8 @@ Code: `webnames`. Website: <https://www.webnames.ru/>
 ## Websupport
 
 Code: `websupport`. Website: <https://websupport.sk>
+
+Auth methods (one is required): **API key + Secret** (`WEBSUPPORT_API_KEY`, `WEBSUPPORT_SECRET`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -2031,6 +2327,8 @@ Code: `websupport`. Website: <https://websupport.sk>
 
 Code: `wedos`. Website: <https://www.wedos.com>
 
+Auth methods (one is required): **Username + WAPI password** (`WEDOS_USERNAME`, `WEDOS_WAPI_PASSWORD`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `WEDOS_USERNAME` | credentials | no | Username is the same as for the admin account |
@@ -2043,6 +2341,8 @@ Code: `wedos`. Website: <https://www.wedos.com>
 ## West.cn/西部数码
 
 Code: `westcn`. Website: <https://www.west.cn>
+
+Auth methods (one is required): **Username + Password** (`WESTCN_USERNAME`, `WESTCN_PASSWORD`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -2057,6 +2357,8 @@ Code: `westcn`. Website: <https://www.west.cn>
 
 Code: `yandex`. Website: <https://pdd.yandex.com>
 
+Auth methods (one is required): **PDD token** (`YANDEX_PDD_TOKEN`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `YANDEX_PDD_TOKEN` | credentials | yes | Basic authentication username |
@@ -2068,6 +2370,8 @@ Code: `yandex`. Website: <https://pdd.yandex.com>
 ## Yandex 360
 
 Code: `yandex360`. Website: <https://360.yandex.ru>
+
+Auth methods (one is required): **Oauth token + Org ID** (`YANDEX360_OAUTH_TOKEN`, `YANDEX360_ORG_ID`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -2082,6 +2386,8 @@ Code: `yandex360`. Website: <https://360.yandex.ru>
 
 Code: `yandexcloud`. Website: <https://cloud.yandex.com>
 
+Auth methods (one is required): **IAM token + Folder ID** (`YANDEX_CLOUD_IAM_TOKEN`, `YANDEX_CLOUD_FOLDER_ID`).
+
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `YANDEX_CLOUD_FOLDER_ID` | credentials | no | The string id of folder (aka project) in Yandex Cloud |
@@ -2093,6 +2399,8 @@ Code: `yandexcloud`. Website: <https://cloud.yandex.com>
 ## Zone.ee
 
 Code: `zoneee`. Website: <https://www.zone.ee/>
+
+Auth methods (one is required): **User + Key** (`ZONEEE_API_USER`, `ZONEEE_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
@@ -2106,6 +2414,8 @@ Code: `zoneee`. Website: <https://www.zone.ee/>
 ## Zonomi
 
 Code: `zonomi`. Website: <https://zonomi.com>
+
+Auth methods (one is required): **API key** (`ZONOMI_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|

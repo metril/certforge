@@ -43,6 +43,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "iam-token-folder-id",
+        "label": "IAM token + Folder ID",
+        "fields": [
+          "YANDEX_CLOUD_IAM_TOKEN",
+          "YANDEX_CLOUD_FOLDER_ID"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

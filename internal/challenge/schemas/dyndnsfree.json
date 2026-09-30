@@ -43,6 +43,17 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password",
+        "label": "Username + Password",
+        "fields": [
+          "DYNDNSFREE_USERNAME",
+          "DYNDNSFREE_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

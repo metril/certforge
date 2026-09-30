@@ -57,6 +57,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key-secret",
+        "label": "API key + Secret",
+        "fields": [
+          "WEBSUPPORT_API_KEY",
+          "WEBSUPPORT_SECRET"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

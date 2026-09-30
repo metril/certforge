@@ -57,6 +57,18 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password-records-mapping",
+        "label": "Username + Password + Records mapping",
+        "fields": [
+          "SELFHOSTDE_USERNAME",
+          "SELFHOSTDE_PASSWORD",
+          "SELFHOSTDE_RECORDS_MAPPING"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

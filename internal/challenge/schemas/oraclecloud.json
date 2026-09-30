@@ -93,6 +93,23 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-signing-key",
+        "label": "API signing key",
+        "fields": [
+          "OCI_PRIVKEY",
+          "OCI_TENANCY_OCID",
+          "OCI_USER_OCID",
+          "OCI_PUBKEY_FINGERPRINT",
+          "OCI_REGION",
+          "OCI_COMPARTMENT_OCID"
+        ],
+        "optional": [
+          "OCI_PRIVKEY_PASS"
+        ]
+      }
+    ]
   }
 }

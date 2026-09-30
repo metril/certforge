@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key-secret",
+        "label": "API key + Secret",
+        "fields": [
+          "ACTIVE24_API_KEY",
+          "ACTIVE24_SECRET"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -85,6 +85,38 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "app-key",
+        "label": "Application key",
+        "fields": [
+          "OVH_ENDPOINT",
+          "OVH_APPLICATION_KEY",
+          "OVH_APPLICATION_SECRET",
+          "OVH_CONSUMER_KEY"
+        ],
+        "optional": []
+      },
+      {
+        "id": "oauth2",
+        "label": "OAuth2",
+        "fields": [
+          "OVH_ENDPOINT",
+          "OVH_CLIENT_ID",
+          "OVH_CLIENT_SECRET"
+        ],
+        "optional": []
+      },
+      {
+        "id": "token",
+        "label": "Access token",
+        "fields": [
+          "OVH_ENDPOINT",
+          "OVH_ACCESS_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

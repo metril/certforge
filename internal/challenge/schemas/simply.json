@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "account-name-api-key",
+        "label": "Account name + API key",
+        "fields": [
+          "SIMPLY_ACCOUNT_NAME",
+          "SIMPLY_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

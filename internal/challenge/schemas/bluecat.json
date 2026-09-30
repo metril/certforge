@@ -78,6 +78,20 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "server-url-user-name-password-config-name-dns-view",
+        "label": "Server URL + User name + Password + Config name + DNS view",
+        "fields": [
+          "BLUECAT_SERVER_URL",
+          "BLUECAT_USER_NAME",
+          "BLUECAT_PASSWORD",
+          "BLUECAT_CONFIG_NAME",
+          "BLUECAT_DNS_VIEW"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "access-key-id-secret-access-key",
+        "label": "Access key ID + Secret access key",
+        "fields": [
+          "NIFCLOUD_ACCESS_KEY_ID",
+          "NIFCLOUD_SECRET_ACCESS_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

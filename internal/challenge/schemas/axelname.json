@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "nickname-token",
+        "label": "Nickname + Token",
+        "fields": [
+          "AXELNAME_NICKNAME",
+          "AXELNAME_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

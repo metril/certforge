@@ -64,6 +64,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "service-instance-id-key-id-secret",
+        "label": "Service instance ID + Key ID + Secret",
+        "fields": [
+          "CLOUDRU_SERVICE_INSTANCE_ID",
+          "CLOUDRU_KEY_ID",
+          "CLOUDRU_SECRET"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

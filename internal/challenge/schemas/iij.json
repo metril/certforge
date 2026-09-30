@@ -50,6 +50,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-access-key-api-secret-key-do-service-code",
+        "label": "API access key + API secret key + Do service code",
+        "fields": [
+          "IIJ_API_ACCESS_KEY",
+          "IIJ_API_SECRET_KEY",
+          "IIJ_DO_SERVICE_CODE"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

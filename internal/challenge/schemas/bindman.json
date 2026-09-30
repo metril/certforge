@@ -36,6 +36,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "manager-address",
+        "label": "Manager address",
+        "fields": [
+          "BINDMAN_MANAGER_ADDRESS"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -92,6 +92,32 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "client-secret",
+        "label": "Client secret",
+        "fields": [
+          "AZURE_CLIENT_ID",
+          "AZURE_CLIENT_SECRET",
+          "AZURE_TENANT_ID",
+          "AZURE_SUBSCRIPTION_ID",
+          "AZURE_RESOURCE_GROUP"
+        ],
+        "optional": [
+          "AZURE_ENVIRONMENT"
+        ]
+      },
+      {
+        "id": "ambient",
+        "label": "Server environment credentials",
+        "fields": [],
+        "optional": [
+          "AZURE_SUBSCRIPTION_ID",
+          "AZURE_RESOURCE_GROUP",
+          "AZURE_ENVIRONMENT"
+        ]
+      }
+    ]
   }
 }

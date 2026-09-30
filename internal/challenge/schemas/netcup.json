@@ -50,6 +50,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "customer-number-api-key-api-password",
+        "label": "Customer number + API key + API password",
+        "fields": [
+          "NETCUP_CUSTOMER_NUMBER",
+          "NETCUP_API_KEY",
+          "NETCUP_API_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -57,6 +57,18 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "server-base-url-username-password",
+        "label": "Server base URL + Username + Password",
+        "fields": [
+          "PLESK_SERVER_BASE_URL",
+          "PLESK_USERNAME",
+          "PLESK_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

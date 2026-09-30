@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-api-token",
+        "label": "Username + API token",
+        "fields": [
+          "NAMECOM_USERNAME",
+          "NAMECOM_API_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

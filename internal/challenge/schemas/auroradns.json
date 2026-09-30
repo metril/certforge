@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key-secret",
+        "label": "API key + Secret",
+        "fields": [
+          "AURORA_API_KEY",
+          "AURORA_SECRET"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

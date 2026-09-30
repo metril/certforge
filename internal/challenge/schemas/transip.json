@@ -51,6 +51,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "account-name-private-key",
+        "label": "Account name + Private key",
+        "fields": [
+          "TRANSIP_ACCOUNT_NAME",
+          "TRANSIP_PRIVATE_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

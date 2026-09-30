@@ -43,6 +43,16 @@
         "secret": true,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "tokens",
+        "label": "Tokens",
+        "fields": [
+          "HURRICANE_TOKENS"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

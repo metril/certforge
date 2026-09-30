@@ -57,6 +57,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "endpoint",
+        "label": "Endpoint",
+        "fields": [
+          "HTTPREQ_ENDPOINT"
+        ],
+        "optional": [
+          "HTTPREQ_MODE"
+        ]
+      }
+    ]
   }
 }

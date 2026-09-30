@@ -81,6 +81,19 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "edgegrid",
+        "label": "EdgeGrid credentials",
+        "fields": [
+          "AKAMAI_HOST",
+          "AKAMAI_CLIENT_TOKEN",
+          "AKAMAI_CLIENT_SECRET",
+          "AKAMAI_ACCESS_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

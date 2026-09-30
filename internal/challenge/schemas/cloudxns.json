@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key",
+        "label": "API key + secret key",
+        "fields": [
+          "CLOUDXNS_API_KEY",
+          "CLOUDXNS_SECRET_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -64,6 +64,21 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-password-service-id-secret",
+        "label": "User + Password + Service ID + Secret",
+        "fields": [
+          "NICRU_USER",
+          "NICRU_PASSWORD",
+          "NICRU_SERVICE_ID",
+          "NICRU_SECRET"
+        ],
+        "optional": [
+          "NICRU_SERVICE_NAME"
+        ]
+      }
+    ]
   }
 }

@@ -79,6 +79,20 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "nameserver",
+        "label": "Nameserver",
+        "fields": [
+          "RFC2136_NAMESERVER"
+        ],
+        "optional": [
+          "RFC2136_TSIG_ALGORITHM",
+          "RFC2136_TSIG_KEY",
+          "RFC2136_TSIG_SECRET"
+        ]
+      }
+    ]
   }
 }

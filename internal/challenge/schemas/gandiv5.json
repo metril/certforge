@@ -50,6 +50,24 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "personal-access-token",
+        "label": "Personal access token",
+        "fields": [
+          "GANDIV5_PERSONAL_ACCESS_TOKEN"
+        ],
+        "optional": []
+      },
+      {
+        "id": "api-key",
+        "label": "API key (deprecated)",
+        "fields": [
+          "GANDIV5_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -50,6 +50,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key",
+        "label": "API key",
+        "fields": [
+          "DERAK_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

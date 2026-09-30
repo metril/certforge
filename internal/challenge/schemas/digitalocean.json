@@ -50,6 +50,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "auth-token",
+        "label": "Auth token",
+        "fields": [
+          "DO_AUTH_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

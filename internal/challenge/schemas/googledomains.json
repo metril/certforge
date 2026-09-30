@@ -36,6 +36,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "access-token",
+        "label": "Access token",
+        "fields": [
+          "GOOGLE_DOMAINS_ACCESS_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

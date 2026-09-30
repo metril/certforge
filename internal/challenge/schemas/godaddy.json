@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "key-secret",
+        "label": "Key + Secret",
+        "fields": [
+          "GODADDY_API_KEY",
+          "GODADDY_API_SECRET"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

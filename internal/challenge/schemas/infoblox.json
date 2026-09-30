@@ -93,6 +93,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "host-username-password",
+        "label": "Host + Username + Password",
+        "fields": [
+          "INFOBLOX_HOST",
+          "INFOBLOX_USERNAME",
+          "INFOBLOX_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

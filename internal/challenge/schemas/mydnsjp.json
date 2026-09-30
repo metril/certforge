@@ -43,6 +43,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "master-id-password",
+        "label": "Master ID + Password",
+        "fields": [
+          "MYDNSJP_MASTER_ID",
+          "MYDNSJP_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

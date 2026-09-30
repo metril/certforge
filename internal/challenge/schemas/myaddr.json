@@ -50,6 +50,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "private-keys-mapping",
+        "label": "Private keys mapping",
+        "fields": [
+          "MYADDR_PRIVATE_KEYS_MAPPING"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

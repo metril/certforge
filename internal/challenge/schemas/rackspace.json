@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-api-key",
+        "label": "User + API key",
+        "fields": [
+          "RACKSPACE_USER",
+          "RACKSPACE_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

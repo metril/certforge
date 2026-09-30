@@ -43,6 +43,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "permanent-api-token",
+        "label": "Permanent API token",
+        "fields": [
+          "GCORE_PERMANENT_API_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

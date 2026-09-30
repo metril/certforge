@@ -64,6 +64,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token-key",
+        "label": "Token + Key",
+        "fields": [
+          "EASYDNS_TOKEN",
+          "EASYDNS_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

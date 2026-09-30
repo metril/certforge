@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-token-dpm-service-code",
+        "label": "API token + DPM service code",
+        "fields": [
+          "IIJ_DPF_API_TOKEN",
+          "IIJ_DPF_DPM_SERVICE_CODE"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

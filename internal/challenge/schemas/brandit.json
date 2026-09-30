@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "key-username",
+        "label": "Key + Username",
+        "fields": [
+          "BRANDIT_API_KEY",
+          "BRANDIT_API_USERNAME"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

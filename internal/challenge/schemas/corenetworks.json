@@ -57,6 +57,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "login-password",
+        "label": "Login + Password",
+        "fields": [
+          "CORENETWORKS_LOGIN",
+          "CORENETWORKS_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

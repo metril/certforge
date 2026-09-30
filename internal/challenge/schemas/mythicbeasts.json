@@ -64,6 +64,17 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password",
+        "label": "Username + Password",
+        "fields": [
+          "MYTHICBEASTS_USERNAME",
+          "MYTHICBEASTS_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -113,6 +113,34 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "password",
+        "label": "Username + password",
+        "fields": [
+          "OS_AUTH_URL",
+          "OS_USERNAME",
+          "OS_PASSWORD"
+        ],
+        "optional": [
+          "OS_USER_ID",
+          "OS_PROJECT_NAME",
+          "OS_REGION_NAME"
+        ]
+      },
+      {
+        "id": "app-credential",
+        "label": "Application credential",
+        "fields": [
+          "OS_AUTH_URL",
+          "OS_APPLICATION_CREDENTIAL_ID",
+          "OS_APPLICATION_CREDENTIAL_SECRET"
+        ],
+        "optional": [
+          "OS_REGION_NAME"
+        ]
+      }
+    ]
   }
 }

@@ -64,6 +64,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-password",
+        "label": "User + Password",
+        "fields": [
+          "AUTODNS_API_USER",
+          "AUTODNS_API_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

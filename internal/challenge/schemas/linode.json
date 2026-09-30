@@ -46,6 +46,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token",
+        "label": "Token",
+        "fields": [
+          "LINODE_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

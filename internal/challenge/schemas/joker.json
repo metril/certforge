@@ -71,6 +71,29 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password",
+        "label": "Username + password",
+        "fields": [
+          "JOKER_USERNAME",
+          "JOKER_PASSWORD"
+        ],
+        "optional": [
+          "JOKER_API_MODE"
+        ]
+      },
+      {
+        "id": "api-key",
+        "label": "API key",
+        "fields": [
+          "JOKER_API_KEY"
+        ],
+        "optional": [
+          "JOKER_API_MODE"
+        ]
+      }
+    ]
   }
 }

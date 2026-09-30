@@ -72,6 +72,26 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "service-account",
+        "label": "Service account key",
+        "fields": [
+          "GCE_SERVICE_ACCOUNT"
+        ],
+        "optional": [
+          "GCE_PROJECT"
+        ]
+      },
+      {
+        "id": "ambient",
+        "label": "Server environment credentials",
+        "fields": [],
+        "optional": [
+          "GCE_PROJECT"
+        ]
+      }
+    ]
   }
 }

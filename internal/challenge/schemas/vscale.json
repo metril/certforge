@@ -50,6 +50,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-token",
+        "label": "API token",
+        "fields": [
+          "VSCALE_API_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

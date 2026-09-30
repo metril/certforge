@@ -57,6 +57,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "client-id-email-password",
+        "label": "Client ID + Email + Password",
+        "fields": [
+          "CLOUDDNS_CLIENT_ID",
+          "CLOUDDNS_EMAIL",
+          "CLOUDDNS_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

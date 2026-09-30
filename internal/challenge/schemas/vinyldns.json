@@ -50,6 +50,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "access-key-secret-key-host",
+        "label": "Access key + Secret key + Host",
+        "fields": [
+          "VINYLDNS_ACCESS_KEY",
+          "VINYLDNS_SECRET_KEY",
+          "VINYLDNS_HOST"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -57,6 +57,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "password",
+        "label": "Password",
+        "fields": [
+          "CLOUDNS_AUTH_PASSWORD"
+        ],
+        "optional": [
+          "CLOUDNS_AUTH_ID"
+        ]
+      }
+    ]
   }
 }

@@ -36,6 +36,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token",
+        "label": "Token",
+        "fields": [
+          "CIVO_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

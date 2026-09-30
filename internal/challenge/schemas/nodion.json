@@ -43,6 +43,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-token",
+        "label": "API token",
+        "fields": [
+          "NODION_API_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

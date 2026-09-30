@@ -57,6 +57,18 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "customer-name-user-name-password",
+        "label": "Customer name + User name + Password",
+        "fields": [
+          "DYN_CUSTOMER_NAME",
+          "DYN_USER_NAME",
+          "DYN_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

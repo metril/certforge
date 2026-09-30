@@ -50,6 +50,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "secret-key",
+        "label": "Secret key",
+        "fields": [
+          "SCW_SECRET_KEY"
+        ],
+        "optional": [
+          "SCW_PROJECT_ID"
+        ]
+      }
+    ]
   }
 }

@@ -64,6 +64,18 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-token-base-url",
+        "label": "Username + Token + Base URL",
+        "fields": [
+          "CPANEL_USERNAME",
+          "CPANEL_TOKEN",
+          "CPANEL_BASE_URL"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

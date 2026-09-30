@@ -50,6 +50,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "client-id-client-secret-stack-id",
+        "label": "Client ID + Client secret + Stack ID",
+        "fields": [
+          "STACKPATH_CLIENT_ID",
+          "STACKPATH_CLIENT_SECRET",
+          "STACKPATH_STACK_ID"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

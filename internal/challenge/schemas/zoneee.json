@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-key",
+        "label": "User + Key",
+        "fields": [
+          "ZONEEE_API_USER",
+          "ZONEEE_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

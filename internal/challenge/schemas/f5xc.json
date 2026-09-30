@@ -57,6 +57,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-token-tenant-name-group-name",
+        "label": "API token + Tenant name + Group name",
+        "fields": [
+          "F5XC_API_TOKEN",
+          "F5XC_TENANT_NAME",
+          "F5XC_GROUP_NAME"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -43,6 +43,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "base-url-email-password",
+        "label": "Base URL + Email + Password",
+        "fields": [
+          "MAILINABOX_BASE_URL",
+          "MAILINABOX_EMAIL",
+          "MAILINABOX_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

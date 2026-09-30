@@ -78,6 +78,21 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "domain-name-user-name-password-project-name",
+        "label": "Domain name + User name + Password + Project name",
+        "fields": [
+          "OTC_DOMAIN_NAME",
+          "OTC_USER_NAME",
+          "OTC_PASSWORD",
+          "OTC_PROJECT_NAME"
+        ],
+        "optional": [
+          "OTC_IDENTITY_ENDPOINT"
+        ]
+      }
+    ]
   }
 }

@@ -50,6 +50,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "access-token",
+        "label": "Access token",
+        "fields": [
+          "INFOMANIAK_ACCESS_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -46,6 +46,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token-secret",
+        "label": "Token + Secret",
+        "fields": [
+          "DOMENESHOP_API_TOKEN",
+          "DOMENESHOP_API_SECRET"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

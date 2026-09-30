@@ -43,6 +43,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "login-password",
+        "label": "Login + Password",
+        "fields": [
+          "ALL_INKL_LOGIN",
+          "ALL_INKL_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

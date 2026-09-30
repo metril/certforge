@@ -71,6 +71,18 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "project-id-username-password",
+        "label": "Project ID + Username + Password",
+        "fields": [
+          "VK_CLOUD_PROJECT_ID",
+          "VK_CLOUD_USERNAME",
+          "VK_CLOUD_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

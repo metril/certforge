@@ -64,6 +64,29 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "ram-role",
+        "label": "RAM role",
+        "fields": [
+          "ALICLOUD_RAM_ROLE"
+        ],
+        "optional": [
+          "ALICLOUD_SECURITY_TOKEN"
+        ]
+      },
+      {
+        "id": "access-key-secret-key",
+        "label": "Access key + Secret key",
+        "fields": [
+          "ALICLOUD_ACCESS_KEY",
+          "ALICLOUD_SECRET_KEY"
+        ],
+        "optional": [
+          "ALICLOUD_SECURITY_TOKEN"
+        ]
+      }
+    ]
   }
 }

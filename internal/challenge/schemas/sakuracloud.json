@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token-token-secret",
+        "label": "Token + Token secret",
+        "fields": [
+          "SAKURACLOUD_ACCESS_TOKEN",
+          "SAKURACLOUD_ACCESS_TOKEN_SECRET"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

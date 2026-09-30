@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "oauth-token-org-id",
+        "label": "Oauth token + Org ID",
+        "fields": [
+          "YANDEX360_OAUTH_TOKEN",
+          "YANDEX360_ORG_ID"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

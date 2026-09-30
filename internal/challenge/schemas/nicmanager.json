@@ -78,6 +78,20 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "password",
+        "label": "Password",
+        "fields": [
+          "NICMANAGER_API_PASSWORD"
+        ],
+        "optional": [
+          "NICMANAGER_API_EMAIL",
+          "NICMANAGER_API_LOGIN",
+          "NICMANAGER_API_USERNAME"
+        ]
+      }
+    ]
   }
 }

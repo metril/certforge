@@ -50,6 +50,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key",
+        "label": "API key",
+        "fields": [
+          "MIJNHOST_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

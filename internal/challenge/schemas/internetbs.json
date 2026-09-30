@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key-password",
+        "label": "API key + Password",
+        "fields": [
+          "INTERNET_BS_API_KEY",
+          "INTERNET_BS_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

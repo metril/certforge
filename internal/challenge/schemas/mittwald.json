@@ -50,6 +50,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token",
+        "label": "Token",
+        "fields": [
+          "MITTWALD_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "server-base-url-api-token",
+        "label": "Server base URL + API token",
+        "fields": [
+          "TECHNITIUM_SERVER_BASE_URL",
+          "TECHNITIUM_API_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

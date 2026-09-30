@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key-secret-key",
+        "label": "API key + Secret key",
+        "fields": [
+          "CONSTELLIX_API_KEY",
+          "CONSTELLIX_SECRET_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

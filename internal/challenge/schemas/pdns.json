@@ -64,6 +64,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "key-url",
+        "label": "Key + URL",
+        "fields": [
+          "PDNS_API_KEY",
+          "PDNS_API_URL"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

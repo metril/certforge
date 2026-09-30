@@ -57,6 +57,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-password",
+        "label": "User + Password",
+        "fields": [
+          "LOOPIA_API_USER",
+          "LOOPIA_API_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

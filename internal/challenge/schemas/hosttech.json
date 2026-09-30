@@ -50,6 +50,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key",
+        "label": "API key",
+        "fields": [
+          "HOSTTECH_API_KEY"
+        ],
+        "optional": [
+          "HOSTTECH_PASSWORD"
+        ]
+      }
+    ]
   }
 }

@@ -57,6 +57,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key-login",
+        "label": "API key + Login",
+        "fields": [
+          "NEARLYFREESPEECH_API_KEY",
+          "NEARLYFREESPEECH_LOGIN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

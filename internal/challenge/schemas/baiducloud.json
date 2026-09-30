@@ -43,6 +43,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "access-key-id-secret-access-key",
+        "label": "Access key ID + Secret access key",
+        "fields": [
+          "BAIDUCLOUD_ACCESS_KEY_ID",
+          "BAIDUCLOUD_SECRET_ACCESS_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

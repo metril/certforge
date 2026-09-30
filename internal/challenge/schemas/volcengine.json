@@ -71,6 +71,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "accesskey-secretkey",
+        "label": "Accesskey + Secretkey",
+        "fields": [
+          "VOLC_ACCESSKEY",
+          "VOLC_SECRETKEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

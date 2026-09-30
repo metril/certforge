@@ -50,6 +50,17 @@
         "secret": true,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-wapi-password",
+        "label": "Username + WAPI password",
+        "fields": [
+          "WEDOS_USERNAME",
+          "WEDOS_WAPI_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

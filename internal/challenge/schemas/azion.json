@@ -50,6 +50,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "personal-token",
+        "label": "Personal token",
+        "fields": [
+          "AZION_PERSONAL_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

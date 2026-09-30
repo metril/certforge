@@ -43,6 +43,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "oauth-token",
+        "label": "OAuth token",
+        "fields": [
+          "DNSIMPLE_OAUTH_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

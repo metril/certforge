@@ -50,6 +50,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-key",
+        "label": "User + Key",
+        "fields": [
+          "GLESYS_API_USER",
+          "GLESYS_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

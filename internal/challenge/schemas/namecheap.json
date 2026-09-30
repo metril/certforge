@@ -57,6 +57,17 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-key",
+        "label": "User + Key",
+        "fields": [
+          "NAMECHEAP_API_USER",
+          "NAMECHEAP_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

@@ -71,6 +71,19 @@
         "secret": false,
         "x-group": "credentials"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password-account-id-project-id",
+        "label": "Username + Password + Account ID + Project ID",
+        "fields": [
+          "SELECTELV2_USERNAME",
+          "SELECTELV2_PASSWORD",
+          "SELECTELV2_ACCOUNT_ID",
+          "SELECTELV2_PROJECT_ID"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

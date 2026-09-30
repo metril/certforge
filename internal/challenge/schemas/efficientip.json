@@ -71,6 +71,19 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password-hostname-dns-name",
+        "label": "Username + Password + Hostname + DNS name",
+        "fields": [
+          "EFFICIENTIP_USERNAME",
+          "EFFICIENTIP_PASSWORD",
+          "EFFICIENTIP_HOSTNAME",
+          "EFFICIENTIP_DNS_NAME"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

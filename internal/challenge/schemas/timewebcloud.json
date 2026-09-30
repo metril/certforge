@@ -36,6 +36,16 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "auth-token",
+        "label": "Auth token",
+        "fields": [
+          "TIMEWEBCLOUD_AUTH_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

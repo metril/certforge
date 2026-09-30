@@ -64,6 +64,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "tenant-id-api-user-id-api-password",
+        "label": "Tenant ID + API user ID + API password",
+        "fields": [
+          "CONOHAV3_TENANT_ID",
+          "CONOHAV3_API_USER_ID",
+          "CONOHAV3_API_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
   }
 }

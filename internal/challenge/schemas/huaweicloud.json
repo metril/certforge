@@ -57,6 +57,18 @@
         "secret": false,
         "x-group": "additional"
       }
-    }
+    },
+    "x-auth-methods": [
+      {
+        "id": "access-key-id-secret-access-key-region",
+        "label": "Access key ID + Secret access key + Region",
+        "fields": [
+          "HUAWEICLOUD_ACCESS_KEY_ID",
+          "HUAWEICLOUD_SECRET_ACCESS_KEY",
+          "HUAWEICLOUD_REGION"
+        ],
+        "optional": []
+      }
+    ]
   }
 }
