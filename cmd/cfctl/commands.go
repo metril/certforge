@@ -68,6 +68,10 @@ func runWithEnv(ctx context.Context, args []string, stdout, stderr io.Writer, ge
 		usage(stdout)
 		return 0
 	}
+	if rest[0] == "version" {
+		fmt.Fprintf(stdout, "cfctl %s\n", version)
+		return 0
+	}
 
 	cmd, ok := commandTable()[rest[0]]
 	if !ok {
@@ -178,6 +182,7 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, "  keys status|rewrap")
 	fmt.Fprintln(w, "  backup create --out <path|->")
 	fmt.Fprintln(w, "  audit list")
+	fmt.Fprintln(w, "  version                   Print cfctl's own build version")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Config: CFCTL_URL/CFCTL_TOKEN env vars, or $XDG_CONFIG_HOME/cfctl/config.json (mode 0600). See docs/cfctl.md.")
 }

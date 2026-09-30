@@ -30,6 +30,25 @@ func writeProblem(w http.ResponseWriter, status int, title, detail string) {
 	_ = json.NewEncoder(w).Encode(client.Problem{Type: "about:blank", Title: title, Status: status, Detail: &d})
 }
 
+// --- version ---
+
+// TestVersionCommand asserts "version" bypasses commandTable (no
+// --url/--token, so no server contact) like "help", and prints the
+// stamped build version.
+func TestVersionCommand(t *testing.T) {
+	var out, errOut bytes.Buffer
+	old := version
+	version = "v1.2.3"
+	defer func() { version = old }()
+	code := run(context.Background(), []string{"version"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, errOut.String())
+	}
+	if got := out.String(); got != "cfctl v1.2.3\n" {
+		t.Fatalf("out = %q, want %q", got, "cfctl v1.2.3\n")
+	}
+}
+
 // --- status ---
 
 func TestStatusCommand(t *testing.T) {

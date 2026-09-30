@@ -12,6 +12,10 @@ import (
 	"syscall"
 )
 
+// version is stamped by the Makefile's build target
+// (-X main.version=$(VERSION)); "dev" otherwise.
+var version = "dev"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	code := run(ctx, os.Args[1:], os.Stdout, os.Stderr)

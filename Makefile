@@ -22,7 +22,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/certforge ./cmd/certforge
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/certforge-agent ./cmd/certforge-agent
-	CGO_ENABLED=0 $(GO) build -trimpath -o bin/cfctl ./cmd/cfctl
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-X main.version=$(VERSION)" -o bin/cfctl ./cmd/cfctl
 
 image-agent:
 	docker build -f deploy/Dockerfile.agent --build-arg VERSION=$(VERSION) -t ghcr.io/metril/certforge-agent:dev .
