@@ -398,3 +398,32 @@ func TestRealProviderAuthMethods(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateOverrideRejectsUnassignedCredentialField(t *testing.T) {
+	props := map[string]property{
+		"X_A":    {Group: "credentials"},
+		"X_B":    {Group: "credentials"},
+		"X_FILE": {Group: "credentials", ServerPath: true},
+		"X_ALT":  {Group: "credentials", AliasOf: "X_A"},
+		"X_TTL":  {Group: "additional"},
+	}
+	ok := []authMethod{{ID: "a", Fields: []string{"X_A"}, Optional: []string{"X_B"}}}
+	if _, err := validateOverride("x", ok, props); err != nil {
+		t.Fatal(err)
+	}
+	bad := []authMethod{{ID: "a", Fields: []string{"X_A"}, Optional: []string{}}}
+	if _, err := validateOverride("x", bad, props); err == nil || !strings.Contains(err.Error(), "X_B") {
+		t.Fatalf("want unassigned X_B error, got %v", err)
+	}
+}
+
+func TestHiddenFieldsAreServerPath(t *testing.T) {
+	for k := range hiddenFields {
+		if !isServerPath(k) {
+			t.Errorf("%s must be serverPath", k)
+		}
+	}
+	if !readRealSchema(t, "route53").Schema.Properties["AWS_PROFILE"].ServerPath {
+		t.Error("route53 AWS_PROFILE must be serverPath in the committed schema")
+	}
+}

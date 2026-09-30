@@ -44,6 +44,7 @@
         "title": "AKAMAI_EDGERC",
         "description": "Path to the .edgerc file, managed by the Akamai EdgeGrid client",
         "secret": false,
+        "serverPath": true,
         "x-group": "credentials"
       },
       "AKAMAI_EDGERC_SECTION": {
@@ -51,6 +52,7 @@
         "title": "AKAMAI_EDGERC_SECTION",
         "description": "Configuration section, managed by the Akamai EdgeGrid client",
         "secret": false,
+        "serverPath": true,
         "x-group": "credentials"
       },
       "AKAMAI_HOST": {

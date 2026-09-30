@@ -138,6 +138,8 @@
           "OS_APPLICATION_CREDENTIAL_SECRET"
         ],
         "optional": [
+          "OS_APPLICATION_CREDENTIAL_NAME",
+          "OS_USER_ID",
           "OS_REGION_NAME"
         ]
       }

@@ -151,7 +151,7 @@ var forceNonSecret = map[string]bool{
 // _FILE/_PATH suffix convention, plus forceServerPath's explicit overrides
 // for fields that don't follow it.
 func isServerPath(k string) bool {
-	return serverPathSuffix.MatchString(k) || forceServerPath[k]
+	return serverPathSuffix.MatchString(k) || forceServerPath[k] || hiddenFields[k]
 }
 
 // isSecret decides whether field k is write-only, in order: explicit

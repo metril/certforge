@@ -40,7 +40,7 @@ var authOverrides = map[string][]authMethod{
 	},
 	"designate": {
 		{ID: "password", Label: "Username + password", Fields: []string{"OS_AUTH_URL", "OS_USERNAME", "OS_PASSWORD"}, Optional: []string{"OS_USER_ID", "OS_PROJECT_NAME", "OS_REGION_NAME"}},
-		{ID: "app-credential", Label: "Application credential", Fields: []string{"OS_AUTH_URL", "OS_APPLICATION_CREDENTIAL_ID", "OS_APPLICATION_CREDENTIAL_SECRET"}, Optional: []string{"OS_REGION_NAME"}},
+		{ID: "app-credential", Label: "Application credential", Fields: []string{"OS_AUTH_URL", "OS_APPLICATION_CREDENTIAL_ID", "OS_APPLICATION_CREDENTIAL_SECRET"}, Optional: []string{"OS_APPLICATION_CREDENTIAL_NAME", "OS_USER_ID", "OS_REGION_NAME"}},
 	},
 	"dnsimple": {
 		{ID: "oauth-token", Label: "OAuth token", Fields: []string{"DNSIMPLE_OAUTH_TOKEN"}, Optional: []string{}},
@@ -76,9 +76,18 @@ var authOverrides = map[string][]authMethod{
 		{ID: "token", Label: "Access token", Fields: []string{"OVH_ENDPOINT", "OVH_ACCESS_TOKEN"}, Optional: []string{}},
 	},
 	"route53": {
-		{ID: "access-key", Label: "Access key", Fields: []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}, Optional: []string{"AWS_REGION", "AWS_ASSUME_ROLE_ARN", "AWS_EXTERNAL_ID", "AWS_HOSTED_ZONE_ID"}},
-		{ID: "ambient", Label: ambientLabel, Fields: []string{}, Optional: []string{"AWS_REGION", "AWS_ASSUME_ROLE_ARN", "AWS_EXTERNAL_ID", "AWS_HOSTED_ZONE_ID"}},
+		{ID: "access-key", Label: "Access key", Fields: []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}, Optional: []string{"AWS_REGION", "AWS_ASSUME_ROLE_ARN", "AWS_EXTERNAL_ID", "AWS_HOSTED_ZONE_ID", "AWS_WAIT_FOR_RECORD_SETS_CHANGED"}},
+		{ID: "ambient", Label: ambientLabel, Fields: []string{}, Optional: []string{"AWS_REGION", "AWS_ASSUME_ROLE_ARN", "AWS_EXTERNAL_ID", "AWS_HOSTED_ZONE_ID", "AWS_WAIT_FOR_RECORD_SETS_CHANGED"}},
 	},
+}
+
+// hiddenFields are server-file/host-config inputs with no inline form: they
+// are emitted as serverPath (API rejects, UI hides) and need no method.
+var hiddenFields = map[string]bool{
+	"AWS_PROFILE":           true, // route53: named profile in the server's AWS config
+	"AWS_SDK_LOAD_CONFIG":   true, // route53: read the server's AWS CLI config file
+	"AKAMAI_EDGERC":         true, // edgedns: path to a server-side .edgerc
+	"AKAMAI_EDGERC_SECTION": true, // edgedns: section of that server-side file
 }
 
 const ambientLabel = "Server environment credentials"
@@ -366,6 +375,7 @@ func deriveAuthMethods(pkgDir string, t providerTOML, props map[string]property)
 }
 
 func validateOverride(code string, ov []authMethod, props map[string]property) ([]authMethod, error) {
+	assigned := map[string]bool{}
 	for _, m := range ov {
 		for _, f := range append(append([]string{}, m.Fields...), m.Optional...) {
 			p, ok := props[f]
@@ -375,7 +385,18 @@ func validateOverride(code string, ov []authMethod, props map[string]property) (
 			if p.ServerPath {
 				return nil, fmt.Errorf("%s: authOverrides method %s names serverPath field %s", code, m.ID, f)
 			}
+			assigned[f] = true
 		}
+	}
+	var missing []string
+	for k, p := range props {
+		if p.Group == "credentials" && !p.ServerPath && p.AliasOf == "" && !assigned[k] {
+			missing = append(missing, k)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return nil, fmt.Errorf("%s: credentials fields in no authOverrides method (add to fields/optional or hiddenFields): %s", code, strings.Join(missing, ", "))
 	}
 	return ov, nil
 }
