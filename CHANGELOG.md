@@ -273,3 +273,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Playwright covers alert channels, monitors, events, SMTP, Prometheus and backups.
 - Re-saving an existing channel or settings section whose secret field carries a `minLength` (e.g. a webhook's signing secret) no longer fails client-side validation just because the untouched value is the `__unchanged__` sentinel.
 - Phase 6B batch-4 review fixes: the "no monitor query in all orgs" overview test now actually catches a missing `!allOrgs` guard instead of watching a URL that view never requests; the Playwright monitor check now asserts the fingerprint the brief always required.
+- Phase 6B final review fix wave: the command palette's "Settings: Back up now" no longer pulls the settings form library into every authenticated page's eager bundle; the production build now fails if it ever does again.

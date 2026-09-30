@@ -1,10 +1,8 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
-import { toast } from 'sonner';
 import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
-import { backupStatusQuery, downloadBackup } from '@/api/queries/backup';
-import { errorMessage } from '@/api/errors';
+import { backupStatusQuery, runBackup } from '@/api/queries/backup';
 import { HelpTip, HelpTipBody } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
@@ -15,25 +13,6 @@ import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { BackupStatusCard } from './BackupStatusCard';
 import { SchemaSection } from './SchemaSection';
-
-/** Downloads a fresh backup archive (task-7-brief), shared by the section's
- * own "Back up now" button and CommandPalette's "Settings: Back up now"
- * entry. Toasts either way and refreshes `['backup-status']` (a completed
- * on-demand backup moves `lastSuccessAt`/`lastSizeBytes`/`lastFile`; a 409
- * changes nothing server-side, but the brief still calls for a refetch).
- * Rethrows so a caller that needs to react further — the palette navigates
- * to Settings → Backup and keys on a 409 — can do so without re-toasting. */
-export async function runBackup(qc: QueryClient): Promise<void> {
-  try {
-    await downloadBackup();
-    toast.success('Backup downloaded');
-  } catch (e) {
-    toast.error(errorMessage(e));
-    throw e;
-  } finally {
-    await qc.invalidateQueries({ queryKey: ['backup-status'] });
-  }
-}
 
 /** "Back up now" is disabled two independent ways (same precedent as
  * EncryptionKeyCard's RewrapButton): no `settings:write` (PermissionTip's
