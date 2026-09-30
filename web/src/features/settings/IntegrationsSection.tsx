@@ -207,7 +207,7 @@ export function IntegrationsSection() {
         title="Prometheus"
         help="settings.prometheus"
         saveMode="direct"
-        actions={(value) => <PrometheusScrape value={value} />}
+        actions={() => <PrometheusScrape />}
       />
     </div>
   );

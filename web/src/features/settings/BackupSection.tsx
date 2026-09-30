@@ -76,15 +76,24 @@ function BackUpNowButton({
   return btn;
 }
 
+// Batch 3 review fix: the plain `off`/`daily`/`weekly` enum has no title per
+// value for the SegmentedControl's own `enumOptions[].label` (RJSF's
+// `optionsList`, forms/theme/widgets.tsx:58) to pick up — `ui:enumNames`
+// (any `ui:xxx` key is folded into `ui:options` by RJSF's own `getUiOptions`)
+// supplies "Off"/"Daily"/"Weekly" without touching the schema itself. Needed
+// in both branches: it's the segmented control's own labels, not tied to
+// whether retainCount/directory are shown.
+//
 // `retainCount`/`directory` only matter once something is actually
 // scheduled; `directory` gets the mono font (task-7-brief) the rest of the
 // time (Task 8's `target.vaultKv` precedent for `ui:options.mono` on a
 // plain string field).
 function backupUiSchema(value: Record<string, unknown>): UiSchema {
+  const schedule = { 'ui:enumNames': ['Off', 'Daily', 'Weekly'] };
   if (value.schedule === 'off') {
-    return { retainCount: { 'ui:widget': 'hidden' }, directory: { 'ui:widget': 'hidden' } };
+    return { schedule, retainCount: { 'ui:widget': 'hidden' }, directory: { 'ui:widget': 'hidden' } };
   }
-  return { directory: { 'ui:options': { mono: true } } };
+  return { schedule, directory: { 'ui:options': { mono: true } } };
 }
 
 // The backup section's own 422s (internal/backup's checkSettings) name

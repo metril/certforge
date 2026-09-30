@@ -490,6 +490,24 @@ it('prometheus off shows Off chip', async () => {
   expect(within(scrapeRow).queryByText(/\/metrics/)).not.toBeInTheDocument();
 });
 
+// Batch 3 review fix: PrometheusScrape used to key the Off chip/scrape URL
+// on the live (possibly unsaved) draft SchemaSection hands its `actions`
+// render-prop — toggling Enabled on without saving showed a scrape URL that
+// still 404s until Save actually runs. It now reads its own
+// `useQuery(settingsQuery('prometheus'))`, the saved value, so the row
+// stays Off until the switch is actually saved.
+it('scrape URL stays Off while the enabled switch is toggled but unsaved', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers({ prometheus: { ...prometheusSection, value: { enabled: false }, storedSecrets: [] } }));
+  const { user } = renderRoute('/settings/integrations');
+  await screen.findByLabelText('Host');
+  const scrapeRow = screen.getByText('Scrape URL').closest('div')!.parentElement!;
+  expect(within(scrapeRow).getByText('Off')).toBeInTheDocument();
+  const promSection = screen.getByRole('heading', { name: 'Prometheus' }).closest('div')!.parentElement!;
+  await user.click(within(promSection).getByRole('switch', { name: 'Enabled' }));
+  expect(within(scrapeRow).getByText('Off')).toBeInTheDocument();
+  expect(within(scrapeRow).queryByText(/\/metrics/)).not.toBeInTheDocument();
+});
+
 it('read-only user sees disabled tests and saves', async () => {
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),

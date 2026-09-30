@@ -192,7 +192,7 @@ it('needs settings:write', async () => {
 it('schedule off hides retain and directory', async () => {
   server.use(...authHandlers({ authed: true }), ...handlers());
   renderRoute('/settings/backup');
-  await screen.findByRole('radio', { name: 'off' });
+  await screen.findByRole('radio', { name: 'Off' });
   expect(screen.queryByLabelText('Retain')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Directory')).not.toBeInTheDocument();
 });

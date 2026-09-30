@@ -30,11 +30,18 @@ function scrapeConfig(scrapeUrlValue: string): string {
  * token field. Never renders the token itself — the YAML snippet points
  * Prometheus at a `credentials_file` instead, so nothing here (URL, mono
  * text, copy) ever carries the secret value.
+ *
+ * Batch 3 review fix: reads the *saved* `enabled` (its own
+ * `useQuery(settingsQuery('prometheus'))`, same cache key SchemaSection
+ * itself already populates), not the live draft `SchemaSection` hands its
+ * `actions` render-prop — toggling the switch on without saving must not
+ * show a scrape URL that 404s until Save actually runs.
  */
-export function PrometheusScrape({ value }: { value: Record<string, unknown> }) {
+export function PrometheusScrape() {
   const general = useQuery(settingsQuery('general'));
+  const prometheus = useQuery(settingsQuery('prometheus'));
   const baseUrl = (general.data?.value?.baseUrl as string | undefined) || window.location.origin;
-  const enabled = value.enabled === true;
+  const enabled = prometheus.data?.value?.enabled === true;
   const url = scrapeUrl(baseUrl);
 
   return (

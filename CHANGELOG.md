@@ -269,3 +269,4 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Phase 6B batch-2 review fixes: the mobile monitor card's Check now button and fingerprint copy can be used by keyboard again (its card no longer intercepts Enter/Space bubbling up from them and opens the sheet on top); a deep-linked or hand-edited event filter with a partial kind group now shows as a removable filter chip and correctly reports "No events match these filters." instead of silently filtering with no visible chip.
 - Settings → Backup and keys schedules backups and downloads one on demand.
 - Overview flags monitors that see the wrong certificate or cannot connect.
+- Phase 6B batch-3 review fixes: the backup schedule segmented control now shows "Off"/"Daily"/"Weekly" instead of the raw enum values; the Prometheus scrape URL row now stays Off until the enabled switch is actually saved, instead of following the unsaved draft.
