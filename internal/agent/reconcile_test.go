@@ -389,6 +389,22 @@ func TestReconcileRemovalPrunesTargetCertsDir(t *testing.T) {
 	}
 }
 
+// TestCertsDirFromTargetRejectsNonTraefikType covers the batch-1 review
+// fix: a removal's target whose config happens to decode as a valid
+// TraefikConfig is never treated as Traefik's certs/<name> directory
+// unless its own Type actually says "traefik".
+func TestCertsDirFromTargetRejectsNonTraefikType(t *testing.T) {
+	target := &agentproto.Target{Type: "vault-kv", Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)}
+	files := []string{"/etc/traefik/dynamic/certs/web/fullchain.pem"}
+	if got := certsDirFromTarget(target, files); got != "" {
+		t.Fatalf("certsDirFromTarget(vault-kv) = %q, want \"\"", got)
+	}
+	traefikTarget := &agentproto.Target{Type: "traefik", Config: []byte(`{"dir":"/etc/traefik/dynamic"}`)}
+	if got := certsDirFromTarget(traefikTarget, files); got != "/etc/traefik/dynamic/certs/web" {
+		t.Fatalf("certsDirFromTarget(traefik) = %q, want /etc/traefik/dynamic/certs/web", got)
+	}
+}
+
 // A partial write failure can leave state.json listing a file the server's
 // removal message no longer names; removal unions both lists so it is still
 // cleaned up.

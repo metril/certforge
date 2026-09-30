@@ -64,13 +64,15 @@ func (r *Registry) Each(fn func(Target)) {
 // Parse resolves raw's secret fields against stored (the target's currently
 // decrypted secrets; empty on create) and hands the fully merged config to
 // the type's own Parse. For each of typ's secret properties (Schema via
-// SecretProps): an omitted field or the Unchanged sentinel takes stored[k]
-// and is reported in reused; either one with no stored value is
-// ErrUnchangedWithoutStored, wrapped with the field name; any other value,
-// including an explicit "", replaces the field (an explicit "" clears the
-// stored value and is not reused — whether that is actually allowed is up
-// to the type's own Parse, which enforces which of its secrets are
-// required).
+// SecretProps): the Unchanged sentinel takes stored[k] and is reported in
+// reused, or is ErrUnchangedWithoutStored (wrapped with the field name)
+// when stored has none; an omitted field takes stored[k] and is reported in
+// reused when stored has one, or is simply left absent when it does not —
+// the type's own Parse enforces which of its secrets are actually
+// required, so an absent optional secret is never an error here; any other
+// value, including an explicit "", replaces the field (an explicit ""
+// clears the stored value and is not reused — whether that is actually
+// allowed is up to the type's own Parse).
 func (r *Registry) Parse(typ string, raw json.RawMessage, stored map[string]string) (Config, []string, error) {
 	t, ok := r.Get(typ)
 	if !ok {
@@ -101,6 +103,13 @@ func (r *Registry) Parse(typ string, raw json.RawMessage, stored map[string]stri
 		}
 		v, ok := stored[k]
 		if !ok {
+			if !present {
+				// Omitted, no stored value: leave it absent. The type's
+				// own Parse enforces which of its secrets are required, so
+				// this is only an error when that secret turns out to be
+				// required — never here, unconditionally.
+				continue
+			}
 			return Config{}, nil, fmt.Errorf("%s: %w", k, ErrUnchangedWithoutStored)
 		}
 		b, err := json.Marshal(v)

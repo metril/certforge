@@ -71,6 +71,20 @@ func TestMigration00015(t *testing.T) {
 		t.Fatal("down to 00014 did not delete the row its restored type check cannot satisfy")
 	}
 
+	// Both dropped CHECKs are restored: an unknown type violates
+	// deploy_targets_type_check, and a vault-kv/agent row violates
+	// deploy_targets_type_runs_on_check (vault-kv must be server).
+	_, err = pool.Exec(ctx,
+		`INSERT INTO deploy_targets (org_id, name, type, runs_on) VALUES ($1, 'unknown-type-target', 'unknown-type', 'agent')`, org)
+	if pe := pgErr(err); pe == nil || pe.Code != pgCheckViolation || pe.ConstraintName != "deploy_targets_type_check" {
+		t.Fatalf("unknown type after down: err = %v, want a deploy_targets_type_check violation", err)
+	}
+	_, err = pool.Exec(ctx,
+		`INSERT INTO deploy_targets (org_id, name, type, runs_on) VALUES ($1, 'vault-agent-target', 'vault-kv', 'agent')`, org)
+	if pe := pgErr(err); pe == nil || pe.Code != pgCheckViolation || pe.ConstraintName != "deploy_targets_type_runs_on_check" {
+		t.Fatalf("vault-kv/agent after down: err = %v, want a deploy_targets_type_runs_on_check violation", err)
+	}
+
 	if _, err := p.UpTo(ctx, 15); err != nil {
 		t.Fatalf("up to 00015: %v", err)
 	}

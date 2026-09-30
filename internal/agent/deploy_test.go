@@ -112,6 +112,39 @@ func TestDeployerTargetWithoutMaterialFails(t *testing.T) {
 	}
 }
 
+// TestDeployerUnknownTargetTypeFails covers the batch-1 review fix: a
+// target whose config happens to decode as a valid TraefikConfig
+// ({"dir":...}) is never rendered as Traefik unless its own Type actually
+// says "traefik" — an unsupported type fails outright instead of being
+// silently treated as one.
+func TestDeployerUnknownTargetTypeFails(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := json.Marshal(map[string]string{"dir": filepath.Join(dir, "traefik")})
+	versionID := uuid.New()
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", VersionID: &versionID, Target: &agentproto.Target{Type: "vault-kv", Config: cfg}}
+	b := agentproto.Bundle{VersionID: versionID, Material: &agentproto.Material{Fullchain: []byte("FULL"), Key: []byte("KEY")}}
+	res, written, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
+	if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "vault-kv") || len(written) != 0 {
+		t.Fatalf("res %+v written %d", res, len(written))
+	}
+	if _, err := os.Stat(filepath.Join(dir, "traefik")); !os.IsNotExist(err) {
+		t.Fatal("files written for an unsupported target type")
+	}
+}
+
+// TestDeployTargetOnlyUnknownTargetTypeFails is
+// TestDeployerUnknownTargetTypeFails' DeployTargetOnly (C3, no version yet)
+// counterpart.
+func TestDeployTargetOnlyUnknownTargetTypeFails(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := json.Marshal(map[string]string{"dir": filepath.Join(dir, "traefik"), "acmeServiceUrl": "http://agent:8080"})
+	a := agentproto.Assignment{ID: uuid.New(), CertificateName: "Web", Target: &agentproto.Target{Type: "vault-kv", Config: cfg}}
+	res, written, _ := testDeployer([]string{dir}).DeployTargetOnly(a)
+	if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "vault-kv") || len(written) != 0 {
+		t.Fatalf("res %+v written %d", res, len(written))
+	}
+}
+
 // Review Focus: a mismatched bundle version is never installed.
 func TestDeployerVersionMismatchFails(t *testing.T) {
 	dir := t.TempDir()

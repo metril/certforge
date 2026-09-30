@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/metril/certforge/internal/agentproto"
+	"github.com/metril/certforge/internal/targets"
 )
 
 // ErrRevoked stops the agent: the server refused this client.
@@ -82,6 +83,19 @@ type Agent struct {
 	Deployer  *Deployer
 	Challenge *ChallengeServer
 	Now       func() time.Time
+}
+
+// NewTargetsRegistry builds the agent's deploy target registry: every
+// built-in type internal/targets ships (traefik) — never vault-kv, which
+// is server-run only and registers nowhere near the agent binary
+// (TestAgentRegistryHasNoVaultKV, cmd/certforge/registry_test.go). This is
+// the same construction the agent constructor (NewAgent) will wire into
+// Deployer.Reg once registry-driven agent execution lands (Task 6); until
+// then nothing calls it but its own tests.
+func NewTargetsRegistry() *targets.Registry {
+	reg := targets.NewRegistry()
+	targets.RegisterBuiltins(reg)
+	return reg
 }
 
 // NewAgent wires the production file writer, hook runner and challenge

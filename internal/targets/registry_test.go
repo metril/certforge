@@ -88,11 +88,44 @@ func TestParseUnchangedWithoutStored(t *testing.T) {
 	if got := err.Error(); got == "" {
 		t.Fatal("Parse error has no message")
 	}
+}
 
-	// Omitted with no stored value hits the same error.
-	_, _, err = r.Parse("secret-test", json.RawMessage(`{"url":"https://example.test"}`), map[string]string{})
-	if !errors.Is(err, targets.ErrUnchangedWithoutStored) {
-		t.Fatalf("Parse (omitted) error = %v, want ErrUnchangedWithoutStored", err)
+// TestParseOmittedRequiredSecretFailsInType covers the batch-1 review fix:
+// an omitted *required* secret (token) with no stored value is never
+// ErrUnchangedWithoutStored — that sentinel is only for an explicit
+// __unchanged__ — Registry.Parse instead leaves it absent and the type's
+// own Parse rejects the missing required field on its own terms.
+func TestParseOmittedRequiredSecretFailsInType(t *testing.T) {
+	r := newRegistry(t, "secret-test", targets.Server, targets.Never)
+
+	_, _, err := r.Parse("secret-test", json.RawMessage(`{"url":"https://example.test"}`), map[string]string{})
+	if err == nil {
+		t.Fatal("Parse did not fail for an omitted required secret with no stored value")
+	}
+	if errors.Is(err, targets.ErrUnchangedWithoutStored) {
+		t.Fatalf("Parse error = %v, want a type-level error, not ErrUnchangedWithoutStored", err)
+	}
+}
+
+// TestParseOmittedOptionalSecretStaysAbsent covers the batch-1 review fix
+// directly: creating a target without its optional secret (note) never
+// errors — the field is simply left absent, not reused, and every other
+// field parses normally.
+func TestParseOmittedOptionalSecretStaysAbsent(t *testing.T) {
+	r := newRegistry(t, "secret-test", targets.Server, targets.Never)
+
+	cfg, reused, err := r.Parse("secret-test", json.RawMessage(`{"url":"https://example.test","token":"fresh"}`), map[string]string{})
+	if err != nil {
+		t.Fatalf("Parse without note: %v", err)
+	}
+	if _, ok := cfg.Secrets["note"]; ok {
+		t.Errorf("note present without ever being set: %v", cfg.Secrets)
+	}
+	if cfg.Secrets["token"] != "fresh" {
+		t.Errorf("token = %q, want fresh", cfg.Secrets["token"])
+	}
+	if len(reused) != 0 {
+		t.Errorf("reused = %v, want none", reused)
 	}
 }
 

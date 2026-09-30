@@ -111,7 +111,7 @@ func union(files, extra []agentproto.FileSpec) []agentproto.FileSpec {
 // file may happen to be named that in a directory that is not a Traefik
 // target's certs/<name> directory at all).
 func certsDirFromTarget(t *agentproto.Target, files []string) string {
-	if t == nil {
+	if t == nil || t.Type != "traefik" {
 		return ""
 	}
 	cfg, err := delivery.ParseTraefik(t.Config)

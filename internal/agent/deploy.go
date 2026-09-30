@@ -102,6 +102,9 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 	}
 	var certsDir string
 	if a.Target != nil {
+		if a.Target.Type != "traefik" {
+			return fail("target: unknown target type %q", a.Target.Type)
+		}
 		cfg, err := delivery.ParseTraefik(a.Target.Config)
 		if err != nil {
 			return fail("target: %v", err)
@@ -180,6 +183,9 @@ func (d *Deployer) DeployTargetOnly(a agentproto.Assignment) (agentproto.GrantRe
 	}
 	if a.Target == nil {
 		return res, written, ""
+	}
+	if a.Target.Type != "traefik" {
+		return fail("target: unknown target type %q", a.Target.Type)
 	}
 	cfg, err := delivery.ParseTraefik(a.Target.Config)
 	if err != nil {

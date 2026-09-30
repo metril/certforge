@@ -131,9 +131,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
 	vaultProvider := vault.NewProvider(store, sections)
-	targetsReg := targets.NewRegistry()
-	targets.RegisterBuiltins(targetsReg)
-	targetsReg.Register(deploy.VaultKV{Vault: vaultProvider})
+	targetsReg := newTargetsRegistry(vaultProvider)
 	targets.AddToMeta(targetsReg, metaReg)
 	// notifySettings reads the live "notifications" section on every Send
 	// (never cached): notify.SettingsFunc's doc comment.
@@ -430,6 +428,18 @@ func riverRunningJobs(ctx context.Context, c *river.Client[pgx.Tx]) int {
 		return -1
 	}
 	return len(res.Jobs)
+}
+
+// newTargetsRegistry builds the server's deploy target registry: every
+// built-in type internal/targets ships (traefik) plus vault-kv, wired to
+// vaultProvider — the exact registry runServe wires into both api.Deps and
+// deploy.Dispatcher, and what cmd/certforge's own tests (registry_test.go)
+// check against, rather than reimplementing the wiring themselves.
+func newTargetsRegistry(vaultProvider *vault.Provider) *targets.Registry {
+	reg := targets.NewRegistry()
+	targets.RegisterBuiltins(reg)
+	reg.Register(deploy.VaultKV{Vault: vaultProvider})
+	return reg
 }
 
 func purgeSessions(ctx context.Context, s *authn.Sessions, log *slog.Logger) {
