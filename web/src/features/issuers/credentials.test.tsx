@@ -362,3 +362,19 @@ it('shows no method switcher for a provider without auth methods', async () => {
   const sheet = await screen.findByRole('dialog', { name: 'Add Amazon Route 53 credential' });
   expect(within(sheet).queryByText('Authenticate with')).not.toBeInTheDocument();
 });
+
+it('saving a two-method credential sends only the active method and advanced keys', async () => {
+  creds = [
+    {
+      ...cred,
+      config: { CF_API_EMAIL: 'a@b.c', CLOUDFLARE_TTL: '300', CLOUDFLARE_API_KEY: 'legacy', STRAY: 'x' },
+      storedSecrets: ['CF_DNS_API_TOKEN', 'CF_API_KEY'],
+    },
+  ];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
+  await waitFor(() => expect(put).toBeDefined());
+  expect((put as { config: unknown }).config).toEqual({ CF_DNS_API_TOKEN: UNCHANGED, CLOUDFLARE_TTL: '300' });
+});

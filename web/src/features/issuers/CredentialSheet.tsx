@@ -104,6 +104,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
       // UNCHANGED (a real, non-empty string), so it's unaffected.
       config: Object.fromEntries(
         Object.entries(config)
+          .filter(([k]) => !method || shownKeys.includes(k))
           .filter(([, v]) => v !== undefined && v !== null && v !== '')
           .map(([k, v]) => [k, String(v)]),
       ),
