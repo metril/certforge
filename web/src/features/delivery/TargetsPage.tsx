@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { Lock, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { deployTargetsQuery, useDeleteDeployTarget } from '@/api/queries/delivery';
@@ -12,21 +12,38 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
+import { RunsOnChip } from '@/components/RunsOnChip';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { help } from '@/lib/help';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { cn } from '@/lib/utils';
+import { targetLocation } from '@/lib/targets';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { RowActions, UsedBy } from './RowActions';
 import { TargetDetailSheet } from './TargetDetailSheet';
 import { TargetSheet } from './TargetSheet';
 
-const stickyCol = 'sticky left-0 z-10 bg-panel';
+/** Task 3: the `Lock` icon a row/card shows next to its name once it has
+ * any stored secret (task-3-brief.md). */
+function StoredSecretsLock() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} aria-label="Stored secrets" className="inline-flex shrink-0 items-center text-ink-muted">
+          <Lock className="size-3.5" aria-hidden />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{help['target.secrets'].text}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function TargetsPage() {
   const org = useOrg();
   const me = useMe();
+  const isMdUp = useMediaQuery('(min-width: 768px)');
   const canWrite = can(me, 'delivery:write', org.id);
   const { edit, view } = useSearch({ from: '/_app/o/$org/delivery/targets' });
   const navigate = useNavigate({ from: '/o/$org/delivery/targets' });
@@ -100,44 +117,84 @@ export function TargetsPage() {
       ) : (
         <>
           <div className="flex justify-end">{add}</div>
-          <Table aria-label="Deploy targets" className="table-fixed">
-            <TableHeader>
-              <TableRow>
-                <TableHead className={cn('w-44', stickyCol)}>Name</TableHead>
-                <TableHead className="w-48">
-                  <span className="inline-flex items-center gap-1">
-                    Type <HelpTip id="target.type" />
-                  </span>
-                </TableHead>
-                <TableHead className="w-28">
-                  <span className="inline-flex items-center gap-1">
-                    Runs on <HelpTip id="target.runsOn" />
-                  </span>
-                </TableHead>
-                <TableHead className="w-56">Directory</TableHead>
-                <TableHead className="w-28">
-                  <span className="inline-flex items-center gap-1">
-                    Used by <HelpTip id="target.usedBy" />
-                  </span>
-                </TableHead>
-                <TableHead className="w-20">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          {isMdUp ? (
+            <Table aria-label="Deploy targets" className="table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-44">Name</TableHead>
+                  <TableHead className="w-40">
+                    <span className="inline-flex items-center gap-1">
+                      Type <HelpTip id="target.type" />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-40">
+                    <span className="inline-flex items-center gap-1">
+                      Runs on <HelpTip id="target.runsOn" />
+                    </span>
+                  </TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead className="w-28">
+                    <span className="inline-flex items-center gap-1">
+                      Used by <HelpTip id="target.usedBy" />
+                    </span>
+                  </TableHead>
+                  <TableHead className="w-20">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {targets.map((t) => (
+                  <TableRow key={t.id} className="h-9">
+                    <TableCell className="py-1 font-semibold">
+                      <span className="inline-flex min-w-0 items-center gap-1.5">
+                        <span className="truncate">{t.name}</span>
+                        {t.storedSecrets.length > 0 && <StoredSecretsLock />}
+                      </span>
+                    </TableCell>
+                    <TableCell className="truncate py-1">{typeName(t.type)}</TableCell>
+                    <TableCell className="py-1">
+                      <RunsOnChip mode={t.runsOn} />
+                    </TableCell>
+                    <TableCell title={targetLocation(t.config as Record<string, unknown>)} className="truncate py-1 font-mono text-xs">
+                      {targetLocation(t.config as Record<string, unknown>)}
+                    </TableCell>
+                    <TableCell className="py-1">
+                      <UsedBy count={t.grantCount} />
+                    </TableCell>
+                    <TableCell className="py-1 text-right">
+                      <RowActions
+                        name={t.name}
+                        grantCount={t.grantCount}
+                        canWrite={canWrite}
+                        onOpen={() => openSheet(t.id)}
+                        onDelete={() => setDeleting(t)}
+                        onGrants={t.runsOn === 'server' ? () => openView(t.id) : undefined}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <ul aria-label="Deploy targets" className="grid gap-2">
               {targets.map((t) => (
-                <TableRow key={t.id} className="h-9">
-                  <TableCell className={cn('truncate py-1 font-semibold', stickyCol)}>{t.name}</TableCell>
-                  <TableCell className="truncate py-1">{typeName(t.type)}</TableCell>
-                  <TableCell className="py-1">{t.runsOn === 'server' ? 'Server' : 'Agent'}</TableCell>
-                  <TableCell title={String((t.config as { dir?: unknown }).dir ?? '')} className="truncate py-1 font-mono text-xs">
-                    {String((t.config as { dir?: unknown }).dir ?? '–')}
-                  </TableCell>
-                  <TableCell className="py-1">
+                <li key={t.id} className="grid gap-2 rounded-md border border-border bg-panel p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-semibold">{t.name}</span>
+                      {t.storedSecrets.length > 0 && <StoredSecretsLock />}
+                    </span>
+                    <RunsOnChip mode={t.runsOn} />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate text-ink-muted">{typeName(t.type)}</span>
+                    <span title={targetLocation(t.config as Record<string, unknown>)} className="truncate font-mono text-ink-muted">
+                      {targetLocation(t.config as Record<string, unknown>)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
                     <UsedBy count={t.grantCount} />
-                  </TableCell>
-                  <TableCell className="py-1 text-right">
                     <RowActions
                       name={t.name}
                       grantCount={t.grantCount}
@@ -146,11 +203,11 @@ export function TargetsPage() {
                       onDelete={() => setDeleting(t)}
                       onGrants={t.runsOn === 'server' ? () => openView(t.id) : undefined}
                     />
-                  </TableCell>
-                </TableRow>
+                  </div>
+                </li>
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+          )}
         </>
       )}
       {((canWrite && edit === 'new') || editing) && types.length > 0 && (

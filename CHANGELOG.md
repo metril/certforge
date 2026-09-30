@@ -143,6 +143,7 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - The deploy target sheet shows where each type runs, locks it after create and keeps stored secrets.
 
 ### Changed
+- Deploy target rows show where each target runs and stack as cards on phones.
 - Session audit actions are now session.login, session.login_failed, session.logout and session.revoked; public routes no longer require a CSRF token.
 - Web UI settings: `SettingsPage.tsx`'s `SECTIONS`/`SectionSlug` moved to a small `sections.ts` so the settings route's `beforeLoad` no longer drags the whole Issuance defaults section (and `tldts`) into the app's main chunk; the build's largest chunk drops from 977 kB to under 400 kB, with no chunk over the 500 kB warning threshold, and `npm run build` now fails if `tldts` reappears in an eagerly-loaded chunk (`web/scripts/check-chunks.mjs`).
 - Audit chain is HMAC-SHA256 keyed from the KEK; existing events are re-chained once at startup (ADR 0008).

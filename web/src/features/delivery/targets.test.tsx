@@ -1,14 +1,27 @@
 import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, expect, it } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeTarget, meWith, org, problem, targetVaultKv, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
+import { authHandlers, makeTarget, meWith, org, problem, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: unknown;
 let deleted: string[];
 
+// setup.ts's default matchMedia says false (compact); the list's table is
+// the default view most tests want, with "stacks as cards below md"
+// opting into the compact one.
+function stubViewport(isMdUp: boolean) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(min-width: 768px)' ? isMdUp : false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
 beforeEach(() => {
+  stubViewport(true);
   posted = undefined;
   deleted = [];
   server.use(
@@ -28,14 +41,18 @@ beforeEach(() => {
   );
 });
 
-// getAllByText + [0]: the Name column comes before the Type column in DOM
-// order, and a target's name can collide with its own type's display name
-// (e.g. a "Vault KV" target of type vault-kv, whose display name is also
-// "Vault KV" now that RunsOnChip — not a name suffix — carries where it
-// runs); the first match is always the Name cell.
-const rowOf = (name: string) => screen.getAllByText(name, { selector: 'td' })[0]!.closest('tr')!;
+// A function matcher (not `{ selector: 'td' }` + exact text): the Name
+// cell nests the name in a span next to its optional stored-secrets Lock
+// icon (task-3-brief.md), so RTL's default node-own-text check no longer
+// sees it — match on the td's full textContent instead. [0]: the Name
+// column comes before the Type column in DOM order, and a target's name
+// can collide with its own type's display name (e.g. a "Vault KV" target
+// of type vault-kv, whose display name is also "Vault KV" now that
+// RunsOnChip — not a name suffix — carries where it runs); the first
+// match is always the Name cell.
+const rowOf = (name: string) => screen.getAllByText((_, node) => node?.tagName === 'TD' && node.textContent?.trim() === name)[0]!.closest('tr')!;
 
-it('opens from the nav and lists targets with type, directory and use', async () => {
+it('opens from the nav and lists targets with type, location and use', async () => {
   const { router } = renderRoute('/o/acme/delivery');
   await screen.findByRole('table', { name: 'Deploy targets' });
   expect(router.state.location.pathname).toBe('/o/acme/delivery/targets');
@@ -231,4 +248,59 @@ it('shows Server for a vault-kv row and a Grants action that opens its detail', 
   expect(within(rowOf('edge traefik')).getByText('Agent')).toBeInTheDocument();
   await user.click(within(row).getByRole('button', { name: `Grants ${targetVaultKv.name}` }));
   expect(router.state.location.search).toMatchObject({ view: targetVaultKv.id });
+});
+
+it('rows show runs-on chip', async () => {
+  server.use(
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })),
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv] })),
+  );
+  renderRoute('/o/acme/delivery/targets');
+  await screen.findByRole('table', { name: 'Deploy targets' });
+  expect(within(rowOf('edge traefik')).getByText('Agent')).toBeInTheDocument();
+  expect(within(rowOf(targetVaultKv.name)).getByText('Server')).toBeInTheDocument();
+});
+
+it('location column is generic', async () => {
+  server.use(
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [] })),
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv, targetTestSecret] })),
+  );
+  renderRoute('/o/acme/delivery/targets');
+  const table = await screen.findByRole('table', { name: 'Deploy targets' });
+  expect(within(table).getByText('Location')).toBeInTheDocument();
+  expect(within(rowOf('edge traefik')).getByText('/etc/traefik/dynamic')).toBeInTheDocument();
+  expect(within(rowOf(targetVaultKv.name)).getByText('certforge/acme/www')).toBeInTheDocument();
+  expect(within(rowOf(targetTestSecret.name)).getByText('https://sink.test')).toBeInTheDocument();
+});
+
+it('lock icon for stored secrets', async () => {
+  server.use(
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, testSecretSchema], notifiers: [], signers: [] })),
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetTestSecret] })),
+  );
+  renderRoute('/o/acme/delivery/targets');
+  await screen.findByRole('table', { name: 'Deploy targets' });
+  expect(within(rowOf(targetTestSecret.name)).getByLabelText('Stored secrets')).toBeInTheDocument();
+  expect(within(rowOf('edge traefik')).queryByLabelText('Stored secrets')).not.toBeInTheDocument();
+});
+
+it('stacks as cards below md', async () => {
+  stubViewport(false);
+  renderRoute('/o/acme/delivery/targets');
+  const list = await screen.findByRole('list', { name: 'Deploy targets' });
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  expect(within(list).getByText('edge traefik')).toBeInTheDocument();
+  expect(within(list).getByText('spare')).toBeInTheDocument();
+});
+
+it('grants action only for server targets', async () => {
+  server.use(
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })),
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv] })),
+  );
+  renderRoute('/o/acme/delivery/targets');
+  await screen.findByRole('table', { name: 'Deploy targets' });
+  expect(within(rowOf(targetVaultKv.name)).getByRole('button', { name: `Grants ${targetVaultKv.name}` })).toBeInTheDocument();
+  expect(within(rowOf('edge traefik')).queryByRole('button', { name: 'Grants edge traefik' })).not.toBeInTheDocument();
 });

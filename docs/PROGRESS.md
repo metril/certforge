@@ -353,8 +353,8 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 | # | Task | Status | Commit |
 |---|---|---|---|
 | 1 | Libraries, secret helper extraction, fixtures, help | done | 078b43b |
-| 2 | Target sheet | done | pending |
-| 3 | Targets list | pending | – |
+| 2 | Target sheet | done | 2f7afb6 |
+| 3 | Targets list | done | pending |
 | 4 | Server grant gating and client grant picker | pending | – |
 | 5 | Playwright and docs close-out | pending | – |
 
