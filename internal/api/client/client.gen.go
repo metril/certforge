@@ -2487,7 +2487,7 @@ type SchemaEntry struct {
 	// RunsOn Where this type runs; deploy targets only.
 	RunsOn *TargetRunsOn `json:"runsOn,omitempty"`
 
-	// Schema JSON Schema for the type's configuration. Fields with secret true are write-only.
+	// Schema JSON Schema for the type's configuration. Fields with secret true are write-only. DNS provider schemas may carry x-auth-methods (the alternative credential sets, one of which must be complete) and x-alias-of (on an alias property, naming the canonical key it is folded into).
 	Schema map[string]interface{} `json:"schema"`
 }
 

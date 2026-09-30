@@ -2184,7 +2184,7 @@ export interface components {
             code: string;
             /** @description Display name. */
             name: string;
-            /** @description JSON Schema for the type's configuration. Fields with secret true are write-only. */
+            /** @description JSON Schema for the type's configuration. Fields with secret true are write-only. DNS provider schemas may carry x-auth-methods (the alternative credential sets, one of which must be complete) and x-alias-of (on an alias property, naming the canonical key it is folded into). */
             schema: {
                 [key: string]: unknown;
             };
