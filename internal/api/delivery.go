@@ -628,21 +628,39 @@ func targetAuditDetails(t sqlcgen.DeployTarget) map[string]any {
 // Parse can echo a rejected value straight back into its error text (a
 // pattern/format check, or a type's own hand-written validation), so every
 // branch but the sentinel one — which never carries user input — is run
-// through targets.Redact with raw's own secret values (targets.Split)
-// before it ever reaches the problem body. 0 disables Redact's length cap:
-// this is a synchronous request/response body, not a stored/retried field
-// with its own length limit.
-func mapTargetErr(err error, t targets.Target, raw json.RawMessage) error {
+// through targets.Redact before it ever reaches the problem body. stored is
+// the update's currently-stored secrets (final review, finding 2): on
+// update, a secret sent as __unchanged__ or omitted is merged from storage
+// before Parse runs, so a Parse error can just as easily echo a stored
+// write-only secret as a raw request one — redact against the union of
+// raw's own secret values (targets.Split) and stored's. stored is nil on
+// create, where there is nothing stored yet. 0 disables Redact's length
+// cap: this is a synchronous request/response body, not a stored/retried
+// field with its own length limit.
+func mapTargetErr(err error, t targets.Target, raw json.RawMessage, stored map[string]string) error {
 	if errors.Is(err, targets.ErrUnchangedWithoutStored) {
 		field := strings.TrimSuffix(err.Error(), ": "+targets.ErrUnchangedWithoutStored.Error())
 		return unprocessable(field, fmt.Sprintf("%s has no stored value", field))
 	}
 	_, secrets, _ := targets.Split(t.Schema(), raw)
+	// Redact only cares about map values, never keys (it builds one
+	// args list from every value present) — but raw's own field name and
+	// stored's are the same key, so merging them directly into one map
+	// would let one silently overwrite the other (e.g. raw's
+	// "__unchanged__" sentinel clobbering stored's real value) instead of
+	// redacting both. Distinct prefixes per source keep every value.
+	redact := make(map[string]string, len(secrets)+len(stored))
+	for k, v := range secrets {
+		redact["raw:"+k] = v
+	}
+	for k, v := range stored {
+		redact["stored:"+k] = v
+	}
 	var fe *delivery.FieldError
 	if errors.As(err, &fe) {
-		return unprocessable(fe.Field, targets.Redact(errors.New(fe.Msg), secrets, 0))
+		return unprocessable(fe.Field, targets.Redact(errors.New(fe.Msg), redact, 0))
 	}
-	return unprocessable("config", targets.Redact(err, secrets, 0))
+	return unprocessable("config", targets.Redact(err, redact, 0))
 }
 
 // sameURLSet reports whether a and b hold the same URLs, order
@@ -729,12 +747,12 @@ func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old
 	}
 	cfg, reused, err := s.d.Targets.Parse(typ, raw, stored)
 	if err != nil {
-		return validatedTarget{}, mapTargetErr(err, target, raw)
+		return validatedTarget{}, mapTargetErr(err, target, raw, stored)
 	}
 	if old != nil && len(reused) > 0 {
 		oldCfg, _, err := s.d.Targets.Parse(typ, old.Config, stored)
 		if err != nil {
-			return validatedTarget{}, err
+			return validatedTarget{}, mapTargetErr(err, target, old.Config, stored)
 		}
 		if !sameURLSet(oldCfg.URLs, cfg.URLs) {
 			return validatedTarget{}, unprocessable("config", "re-enter the secret")

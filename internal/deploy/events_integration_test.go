@@ -265,6 +265,41 @@ func TestDeployFailedPayloadRedacted(t *testing.T) {
 	}
 }
 
+// TestDeployFailedPayloadRedactsURL covers the review fix: the immediate
+// deploy.failed emit (DeployEvents.DeployFailed) must strip an embedded
+// Vault/target transport URL the same way scan.go's own backstop scan
+// does (redactURLs), not just the secret value. Before the fix, the
+// immediate emit stored f.LastError verbatim and, because it fires first
+// and wins the shared dedupe key, the scan's URL-scrubbed payload never
+// lands.
+func TestDeployFailedPayloadRedactsURL(t *testing.T) {
+	f := newEventsFixture(t)
+	ctx := context.Background()
+	certID := f.cert(t, "payload-redacts-url")
+	versionID := f.version(t, certID, "1")
+	targetID, sec := f.target(t, "payload-redacts-url-target", map[string]any{"url": "https://example.test/hook", "token": "tok-url"})
+	grantID := f.grant(t, certID, targetID)
+	f.pending(t, grantID, versionID)
+
+	leakedURL := "https://vault.internal.example:8200/v1/secret/data/x"
+	sec.Err = fmt.Errorf(`Put "%s": dial tcp 10.0.0.5:8200: connect: connection refused`, leakedURL)
+	if err := f.disp.Deploy(ctx, grantID, versionID); err == nil {
+		t.Fatal("Deploy = nil, want an error")
+	}
+
+	dedupeKey := fmt.Sprintf("deploy.failed:%s:%s", grantID, versionID)
+	details := eventDetails(t, f.pool, dedupeKey)
+	if strings.Contains(details, leakedURL) {
+		t.Errorf("event details contain the raw URL: %s", details)
+	}
+	if strings.Contains(details, "10.0.0.5") {
+		t.Errorf("event details contain the raw dial address: %s", details)
+	}
+	if !strings.Contains(details, "<redacted-url>") {
+		t.Errorf("event details have no <redacted-url> marker: %s", details)
+	}
+}
+
 // TestNewVersionEmitsAgain covers the DedupeKey's own versionID component:
 // a fresh certificate version failing again on the same grant is a new
 // condition (a different DedupeKey), so it emits its own event rather than

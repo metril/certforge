@@ -45,7 +45,7 @@ func TestMapTargetErrRedactsSecret(t *testing.T) {
 
 	t.Run("plain error", func(t *testing.T) {
 		err := fmt.Errorf("token %q is not a valid credential", "super-secret-value")
-		got := mapTargetErr(err, secretSchemaTarget{}, raw)
+		got := mapTargetErr(err, secretSchemaTarget{}, raw, nil)
 		var he *HTTPError
 		if !errors.As(got, &he) {
 			t.Fatalf("mapTargetErr returned %T, want *HTTPError", got)
@@ -60,7 +60,7 @@ func TestMapTargetErrRedactsSecret(t *testing.T) {
 
 	t.Run("delivery.FieldError", func(t *testing.T) {
 		fe := &delivery.FieldError{Field: "token", Msg: `rejected: "super-secret-value"`}
-		got := mapTargetErr(fe, secretSchemaTarget{}, raw)
+		got := mapTargetErr(fe, secretSchemaTarget{}, raw, nil)
 		var he *HTTPError
 		if !errors.As(got, &he) {
 			t.Fatalf("mapTargetErr returned %T, want *HTTPError", got)
@@ -75,10 +75,32 @@ func TestMapTargetErrRedactsSecret(t *testing.T) {
 
 	t.Run("Unchanged-without-stored sentinel is untouched", func(t *testing.T) {
 		err := fmt.Errorf("token: %w", targets.ErrUnchangedWithoutStored)
-		got := mapTargetErr(err, secretSchemaTarget{}, raw)
+		got := mapTargetErr(err, secretSchemaTarget{}, raw, nil)
 		var he *HTTPError
 		if !errors.As(got, &he) || he.Detail != "token has no stored value" {
 			t.Fatalf("mapTargetErr = %v, want \"token has no stored value\"", got)
+		}
+	})
+
+	// final review finding 2: on update, a secret sent as __unchanged__ (or
+	// omitted) is merged from storage before Parse runs, so a Parse error
+	// can echo the *stored* secret rather than anything in the raw request.
+	// raw here never contains the real value at all — only stored does —
+	// so this fails unless mapTargetErr redacts against stored too.
+	t.Run("stored secret redacted on update", func(t *testing.T) {
+		updateRaw := json.RawMessage(`{"token":"__unchanged__"}`)
+		stored := map[string]string{"token": "super-secret-value"}
+		err := fmt.Errorf("upstream rejected token %q", "super-secret-value")
+		got := mapTargetErr(err, secretSchemaTarget{}, updateRaw, stored)
+		var he *HTTPError
+		if !errors.As(got, &he) {
+			t.Fatalf("mapTargetErr returned %T, want *HTTPError", got)
+		}
+		if strings.Contains(he.Detail, "super-secret-value") {
+			t.Fatalf("problem detail leaked the stored secret: %q", he.Detail)
+		}
+		if !strings.Contains(he.Detail, "[redacted]") {
+			t.Fatalf("problem detail not redacted: %q", he.Detail)
 		}
 	})
 }

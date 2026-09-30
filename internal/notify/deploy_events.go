@@ -28,14 +28,18 @@ type DeployEvents struct {
 // ever reaches this Details payload. Always emits with a nil tx: by the
 // time Dispatcher.fail calls this, the failed deploy attempt has already
 // been recorded (and river's retry decided) outside any transaction of
-// its own, so there is no caller transaction to join.
+// its own, so there is no caller transaction to join. f.LastError is
+// already redacted for secrets (Dispatcher.fail's own targets.Redact pass)
+// but can still carry a raw Vault or target transport URL, so this applies
+// the same redactURLs pass scan.go's backstop uses before either can win
+// the shared dedupe key.
 func (d DeployEvents) DeployFailed(ctx context.Context, f deploy.DeployFailure) error {
 	ev := Event{
 		Kind:      "deploy.failed",
 		OrgID:     &f.OrgID,
 		Resource:  Resource{ID: f.GrantID.String(), Name: f.CertName + " → " + f.TargetName},
 		Summary:   fmt.Sprintf("Deploy to %s failed", f.TargetName),
-		Details:   map[string]any{"target": f.TargetName, "lastError": f.LastError},
+		Details:   map[string]any{"target": f.TargetName, "lastError": redactURLs(f.LastError)},
 		DedupeKey: fmt.Sprintf("deploy.failed:%s:%s", f.GrantID, f.VersionID),
 	}
 	_, err := d.E.Emit(ctx, nil, ev)

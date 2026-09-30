@@ -1360,7 +1360,7 @@ type DeployTarget struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// DeployTargetInput A target's name, type, runsOn and configuration. A secret field of config sent as __unchanged__, or omitted entirely, keeps its stored value; an explicit "" clears it (a required secret cleared this way is 422). Changing any other config field while a secret is kept (reused) needs every secret re-entered (422 "re-enter the secret"). Every URL in config is checked against the URL policy (loopback/link-local allowed on an agent target, gated by the server's allowLoopbackUrls setting on a server target). A server target whose config needs the certificate's private key needs keys:export.
+// DeployTargetInput A target's name, type, runsOn and configuration. A secret field of config sent as __unchanged__, or omitted entirely, keeps its stored value; an explicit "" clears it (a required secret cleared this way is 422). Changing a URL while a secret is kept (reused) needs every secret re-entered (422 "re-enter the secret"). Every URL in config is checked against the URL policy (loopback/link-local allowed on an agent target, gated by the server's allowLoopbackUrls setting on a server target). A server target whose config needs the certificate's private key needs keys:export.
 type DeployTargetInput struct {
 	// Config Configuration valid against the type's schema.
 	Config map[string]interface{} `json:"config"`
