@@ -25,6 +25,10 @@ type ProviderMeta struct {
 	Aliases []string        `json:"aliases,omitempty"`
 	URL     string          `json:"url,omitempty"`
 
+	// AuthMethods is parsed from Schema's "x-auth-methods": each entry is one
+	// complete set of alternative credentials. Empty means no check.
+	AuthMethods []AuthMethod `json:"-"`
+
 	// Unsupported and UnsupportedReason are parsed out of Schema's own
 	// top-level "unsupported"/"unsupportedReason" (Register does this, not
 	// the init loop above, so Lookup/Providers expose them as plain Go
@@ -37,14 +41,24 @@ type ProviderMeta struct {
 	UnsupportedReason string `json:"unsupportedReason,omitempty"`
 }
 
+// AuthMethod is one alternative set of credential fields that together
+// authenticate; Fields empty means ambient (server environment) credentials.
+type AuthMethod struct {
+	ID       string   `json:"id"`
+	Label    string   `json:"label"`
+	Fields   []string `json:"fields"`
+	Optional []string `json:"optional,omitempty"`
+}
+
 // Factory builds a provider without lego's env-var path (used by the e2e
 // challtestsrv provider).
 type Factory func(cfg map[string]string) (legochallenge.Provider, error)
 
 type entry struct {
 	meta       ProviderMeta
-	secret     map[string]bool // every schema property; true = secret
-	serverPath map[string]bool // every schema property; true = reads a local path/file on the server, rejected by SplitConfig
+	secret     map[string]bool   // every schema property; true = secret
+	serverPath map[string]bool   // every schema property; true = reads a local path/file on the server, rejected by SplitConfig
+	aliasOf    map[string]string // alias property -> canonical property
 	factory    Factory
 }
 
@@ -77,21 +91,27 @@ func init() {
 // Register adds or replaces a provider. f may be nil for lego providers.
 func Register(m ProviderMeta, f Factory) error {
 	var s struct {
-		Unsupported       bool   `json:"unsupported"`
-		UnsupportedReason string `json:"unsupportedReason"`
+		Unsupported       bool         `json:"unsupported"`
+		UnsupportedReason string       `json:"unsupportedReason"`
+		AuthMethods       []AuthMethod `json:"x-auth-methods"`
 		Properties        map[string]struct {
-			Secret     bool `json:"secret"`
-			ServerPath bool `json:"serverPath"`
+			Secret     bool   `json:"secret"`
+			ServerPath bool   `json:"serverPath"`
+			AliasOf    string `json:"x-alias-of"`
 		} `json:"properties"`
 	}
 	if err := json.Unmarshal(m.Schema, &s); err != nil {
 		return fmt.Errorf("provider %s schema: %w", m.Code, err)
 	}
 	m.Unsupported, m.UnsupportedReason = s.Unsupported, s.UnsupportedReason
-	e := &entry{meta: m, secret: map[string]bool{}, serverPath: map[string]bool{}, factory: f}
+	m.AuthMethods = s.AuthMethods
+	e := &entry{meta: m, secret: map[string]bool{}, serverPath: map[string]bool{}, aliasOf: map[string]string{}, factory: f}
 	for k, p := range s.Properties {
 		e.secret[k] = p.Secret
 		e.serverPath[k] = p.ServerPath
+		if p.AliasOf != "" {
+			e.aliasOf[k] = p.AliasOf
+		}
 	}
 	regMu.Lock()
 	defer regMu.Unlock()
