@@ -2,6 +2,26 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.2.0](https://github.com/metril/certforge/compare/v0.1.0...v0.2.0) (2026-09-30)
+
+
+### Features
+
+* **challenge:** canonicalize DNS aliases and require a complete auth method ([a63ab0c](https://github.com/metril/certforge/commit/a63ab0ca3d11372518e8e39382ccc25cd127e645))
+* **challenge:** parse auth methods and alias-of from provider schemas ([94cc1db](https://github.com/metril/certforge/commit/94cc1db7165273198a8c9d8cb00ad50e5e237d5e))
+* **issuance:** map missing auth method and alias conflict to 422 ([a7105a6](https://github.com/metril/certforge/commit/a7105a6beaed77952c856f549b5f53195ede3d74))
+* **tools:** derive DNS auth methods and aliases in gen-lego-schemas ([268ddcf](https://github.com/metril/certforge/commit/268ddcf998e3f40512ad9af5abef5502389f6b82))
+* **web:** auth method helpers for DNS provider schemas ([1e2aeca](https://github.com/metril/certforge/commit/1e2aecae419e8900c0c257acd5cfc1ce61bdc132))
+* **web:** auth method switcher and Advanced section in credential sheet ([ef55ddd](https://github.com/metril/certforge/commit/ef55ddd07216597efab92717af06d43c4b24058a))
+
+
+### Bug Fixes
+
+* **challenge:** canonicalize legacy alias-keyed stored DNS credentials ([7612bfb](https://github.com/metril/certforge/commit/7612bfb1a70a92e98431bd6f073a8085786c576e))
+* **tools:** require every credentials field in a DNS auth method or hide server-file inputs ([1dce0e6](https://github.com/metril/certforge/commit/1dce0e62ad1446983310945543354cf280518307))
+* **web:** give each credential form only its own keys and drop additionalProperties ([86444b4](https://github.com/metril/certforge/commit/86444b452edcbf9f8aa34ce707df4eee1d58915a))
+* **web:** submit only the active method and advanced keys ([855b68b](https://github.com/metril/certforge/commit/855b68b819775d12a236daa79973141f5328cd0f))
+
 ## 0.1.0 (2026-09-30)
 
 
