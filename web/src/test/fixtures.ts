@@ -448,17 +448,29 @@ export const cloudflare = {
   aliases: ['cf'],
   schema: {
     type: 'object',
-    required: ['CF_DNS_API_TOKEN'],
+    'x-auth-methods': [
+      { id: 'api-token', label: 'API token', fields: ['CF_DNS_API_TOKEN'], optional: ['CF_ZONE_API_TOKEN'] },
+      { id: 'email-api-key', label: 'Email + API key', fields: ['CF_API_EMAIL', 'CF_API_KEY'], optional: ['CF_ZONE_API_TOKEN'] },
+    ],
     properties: {
+      CF_API_EMAIL: { type: 'string', title: 'CF_API_EMAIL', 'x-group': 'credentials' },
+      CF_API_KEY: { type: 'string', title: 'CF_API_KEY', secret: true, 'x-group': 'credentials' },
       CF_DNS_API_TOKEN: {
         type: 'string',
         title: 'CF_DNS_API_TOKEN',
         secret: true,
+        'x-group': 'credentials',
         description: 'API token with Zone.DNS edit rights (since v3.1.0). Create it under My Profile.',
       },
-      CF_ZONE_API_TOKEN: { type: 'string', title: 'CF_ZONE_API_TOKEN', secret: true },
-      CLOUDFLARE_TTL: { type: 'string', title: 'CLOUDFLARE_TTL', description: 'The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)' },
-      CLOUDFLARE_PROPAGATION_TIMEOUT: { type: 'string', title: 'CLOUDFLARE_PROPAGATION_TIMEOUT' },
+      CF_ZONE_API_TOKEN: { type: 'string', title: 'CF_ZONE_API_TOKEN', secret: true, 'x-group': 'credentials' },
+      CLOUDFLARE_API_KEY: { type: 'string', title: 'CLOUDFLARE_API_KEY', secret: true, 'x-group': 'credentials', 'x-alias-of': 'CF_API_KEY' },
+      CLOUDFLARE_TTL: {
+        type: 'string',
+        title: 'CLOUDFLARE_TTL',
+        'x-group': 'additional',
+        description: 'The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)',
+      },
+      CLOUDFLARE_PROPAGATION_TIMEOUT: { type: 'string', title: 'CLOUDFLARE_PROPAGATION_TIMEOUT', 'x-group': 'additional' },
     },
   },
 } as ProviderSchema;

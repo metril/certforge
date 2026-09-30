@@ -7,7 +7,7 @@ import { buildUiSchema, secretKeys, withSecretSentinels } from './uiSchema';
 const schema = cloudflare.schema as RJSFSchema;
 
 it('finds secret fields', () => {
-  expect(secretKeys(schema)).toEqual(['CF_DNS_API_TOKEN', 'CF_ZONE_API_TOKEN']);
+  expect(secretKeys(schema)).toEqual(['CF_API_KEY', 'CF_DNS_API_TOKEN', 'CF_ZONE_API_TOKEN', 'CLOUDFLARE_API_KEY']);
 });
 
 it('routes each secret to the secret widget with its own stored flag, and hides the submit button', () => {

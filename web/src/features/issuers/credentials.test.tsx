@@ -96,6 +96,7 @@ it('editing keeps stored secrets that were replaced then reverted, sending DNSCr
   await user.type(within(sheet).getByLabelText('CF_DNS_API_TOKEN'), 'oops');
   await user.click(within(sheet).getByRole('button', { name: /Keep stored/ }));
   await user.type(within(sheet).getByLabelText('Name'), ' 2');
+  expect(within(sheet).getByLabelText('CLOUDFLARE_TTL')).toHaveValue('300');
   await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
   await waitFor(() =>
     expect(put).toEqual({ name: 'Cloudflare prod 2', config: { CLOUDFLARE_TTL: '300', CF_DNS_API_TOKEN: UNCHANGED, CF_ZONE_API_TOKEN: UNCHANGED } }),
@@ -288,4 +289,76 @@ it('disables Add/Test/Edit/Delete for a viewer', async () => {
   expect(screen.getByRole('button', { name: `Test ${cred.name}` })).toBeDisabled();
   expect(screen.getByRole('button', { name: `Edit ${cred.name}` })).toBeDisabled();
   expect(screen.getByRole('button', { name: `Delete ${cred.name}` })).toBeDisabled();
+});
+
+async function openAddCloudflare() {
+  const r = renderRoute('/o/acme/issuers/dns');
+  await r.user.click(await screen.findByRole('button', { name: 'Add credential' }));
+  await r.user.type(screen.getByRole('combobox'), 'cloudfl');
+  await r.user.click(screen.getByRole('option', { name: /Cloudflare/ }));
+  const sheet = await screen.findByRole('dialog', { name: 'Add Cloudflare credential' });
+  return { user: r.user, sheet };
+}
+
+it('shows only the default method fields and never alias fields', async () => {
+  const { sheet } = await openAddCloudflare();
+  expect(within(sheet).getByLabelText('CF_DNS_API_TOKEN')).toBeInTheDocument();
+  expect(within(sheet).getByLabelText('CF_ZONE_API_TOKEN')).toBeInTheDocument();
+  expect(within(sheet).queryByLabelText('CF_API_KEY')).not.toBeInTheDocument();
+  expect(within(sheet).queryByLabelText('CLOUDFLARE_API_KEY')).not.toBeInTheDocument();
+});
+
+it('switching method hides the other method fields and omits them on save', async () => {
+  const { user, sheet } = await openAddCloudflare();
+  await user.type(within(sheet).getByLabelText('CF_DNS_API_TOKEN'), 'tok');
+  await user.click(within(sheet).getByRole('radio', { name: 'Email + API key' }));
+  expect(within(sheet).queryByLabelText('CF_DNS_API_TOKEN')).not.toBeInTheDocument();
+  await user.type(within(sheet).getByLabelText('CF_API_EMAIL'), 'a@b.c');
+  await user.type(within(sheet).getByLabelText('CF_API_KEY'), 'key');
+  await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
+  await waitFor(() =>
+    expect(posted).toEqual({ name: 'Cloudflare', providerCode: 'cloudflare', config: { CF_API_EMAIL: 'a@b.c', CF_API_KEY: 'key' } }),
+  );
+});
+
+it('blocks save while a required method field is empty', async () => {
+  const { user, sheet } = await openAddCloudflare();
+  await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(posted).toBeUndefined();
+  expect(await within(sheet).findByRole('alert')).toBeInTheDocument();
+});
+
+it('editing with a stored CF_API_KEY opens on the email + key method', async () => {
+  creds = [{ ...cred, config: { CF_API_EMAIL: 'a@b.c' }, storedSecrets: ['CF_API_KEY'] }];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  expect(within(sheet).getByLabelText('CF_API_EMAIL')).toHaveValue('a@b.c');
+  expect(within(sheet).getByText('CF_API_KEY')).toBeInTheDocument();
+  expect(within(sheet).queryByText('CF_DNS_API_TOKEN')).not.toBeInTheDocument();
+  expect(within(sheet).queryByLabelText('CF_DNS_API_TOKEN')).not.toBeInTheDocument();
+});
+
+it('keeps Advanced closed by default and open when an advanced value is set', async () => {
+  const { sheet } = await openAddCloudflare();
+  expect(within(sheet).queryByLabelText('CLOUDFLARE_TTL')).not.toBeInTheDocument();
+  expect(within(sheet).getByRole('button', { name: 'Advanced' })).toBeInTheDocument();
+});
+
+it('opens Advanced when a stored advanced value exists', async () => {
+  creds = [cred];
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  expect(within(sheet).getByLabelText('CLOUDFLARE_TTL')).toBeInTheDocument();
+});
+
+it('shows no method switcher for a provider without auth methods', async () => {
+  const r = renderRoute('/o/acme/issuers/dns');
+  await r.user.click(await screen.findByRole('button', { name: 'Add credential' }));
+  await r.user.type(screen.getByRole('combobox'), 'route53');
+  await r.user.click(screen.getByRole('option', { name: /Amazon Route 53/ }));
+  const sheet = await screen.findByRole('dialog', { name: 'Add Amazon Route 53 credential' });
+  expect(within(sheet).queryByText('Authenticate with')).not.toBeInTheDocument();
 });
