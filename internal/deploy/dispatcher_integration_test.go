@@ -279,8 +279,19 @@ func TestServerDeployLastErrorRedacted(t *testing.T) {
 	b64 := base64.StdEncoding.EncodeToString([]byte(token))
 	sec.Err = fmt.Errorf("upstream rejected: raw=%s escaped=%s b64=%s", token, url.QueryEscape(token), b64)
 
-	if err := f.disp.Deploy(context.Background(), grantID, versionID); err == nil {
+	err := f.disp.Deploy(context.Background(), grantID, versionID)
+	if err == nil {
 		t.Fatal("Deploy = nil, want the target's own error")
+	}
+	// batch 2 review, finding 1: river logs and stores whatever error Deploy
+	// returns (jobexecutor's "Job errored" log, river_job.errors), so the
+	// returned error itself — not just the stored last_error — must be
+	// redacted, never the raw cause.
+	if strings.Contains(err.Error(), token) || strings.Contains(err.Error(), url.QueryEscape(token)) || strings.Contains(err.Error(), b64) {
+		t.Errorf("Deploy's returned error contains the secret: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "[redacted]") {
+		t.Errorf("Deploy's returned error has no [redacted] marker: %q", err.Error())
 	}
 	got := f.lastError(t, grantID)
 	if strings.Contains(got, token) {

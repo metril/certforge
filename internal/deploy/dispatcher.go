@@ -373,23 +373,27 @@ func toRenderFiles(dfiles []delivery.File, specs []delivery.OutputFile) []render
 // fail records a redacted, truncated last_error on server_deployments
 // (scoped to versionID, the version this attempt was for —
 // MarkServerDeploymentFailed is a no-op if a newer version has since taken
-// over, same reasoning as Deploy's own guard) and returns cause for river
-// to retry. secrets is this attempt's decrypted target secret map (nil
+// over, same reasoning as Deploy's own guard) and returns the same
+// redacted message for river to retry on — never cause itself (batch 2
+// review, finding 1): river's job executor logs a failed job's error and
+// stores it in river_job.errors, so returning the raw cause would leak a
+// target secret into both, even though last_error itself was already
+// redacted. secrets is this attempt's decrypted target secret map (nil
 // before it has been opened, or when opening it is itself what failed) —
 // targets.Redact strips every non-empty value of it, and each one's
-// base64 form, from cause's message before it is ever stored (Global
-// Constraints, Secrets row); a Target implementation may additionally run
-// its own redaction (vault-kv: (*vault.Client).Redact) before returning an
-// error, which only makes this a second pass. A failure to write the
-// record is only logged: the job's own error (returned) is what actually
-// drives the retry.
+// base64 form, from cause's message before it is ever stored or returned
+// (Global Constraints, Secrets row); a Target implementation may
+// additionally run its own redaction (vault-kv: (*vault.Client).Redact)
+// before returning an error, which only makes this a second pass. A
+// failure to write the record is only logged: the job's own error
+// (returned) is what actually drives the retry.
 func (d *Dispatcher) fail(ctx context.Context, grantID, versionID uuid.UUID, secrets map[string]string, cause error) error {
 	msg := targets.Redact(cause, secrets, maxLastError)
 	if err := d.Q.MarkServerDeploymentFailed(ctx, sqlcgen.MarkServerDeploymentFailedParams{
 		GrantID: grantID, VersionID: &versionID, LastError: msg}); err != nil {
 		d.log().Error("deploy: server deployment failure not recorded", "grant", grantID, "err", err)
 	}
-	return cause
+	return errors.New(msg)
 }
 
 // uniq returns ids with duplicates removed, preserving first occurrence.

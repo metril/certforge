@@ -9,6 +9,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/render"
@@ -165,10 +167,10 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			return fail("%s", err)
 		}
 		target = t
-		req := d.targetRequest(a)
-		if req.GrantID == "" {
+		if a.ID == uuid.Nil {
 			return fail("target: grant id is required")
 		}
+		req := d.targetRequest(a)
 		if b.Material == nil {
 			// a.VersionID is non-nil here (checked above), so this is a
 			// genuinely versioned assignment whose bundle nonetheless has no
@@ -283,10 +285,10 @@ func (d *Deployer) DeployTargetOnly(a agentproto.Assignment) (agentproto.GrantRe
 	if err != nil {
 		return fail("%s", err)
 	}
-	req := d.targetRequest(a)
-	if req.GrantID == "" {
+	if a.ID == uuid.Nil {
 		return fail("target: grant id is required")
 	}
+	req := d.targetRequest(a)
 	tfiles, err := ft.Files(req)
 	if err != nil {
 		res.State, res.Error = agentproto.StateFailed, redactTargetError(t, a.Target.Config, fmt.Errorf("target: %w", err))

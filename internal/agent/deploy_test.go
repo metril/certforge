@@ -514,3 +514,30 @@ func TestAgentNonFileTypeRefused(t *testing.T) {
 		t.Fatalf("DeployTargetOnly res %+v written %d", res2, len(written2))
 	}
 }
+
+// TestAgentNilGrantIDRefused covers batch 2 review finding 4: the old
+// `req.GrantID == ""` check could never fire, since a.ID.String() of a
+// uuid.UUID is never empty — a zero-value (never-set) grant ID must be
+// refused by comparing a.ID itself against uuid.Nil.
+func TestAgentNilGrantIDRefused(t *testing.T) {
+	dir := t.TempDir()
+	d := testDeployer([]string{dir})
+	cfg, _ := json.Marshal(map[string]string{"dir": filepath.Join(dir, "traefik")})
+	versionID := uuid.New()
+	a := agentproto.Assignment{CertificateName: "Web", VersionID: &versionID, Target: &agentproto.Target{Type: "traefik", Config: cfg}}
+	fullchain, key := testMaterial()
+	b := agentproto.Bundle{VersionID: versionID, Material: &agentproto.Material{Fullchain: fullchain, Key: key}}
+
+	if a.ID != uuid.Nil {
+		t.Fatal("setup: a.ID is not the zero value")
+	}
+	res, written, _ := d.Deploy(context.Background(), a, b)
+	if res.State != agentproto.StateFailed || !strings.Contains(res.Error, "grant id is required") || len(written) != 0 {
+		t.Fatalf("Deploy res %+v written %d", res, len(written))
+	}
+
+	res2, written2, _ := d.DeployTargetOnly(a)
+	if res2.State != agentproto.StateFailed || !strings.Contains(res2.Error, "grant id is required") || len(written2) != 0 {
+		t.Fatalf("DeployTargetOnly res %+v written %d", res2, len(written2))
+	}
+}

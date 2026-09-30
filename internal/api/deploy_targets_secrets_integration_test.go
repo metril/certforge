@@ -318,11 +318,18 @@ func TestServerTargetURLPolicy(t *testing.T) {
 	f := newAgentFixture(t)
 	f.registerTestSecret("test-secret", targets.Either, targets.Optional)
 
-	for _, u := range []string{"http://127.0.0.1:8080", "http://169.254.169.254/latest/meta-data"} {
+	// batch 2 review, finding 2: the problem body names the field, never
+	// echoes the URL — a userinfo or query-string token in the rejected URL
+	// (this one carries both) must never reach the response.
+	for _, u := range []string{"http://127.0.0.1:8080", "http://169.254.169.254/latest/meta-data",
+		"http://user:leak-me@169.254.169.254/path?token=leak-me-too"} {
 		_, err := createTestSecret(t, f, "sec", ptr(gen.RunsOn("server")), map[string]interface{}{"url": u, "token": "t1"})
 		wantStatus(t, err, 422)
 		if !strings.Contains(err.Error(), "address not allowed") {
 			t.Fatalf("url %s: error = %v, want address not allowed", u, err)
+		}
+		if strings.Contains(err.Error(), u) || strings.Contains(err.Error(), "leak-me") {
+			t.Fatalf("url %s: error = %v, the rejected URL must never be echoed back", u, err)
 		}
 	}
 

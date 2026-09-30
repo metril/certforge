@@ -623,17 +623,26 @@ func targetAuditDetails(t sqlcgen.DeployTarget) map[string]any {
 // delivery.FieldError (vault-kv, traefik) keeps its own field; anything
 // else — a targetstest/product type's plain validation error — is a
 // config-level 422 (never a raw internal error: every Parse failure here
-// is caller input, not a server fault).
-func mapTargetErr(err error) error {
+// is caller input, not a server fault). t and raw are the target type and
+// the caller's own raw config (batch 2 review, finding 3): a type's own
+// Parse can echo a rejected value straight back into its error text (a
+// pattern/format check, or a type's own hand-written validation), so every
+// branch but the sentinel one — which never carries user input — is run
+// through targets.Redact with raw's own secret values (targets.Split)
+// before it ever reaches the problem body. 0 disables Redact's length cap:
+// this is a synchronous request/response body, not a stored/retried field
+// with its own length limit.
+func mapTargetErr(err error, t targets.Target, raw json.RawMessage) error {
 	if errors.Is(err, targets.ErrUnchangedWithoutStored) {
 		field := strings.TrimSuffix(err.Error(), ": "+targets.ErrUnchangedWithoutStored.Error())
 		return unprocessable(field, fmt.Sprintf("%s has no stored value", field))
 	}
+	_, secrets, _ := targets.Split(t.Schema(), raw)
 	var fe *delivery.FieldError
 	if errors.As(err, &fe) {
-		return unprocessable(fe.Field, fe.Msg)
+		return unprocessable(fe.Field, targets.Redact(errors.New(fe.Msg), secrets, 0))
 	}
-	return unprocessable("config", err.Error())
+	return unprocessable("config", targets.Redact(err, secrets, 0))
 }
 
 // sameURLSet reports whether a and b hold the same URLs, order
@@ -720,7 +729,7 @@ func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old
 	}
 	cfg, reused, err := s.d.Targets.Parse(typ, raw, stored)
 	if err != nil {
-		return validatedTarget{}, mapTargetErr(err)
+		return validatedTarget{}, mapTargetErr(err, target, raw)
 	}
 	if old != nil && len(reused) > 0 {
 		oldCfg, _, err := s.d.Targets.Parse(typ, old.Config, stored)
@@ -738,8 +747,12 @@ func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old
 		}
 	}
 	for _, u := range cfg.URLs {
+		// The URL itself is never echoed back (batch 2 review, finding 2):
+		// it may carry userinfo or a query-string token a target's schema
+		// does not mark "secret" at all (a plain "url" property), so the
+		// problem body names the field, never the value.
 		if err := httpx.CheckURL(u, allowLoopback); err != nil {
-			return validatedTarget{}, unprocessable("config", fmt.Sprintf("%s: address not allowed", u))
+			return validatedTarget{}, unprocessable("config", "config: address not allowed")
 		}
 	}
 	var secretCfg []byte
