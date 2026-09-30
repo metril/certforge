@@ -25,6 +25,13 @@ type Entry struct {
 	Name    string          `json:"name"`
 	Schema  json.RawMessage `json:"schema"`
 	Aliases []string        `json:"aliases,omitempty"` // other codes that select this type
+
+	// Attrs holds kind-specific attributes not shared by every Entry — for
+	// KindDeployTarget, "runsOn" and "keyPolicy" (internal/targets.AddToMeta).
+	// Never serialized directly: GET /meta/schemas (internal/api) reads it
+	// to fill gen.SchemaEntry's own runsOn/keyPolicy fields instead (Task
+	// 4); until then it is set but unread by the API.
+	Attrs map[string]string `json:"-"`
 }
 
 // Registry is safe for concurrent use.

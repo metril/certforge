@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/metril/certforge/internal/render"
+	"github.com/metril/certforge/internal/targets"
 )
 
 // TestVaultKVPathTemplate covers renderPath: the three known placeholders
@@ -133,13 +134,28 @@ func TestVaultKVParseConfig(t *testing.T) {
 	}
 }
 
-// TestRunsOn covers RunsOn: vault-kv runs on the server, everything else on
-// an agent.
-func TestRunsOn(t *testing.T) {
-	if RunsOn(TypeVaultKV) != "server" {
-		t.Fatalf("RunsOn(vault-kv) = %q, want server", RunsOn(TypeVaultKV))
+// TestVaultKVModes covers VaultKV's targets.Target mode/policy: it always
+// runs on the server, and only needs the key when its own config's
+// includeKey does.
+func TestVaultKVModes(t *testing.T) {
+	if (VaultKV{}).RunsOn() != targets.Server {
+		t.Fatalf("RunsOn = %s, want server", (VaultKV{}).RunsOn())
 	}
-	if RunsOn("traefik") != "agent" {
-		t.Fatalf("RunsOn(traefik) = %q, want agent", RunsOn("traefik"))
+	if (VaultKV{}).KeyPolicy() != targets.Optional {
+		t.Fatalf("KeyPolicy = %s, want optional", (VaultKV{}).KeyPolicy())
+	}
+	cfg, err := VaultKV{}.Parse(json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.NeedsKey || len(cfg.Secrets) != 0 || cfg.URLs != nil {
+		t.Fatalf("Parse({}) config = %+v", cfg)
+	}
+	cfg, err = VaultKV{}.Parse(json.RawMessage(`{"includeKey":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.NeedsKey {
+		t.Fatalf("Parse(includeKey:true) config = %+v", cfg)
 	}
 }

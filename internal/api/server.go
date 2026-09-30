@@ -34,6 +34,7 @@ import (
 	"github.com/metril/certforge/internal/notify"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
+	"github.com/metril/certforge/internal/targets"
 	"github.com/metril/certforge/internal/vault"
 )
 
@@ -83,11 +84,11 @@ type Deps struct {
 	// server not ready, unlike a failure from Vault alone (below).
 	KEKHealth func(ctx context.Context) error
 
-	// Deploy holds server-run deploy target types (vault-kv, Task 10). A
-	// nil registry (or a type it does not hold) makes CreateDeployTarget/
-	// UpdateDeployTarget reject the type with 422, same as an unregistered
-	// type today.
-	Deploy *deploy.Registry
+	// Targets holds every registered deploy target type (traefik,
+	// vault-kv). A nil registry (or a type it does not hold) makes
+	// CreateDeployTarget/UpdateDeployTarget reject the type with 422, same
+	// as an unregistered type today.
+	Targets *targets.Registry
 
 	// Dispatcher enqueues certforge_server_deploy for client-less (server)
 	// grants: createServerGrant and the server-grant paths of

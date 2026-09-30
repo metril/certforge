@@ -15,8 +15,8 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
-	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/render"
+	"github.com/metril/certforge/internal/targets"
 )
 
 // GrantInput is a grant's settable fields.
@@ -187,16 +187,18 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 // LiveGrantsNeedKeyTx reports whether any live grant of certID — agent-run
 // or server-run alike (final review finding 3: a server grant needs a key
 // too, whenever its target has includeKey or its layout does) — has a
-// layout that needs a key or a deploy target that always needs one
-// (Traefik always renders fullchain + key), using q (tx-scoped when called
-// from a transaction that already holds a lock serializing this read
-// against a concurrent createGrant/updateGrant — see
-// issuance.Service.KeylessGrantHook, wired to this function in
-// cmd/certforge/serve.go — or pool-scoped otherwise). A plain function, not
-// a *Service method: issuance.KeylessGrantHook's type takes a
-// *sqlcgen.Queries, not an internal/agents.Service (which internal/issuance
-// must not import, R7), so this is wired directly by value.
-func LiveGrantsNeedKeyTx(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (bool, error) {
+// layout that needs a key or a deploy target that does (reg.NeedsKey: a
+// type's own KeyPolicy, generalizing the old vault-kv/traefik special
+// case), using q (tx-scoped when called from a transaction that already
+// holds a lock serializing this read against a concurrent
+// createGrant/updateGrant — see issuance.Service.KeylessGrantHook, wired to
+// this function in cmd/certforge/serve.go — or pool-scoped otherwise). A
+// plain function, not a *Service method: issuance.KeylessGrantHook's type
+// takes a *sqlcgen.Queries, not an internal/agents.Service (which
+// internal/issuance must not import, R7), so this is wired directly
+// (through a closure binding reg, since KeylessGrantHook's own signature
+// has no room for one).
+func LiveGrantsNeedKeyTx(ctx context.Context, q *sqlcgen.Queries, reg *targets.Registry, certID uuid.UUID) (bool, error) {
 	ids, err := q.LiveGrantIDsForCertAny(ctx, certID)
 	if err != nil || len(ids) == 0 {
 		return false, err
@@ -207,15 +209,11 @@ func LiveGrantsNeedKeyTx(ctx context.Context, q *sqlcgen.Queries, certID uuid.UU
 	}
 	for _, r := range rows {
 		if r.TargetType != nil {
-			if *r.TargetType == deploy.TypeVaultKV {
-				includeKey, err := targetIncludeKeyOf(r.TargetConfig)
-				if err != nil {
-					return false, err
-				}
-				if includeKey {
-					return true, nil
-				}
-			} else {
+			needsKey, err := reg.NeedsKey(*r.TargetType, r.TargetConfig)
+			if err != nil {
+				return false, err
+			}
+			if needsKey {
 				return true, nil
 			}
 		}
@@ -233,23 +231,10 @@ func LiveGrantsNeedKeyTx(ctx context.Context, q *sqlcgen.Queries, certID uuid.UU
 	return false, nil
 }
 
-// targetIncludeKeyOf reads a server-run target's own includeKey config
-// field (mirrors internal/api's own includeKeyOf; only vault-kv has one
-// today, and this package must not import internal/api).
-func targetIncludeKeyOf(cfg []byte) (bool, error) {
-	var c struct {
-		IncludeKey bool `json:"includeKey"`
-	}
-	if err := json.Unmarshal(cfg, &c); err != nil {
-		return false, err
-	}
-	return c.IncludeKey, nil
-}
-
 // LiveGrantsNeedKey is LiveGrantsNeedKeyTx over the service's own
 // connection pool, for a caller outside any transaction.
 func (s *Service) LiveGrantsNeedKey(ctx context.Context, certID uuid.UUID) (bool, error) {
-	return LiveGrantsNeedKeyTx(ctx, s.Q, certID)
+	return LiveGrantsNeedKeyTx(ctx, s.Q, s.Reg, certID)
 }
 
 // clientOf returns the client id behind a grant row's nullable client_id
@@ -274,9 +259,12 @@ func targetOf(typ *string, cfg []byte) *agentproto.Target {
 	return &agentproto.Target{Type: *typ, Config: json.RawMessage(cfg)}
 }
 
-// grantPaths lists the paths a live grant writes (layout files, then the
-// Traefik target's certs/<SafeName>/* and YAML); it needs no key material.
-func grantPaths(layoutFiles []byte, typ *string, cfg []byte, certName string) ([]string, error) {
+// grantPaths lists the paths a live grant writes (layout files, then its
+// target's own, from the registered FileTarget's Paths); it needs no key
+// material. typ naming a server-run type (no FileTarget) is a data
+// integrity bug — a client grant can never have one — so that is an error,
+// not a silent zero paths.
+func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg []byte, certName string) ([]string, error) {
 	var out []string
 	if len(layoutFiles) > 0 {
 		var layout []delivery.OutputFile
@@ -288,16 +276,19 @@ func grantPaths(layoutFiles []byte, typ *string, cfg []byte, certName string) ([
 		}
 	}
 	if typ != nil {
-		tc, err := delivery.ParseTarget(*typ, cfg)
+		target, ok := reg.Get(*typ)
+		if !ok {
+			return nil, fmt.Errorf("agents: unknown target type %q", *typ)
+		}
+		ft, ok := target.(targets.FileTarget)
+		if !ok {
+			return nil, fmt.Errorf("agents: target type %q writes no agent files (a server-run target reached a client-only path)", *typ)
+		}
+		paths, err := ft.Paths(cfg, certName)
 		if err != nil {
 			return nil, err
 		}
-		// names is nil: only .Path is read below, and AcmeRouterFile's path
-		// (certforge-acme-<SafeName>.yml) does not depend on it, only its
-		// Host() rule content does.
-		for _, f := range delivery.RenderTraefik(certName, nil, tc, nil, nil) {
-			out = append(out, f.Path)
-		}
+		out = append(out, paths...)
 	}
 	return out, nil
 }
@@ -341,11 +332,11 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 			// removal-pending one) still references them, so this is
 			// always available.
 			if len(specs) == 0 {
-				if paths, err = grantPaths(r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
+				if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
 					return err
 				}
 			}
-		} else if paths, err = grantPaths(r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
+		} else if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
 			return err
 		}
 		for _, p := range paths {
@@ -487,7 +478,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 				}
 			}
 			names := append([]string{r.CertificateCommonName}, r.CertificateSans...)
-			files, err := delivery.GrantFiles(&m, extras, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName, names)
+			files, err := targets.GrantFiles(s.Reg, &m, extras, layout, targetOf(r.TargetType, r.TargetConfig), r.CertificateName, names)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -503,7 +494,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 			// path unconditionally, so this changes only what gets written,
 			// never what collision detection already saw.
 			names := append([]string{r.CertificateCommonName}, r.CertificateSans...)
-			files, err := delivery.GrantFiles(nil, nil, nil, target, r.CertificateName, names)
+			files, err := targets.GrantFiles(s.Reg, nil, nil, nil, target, r.CertificateName, names)
 			if err != nil {
 				return nil, nil, err
 			}

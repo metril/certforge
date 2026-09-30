@@ -8,6 +8,7 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/meta"
+	"github.com/metril/certforge/internal/targets"
 )
 
 // TestServerTargetCRUD covers a vault-kv deploy target's create/update: its
@@ -156,16 +157,16 @@ func TestServerTargetIncludeKeyRequiresKeysExport(t *testing.T) {
 func TestMetaSchemasVaultKV(t *testing.T) {
 	f := newAPIFixture(t)
 	f.srv.d.Meta = meta.NewRegistry()
-	reg := deploy.NewRegistry()
-	reg.Register("Vault KV (runs on server)", deploy.VaultKV{})
-	deploy.AddToMeta(reg, f.srv.d.Meta)
+	reg := targets.NewRegistry()
+	reg.Register(deploy.VaultKV{})
+	targets.AddToMeta(reg, f.srv.d.Meta)
 
 	res, err := f.srv.GetMetaSchemas(f.as("viewer"), gen.GetMetaSchemasRequestObject{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := res.(gen.GetMetaSchemas200JSONResponse)
-	if len(out.DeployTargets) != 1 || out.DeployTargets[0].Code != "vault-kv" || out.DeployTargets[0].Name != "Vault KV (runs on server)" {
+	if len(out.DeployTargets) != 1 || out.DeployTargets[0].Code != "vault-kv" || out.DeployTargets[0].Name != "Vault KV" {
 		t.Fatalf("deployTargets = %+v", out.DeployTargets)
 	}
 }

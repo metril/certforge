@@ -28,6 +28,7 @@ import (
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/signer"
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
+	"github.com/metril/certforge/internal/targets"
 	"github.com/metril/certforge/internal/vault"
 )
 
@@ -139,8 +140,9 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		t.Fatal(err)
 	}
 	vaultProvider := vault.NewProvider(settingsStore, sections)
-	deployReg := deploy.NewRegistry()
-	deployReg.Register("Vault KV (runs on server)", deploy.VaultKV{Vault: vaultProvider})
+	targetsReg := targets.NewRegistry()
+	targets.RegisterBuiltins(targetsReg)
+	targetsReg.Register(deploy.VaultKV{Vault: vaultProvider})
 	store := issuance.NewStore(pool, box, settingsStore)
 	store.SetVault(vaultProvider)
 	certs := certstore.New(pool, box)
@@ -150,9 +152,9 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	svc.Auditor = aud
 	svc.Log = slog.Default()
 	deployJobs := newFakeDeployJobs()
-	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: deployReg, Certs: certs, River: deployJobs, Log: slog.Default()}
+	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: targetsReg, Certs: certs, River: deployJobs, Log: slog.Default()}
 	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Queries: q, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
-		Settings: settingsStore, Sections: sections, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher}}
+		Settings: settingsStore, Sections: sections, Vault: vaultProvider, Targets: targetsReg, Dispatcher: dispatcher}}
 	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, box: box, org: dbtest.Org(t, pool),
 		settingsStore: settingsStore, sections: sections, deployJobs: deployJobs}
 }

@@ -274,47 +274,15 @@ func TargetMaterial(m render.Material) (agentproto.Material, error) {
 	return agentproto.Material{Fullchain: pem[0].Data, Key: pem[1].Data}, nil
 }
 
-// GrantFiles renders everything a grant installs, in write order: the
-// layout's files, then the target's. l is nil when the grant has no layout.
-// m is nil for a certificate with no version yet (C3): only the target's
-// material-independent files render then, which today is the Traefik ACME
-// router file when acmeServiceUrl is set (AcmeRouterFile) — letting the
-// very first issuance validate through Traefik before any certificate
-// exists. A layout never renders without material. names is the
-// certificate's own names (common name + SANs), needed by AcmeRouterFile's
-// Host() matcher even when m is nil.
-func GrantFiles(m *render.Material, extras map[uuid.UUID]render.Material, l *Layout, target *agentproto.Target, certName string, names []string) ([]File, error) {
-	if m == nil {
-		if target == nil {
-			return nil, nil
-		}
-		cfg, err := ParseTarget(target.Type, target.Config)
-		if err != nil {
-			return nil, err
-		}
-		if f := AcmeRouterFile(certName, names, cfg); f != nil {
-			return []File{*f}, nil
-		}
+// GrantFiles renders a grant's layout files, in write order. l is nil when
+// the grant has no layout, and a layout never renders without material: m
+// nil (a certificate with no version yet, C3) or an empty l returns nil,
+// nil. A grant's target files (Traefik's, which do render with m nil — its
+// ACME router file — a version-less grant's only renderable file at all)
+// are targets.GrantFiles' own job, layered on top of this.
+func GrantFiles(m *render.Material, extras map[uuid.UUID]render.Material, l *Layout) ([]File, error) {
+	if m == nil || l == nil || len(l.Files) == 0 {
 		return nil, nil
 	}
-	var out []File
-	if l != nil && len(l.Files) > 0 {
-		lf, err := RenderLayout(*m, extras, *l)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, lf...)
-	}
-	if target != nil {
-		cfg, err := ParseTarget(target.Type, target.Config)
-		if err != nil {
-			return nil, err
-		}
-		mat, err := TargetMaterial(*m)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, RenderTraefik(certName, names, cfg, mat.Fullchain, mat.Key)...)
-	}
-	return out, nil
+	return RenderLayout(*m, extras, *l)
 }

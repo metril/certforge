@@ -30,9 +30,20 @@ import (
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/signer"
+	"github.com/metril/certforge/internal/targets"
 )
+
+// testRegistry is the same shape cmd/certforge/serve.go builds: traefik
+// plus vault-kv (Vault nil — no fixture here calls Deploy on it).
+func testRegistry() *targets.Registry {
+	reg := targets.NewRegistry()
+	targets.RegisterBuiltins(reg)
+	reg.Register(deploy.VaultKV{})
+	return reg
+}
 
 // realCert returns a real, x509-parseable self-signed leaf and one chain
 // certificate, plus a PKCS#8 EC key: the p12 renderer this task exercises
@@ -82,7 +93,7 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	box := cryptotest.PrefixBox{}
 	certs := certstore.New(pool, box)
 	org := dbtest.Org(t, pool)
-	svc := &Service{Pool: pool, Q: q, CA: agentca.NewStore(pool, box), Certs: certs, Box: box, Log: slog.Default()}
+	svc := &Service{Pool: pool, Q: q, CA: agentca.NewStore(pool, box), Certs: certs, Box: box, Log: slog.Default(), Reg: testRegistry()}
 	return &syncFixture{pool: pool, q: q, certs: certs, box: box, svc: svc, org: org}
 }
 

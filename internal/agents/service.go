@@ -15,6 +15,7 @@ import (
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/targets"
 )
 
 // Hub is the WebSocket registry the service nudges (internal/agenthub).
@@ -43,6 +44,12 @@ type Service struct {
 	Listener Reloader
 	Log      *slog.Logger
 	Now      func() time.Time
+
+	// Reg is the shared deploy target registry (traefik, vault-kv):
+	// grantPaths/render use it to render a grant's target files and list
+	// the paths it writes, and LiveGrantsNeedKeyTx uses it (via
+	// LiveGrantsNeedKey) to tell whether a target needs the private key.
+	Reg *targets.Registry
 
 	// ChallengeReadyTimeout bounds how long Provider's Present waits for the
 	// agent's challenge_ready reply after sending challenge_present; zero

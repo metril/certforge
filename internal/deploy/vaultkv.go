@@ -12,6 +12,7 @@ import (
 
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/render"
+	"github.com/metril/certforge/internal/targets"
 	"github.com/metril/certforge/internal/vault"
 )
 
@@ -117,16 +118,25 @@ const vaultKVSchema = `{
 
 // VaultKV is the "vault-kv" server-run deploy target: it writes a
 // certificate's rendered files as one KV v2 secret document. Vault is nil
-// only in tests that never call Deploy.
+// only in tests that never call Deploy. Implements targets.Target.
 type VaultKV struct {
 	Vault *vault.Provider
 }
 
-// Type returns TypeVaultKV.
+// Type implements targets.Target: TypeVaultKV.
 func (VaultKV) Type() string { return TypeVaultKV }
 
-// Schema returns vault-kv's config JSON schema.
+// Name implements targets.Target.
+func (VaultKV) Name() string { return "Vault KV" }
+
+// Schema implements targets.Target: vault-kv's config JSON schema.
 func (VaultKV) Schema() json.RawMessage { return json.RawMessage(vaultKVSchema) }
+
+// RunsOn implements targets.Target: always Server.
+func (VaultKV) RunsOn() targets.Mode { return targets.Server }
+
+// KeyPolicy implements targets.Target: includeKey makes it need the key.
+func (VaultKV) KeyPolicy() targets.KeyPolicy { return targets.Optional }
 
 // ParseConfig validates raw against vault-kv's rules and returns the
 // canonical config to store, with defaults filled in.
@@ -155,6 +165,22 @@ func (VaultKV) ParseConfig(raw json.RawMessage) (json.RawMessage, error) {
 		}
 	}
 	return json.Marshal(c)
+}
+
+// Parse implements targets.Target: ParseConfig, with NeedsKey from the
+// canonicalized config's own includeKey and no secret fields (URLs nil —
+// vault-kv's address comes from the "vault" settings section, not its own
+// config).
+func (t VaultKV) Parse(raw json.RawMessage) (targets.Config, error) {
+	canon, err := t.ParseConfig(raw)
+	if err != nil {
+		return targets.Config{}, err
+	}
+	var cfg VaultKVConfig
+	if err := json.Unmarshal(canon, &cfg); err != nil {
+		return targets.Config{}, err
+	}
+	return targets.Config{Public: canon, Secrets: map[string]string{}, NeedsKey: cfg.IncludeKey}, nil
 }
 
 // renderPath renders tmpl, substituting {org}, {cert} and {name}; any other
@@ -220,35 +246,28 @@ func vaultKVData(files []render.File, cfg VaultKVConfig) map[string]any {
 	return data
 }
 
-// Deploy writes req's certificate material to Vault as one KV v2 document
-// and returns the path it wrote and the resulting version.
-func (t VaultKV) Deploy(ctx context.Context, req Request) (Result, error) {
-	raw, err := json.Marshal(req.Config)
-	if err != nil {
-		return Result{}, err
-	}
-	canon, err := VaultKV{}.ParseConfig(raw)
-	if err != nil {
-		return Result{}, err
-	}
+// Deploy implements targets.Target: it decodes req.Config (already
+// canonicalized by Parse) and writes req.Files to Vault as one KV v2
+// document, returning the path and version written as Result.Detail.
+func (t VaultKV) Deploy(ctx context.Context, req targets.Request) (targets.Result, error) {
 	var cfg VaultKVConfig
-	if err := json.Unmarshal(canon, &cfg); err != nil {
-		return Result{}, err
+	if err := json.Unmarshal(req.Config, &cfg); err != nil {
+		return targets.Result{}, err
 	}
 	kvPath, err := renderPath(cfg.Path, req.OrgSlug, req.CertID, delivery.SafeName(req.CertName))
 	if err != nil {
-		return Result{}, err
+		return targets.Result{}, err
 	}
 	if t.Vault == nil {
-		return Result{}, errors.New("deploy: vault-kv: Vault is not configured")
+		return targets.Result{}, errors.New("deploy: vault-kv: Vault is not configured")
 	}
 	client, err := t.Vault.Client(ctx)
 	if err != nil {
-		return Result{}, err
+		return targets.Result{}, err
 	}
 	version, err := client.KVPut(ctx, cfg.Mount, kvPath, vaultKVData(req.Files, cfg), nil)
 	if err != nil {
-		return Result{}, err
+		return targets.Result{}, err
 	}
-	return Result{Path: kvPath, Version: version}, nil
+	return targets.Result{Detail: fmt.Sprintf("%s (version %d)", kvPath, version)}, nil
 }

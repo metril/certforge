@@ -17,7 +17,6 @@ import (
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
-	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/render"
 )
 
@@ -575,11 +574,12 @@ func (s *Server) targetsOut(ctx context.Context, rows []sqlcgen.DeployTarget) ([
 }
 
 // validTarget validates and canonicalizes a deploy target input, returning
-// its name, config to store and derived runsOn: traefik goes through
-// delivery.ParseTarget (agent-run), every other type is looked up in
-// s.d.Deploy (server-run); an unknown type is 422. runsOn is always
-// derived from the type (deploy.RunsOn), never taken from client input —
-// DeployTargetInput has no runsOn field.
+// its name, config to store and derived runsOn: the type is looked up in
+// s.d.Targets and its own Parse validates and canonicalizes the config; an
+// unknown type is 422. runsOn is always derived from the type
+// (targets.Target.RunsOn), never taken from client input —
+// DeployTargetInput has no runsOn field (an Either type, once one exists,
+// is Task 4's job).
 func (s *Server) validTarget(in *gen.DeployTargetInput) (name, runsOn string, cfg []byte, err error) {
 	if in == nil {
 		return "", "", nil, badRequest("missing body")
@@ -593,23 +593,15 @@ func (s *Server) validTarget(in *gen.DeployTargetInput) (name, runsOn string, cf
 		return "", "", nil, badRequest("config is not a JSON object")
 	}
 	typ := string(in.Type)
-	runsOn = deploy.RunsOn(typ)
-	if typ == delivery.TargetTraefik {
-		tc, err := delivery.ParseTarget(typ, raw)
-		if err != nil {
-			return "", "", nil, mapDeliveryErr(err)
-		}
-		cfg, err = json.Marshal(tc)
-		return name, runsOn, cfg, err
-	}
-	cfg, ok, err := s.d.Deploy.ParseConfig(typ, raw)
+	target, ok := s.d.Targets.Get(typ)
 	if !ok {
 		return "", "", nil, unprocessable("type", fmt.Sprintf("unknown deploy target type %q", in.Type))
 	}
+	tc, _, err := s.d.Targets.Parse(typ, raw, nil)
 	if err != nil {
 		return "", "", nil, mapDeliveryErr(err)
 	}
-	return name, runsOn, cfg, nil
+	return name, string(target.RunsOn()), tc.Public, nil
 }
 
 // requireKeysExportForIncludeKey requires keys:export when cfg's own

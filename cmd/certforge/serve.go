@@ -27,7 +27,6 @@ import (
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db"
 	"github.com/metril/certforge/internal/db/sqlcgen"
-	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/kek"
@@ -39,6 +38,7 @@ import (
 	"github.com/metril/certforge/internal/setup"
 	"github.com/metril/certforge/internal/signer/localca"
 	"github.com/metril/certforge/internal/signer/vaultpki"
+	"github.com/metril/certforge/internal/targets"
 	"github.com/metril/certforge/internal/vault"
 )
 
@@ -126,15 +126,15 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	}
 	metaReg := meta.NewRegistry()
 	challenge.AddToMeta(metaReg)
-	delivery.AddToMeta(metaReg)
 	localca.AddToMeta(metaReg)
 	vaultpki.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
 	vaultProvider := vault.NewProvider(store, sections)
-	deployReg := deploy.NewRegistry()
-	deployReg.Register("Vault KV (runs on server)", deploy.VaultKV{Vault: vaultProvider})
-	deploy.AddToMeta(deployReg, metaReg)
+	targetsReg := targets.NewRegistry()
+	targets.RegisterBuiltins(targetsReg)
+	targetsReg.Register(deploy.VaultKV{Vault: vaultProvider})
+	targets.AddToMeta(targetsReg, metaReg)
 	// notifySettings reads the live "notifications" section on every Send
 	// (never cached): notify.SettingsFunc's doc comment.
 	notifySettings := func(ctx context.Context) (notify.Settings, error) { return notify.Current(ctx, store) }
@@ -167,7 +167,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// dispatcher.River is set right after riverClient exists below (same
 	// construct-then-wire order as keysSvc): RegisterRiver only needs the
 	// Dispatcher pointer, not River itself, to register DeployWorker.
-	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: deployReg, Certs: certStore, Log: log}
+	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: targetsReg, Certs: certStore, Log: log}
 	agentSettings, err := agents.NewSettingsSource(store, sections, cfg.BaseURL)
 	if err != nil {
 		return err
@@ -197,7 +197,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		st, err := agentSettings.Get(ctx)
 		return st.Names(), err
 	}}
-	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Box: box, Auditor: aud, Settings: agentSettings, Log: log}
+	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Box: box, Auditor: aud, Settings: agentSettings, Log: log, Reg: targetsReg}
 	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
 	issueWorker.Log = log
 	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc, dispatcher, notifySources)
@@ -288,8 +288,11 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	issuanceSvc.Listeners = append(issuanceSvc.Listeners, agentSvc, dispatcher)
 	// Backs UploadVersion's keyless-grant rule (fix round 1); see
 	// issuance.Service.KeylessGrantHook and agents.LiveGrantsNeedKeyTx's own
-	// doc comments for why this is wired as a plain function value.
-	issuanceSvc.KeylessGrantHook = agents.LiveGrantsNeedKeyTx
+	// doc comments for why this is wired through a closure binding
+	// targetsReg, rather than as a plain function value.
+	issuanceSvc.KeylessGrantHook = func(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (bool, error) {
+		return agents.LiveGrantsNeedKeyTx(ctx, q, targetsReg, certID)
+	}
 	// Started with a context independent of the shutdown signal: cancelling
 	// the context passed to Start aborts running jobs immediately (river's
 	// contract), which would race the graceful drain stopRiver performs below.
@@ -321,7 +324,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Meta: metaReg, Sessions: sessions, Auditor: aud, Setup: setup.New(pool, aud, sections),
 		Issuance: issuanceSvc, Certs: certStore, Box: box, AuthSettings: authSettings, OIDC: oidcClient,
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
-		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Deploy: deployReg, Dispatcher: dispatcher,
+		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Targets: targetsReg, Dispatcher: dispatcher,
 		KEKHealth: kekHealth, Version: version, Metrics: metrics.Handler(store, sections), Backup: backupSvc,
 		Notify: notifySvc, Monitors: monitorSvc,
 	}

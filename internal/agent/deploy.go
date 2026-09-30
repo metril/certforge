@@ -102,7 +102,7 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 	}
 	var certsDir string
 	if a.Target != nil {
-		cfg, err := delivery.ParseTarget(a.Target.Type, a.Target.Config)
+		cfg, err := delivery.ParseTraefik(a.Target.Config)
 		if err != nil {
 			return fail("target: %v", err)
 		}
@@ -181,7 +181,7 @@ func (d *Deployer) DeployTargetOnly(a agentproto.Assignment) (agentproto.GrantRe
 	if a.Target == nil {
 		return res, written, ""
 	}
-	cfg, err := delivery.ParseTarget(a.Target.Type, a.Target.Config)
+	cfg, err := delivery.ParseTraefik(a.Target.Config)
 	if err != nil {
 		return fail("target: %v", err)
 	}

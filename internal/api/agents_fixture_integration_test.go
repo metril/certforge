@@ -80,7 +80,7 @@ func newAgentFixture(t *testing.T) *agentFixture {
 	ca := agentca.NewStore(f.pool, cryptotest.PrefixBox{})
 	hub := newFakeHub()
 	svc := &agents.Service{Pool: f.pool, Q: q, CA: ca, Certs: f.certs, Box: cryptotest.PrefixBox{}, Auditor: f.srv.d.Auditor, Hub: hub,
-		Settings: agents.StaticSettings(agents.Settings{}, "https://cf.example.test"), Log: slog.Default()}
+		Settings: agents.StaticSettings(agents.Settings{}, "https://cf.example.test"), Log: slog.Default(), Reg: f.srv.d.Targets}
 	f.srv.d.Queries = q
 	f.srv.d.Agents = svc
 	// Same as cmd/certforge/serve.go (final review finding 5): a rename
@@ -111,7 +111,9 @@ func newAgentFixture(t *testing.T) *agentFixture {
 	f.srv.d.Issuance.Listeners = append(f.srv.d.Issuance.Listeners, svc)
 	// Same as cmd/certforge/serve.go: backs UploadVersion's keyless-grant
 	// rule (fix round 1).
-	f.srv.d.Issuance.KeylessGrantHook = agents.LiveGrantsNeedKeyTx
+	f.srv.d.Issuance.KeylessGrantHook = func(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (bool, error) {
+		return agents.LiveGrantsNeedKeyTx(ctx, q, svc.Reg, certID)
+	}
 	return &agentFixture{apiFixture: f, svc: svc, ca: ca, q: q, hub: hub}
 }
 

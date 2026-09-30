@@ -24,34 +24,38 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/deploy"
+	"github.com/metril/certforge/internal/targets"
 )
 
 // fakeKVTarget stands in for deploy.VaultKV in server-grant tests: it
-// records every write in memory instead of touching a real Vault.
-// ParseConfig delegates to the real VaultKV so a vault-kv deploy target
-// created through the API still validates its config shape (mount, path,
-// keys, includeKey) exactly like production; only Deploy itself is faked.
+// records every write in memory instead of touching a real Vault. Parse
+// delegates to the real VaultKV so a vault-kv deploy target created
+// through the API still validates its config shape (mount, path, keys,
+// includeKey) exactly like production; only Deploy itself is faked.
 type fakeKVTarget struct {
 	mu    sync.Mutex
-	calls []deploy.Request
+	calls []targets.Request
 	err   error
 }
 
-func (f *fakeKVTarget) Type() string            { return "vault-kv" }
-func (f *fakeKVTarget) Schema() json.RawMessage { return json.RawMessage(`{}`) }
+func (f *fakeKVTarget) Type() string                 { return "vault-kv" }
+func (f *fakeKVTarget) Name() string                 { return "Vault KV" }
+func (f *fakeKVTarget) Schema() json.RawMessage      { return (deploy.VaultKV{}).Schema() }
+func (f *fakeKVTarget) RunsOn() targets.Mode         { return targets.Server }
+func (f *fakeKVTarget) KeyPolicy() targets.KeyPolicy { return targets.Optional }
 
-func (f *fakeKVTarget) ParseConfig(raw json.RawMessage) (json.RawMessage, error) {
-	return deploy.VaultKV{}.ParseConfig(raw)
+func (f *fakeKVTarget) Parse(raw json.RawMessage) (targets.Config, error) {
+	return (deploy.VaultKV{}).Parse(raw)
 }
 
-func (f *fakeKVTarget) Deploy(_ context.Context, req deploy.Request) (deploy.Result, error) {
+func (f *fakeKVTarget) Deploy(_ context.Context, req targets.Request) (targets.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
-		return deploy.Result{}, f.err
+		return targets.Result{}, f.err
 	}
 	f.calls = append(f.calls, req)
-	return deploy.Result{Path: "fake/" + req.CertID, Version: len(f.calls)}, nil
+	return targets.Result{Detail: fmt.Sprintf("fake/%s (version %d)", req.CertID, len(f.calls))}, nil
 }
 
 func (f *fakeKVTarget) count() int {
@@ -80,22 +84,31 @@ func (f *agentFixture) targetCreator(config map[string]interface{}) context.Cont
 	return f.as("operator")
 }
 
-// serverTarget creates a vault-kv deploy target through the real API (so
-// its config is genuinely validated) and swaps its registry entry for a
-// fresh fakeKVTarget, so Deploy calls never touch a real Vault.
+// serverTarget swaps the fixture onto a fresh registry holding only a
+// fakeKVTarget under "vault-kv" (Register panics on a duplicate type, so a
+// live real-VaultKV entry can't just be re-registered in place the way the
+// old deploy.Registry allowed) — set on both Deps.Targets and Dispatcher.Reg,
+// the same registry instance production always keeps them sharing — then
+// creates a vault-kv deploy target through the real API (so its config is
+// genuinely validated: fakeKVTarget.Parse delegates to the real VaultKV),
+// so Deploy calls never touch a real Vault.
 func (f *agentFixture) serverTarget(t *testing.T, name string, config map[string]interface{}) (uuid.UUID, *fakeKVTarget) {
 	t.Helper()
 	if config == nil {
 		config = map[string]interface{}{}
 	}
+	fake := &fakeKVTarget{}
+	reg := targets.NewRegistry()
+	targets.RegisterBuiltins(reg)
+	reg.Register(fake)
+	f.srv.d.Targets = reg
+	f.srv.d.Dispatcher.Reg = reg
 	res, err := f.srv.CreateDeployTarget(f.targetCreator(config), gen.CreateDeployTargetRequestObject{OrgId: f.org,
 		Body: &gen.DeployTargetInput{Name: name, Type: gen.DeployTargetType("vault-kv"), Config: config}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := res.(gen.CreateDeployTarget201JSONResponse).Id
-	fake := &fakeKVTarget{}
-	f.srv.d.Deploy.Register("Fake Vault KV", fake)
 	return id, fake
 }
 

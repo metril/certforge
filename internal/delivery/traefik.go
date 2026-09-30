@@ -39,12 +39,9 @@ type TraefikConfig struct {
 
 var storeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
-// ParseTarget decodes and validates a deploy target's type and config.
-func ParseTarget(typ string, raw json.RawMessage) (TraefikConfig, error) {
+// ParseTraefik decodes and validates a traefik target's config.
+func ParseTraefik(raw json.RawMessage) (TraefikConfig, error) {
 	var c TraefikConfig
-	if typ != TargetTraefik {
-		return c, &FieldError{"type", "the only deploy target type is traefik"}
-	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {

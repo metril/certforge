@@ -19,6 +19,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/render"
+	"github.com/metril/certforge/internal/targets"
 )
 
 // maxLastError bounds server_deployments.last_error (Shared contract:
@@ -64,7 +65,7 @@ type Inserter interface {
 type Dispatcher struct {
 	Pool  *pgxpool.Pool
 	Q     *sqlcgen.Queries
-	Reg   *Registry
+	Reg   *targets.Registry
 	Certs *certstore.Store
 	River Inserter
 	Log   *slog.Logger
@@ -217,23 +218,23 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 	if !ok {
 		return d.fail(ctx, grantID, versionID, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
 	}
-	var cfg map[string]any
-	if err := json.Unmarshal(row.TargetConfig, &cfg); err != nil {
-		return d.fail(ctx, grantID, versionID, err)
-	}
-	includeKey, _ := cfg["includeKey"].(bool)
-
-	m, err := d.Certs.Material(ctx, row.CertID, versionID, includeKey)
+	needsKey, err := d.Reg.NeedsKey(row.TargetType, row.TargetConfig)
 	if err != nil {
 		return d.fail(ctx, grantID, versionID, err)
 	}
 
-	files, err := d.renderFiles(ctx, row, m, includeKey)
+	m, err := d.Certs.Material(ctx, row.CertID, versionID, needsKey)
 	if err != nil {
 		return d.fail(ctx, grantID, versionID, err)
 	}
 
-	if _, err := target.Deploy(ctx, Request{OrgSlug: row.OrgSlug, CertID: row.CertID.String(), CertName: row.CertificateName, Files: files, Config: cfg}); err != nil {
+	files, err := d.renderFiles(ctx, row, m, needsKey)
+	if err != nil {
+		return d.fail(ctx, grantID, versionID, err)
+	}
+
+	if _, err := target.Deploy(ctx, targets.Request{OrgSlug: row.OrgSlug, CertID: row.CertID.String(), CertName: row.CertificateName,
+		Files: files, Config: json.RawMessage(row.TargetConfig)}); err != nil {
 		return d.fail(ctx, grantID, versionID, err)
 	}
 	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID})
@@ -279,10 +280,11 @@ func (d *Dispatcher) renderFiles(ctx context.Context, row sqlcgen.ServerDeployGr
 	}
 	// Password is never read: RenderLayout only uses it for p12/jks
 	// output, and a server grant's layout is PEM-only (enforced when the
-	// grant's layoutId is set, both at create and update).
+	// grant's layoutId is set, both at create and update). A server grant
+	// deploys through its own Target.Deploy, not a FileTarget, so this
+	// only ever needs the layout's own files.
 	layout := &delivery.Layout{Files: specs, ExtraCertIDs: row.LayoutExtraCertIds}
-	names := append([]string{row.CertificateCommonName}, row.CertificateSans...)
-	dfiles, err := delivery.GrantFiles(&m, extras, layout, nil, row.CertificateName, names)
+	dfiles, err := delivery.GrantFiles(&m, extras, layout)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +292,7 @@ func (d *Dispatcher) renderFiles(ctx context.Context, row sqlcgen.ServerDeployGr
 }
 
 // toRenderFiles converts a layout's rendered delivery.File (path-addressed,
-// for an agent to write) into deploy.Request's render.File shape
+// for an agent to write) into targets.Request's render.File shape
 // (name-addressed, matching a plain PEM render): Name is the rendered
 // path's base name, and Secret is derived from the same output spec's own
 // format/parts (delivery.NeedsKey on that one file) since delivery.File

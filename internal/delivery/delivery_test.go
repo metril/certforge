@@ -265,27 +265,25 @@ func TestSafeName(t *testing.T) {
 	}
 }
 
-func TestParseTarget(t *testing.T) {
-	if c, err := ParseTarget("traefik", json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`)); err != nil || c.Dir != "/etc/traefik/dynamic" {
+func TestParseTraefik(t *testing.T) {
+	if c, err := ParseTraefik(json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`)); err != nil || c.Dir != "/etc/traefik/dynamic" {
 		t.Fatalf("valid: %+v %v", c, err)
 	}
-	for name, tc := range map[string]struct{ typ, raw, field string }{
-		"type":       {"nginx", `{"dir":"/x"}`, "type"},
-		"unknown":    {"traefik", `{"dir":"/x","nope":1}`, "config"},
-		"relative":   {"traefik", `{"dir":"etc/traefik"}`, "config.dir"},
-		"prefix":     {"traefik", `{"dir":"/x","pathPrefix":"rel"}`, "config.pathPrefix"},
-		"store name": {"traefik", `{"dir":"/x","stores":["a b"]}`, "config.stores"},
+	for name, tc := range map[string]struct{ raw, field string }{
+		"unknown":    {`{"dir":"/x","nope":1}`, "config"},
+		"relative":   {`{"dir":"etc/traefik"}`, "config.dir"},
+		"prefix":     {`{"dir":"/x","pathPrefix":"rel"}`, "config.pathPrefix"},
+		"store name": {`{"dir":"/x","stores":["a b"]}`, "config.stores"},
 	} {
 		var fe *FieldError
-		if _, err := ParseTarget(tc.typ, json.RawMessage(tc.raw)); !errors.As(err, &fe) || fe.Field != tc.field {
+		if _, err := ParseTraefik(json.RawMessage(tc.raw)); !errors.As(err, &fe) || fe.Field != tc.field {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
 }
 
 func TestGrantFilesOrderAndDigests(t *testing.T) {
-	target := &agentproto.Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`)}
-	files, err := GrantFiles(&material, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}, target, "Web", []string{"web.example.test"})
+	files, err := GrantFiles(&material, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,17 +291,22 @@ func TestGrantFilesOrderAndDigests(t *testing.T) {
 	for _, f := range files {
 		paths = append(paths, f.Path)
 	}
-	want := "/etc/ssl/web.pem,/etc/traefik/dynamic/certs/web/fullchain.pem,/etc/traefik/dynamic/certs/web/privkey.pem,/etc/traefik/dynamic/certforge-web.yml"
+	want := "/etc/ssl/web.pem"
 	if strings.Join(paths, ",") != want {
 		t.Fatalf("paths %v", paths)
 	}
 	specs := Specs(files)
-	if specs[2].Mode != "0600" || specs[2].SHA256 != Digest(files[2].Data) || len(specs[0].SHA256) != 64 {
+	if len(specs) != 1 || len(specs[0].SHA256) != 64 {
 		t.Fatalf("specs %+v", specs)
 	}
-	m, _ := TargetMaterial(material)
-	if !bytes.Equal(files[1].Data, m.Fullchain) || !bytes.Equal(files[2].Data, m.Key) {
-		t.Fatal("target material differs from the rendered target files")
+
+	// m nil (C3: no version yet) renders nothing from the layout.
+	if got, err := GrantFiles(nil, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}); err != nil || got != nil {
+		t.Fatalf("GrantFiles(nil, ...) = %v, %v", got, err)
+	}
+	// l nil (no layout) also renders nothing.
+	if got, err := GrantFiles(&material, nil, nil); err != nil || got != nil {
+		t.Fatalf("GrantFiles(m, nil) = %v, %v", got, err)
 	}
 }
 

@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/metril/certforge/internal/agentproto"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -89,13 +87,13 @@ func TestRenderTraefikACME(t *testing.T) {
 		t.Fatalf("without acmeServiceUrl: %d files", len(got))
 	}
 
-	// ParseTarget rejects a relative or non-http(s) acmeServiceUrl.
+	// ParseTraefik rejects a relative or non-http(s) acmeServiceUrl.
 	for name, raw := range map[string]string{
 		"relative": `{"dir":"/x","acmeServiceUrl":"/foo"}`,
 		"ftp":      `{"dir":"/x","acmeServiceUrl":"ftp://agent:21"}`,
 	} {
 		var fe *FieldError
-		if _, err := ParseTarget("traefik", json.RawMessage(raw)); !errors.As(err, &fe) || fe.Field != "config.acmeServiceUrl" {
+		if _, err := ParseTraefik(json.RawMessage(raw)); !errors.As(err, &fe) || fe.Field != "config.acmeServiceUrl" {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
@@ -162,25 +160,14 @@ func TestAcmeRouterFileAllWildcardOmitsFile(t *testing.T) {
 	}
 }
 
-// TestGrantFilesNoVersionEmitsACMEOnly covers C3: a grant on a certificate
-// with no version yet still needs its Traefik ACME router file rendered, so
-// the very first issuance can validate through Traefik.
-func TestGrantFilesNoVersionEmitsACMEOnly(t *testing.T) {
-	target := &agentproto.Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/etc/traefik/dynamic","acmeServiceUrl":"http://agent:8080"}`)}
-	files, err := GrantFiles(nil, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}, target, "Web", []string{"web.example.test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 1 || files[0].Path != "/etc/traefik/dynamic/certforge-acme-web.yml" {
-		t.Fatalf("files %+v", files)
-	}
-
-	noACME := &agentproto.Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`)}
-	if files, err := GrantFiles(nil, nil, nil, noACME, "Web", []string{"web.example.test"}); err != nil || len(files) != 0 {
-		t.Fatalf("without acmeServiceUrl: files %+v err %v", files, err)
-	}
-
-	if files, err := GrantFiles(nil, nil, nil, nil, "Web", []string{"web.example.test"}); err != nil || len(files) != 0 {
-		t.Fatalf("no target: files %+v err %v", files, err)
+// TestGrantFilesNoVersionEmitsNothing covers C3, the layout-only half:
+// GrantFiles renders nothing for a certificate with no version yet — a
+// layout never renders without material. The Traefik ACME-router-only case
+// this test covered before this task moved to
+// internal/targets.TestGrantFilesNoVersionEmitsACMEOnly, now that a
+// target's own files are targets.GrantFiles' job, not this package's.
+func TestGrantFilesNoVersionEmitsNothing(t *testing.T) {
+	if files, err := GrantFiles(nil, nil, &Layout{Files: []OutputFile{okFile("/etc/ssl/web.pem")}}); err != nil || len(files) != 0 {
+		t.Fatalf("files %+v err %v", files, err)
 	}
 }

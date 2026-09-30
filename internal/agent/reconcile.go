@@ -114,7 +114,7 @@ func certsDirFromTarget(t *agentproto.Target, files []string) string {
 	if t == nil {
 		return ""
 	}
-	cfg, err := delivery.ParseTarget(t.Type, t.Config)
+	cfg, err := delivery.ParseTraefik(t.Config)
 	if err != nil {
 		return ""
 	}
