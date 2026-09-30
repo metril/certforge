@@ -135,3 +135,16 @@ func TestSplitConfigAuthMethods(t *testing.T) {
 		t.Fatalf("method-less: %v", err)
 	}
 }
+
+func TestMergeUpdateLegacyAliasKeyedStored(t *testing.T) {
+	pub, sec, changed, reused, err := MergeUpdate("cloudflare",
+		map[string]string{"CF_API_EMAIL": "e"}, map[string]string{"CLOUDFLARE_API_KEY": "old"},
+		map[string]string{"CF_API_EMAIL": "e", "CF_API_KEY": Unchanged})
+	if err != nil || sec["CF_API_KEY"] != "old" || !reused || len(changed) != 0 || pub["CF_API_EMAIL"] != "e" {
+		t.Fatalf("pub=%v sec=%v changed=%v reused=%v err=%v", pub, sec, changed, reused, err)
+	}
+	got := CanonicalizeStored("cloudflare", map[string]string{"CLOUDFLARE_API_KEY": "k"})
+	if got["CF_API_KEY"] != "k" || len(got) != 1 {
+		t.Fatalf("got %v", got)
+	}
+}

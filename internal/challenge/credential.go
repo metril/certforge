@@ -78,6 +78,21 @@ func SplitConfig(code string, cfg map[string]string) (public, secret map[string]
 	return public, secret, nil
 }
 
+// CanonicalizeStored renames alias keys in a stored (legacy) config to their
+// canonical keys. On an alias conflict or unknown provider the input is
+// returned unchanged.
+func CanonicalizeStored(code string, cfg map[string]string) map[string]string {
+	e, ok := lookupEntry(code)
+	if !ok {
+		return cfg
+	}
+	out, err := canonicalize(e, cfg)
+	if err != nil {
+		return cfg
+	}
+	return out
+}
+
 // canonicalize returns cfg with alias keys renamed to their canonical key.
 // Unknown keys pass through untouched (the caller rejects them). An alias and
 // canonical key both non-empty with different values is ErrAliasConflict.
@@ -159,6 +174,7 @@ func MergeUpdate(code string, oldPublic, oldSecret, in map[string]string) (publi
 	if !ok {
 		return nil, nil, nil, false, fmt.Errorf("%w %q", ErrUnknownProvider, code)
 	}
+	oldPublic, oldSecret = CanonicalizeStored(code, oldPublic), CanonicalizeStored(code, oldSecret)
 	resolved := make(map[string]string, len(in))
 	for k, v := range in {
 		if v == Unchanged {

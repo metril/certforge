@@ -33,6 +33,8 @@ func (s *Store) credFromRow(ctx context.Context, r sqlcgen.DnsProviderCredential
 	if err := s.openJSON(ctx, r.SecretCfg, &secret); err != nil {
 		return c, nil, err
 	}
+	c.Public = challenge.CanonicalizeStored(r.ProviderCode, c.Public)
+	secret = challenge.CanonicalizeStored(r.ProviderCode, secret)
 	c.StoredSecrets = challenge.SecretKeys(secret)
 	n, err := s.q.CountDNSCredentialUsers(ctx, r.ID)
 	if err != nil {
