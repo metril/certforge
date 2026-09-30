@@ -32,7 +32,7 @@
 | `internal/agents/` | Server-side agents service |
 | `internal/agenthub/` | Agent WebSocket registry |
 | `internal/delivery/` | Layouts, Traefik rendering, digests |
-| `deploy/` | Dockerfile and compose files |
+| `deploy/` | Dockerfiles and compose files (`compose.yaml` builds locally; `compose.release.yaml` pulls `ghcr.io/metril/certforge:$CF_VERSION`) |
 | `test/e2e/` | Compose-driven end-to-end tests |
 
 ## Make targets
