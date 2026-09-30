@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { KeyRound, Pencil, Plus, RotateCw, Server, Trash2 } from 'lucide-react';
+import { KeyRound, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { layoutsQuery } from '@/api/queries/delivery';
 import { targetGrantsQuery, useDeleteGrant, useRedeployGrant } from '@/api/queries/grants';
 import type { DeployTarget, Grant, ProviderSchema } from '@/api/types';
@@ -10,14 +10,18 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
+import { RunsOnChip } from '@/components/RunsOnChip';
 import { ServerDeploymentChip } from '@/components/ServerDeploymentChip';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { errorMessage } from '@/api/errors';
+import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
+import { needsKey, typeMeta } from '@/lib/targets';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { ServerGrantForm } from './ServerGrantForm';
@@ -41,8 +45,8 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
   const del = useDeleteGrant(orgId);
 
   const typeName = types.find((t) => t.code === target.type)?.name ?? target.type;
-  const includeKey = !!(target.config as { includeKey?: boolean }).includeKey;
-  const newGrantAllowed = canWrite && (!includeKey || canExportKeys);
+  const keyed = needsKey(typeMeta(types, target.type)?.keyPolicy, target.config);
+  const newGrantAllowed = canWrite && (!keyed || canExportKeys);
   const newGrantReason = !canWrite ? 'clients:write' : 'keys:export';
   const layoutName = (id: string | null) => (id ? (layouts.find((l) => l.id === id)?.name ?? '…') : 'Target files');
   const redeploying = (g: Grant) => redeploy.isPending && redeploy.variables === g.id;
@@ -165,8 +169,16 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
             <div className="flex flex-wrap items-center gap-2">
               <SheetTitle>{target.name}</SheetTitle>
               <span className="text-xs text-ink-muted">{typeName}</span>
-              <ToneChip tone="neutral" icon={Server} label="Runs on server" />
-              {includeKey && <ToneChip tone="neutral" icon={KeyRound} label="Includes key" />}
+              <RunsOnChip mode="server" />
+              {keyed && <ToneChip tone="neutral" icon={KeyRound} label="Includes key" />}
+              {target.storedSecrets.length > 0 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ToneChip tone="neutral" icon={Lock} label="Stored secrets" />
+                  </TooltipTrigger>
+                  <TooltipContent>{help['target.secrets'].text}</TooltipContent>
+                </Tooltip>
+              )}
             </div>
             <PermissionTip allowed={canDelivery} action="delivery:write">
               <Button type="button" variant="outline" size="sm" disabled={!canDelivery} onClick={onEdit}>
@@ -197,7 +209,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title="Remove grant?"
-        consequence="CertForge stops writing this certificate to the target; data already in Vault stays."
+        consequence="CertForge stops pushing this certificate to the target; what is already there stays."
         confirmText={removing?.certificateName ?? ''}
         actionLabel="Remove"
         onConfirm={() => del.mutateAsync({ id: removing!.id })}

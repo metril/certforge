@@ -2,8 +2,9 @@ import { http, HttpResponse } from 'msw';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Grant } from '@/api/types';
+import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, grantServer, iso, makeClient, makeDeployment, makeGrant, makeHook, makeLayout, makeTarget, meWith, org, problem, targetVaultKv, url } from '@/test/fixtures';
+import { authHandlers, grantServer, iso, makeClient, makeDeployment, makeGrant, makeHook, makeLayout, makeTarget, meWith, org, problem, targetTestSecret, targetVaultKv, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const a = 'aa'.repeat(32);
@@ -224,4 +225,32 @@ it('shows a failed server grant\'s lastError as the chip\'s own tooltip', async 
   const chip = within(row).getByText('Failed');
   await user.hover(chip);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('vault: permission denied');
+});
+
+// Task 4 (R5, R12): GrantSheet's deploy-target picker reads DeployTarget.runsOn
+// only, never the type — a server-run target stays disabled with a tooltip.
+it('server-run target disabled in picker with tooltip', async () => {
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv] })));
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  await user.click(await within(sheet).findByRole('combobox', { name: 'Deploy target' }));
+  const opt = await screen.findByRole('option', { name: new RegExp(`^${targetVaultKv.name}`) });
+  expect(opt).toHaveAttribute('aria-disabled', 'true');
+  await user.hover(opt);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(help['grant.serverTarget'].text);
+});
+
+// An `either`-runsOn type (test-secret) saved as an agent target is pickable
+// like any other agent target: the picker gates on the target's own runsOn,
+// not the type's.
+it('either target saved as agent is pickable', async () => {
+  const targetEitherAgent = { ...targetTestSecret, id: 't-either-agent-1', name: 'either sink', runsOn: 'agent' as const };
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetEitherAgent] })));
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  await user.click(await within(sheet).findByRole('combobox', { name: 'Deploy target' }));
+  const opt = await screen.findByRole('option', { name: new RegExp(`^${targetEitherAgent.name}`) });
+  expect(opt).not.toHaveAttribute('aria-disabled', 'true');
+  await user.click(opt);
+  expect(within(sheet).getByRole('combobox', { name: 'Deploy target' })).toHaveTextContent(targetEitherAgent.name);
 });

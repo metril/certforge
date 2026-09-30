@@ -1,8 +1,9 @@
 import { http, HttpResponse } from 'msw';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, grantServer, makeCert, makeGrant, makeLayout, makeTarget, meWith, NOW, org, targetVaultKv, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
+import { authHandlers, grantServer, makeCert, makeGrant, makeLayout, makeTarget, meWith, NOW, org, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: unknown;
@@ -64,7 +65,7 @@ const openDetail = () => renderRoute('/o/acme/delivery/targets?view=t-vault-1');
 it('lists server grants with status', async () => {
   openDetail();
   const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
-  expect(within(dialog).getByText('Runs on server')).toBeInTheDocument();
+  expect(within(dialog).getByText('Server')).toBeInTheDocument();
   const table = await within(dialog).findByRole('table', { name: 'Grants' });
   const row = within(table).getByText('www').closest('tr')!;
   expect(within(row).getByText('nginx')).toBeInTheDocument();
@@ -161,7 +162,7 @@ it('delete confirms', async () => {
   await within(dialog).findByRole('table', { name: 'Grants' });
   await user.click(within(dialog).getByRole('button', { name: 'Remove www' }));
   const confirm = await screen.findByRole('dialog', { name: 'Remove grant?' });
-  expect(confirm).toHaveTextContent('data already in Vault stays');
+  expect(confirm).toHaveTextContent('what is already there stays');
   await user.type(within(confirm).getByRole('textbox'), 'www');
   await user.click(within(confirm).getByRole('button', { name: 'Remove' }));
   await waitFor(() => expect(deleted).toEqual([grantServer.id]));
@@ -201,6 +202,48 @@ it('edit layout needs keys:export on an includeKey target', async () => {
   expect(editBtn).toBeDisabled();
   await user.hover(editBtn);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the keys:export permission');
+});
+
+// Task 4: keyed now comes from needsKey(typeMeta(...).keyPolicy, config),
+// not a raw includeKey read, so an `always`-policy type (test-secret) gates
+// New server grant even without an includeKey field at all.
+it('new server grant needs keys:export for always', async () => {
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))),
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [] })),
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret] })),
+    http.get(url('/orgs/org-1/deploy-targets/t-test-secret-1/grants'), () => HttpResponse.json([])),
+  );
+  const { user } = renderRoute('/o/acme/delivery/targets?view=t-test-secret-1');
+  const dialog = await screen.findByRole('dialog', { name: 'test sink' });
+  const button = await within(dialog).findByRole('button', { name: 'New server grant' });
+  expect(button).toBeDisabled();
+  await user.hover(button);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the keys:export permission');
+});
+
+it('never or unset key policy needs only clients:write', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
+  openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  const button = await within(dialog).findByRole('button', { name: 'New server grant' });
+  expect(button).toBeEnabled();
+});
+
+it('header shows runs-on, key and secrets chips', async () => {
+  server.use(
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [] })),
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret] })),
+    http.get(url('/orgs/org-1/deploy-targets/t-test-secret-1/grants'), () => HttpResponse.json([])),
+  );
+  const { user } = renderRoute('/o/acme/delivery/targets?view=t-test-secret-1');
+  const dialog = await screen.findByRole('dialog', { name: 'test sink' });
+  expect(within(dialog).getByText('Test secret')).toBeInTheDocument();
+  expect(within(dialog).getByText('Server')).toBeInTheDocument();
+  expect(within(dialog).getByText('Includes key')).toBeInTheDocument();
+  const secretsChip = within(dialog).getByText('Stored secrets');
+  await user.hover(secretsChip);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(help['target.secrets'].text);
 });
 
 it('needs clients:write', async () => {
