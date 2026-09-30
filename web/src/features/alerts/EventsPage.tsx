@@ -10,7 +10,7 @@ import { FilterChips } from '@/components/FilterChips';
 import { HelpTip } from '@/components/HelpTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
-import { KIND_GROUPS } from '@/lib/events';
+import { KIND_GROUPS, KIND_LABEL } from '@/lib/events';
 import { useOrg } from '@/lib/org';
 import { EventRow } from './EventRow';
 
@@ -29,9 +29,24 @@ function selectedGroups(kind: EventKind[] | undefined): string[] {
   return KIND_GROUPS.filter((g) => g.kinds.every((kk) => k.includes(kk))).map((g) => g.label);
 }
 
-function kindsForGroups(labels: string[]): EventKind[] {
-  const groups = KIND_GROUPS.filter((g) => labels.includes(g.label));
-  return ALL_KINDS.filter((kk) => groups.some((g) => g.kinds.includes(kk)));
+/** Adds/removes only the groups whose selected-state actually changed
+ * (batch 2 review): recomputing the whole `kind` array from `nextLabels`
+ * alone would silently drop any leftover kind that isn't part of a full
+ * group — e.g. a hand-edited `?kind=cert.issued` — every time an unrelated
+ * group chip is toggled. */
+function toggleGroups(current: EventKind[], selectedLabels: string[], nextLabels: string[]): EventKind[] {
+  const added = nextLabels.filter((l) => !selectedLabels.includes(l));
+  const removed = selectedLabels.filter((l) => !nextLabels.includes(l));
+  let k = current;
+  for (const label of added) {
+    const g = KIND_GROUPS.find((x) => x.label === label)!;
+    k = Array.from(new Set([...k, ...g.kinds]));
+  }
+  for (const label of removed) {
+    const g = KIND_GROUPS.find((x) => x.label === label)!;
+    k = k.filter((kk) => !g.kinds.includes(kk));
+  }
+  return ALL_KINDS.filter((kk) => k.includes(kk));
 }
 
 export function EventsPage() {
@@ -46,20 +61,32 @@ export function EventsPage() {
 
   const groups = selectedGroups(kind);
   const onGroupsChange = (next: string[]) => {
-    const k = kindsForGroups(next);
+    const k = toggleGroups(kind ?? [], groups, next);
     set({ kind: k.length > 0 ? k : undefined });
   };
 
   const severityValue: SeverityFilter = severity === 'critical' ? 'critical' : severity === 'warning' ? 'warning' : 'all';
   const onSeverityChange = (v: SeverityFilter) => set({ severity: v === 'all' ? undefined : v });
 
+  // Batch 2 review: a kind that isn't part of any fully-selected group (a
+  // hand-edited or deep-linked partial `?kind`) still counts as an active
+  // filter and gets its own removable chip, by KIND_LABEL.
+  const groupKinds = new Set(groups.flatMap((label) => KIND_GROUPS.find((g) => g.label === label)!.kinds));
+  const leftoverKinds = (kind ?? []).filter((k) => !groupKinds.has(k));
   const chips = [
     ...groups.map((g) => ({ key: `group:${g}`, label: g })),
+    ...leftoverKinds.map((k) => ({ key: `kind:${k}`, label: KIND_LABEL[k] })),
     ...(severityValue !== 'all' ? [{ key: 'severity', label: severityValue === 'critical' ? 'Critical' : 'Warning+' }] : []),
   ];
   const removeChip = (key: string) => {
     if (key === 'severity') {
       onSeverityChange('all');
+      return;
+    }
+    if (key.startsWith('kind:')) {
+      const k = key.slice('kind:'.length);
+      const next = (kind ?? []).filter((kk) => kk !== k);
+      set({ kind: next.length > 0 ? next : undefined });
       return;
     }
     onGroupsChange(groups.filter((g) => `group:${g}` !== key));
@@ -69,7 +96,9 @@ export function EventsPage() {
     return <ErrorState message={`Couldn't load events. ${errorMessage(list.error)}`} onRetry={() => void list.refetch()} />;
   }
 
-  const filtered = chips.length > 0;
+  // Batch 2 review: derived from the URL directly, not from `chips.length`,
+  // so a partial-group deep link is never mistaken for "no filter active".
+  const filtered = (kind?.length ?? 0) > 0 || severityValue !== 'all';
   const empty = !list.isPending && events.length === 0;
 
   return (

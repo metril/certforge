@@ -8,6 +8,15 @@ import { renderRoute } from '@/test/render';
 
 const CERT_KINDS = ['cert.issued', 'cert.renewal_failed', 'cert.expiring', 'cert.expired'];
 
+/** A `kind` deep link the way TanStack Router's own default search
+ * serialization actually round-trips an array: a lone `?kind=cert.issued`
+ * (no repeated key) decodes to the bare string "cert.issued", not an
+ * array, and fails `z.array(eventKind)` — the router only rebuilds an array
+ * from either repeated keys or this JSON form. */
+function kindSearch(kinds: string[]): string {
+  return `kind=${encodeURIComponent(JSON.stringify(kinds))}`;
+}
+
 function serveEvents(items: NotifyEvent[], nextCursor: string | null = null) {
   server.use(
     ...authHandlers({ authed: true }),
@@ -48,7 +57,7 @@ it('group chip sets kind params', async () => {
 
 it('partial group from URL is not filled', async () => {
   serveEvents([]);
-  renderRoute('/o/acme/alerts/events?kind=cert.issued');
+  renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued'])}`);
   const toolbar = await screen.findByRole('toolbar', { name: 'Event groups' });
   expect(within(toolbar).getByRole('button', { name: 'Certificates' })).toHaveAttribute('aria-pressed', 'false');
 });
@@ -170,4 +179,35 @@ it('empty and filtered empty states', async () => {
   expect(await screen.findByText('No events match these filters.')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Clear filters' }));
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
+});
+
+// Batch 2 review: a deep-linked partial `?kind` (not a full group) used to
+// filter the list while showing no chip and no way to clear it, and its
+// empty result read as the unfiltered "No events yet." instead of "No
+// events match these filters.".
+it('a deep-linked partial kind shows a removable chip and the filtered empty state', async () => {
+  serveEvents([]);
+  const { user } = renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued'])}`);
+  expect(await screen.findByText('No events match these filters.')).toBeInTheDocument();
+  const chip = screen.getByText('Certificate issued');
+  expect(chip).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Remove filter Certificate issued' }));
+  expect(await screen.findByText('No events yet.')).toBeInTheDocument();
+});
+
+// A leftover kind outside any full group must survive an unrelated group
+// toggle (toggleGroups only adds/removes the group that actually changed).
+it('toggling a group keeps a leftover kind from the URL', async () => {
+  let seen: string[] = [];
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/orgs/:orgId/events'), ({ request }) => {
+      seen = new URL(request.url).searchParams.getAll('kind');
+      return HttpResponse.json({ items: [], nextCursor: null });
+    }),
+  );
+  const { user } = renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued'])}`);
+  const toolbar = await screen.findByRole('toolbar', { name: 'Event groups' });
+  await user.click(within(toolbar).getByRole('button', { name: 'Deployments' }));
+  await waitFor(() => expect(seen).toEqual(['cert.issued', 'deploy.failed', 'deploy.drift']));
 });

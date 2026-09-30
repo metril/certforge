@@ -191,11 +191,48 @@ it('limit 422 toasts', async () => {
   expect(await screen.findByText('An organization can have at most 500 monitors.')).toBeInTheDocument();
 });
 
-it("ExpiryChip: tone and relative days", () => {
+// Batch 2 review: the original test asserted only the label — expiryTone's
+// three branches (valid, expiring under EXPIRING_DAYS, expired at/past
+// notAfter) went untested.
+it.each([
+  ['valid', iso(20), 'in 20 d', 'border-valid/40'],
+  ['expiring', iso(9), 'in 9 d', 'border-expiring/60'],
+  ['expired', iso(-1), '1 d ago', 'border-expired'],
+] as const)('ExpiryChip: %s tone and relative days', (_tone, notAfter, label, toneClass) => {
   render(
     <TooltipProvider>
-      <ExpiryChip notAfter={iso(9)} now={NOW} />
+      <ExpiryChip notAfter={notAfter} now={NOW} />
     </TooltipProvider>,
   );
-  expect(screen.getByText('in 9 d')).toBeInTheDocument();
+  const chip = screen.getByText(label);
+  expect(chip).toBeInTheDocument();
+  expect(chip).toHaveClass(toneClass);
+});
+
+// Batch 2 review: same class as ChannelCard's own batch 1 fix — the mobile
+// monitor card's onKeyDown caught Enter/Space bubbling up from the nested
+// Check now button (and the fingerprint CopyField), preventDefault'd, and
+// opened the sheet instead — the button/field couldn't be used by keyboard
+// below `md`.
+it('card: check now works by keyboard without opening the sheet', async () => {
+  stubViewport(false);
+  monitors = [makeMonitor({ state: 'unknown' })];
+  checkResult = makeMonitor({ state: 'ok', lastCheckedAt: iso(0) });
+  const { user, router } = renderRoute('/o/acme/alerts/monitors');
+  const btn = await screen.findByRole('button', { name: 'Check edge now' });
+  btn.focus();
+  await user.keyboard(' ');
+  await waitFor(() => expect(checked).toBe('mon-1'));
+  expect(router.state.location.search).toEqual({});
+});
+
+it('card: copy fingerprint works by keyboard without opening the sheet', async () => {
+  stubViewport(false);
+  monitors = [makeMonitor({ lastFingerprint: 'ab'.repeat(32) })];
+  const { user, router } = renderRoute('/o/acme/alerts/monitors');
+  const copyBtn = await screen.findByRole('button', { name: 'Copy fingerprint' });
+  copyBtn.focus();
+  await user.keyboard(' ');
+  expect(await screen.findByText('Copied')).toBeInTheDocument();
+  expect(router.state.location.search).toEqual({});
 });

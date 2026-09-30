@@ -113,6 +113,12 @@ function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: stri
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => {
+        // A bubbled Enter/Space from the nested Check now button or the
+        // fingerprint CopyField must reach its own default action, not open
+        // the sheet on top of it (batch 2 review, same class as
+        // ChannelCard's own fix in batch 1) — only the card's own keydown
+        // (focused directly, e.g. via Tab) opens it.
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onOpen();
