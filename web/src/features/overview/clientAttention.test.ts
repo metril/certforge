@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
-import { iso, makeCert, makeClient, NOW } from '@/test/fixtures';
+import { iso, makeCert, makeClient, makeMonitor, NOW } from '@/test/fixtures';
 import { attentionItems } from './attention';
 import { attentionQueue, clientAttentionItems } from './clientAttention';
+import { monitorAttentionItems } from './monitorAttention';
 
 it('raises failed, drift, offline-with-grants and agent-certificate items; skips revoked', () => {
   const items = clientAttentionItems(
@@ -33,4 +34,23 @@ it('merges certificate and client items by severity', () => {
   );
   const clientItems = clientAttentionItems([makeClient({ id: 'a', driftCount: 1 }), makeClient({ id: 'b', connected: false, online: false, lastSeen: iso(-1) })], NOW);
   expect(attentionQueue(certItems, clientItems).map((q) => q.item.kind)).toEqual(['failed', 'drift', 'overdue', 'offline']);
+});
+
+it('mismatch ranks after failed, unreachable after overdue', () => {
+  const certItems = attentionItems(
+    [makeCert({ id: 'x', status: 'failed', failureCount: 1, lastError: 'boom' }), makeCert({ id: 'y', nextRenewAt: iso(-2) })],
+    NOW,
+  );
+  const clientItems = clientAttentionItems([makeClient({ id: 'a', connected: false, online: false, lastSeen: iso(-1) })], NOW);
+  const monitorItems = monitorAttentionItems([
+    makeMonitor({ id: 'm1', state: 'mismatch' }),
+    makeMonitor({ id: 'm2', state: 'unreachable', lastError: 'timeout' }),
+  ]);
+  expect(attentionQueue(certItems, clientItems, monitorItems).map((q) => q.item.kind)).toEqual([
+    'failed',
+    'monitor-mismatch',
+    'overdue',
+    'monitor-unreachable',
+    'offline',
+  ]);
 });

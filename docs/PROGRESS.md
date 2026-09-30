@@ -327,8 +327,8 @@ Phase 6 is split into two plans: 6A ops backend (schema, settings sections and a
 | 4 | Monitors | done | d544236 |
 | 5 | Events log | done | 93adffa |
 | 6 | Settings → Integrations: Email, Notifications, Prometheus | done | ed0414a |
-| 7 | Settings → Backup and keys | done | pending |
-| 8 | Overview monitor attention | planned | – |
+| 7 | Settings → Backup and keys | done | 8f2d6c3 |
+| 8 | Overview monitor attention | done | pending |
 | 9 | Docs pass and Playwright | planned | – |
 
 ## Decisions made during implementation

@@ -230,6 +230,7 @@ export const help = {
     learnMore: 'web-ui.md#overview',
   },
   'overview.attention': { text: 'Expired, waiting on you, failing, overdue, not deployed or offline, most urgent first.', learnMore: 'web-ui.md#overview' },
+  'attention.monitor': { text: 'An external monitor sees the wrong certificate or cannot connect.', learnMore: 'monitoring.md#states' },
   'cert.grants': { text: 'Clients this certificate is granted to.' },
   'cert.deployments': { text: 'One row per client holding this certificate, with what its agent installed.', learnMore: 'agent.md#grants-and-reconcile' },
   'overview.activity': { text: 'The last 20 audit events here. Open one to see what changed.', learnMore: 'web-ui.md#audit-log' },

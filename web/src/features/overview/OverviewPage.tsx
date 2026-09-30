@@ -1,9 +1,10 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CircleAlert, CircleCheck, CircleX, Clock, FileDiff, Hourglass, WifiOff, type LucideIcon } from 'lucide-react';
+import { CircleAlert, CircleCheck, CircleX, Clock, FileDiff, Hourglass, Radar, WifiOff, type LucideIcon } from 'lucide-react';
 import { allCertificatesQuery, allOrgsCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { agentCAsQuery } from '@/api/queries/agents';
+import { monitorsQuery, useCheckMonitor } from '@/api/queries/monitors';
 import { errorMessage } from '@/api/errors';
 import { readinessQuery } from '@/api/queries/health';
 import type { Certificate, Client } from '@/api/types';
@@ -21,10 +22,12 @@ import { renewToastHandlers } from '@/lib/renewToast';
 import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
 import type { Tone } from '@/lib/status';
 import { DAY, relDays } from '@/lib/time';
+import { toast } from 'sonner';
 import { attentionItems, statusCounts, upcomingRenewals, usesManualDns, type AttentionKind } from './attention';
 import { attentionQueue, clientAttentionItems, type ClientAttentionKind } from './clientAttention';
 import { ExpiryHorizon } from './ExpiryHorizon';
 import { HealthStrip } from './HealthStrip';
+import { monitorAttentionItems, type MonitorAttentionKind } from './monitorAttention';
 import { RecentActivity } from './RecentActivity';
 
 const KIND: Record<AttentionKind, { tone: Tone; icon: LucideIcon; label: string }> = {
@@ -38,6 +41,11 @@ const CLIENT_KIND: Record<ClientAttentionKind, { tone: Tone; icon: LucideIcon; l
   drift: { tone: 'drift', icon: FileDiff, label: 'Drift', tab: 'certificates', fix: 'Review' },
   offline: { tone: 'neutral', icon: WifiOff, label: 'Offline', tab: 'certificates', fix: 'Open' },
   'agent-cert': { tone: 'expiring', icon: Clock, label: 'Agent certificate', tab: 'settings', fix: 'Re-enrol' },
+};
+// Deviations "Overview rows": only mismatch and unreachable, single-org only.
+const MONITOR_KIND: Record<MonitorAttentionKind, { tone: Tone; label: string }> = {
+  'monitor-mismatch': { tone: 'failed', label: 'Mismatch' },
+  'monitor-unreachable': { tone: 'failed', label: 'Unreachable' },
 };
 const TILES = [
   { status: 'active', label: 'Active', icon: CircleCheck, cls: 'text-valid' },
@@ -72,6 +80,11 @@ export function OverviewPage() {
   // org.id is 'all' under All orgs, which allClientsQuery maps to GET /clients.
   const clients = useQuery({ ...allClientsQuery(org.id), enabled: canClients });
   const agentCAs = useQuery({ ...agentCAsQuery, enabled: can(me, 'settings:read') });
+  // Deviations "Overview rows": monitor mismatch/unreachable rows exist only
+  // in a single-org view — there is no cross-org monitor list.
+  const canMonitors = !allOrgs && can(me, 'alerts:read', org.id);
+  const monitors = useQuery({ ...monitorsQuery(org.id), enabled: canMonitors });
+  const checkMonitor = useCheckMonitor(org.id);
   const renew = useRenewCertificates(org.id);
   const search = useSearch({ from: '/_app/o/$org/overview' });
   const navigate = useNavigate({ from: '/o/$org/overview' });
@@ -126,7 +139,8 @@ export function OverviewPage() {
   // doesn't double-count a cert this section already surfaces its own way.
   const manualDnsCerts = certs.filter((c) => c.status !== 'revoked' && c.status !== 'expired' && usesManualDns(c));
   const clientItems = clientAttentionItems(clients.data?.items ?? [], now);
-  const queue = attentionQueue(others, clientItems);
+  const monitorItems = canMonitors ? monitorAttentionItems(monitors.data ?? []) : [];
+  const queue = attentionQueue(others, clientItems, monitorItems);
   const clientSlug = (c: Client) => (allOrgs ? slugOf(c.orgId) : org.slug);
   const counts = statusCounts(certs);
   const upcoming = upcomingRenewals(certs, now);
@@ -164,7 +178,7 @@ export function OverviewPage() {
         <section aria-label="Needs attention" className="grid gap-3">
           <h2 className="flex items-center gap-1.5 text-base font-semibold">
             Needs attention <HelpTip id="overview.attention" />
-            <span className="text-sm font-normal text-ink-muted">{items.length + clientItems.length}</span>
+            <span className="text-sm font-normal text-ink-muted">{items.length + clientItems.length + monitorItems.length}</span>
           </h2>
           {!allOrgs &&
             manualDnsCerts.map((c) => <ManualDnsCard key={c.id} orgId={org.id} cert={c} canConfirm={can(me, 'certs:issue', org.id)} />)}
@@ -193,6 +207,38 @@ export function OverviewPage() {
                           </Link>
                         </Button>
                       )}
+                    </li>
+                  );
+                }
+                if (q.type === 'monitor') {
+                  const { monitor: m, cause, kind } = q.item;
+                  const k = MONITOR_KIND[kind];
+                  const canCheck = can(me, 'alerts:write', m.orgId);
+                  return (
+                    <li key={`${kind}-${m.id}`} className={row}>
+                      <ToneChip tone={k.tone} icon={Radar} label={k.label} />
+                      <Link to="/o/$org/alerts/monitors" params={{ org: org.slug }} search={{ edit: m.id }} className="truncate font-semibold hover:underline">
+                        {m.name}
+                      </Link>
+                      <span className="flex min-w-0 flex-wrap items-center gap-2 truncate text-ink-muted">
+                        <span className="shrink-0 font-mono text-xs">
+                          {m.host}:{m.port}
+                        </span>
+                        <span className="truncate">{cause}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <PermissionTip allowed={canCheck} action="alerts:write">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!canCheck || checkMonitor.isPending}
+                            onClick={() => checkMonitor.mutate(m.id, { onError: (e) => toast.error(errorMessage(e)) })}
+                          >
+                            Check now
+                          </Button>
+                        </PermissionTip>
+                        <HelpTip id="attention.monitor" />
+                      </span>
                     </li>
                   );
                 }

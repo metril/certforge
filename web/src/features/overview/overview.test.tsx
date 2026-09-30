@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, iso, makeCert, makeClient, meWith, NOW, org, org2, problem, url } from '@/test/fixtures';
+import { authHandlers, iso, makeCert, makeClient, makeMonitor, meWith, NOW, org, org2, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let ready = true;
@@ -220,5 +220,59 @@ it('stays silent about the agent listener certificate at 14 days or more', async
   renderRoute('/o/acme/overview');
   await screen.findByRole('link', { name: 'api' });
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('monitor row links and checks now', async () => {
+  let checked: string | undefined;
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/monitors'), () =>
+      HttpResponse.json([makeMonitor({ id: 'mon-1', name: 'edge', state: 'mismatch', lastFingerprint: 'ab'.repeat(32), expectedCertificateName: 'www.example.com' })]),
+    ),
+    http.post(url('/orgs/org-1/monitors/:id/check'), ({ params }) => {
+      checked = params.id as string;
+      return HttpResponse.json(makeMonitor({ id: 'mon-1', name: 'edge', state: 'ok' }));
+    }),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  const row = (await within(queue).findByRole('link', { name: 'edge' })).closest('li')!;
+  expect(within(row).getByRole('link', { name: 'edge' })).toHaveAttribute('href', '/o/acme/alerts/monitors?edit=mon-1');
+  expect(row).toHaveTextContent('edge.example.com:443');
+  expect(row).toHaveTextContent(`Serving ${'ab'.repeat(8)}…; expected www.example.com`);
+  await user.click(within(row).getByRole('button', { name: 'Check now' }));
+  await waitFor(() => expect(checked).toBe('mon-1'));
+});
+
+it('no monitor query without alerts:read', async () => {
+  let requested = false;
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-2' }], [org, org2]))),
+    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/monitors'), () => {
+      requested = true;
+      return HttpResponse.json([]);
+    }),
+  );
+  renderRoute('/o/acme/overview');
+  await screen.findByText('Nothing needs attention.');
+  expect(requested).toBe(false);
+});
+
+it('no monitor query in all orgs', async () => {
+  let requested = false;
+  server.use(
+    http.get(url('/auth/me'), () =>
+      HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }, { role: 'viewer', orgId: 'org-2' }, { role: 'viewer', orgId: null }], [org, org2])),
+    ),
+    http.get(url('/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/monitors'), () => {
+      requested = true;
+      return HttpResponse.json([]);
+    }),
+  );
+  renderRoute('/o/all/overview');
+  await screen.findByText('Nothing needs attention.');
+  expect(requested).toBe(false);
 });
 
