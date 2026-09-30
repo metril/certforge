@@ -81,13 +81,16 @@ e2e: deploy/secrets/kek
 # Playwright against a fresh compose stack with the agent service (plan 3B).
 # --profile e2e brings up the agent service (compose.test.yaml keeps it out
 # of the plain dev stack; see its own comment on why it must not start
-# without CF_E2E_UID/GID, which this target exports below) and Vault (5B's
-# Playwright suite needs it too; CF_E2E_VAULT_ADDR/CF_E2E_VAULT_TOKEN are
-# exported here for that reason even though nothing in this target's own
-# npm run e2e reads them yet).
+# without CF_E2E_UID/GID, which this target exports below), Vault (5B's
+# Playwright suite needs it too) and mailpit (6B Task 9's SMTP-via-mailpit
+# spec; already profile-gated `[e2e]` alongside Vault, so no extra --profile
+# flag is needed here). CF_MAILPIT_PORT/CF_E2E_SINK_PORT are exported to both
+# the compose stack (mailpit's own published port) and `npm run e2e` (env.ts
+# reads them), the same convention CF_E2E_VAULT_ADDR/CF_E2E_VAULT_TOKEN
+# already use.
 e2e-web: deploy/secrets/kek
 	rm -rf .e2e && mkdir -p .e2e/agent-data .e2e/traefik .e2e/ssl .e2e/vault && chmod 0777 .e2e/vault
-	export CF_E2E_UID=$$(id -u) CF_E2E_GID=$$(id -g) CF_VAULT_PORT=$${CF_VAULT_PORT:-8200} CF_E2E_VAULT_TOKEN=$${CF_E2E_VAULT_TOKEN:-certforge-e2e-root}; \
+	export CF_E2E_UID=$$(id -u) CF_E2E_GID=$$(id -g) CF_VAULT_PORT=$${CF_VAULT_PORT:-8200} CF_E2E_VAULT_TOKEN=$${CF_E2E_VAULT_TOKEN:-certforge-e2e-root} CF_MAILPIT_PORT=$${CF_MAILPIT_PORT:-18025} CF_E2E_SINK_PORT=$${CF_E2E_SINK_PORT:-18090}; \
 	$(COMPOSE_TEST) --profile e2e up -d --build --wait; up_status=$$?; \
 	if [ $$up_status -ne 0 ]; then \
 		$(COMPOSE_TEST) --profile e2e down -v; exit $$up_status; \
@@ -96,6 +99,8 @@ e2e-web: deploy/secrets/kek
 	CF_E2E_AGENT_DIR=$(CURDIR)/.e2e \
 	CF_E2E_VAULT_ADDR=$${CF_E2E_VAULT_ADDR:-http://vault:8200} \
 	CF_E2E_VAULT_TOKEN=$${CF_E2E_VAULT_TOKEN} \
+	CF_MAILPIT_PORT=$${CF_MAILPIT_PORT} \
+	CF_E2E_SINK_PORT=$${CF_E2E_SINK_PORT} \
 	npm --prefix web run e2e; status=$$?; $(COMPOSE_TEST) --profile e2e down -v; exit $$status
 
 vendor-swagger:

@@ -1,4 +1,5 @@
 import { Validator as CFValidator, type OutputUnit, type Schema as CFSchema, type SchemaDraft } from '@cfworker/json-schema';
+import { UNCHANGED } from '@/api/types';
 import {
   createErrorHandler,
   getDefaultFormState,
@@ -221,6 +222,43 @@ function withRootDefs(schema: CFSchema, rootSchema?: CFSchema): CFSchema {
   return { $defs: { ...defs, ...(schema.$defs ?? {}) }, ...schema };
 }
 
+type SecretProp = CFSchema & { secret?: boolean; minLength?: unknown; maxLength?: unknown; pattern?: unknown; format?: unknown };
+
+/**
+ * A secret field's untouched sentinel (`UNCHANGED`, 13 characters) stands in
+ * for whatever's already stored server-side — the server itself never
+ * re-validates a field's own shape once it sees the sentinel (Shared
+ * contracts: a channel/settings PATCH keeps a `__unchanged__`/omitted secret
+ * as stored). Left unrelaxed, a schema's own shape keywords on that field
+ * (e.g. the webhook notifier's `signingSecret.minLength: 16`) would run
+ * against the sentinel itself and fail every subsequent save of an existing
+ * record whose secret is simply left alone — a real bug this validator
+ * would otherwise reproduce for any secret field with a `minLength`,
+ * `maxLength`, `pattern` or `format` keyword. `type`/`title`/`description`
+ * and the field's own presence (`required`) are untouched, so a genuinely
+ * wrong type or a missing required secret is still caught.
+ */
+function relaxUnchangedSecrets<S>(schema: S, formData: unknown): S {
+  if (typeof schema !== 'object' || schema === null) return schema;
+  const props = (schema as { properties?: Record<string, SecretProp> }).properties;
+  if (!props || typeof formData !== 'object' || formData === null) return schema;
+  const data = formData as Record<string, unknown>;
+  let changed = false;
+  const nextProps: Record<string, SecretProp> = { ...props };
+  for (const [key, prop] of Object.entries(props)) {
+    if (prop && typeof prop === 'object' && prop.secret === true && data[key] === UNCHANGED) {
+      const rest = { ...prop };
+      delete rest.minLength;
+      delete rest.maxLength;
+      delete rest.pattern;
+      delete rest.format;
+      nextProps[key] = rest;
+      changed = true;
+    }
+  }
+  return changed ? ({ ...schema, properties: nextProps } as S) : schema;
+}
+
 /**
  * A `ValidatorType` implementation built on `@cfworker/json-schema`, a pure
  * JSON Schema interpreter with no `new Function`/`eval` codegen. It replaces
@@ -240,7 +278,8 @@ class CfworkerValidator<T = unknown, S extends StrictRJSFSchema = RJSFSchema, F 
       // shortCircuit=false so every failing field is reported at once
       // (shortCircuit=true stops a properties/items loop at the first
       // failure, which would hide every other invalid field).
-      const validator = new CFValidator(schema as unknown as CFSchema, DRAFT, false);
+      const effective = relaxUnchangedSecrets(schema, formData);
+      const validator = new CFValidator(effective as unknown as CFSchema, DRAFT, false);
       const result = validator.validate(formData);
       return { errors: (result.valid ? [] : leafUnitsOnly(result.errors)) as unknown as Result[] };
     } catch (err) {
@@ -275,7 +314,7 @@ class CfworkerValidator<T = unknown, S extends StrictRJSFSchema = RJSFSchema, F 
 
   isValid(schema: S, formData: T | undefined, rootSchema: S): boolean {
     try {
-      const effective = withRootDefs(schema as unknown as CFSchema, rootSchema as unknown as CFSchema);
+      const effective = withRootDefs(relaxUnchangedSecrets(schema, formData) as unknown as CFSchema, rootSchema as unknown as CFSchema);
       const validator = new CFValidator(effective, DRAFT, false);
       return validator.validate(formData).valid;
     } catch {

@@ -21,4 +21,13 @@ export const E2E = {
   // "Connected" unconditionally, not gated on these being set).
   vaultAddr: process.env.CF_E2E_VAULT_ADDR ?? 'http://vault:8200',
   vaultToken: process.env.CF_E2E_VAULT_TOKEN ?? 'certforge-e2e-root',
+  // Task 9: the host-side webhook sink this suite starts itself (e2e/sink.ts),
+  // reached by the compose server as http://host.docker.internal:<port>/hook
+  // (deploy/compose.test.yaml's extra_hosts on the certforge service) — same
+  // convention as test/e2e/ops_test.go's own opsWebhookSink/CF_E2E_SINK_PORT.
+  sinkPort: Number(process.env.CF_E2E_SINK_PORT ?? '18090'),
+  sinkHost: 'host.docker.internal',
+  // mailpit's own HTTP API (published on the host), read back the same way
+  // test/e2e/ops_test.go's opsMailpitMessages does.
+  mailpitApi: `http://localhost:${process.env.CF_MAILPIT_PORT ?? '18025'}`,
 };

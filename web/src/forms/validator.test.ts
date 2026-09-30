@@ -1,5 +1,6 @@
 import type { RJSFSchema } from '@rjsf/utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { UNCHANGED } from '@/api/types';
 import { createValidator } from './validator';
 
 // The bug this validator fixes (validator-fix report): @rjsf/validator-ajv8
@@ -118,6 +119,59 @@ describe('additionalProperties: false does not leak a redundant "False boolean s
     const { errors } = validator.validateFormData({ rateLimits: { failedValidationsPerHour: 0 }, extraneous: 'x' }, schema);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({ name: 'false', property: '.extraneous' });
+  });
+});
+
+// Playwright's "channel CRUD with webhook test" (Task 9) caught this live:
+// re-saving an existing webhook channel whose signingSecret is stored and
+// untouched sends the UNCHANGED sentinel ("__unchanged__", 13 characters),
+// which failed the notifier schema's own minLength: 16 client-side on every
+// save after the first — the server itself never re-checks a secret field's
+// shape once it sees the sentinel (it keeps the stored value as is), so this
+// validator must not either.
+describe('an untouched secret field (the UNCHANGED sentinel) skips its own shape constraints', () => {
+  const schema = {
+    type: 'object',
+    required: ['signingSecret'],
+    properties: {
+      name: { type: 'string', minLength: 1 },
+      signingSecret: { type: 'string', minLength: 16, maxLength: 256, secret: true },
+    },
+  } as RJSFSchema;
+
+  it('validateFormData: UNCHANGED passes minLength/maxLength', () => {
+    const validator = createValidator();
+    const { errors } = validator.validateFormData({ name: 'ops', signingSecret: UNCHANGED }, schema);
+    expect(errors).toEqual([]);
+  });
+
+  it('isValid: UNCHANGED passes minLength/maxLength', () => {
+    const validator = createValidator();
+    expect(validator.isValid(schema, { name: 'ops', signingSecret: UNCHANGED }, schema)).toBe(true);
+  });
+
+  it('a genuinely short, freshly-typed value (not the sentinel) still fails', () => {
+    const validator = createValidator();
+    const { errors } = validator.validateFormData({ name: 'ops', signingSecret: 'short' }, schema);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ property: '.signingSecret' });
+  });
+
+  it('a non-secret field with the literal sentinel string is still checked normally', () => {
+    const validator = createValidator();
+    const { errors } = validator.validateFormData({ name: UNCHANGED, signingSecret: UNCHANGED }, {
+      type: 'object',
+      properties: { name: { type: 'string', minLength: 20 } },
+    } as RJSFSchema);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ property: '.name' });
+  });
+
+  it('a missing required secret is still reported (relaxing shape never fakes presence)', () => {
+    const validator = createValidator();
+    const { errors } = validator.validateFormData({ name: 'ops' }, schema);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ name: 'required', params: { missingProperty: 'signingSecret' } });
   });
 });
 

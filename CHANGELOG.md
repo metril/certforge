@@ -270,3 +270,5 @@ All notable changes to CertForge are documented here. The format follows [Keep a
 - Settings → Backup and keys schedules backups and downloads one on demand.
 - Overview flags monitors that see the wrong certificate or cannot connect.
 - Phase 6B batch-3 review fixes: the backup schedule segmented control now shows "Off"/"Daily"/"Weekly" instead of the raw enum values; the Prometheus scrape URL row now stays Off until the enabled switch is actually saved, instead of following the unsaved draft.
+- Playwright covers alert channels, monitors, events, SMTP, Prometheus and backups.
+- Re-saving an existing channel or settings section whose secret field carries a `minLength` (e.g. a webhook's signing secret) no longer fails client-side validation just because the untouched value is the `__unchanged__` sentinel.

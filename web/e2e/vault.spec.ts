@@ -13,40 +13,54 @@ test('Vault settings test button', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
   await page.goto('/settings/integrations');
-  const address = page.getByLabel('Address');
+  // Scoped to the Vault block itself: IntegrationsSection stacks several
+  // SchemaSection blocks on one page (6B added Email, Notifications and
+  // Prometheus alongside this 5B one) — a bare `getByLabel('Address')`
+  // substring-matches the Email section's own "From address" field, and a
+  // bare "Save" now matches all four sections' own Save buttons. One
+  // criterion from inside the form (Address) and one from the actions row
+  // outside it (Test connection) forces the match up to this section's own
+  // outer div, not RJSF's own form-root wrapper (same convention as
+  // ops.spec.ts's Email/Prometheus scoping).
+  const vault = page
+    .locator('div')
+    .filter({ has: page.getByRole('button', { name: 'Test connection' }) })
+    .filter({ has: page.getByLabel('Address', { exact: true }) })
+    .last();
+  const address = vault.getByLabel('Address', { exact: true });
   await expect(address).toBeVisible();
 
   // The token field may already be "Stored" (another spec's own Vault
   // settings, self-contained but the same global section) — Replace opens
   // it for editing either way; a fresh section starts editable already.
-  const replaceToken = page.getByRole('button', { name: 'Replace Token' });
+  const replaceToken = vault.getByRole('button', { name: 'Replace Token' });
   if (await replaceToken.isVisible()) await replaceToken.click();
 
   // getByLabel('Token') also substring-matches the "Keep stored Token"
   // button that appears once Replace is clicked; getByRole scopes to the
   // textbox only.
-  const token = page.getByRole('textbox', { name: 'Token' });
+  const token = vault.getByRole('textbox', { name: 'Token' });
   await address.fill('http://127.0.0.1:1');
   await token.fill('not-a-real-token');
-  await page.getByRole('button', { name: 'Test connection' }).click();
-  await expect(page.getByText('Failed')).toBeVisible({ timeout: 30_000 });
+  await vault.getByRole('button', { name: 'Test connection' }).click();
+  await expect(vault.getByText('Failed')).toBeVisible({ timeout: 30_000 });
 
   await address.fill(E2E.vaultAddr);
-  const replaceAgain = page.getByRole('button', { name: 'Replace Token' });
+  const replaceAgain = vault.getByRole('button', { name: 'Replace Token' });
   if (await replaceAgain.isVisible()) await replaceAgain.click();
   await token.fill(E2E.vaultToken);
-  await page.getByRole('button', { name: 'Test connection' }).click();
+  await vault.getByRole('button', { name: 'Test connection' }).click();
   // Pre-flight ruling: Vault is always up in the compose e2e profile, so
   // this asserts Connected unconditionally.
-  await expect(page.getByText('Connected')).toBeVisible({ timeout: 30_000 });
+  await expect(vault.getByText('Connected')).toBeVisible({ timeout: 30_000 });
   await snap(page, 'integrations');
 
-  await page.getByRole('button', { name: 'Save' }).click();
+  await vault.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
 
   await page.reload();
-  await expect(page.getByLabel('Address')).toHaveValue(E2E.vaultAddr);
-  await expect(page.getByRole('button', { name: 'Replace Token' })).toBeVisible();
+  await expect(vault.getByLabel('Address', { exact: true })).toHaveValue(E2E.vaultAddr);
+  await expect(vault.getByRole('button', { name: 'Replace Token' })).toBeVisible();
 });
 
 test('keys card', async ({ page }) => {
