@@ -40,6 +40,28 @@ type ManualTXT struct {
 	ExpiresAt   time.Time
 }
 
+// marshalSteps encodes a timeline as a JSON array. A nil slice (no step
+// recorded yet) would otherwise marshal to null.
+func marshalSteps(steps []Step) ([]byte, error) {
+	if steps == nil {
+		steps = []Step{}
+	}
+	return json.Marshal(steps)
+}
+
+// unmarshalSteps decodes a stored timeline, mapping a legacy JSON null to an
+// empty slice so the API never emits null.
+func unmarshalSteps(b []byte) ([]Step, error) {
+	var steps []Step
+	if err := json.Unmarshal(b, &steps); err != nil {
+		return nil, err
+	}
+	if steps == nil {
+		steps = []Step{}
+	}
+	return steps, nil
+}
+
 // CreateAttempt starts an attempt row.
 func (s *Store) CreateAttempt(ctx context.Context, certID uuid.UUID) (uuid.UUID, error) {
 	row, err := s.q.CreateAttempt(ctx, certID)
@@ -52,7 +74,7 @@ func (s *Store) CreateAttempt(ctx context.Context, certID uuid.UUID) (uuid.UUID,
 // pool-based write of the same issuance_attempts row would block on the row
 // lock tx already holds, which can deadlock a small connection pool outright.
 func (s *Store) SaveAttemptProgress(ctx context.Context, tx pgx.Tx, id uuid.UUID, steps []Step, log string) error {
-	b, err := json.Marshal(steps)
+	b, err := marshalSteps(steps)
 	if err != nil {
 		return err
 	}
@@ -68,7 +90,7 @@ func (s *Store) SaveAttemptProgress(ctx context.Context, tx pgx.Tx, id uuid.UUID
 // example a panic recovery racing the worker's own error path) cannot
 // overwrite a previously recorded outcome.
 func (s *Store) FinishAttempt(ctx context.Context, tx pgx.Tx, id uuid.UUID, outcome, acmeType string, retryAfter *time.Time, steps []Step, log string) error {
-	b, err := json.Marshal(steps)
+	b, err := marshalSteps(steps)
 	if err != nil {
 		return err
 	}
@@ -109,7 +131,7 @@ func (s *Store) ListAttempts(ctx context.Context, orgID, certID uuid.UUID, limit
 	for _, r := range rows {
 		a := Attempt{ID: r.ID, CertID: r.CertID, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Outcome: r.Outcome,
 			ACMEErrorType: r.AcmeErrorType, RetryAfter: r.RetryAfter, Log: r.Log}
-		if err := json.Unmarshal(r.Steps, &a.Steps); err != nil {
+		if a.Steps, err = unmarshalSteps(r.Steps); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
