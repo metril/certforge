@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Lock } from 'lucide-react';
+import { Eye, EyeOff, Lock } from 'lucide-react';
 import { UNCHANGED } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,12 +41,14 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
   // every time, not just on the first keystroke). This flag is what tells
   // the input's own onChange which one the operator asked for.
   const [removed, setRemoved] = useState(false);
+  const [shown, setShown] = useState(false);
 
   // `stored` flipping (mount, or a parent record reloading with a secret it
   // didn't have before) re-enters stored/"keep it" mode.
   useEffect(() => {
     setEditing(!stored);
     setRemoved(false);
+    setShown(false);
   }, [stored]);
 
   // Proactively emit the sentinel whenever we're showing "Stored" and
@@ -119,26 +121,45 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
   }
   return (
     <div className="flex items-center gap-2">
-      <Input
-        id={id}
-        type="password"
-        aria-label={label}
-        aria-describedby={`${id}-hint`}
-        autoComplete="new-password"
-        className="font-mono text-xs"
-        placeholder={placeholder}
-        value={value === UNCHANGED ? '' : (value ?? '')}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v !== '') {
-            onChange(v);
-            return;
-          }
-          // Cleared back to empty: Remove's "" sticks; a plain Replace
-          // that's cleared reverts to keeping the stored value.
-          onChange(removed ? '' : stored ? UNCHANGED : undefined);
-        }}
-      />
+      <div className="relative flex-1">
+        <Input
+          id={id}
+          type={shown ? 'text' : 'password'}
+          aria-label={label}
+          aria-describedby={`${id}-hint`}
+          autoComplete="new-password"
+          className="pr-9 font-mono text-xs"
+          placeholder={placeholder}
+          value={value === UNCHANGED ? '' : (value ?? '')}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v !== '') {
+              onChange(v);
+              return;
+            }
+            // Cleared back to empty: Remove's "" sticks; a plain Replace
+            // that's cleared reverts to keeping the stored value.
+            onChange(removed ? '' : stored ? UNCHANGED : undefined);
+          }}
+        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-0.5 top-1/2 size-8 -translate-y-1/2 text-ink-muted hover:text-ink"
+              aria-label={`${shown ? 'Hide' : 'Show'} ${label}`}
+              aria-pressed={shown}
+              aria-controls={id}
+              onClick={() => setShown((s) => !s)}
+            >
+              {shown ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{shown ? 'Hide value' : 'Show value'}</TooltipContent>
+        </Tooltip>
+      </div>
       <span id={`${id}-hint`} className="sr-only">
         New value
       </span>
@@ -151,6 +172,7 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
           onClick={() => {
             setEditing(false);
             setRemoved(false);
+            setShown(false);
             onChange(UNCHANGED);
           }}
         >

@@ -74,6 +74,33 @@ it('secret: clearing the replacement keeps the stored value, never an empty stri
   expect(screen.getByTestId('value')).toHaveTextContent(UNCHANGED);
 });
 
+it('secret: show/hide toggle flips the input type and aria-pressed; masked by default', async () => {
+  const { user } = renderUI(<SecretHarness stored={false} />);
+  const input = screen.getByLabelText('Recovery token');
+  expect(input).toHaveAttribute('type', 'password');
+  const toggle = screen.getByRole('button', { name: 'Show Recovery token' });
+  expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  expect(toggle).toHaveAttribute('aria-controls', 'token');
+  await user.click(toggle);
+  expect(input).toHaveAttribute('type', 'text');
+  const hide = screen.getByRole('button', { name: 'Hide Recovery token' });
+  expect(hide).toHaveAttribute('aria-pressed', 'true');
+  await user.click(hide);
+  expect(input).toHaveAttribute('type', 'password');
+});
+
+it('secret: Keep stored then Replace comes back masked, and Stored shows no reveal button', async () => {
+  const { user } = renderUI(<SecretHarness stored />);
+  expect(screen.queryByRole('button', { name: /^(Show|Hide) / })).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Replace Recovery token' }));
+  await user.click(screen.getByRole('button', { name: 'Show Recovery token' }));
+  expect(screen.getByLabelText('Recovery token')).toHaveAttribute('type', 'text');
+  await user.click(screen.getByRole('button', { name: 'Keep stored Recovery token' }));
+  expect(screen.queryByRole('button', { name: /^(Show|Hide) / })).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Replace Recovery token' }));
+  expect(screen.getByLabelText('Recovery token')).toHaveAttribute('type', 'password');
+});
+
 it('secret: Remove clears the stored secret with an explicit empty string, not the sentinel', async () => {
   const { user } = renderUI(<SecretHarness stored />);
   expect(screen.getByText('Stored')).toBeInTheDocument();
