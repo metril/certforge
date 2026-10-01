@@ -684,6 +684,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/dns-credentials/{id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal a stored DNS credential secret
+         * @description Needs dnscreds:reveal (global admin only). Returns one stored secret field in plaintext and records a dns_credential.secret_revealed audit event (never containing the value); if the audit write fails the value is not returned. 422 if field is not a secret field of the provider; 404 if it is but has no stored value.
+         */
+        post: operations["revealDNSCredentialSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/issuance-defaults": {
         parameters: {
             query?: never;
@@ -2709,6 +2734,18 @@ export interface components {
              */
             zone: string;
         };
+        /** @description Which stored secret to reveal. */
+        DNSCredentialRevealRequest: {
+            /** @description Name of a stored secret field of the credential's provider. */
+            field: string;
+        };
+        /** @description One stored secret in plaintext. */
+        DNSCredentialRevealResult: {
+            /** @description The secret field name. */
+            field: string;
+            /** @description The stored plaintext value. */
+            value: string;
+        };
         /** @description Outcome of a credential test. */
         DNSCredentialTestResult: {
             /** @description The record was created and removed. */
@@ -3303,10 +3340,10 @@ export interface components {
             disabled: boolean;
         };
         /**
-         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
+         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
          * @enum {string}
          */
-        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "alerts:read" | "alerts:write" | "admin";
+        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "dnscreds:reveal" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "alerts:read" | "alerts:write" | "admin";
         /** @description An API key without its secret. */
         ApiKey: {
             /**
@@ -5878,6 +5915,47 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    revealDNSCredentialSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DNSCredentialRevealRequest"];
+            };
+        };
+        responses: {
+            /** @description The secret value. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    /** @description no-cache */
+                    Pragma?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DNSCredentialRevealResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
         };
     };
     getOrgIssuanceDefaults: {

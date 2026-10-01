@@ -3,6 +3,8 @@
 package api
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,9 +15,12 @@ import (
 
 	legochallenge "github.com/go-acme/lego/v4/challenge"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/challenge"
+	"github.com/metril/certforge/internal/db/dbtest"
 )
 
 // failingDNS records call order so tests can assert CleanUp always runs,
@@ -507,4 +512,84 @@ func TestTestDNSCredentialNotFoundAndInvalidZone(t *testing.T) {
 	missing := gen.TestDNSCredentialRequestObject{OrgId: f.org, Id: uuid.New(), Body: &gen.DNSCredentialTestRequest{Zone: "example.test"}}
 	_, err = f.srv.TestDNSCredential(f.as("operator"), missing)
 	wantStatus(t, err, http.StatusNotFound)
+}
+
+// revealFixture stores a cloudflare credential with its token and returns it.
+func (f *apiFixture) revealFixture(t *testing.T, cfg map[string]string) gen.DNSCredential {
+	t.Helper()
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "cf", ProviderCode: "cloudflare", Config: cfg}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gen.DNSCredential(res.(gen.CreateDNSCredential201JSONResponse))
+}
+
+func (f *apiFixture) reveal(ctx context.Context, id uuid.UUID, field string) (gen.RevealDNSCredentialSecretResponseObject, error) {
+	return f.srv.RevealDNSCredentialSecret(ctx, gen.RevealDNSCredentialSecretRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DNSCredentialRevealRequest{Field: field}})
+}
+
+func TestRevealDNSCredentialSecret(t *testing.T) {
+	f := newAPIFixture(t)
+	const tok = "s3cr3t-t0ken-value"
+	c := f.revealFixture(t, map[string]string{"CF_API_EMAIL": "a@example.test", "CF_DNS_API_TOKEN": tok})
+	res, err := f.reveal(f.as("admin"), c.Id, "CF_DNS_API_TOKEN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok := res.(gen.RevealDNSCredentialSecret200JSONResponse)
+	if ok.Body.Value != tok || ok.Body.Field != "CF_DNS_API_TOKEN" || ok.Headers.CacheControl != "no-store" || ok.Headers.Pragma != "no-cache" {
+		t.Fatalf("reveal = %+v", ok)
+	}
+	if n := f.auditCount(t, "dns_credential.secret_revealed"); n != 1 {
+		t.Fatalf("audit rows = %d", n)
+	}
+	d := f.lastAuditDetails(t, "dns_credential.secret_revealed", c.Id.String())
+	if strings.Contains(d, tok) || !strings.Contains(d, "CF_DNS_API_TOKEN") || !strings.Contains(d, "cloudflare") {
+		t.Fatalf("audit details = %s", d)
+	}
+	got, err := f.srv.GetDNSCredential(f.as("admin"), gen.GetDNSCredentialRequestObject{OrgId: f.org, Id: c.Id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := fmt.Sprintf("%+v", got); strings.Contains(b, tok) {
+		t.Fatalf("GET leaks secret: %s", b)
+	}
+}
+
+func TestRevealDNSCredentialSecretErrors(t *testing.T) {
+	f := newAPIFixture(t)
+	c := f.revealFixture(t, map[string]string{"CF_API_EMAIL": "a@example.test", "CF_DNS_API_TOKEN": "t0p"})
+	_, err := f.reveal(f.as("admin"), c.Id, "CF_API_EMAIL")
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+	_, err = f.reveal(f.as("admin"), c.Id, "NO_SUCH_FIELD")
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+	_, err = f.reveal(f.as("admin"), uuid.New(), "CF_DNS_API_TOKEN")
+	wantStatus(t, err, http.StatusNotFound)
+	// A secret field of the provider with nothing stored.
+	_, err = f.reveal(f.as("admin"), c.Id, "CF_API_KEY")
+	wantStatus(t, err, http.StatusNotFound)
+	_, err = f.reveal(f.as("org-admin"), c.Id, "CF_DNS_API_TOKEN")
+	wantStatus(t, err, http.StatusForbidden)
+	_, err = f.reveal(apiKeyPrincipal(f.org, []string{"certs:read"}), c.Id, "CF_DNS_API_TOKEN")
+	wantStatus(t, err, http.StatusForbidden)
+	if n := f.auditCount(t, "dns_credential.secret_revealed"); n != 0 {
+		t.Fatalf("rejected reveals recorded %d audit rows", n)
+	}
+}
+
+func TestRevealDNSCredentialSecretAuditFailureIs500(t *testing.T) {
+	f := newAPIFixture(t)
+	c := f.revealFixture(t, map[string]string{"CF_API_EMAIL": "a@example.test", "CF_DNS_API_TOKEN": "t0p"})
+	broken, err := pgxpool.New(context.Background(), dbtest.URL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken.Close() // every audit write now fails
+	f.srv.d.Auditor = audit.New(broken, bytes.Repeat([]byte{5}, 32))
+	res, err := f.reveal(f.as("admin"), c.Id, "CF_DNS_API_TOKEN")
+	if err == nil || problemStatus(err) != 0 || res != nil {
+		t.Fatalf("secret must not be released when auditing fails: %v %v", res, err)
+	}
 }

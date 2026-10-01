@@ -214,6 +214,13 @@ func changedKeys(old, new map[string]string) []string {
 	return out
 }
 
+// IsSecretField reports whether field is a secret property of the provider's
+// schema (aliases of the provider code are resolved).
+func IsSecretField(code, field string) bool {
+	e, ok := lookupEntry(code)
+	return ok && e.secret[field]
+}
+
 // SecretKeys returns the sorted secret keys present in secret, for API
 // responses ("storedSecrets").
 func SecretKeys(secret map[string]string) []string {

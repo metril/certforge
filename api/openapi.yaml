@@ -920,6 +920,35 @@ paths:
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
         "503": {$ref: "#/components/responses/ServiceUnavailable"}
+  /orgs/{orgId}/dns-credentials/{id}/reveal:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: revealDNSCredentialSecret
+      tags: [issuers]
+      summary: Reveal a stored DNS credential secret
+      description: Needs dnscreds:reveal (global admin only). Returns one stored secret field in plaintext and records a dns_credential.secret_revealed audit event (never containing the value); if the audit write fails the value is not returned. 422 if field is not a secret field of the provider; 404 if it is but has no stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DNSCredentialRevealRequest"}
+      responses:
+        "200":
+          description: The secret value.
+          headers:
+            Cache-Control: {description: no-store, schema: {type: string}}
+            Pragma: {description: no-cache, schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DNSCredentialRevealResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/issuance-defaults:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -3387,6 +3416,19 @@ components:
       required: [zone]
       properties:
         zone: {type: string, example: example.com, description: A zone the credential manages.}
+    DNSCredentialRevealRequest:
+      type: object
+      description: Which stored secret to reveal.
+      required: [field]
+      properties:
+        field: {type: string, maxLength: 128, description: Name of a stored secret field of the credential's provider.}
+    DNSCredentialRevealResult:
+      type: object
+      description: One stored secret in plaintext.
+      required: [field, value]
+      properties:
+        field: {type: string, description: The secret field name.}
+        value: {type: string, description: The stored plaintext value.}
     DNSCredentialTestResult:
       type: object
       description: Outcome of a credential test.
@@ -3848,8 +3890,8 @@ components:
         disabled: {type: boolean, description: true disables the user and revokes their sessions.}
     ApiKeyScope:
       type: string
-      enum: ["certs:read", "certs:write", "certs:issue", "keys:export", "clients:read", "clients:write", "delivery:read", "delivery:write", "alerts:read", "alerts:write", "admin"]
-      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
+      enum: ["certs:read", "certs:write", "certs:issue", "keys:export", "dnscreds:reveal", "clients:read", "clients:write", "delivery:read", "delivery:write", "alerts:read", "alerts:write", "admin"]
+      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
     ApiKey:
       type: object
       description: An API key without its secret.
