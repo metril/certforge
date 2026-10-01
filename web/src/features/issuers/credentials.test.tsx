@@ -429,3 +429,17 @@ it('a global admin reveals a stored secret via POST {field}', async () => {
   expect(await within(sheet).findByLabelText('CF_DNS_API_TOKEN value')).toHaveTextContent('cf-token-plain');
   expect(revealed).toEqual({ field: 'CF_DNS_API_TOKEN' });
 });
+
+it('keeps a revealed secret out of the mutation cache, even before Hide', async () => {
+  creds = [cred];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'admin', orgId: null }]))));
+  const { user, queryClient } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  await user.click(await within(sheet).findByRole('button', { name: 'Reveal CF_DNS_API_TOKEN' }));
+  await within(sheet).findByLabelText('CF_DNS_API_TOKEN value');
+  await user.click(within(sheet).getByRole('button', { name: 'Hide CF_DNS_API_TOKEN' }));
+  expect(within(sheet).queryByLabelText('CF_DNS_API_TOKEN value')).toBeNull();
+  const held = queryClient.getMutationCache().getAll().filter((m) => JSON.stringify([m.state.data, m.state.variables]).includes('cf-token-plain'));
+  expect(held).toEqual([]);
+});
