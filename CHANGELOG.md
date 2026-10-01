@@ -2,6 +2,14 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.3.1](https://github.com/metril/certforge/compare/v0.3.0...v0.3.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **issuance:** store and serve an empty attempt timeline as [] not null ([352b580](https://github.com/metril/certforge/commit/352b580e5aa80f92fd054051cfb79c31d6669936))
+* **issuance:** store and serve an empty attempt timeline as [] not null ([ec5b9d8](https://github.com/metril/certforge/commit/ec5b9d8a9f53b45a6f6932b0479ddf042dc35fb5))
+
 ## [0.3.0](https://github.com/metril/certforge/compare/v0.2.0...v0.3.0) (2026-10-01)
 
 
