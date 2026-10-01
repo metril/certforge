@@ -1,8 +1,14 @@
 name: ci
 on:
-  push:
-    branches: [main]
   pull_request:
+    # A release-please PR only touches these; the code was tested by the PR
+    # that introduced it.
+    paths-ignore:
+      - CHANGELOG.md
+      - .release-please-manifest.json
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 env:
