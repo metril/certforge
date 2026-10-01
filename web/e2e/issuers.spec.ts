@@ -250,6 +250,13 @@ test('DNS credential auth methods', async ({ page }) => {
     await expect(edit.getByRole('textbox', { name: 'CF_DNS_API_TOKEN' })).toHaveCount(0);
     await expect(edit.getByText('CF_DNS_API_TOKEN')).toBeVisible();
     await expect(edit.getByLabel('CF_API_EMAIL')).toHaveCount(0);
+
+    // Global admin can reveal the stored secret, then hide it again.
+    await edit.getByRole('button', { name: 'Reveal CF_DNS_API_TOKEN' }).click();
+    await expect(edit.getByLabel('CF_DNS_API_TOKEN value')).toHaveText('e2e-token');
+    await edit.getByRole('button', { name: 'Hide CF_DNS_API_TOKEN' }).click();
+    await expect(edit.getByLabel('CF_DNS_API_TOKEN value')).toHaveCount(0);
+    await expect(edit.getByText('e2e-token')).toHaveCount(0);
     await edit.getByRole('button', { name: 'Close' }).click();
     await expect(edit).toBeHidden();
 
