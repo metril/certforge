@@ -153,7 +153,7 @@ Name the certificate (defaults to the common name), check the coverage list and 
 
 ### DNS credentials
 
-Issuers → DNS credentials. The form comes from the provider schema ([DNS providers](dns-providers.md)). Secret fields are stored encrypted and never returned; the API lists them in `storedSecrets`. On update, send `__unchanged__` to keep a secret. **Test** creates and deletes a TXT record at `_acme-challenge._certforge-test.<zone>`. A credential used by any rule cannot be deleted.
+Issuers → DNS credentials. The form comes from the provider schema ([DNS providers](dns-providers.md)). Secret fields are stored encrypted and never returned by the list and read endpoints; the API lists them in `storedSecrets`. A global admin can reveal one stored value with the eye button beside it (`dnscreds:reveal`; audited, see [security](security.md#dns-credential-secret-reveal)); everyone else sees the button disabled with the reason. Every secret input also has an eye toggle for the value being typed. On update, send `__unchanged__` to keep a secret. **Test** creates and deletes a TXT record at `_acme-challenge._certforge-test.<zone>`. A credential used by any rule cannot be deleted.
 
 ### manual-dns
 

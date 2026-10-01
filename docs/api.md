@@ -10,11 +10,12 @@ Browser sign-in: GET /auth/oidc/start (single sign-on) or POST /auth/login (loca
 |---|---|---|
 | `cas:read` / `cas:write` | CA presets and CAs / add, edit, delete CAs | all / global admin |
 | `accounts:read` / `accounts:write` | ACME accounts | all / admin, org-admin, operator |
-| `dnscreds:read` / `dnscreds:write` | DNS credentials (never with secrets), test | all / admin, org-admin, operator |
+| `dnscreds:read` / `dnscreds:write` | DNS credentials (never with secrets, except via `dnscreds:reveal`), test | all / admin, org-admin, operator |
 | `certs:read` | defaults, certificates, versions, attempts, manual-dns records, PEM without key | all |
 | `certs:write` | org defaults, create, edit, delete certificates | admin, org-admin, operator |
 | `certs:issue` | renew now, confirm manual-dns | admin, org-admin, operator |
 | `keys:export` | download `key` or `combined` (audited) | global admin |
+| `dnscreds:reveal` | reveal one stored DNS credential secret field (audited) | global admin |
 | `clients:read` / `clients:write` | clients, grants, deployments, hook runs | all / admin, org-admin, operator |
 | `delivery:read` / `delivery:write` | layouts, deploy targets, hooks | viewer and up / admin, org-admin, operator |
 | `alerts:read` / `alerts:write` | notification channels, monitors, events | viewer and up / admin, org-admin, operator |
@@ -39,7 +40,7 @@ Every operation in the served spec lists the problem responses it can return (co
 
 ## Write-only secrets
 
-Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never returned. On update, `__unchanged__` keeps the stored value. Settings sections follow the same rule; GET /settings/{section} returns storedSecrets. A field whose schema property is `serverPath: true` (usually a name ending `_FILE` or `_PATH`, plus a handful of fields overridden individually where the name doesn't follow that convention, such as infoblox's `INFOBLOX_CA_CERTIFICATE`) is rejected outright with 422: it names a path on lego's own host filesystem, which the API has no way to accept from a caller. Most such providers also have an inline field for the same material (used instead); a provider whose only field is a server path has no inline alternative and is marked `unsupported: true` in its schema — create/update return 422 for it until file-backed credentials arrive in Phase 5 (currently `transip` and `hyperone`). `GET /meta/schemas` still lists an unsupported provider (for the UI to grey it out), it just can't be configured yet.
+Secret fields (`eabHmac`, DNS credential fields marked `secret: true`) are never returned, with one exception: `POST .../dns-credentials/{id}/reveal` returns a single stored DNS credential secret field to a caller holding `dnscreds:reveal` (see below). On update, `__unchanged__` keeps the stored value. Settings sections follow the same rule; GET /settings/{section} returns storedSecrets. A field whose schema property is `serverPath: true` (usually a name ending `_FILE` or `_PATH`, plus a handful of fields overridden individually where the name doesn't follow that convention, such as infoblox's `INFOBLOX_CA_CERTIFICATE`) is rejected outright with 422: it names a path on lego's own host filesystem, which the API has no way to accept from a caller. Most such providers also have an inline field for the same material (used instead); a provider whose only field is a server path has no inline alternative and is marked `unsupported: true` in its schema — create/update return 422 for it until file-backed credentials arrive in Phase 5 (currently `transip` and `hyperone`). `GET /meta/schemas` still lists an unsupported provider (for the UI to grey it out), it just can't be configured yet.
 
 DNS provider schemas may carry `x-auth-methods` (the alternative credential sets; create/update return 422 unless one is complete) and `x-alias-of` (marks an alias property, which the server folds into its canonical key; both set to different values is a 422).
 
@@ -69,6 +70,7 @@ DNS provider schemas may carry `x-auth-methods` (the alternative credential sets
 | `GET, POST /orgs/{orgId}/dns-credentials` | list, add DNS credentials |
 | `GET, PUT, DELETE /orgs/{orgId}/dns-credentials/{id}` | read, replace, delete a credential |
 | `POST /orgs/{orgId}/dns-credentials/{id}/test` | create and remove a test TXT record |
+| `POST /orgs/{orgId}/dns-credentials/{id}/reveal` | body `{field}`; returns `{field, value}` for one stored secret field. Needs `dnscreds:reveal` (global admin; API-key scope `dnscreds:reveal` or `admin`). Audited as `dns_credential.secret_revealed` before the value is returned (an audit failure gives 500 and no value); `Cache-Control: no-store`. 404 when the credential is missing or the field holds no value; 422 when the field is not a secret field |
 | `GET, POST /orgs/{orgId}/certificates` | list, create (issues immediately) |
 | `POST /orgs/{orgId}/certificates/upload` | store an existing certificate (PEM or PKCS#12) as unmanaged |
 | `POST /orgs/{orgId}/certificates/import` | import an acme.sh or certbot archive (`multipart/form-data`; `dryRun` defaults true) as managed certificates; see [certificates.md#import](certificates.md#import) |

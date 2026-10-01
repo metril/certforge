@@ -56,7 +56,7 @@ Live configuration is stored in the `settings` table (`key`, JSON `value`, encry
 
 - Each Settings page is a **section** with a JSON Schema. `GET /api/v1/settings/{section}` returns `{section, schema, value, stored}` (`stored` is the raw persisted document, before global-default merging, so a field showing "Default" in the UI doesn't claim a global value it never actually inherited). `PUT` takes the value object, validates it against the schema (422 on failure), and stores it under the key `section.<name>`. An unset section returns its default.
 - Phase 1 sections: `general` (`baseUrl`), `backup` (`kekEscrowConfirmed`), and `issuance_defaults` (from the issuance plan).
-- A section property marked "secret": true is write-only. It is stored encrypted in the secret column, never returned; GET lists which ones hold a value in storedSecrets. On PUT, "__unchanged__" or leaving the field out keeps it, "" clears it.
+- A section property marked "secret": true is write-only. It is stored encrypted in the secret column, never returned; GET lists which ones hold a value in storedSecrets. (The one exception is a DNS credential's secret field, which a global admin can reveal on demand; see [security.md](security.md#dns-credential-secret-reveal).) On PUT, "__unchanged__" or leaving the field out keeps it, "" clears it.
 
 ## Settings
 

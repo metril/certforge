@@ -290,7 +290,7 @@ web/src/
 | Machine | `Authorization: Bearer cf_<prefix>_<secret>`, scopes, optional org scope, expiry. |
 | Agent | mTLS on a separate listener (:8443) serving only `/agent/v1/*`. |
 
-Roles: admin (everything incl. CAs, KEKs, OIDC mappings), org-admin (full within org), operator (certs, creds, clients, grants, targets, hooks, issue/renew), viewer (read-only, no secrets), auditor (viewer + audit log). `keys:export` is a separate permission held only by admin by default; every key read is audited. API key scopes: `certs:read`, `certs:write`, `certs:issue`, `keys:export`, `clients:write`, `admin`, intersected with the creator's role.
+Roles: admin (everything incl. CAs, KEKs, OIDC mappings), org-admin (full within org), operator (certs, creds, clients, grants, targets, hooks, issue/renew), viewer (read-only, no secrets), auditor (viewer + audit log). `keys:export` is a separate permission held only by admin by default; every key read is audited. `dnscreds:reveal` is likewise admin-only and audited. API key scopes: `certs:read`, `certs:write`, `certs:issue`, `keys:export`, `dnscreds:reveal`, `clients:write`, `admin`, intersected with the creator's role.
 
 ## Interfaces to define early
 
@@ -305,7 +305,7 @@ type Renderer interface { Format() string; Render(Material, OutputOpts) ([]File,
 type Importer interface { Detect(fs.FS) bool; Import(ctx, fs.FS) ([]ImportedCert, error) }
 ```
 
-Every implementation registers a type code and JSON Schema. The UI builds forms from `GET /api/v1/meta/schemas`; fields marked `secret: true` are write-only.
+Every implementation registers a type code and JSON Schema. The UI builds forms from `GET /api/v1/meta/schemas`; fields marked `secret: true` are write-only, except that a global admin can reveal one stored DNS credential secret field on demand (`dnscreds:reveal`, audited).
 
 ## Phases (each gets its own spec and implementation plan)
 
