@@ -2,6 +2,23 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.3.0](https://github.com/metril/certforge/compare/v0.2.0...v0.3.0) (2026-10-01)
+
+
+### Features
+
+* **api:** add DNS credential secret reveal endpoint ([3ebe4d7](https://github.com/metril/certforge/commit/3ebe4d724d1a71a400ebe0211ce88757047b24aa))
+* **authz:** add global-only dnscreds:reveal action and API key scope ([15bb876](https://github.com/metril/certforge/commit/15bb876c79f2ca98817a79428c526e5471d99700))
+* show/hide secret inputs and reveal stored DNS credential secrets ([9a3a2e6](https://github.com/metril/certforge/commit/9a3a2e643ef318ba8b807a202c6fc883dc2c115d))
+* **web:** reveal stored DNS credential secrets ([0f398f1](https://github.com/metril/certforge/commit/0f398f154f4cc403aa5f906d2f231f56d086fd46))
+* **web:** show/hide toggle for secret inputs ([e8a68c0](https://github.com/metril/certforge/commit/e8a68c0d7ceea803f9553c193589a691d3626b2c))
+
+
+### Bug Fixes
+
+* **docs:** generate the secret reveal note in dns-providers.md ([93ecb22](https://github.com/metril/certforge/commit/93ecb22404f961aaac2a611b7c1f6d4612c6fc6f))
+* **web:** keep revealed secrets out of the mutation cache ([d3d5d99](https://github.com/metril/certforge/commit/d3d5d992fde7ec6c560aac1af3753faed7c3e58e))
+
 ## [0.2.0](https://github.com/metril/certforge/compare/v0.1.0...v0.2.0) (2026-09-30)
 
 
