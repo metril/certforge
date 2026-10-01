@@ -158,6 +158,25 @@ func (s *Store) GetDNSCredential(ctx context.Context, orgID, id uuid.UUID) (DNSC
 	return c, err
 }
 
+// DNSCredentialSecret returns one decrypted secret field of a credential. It
+// looks only in the secret map, so a public field never resolves here; a
+// missing credential or an unstored field is a not-found error.
+func (s *Store) DNSCredentialSecret(ctx context.Context, orgID, id uuid.UUID, field string) (string, error) {
+	row, err := s.q.GetDNSCredential(ctx, sqlcgen.GetDNSCredentialParams{ID: id, OrgID: orgID})
+	if err != nil {
+		return "", notFound(err)
+	}
+	_, secret, err := s.credFromRow(ctx, row)
+	if err != nil {
+		return "", err
+	}
+	v, ok := secret[field]
+	if !ok {
+		return "", ErrNotFound
+	}
+	return v, nil
+}
+
 // ListDNSCredentials returns the org's credentials without secrets.
 func (s *Store) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]DNSCredential, error) {
 	rows, err := s.q.ListDNSCredentials(ctx, orgID)

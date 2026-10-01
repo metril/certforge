@@ -3,12 +3,14 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authz"
+	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/issuance"
 )
 
@@ -89,6 +91,39 @@ func (s *Server) GetDNSCredential(ctx context.Context, r gen.GetDNSCredentialReq
 		return nil, mapErr(err)
 	}
 	return gen.GetDNSCredential200JSONResponse(dnsCredOut(c)), nil
+}
+
+// RevealDNSCredentialSecret returns one stored secret field in plaintext. Like
+// a private-key export it is global-admin only and fail-closed on audit: the
+// event (never carrying the value) is recorded before the value is released.
+func (s *Server) RevealDNSCredentialSecret(ctx context.Context, r gen.RevealDNSCredentialSecretRequestObject) (gen.RevealDNSCredentialSecretResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionDNSCredsReveal, &r.OrgId); err != nil {
+		return nil, err
+	}
+	c, err := s.d.Issuance.Store.GetDNSCredential(ctx, r.OrgId, r.Id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	field := r.Body.Field
+	if !challenge.IsSecretField(c.ProviderCode, field) {
+		return nil, unprocessable("field", "not a secret field")
+	}
+	value, err := s.d.Issuance.Store.DNSCredentialSecret(ctx, r.OrgId, r.Id, field)
+	if errors.Is(err, issuance.ErrNotFound) {
+		return nil, notFound("this field has no stored value")
+	}
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := s.d.Auditor.Record(ctx, audit.Event{Action: "dns_credential.secret_revealed", ResourceType: "dns_credential",
+		ResourceID: c.ID.String(), OrgID: &r.OrgId,
+		Details: map[string]any{"field": field, "credentialName": c.Name, "provider": c.ProviderCode}}); err != nil {
+		return nil, fmt.Errorf("audit secret reveal: %w", err)
+	}
+	return gen.RevealDNSCredentialSecret200JSONResponse{
+		Body:    gen.DNSCredentialRevealResult{Field: field, Value: value},
+		Headers: gen.RevealDNSCredentialSecret200ResponseHeaders{CacheControl: "no-store", Pragma: "no-cache"},
+	}, nil
 }
 
 // UpdateDNSCredential replaces a credential's name and config; the provider

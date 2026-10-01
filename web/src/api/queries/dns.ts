@@ -56,3 +56,12 @@ export function useTestCredential(orgId: string) {
     gcTime: 0,
   });
 }
+
+/** Returns a stored secret's plaintext. Deliberately a plain async call, not
+ * a useMutation: a mutation would keep the value in the MutationCache (and
+ * `data`) for as long as its observer is mounted. The only holder is the
+ * caller's own state. Errors propagate to the caller (no global toast). */
+export async function revealCredentialSecret(orgId: string, id: string, field: string): Promise<string> {
+  const r = await call(api.POST('/orgs/{orgId}/dns-credentials/{id}/reveal', { params: { path: { orgId, id } }, body: { field } }));
+  return r.value;
+}

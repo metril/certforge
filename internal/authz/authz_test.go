@@ -35,6 +35,13 @@ func TestCan(t *testing.T) {
 	boundKey := principal(RoleAdmin, nil)
 	boundKey.Kind = authn.KindAPIKey
 	boundKey.APIKey = &authn.APIKeyInfo{Scopes: []string{"certs:read", "certs:write"}, Bindings: []authn.Binding{{Role: RoleViewer, OrgID: &org1}}}
+	scoped := func(scope string) authn.Principal {
+		p := principal(RoleAdmin, nil)
+		p.Kind = authn.KindAPIKey
+		p.APIKey = &authn.APIKeyInfo{Scopes: []string{scope}, OrgID: &org1}
+		return p
+	}
+	revealKey, writeKey, exportKey := scoped("dnscreds:reveal"), scoped("certs:write"), scoped("keys:export")
 	bareKey := principal(RoleAdmin, nil)
 	bareKey.Kind = authn.KindAPIKey
 	multiBinding := authn.Principal{Kind: authn.KindUser, Bindings: []authn.Binding{
@@ -89,6 +96,17 @@ func TestCan(t *testing.T) {
 		{"bound key limited by its binding", boundKey, ActionCertsWrite, &org1, false},
 		{"bound key read via binding", boundKey, ActionCertsRead, &org1, true},
 		{"key without info denied", bareKey, ActionCertsRead, &org1, false},
+		{"admin dnscreds reveal", admin, ActionDNSCredsReveal, &org1, true},
+		{"org-admin dnscreds reveal", orgAdmin, ActionDNSCredsReveal, &org1, false},
+		{"operator dnscreds reveal", operator, ActionDNSCredsReveal, &org1, false},
+		{"viewer dnscreds reveal", viewer, ActionDNSCredsReveal, &org1, false},
+		{"auditor dnscreds reveal", auditor, ActionDNSCredsReveal, &org1, false},
+		{"reveal key dnscreds reveal", revealKey, ActionDNSCredsReveal, &org1, true},
+		{"reveal key dnscreds read", revealKey, ActionDNSCredsRead, &org1, true},
+		{"read key dnscreds reveal", readKey, ActionDNSCredsReveal, &org1, false},
+		{"write key dnscreds reveal", writeKey, ActionDNSCredsReveal, &org1, false},
+		{"export key dnscreds reveal", exportKey, ActionDNSCredsReveal, &org1, false},
+		{"admin key dnscreds reveal", apiKeyAdmin, ActionDNSCredsReveal, &org1, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -204,5 +222,14 @@ func TestNewAPIKeyScopes(t *testing.T) {
 		if !slices.Contains(APIKeyScopes, s) || ScopeGrant[s] == "" {
 			t.Fatalf("scope %s not registered", s)
 		}
+	}
+}
+
+func TestDNSCredsRevealScope(t *testing.T) {
+	if !slices.Contains(APIKeyScopes, "dnscreds:reveal") || ScopeGrant["dnscreds:reveal"] != ActionDNSCredsReveal {
+		t.Fatal("dnscreds:reveal scope not registered")
+	}
+	if !globalOnly[ActionDNSCredsReveal] || !slices.Contains(AllActions, ActionDNSCredsReveal) {
+		t.Fatal("dnscreds:reveal must be a global-only action in AllActions")
 	}
 }

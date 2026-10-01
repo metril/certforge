@@ -38,17 +38,18 @@ const (
 
 // Defines values for ApiKeyScope.
 const (
-	ApiKeyScopeAdmin         ApiKeyScope = "admin"
-	ApiKeyScopeAlertsRead    ApiKeyScope = "alerts:read"
-	ApiKeyScopeAlertsWrite   ApiKeyScope = "alerts:write"
-	ApiKeyScopeCertsIssue    ApiKeyScope = "certs:issue"
-	ApiKeyScopeCertsRead     ApiKeyScope = "certs:read"
-	ApiKeyScopeCertsWrite    ApiKeyScope = "certs:write"
-	ApiKeyScopeClientsRead   ApiKeyScope = "clients:read"
-	ApiKeyScopeClientsWrite  ApiKeyScope = "clients:write"
-	ApiKeyScopeDeliveryRead  ApiKeyScope = "delivery:read"
-	ApiKeyScopeDeliveryWrite ApiKeyScope = "delivery:write"
-	ApiKeyScopeKeysExport    ApiKeyScope = "keys:export"
+	ApiKeyScopeAdmin          ApiKeyScope = "admin"
+	ApiKeyScopeAlertsRead     ApiKeyScope = "alerts:read"
+	ApiKeyScopeAlertsWrite    ApiKeyScope = "alerts:write"
+	ApiKeyScopeCertsIssue     ApiKeyScope = "certs:issue"
+	ApiKeyScopeCertsRead      ApiKeyScope = "certs:read"
+	ApiKeyScopeCertsWrite     ApiKeyScope = "certs:write"
+	ApiKeyScopeClientsRead    ApiKeyScope = "clients:read"
+	ApiKeyScopeClientsWrite   ApiKeyScope = "clients:write"
+	ApiKeyScopeDeliveryRead   ApiKeyScope = "delivery:read"
+	ApiKeyScopeDeliveryWrite  ApiKeyScope = "delivery:write"
+	ApiKeyScopeDnscredsReveal ApiKeyScope = "dnscreds:reveal"
+	ApiKeyScopeKeysExport     ApiKeyScope = "keys:export"
 )
 
 // Defines values for AttemptStepStatus.
@@ -559,7 +560,7 @@ type ApiKeyList struct {
 	Items []ApiKey `json:"items"`
 }
 
-// ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
+// ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
 type ApiKeyScope string
 
 // AriWindow The CA's cached ACME Renewal Information window for a certificate's current version.
@@ -1280,6 +1281,21 @@ type DNSCredentialInput struct {
 
 	// ProviderCode Provider code or alias.
 	ProviderCode string `json:"providerCode"`
+}
+
+// DNSCredentialRevealRequest Which stored secret to reveal.
+type DNSCredentialRevealRequest struct {
+	// Field Name of a stored secret field of the credential's provider.
+	Field string `json:"field"`
+}
+
+// DNSCredentialRevealResult One stored secret in plaintext.
+type DNSCredentialRevealResult struct {
+	// Field The secret field name.
+	Field string `json:"field"`
+
+	// Value The stored plaintext value.
+	Value string `json:"value"`
 }
 
 // DNSCredentialTestRequest Zone to test against.
@@ -3190,6 +3206,9 @@ type CreateDNSCredentialJSONRequestBody = DNSCredentialInput
 // UpdateDNSCredentialJSONRequestBody defines body for UpdateDNSCredential for application/json ContentType.
 type UpdateDNSCredentialJSONRequestBody = DNSCredentialUpdate
 
+// RevealDNSCredentialSecretJSONRequestBody defines body for RevealDNSCredentialSecret for application/json ContentType.
+type RevealDNSCredentialSecretJSONRequestBody = DNSCredentialRevealRequest
+
 // TestDNSCredentialJSONRequestBody defines body for TestDNSCredential for application/json ContentType.
 type TestDNSCredentialJSONRequestBody = DNSCredentialTestRequest
 
@@ -3611,6 +3630,11 @@ type ClientInterface interface {
 	UpdateDNSCredentialWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateDNSCredential(ctx context.Context, orgId OrgId, id Id, body UpdateDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevealDNSCredentialSecretWithBody request with any body
+	RevealDNSCredentialSecretWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RevealDNSCredentialSecret(ctx context.Context, orgId OrgId, id Id, body RevealDNSCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestDNSCredentialWithBody request with any body
 	TestDNSCredentialWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5037,6 +5061,30 @@ func (c *APIClient) UpdateDNSCredentialWithBody(ctx context.Context, orgId OrgId
 
 func (c *APIClient) UpdateDNSCredential(ctx context.Context, orgId OrgId, id Id, body UpdateDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateDNSCredentialRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) RevealDNSCredentialSecretWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevealDNSCredentialSecretRequestWithBody(c.Server, orgId, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) RevealDNSCredentialSecret(ctx context.Context, orgId OrgId, id Id, body RevealDNSCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevealDNSCredentialSecretRequest(c.Server, orgId, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9885,6 +9933,60 @@ func NewUpdateDNSCredentialRequestWithBody(server string, orgId OrgId, id Id, co
 	return req, nil
 }
 
+// NewRevealDNSCredentialSecretRequest calls the generic RevealDNSCredentialSecret builder with application/json body
+func NewRevealDNSCredentialSecretRequest(server string, orgId OrgId, id Id, body RevealDNSCredentialSecretJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRevealDNSCredentialSecretRequestWithBody(server, orgId, id, "application/json", bodyReader)
+}
+
+// NewRevealDNSCredentialSecretRequestWithBody generates requests for RevealDNSCredentialSecret with any type of body
+func NewRevealDNSCredentialSecretRequestWithBody(server string, orgId OrgId, id Id, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/dns-credentials/%s/reveal", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewTestDNSCredentialRequest calls the generic TestDNSCredential builder with application/json body
 func NewTestDNSCredentialRequest(server string, orgId OrgId, id Id, body TestDNSCredentialJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -12097,6 +12199,11 @@ type ClientWithResponsesInterface interface {
 	UpdateDNSCredentialWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDNSCredentialResponse, error)
 
 	UpdateDNSCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDNSCredentialResponse, error)
+
+	// RevealDNSCredentialSecretWithBodyWithResponse request with any body
+	RevealDNSCredentialSecretWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevealDNSCredentialSecretResponse, error)
+
+	RevealDNSCredentialSecretWithResponse(ctx context.Context, orgId OrgId, id Id, body RevealDNSCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*RevealDNSCredentialSecretResponse, error)
 
 	// TestDNSCredentialWithBodyWithResponse request with any body
 	TestDNSCredentialWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestDNSCredentialResponse, error)
@@ -14523,6 +14630,36 @@ func (r UpdateDNSCredentialResponse) StatusCode() int {
 	return 0
 }
 
+type RevealDNSCredentialSecretResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *DNSCredentialRevealResult
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r RevealDNSCredentialSecretResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevealDNSCredentialSecretResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type TestDNSCredentialResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -16618,6 +16755,23 @@ func (c *ClientWithResponses) UpdateDNSCredentialWithResponse(ctx context.Contex
 		return nil, err
 	}
 	return ParseUpdateDNSCredentialResponse(rsp)
+}
+
+// RevealDNSCredentialSecretWithBodyWithResponse request with arbitrary body returning *RevealDNSCredentialSecretResponse
+func (c *ClientWithResponses) RevealDNSCredentialSecretWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevealDNSCredentialSecretResponse, error) {
+	rsp, err := c.RevealDNSCredentialSecretWithBody(ctx, orgId, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevealDNSCredentialSecretResponse(rsp)
+}
+
+func (c *ClientWithResponses) RevealDNSCredentialSecretWithResponse(ctx context.Context, orgId OrgId, id Id, body RevealDNSCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*RevealDNSCredentialSecretResponse, error) {
+	rsp, err := c.RevealDNSCredentialSecret(ctx, orgId, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevealDNSCredentialSecretResponse(rsp)
 }
 
 // TestDNSCredentialWithBodyWithResponse request with arbitrary body returning *TestDNSCredentialResponse
@@ -22318,6 +22472,88 @@ func ParseUpdateDNSCredentialResponse(rsp *http.Response) (*UpdateDNSCredentialR
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevealDNSCredentialSecretResponse parses an HTTP response from a RevealDNSCredentialSecretWithResponse call
+func ParseRevealDNSCredentialSecretResponse(rsp *http.Response) (*RevealDNSCredentialSecretResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevealDNSCredentialSecretResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DNSCredentialRevealResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest PayloadTooLarge

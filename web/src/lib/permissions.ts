@@ -5,13 +5,13 @@ import type { ApiKeyScope, Me } from '@/api/types';
 export const ACTIONS = [
   'orgs:read', 'orgs:write', 'settings:read', 'settings:write', 'users:read', 'users:write',
   'cas:read', 'cas:write', 'accounts:read', 'accounts:write', 'dnscreds:read', 'dnscreds:write',
-  'certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'audit:read',
+  'dnscreds:reveal', 'certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'audit:read',
   'sites:read', 'sites:write', 'bindings:read', 'bindings:write', 'apikeys:read', 'apikeys:write',
   'delivery:read', 'delivery:write', 'alerts:read', 'alerts:write',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
-const GLOBAL_ONLY = new Set<Action>(['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write']);
+const GLOBAL_ONLY = new Set<Action>(['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write', 'dnscreds:reveal']);
 const SHARED_READ = new Set<Action>(['orgs:read', 'settings:read', 'cas:read', 'users:read']);
 const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read', 'alerts:read'];
 
@@ -65,7 +65,7 @@ export const API_KEY_SCOPES: ApiKeyScope[] = [
 // Mirror of authz.ScopeGrant.
 const SCOPE_GRANT: Record<ApiKeyScope, Action> = {
   'certs:read': 'certs:read', 'certs:write': 'certs:write', 'certs:issue': 'certs:issue',
-  'keys:export': 'keys:export', 'clients:read': 'clients:read', 'clients:write': 'clients:write',
+  'keys:export': 'keys:export', 'dnscreds:reveal': 'dnscreds:reveal', 'clients:read': 'clients:read', 'clients:write': 'clients:write',
   'delivery:read': 'delivery:read', 'delivery:write': 'delivery:write',
   'alerts:read': 'alerts:read', 'alerts:write': 'alerts:write', admin: 'settings:write',
 };
