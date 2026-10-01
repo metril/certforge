@@ -229,14 +229,14 @@ test('DNS credential auth methods', async ({ page }) => {
     // Only the selected method's fields show; the CLOUDFLARE_* aliases never do.
     await methods.getByRole('radio', { name: 'Email + API key' }).click();
     await expect(sheet.getByLabel('CF_API_EMAIL')).toBeVisible();
-    await expect(sheet.getByLabel('CF_DNS_API_TOKEN')).toHaveCount(0);
+    await expect(sheet.getByLabel('CF_DNS_API_TOKEN', { exact: true })).toHaveCount(0);
     await methods.getByRole('radio', { name: 'API token' }).click();
-    await expect(sheet.getByLabel('CF_DNS_API_TOKEN')).toBeVisible();
+    await expect(sheet.getByLabel('CF_DNS_API_TOKEN', { exact: true })).toBeVisible();
     await expect(sheet.getByLabel('CF_API_EMAIL')).toHaveCount(0);
-    await expect(sheet.getByLabel('CF_API_KEY')).toHaveCount(0);
+    await expect(sheet.getByLabel('CF_API_KEY', { exact: true })).toHaveCount(0);
     await expect(sheet.getByLabel(/^CLOUDFLARE_/)).toHaveCount(0);
 
-    await sheet.getByLabel('CF_DNS_API_TOKEN').fill('e2e-token');
+    await sheet.getByLabel('CF_DNS_API_TOKEN', { exact: true }).fill('e2e-token');
     await sheet.getByRole('button', { name: 'Save credential' }).click();
     await expect(sheet).toBeHidden();
 
