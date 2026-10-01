@@ -77,6 +77,15 @@ it('canGrantScope intersects with the creator role', () => {
 // 6B Task 2: the ApiKeyScope schema type gained alerts:read/alerts:write in
 // the 6A fix wave (30decfd) — API_KEY_SCOPES and its scope->action grant
 // map must actually offer them, not just the plain-TS Action union.
+it('dnscreds:reveal is global-admin only', () => {
+  const reveal = (role: MeBinding['role'], orgId: string | null) => can(me({ role, orgId }), 'dnscreds:reveal', A);
+  expect(reveal('admin', null)).toBe(true);
+  expect(reveal('admin', A)).toBe(false);
+  for (const r of ['org-admin', 'operator', 'viewer'] as const) expect(reveal(r, A)).toBe(false);
+  expect(canGrantScope(me({ role: 'admin', orgId: null }), 'dnscreds:reveal', A)).toBe(true);
+  expect(canGrantScope(me({ role: 'org-admin', orgId: A }), 'dnscreds:reveal', A)).toBe(false);
+});
+
 it('API_KEY_SCOPES offers alerts scopes, grantable by an alerts writer', () => {
   expect(API_KEY_SCOPES).toContain('alerts:read');
   expect(API_KEY_SCOPES).toContain('alerts:write');
@@ -96,7 +105,7 @@ describe('full role x action x scope matrix (hand-transcribed from authz.go)', (
   const ALL_ACTIONS: Action[] = [
     'orgs:read', 'orgs:write', 'settings:read', 'settings:write',
     'users:read', 'users:write', 'cas:read', 'cas:write',
-    'accounts:read', 'accounts:write', 'dnscreds:read', 'dnscreds:write',
+    'accounts:read', 'accounts:write', 'dnscreds:read', 'dnscreds:write', 'dnscreds:reveal',
     'certs:read', 'certs:write', 'certs:issue', 'keys:export',
     'clients:read', 'clients:write', 'audit:read',
     'sites:read', 'sites:write', 'bindings:read', 'bindings:write',
@@ -106,7 +115,7 @@ describe('full role x action x scope matrix (hand-transcribed from authz.go)', (
   ];
 
   // authz.globalOnly: only ever granted through a global (nil-org) binding.
-  const GLOBAL_ONLY: Action[] = ['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write'];
+  const GLOBAL_ONLY: Action[] = ['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write', 'dnscreds:reveal'];
 
   // authz.sharedRead: an org-scoped binding also grants these against a nil
   // (global-resource) query orgId.

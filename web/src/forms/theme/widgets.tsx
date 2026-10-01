@@ -101,7 +101,11 @@ function TextareaWidget({ id, value, onChange, disabled, readonly, placeholder, 
   );
 }
 
-function SecretWidget({ id, value, onChange, options, label, placeholder, disabled, readonly }: WidgetProps) {
+function SecretWidget({ id, value, onChange, options, label, placeholder, disabled, readonly, name, registry }: WidgetProps) {
+  const ctx = registry.formContext as { onRevealSecret?: (field: string) => Promise<string>; revealDisabledReason?: string } | undefined;
+  const onRevealSecret = ctx?.onRevealSecret;
+  const fieldName = name || id;
+  const canReveal = options.stored === true && !!onRevealSecret;
   return (
     <SecretInput
       id={id}
@@ -111,6 +115,8 @@ function SecretWidget({ id, value, onChange, options, label, placeholder, disabl
       stored={options.stored === true}
       placeholder={placeholder}
       disabled={disabled || readonly}
+      onReveal={canReveal ? () => onRevealSecret(fieldName) : undefined}
+      revealDisabledReason={canReveal ? ctx?.revealDisabledReason : undefined}
     />
   );
 }

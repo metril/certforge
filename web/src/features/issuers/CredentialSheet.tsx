@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { meQuery } from '@/api/queries/auth';
 import { ChevronDown, CircleAlert } from 'lucide-react';
 import type { RJSFSchema } from '@rjsf/utils';
-import { useSaveCredential } from '@/api/queries/dns';
+import { useRevealCredentialSecret, useSaveCredential } from '@/api/queries/dns';
 import { ApiError, errorMessage } from '@/api/errors';
 import type { DnsCredential, DnsCredentialInput, ProviderSchema } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
@@ -14,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { advancedSchema, authMethodsOf, hasAdvancedValue, inferMethod, methodKeys, methodSchema } from '@/forms/authMethods';
+import { can } from '@/lib/permissions';
 import { secretKeys, withSecretSentinels } from '@/forms/uiSchema';
 
 type Props = {
@@ -37,6 +40,17 @@ function fieldFromTitle(title: string | undefined): string | null {
 
 export function CredentialSheet({ orgId, open, onOpenChange, provider, credential, onSaved, onChangeProvider }: Props) {
   const save = useSaveCredential(orgId);
+  const reveal = useRevealCredentialSecret(orgId);
+  // useMe() needs the router context, which the certificate wizard's create-only
+  // use of this sheet lacks; the cached me query serves both (no fetch on create).
+  const me = useQuery({ ...meQuery, enabled: !!credential }).data;
+  const credId = credential?.id;
+  const onRevealSecret = useMemo(
+    () => (credId ? (field: string) => reveal.mutateAsync({ id: credId, field }) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutateAsync is stable
+    [credId, reveal.mutateAsync],
+  );
+  const revealDisabledReason = !me || !can(me, 'dnscreds:reveal', orgId) ? 'Needs a global admin (dnscreds:reveal)' : undefined;
   const formRef = useRef<SchemaFormHandle>(null);
   const schema = useMemo(() => (provider?.schema ?? { type: 'object', properties: {} }) as RJSFSchema, [provider]);
   const storedSecrets = useMemo(() => credential?.storedSecrets ?? [], [credential]);
@@ -167,7 +181,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
           {method && method.fields.length === 0 && method.optional.length === 0 ? (
             <p className="text-sm text-ink-muted">Uses the server&apos;s own environment credentials.</p>
           ) : (
-            <SchemaForm key={method?.id} ref={formRef} schema={mainSchema} value={method ? pick(mainKeys) : config} onChange={method ? mergeOwn(mainKeys) : setConfig} storedSecrets={storedSecrets} />
+            <SchemaForm key={method?.id} ref={formRef} schema={mainSchema} value={method ? pick(mainKeys) : config} onChange={method ? mergeOwn(mainKeys) : setConfig} storedSecrets={storedSecrets} onRevealSecret={onRevealSecret} revealDisabledReason={revealDisabledReason} />
           )}
           {advKeys.length > 0 && (
             <Collapsible defaultOpen={advOpen}>
@@ -176,7 +190,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
                 Advanced
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-3">
-                <SchemaForm ref={advFormRef} schema={advSchema} value={pick(advKeys)} onChange={mergeOwn(advKeys)} storedSecrets={storedSecrets} />
+                <SchemaForm ref={advFormRef} schema={advSchema} value={pick(advKeys)} onChange={mergeOwn(advKeys)} storedSecrets={storedSecrets} onRevealSecret={onRevealSecret} revealDisabledReason={revealDisabledReason} />
               </CollapsibleContent>
             </Collapsible>
           )}

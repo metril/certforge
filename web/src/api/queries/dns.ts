@@ -56,3 +56,17 @@ export function useTestCredential(orgId: string) {
     gcTime: 0,
   });
 }
+
+/** Returns a stored secret's plaintext. Deliberately uncached and never
+ * invalidating: the value lives only in the caller's state until hidden. */
+export function useRevealCredentialSecret(orgId: string) {
+  return useMutation({
+    mutationFn: async ({ id, field }: { id: string; field: string }): Promise<string> => {
+      const r = await call(api.POST('/orgs/{orgId}/dns-credentials/{id}/reveal', { params: { path: { orgId, id } }, body: { field } }));
+      return r.value;
+    },
+    // SecretInput shows the error itself (tooltip); a toast would be redundant.
+    meta: { silent: true },
+    gcTime: 0,
+  });
+}

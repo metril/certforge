@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import { waitFor } from '@testing-library/react';
 import { UNCHANGED } from '@/api/types';
 import { renderUI } from '@/test/render';
 import { Input } from '@/components/ui/input';
@@ -307,4 +308,69 @@ it('confirm destructive requires the exact text and shows server errors inline',
   await user.type(within(dialog).getByRole('textbox'), "Let's Encrypt");
   await user.click(action);
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('CA is used by 2 certificates');
+});
+
+// Reveal: the stored value is fetched on demand and never kept after hide.
+function RevealHarness({ onReveal, reason }: { onReveal?: () => Promise<string>; reason?: string }) {
+  const [v, setV] = useState<string | undefined>(undefined);
+  return <SecretInput id="token" label="Recovery token" stored value={v} onChange={setV} onReveal={onReveal} revealDisabledReason={reason} />;
+}
+
+it('secret reveal: shows the value, then hide removes it from the DOM', async () => {
+  const onReveal = vi.fn().mockResolvedValue('s3cret-value');
+  const { user } = renderUI(<RevealHarness onReveal={onReveal} />);
+  await user.click(screen.getByRole('button', { name: 'Reveal Recovery token' }));
+  expect(await screen.findByLabelText('Recovery token value')).toHaveTextContent('s3cret-value');
+  expect(screen.queryByText('Stored')).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Hide Recovery token' }));
+  expect(screen.queryByText('s3cret-value')).toBeNull();
+  expect(screen.getByText('Stored')).toBeInTheDocument();
+});
+
+it('secret reveal: loading state is disabled and busy', async () => {
+  let resolve!: (v: string) => void;
+  const onReveal = vi.fn(() => new Promise<string>((r) => (resolve = r)));
+  const { user } = renderUI(<RevealHarness onReveal={onReveal} />);
+  await user.click(screen.getByRole('button', { name: 'Reveal Recovery token' }));
+  const btn = screen.getByRole('button', { name: 'Reveal Recovery token' });
+  expect(btn).toBeDisabled();
+  expect(btn).toHaveAttribute('aria-busy', 'true');
+  resolve('late');
+  expect(await screen.findByText('late')).toBeInTheDocument();
+});
+
+it('secret reveal: an error keeps the chip, and the next click retries', async () => {
+  const onReveal = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce('second-try');
+  const { user } = renderUI(<RevealHarness onReveal={onReveal} />);
+  await user.click(screen.getByRole('button', { name: 'Reveal Recovery token' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Reveal Recovery token' })).not.toBeDisabled());
+  expect(screen.getByText('Stored')).toBeInTheDocument();
+  await user.unhover(screen.getByRole('button', { name: 'Reveal Recovery token' }));
+  await user.hover(screen.getByRole('button', { name: 'Reveal Recovery token' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('boom');
+  await user.click(screen.getByRole('button', { name: 'Reveal Recovery token' }));
+  expect(await screen.findByText('second-try')).toBeInTheDocument();
+  expect(onReveal).toHaveBeenCalledTimes(2);
+});
+
+it('secret reveal: Replace clears a revealed value', async () => {
+  const { user } = renderUI(<RevealHarness onReveal={() => Promise.resolve('gone-soon')} />);
+  await user.click(screen.getByRole('button', { name: 'Reveal Recovery token' }));
+  await screen.findByText('gone-soon');
+  await user.click(screen.getByRole('button', { name: 'Replace Recovery token' }));
+  expect(screen.queryByText('gone-soon')).toBeNull();
+});
+
+it('secret reveal: with a disabled reason the button is disabled and never calls onReveal', async () => {
+  const onReveal = vi.fn();
+  const { user } = renderUI(<RevealHarness onReveal={onReveal} reason="Needs a global admin" />);
+  const btn = screen.getByRole('button', { name: 'Reveal Recovery token' });
+  expect(btn).toBeDisabled();
+  await user.click(btn);
+  expect(onReveal).not.toHaveBeenCalled();
+});
+
+it('secret reveal: no reveal button without onReveal', () => {
+  renderUI(<RevealHarness />);
+  expect(screen.queryByRole('button', { name: /^Reveal / })).toBeNull();
 });

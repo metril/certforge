@@ -24,10 +24,11 @@ let posted: unknown;
 let put: unknown;
 let deleted: string | undefined;
 let tested: unknown;
+let revealed: unknown;
 
 beforeEach(() => {
   creds = [];
-  posted = put = tested = deleted = undefined;
+  posted = put = tested = deleted = revealed = undefined;
   server.use(
     ...authHandlers({ authed: true }),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: providers, deployTargets: [], notifiers: [], signers: [] })),
@@ -44,6 +45,10 @@ beforeEach(() => {
     http.delete(url('/orgs/org-1/dns-credentials/:id'), ({ params }) => {
       deleted = String(params.id);
       return problem(409, 'DNS credential is used by 2 certificates', {}, 'In use');
+    }),
+    http.post(url('/orgs/org-1/dns-credentials/:id/reveal'), async ({ request }) => {
+      revealed = await request.json();
+      return HttpResponse.json({ field: (revealed as { field: string }).field, value: 'cf-token-plain' });
     }),
     http.post(url('/orgs/org-1/dns-credentials/:id/test'), async ({ request }) => {
       tested = await request.json();
@@ -399,4 +404,28 @@ it('edits a credential with a stored advanced value and stored secret and saves'
   await user.click(within(sheet).getByRole('button', { name: 'Save credential' }));
   await waitFor(() => expect(put).toBeDefined());
   expect(within(sheet).queryByRole('alert')).not.toBeInTheDocument();
+});
+
+// dnscreds:reveal is global-admin only: an org admin sees the button disabled.
+it('shows a disabled reveal button for a non-global-admin', async () => {
+  creds = [cred];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }]))));
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  const btn = await within(sheet).findByRole('button', { name: 'Reveal CF_DNS_API_TOKEN' });
+  expect(btn).toBeDisabled();
+  await user.click(btn);
+  expect(revealed).toBeUndefined();
+});
+
+it('a global admin reveals a stored secret via POST {field}', async () => {
+  creds = [cred];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'admin', orgId: null }]))));
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
+  await user.click(await within(sheet).findByRole('button', { name: 'Reveal CF_DNS_API_TOKEN' }));
+  expect(await within(sheet).findByLabelText('CF_DNS_API_TOKEN value')).toHaveTextContent('cf-token-plain');
+  expect(revealed).toEqual({ field: 'CF_DNS_API_TOKEN' });
 });

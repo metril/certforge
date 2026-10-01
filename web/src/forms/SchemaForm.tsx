@@ -44,9 +44,13 @@ type Props = {
    * carry). Keyed by property name, e.g. `{ agentUrl: { 'ui:description': '...' } }`.
    */
   uiSchemaOverrides?: UiSchema;
+  /** Fetches a stored secret's plaintext for the secret widget's reveal
+   * button (passed via formContext, never uiSchema — nothing secret in it). */
+  onRevealSecret?: (field: string) => Promise<string>;
+  revealDisabledReason?: string;
 };
 
-export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors, uiSchemaOverrides }, ref) {
+export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors, uiSchemaOverrides, onRevealSecret, revealDisabledReason }, ref) {
   const formRef = useRef<Form>(null);
   const uiSchema = useMemo(() => {
     const base = buildUiSchema(schema, { storedSecrets });
@@ -65,6 +69,7 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
     return merged;
   }, [schema, storedSecrets, uiSchemaOverrides]);
   const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
+  const formContext = useMemo(() => ({ onRevealSecret, revealDisabledReason }), [onRevealSecret, revealDisabledReason]);
   useImperativeHandle(ref, () => ({ validate: () => formRef.current?.validateForm() ?? false }), []);
   return (
     <ThemedForm
@@ -74,6 +79,7 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
       formData={value}
       validator={validator}
       readonly={readonly}
+      formContext={formContext}
       extraErrors={extraErrors}
       showErrorList={false}
       noHtml5Validate
