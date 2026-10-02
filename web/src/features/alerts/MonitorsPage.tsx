@@ -80,7 +80,7 @@ function NextCheckCell({ monitor }: { monitor: Monitor }) {
 }
 
 function monitorMeta(m: Monitor): string[] {
-  return [`${m.host}:${m.port}`, m.sni, fmtInterval(m.intervalSeconds), m.lastFingerprint ? shortFp(m.lastFingerprint) : ''].filter(Boolean);
+  return [`${m.host}:${m.port}`, m.sni, fmtInterval(m.intervalSeconds), m.lastFingerprint ? shortFp(m.lastFingerprint) : ''].filter((x): x is string => !!x);
 }
 
 function monitorColumns(orgId: string) {

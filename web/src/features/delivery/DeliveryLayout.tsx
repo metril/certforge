@@ -17,6 +17,7 @@ export function DeliveryLayout({ children }: { children: ReactNode }) {
     <>
       <PageHeader
         title="Delivery"
+        help="target.runsOn"
         tabsLabel="Delivery"
         tabs={DELIVERY_TABS.map((t) => (
           <Link key={t.to} to={t.to} params={{ org }} className={TAB_LINK} activeProps={TAB_ACTIVE} aria-label={t.full}>

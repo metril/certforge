@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Lock, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { layoutsQuery, useDeleteLayout } from '@/api/queries/delivery';
@@ -9,11 +9,10 @@ import type { Layout } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { HelpTip } from '@/components/HelpTip';
+import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
@@ -21,6 +20,15 @@ import { LayoutSheet } from './LayoutSheet';
 import { RowActions, UsedBy } from './RowActions';
 
 const stickyCol = 'sticky left-0 z-10 bg-panel';
+
+/** Muted second line: file names, extra certificates, and whether an export password is stored. */
+function layoutMeta(l: Layout): string[] {
+  return [
+    l.files.map((f) => f.path.split('/').pop()).join(', '),
+    l.extraCertificateIds.length > 0 ? `+${l.extraCertificateIds.length} extra` : '',
+    l.passwordSet ? 'password set' : '',
+  ];
+}
 
 export function LayoutsPage() {
   const org = useOrg();
@@ -68,17 +76,8 @@ export function LayoutsPage() {
           <Table aria-label="File layouts" className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className={cn('w-44', stickyCol)}>Name</TableHead>
-                <TableHead>
-                  <span className="inline-flex items-center gap-1">
-                    Files <HelpTip id="layout.path" />
-                  </span>
-                </TableHead>
-                <TableHead className="w-28">
-                  <span className="inline-flex items-center gap-1">
-                    Used by <HelpTip id="target.usedBy" />
-                  </span>
-                </TableHead>
+                <TableHead className={stickyCol}>Name</TableHead>
+                <TableHead className="w-28">Used by</TableHead>
                 <TableHead className="w-20">
                   <span className="sr-only">Actions</span>
                 </TableHead>
@@ -86,36 +85,21 @@ export function LayoutsPage() {
             </TableHeader>
             <TableBody>
               {layouts.map((l) => (
-                <TableRow key={l.id} className="h-9">
-                  <TableCell className={cn('truncate py-1 font-semibold', stickyCol)}>{l.name}</TableCell>
-                  <TableCell className="py-1">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span tabIndex={0} className="flex min-w-0 items-center gap-2">
-                          {l.passwordSet && (
-                            <span className="inline-flex shrink-0 items-center">
-                              <Lock className="size-3.5 text-ink-muted" aria-hidden />
-                              <span className="sr-only">Password set</span>
-                            </span>
-                          )}
-                          <span className="truncate font-mono text-xs">{l.files.map((f) => f.path.split('/').pop()).join(', ')}</span>
-                          {l.extraCertificateIds.length > 0 && <span className="shrink-0 text-xs text-ink-muted">+{l.extraCertificateIds.length} extra</span>}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-96 font-mono text-xs">
-                        {l.files.map((f) => (
-                          <div key={f.path} className="break-all">
-                            {f.path}
-                          </div>
-                        ))}
-                      </TooltipContent>
-                    </Tooltip>
+                <TableRow key={l.id}>
+                  <TableCell className={cn('py-1.5', stickyCol)}>
+                    <PrimaryCell primary={l.name} meta={layoutMeta(l)} />
                   </TableCell>
                   <TableCell className="py-1">
                     <UsedBy count={l.grantCount} />
                   </TableCell>
                   <TableCell className="py-1 text-right">
-                    <RowActions name={l.name} grantCount={l.grantCount} canWrite={canWrite} onOpen={() => openSheet(l.id)} onDelete={() => setDeleting(l)} />
+                    <RowActions
+                      name={l.name}
+                      grantCount={l.grantCount}
+                      canWrite={canWrite}
+                      onOpen={() => openSheet(l.id)}
+                      onDelete={() => setDeleting(l)}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -123,7 +107,9 @@ export function LayoutsPage() {
           </Table>
         </>
       )}
-      {((canWrite && edit === 'new') || editing) && <LayoutSheet key={edit} orgId={org.id} layout={editing} readOnly={!canWrite} onOpenChange={(o) => !o && openSheet(undefined)} />}
+      {((canWrite && edit === 'new') || editing) && (
+        <LayoutSheet key={edit} orgId={org.id} layout={editing} readOnly={!canWrite} onOpenChange={(o) => !o && openSheet(undefined)} />
+      )}
       <ConfirmDestructive
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}

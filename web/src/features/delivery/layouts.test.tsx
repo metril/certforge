@@ -130,9 +130,7 @@ it('lists layouts with files and use', async () => {
   renderRoute('/o/acme/delivery/layouts');
   const table = await screen.findByRole('table', { name: 'File layouts' });
   const row = within(table).getByText('nginx').closest('tr')!;
-  expect(within(row).getByText('www.pem')).toBeInTheDocument();
-  expect(within(row).getByText('+2 extra')).toBeInTheDocument();
-  expect(within(row).getByText('Password set')).toBeInTheDocument();
+  expect(within(row).getByText(/www\.pem · \+2 extra · password set/)).toBeInTheDocument();
   expect(within(row).getByText('1 grant')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Delete nginx' })).toBeDisabled();
   expect(screen.getByRole('link', { name: 'File layouts' })).toHaveAttribute('aria-current', 'page');

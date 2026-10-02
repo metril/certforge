@@ -3,14 +3,12 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus, Search } from 'lucide-react';
 import { ApiError, errorMessage } from '@/api/errors';
-import { plural } from '@/api/queries/certificates';
 import { allOrgsClientsInfinite, clientListKey, clientsInfinite } from '@/api/queries/clients';
 import { sitesQuery } from '@/api/queries/sites';
 import type { Client, ClientStatus } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { DataTable } from '@/components/DataTable';
-import { DeploymentCounts } from '@/components/DeploymentChip';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { FilterChips } from '@/components/FilterChips';

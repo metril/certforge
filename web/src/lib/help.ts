@@ -39,7 +39,7 @@ export const help = {
   'status.revoked': { text: 'The certificate was revoked and will not renew.' },
   'cert.validity': { text: 'Bar spans issue to expiry. Hatching marks the renewal window; the notch is now.' },
   'ca.type': {
-    text: 'ACME proves control of names to a CA. Built-in CA and Vault PKI sign directly, for internal names. EAB stored means an external account binding is kept for the CA; some CAs require one.',
+    text: 'ACME proves control to a CA; Built-in CA and Vault PKI sign directly. EAB stored: the CA requires an external account binding.',
     learnMore: 'private-ca.md#model',
   },
   'ca.typeLocked': { text: 'The type cannot change after creation.' },
@@ -71,7 +71,7 @@ export const help = {
   'ca.rotateImported': { text: 'Imported CAs have no root key here, so they cannot rotate.', learnMore: 'private-ca.md#import' },
   'account.email': { text: 'The CA sends expiry and policy notices here.' },
   'account.status': { text: 'Status is reported by the CA; only valid accounts can order certificates. The CA sends expiry and policy notices to the account email.' },
-  'dns.provider': { text: 'The DNS host that serves your zone; CertForge writes TXT records there. Used by counts the certificates and issuance defaults whose verification rules use the credential.' },
+  'dns.provider': { text: 'The DNS host serving your zone; TXT records are written there. Used by counts certificates and defaults using it.' },
   'dns.authMethod': { text: 'Some providers accept more than one kind of credential. Pick the one you have; only its fields are shown.' },
   'dns.usedBy': { text: 'Certificates and issuance defaults whose verification rules use this credential.' },
   'dns.test': { text: 'Creates and removes a test TXT record in the zone.' },
@@ -175,7 +175,7 @@ export const help = {
     learnMore: 'certificates.md#ari',
   },
   'status.column': {
-    text: 'Status is the state of the certificate itself, not of its last attempt. The validity bar spans issue to expiry: hatching marks the renewal window, the notch is now. Under each name: common name, CA, grants and any other names. ARI can move the next renewal earlier.',
+    text: 'Status is the certificate\'s own state. Under each name: common name, CA, grants and other names.',
   },
   'rules.method': { text: 'How each rule proves control of its names. One certificate can mix methods.', learnMore: 'certificates.md#mixing-methods' },
   'rules.match': { text: 'Name pattern. The first matching rule wins; * matches everything.' },
@@ -384,7 +384,7 @@ export const help = {
   'import.hasKey': { text: "Without a key the certificate can't be deployed with key files until its first renewal." },
   // Task 2 (Phase 6B): the Alerts area — tabs, channels table.
   'alerts.channels': {
-    text: 'Where CertForge sends events: webhooks, email, chat and push services. Last delivery is the most recent result, tests included. An All orgs channel receives events from every organization; only a global admin can set it.',
+    text: 'Where events go: webhooks, email, chat, push. Last delivery includes tests; All orgs channels get events from every org.',
     learnMore: 'notifications.md#channels',
   },
   'channel.allOrgs': {
@@ -397,7 +397,7 @@ export const help = {
   },
   'channel.limit': { text: 'An organization can have at most 50 channels.' },
   'alerts.monitors': {
-    text: 'Checks which certificate a TLS endpoint serves and alerts when it changes. State comes from the last check: OK, Mismatch, Expiring (under 14 days) or Unreachable. The check button runs one now.',
+    text: 'Checks which certificate a TLS endpoint serves and alerts on change. The state comes from the last check.',
     learnMore: 'monitoring.md#external-monitors',
   },
   'alerts.events': {
