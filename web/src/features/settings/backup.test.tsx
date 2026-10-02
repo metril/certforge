@@ -24,16 +24,10 @@ beforeAll(async () => {
 // schemas.
 const backupSchema = {
   title: 'Backup',
-  description: 'Scheduled backups of the whole database, encrypted with the active key-encryption key.',
+  description: 'Scheduled backups of the whole database, encrypted with the active encryption key.',
   type: 'object',
   additionalProperties: false,
   properties: {
-    kekEscrowConfirmed: {
-      type: 'boolean',
-      title: 'KEK escrow confirmed',
-      description: 'Confirms the key-encryption key is stored safely outside this server.',
-      default: false,
-    },
     schedule: {
       type: 'string',
       title: 'Schedule',
@@ -71,7 +65,7 @@ function handlers(
   const section = {
     section: 'backup',
     schema: backupSchema,
-    value: opts.value ?? { kekEscrowConfirmed: false, schedule: 'off', retainCount: 7 },
+    value: opts.value ?? { schedule: 'off', retainCount: 7 },
     stored: null,
     storedSecrets: [] as string[],
   };
@@ -99,15 +93,14 @@ it('status card shows last success, size, file and next', async () => {
     ...authHandlers({ authed: true }),
     ...handlers({
       status: {
-        schedule: 'daily', escrowConfirmed: true, directory: '/var/backups',
+        schedule: 'daily', directory: '/var/backups',
         lastSuccessAt: iso(-1), lastFailureAt: null, lastError: null,
         lastSizeBytes: 33_554_432, lastFile: 'certforge-20260101T000000Z.cfbak', nextAt: iso(1),
       },
     }),
   );
   renderRoute('/settings/backup');
-  expect(await screen.findByText('Escrow confirmed')).toBeInTheDocument();
-  expect(screen.getByText('Succeeded')).toBeInTheDocument();
+  expect(await screen.findByText('Succeeded')).toBeInTheDocument();
   expect(screen.getByText('32 MiB')).toBeInTheDocument();
   expect(screen.getByText('certforge-20260101T000000Z.cfbak')).toBeInTheDocument();
   expect(screen.getByText(/^in \d+ (h|min|d)$/)).toBeInTheDocument();
@@ -118,7 +111,7 @@ it('newer failure shows error', async () => {
     ...authHandlers({ authed: true }),
     ...handlers({
       status: {
-        schedule: 'daily', escrowConfirmed: true, directory: '/var/backups',
+        schedule: 'daily', directory: '/var/backups',
         lastSuccessAt: iso(-3), lastFailureAt: iso(-1), lastError: 'no space left on device',
         lastSizeBytes: 33_554_432, lastFile: 'certforge-20251230T000000Z.cfbak', nextAt: iso(1),
       },
@@ -138,49 +131,53 @@ it('never backed up', async () => {
   expect(screen.getByText('Not scheduled')).toBeInTheDocument();
 });
 
-it('back up now disabled until escrow confirmed', async () => {
-  server.use(...authHandlers({ authed: true }), ...handlers({ status: { ...backupStatus, escrowConfirmed: false } }));
-  const { user } = renderRoute('/settings/backup');
-  const button = await screen.findByRole('button', { name: 'Back up now' });
-  expect(button).toBeDisabled();
-  await user.hover(button);
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Confirm the KEK is stored safely first.');
-});
+const REMINDER = "Restoring a backup needs the encryption key from the server's environment. Keep a copy somewhere safe.";
 
 it('back up now downloads with server filename', async () => {
-  server.use(...authHandlers({ authed: true }), ...handlers({ status: { ...backupStatus, escrowConfirmed: true } }));
+  server.use(...authHandlers({ authed: true }), ...handlers());
   const { user } = renderRoute('/settings/backup');
-  await screen.findByRole('button', { name: 'Back up now' });
-  // The button re-renders from the escrow-tooltip-wrapped (disabled) form to
-  // the bare enabled one once the status query resolves — a different
-  // element at that JSX position, so the enabled one must be re-queried
-  // rather than awaited on the same node reference.
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Back up now' })).toBeEnabled());
-  await user.click(screen.getByRole('button', { name: 'Back up now' }));
+  await user.click(await screen.findByRole('button', { name: 'Back up now' }));
   await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), 'certforge-20260101T000000Z.cfbak'));
   expect(await screen.findByText('Backup downloaded')).toBeInTheDocument();
 });
 
-it('409 toasts escrow', async () => {
-  server.use(
-    ...authHandlers({ authed: true }),
-    ...handlers({
-      status: { ...backupStatus, escrowConfirmed: true },
-      onBackup: () => problem(409, 'confirm KEK escrow first'),
-    }),
-  );
+it('back up now is enabled without any confirmation and its tooltip is the key reminder', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
   const { user } = renderRoute('/settings/backup');
+  const button = await screen.findByRole('button', { name: 'Back up now' });
+  expect(button).toBeEnabled();
+  expect(screen.queryByText(/escrow/i)).not.toBeInTheDocument();
+  await user.hover(button);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(REMINDER);
+});
+
+it('a failed backup toasts the server detail', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers({ onBackup: () => problem(500, 'disk full') }));
+  const { user } = renderRoute('/settings/backup');
+  await user.click(await screen.findByRole('button', { name: 'Back up now' }));
+  expect(await screen.findByText('disk full')).toBeInTheDocument();
+});
+
+it('key reminder shows, dismisses and stays dismissed', async () => {
+  localStorage.removeItem('cf-backup-key-reminder');
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  const first = renderRoute('/settings/backup');
+  expect(await screen.findByText(REMINDER, { selector: 'span' })).toBeInTheDocument();
+  await first.user.click(screen.getByRole('button', { name: 'Dismiss' }));
+  expect(screen.queryByText(REMINDER, { selector: 'span' })).not.toBeInTheDocument();
+  expect(localStorage.getItem('cf-backup-key-reminder')).toBe('dismissed');
+  first.unmount();
+  renderRoute('/settings/backup');
   await screen.findByRole('button', { name: 'Back up now' });
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Back up now' })).toBeEnabled());
-  await user.click(screen.getByRole('button', { name: 'Back up now' }));
-  expect(await screen.findByText('confirm KEK escrow first')).toBeInTheDocument();
+  expect(screen.queryByText(REMINDER, { selector: 'span' })).not.toBeInTheDocument();
+  localStorage.removeItem('cf-backup-key-reminder');
 });
 
 it('needs settings:write', async () => {
   server.use(
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))),
     ...authHandlers({ authed: true }),
-    ...handlers({ status: { ...backupStatus, escrowConfirmed: true } }),
+    ...handlers(),
   );
   const { user } = renderRoute('/settings/backup');
   const button = await screen.findByRole('button', { name: 'Back up now' });
@@ -201,7 +198,7 @@ it('directory error maps inline', async () => {
   server.use(
     ...authHandlers({ authed: true }),
     ...handlers({
-      value: { kekEscrowConfirmed: false, schedule: 'daily', retainCount: 7, directory: '/var/backups' },
+      value: { schedule: 'daily', retainCount: 7, directory: '/var/backups' },
       putError: () => problem(422, 'directory is not a writable directory', {}, 'Invalid settings'),
     }),
   );
@@ -214,13 +211,12 @@ it('directory error maps inline', async () => {
   expect(await within(directoryField).findByRole('alert')).toHaveTextContent('directory is not a writable directory');
 });
 
-it('escrow save refreshes status', async () => {
+it('saving the schedule refreshes status', async () => {
   let statusCalls = 0;
   server.use(...authHandlers({ authed: true }), ...handlers({ onStatus: () => statusCalls++ }));
   const { user } = renderRoute('/settings/backup');
-  await screen.findByRole('switch', { name: 'KEK escrow confirmed' });
+  await user.click(await screen.findByRole('radio', { name: 'Daily' }));
   const before = statusCalls;
-  await user.click(screen.getByRole('switch', { name: 'KEK escrow confirmed' }));
   await user.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(statusCalls).toBeGreaterThan(before));
 });

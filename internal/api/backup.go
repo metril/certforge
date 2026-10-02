@@ -46,21 +46,13 @@ func (a abortingReader) Close() error {
 
 // CreateBackup streams one on-demand backup archive with no buffering to
 // disk or memory: Stream writes straight into an io.Pipe fed to the
-// response body. Needs settings:write; 409 unless the backup section's
-// kekEscrowConfirmed is on. Once the whole stream completes successfully,
+// response body. Needs settings:write. Once the whole stream completes successfully,
 // backup.created {sizeBytes} is audited (as the requesting principal) and
 // the shared status row's LastSuccessAt/LastSizeBytes move (LastFile is
 // left alone: an on-demand backup is never written to disk).
 func (s *Server) CreateBackup(ctx context.Context, _ gen.CreateBackupRequestObject) (gen.CreateBackupResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionSettingsWrite, nil); err != nil {
 		return nil, err
-	}
-	confirmed, err := s.d.Backup.EscrowConfirmed(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if !confirmed {
-		return nil, conflict("confirm KEK escrow first")
 	}
 
 	pr, pw := io.Pipe()
@@ -131,14 +123,13 @@ func nonEmpty(s string) *string {
 // convention as keys.go's keysStatusToGen).
 func backupStatusToGen(st backup.Status) gen.BackupStatus {
 	return gen.BackupStatus{
-		Schedule:        gen.BackupSchedule(st.Schedule),
-		EscrowConfirmed: st.EscrowConfirmed,
-		Directory:       nonEmpty(st.Directory),
-		LastSuccessAt:   st.LastSuccessAt,
-		LastFailureAt:   st.LastFailureAt,
-		LastError:       nonEmpty(st.LastError),
-		LastSizeBytes:   st.LastSizeBytes,
-		LastFile:        nonEmpty(st.LastFile),
-		NextAt:          st.NextAt,
+		Schedule:      gen.BackupSchedule(st.Schedule),
+		Directory:     nonEmpty(st.Directory),
+		LastSuccessAt: st.LastSuccessAt,
+		LastFailureAt: st.LastFailureAt,
+		LastError:     nonEmpty(st.LastError),
+		LastSizeBytes: st.LastSizeBytes,
+		LastFile:      nonEmpty(st.LastFile),
+		NextAt:        st.NextAt,
 	}
 }

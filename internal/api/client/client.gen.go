@@ -727,9 +727,6 @@ type BackupStatus struct {
 	// Directory Where scheduled backups are written; null while schedule is off.
 	Directory *string `json:"directory"`
 
-	// EscrowConfirmed The backup section's kekEscrowConfirmed; createBackup and the scheduled job both require this before writing an archive.
-	EscrowConfirmed bool `json:"escrowConfirmed"`
-
 	// LastError The last failure's reason; null after a success or before any attempt.
 	LastError *string `json:"lastError"`
 
@@ -12980,7 +12977,6 @@ type CreateBackupResponse struct {
 	HTTPResponse              *http.Response
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
-	ApplicationproblemJSON409 *Conflict
 	ApplicationproblemJSON500 *InternalError
 }
 
@@ -18365,13 +18361,6 @@ func ParseCreateBackupResponse(rsp *http.Response) (*CreateBackupResponse, error
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError

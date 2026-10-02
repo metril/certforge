@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -34,11 +33,10 @@ func setCLIEnv(t *testing.T, url string, kek byte) {
 
 // seedBackupPrereqs migrates url and seeds what runBackup needs before it
 // will run at all: the root secret, the KEK canary (both EnsureRoot and
-// EnsureCanary — the same calls serve and bootstrap-admin make at boot) and,
-// when escrowConfirmed, the backup section's kekEscrowConfirmed. It also
+// EnsureCanary — the same calls serve and bootstrap-admin make at boot). It also
 // records one audit event, so TestCLIBackupRestoreRoundTrip's target chain
 // has more than just restore.completed to verify.
-func seedBackupPrereqs(t *testing.T, ctx context.Context, url string, kek byte, escrowConfirmed bool) []byte { //nolint:revive // ctx-after-t matches internal/backup's own test helpers
+func seedBackupPrereqs(t *testing.T, ctx context.Context, url string, kek byte) []byte { //nolint:revive // ctx-after-t matches internal/backup's own test helpers
 	t.Helper()
 	pool, err := db.Open(ctx, url)
 	if err != nil {
@@ -57,16 +55,6 @@ func seedBackupPrereqs(t *testing.T, ctx context.Context, url string, kek byte, 
 	if err := store.EnsureCanary(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if escrowConfirmed {
-		sections := settings.DefaultRegistry()
-		sec, ok := sections.Section("backup")
-		if !ok {
-			t.Fatal("backup section not registered")
-		}
-		if err := store.PutSection(ctx, sec, json.RawMessage(`{"kekEscrowConfirmed":true}`)); err != nil {
-			t.Fatal(err)
-		}
-	}
 	auditKey := crypto.DeriveKey(root, "certforge-audit")
 	if err := audit.New(pool, auditKey).Record(ctx, audit.Event{
 		Action: "test.seed", ResourceType: "org", ActorType: "system",
@@ -76,25 +64,23 @@ func seedBackupPrereqs(t *testing.T, ctx context.Context, url string, kek byte, 
 	return root
 }
 
-// TestBackupRefusesWithoutEscrow covers the escrow gate: a database whose
-// backup section was never saved (kekEscrowConfirmed defaults to false)
-// refuses to write an archive, and --out - must have written nothing to
-// stdout before failing.
-func TestBackupRefusesWithoutEscrow(t *testing.T) {
+// TestBackupRunsWithoutConfirmation: a database whose backup section was
+// never saved still backs up, and the retired --kek-escrowed flag is
+// accepted and ignored.
+func TestBackupRunsWithoutConfirmation(t *testing.T) {
 	ctx := context.Background()
 	url := dbtest.URL(t)
 	setCLIEnv(t, url, 1)
-	seedBackupPrereqs(t, ctx, url, 1, false)
+	seedBackupPrereqs(t, ctx, url, 1)
 
-	var out, errOut bytes.Buffer
-	if code := run(ctx, []string{"backup", "--out", "-"}, &out, &errOut); code != 1 {
-		t.Fatalf("code = %d, stderr = %q", code, errOut.String())
-	}
-	if !strings.Contains(errOut.String(), "KEK escrow not confirmed") {
-		t.Fatalf("errOut = %q", errOut.String())
-	}
-	if out.Len() != 0 {
-		t.Fatalf("stdout = %d bytes, want 0 (nothing written before the escrow refusal)", out.Len())
+	for _, args := range [][]string{{"backup", "--out", "-"}, {"backup", "--out", "-", "--kek-escrowed"}} {
+		var out, errOut bytes.Buffer
+		if code := run(ctx, args, &out, &errOut); code != 0 {
+			t.Fatalf("%v: code = %d, stderr = %q", args, code, errOut.String())
+		}
+		if out.Len() == 0 {
+			t.Fatalf("%v: stdout empty, want an archive", args)
+		}
 	}
 }
 
@@ -108,7 +94,7 @@ func TestCLIBackupRestoreRoundTrip(t *testing.T) {
 
 	srcURL := dbtest.URL(t)
 	setCLIEnv(t, srcURL, 7)
-	srcRoot := seedBackupPrereqs(t, ctx, srcURL, 7, true)
+	srcRoot := seedBackupPrereqs(t, ctx, srcURL, 7)
 
 	var archive, backupErr bytes.Buffer
 	if code := run(ctx, []string{"backup", "--out", "-"}, &archive, &backupErr); code != 0 {

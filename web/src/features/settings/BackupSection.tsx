@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
-import { backupStatusQuery, runBackup } from '@/api/queries/backup';
+import { runBackup } from '@/api/queries/backup';
 import { HelpTip, HelpTipBody } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
@@ -14,45 +14,25 @@ import { can } from '@/lib/permissions';
 import { BackupStatusCard } from './BackupStatusCard';
 import { SchemaSection } from './SchemaSection';
 
-/** "Back up now" is disabled two independent ways (same precedent as
- * EncryptionKeyCard's RewrapButton): no `settings:write` (PermissionTip's
- * own tooltip), or escrow not yet confirmed (`backup.needsEscrow`, which
- * carries its own "Learn more" link — a plain PermissionTip `reason` string
- * can't). Both never need to combine in one render, so whichever applies
- * wins outright. */
-function BackUpNowButton({
-  canWrite,
-  escrowConfirmed,
-  running,
-  onClick,
-}: {
-  canWrite: boolean;
-  escrowConfirmed: boolean;
-  running: boolean;
-  onClick: () => void;
-}) {
+/** "Back up now": disabled without `settings:write` (PermissionTip's own
+ * tooltip) or while a backup runs; otherwise its tooltip is the key reminder. */
+function BackUpNowButton({ canWrite, running, onClick }: { canWrite: boolean; running: boolean; onClick: () => void }) {
   const btn = (
-    <Button type="button" disabled={!canWrite || !escrowConfirmed || running} onClick={onClick}>
+    <Button type="button" disabled={!canWrite || running} onClick={onClick}>
       <Download className="size-3.5" aria-hidden />
       {running ? 'Backing up…' : 'Back up now'}
     </Button>
   );
   if (!canWrite) return <PermissionTip allowed={false} action="settings:write">{btn}</PermissionTip>;
-  if (!escrowConfirmed) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span tabIndex={0} className="inline-flex">
-            {btn}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-64 text-xs leading-snug">
-          <HelpTipBody entry={help['backup.needsEscrow']} />
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-  return btn;
+  if (running) return btn;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{btn}</TooltipTrigger>
+      <TooltipContent side="top" className="max-w-64 text-xs leading-snug">
+        <HelpTipBody entry={help['backup.keyReminder']} />
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 // Batch 3 review fix: the plain `off`/`daily`/`weekly` enum has no title per
@@ -94,12 +74,11 @@ function mapBackupSaveError(message: string, _value: Record<string, unknown>, sc
 }
 
 /** Settings → Backups' own backup section (task-7-brief), mounted
- * after `EncryptionKeyCard` by SettingsPage. */
+ * before `EncryptionKeyCard` by SettingsPage. */
 export function BackupSection() {
   const me = useMe();
   const qc = useQueryClient();
   const canWrite = can(me, 'settings:write');
-  const status = useQuery(backupStatusQuery);
   const [running, setRunning] = useState(false);
 
   async function handleBackup() {
@@ -120,7 +99,6 @@ export function BackupSection() {
         <div className="flex items-center gap-2">
           <BackUpNowButton
             canWrite={canWrite}
-            escrowConfirmed={status.data?.escrowConfirmed ?? false}
             running={running}
             onClick={() => void handleBackup()}
           />

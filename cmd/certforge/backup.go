@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/backup"
@@ -19,15 +17,13 @@ import (
 )
 
 // runBackup writes one encrypted backup archive (internal/backup.Write) to
-// --out, refusing unless the backup section's kekEscrowConfirmed is set or
-// --kek-escrowed overrides it on the command line (contract details,
-// task-11-brief). It never takes the serve/restore advisory lock: a backup
+// --out. --kek-escrowed is still accepted but does nothing. It never takes the serve/restore advisory lock: a backup
 // reads a REPEATABLE READ snapshot and writes nothing, so it may run
 // alongside a live server.
 func runBackup(ctx context.Context, args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("backup", flag.ContinueOnError)
 	out := flags.String("out", "", "output archive path, or - for stdout")
-	kekEscrowed := flags.Bool("kek-escrowed", false, "confirm the KEK is escrowed outside this server (overrides the backup.kekEscrowConfirmed setting)")
+	flags.Bool("kek-escrowed", false, "Deprecated: no longer needed.")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -40,18 +36,6 @@ func runBackup(ctx context.Context, args []string, stdout io.Writer) error {
 		return err
 	}
 	defer pool.Close()
-
-	// The escrow gate is checked before buildKEK: it needs no envelope (the
-	// backup section carries no secrets, just a plain settings value), and
-	// checking it first means a Vault-Transit KEK's network round trip is
-	// never spent on a run that was always going to be refused.
-	escrowed, err := backupEscrowConfirmed(ctx, sqlcgen.New(pool))
-	if err != nil {
-		return fmt.Errorf("backup settings: %w", err)
-	}
-	if !escrowed && !*kekEscrowed {
-		return errors.New("KEK escrow not confirmed: set the backup section's kekEscrowConfirmed or pass --kek-escrowed")
-	}
 
 	active, previousKEKs, _, _, closeKEK, err := buildKEK(ctx, cfg, log)
 	if err != nil {
@@ -115,26 +99,4 @@ func writeBackupFile(ctx context.Context, pool *pgxpool.Pool, path string, opts 
 		return backup.Summary{}, fmt.Errorf("rename %s to %s: %w", tmp, path, err)
 	}
 	return summary, nil
-}
-
-// backupEscrowConfirmed reads the backup section's kekEscrowConfirmed field
-// directly off the settings table (no *settings.Store/Registry needed: the
-// backup section carries no secrets, so there is nothing here for an
-// envelope to decrypt): a section never saved reports false, the schema's
-// own default.
-func backupEscrowConfirmed(ctx context.Context, q *sqlcgen.Queries) (bool, error) {
-	row, err := q.GetSetting(ctx, settings.SectionKey("backup"))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	var v struct {
-		KEKEscrowConfirmed bool `json:"kekEscrowConfirmed"`
-	}
-	if err := json.Unmarshal(row.Value, &v); err != nil {
-		return false, fmt.Errorf("decode backup section: %w", err)
-	}
-	return v.KEKEscrowConfirmed, nil
 }

@@ -20,11 +20,10 @@ async function typeInto(locator: Locator, text: string): Promise<void> {
   await locator.pressSequentially(text);
 }
 
-// lib/help.ts's own 'backup.needsEscrow' text, copied rather than imported:
+// lib/help.ts's own 'backup.keyReminder' text, copied rather than imported:
 // that module reads `import.meta.env` (a Vite-only global), which doesn't
-// exist under Playwright's own Node-based test runner (same precedent as
-// vault.spec.ts's REWRAP_NO_PREVIOUS).
-const BACKUP_NEEDS_ESCROW = 'Confirm the KEK is stored safely first. Without it no backup can be restored.';
+// exist under Playwright's own Node-based test runner.
+const BACKUP_KEY_REMINDER = "Restoring a backup needs the encryption key from the server's environment. Keep a copy somewhere safe.";
 
 type MailpitList = { messages: { ID: string }[] };
 
@@ -116,17 +115,10 @@ test('backup download', async ({ page }) => {
   await page.goto('/settings/backup');
 
   const backUpNow = page.getByRole('button', { name: 'Back up now' });
-  await expect(backUpNow).toBeDisabled();
-  // force: true — the disabled button is `pointer-events: none` (Tailwind's
-  // disabled: variant); the real hover target is its own wrapping tooltip
-  // trigger span (same as vault.spec.ts's "keys card" Rewrap now button).
-  await backUpNow.hover({ force: true });
-  await expect(page.getByRole('tooltip')).toContainText(BACKUP_NEEDS_ESCROW);
-
-  await page.getByRole('switch', { name: 'KEK escrow confirmed' }).click();
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('Settings saved')).toBeVisible();
   await expect(backUpNow).toBeEnabled();
+  await expect(page.getByRole('status', { name: 'Encryption key reminder' })).toContainText(BACKUP_KEY_REMINDER);
+  await backUpNow.hover();
+  await expect(page.getByRole('tooltip')).toContainText(BACKUP_KEY_REMINDER);
 
   const pending = page.waitForEvent('download');
   await backUpNow.click();

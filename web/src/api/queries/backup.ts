@@ -11,8 +11,7 @@ export const backupStatusQuery = queryOptions({
 
 /** Streams a fresh backup archive straight to a browser download; a blob
  * response is never cached (global constraints, "Secrets" — the archive is
- * key material). 409 ("confirm KEK escrow first") surfaces as an ApiError
- * with the server's own detail. */
+ * key material). A failure surfaces as an ApiError with the server's own detail. */
 export async function downloadBackup(): Promise<void> {
   const { data, error, response } = await api.POST('/backup', { parseAs: 'blob' });
   if (error !== undefined || !response.ok || !data) throw ApiError.from(response.status, error);
@@ -23,10 +22,8 @@ export async function downloadBackup(): Promise<void> {
  * `BackupSection`'s own "Back up now" button and `CommandPalette`'s
  * "Settings: Back up now" entry. Toasts either way and refreshes
  * `['backup-status']` (a completed on-demand backup moves
- * `lastSuccessAt`/`lastSizeBytes`/`lastFile`; a 409 changes nothing
- * server-side, but the brief still calls for a refetch). Rethrows so a
- * caller that needs to react further — the palette navigates to Settings →
- * Backups on a 409 — can do so without re-toasting.
+ * `lastSuccessAt`/`lastSizeBytes`). Rethrows so a caller that needs to react
+ * further can do so without re-toasting.
  *
  * Final review: lives here, in a plain query module, rather than in
  * `features/settings/BackupSection.tsx` where task 7 first wrote it —

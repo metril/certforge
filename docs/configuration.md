@@ -58,7 +58,7 @@ Exactly one of `CF_KEK`, `CF_KEK_FILE` and `CF_KEK_VAULT_ADDR` may be set; a mix
 Live configuration is stored in the `settings` table (`key`, JSON `value`, encrypted `secret`) and edited from the UI without a restart.
 
 - Each Settings page is a **section** with a JSON Schema. `GET /api/v1/settings/{section}` returns `{section, schema, value, stored}` (`stored` is the raw persisted document, before global-default merging, so the UI can tell a value an admin saved from one CertForge ships with). `PUT` takes the value object, validates it against the schema (422 on failure), and stores it under the key `section.<name>`. An unset section returns its default.
-- Phase 1 sections: `general` (`baseUrl`), `backup` (`kekEscrowConfirmed`), and `issuance_defaults` (from the issuance plan).
+- Phase 1 sections: `general` (`baseUrl`), `backup` (`schedule`, `retainCount`, `directory`), and `issuance_defaults` (from the issuance plan).
 - A section property marked "secret": true is write-only. It is stored encrypted in the secret column, never returned; GET lists which ones hold a value in storedSecrets. (The one exception is a DNS credential's secret field, which a global admin can reveal on demand; see [security.md](security.md#dns-credential-secret-reveal).) On PUT, "__unchanged__" or leaving the field out keeps it, "" clears it.
 
 ## Settings
@@ -142,11 +142,10 @@ certforge-agent itself (the binary running alongside Traefik or another target) 
 
 ### Backup section
 
-Shows the encryption key's status (from `/readyz`'s `kek` check) and controls scheduled, encrypted backups (section `backup`). The archive format and CLI are documented in `docs/operations.md#backup`/`#restore`; the scheduled job and `checks.backup` readiness check in `docs/operations.md#backup-schedule`/`#health-endpoints`; the download/status API in `docs/operations.md#backup`.
+Controls scheduled, encrypted backups (section `backup`). Backups need no confirmation; a stored `kekEscrowConfirmed` value from an older version is ignored and dropped on the next save. The encryption key's status sits below it in the UI. The archive format and CLI are documented in `docs/operations.md#backup`/`#restore`; the scheduled job and `checks.backup` readiness check in `docs/operations.md#backup-schedule`/`#health-endpoints`; the download/status API in `docs/operations.md#backup`.
 
 | Field | Default | Meaning |
 |---|---|---|
-| KEK escrow confirmed (`kekEscrowConfirmed`) | off | The KEK is stored safely outside this server. Must be on before any backup (scheduled or manual) runs. |
 | Schedule (`schedule`) | off | `off`, `daily` or `weekly`. |
 | Retain count (`retainCount`) | 7 | Number of scheduled backup files kept before the oldest is pruned (1–90). |
 | Directory (`directory`) | — | Absolute path on the server where scheduled backups are written. Required once schedule is not off, and must already exist and be writable (a probe file is created and removed on save). |

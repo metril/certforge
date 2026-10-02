@@ -1,10 +1,11 @@
 import { forwardRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CircleCheck, CircleX, LoaderCircle, ShieldAlert, ShieldCheck, type LucideProps } from 'lucide-react';
+import { Check, CircleCheck, CircleX, Info, LoaderCircle, ShieldAlert, ShieldCheck, type LucideProps } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
 import { keysStatusQuery, useStartRewrap } from '@/api/queries/keys';
-import type { RewrapTable } from '@/api/types';
+import type { KeysStatus, RewrapTable } from '@/api/types';
+import { Card } from '@/components/Card';
 import { CopyField } from '@/components/CopyField';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip, HelpTipBody } from '@/components/HelpTip';
@@ -17,6 +18,7 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
+import { cn } from '@/lib/utils';
 
 const KIND_LABEL: Record<'static' | 'vault-transit', string> = {
   static: 'Static',
@@ -42,7 +44,7 @@ const SpinIcon = forwardRef<SVGSVGElement, LucideProps>(function SpinIcon(props,
 
 function CardSkeleton() {
   return (
-    <div aria-hidden className="mb-8 grid gap-3 rounded-md border border-border bg-panel p-4">
+    <div aria-hidden className="mt-8 grid max-w-[720px] gap-3 rounded-md border border-border bg-panel p-4">
       <div className="h-4 w-40 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-2/3 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-1/2 animate-pulse rounded-sm bg-subtle" />
@@ -79,11 +81,82 @@ function RewrapButton({ canWrite, disabled, noPrevious, onClick }: { canWrite: b
   return btn;
 }
 
+/** Older key configured, a re-encryption running or unfinished, or a failing
+ * key check: the only times the full card (and its stepper) is worth showing. */
+function needsAttention(keys: KeysStatus): boolean {
+  return keys.previous.length > 0 || !keys.canaryOk || !!keys.rewrap?.running || (keys.rewrap?.remaining ?? 0) > 0;
+}
+
+/** Which of the three rotation steps is current (0-based). */
+function rotationStep(keys: KeysStatus): number {
+  const older = keys.previous.length > 0;
+  const busy = !!keys.rewrap?.running || (keys.rewrap?.remaining ?? 0) > 0;
+  if (!older) return busy ? 1 : 0;
+  return busy || keys.rewrap === null ? 1 : 2;
+}
+
+/** Read-only three-step progress, styled like components/Stepper (whose
+ * buttons are for navigation and cannot carry a tooltip). */
+function RotationSteps({ keys }: { keys: KeysStatus }) {
+  const current = rotationStep(keys);
+  const remaining = keys.rewrap?.remaining ?? 0;
+  const steps: { label: string; extra?: React.ReactNode }[] = [
+    { label: 'New key set' },
+    { label: remaining > 0 ? `Re-encrypting (${remaining} left)` : 'Re-encrypting' },
+    { label: 'Remove the old key', extra: <HelpTip id="keys.removeOld" /> },
+  ];
+  return (
+    <ol className="flex flex-wrap items-center gap-x-5 gap-y-2" aria-label="Key replacement steps">
+      {steps.map((st, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <li key={st.label} aria-current={active ? 'step' : undefined} className={cn('flex items-center gap-2 text-sm', active ? 'font-semibold text-ink' : 'text-ink-muted')}>
+            <span
+              className={cn(
+                'inline-flex size-6 items-center justify-center rounded-full border text-xs',
+                active && 'border-primary bg-primary text-on-primary',
+                done && 'border-primary text-primary',
+                !active && !done && 'border-border',
+              )}
+            >
+              {done ? <Check className="size-3.5" aria-hidden /> : i + 1}
+            </span>
+            {st.label}
+            {st.extra}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** The everyday state: one quiet row, no controls. */
+function QuietKeyRow() {
+  return (
+    <Card className="mt-8 flex max-w-[720px] items-center gap-3 px-4 py-3">
+      <h3 className="text-sm font-semibold">Encryption key</h3>
+      <ToneChip tone="valid" icon={ShieldCheck} label="Key check OK" />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" aria-label="Help" className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-ink-muted hover:text-ink">
+            <Info className="size-3.5" aria-hidden />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-64 text-xs leading-snug">
+          Set in the server's environment. Needed to restore any backup. To replace it, set the new key as CF_KEK, move the old one to CF_KEK_PREVIOUS, and restart.
+        </TooltipContent>
+      </Tooltip>
+    </Card>
+  );
+}
+
 /** Settings → Backups' Encryption key card, fed by `GET
  * /keys/status` (Review Focus "polling that never stops": the query polls
  * every 5s only while `rewrap.running`, and not at all otherwise —
- * keysStatusQuery's own `refetchInterval`). Replaces `KekStatus` (which
- * read `/readyz`'s `checks.kek`; 5B plan Deviations R7). */
+ * keysStatusQuery's own `refetchInterval`). Shows the quiet row unless an
+ * older key is configured, a re-encryption is running or unfinished, or the
+ * key check fails. */
 export function EncryptionKeyCard() {
   const me = useMe();
   const canWrite = can(me, 'settings:write');
@@ -96,6 +169,7 @@ export function EncryptionKeyCard() {
   }
 
   const keys = q.data;
+  if (!needsAttention(keys)) return <QuietKeyRow />;
   const rewrap = keys.rewrap;
   const noPrevious = keys.previous.length === 0 && rewrap === null;
 
@@ -113,8 +187,9 @@ export function EncryptionKeyCard() {
   }
 
   return (
-    <section aria-label="Encryption key" className="mb-8 grid gap-4 rounded-md border border-border bg-panel p-4">
+    <Card role="region" aria-label="Encryption key" className="mt-8 grid max-w-[720px] gap-4 p-4">
       <h3 className="text-base font-semibold">Encryption key</h3>
+      <RotationSteps keys={keys} />
       <dl className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
         <div className="grid gap-1">
           <dt className="flex items-center gap-1 text-ink-muted">
@@ -211,6 +286,6 @@ export function EncryptionKeyCard() {
         />
         <HelpTip id="keys.rewrap" />
       </div>
-    </section>
+    </Card>
   );
 }

@@ -123,6 +123,7 @@ export const help = {
     text: 'Nothing to re-encrypt: no older key is set.',
     learnMore: 'operations.md#re-encryption',
   },
+  'keys.removeOld': { text: 'Delete CF_KEK_PREVIOUS from the environment and restart.', learnMore: 'operations.md#encryption-key-rotation' },
   'defaults.caId': { text: 'CA used when a certificate does not pick one.' },
   'defaults.accountId': { text: 'ACME account used to order from that CA.' },
   // Task 4: the account field is disabled for a private effective CA.
@@ -468,8 +469,8 @@ export const help = {
     text: 'Downloads an encrypted copy of the database. Restoring it needs the same encryption key.',
     learnMore: 'operations.md#backup',
   },
-  'backup.needsEscrow': {
-    text: 'Confirm the KEK is stored safely first. Without it no backup can be restored.',
+  'backup.keyReminder': {
+    text: "Restoring a backup needs the encryption key from the server's environment. Keep a copy somewhere safe.",
     learnMore: 'operations.md#backup',
   },
   'backup.restore': {

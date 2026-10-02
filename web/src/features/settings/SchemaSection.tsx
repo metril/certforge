@@ -15,7 +15,7 @@ import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 
 /** Renders a settings section straight from its server schema: General
- * (baseUrl), Backup's kekEscrowConfirmed switch (preflight A7), and
+ * (baseUrl), Backup's schedule form, and
  * Authentication's OIDC form. Secret properties arrive as `storedSecrets`
  * and are sent back as "__unchanged__" unless replaced. `actions` renders
  * extra buttons (Authentication's "Test connection") next to Save, given

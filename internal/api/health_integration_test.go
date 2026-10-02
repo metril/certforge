@@ -255,7 +255,7 @@ func TestReadyzBackupCheck(t *testing.T) {
 		t.Fatalf("backup check present while schedule is off: %+v", b.Checks)
 	}
 
-	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: t.TempDir()})
+	setBackupSettings(t, e, backup.Settings{Schedule: "daily", RetainCount: 7, Directory: t.TempDir()})
 	code, b = readyz(t, e.srv.URL)
 	if code != http.StatusOK || b.Checks["backup"] != "degraded" {
 		t.Fatalf("expected 200 degraded (no successful backup yet): %d %+v", code, b)

@@ -22,10 +22,9 @@ const SectionName = "backup"
 
 // Settings is the "backup" section (Shared contract Settings row).
 type Settings struct {
-	KEKEscrowConfirmed bool   `json:"kekEscrowConfirmed"`
-	Schedule           string `json:"schedule"`
-	RetainCount        int    `json:"retainCount"`
-	Directory          string `json:"directory"`
+	Schedule    string `json:"schedule"`
+	RetainCount int    `json:"retainCount"`
+	Directory   string `json:"directory"`
 }
 
 // Service streams on-demand backups (createBackup) and runs the scheduled
@@ -100,16 +99,6 @@ func (s *Service) Stream(ctx context.Context, w io.Writer) (Summary, error) {
 	})
 }
 
-// EscrowConfirmed reports the live "backup" section's kekEscrowConfirmed
-// (createBackup's own 409 gate).
-func (s *Service) EscrowConfirmed(ctx context.Context) (bool, error) {
-	set, err := s.settings(ctx)
-	if err != nil {
-		return false, err
-	}
-	return set.KEKEscrowConfirmed, nil
-}
-
 // RecordOnDemandSuccess updates the shared status row after a successful
 // createBackup stream: LastSuccessAt/LastSizeBytes move, but LastFile and
 // LastScheduledAt are left untouched (Shared contract: "null for an
@@ -132,13 +121,13 @@ func (s *Service) RecordOnDemandSuccess(ctx context.Context, sizeBytes int64) er
 
 // settings reads the live "backup" section: its stored value, or the
 // section's own default when it was never saved (same convention as
-// notify.Current) — never cached, since an operator can flip schedule or
-// escrow at any time and the very next request or job run must see it.
+// notify.Current) — never cached, since an operator can change the schedule
+// at any time and the very next request or job run must see it.
 func (s *Service) settings(ctx context.Context) (Settings, error) {
 	var raw json.RawMessage
 	err := s.Settings.Get(ctx, settings.SectionKey(SectionName), &raw)
 	if errors.Is(err, settings.ErrNotFound) {
-		raw = json.RawMessage(`{"kekEscrowConfirmed":false,"schedule":"off","retainCount":7}`)
+		raw = json.RawMessage(`{"schedule":"off","retainCount":7}`)
 	} else if err != nil {
 		return Settings{}, err
 	}

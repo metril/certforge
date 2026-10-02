@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { FileText, FolderInput, Plus, RotateCw, Server, ShieldCheck, Upload } from 'lucide-react';
-import { ApiError } from '@/api/errors';
 import { runBackup } from '@/api/queries/backup';
 import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
@@ -150,20 +149,14 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     },
     { label: 'Settings: Backups', keywords: ['backup', 'restore', 'encryption key', 'kek'], go: () => void navigate({ to: '/settings/$section', params: { section: 'backup' } }) },
     // Task 7 (Phase 6B): runs the same `runBackup` helper as the section's
-    // own "Back up now" button; a 409 (escrow not confirmed) is already
-    // toasted by runBackup, and additionally sends the caller to the
-    // section so they can confirm escrow.
+    // own "Back up now" button; a failure is already toasted by runBackup.
     ...(canSettingsWrite
       ? [
           {
             label: 'Settings: Back up now',
             keywords: ['backup', 'download', 'archive'],
             go: () => {
-              void runBackup(qc).catch((e: unknown) => {
-                if (e instanceof ApiError && e.status === 409) {
-                  void navigate({ to: '/settings/$section', params: { section: 'backup' } });
-                }
-              });
+              void runBackup(qc).catch(() => undefined);
             },
           },
         ]

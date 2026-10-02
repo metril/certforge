@@ -2731,8 +2731,7 @@ paths:
       summary: Create and download a backup
       description: >-
         Needs settings:write. Streams an encrypted archive of the whole database, table by table,
-        as it is written. 409 "confirm KEK escrow first" unless the backup section's
-        kekEscrowConfirmed is true. Recorded as backup.created {sizeBytes} once streaming
+        as it is written. Recorded as backup.created {sizeBytes} once streaming
         completes, or backup.failed {error} (system actor) if it fails partway through. Restoring
         is CLI-only: no restore over HTTP; see operations.md#restore.
       responses:
@@ -2747,14 +2746,13 @@ paths:
               schema: {type: string, format: binary, description: Encrypted backup archive (internal/backup.Format).}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
-        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
   /backup/status:
     get:
       operationId: getBackupStatus
       tags: [backup]
       summary: Backup schedule and history
-      description: Needs settings:read. The configured schedule, escrow confirmation, and the most recent scheduled or on-demand outcome.
+      description: Needs settings:read. The configured schedule and the most recent scheduled or on-demand outcome.
       responses:
         "200":
           description: Backup status.
@@ -4657,10 +4655,9 @@ components:
     BackupStatus:
       type: object
       description: Backup configuration and the most recent outcome (Shared contracts, Other operations row).
-      required: [schedule, escrowConfirmed, directory, lastSuccessAt, lastFailureAt, lastError, lastSizeBytes, lastFile, nextAt]
+      required: [schedule, directory, lastSuccessAt, lastFailureAt, lastError, lastSizeBytes, lastFile, nextAt]
       properties:
         schedule: {$ref: "#/components/schemas/BackupSchedule"}
-        escrowConfirmed: {type: boolean, description: The backup section's kekEscrowConfirmed; createBackup and the scheduled job both require this before writing an archive.}
         directory: {type: string, nullable: true, description: Where scheduled backups are written; null while schedule is off.}
         lastSuccessAt: {type: string, format: date-time, nullable: true, description: When a backup (scheduled or on demand) last completed; null if none ever has.}
         lastFailureAt: {type: string, format: date-time, nullable: true, description: When a backup last failed; null if none ever has.}

@@ -2,7 +2,6 @@ package backup
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -118,10 +117,6 @@ func (s *Service) RunScheduled(ctx context.Context) error {
 // would otherwise be blindly reverted to whatever this run's own stale
 // pre-Stream snapshot held for it.
 func (s *Service) runOnce(ctx context.Context, set Settings, now time.Time) error {
-	if !set.KEKEscrowConfirmed {
-		return s.recordFailure(ctx, now, errors.New("KEK escrow not confirmed"))
-	}
-
 	name := fmt.Sprintf("certforge-%s.cfbak", now.UTC().Format("20060102T150405Z"))
 	dest := filepath.Join(set.Directory, name)
 	tmp := dest + ".tmp"
