@@ -71,6 +71,9 @@ func TestGetFlow(t *testing.T) {
 	if n := flowLaneIDs(fl.Lanes.Alerts)["channel:"+ch.ID.String()]; n.CoversCertificates == nil || !*n.CoversCertificates {
 		t.Fatalf("channel node = %+v, want coversCertificates", n)
 	}
+	if n := flowLaneIDs(fl.Lanes.Alerts)["channel:"+ch.ID.String()]; n.Status != gen.FlowStatus("idle") || n.StatusDetail == nil || *n.StatusDetail != "No deliveries yet" {
+		t.Fatalf("never-delivered channel node = %+v, want idle / No deliveries yet", n)
+	}
 }
 
 // A key with only certs:read sees certificates (and issuers, which that scope

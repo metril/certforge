@@ -110,6 +110,10 @@ type Item struct {
 	ID     uuid.UUID
 	Name   string
 	Detail string
+	// NotAfter is a private CA's own certificate expiry; nil otherwise.
+	NotAfter *time.Time
+	// Health is an ACME account's registration status ("" when not applicable).
+	Health string
 }
 
 // Cert is a certificate with what its edges need already resolved.
@@ -153,6 +157,7 @@ type Channel struct {
 	MinSeverity string
 	LastStatus  string // delivered, failed, pending; "" when none yet
 	LastError   string
+	LastAt      *time.Time // when the last delivery was made or last changed
 }
 
 // Input is everything Assemble needs.
@@ -238,6 +243,17 @@ func GrantStatus(state string) Status {
 	return StatusPending
 }
 
+// usage is the status of an issuer entity that has no health of its own.
+func usage(n int) (Status, string) {
+	switch n {
+	case 0:
+		return StatusIdle, "Not used by any certificate"
+	case 1:
+		return StatusValid, "Used by 1 certificate"
+	}
+	return StatusValid, fmt.Sprintf("Used by %d certificates", n)
+}
+
 func nid(kind string, id uuid.UUID) string { return kind + ":" + id.String() }
 
 type builder struct {
@@ -270,6 +286,20 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 		nodes: map[string]*Node{}, edges: map[[3]string]*Edge{}}
 	g := Graph{GeneratedAt: now}
 
+	// Issuer usage: how many certificates resolve to each issuer entity.
+	used := map[string]int{}
+	for _, c := range in.Certs {
+		if c.CAID != nil {
+			used[nid(KindCA, *c.CAID)]++
+		}
+		if c.AccountID != nil {
+			used[nid(KindAccount, *c.AccountID)]++
+		}
+		for _, d := range c.DNSCredIDs {
+			used[nid(KindDNSCredential, d)]++
+		}
+	}
+
 	// Side lanes first so certificates get what is left of the cap.
 	var issuers, delivery, clients, alerts []Node
 	if perms.CAs {
@@ -278,17 +308,30 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 			if c.Detail == "localca" || c.Detail == "vaultpki" {
 				q = "?view="
 			}
-			issuers = append(issuers, Node{ID: nid(KindCA, c.ID), Kind: KindCA, Name: c.Name, Status: StatusIdle, Href: b.href("/issuers/cas", q, c.ID.String())})
+			st, d := usage(used[nid(KindCA, c.ID)])
+			if c.NotAfter != nil {
+				if left := c.NotAfter.Sub(now); left <= 0 {
+					st, d = StatusExpired, "CA certificate expired"
+				} else if left < ExpiringDays*24*time.Hour {
+					st, d = StatusExpiring, fmt.Sprintf("CA certificate expires in %d days", int(left.Hours()/24))
+				}
+			}
+			issuers = append(issuers, Node{ID: nid(KindCA, c.ID), Kind: KindCA, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/issuers/cas", q, c.ID.String())})
 		}
 	}
 	if perms.Accounts {
 		for _, a := range in.Accounts {
-			issuers = append(issuers, Node{ID: nid(KindAccount, a.ID), Kind: KindAccount, Name: a.Name, Status: StatusIdle, Href: b.href("/issuers/accounts")})
+			st, d := usage(used[nid(KindAccount, a.ID)])
+			if a.Health != "" && a.Health != "valid" {
+				st, d = StatusFailed, "Registration status: "+a.Health
+			}
+			issuers = append(issuers, Node{ID: nid(KindAccount, a.ID), Kind: KindAccount, Name: a.Name, Status: st, StatusDetail: d, Href: b.href("/issuers/accounts")})
 		}
 	}
 	if perms.DNSCreds {
 		for _, d := range in.DNSCreds {
-			issuers = append(issuers, Node{ID: nid(KindDNSCredential, d.ID), Kind: KindDNSCredential, Name: d.Name, Status: StatusIdle, Href: b.href("/issuers/dns")})
+			st, det := usage(used[nid(KindDNSCredential, d.ID)])
+			issuers = append(issuers, Node{ID: nid(KindDNSCredential, d.ID), Kind: KindDNSCredential, Name: d.Name, Status: st, StatusDetail: det, Href: b.href("/issuers/dns")})
 		}
 	}
 	if perms.Delivery {
@@ -319,13 +362,19 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 			st, d := StatusIdle, ""
 			switch {
 			case !c.Enabled:
-				d = "disabled"
+				d = "Disabled"
 			case c.LastStatus == "delivered":
-				st = StatusValid
+				st, d = StatusValid, "Last delivered"
+				if c.LastAt != nil {
+					d += " " + c.LastAt.UTC().Format("2006-01-02 15:04 UTC")
+				}
 			case c.LastStatus == "failed":
-				st, d = StatusFailed, c.LastError
-			case c.LastStatus == "pending":
-				st = StatusPending
+				st, d = StatusFailed, "Last delivery failed"
+				if c.LastError != "" {
+					d += ": " + c.LastError
+				}
+			default:
+				d = "No deliveries yet"
 			}
 			alerts = append(alerts, Node{ID: nid(KindChannel, c.ID), Kind: KindChannel, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/alerts/channels?edit=", c.ID.String()), CoversCertificates: ChannelCoversCerts(c)})
 		}

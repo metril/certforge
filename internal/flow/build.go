@@ -41,7 +41,7 @@ func (b *Builder) Build(ctx context.Context, orgID uuid.UUID, perms Perms) (Grap
 		return Graph{}, err
 	}
 	for _, c := range cas {
-		in.CAs = append(in.CAs, Item{ID: c.ID, Name: c.Name, Detail: c.Type})
+		in.CAs = append(in.CAs, Item{ID: c.ID, Name: c.Name, Detail: c.Type, NotAfter: caExpiry(c.Type, c.NotAfter)})
 	}
 	if err := b.loadCerts(ctx, orgID, &in); err != nil {
 		return Graph{}, err
@@ -52,7 +52,7 @@ func (b *Builder) Build(ctx context.Context, orgID uuid.UUID, perms Perms) (Grap
 			return Graph{}, err
 		}
 		for _, a := range rows {
-			in.Accounts = append(in.Accounts, Item{ID: a.ID, Name: a.Email})
+			in.Accounts = append(in.Accounts, Item{ID: a.ID, Name: a.Email, Health: a.Status})
 		}
 	}
 	if perms.DNSCreds {
@@ -229,6 +229,11 @@ func (b *Builder) loadChannels(ctx context.Context, orgID uuid.UUID, in *Input) 
 		c := Channel{ID: r.ID, Name: r.Name, Enabled: r.Enabled, Events: r.Events, MinSeverity: r.MinSeverity}
 		if d, ok := last[r.ID]; ok {
 			c.LastStatus = d.Status
+			t := d.UpdatedAt
+			if d.DeliveredAt != nil {
+				t = *d.DeliveredAt
+			}
+			c.LastAt = &t
 			if d.LastError != "" {
 				c.LastError = d.LastError
 			}
@@ -236,4 +241,12 @@ func (b *Builder) loadChannels(ctx context.Context, orgID uuid.UUID, in *Input) 
 		in.Channels = append(in.Channels, c)
 	}
 	return nil
+}
+
+// caExpiry is the expiry of a private CA's own certificate (ACME CAs have none).
+func caExpiry(caType string, notAfter *time.Time) *time.Time {
+	if caType == "acme" {
+		return nil
+	}
+	return notAfter
 }

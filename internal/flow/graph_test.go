@@ -124,13 +124,13 @@ func TestAssembleEdgesAndStatus(t *testing.T) {
 	if n := byID["layout:"+layout.String()]; n.Status != StatusDrift {
 		t.Errorf("layout node = %+v", n)
 	}
-	if n := byID["channel:"+ch.String()]; n.Status != StatusFailed || n.StatusDetail != "500" {
+	if n := byID["channel:"+ch.String()]; n.Status != StatusFailed || n.StatusDetail != "Last delivery failed: 500" {
 		t.Errorf("channel node = %+v", n)
 	}
 	if !byID["channel:"+ch.String()].CoversCertificates || byID["channel:"+offCh.String()].CoversCertificates {
 		t.Error("coversCertificates wrong")
 	}
-	if n := byID["channel:"+offCh.String()]; n.Status != StatusIdle || n.StatusDetail != "disabled" {
+	if n := byID["channel:"+offCh.String()]; n.Status != StatusIdle || n.StatusDetail != "Disabled" {
 		t.Errorf("disabled channel node = %+v", n)
 	}
 	if n := byID[cn]; n.Href != "/o/acme/certificates/"+cert.String() {
@@ -262,4 +262,45 @@ func TestAssembleSharedLayoutAndHiddenDelivery(t *testing.T) {
 	if _, ok := hasEdge(g, "certificate:"+certA.String(), "client:"+cA.String()); !ok {
 		t.Errorf("no direct cert->client edge with delivery hidden: %+v", g.Edges)
 	}
+}
+
+func TestIssuerAndChannelStatuses(t *testing.T) {
+	caUsed, caIdle, caSoon, caGone, acctOK, acctBad, dnsUsed, dnsIdle := id(), id(), id(), id(), id(), id(), id(), id()
+	chNew, chOK := id(), id()
+	soon, gone, later := now.Add(3*24*time.Hour), now.Add(-time.Hour), now.Add(90*24*time.Hour)
+	in := Input{
+		OrgSlug: "acme",
+		CAs: []Item{{ID: caUsed, Name: "u", Detail: "localca", NotAfter: &later}, {ID: caIdle, Name: "i", Detail: "acme"},
+			{ID: caSoon, Name: "s", Detail: "localca", NotAfter: &soon}, {ID: caGone, Name: "g", Detail: "localca", NotAfter: &gone}},
+		Accounts: []Item{{ID: acctOK, Name: "ok", Health: "valid"}, {ID: acctBad, Name: "bad", Health: "deactivated"}},
+		DNSCreds: []Item{{ID: dnsUsed, Name: "du"}, {ID: dnsIdle, Name: "di"}},
+		Certs: []Cert{
+			{ID: id(), Name: "a", Status: "active", CAID: &caUsed, AccountID: &acctOK, DNSCredIDs: []uuid.UUID{dnsUsed}},
+			{ID: id(), Name: "b", Status: "active", CAID: &caUsed},
+		},
+		Channels: []Channel{{ID: chNew, Name: "n", Enabled: true}, {ID: chOK, Name: "o", Enabled: true, LastStatus: "delivered", LastAt: &gone}},
+	}
+	g := Assemble(in, allPerms(), now)
+	byID := map[string]Node{}
+	for _, l := range []Lane{g.Issuers, g.Alerts} {
+		for _, n := range l.Nodes {
+			byID[n.ID] = n
+		}
+	}
+	chk := func(key string, st Status, d string) {
+		t.Helper()
+		if n := byID[key]; n.Status != st || n.StatusDetail != d {
+			t.Errorf("%s = %s %q, want %s %q", key, n.Status, n.StatusDetail, st, d)
+		}
+	}
+	chk("ca:"+caUsed.String(), StatusValid, "Used by 2 certificates")
+	chk("ca:"+caIdle.String(), StatusIdle, "Not used by any certificate")
+	chk("ca:"+caSoon.String(), StatusExpiring, "CA certificate expires in 3 days")
+	chk("ca:"+caGone.String(), StatusExpired, "CA certificate expired")
+	chk("account:"+acctOK.String(), StatusValid, "Used by 1 certificate")
+	chk("account:"+acctBad.String(), StatusFailed, "Registration status: deactivated")
+	chk("dnsCredential:"+dnsUsed.String(), StatusValid, "Used by 1 certificate")
+	chk("dnsCredential:"+dnsIdle.String(), StatusIdle, "Not used by any certificate")
+	chk("channel:"+chNew.String(), StatusIdle, "No deliveries yet")
+	chk("channel:"+chOK.String(), StatusValid, "Last delivered "+gone.UTC().Format("2006-01-02 15:04 UTC"))
 }

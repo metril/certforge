@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { Tone } from '@/lib/status';
 import { cn } from '@/lib/utils';
 import type { FlowNodeData, FlowStatus } from './flowGraph';
+import { flowStatusLabel } from './flowLabels';
 
 export const FLOW_STATUS: Record<FlowStatus, { tone: Tone; icon: LucideIcon; label: string }> = {
   valid: { tone: 'valid', icon: CircleCheck, label: 'Healthy' },
@@ -46,9 +47,9 @@ export const KIND_META: Record<FlowNodeData['kind'], { icon: LucideIcon; label: 
   channel: { icon: Bell, label: 'Channel' },
 };
 
-export function FlowChip({ status, className }: { status: FlowStatus; className?: string }) {
-  const m = FLOW_STATUS[status];
-  return <ToneChip tone={m.tone} icon={m.icon} label={m.label} className={className} />;
+export function FlowChip({ node, className }: { node: Pick<FlowNodeData, 'kind' | 'status' | 'statusDetail'>; className?: string }) {
+  const m = FLOW_STATUS[node.status];
+  return <ToneChip tone={m.tone} icon={m.icon} label={flowStatusLabel(node.kind, node.status, node.statusDetail)} className={className} />;
 }
 
 type Props = {
@@ -81,7 +82,7 @@ export function FlowNode({ node, selected, dimmed, onSelect, register }: Props) 
           data-node-id={node.id}
           ref={(el) => register(node.id, el)}
           aria-pressed={selected}
-          aria-label={`${KIND_META[node.kind].label} ${node.name}, ${FLOW_STATUS[node.status].label}`}
+          aria-label={`${KIND_META[node.kind].label} ${node.name}, ${flowStatusLabel(node.kind, node.status, node.statusDetail)}`}
           onClick={() => onSelect(node.id)}
           onKeyDown={move}
           className={cn(
@@ -94,7 +95,7 @@ export function FlowNode({ node, selected, dimmed, onSelect, register }: Props) 
             <Icon className="size-4 shrink-0 text-ink-muted" aria-hidden />
             <span className="truncate font-semibold">{node.name}</span>
           </span>
-          <FlowChip status={node.status} className="w-fit max-w-full" />
+          <FlowChip node={node} className="w-fit max-w-full" />
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">
