@@ -53,7 +53,7 @@ export function PageHeader({ title, help, actions, tabs, tabsLabel = 'Sections',
         {filters}
         {filtersTrailing}
         {filterChips}
-        {activeFilters > 0 && onClearFilters && (
+        {activeFilters > 0 && onClearFilters && !filterChips && (
           <Button variant="ghost" size="sm" onClick={onClearFilters}>
             Clear filters
           </Button>

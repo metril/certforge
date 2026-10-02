@@ -215,7 +215,7 @@ test('issuers, delivery and vault settings screens do not scroll sideways at 375
 });
 
 test('ACME accounts table does not scroll sideways with a long registration URI', async ({ page }) => {
-  const registrationUri = `https://acme.example.test/acme/acct/${'a'.repeat(85)}`; // 120 chars
+  const registrationUri = `https://acme.example.test/acme/acct/${'a'.repeat(84)}`; // 120 chars
   expect(registrationUri).toHaveLength(120);
   await page.route('**/api/v1/orgs/*/acme-accounts', (route) =>
     route.request().method() === 'GET'

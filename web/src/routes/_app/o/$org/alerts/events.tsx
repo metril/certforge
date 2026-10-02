@@ -8,7 +8,7 @@ const eventKind = z.enum([
   'monitor.mismatch', 'monitor.unreachable', 'monitor.expiring', 'monitor.recovered',
   'backup.completed', 'backup.failed', 'test',
 ]);
-const severity = z.enum(['info', 'warning', 'critical']);
+const severity = z.enum(['warning', 'critical']);
 
 export const Route = createFileRoute('/_app/o/$org/alerts/events')({
   validateSearch: z.object({

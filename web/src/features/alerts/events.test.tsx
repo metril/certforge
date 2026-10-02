@@ -8,7 +8,7 @@ import { renderRoute } from '@/test/render';
 
 // Filters sit on the tab line from md; below it they fold into a popover.
 beforeEach(() => {
-  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 768px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 768px)' || query === '(min-width: 1024px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
 });
 
 /** A `kind` deep link the way TanStack Router's own default search
@@ -240,4 +240,17 @@ it('a deep-linked partial kind gives the filtered empty state and clears', async
   expect(screen.getByRole('combobox', { name: 'Kind' })).toHaveTextContent('Certificate issued');
   await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
+});
+
+it('ignores an unsupported ?severity=info rather than counting it as an active filter', async () => {
+  const seen: { severity: string | null } = { severity: 'unset' };
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/orgs/:orgId/events'), ({ request }) => {
+      seen.severity = new URL(request.url).searchParams.get('severity');
+      return HttpResponse.json({ items: [], nextCursor: null });
+    }),
+  );
+  renderRoute('/o/acme/alerts/events?severity=info');
+  await waitFor(() => expect(seen.severity).toBeNull());
 });

@@ -5,7 +5,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { eventsQuery } from '@/api/queries/events';
 import { errorMessage } from '@/api/errors';
-import type { EventKind, NotifyEvent, Severity } from '@/api/types';
+import type { EventKind, NotifyEvent } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
@@ -42,7 +42,7 @@ function columns(org: string) {
     col.display({
       id: 'time',
       header: 'Time',
-      meta: { className: 'w-24' },
+      meta: { className: 'w-20' },
       cell: ({ row }) => (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -55,17 +55,17 @@ function columns(org: string) {
     col.display({
       id: 'severity',
       header: 'Severity',
-      meta: { className: 'w-28' },
+      meta: { className: 'w-24' },
       cell: ({ row }) => {
         const sev = SEVERITY_META[row.original.severity];
         return <ToneChip tone={sev.tone} icon={sev.icon} label={sev.label} />;
       },
     }),
-    col.display({ id: 'kind', header: 'Kind', meta: { className: 'w-44' }, cell: ({ row }) => <span className="block truncate font-medium">{KIND_LABEL[row.original.kind]}</span> }),
+    col.display({ id: 'kind', header: 'Kind', meta: { className: 'w-32' }, cell: ({ row }) => <span className="block truncate font-medium">{KIND_LABEL[row.original.kind]}</span> }),
     col.display({
       id: 'resource',
       header: 'Resource',
-      meta: { className: 'w-56' },
+      meta: { className: 'w-36' },
       cell: ({ row }) => (
         <div className="flex min-w-0 items-center gap-2">
           <ResourceLink event={row.original} org={org} className="block min-w-0 truncate font-medium hover:underline" />
@@ -88,7 +88,7 @@ function columns(org: string) {
     col.display({
       id: 'deliveries',
       header: 'Deliveries',
-      meta: { className: 'w-52' },
+      meta: { className: 'w-32' },
       cell: ({ row }) =>
         row.original.deliveries.length === 0 ? (
           <span className="text-xs text-ink-muted">No matching channels</span>
@@ -107,7 +107,7 @@ export function EventsPage() {
   const org = useOrg();
   const { kind, severity, range } = useSearch({ from: '/_app/o/$org/alerts/events' });
   const navigate = useNavigate({ from: '/o/$org/alerts/events' });
-  const wide = useMediaQuery('(min-width: 768px)');
+  const wide = useMediaQuery('(min-width: 1024px)');
   // Recomputed only when the window changes, so the query key stays stable
   // between renders (a moving `since` would refetch forever).
   const since = useMemo(() => (range ? new Date(Math.floor((Date.now() - RANGE_DAYS[range] * DAY) / 60_000) * 60_000).toISOString() : undefined), [range]);
@@ -115,7 +115,7 @@ export function EventsPage() {
   const events = list.data?.pages.flatMap((p) => p.items) ?? [];
   const cols = useMemo(() => columns(org.slug), [org.slug]);
 
-  const set = (patch: { kind?: EventKind[]; severity?: Severity; range?: Range }) => void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+  const set = (patch: { kind?: EventKind[]; severity?: 'warning' | 'critical'; range?: Range }) => void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
   const clear = () => void navigate({ search: {} });
 
   const kinds = kind ?? [];

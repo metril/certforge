@@ -107,3 +107,10 @@ it('PageHeader lets the mobile Filters popover clear active filters', async () =
   await user.click(await screen.findByRole('button', { name: 'Clear filters' }));
   expect(onClear).toHaveBeenCalledTimes(1);
 });
+
+it('PageHeader omits the popover Clear filters button when chips already offer Clear all', async () => {
+  const { user } = renderUI(<PageHeader title="X" filters={<input aria-label="Search" />} activeFilters={1} onClearFilters={vi.fn()} filterChips={<span>CHIP</span>} />);
+  await user.click(screen.getByRole('button', { name: /Filters/ }));
+  await screen.findByText('CHIP');
+  expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+});
