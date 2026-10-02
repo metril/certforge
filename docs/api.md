@@ -61,7 +61,7 @@ DNS provider schemas may carry `x-auth-methods` (the alternative credential sets
 | `GET, POST /orgs/{orgId}/acme-accounts` | list, register accounts |
 | `GET, DELETE /orgs/{orgId}/acme-accounts/{id}` | read, delete an account |
 | `GET, PUT /orgs/{orgId}/issuance-defaults` | org defaults (null inherits global) |
-| `GET /orgs/{orgId}/issuance-defaults/effective` | resolved defaults with sources |
+| `GET /orgs/{orgId}/issuance-defaults/effective` | resolved defaults with sources, plus `builtin`: the built-in values (`BuiltinDefaults()`) the web UI shows for "Built-in"; CA, ACME account and propagation seconds have none and are null |
 | `GET, PUT /settings/issuance_defaults` | global defaults (settings section) |
 | `GET, PUT /settings/vault` | global Vault connection settings (settings section) |
 | `POST /settings/vault/test` | test Vault connectivity with the given settings |

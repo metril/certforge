@@ -16,7 +16,7 @@ beforeEach(() => {
     http.get(url('/orgs/org-1/dns-credentials'), () => HttpResponse.json([{ id: 'd-1', name: 'Cloudflare prod', providerCode: 'cloudflare', config: {} }])),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: providers, deployTargets: [], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: 'ca-1', source: 'org' } })),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: 'ca-1', source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
     http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json({ caId: 'ca-1' })),
     http.get(url('/settings/issuance_defaults'), () => HttpResponse.json({ schema: {}, value: {} })),
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca])),
@@ -307,7 +307,7 @@ it('edit mode: changing a rule credential (names unchanged) remembers it and sti
 it('private inherited CA enables next with no coverage', async () => {
   server.use(
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
   );
   const { user } = renderRoute('/o/acme/certificates/new');
   await user.click(await screen.findByLabelText('Names'));
@@ -347,7 +347,7 @@ it('choosing private CA in options updates step label', async () => {
 it('create body for localca: sends empty verificationRules for the private effective CA', async () => {
   server.use(
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
   );
   const { user } = renderRoute('/o/acme/certificates/new');
   await user.click(await screen.findByLabelText('Names'));
@@ -366,7 +366,7 @@ it('create body for localca: sends empty verificationRules for the private effec
 it('edit mode: a stale account override on an already-private inherited CA is cleared before save', async () => {
   server.use(
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
     http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ overrides: { accountId: 'acc-1' } }))),
     http.put(url('/orgs/org-1/certificates/c-1'), async ({ request }) => {
       updated = await request.json();

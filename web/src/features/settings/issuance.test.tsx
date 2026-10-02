@@ -24,7 +24,7 @@ beforeEach(() => {
     http.get(url('/orgs/org-1/dns-credentials'), () => HttpResponse.json([])),
     http.get(url('/settings/issuance_defaults'), () => HttpResponse.json({ schema: {}, value: {}, stored: null })),
     http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json({})),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({})),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ builtin: {} })),
     http.put(url('/settings/issuance'), async ({ request }) => {
       issuancePut = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({});

@@ -748,7 +748,7 @@ export interface paths {
         };
         /**
          * Get effective org defaults
-         * @description Each field's resolved value and the level it came from (default, global, org). Needs certs:read.
+         * @description Each field's resolved value and the level it came from (default, global, org), plus the built-in values themselves. Needs certs:read.
          */
         get: operations["getEffectiveIssuanceDefaults"];
         put?: never;
@@ -2943,6 +2943,11 @@ export interface components {
             propagationSeconds?: components["schemas"]["EffectiveInt"];
             /** @description Resolved resolvers and their source. */
             resolvers?: components["schemas"]["EffectiveStrings"];
+        };
+        /** @description An org's resolved issuance settings plus the built-in values CertForge uses when no level sets a field. */
+        OrgEffectiveIssuanceDefaults: components["schemas"]["EffectiveIssuanceDefaults"] & {
+            /** @description The built-in defaults (what each field resolves to, source "default"). Fields with no built-in value (CA, ACME account, propagation seconds) are absent. */
+            builtin: components["schemas"]["IssuanceDefaults"];
         };
         /** @description The CA's cached ACME Renewal Information window for a certificate's current version. */
         AriWindow: {
@@ -6126,7 +6131,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EffectiveIssuanceDefaults"];
+                    "application/json": components["schemas"]["OrgEffectiveIssuanceDefaults"];
                 };
             };
             401: components["responses"]["Unauthorized"];

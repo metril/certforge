@@ -996,13 +996,13 @@ paths:
       operationId: getEffectiveIssuanceDefaults
       tags: [certificates]
       summary: Get effective org defaults
-      description: Each field's resolved value and the level it came from (default, global, org). Needs certs:read.
+      description: Each field's resolved value and the level it came from (default, global, org), plus the built-in values themselves. Needs certs:read.
       responses:
         "200":
           description: Effective defaults.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/EffectiveIssuanceDefaults"}
+              schema: {$ref: "#/components/schemas/OrgEffectiveIssuanceDefaults"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -3630,6 +3630,17 @@ components:
           description: Resolved resolvers and their source.
           allOf:
             - $ref: "#/components/schemas/EffectiveStrings"
+    OrgEffectiveIssuanceDefaults:
+      description: An org's resolved issuance settings plus the built-in values CertForge uses when no level sets a field.
+      allOf:
+        - $ref: "#/components/schemas/EffectiveIssuanceDefaults"
+        - type: object
+          required: [builtin]
+          properties:
+            builtin:
+              description: The built-in defaults (what each field resolves to, source "default"). Fields with no built-in value (CA, ACME account, propagation seconds) are absent.
+              allOf:
+                - $ref: "#/components/schemas/IssuanceDefaults"
     AriWindow:
       type: object
       description: The CA's cached ACME Renewal Information window for a certificate's current version.

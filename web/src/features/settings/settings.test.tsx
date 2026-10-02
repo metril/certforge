@@ -77,6 +77,7 @@ beforeEach(() => {
         accountId: { value: null, source: 'default' },
         keyType: { value: 'ec256', source: 'default' },
         renewPolicy: { value: { mode: 'percent', value: 33, useAri: false }, source: 'default' },
+        builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] },
       }),
     ),
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca])),
@@ -227,6 +228,7 @@ it('resets an org override: PUT sends null and keeps its sibling, badge settles 
     mustStaple: { value: true, source: 'org' },
     propagationSeconds: { value: 120, source: 'default' },
     resolvers: { value: [], source: 'default' },
+    builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] },
   };
   server.use(
     http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json(orgBody)),
@@ -352,4 +354,18 @@ it('Issuance defaults opens on Global, ?scope=org selects the Organization tab, 
   await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
   await user.click(screen.getAllByRole('tab')[1]!);
   await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org' }));
+});
+
+it('Global tab: the Built-in row and the unset fields show the server-served built-ins, not a client copy', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () =>
+      HttpResponse.json({ builtin: { keyType: 'ec384', renewPolicy: { mode: 'days', value: 21, useAri: false }, preferredChain: '', reuseKey: true, mustStaple: false, resolvers: [], verificationRules: [] } }),
+    ),
+  );
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
+  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  const keyType = within(screen.getByRole('group', { name: 'Key type' }));
+  await waitFor(() => expect(keyType.getByText('EC P-384')).toBeInTheDocument());
+  await user.click(keyType.getByRole('button', { name: 'Built-in' }));
+  expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Built-in: EC P-384');
 });

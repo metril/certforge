@@ -2342,6 +2342,42 @@ type Org struct {
 	Slug string `json:"slug"`
 }
 
+// OrgEffectiveIssuanceDefaults defines model for OrgEffectiveIssuanceDefaults.
+type OrgEffectiveIssuanceDefaults struct {
+	// AccountId Resolved ACME account and its source.
+	AccountId *EffectiveUuid `json:"accountId,omitempty"`
+
+	// Builtin The built-in defaults (what each field resolves to, source "default"). Fields with no built-in value (CA, ACME account, propagation seconds) are absent.
+	Builtin IssuanceDefaults `json:"builtin"`
+
+	// CaId Resolved CA and its source.
+	CaId *EffectiveUuid `json:"caId,omitempty"`
+
+	// KeyType Resolved key algorithm and its source.
+	KeyType *EffectiveString `json:"keyType,omitempty"`
+
+	// MustStaple Resolved must-staple flag and its source.
+	MustStaple *EffectiveBool `json:"mustStaple,omitempty"`
+
+	// PreferredChain Resolved preferred chain and its source.
+	PreferredChain *EffectiveString `json:"preferredChain,omitempty"`
+
+	// PropagationSeconds Resolved propagation timeout and its source.
+	PropagationSeconds *EffectiveInt `json:"propagationSeconds,omitempty"`
+
+	// RenewPolicy Resolved renewal policy and its source.
+	RenewPolicy *EffectiveRenewPolicy `json:"renewPolicy,omitempty"`
+
+	// Resolvers Resolved resolvers and their source.
+	Resolvers *EffectiveStrings `json:"resolvers,omitempty"`
+
+	// ReuseKey Resolved reuse-key flag and its source.
+	ReuseKey *EffectiveBool `json:"reuseKey,omitempty"`
+
+	// VerificationRules Resolved catch-all rules and their source.
+	VerificationRules *EffectiveRules `json:"verificationRules,omitempty"`
+}
+
 // OrgInput A new organization.
 type OrgInput struct {
 	// Name Display name.
@@ -15189,7 +15225,7 @@ func (r PutOrgIssuanceDefaultsResponse) StatusCode() int {
 type GetEffectiveIssuanceDefaultsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
-	JSON200                   *EffectiveIssuanceDefaults
+	JSON200                   *OrgEffectiveIssuanceDefaults
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
 	ApplicationproblemJSON404 *NotFound
@@ -23678,7 +23714,7 @@ func ParseGetEffectiveIssuanceDefaultsResponse(rsp *http.Response) (*GetEffectiv
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest EffectiveIssuanceDefaults
+		var dest OrgEffectiveIssuanceDefaults
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

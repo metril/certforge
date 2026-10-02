@@ -255,10 +255,10 @@ export const fromDefault = (): EffectiveValue => ({ value: null, source: 'defaul
 
 // Review fix round 1 (#1): the Global tab's "not overridden" fields always
 // show source 'default' (Global has no level above it to ask) but with the
-// server's built-in value for display, not a bare null — `builtin` is
-// `GET /settings/issuance_defaults`'s `value` (default-filled), never
-// `stored` (the raw saved object, which is what decides whether a field
-// counts as overridden at all — see IssuanceDefaultsSection).
+// server's built-in value for display, not a bare null — `builtin` is the
+// effective endpoint's `builtin` (issuance.BuiltinDefaults), never the
+// settings `stored` (the raw saved object, which is what decides whether a
+// field counts as overridden at all — see IssuanceDefaultsSection).
 export function fromBuiltin(builtin: IssuanceDefaults) {
   return (k: FieldKey): EffectiveValue => ({ value: builtin[k] ?? null, source: 'default' }) as EffectiveValue;
 }
@@ -271,25 +271,14 @@ export function fromEffective(eff: EffectiveMap) {
   return (k: FieldKey): EffectiveValue => (eff[k] as EffectiveValue | undefined) ?? fromDefault();
 }
 
-// What CertForge itself uses when no level sets a field (BuiltinDefaults in
-// internal/issuance/defaults.go). Fields absent here have no value (see each
-// field's unsetText).
-const BUILTIN: IssuanceDefaults = {
-  keyType: 'ec256',
-  renewPolicy: { mode: 'percent', value: 33, useAri: false },
-  preferredChain: '',
-  reuseKey: false,
-  mustStaple: false,
-  resolvers: [],
-  verificationRules: [],
-} as IssuanceDefaults;
-
-export function chainFor(global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
+// `builtin` is the server's BuiltinDefaults (effective endpoint's `builtin`);
+// fields absent from it have no value (see each field's unsetText).
+export function chainFor(builtin: IssuanceDefaults, global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
   return (k: FieldKey): ChainEntry[] => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k);
     const show = (v: unknown, none: ReactNode = 'not set'): ReactNode => (v == null ? none : f ? f.display(v, ctx) : String(v));
     const out: ChainEntry[] = [
-      { level: 'default', value: show(BUILTIN[k], f?.unsetText) },
+      { level: 'default', value: show(builtin[k], f?.unsetText) },
       { level: 'global', value: show(global[k]) },
     ];
     if (org) out.push({ level: 'org', value: show(org[k]) });

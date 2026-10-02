@@ -125,14 +125,13 @@ export function IssuanceDefaultsSection() {
   const [globalError, setGlobalError] = useState<ServerError>(null);
   const [orgError, setOrgError] = useState<ServerError>(null);
 
-  // globalValue is the built-in-filled display value (GET's `value`); it is
-  // never the edit buffer or the "is this overridden" source of truth.
+  // builtin comes from the server (effective endpoint) for display only.
   // globalStored (GET's `stored`, null until the section has ever been
-  // saved) is both, instead (controller ruling, review fix round 1, #1):
-  // before this fix, the filled-in globalValue was used for both, so every
-  // field looked already overridden and the first edit re-saved every
-  // built-in as an explicit 'global' value.
-  const globalValue = (globalQ.data?.value ?? {}) as IssuanceDefaults;
+  // saved) is the edit buffer and the "is this overridden" source of truth
+  // (controller ruling, review fix round 1, #1): using the built-in-filled
+  // `value` for those made every field look overridden and re-saved every
+  // built-in as an explicit 'global' value on the first edit.
+  const builtin = (effectiveQ.data?.builtin ?? {}) as IssuanceDefaults;
   const globalStored = (globalQ.data?.stored ?? null) as IssuanceDefaults | null;
   const orgSaved = orgQ.data ?? {};
   const effective = effectiveQ.data ?? {};
@@ -181,8 +180,8 @@ export function IssuanceDefaultsSection() {
           onChange={setGlobalDraft}
           level="global"
           links={ORG_LINKS}
-          chain={chainFor(globalStored ?? {}, undefined, globalCtx)}
-          inherited={fromBuiltin(globalValue)}
+          chain={chainFor(builtin, globalStored ?? {}, undefined, globalCtx)}
+          inherited={fromBuiltin(builtin)}
           ctx={globalCtx}
           error={(k) => (globalError?.field === k ? globalError.message : null)}
         />
@@ -217,10 +216,10 @@ export function IssuanceDefaultsSection() {
           links={GLOBAL_LINKS}
           inherited={fromEffective(effective)}
           // The hover chain's Global entry comes from the raw stored value
-          // (review fix round 1, #2), not globalValue's built-in-filled
+          // (review fix round 1, #2), not the built-in-filled
           // display — otherwise a field the badge calls 'Default' would
           // still show a concrete "Global: …" line in its own tooltip.
-          chain={chainFor(globalStored ?? {}, orgValue, ctx)}
+          chain={chainFor(builtin, globalStored ?? {}, orgValue, ctx)}
           ctx={ctx}
           error={(k) => (orgError?.field === k ? orgError.message : null)}
           // A field just reset to inherited (orgDraft explicitly null) whose
