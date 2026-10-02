@@ -2,6 +2,52 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.4.0](https://github.com/metril/certforge/compare/v0.3.1...v0.4.0) (2026-10-02)
+
+
+### Features
+
+* **api:** add GET /orgs/{orgId}/flow contract ([1d45609](https://github.com/metril/certforge/commit/1d456092bc20476b67e8ae343f6291b850b59ab5))
+* **api:** build the org flow map from existing stores ([12fcbf4](https://github.com/metril/certforge/commit/12fcbf46dc197e5cf09b020ed2018dc34c5c86f2))
+* **api:** say something true in Flow node statuses ([71b896d](https://github.com/metril/certforge/commit/71b896d3e97c87fa7b3365b9321f32db034c20b8))
+* **api:** serve the built-in issuance defaults from the effective endpoint ([9da7923](https://github.com/metril/certforge/commit/9da79238f693978f8987c6751daf53e5239745ca))
+* **web:** add control border, field and selected tokens ([b1c75d5](https://github.com/metril/certforge/commit/b1c75d56b7b007d3c31a1858d9276d802a29715e))
+* **web:** add Flow system-map page with path highlighting ([32c5f39](https://github.com/metril/certforge/commit/32c5f396b54ee326b32b2d4c9a62e7c5ea0cb9ce))
+* **web:** add PageHeader tabs and filters, PrimaryCell and FormSection ([e79ef8a](https://github.com/metril/certforge/commit/e79ef8af320abada86666f5761b3e0d839840f17))
+* **web:** clarify server defaults with a level chain and Global-first tab ([abe5d65](https://github.com/metril/certforge/commit/abe5d659ca766a75bbbdf9dee7d50f32c9fb88ac))
+* **web:** confirm before navigating away from a dirty form sheet ([bd6c0bb](https://github.com/metril/certforge/commit/bd6c0bba2045a5eba6c448476e079700e8130a1a))
+* **web:** declutter alerts pages and move filters to the tab line ([30112d6](https://github.com/metril/certforge/commit/30112d688506bd5eaf38d236065550c072f0a5e2))
+* **web:** declutter certificates and clients lists ([190faa0](https://github.com/metril/certforge/commit/190faa0d392e722ec96f09e103bd2d8b623ac0dd))
+* **web:** declutter delivery lists; shorten merged help copy and fix type errors ([71c7336](https://github.com/metril/certforge/commit/71c73362b457e23caf2979a61c160b9fbf74151f))
+* **web:** declutter issuers pages and move the CA filter to the tab line ([67a96c1](https://github.com/metril/certforge/commit/67a96c1d09685c5f4a42532a94d3ee03146b4d68))
+* **web:** give inputs, buttons, tabs and segments visible boundaries ([fea8969](https://github.com/metril/certforge/commit/fea89699923b664247851668fb662b0e5208d0b5))
+* **web:** group inheritable issuance fields into sections with Reset section ([59e6d33](https://github.com/metril/certforge/commit/59e6d33996c3f4dfccbccf56d0b5aff2b22e0b6d))
+* **web:** guard form side panels against accidental close ([4deffe1](https://github.com/metril/certforge/commit/4deffe12888585af36ae4e3064e017dc20f0c613))
+* **web:** move optional sheet fields under a closed Advanced section ([0a61baa](https://github.com/metril/certforge/commit/0a61baacad55831dde043ed43bcf04686bb73cc6))
+* **web:** regroup Overview into status row, needs attention and insights tabs ([06e962f](https://github.com/metril/certforge/commit/06e962fe532476acf6cd710c775cda1e2c3c7964))
+* **web:** UI clarity pass and Flow system map ([454df82](https://github.com/metril/certforge/commit/454df823188fc0034d3ac2457e5da4c6dc8175dc))
+
+
+### Bug Fixes
+
+* **api:** keep pending deliveries and full issuer usage in Flow statuses ([64e19a5](https://github.com/metril/certforge/commit/64e19a57badd5388df6d1eca1b9fc8b3a151bcae))
+* **api:** per-certificate delivery edges and channel coverage flag on flow map ([6bb7ffb](https://github.com/metril/certforge/commit/6bb7ffb3ca31fce4210f9c64ad7828897a81d421))
+* **web:** do not show built-in defaults as unset while they are unknown ([eeb7462](https://github.com/metril/certforge/commit/eeb746222e261f451032265889823ea63e12d292))
+* **web:** draw default Flow connectors in the control-border colour so they read in the light theme ([d07b461](https://github.com/metril/certforge/commit/d07b461e03892d6b219b1dd42191983fb0f064d9))
+* **web:** flow edge status follows the selected path; trace channels from delivery and client starts ([e99d49f](https://github.com/metril/certforge/commit/e99d49fa95f0970bebe1c9977918145086bbba2f))
+* **web:** give ListInput the standard field background, hover and focus border ([13e5733](https://github.com/metril/certforge/commit/13e57337850b15a6c8057d9dbef30a397e883acb))
+* **web:** keep segmented option labels on one line and wrap the control onto extra rows ([22bbdf3](https://github.com/metril/certforge/commit/22bbdf34790ac4beb6aab5e3d63ccfe7bdf35671))
+* **web:** keep the page-title help icon out of the heading's accessible name ([ec93d78](https://github.com/metril/certforge/commit/ec93d78f709e303d4874b8f9414c6e5097a0b297))
+* **web:** restore Enabled switch, column help tooltips and full layout paths lost in the declutter ([96aa3b6](https://github.com/metril/certforge/commit/96aa3b6c9af1e091ebde429998ef5e0ef65bab7c))
+* **web:** show one source badge per default field and move the chain into its popover ([ad8e98e](https://github.com/metril/certforge/commit/ad8e98ec6741990e29ce71d3c37efee2ca34e22a))
+* **web:** stop the channel type chip overflowing its column ([133de0e](https://github.com/metril/certforge/commit/133de0e630350a108f187eaa6df8301f607164ad))
+* **web:** stop untouched target and layout edits raising a discard prompt ([d96d623](https://github.com/metril/certforge/commit/d96d6239ff34f4a85c21fd238699f9440cbe22c4))
+
+
+### Performance Improvements
+
+* **api:** count issuer use for the flow map with a narrow query ([a0546db](https://github.com/metril/certforge/commit/a0546db0ddceed7d484334874b93aaf27c29923e))
+
 ## [0.3.1](https://github.com/metril/certforge/compare/v0.3.0...v0.3.1) (2026-10-01)
 
 
