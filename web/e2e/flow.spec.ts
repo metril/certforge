@@ -1,5 +1,6 @@
 import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
+import { snap } from './screens';
 
 test('flow: select the seeded certificate and see its issuer in the path panel', async ({ page }) => {
   await page.goto('/login');
@@ -11,6 +12,7 @@ test('flow: select the seeded certificate and see its issuer in the path panel',
   for (const lane of ['Issuers', 'Certificates', 'Delivery', 'Clients', 'Alerts']) {
     await expect(page.getByRole('region', { name: lane })).toBeVisible();
   }
+  await snap(page, 'flow');
 
   await page.getByRole('button', { name: new RegExp(`^Certificate ${E2E.certName},`) }).click();
   await expect(page).toHaveURL(/focus=certificate/);
@@ -18,6 +20,7 @@ test('flow: select the seeded certificate and see its issuer in the path panel',
   await expect(panel).toBeVisible();
   await expect(panel.getByRole('heading', { name: 'Issuers' })).toBeVisible();
   await expect(panel.getByRole('link', { name: /^Open / }).first()).toBeVisible();
+  await snap(page, 'flow-selected');
 
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
@@ -33,5 +36,6 @@ test('flow does not scroll sideways at 375 px', async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await page.getByRole('button', { name: new RegExp(`^Certificate ${E2E.certName},`) }).click();
   await expect(page.getByRole('region', { name: 'Path' })).toBeVisible();
+  await snap(page, 'flow-mobile');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });

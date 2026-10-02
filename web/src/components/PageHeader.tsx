@@ -53,10 +53,10 @@ export function PageHeader({ title, help, actions, tabs, tabsLabel = 'Sections',
     <>
       <header className={`${tabs || filterSlot ? 'mb-3' : 'mb-6'} flex flex-wrap items-start justify-between gap-3`}>
         <div className="grid min-w-0 gap-1">
-          <h1 className="flex items-center gap-2 text-xl font-semibold">
-            {title}
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold">{title}</h1>
             {help && <HelpTip id={help} />}
-          </h1>
+          </div>
           {children}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
