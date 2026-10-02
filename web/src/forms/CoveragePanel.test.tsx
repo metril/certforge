@@ -44,7 +44,7 @@ it('labels an inherited rule missing a credential, not a bare "No credential"', 
   const items: Coverage[] = [{ name: 'a.example.com', state: 'incomplete', source: 'org', rule: { match: '*', method: 'dns-01' } }];
   renderUI(<CoveragePanel items={items} credentials={creds} clients={clients} />);
   const row = screen.getByText('a.example.com').closest('li')!;
-  expect(row).toHaveTextContent('Inherited rule (Org): no credential');
+  expect(row).toHaveTextContent('Inherited rule (Organization): no credential');
 });
 
 it("labels the certificate's own rule missing a credential as a plain \"No credential\"", () => {

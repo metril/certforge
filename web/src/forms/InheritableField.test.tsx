@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { renderUI } from '@/test/render';
 import { InheritableField } from './InheritableField';
@@ -32,7 +32,7 @@ it('shows the inherited value with its source, overrides, and resets to null', a
   await user.click(screen.getByRole('switch', { name: 'Override Key type' }));
   expect(screen.getByLabelText('editor')).toHaveValue('ec256');
   expect(screen.getByTestId('v')).toHaveTextContent('ec256');
-  await user.click(screen.getByRole('button', { name: 'Reset to inherited' }));
+  await user.click(screen.getByRole('button', { name: 'Use Global value' }));
   expect(screen.getByTestId('v')).toHaveTextContent('null');
   expect(screen.getByRole('button', { name: 'Global' })).toBeInTheDocument();
 });
@@ -78,7 +78,7 @@ it('disables Override with a reason, but still allows resetting an already-overr
   const { user } = renderUI(<WithDisabled />);
   expect(screen.getByRole('switch', { name: 'Override Key type' })).not.toBeDisabled();
   expect(screen.getByLabelText('editor')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Reset to inherited' }));
+  await user.click(screen.getByRole('button', { name: 'Use Built-in value' }));
   expect(screen.getByRole('switch', { name: 'Override Key type' })).toBeDisabled();
   expect(screen.getByText('No CAs yet')).toBeInTheDocument();
 });
@@ -100,5 +100,16 @@ it('shows a pending state instead of the stale inherited value after a reset tha
   expect(screen.getByText('Pending')).toBeInTheDocument();
   expect(screen.getByText('Inherited after save')).toBeInTheDocument();
   expect(screen.queryByText('ec256')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Org' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Organization' })).toBeNull();
+});
+
+it('shows the one-line chain with the level in effect emphasised, and Using/Set here state text', async () => {
+  const { user } = renderUI(<H />);
+  const chain = screen.getByLabelText('Defaults chain');
+  expect(chain).toHaveTextContent(/Built-in.*Global.*Organization.*Certificate/);
+  expect(within(chain).getByText('Global')).toHaveAttribute('aria-current', 'true');
+  expect(screen.getByText('Using Global:')).toBeInTheDocument();
+  await user.click(screen.getByRole('switch', { name: 'Override Key type' }));
+  expect(screen.getByText('Set here')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Use Global value' })).toBeInTheDocument();
 });

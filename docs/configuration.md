@@ -54,7 +54,7 @@ Exactly one of `CF_KEK`, `CF_KEK_FILE` and `CF_KEK_VAULT_ADDR` may be set; a mix
 
 Live configuration is stored in the `settings` table (`key`, JSON `value`, encrypted `secret`) and edited from the UI without a restart.
 
-- Each Settings page is a **section** with a JSON Schema. `GET /api/v1/settings/{section}` returns `{section, schema, value, stored}` (`stored` is the raw persisted document, before global-default merging, so a field showing "Default" in the UI doesn't claim a global value it never actually inherited). `PUT` takes the value object, validates it against the schema (422 on failure), and stores it under the key `section.<name>`. An unset section returns its default.
+- Each Settings page is a **section** with a JSON Schema. `GET /api/v1/settings/{section}` returns `{section, schema, value, stored}` (`stored` is the raw persisted document, before global-default merging, so a field showing "Built-in" in the UI doesn't claim a global value it never actually inherited). `PUT` takes the value object, validates it against the schema (422 on failure), and stores it under the key `section.<name>`. An unset section returns its default.
 - Phase 1 sections: `general` (`baseUrl`), `backup` (`kekEscrowConfirmed`), and `issuance_defaults` (from the issuance plan).
 - A section property marked "secret": true is write-only. It is stored encrypted in the secret column, never returned; GET lists which ones hold a value in storedSecrets. (The one exception is a DNS credential's secret field, which a global admin can reveal on demand; see [security.md](security.md#dns-credential-secret-reveal).) On PUT, "__unchanged__" or leaving the field out keeps it, "" clears it.
 
@@ -93,7 +93,7 @@ Rendered from the server's settings schema: base URL and other server-wide value
 
 ### Issuance defaults
 
-Two tabs: **Global** and your organization. Each field shows the value in effect and where it comes from (**Default**, **Global**, **Org**; hover the badge for the chain). Turn on **Override** to set a value at this level; **Reset to inherited** clears it. A reference that no longer exists (a deleted CA or account) shows its error next to the field.
+Two tabs: **Global** (opened first; `?scope=global` or `?scope=org` picks the tab) and your organization. Most specific wins: Certificate > Organization > Global > Built-in (shipped with CertForge). Each field shows that chain on one line with the level in effect in bold and a link to where each other level is edited, plus "Using {level}: {value}". Turn on **Override** to set a value at this level (it then reads "Set here"); **Use {level} value** clears it. A reference that no longer exists (a deleted CA or account) shows its error next to the field.
 
 | Field | Meaning |
 |---|---|

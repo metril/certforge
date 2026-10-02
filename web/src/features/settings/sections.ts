@@ -34,5 +34,7 @@ export const settingsSearch = z.object({
   q: z.string().optional().catch(undefined),
   // state (D5 ruling, Task 6): URL-synced status filter for the API keys tab.
   state: z.enum(['active', 'expired', 'revoked']).optional().catch(undefined),
+  // scope: which Issuance defaults tab is open (the chain links in each field target it).
+  scope: z.enum(['global', 'org']).optional().catch(undefined),
 });
 export type SettingsSearch = z.infer<typeof settingsSearch>;

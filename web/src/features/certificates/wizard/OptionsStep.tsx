@@ -22,6 +22,8 @@ export function OptionsStep({ orgId, state, dispatch }: { orgId: string; state: 
       onChange={(overrides) => dispatch({ type: 'setOverrides', overrides })}
       inherited={fromEffective(eff)}
       chain={chainFor(global, org, ctx)}
+      level="cert"
+      links={{ global: '/settings/issuance-defaults?scope=global', org: '/settings/issuance-defaults?scope=org' }}
       ctx={ctx}
       exclude={['verificationRules']}
     />

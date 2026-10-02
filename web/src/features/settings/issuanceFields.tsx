@@ -11,7 +11,7 @@ import { SegmentedControl, type SegmentOption } from '@/components/SegmentedCont
 import { SwitchField } from '@/components/SwitchField';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { InheritableField, type ChainEntry } from '@/forms/InheritableField';
+import { InheritableField, type ChainEntry, type LevelLinks } from '@/forms/InheritableField';
 import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
 import { isPrivate, KIND_LABEL } from '@/lib/caKinds';
 import type { HelpKey } from '@/lib/help';
@@ -266,9 +266,9 @@ export function fromEffective(eff: EffectiveMap) {
 export function chainFor(global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
   return (k: FieldKey): ChainEntry[] => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k);
-    const show = (v: unknown): ReactNode => (v == null ? 'server default' : f ? f.display(v, ctx) : String(v));
+    const show = (v: unknown): ReactNode => (v == null ? 'not set' : f ? f.display(v, ctx) : String(v));
     const out: ChainEntry[] = [{ level: 'Global', value: show(global[k]) }];
-    if (org) out.push({ level: 'Org', value: org[k] == null ? 'inherits' : show(org[k]) });
+    if (org) out.push({ level: 'Organization', value: org[k] == null ? 'inherits' : show(org[k]) });
     return out;
   };
 }
@@ -303,6 +303,9 @@ export type FormProps = {
   onChange: (v: IssuanceDefaults) => void;
   inherited: (k: FieldKey) => EffectiveValue;
   chain?: (k: FieldKey) => ChainEntry[];
+  /** The level this form edits, and where the other levels are edited. */
+  level?: 'global' | 'org' | 'cert';
+  links?: LevelLinks;
   ctx: FieldCtx;
   exclude?: FieldKey[];
   error?: (k: FieldKey) => string | null | undefined;
@@ -321,7 +324,7 @@ function effectiveCa(value: IssuanceDefaults, inherited: FormProps['inherited'],
   return cas.find((c) => c.id === id);
 }
 
-export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, exclude = [], error, pending }: FormProps) {
+export function IssuanceDefaultsForm({ value, onChange, inherited, chain, level, links, ctx, exclude = [], error, pending }: FormProps) {
   const eca = effectiveCa(value, inherited, ctx.cas);
   const privateCa = !!eca && isPrivate(eca);
   // Batch 2 review (Minor): the onChange interception above only fires when
@@ -360,6 +363,8 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, e
             // it doesn't change what's passed.
             inherited={inherited(f.key) as { value: unknown; source: Source }}
             chain={chain?.(f.key)}
+            level={level}
+            links={links}
             initial={f.initial(ctx)}
             display={(v) => f.display(v, ctx)}
             editor={(v, set) => f.editor(v, set, ctx, id)}

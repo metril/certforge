@@ -1,5 +1,8 @@
 import { useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { LevelLinks } from '@/forms/InheritableField';
 import { orgDefaultsQuery, useSaveOrgDefaults, effectiveDefaultsQuery } from '@/api/queries/defaults';
 import { settingsQuery, useSaveSettings } from '@/api/queries/settings';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -93,8 +96,14 @@ function bannerFor(error: ServerError, value: IssuanceDefaults): string | null {
   return value[error.field] == null ? error.message : null;
 }
 
+const GLOBAL_LINKS: LevelLinks = { global: '/settings/issuance-defaults?scope=global' };
+const ORG_LINKS: LevelLinks = { org: '/settings/issuance-defaults?scope=org' };
+
 export function IssuanceDefaultsSection() {
   const me = useMe();
+  const search = useSearch({ from: '/_app/settings/$section' });
+  const navigate = useNavigate({ from: '/settings/$section' });
+  const scope = search.scope ?? 'global';
   const org = me.orgs[0];
   const canWriteGlobal = can(me, 'settings:write', null);
   const canWriteOrg = can(me, 'certs:write', org?.id ?? null);
@@ -132,7 +141,17 @@ export function IssuanceDefaultsSection() {
   if (!org) return <p className="text-sm text-ink-muted">{NO_ORG}</p>;
 
   return (
-    <Tabs defaultValue="org" className="max-w-[900px]">
+    <Tabs value={scope} onValueChange={(v) => void navigate({ search: (prev) => ({ ...prev, scope: v as 'global' | 'org' }), replace: true })} className="max-w-[900px]">
+      <div className="mb-2 flex items-center gap-1.5 text-xs text-ink-muted">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="underline decoration-dotted underline-offset-2">
+              Built-in → Global → Organization → Certificate
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Most specific wins: Certificate &gt; Organization &gt; Global &gt; Built-in (shipped with CertForge).</TooltipContent>
+        </Tooltip>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <TabsList>
           <TabsTrigger value="global">Global</TabsTrigger>
@@ -148,6 +167,8 @@ export function IssuanceDefaultsSection() {
         <IssuanceDefaultsForm
           value={globalDraft ?? globalStored ?? {}}
           onChange={setGlobalDraft}
+          level="global"
+          links={ORG_LINKS}
           inherited={fromBuiltin(globalValue)}
           ctx={globalCtx}
           error={(k) => (globalError?.field === k ? globalError.message : null)}
@@ -179,6 +200,8 @@ export function IssuanceDefaultsSection() {
         <IssuanceDefaultsForm
           value={orgValue}
           onChange={setOrgDraft}
+          level="org"
+          links={GLOBAL_LINKS}
           inherited={fromEffective(effective)}
           // The hover chain's Global entry comes from the raw stored value
           // (review fix round 1, #2), not globalValue's built-in-filled

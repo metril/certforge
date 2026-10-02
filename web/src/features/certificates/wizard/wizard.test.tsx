@@ -158,8 +158,8 @@ it('reviews effective options with their source before issuing', async () => {
   await user.click(screen.getByRole('button', { name: 'Review' }));
   const options = screen.getByRole('region', { name: 'Options' });
   expect(within(options).getByText('RSA 2048')).toBeInTheDocument();
-  expect(within(options).getAllByRole('button', { name: 'Cert' })).toHaveLength(1);
-  expect(within(options).getAllByRole('button', { name: 'Org' }).length).toBeGreaterThan(0);
+  expect(within(options).getAllByRole('button', { name: 'Certificate' })).toHaveLength(1);
+  expect(within(options).getAllByRole('button', { name: 'Organization' }).length).toBeGreaterThan(0);
 });
 
 // I3 (Important, Task 10 ruling): OptionsStep must build the Global level of
@@ -179,10 +179,10 @@ it("a field with source 'default' never claims a Global value the section's stor
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
   await user.click(screen.getByRole('button', { name: 'Next' }));
   const keyType = screen.getByRole('group', { name: 'Key type' });
-  expect(within(keyType).getByRole('button', { name: 'Default' })).toBeInTheDocument();
-  await user.hover(within(keyType).getByRole('button', { name: 'Default' }));
+  expect(within(keyType).getByRole('button', { name: 'Built-in' })).toBeInTheDocument();
+  await user.hover(within(keyType).getByRole('button', { name: 'Built-in' }));
   const tooltip = await screen.findByRole('tooltip');
-  expect(tooltip).toHaveTextContent('Global: server default');
+  expect(tooltip).toHaveTextContent('Global: not set');
   expect(tooltip).not.toHaveTextContent('EC P-256');
 });
 

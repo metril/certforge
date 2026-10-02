@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { Fragment, type MouseEvent, type ReactNode } from 'react';
+import { useRouter } from '@tanstack/react-router';
 import { CircleAlert } from 'lucide-react';
 import type { Source } from '@/api/types';
 import { HelpTip } from '@/components/HelpTip';
@@ -9,7 +10,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { HelpKey } from '@/lib/help';
 
 export type ChainEntry = { level: string; value: ReactNode };
-const SOURCE_LABEL: Record<Source, string> = { default: 'Default', global: 'Global', org: 'Org', cert: 'Cert' };
+const SOURCE_LABEL: Record<Source, string> = { default: 'Built-in', global: 'Global', org: 'Organization', cert: 'Certificate' };
+const LEVELS: Source[] = ['default', 'global', 'org', 'cert'];
+/** Where each editable level's value is edited, when it is not the current form. */
+export type LevelLinks = Partial<Record<'global' | 'org' | 'cert', string>>;
 
 type Props<T> = {
   id: string;
@@ -18,6 +22,9 @@ type Props<T> = {
   value: T | null | undefined;
   inherited: { value: T | null | undefined; source: Source };
   chain?: ChainEntry[];
+  /** The level this form edits; it is "here", so it gets no link. */
+  level?: 'global' | 'org' | 'cert';
+  links?: LevelLinks;
   initial: T;
   display: (v: T) => ReactNode;
   // set accepts null (review fix round 1, #4): an editor whose own clear
@@ -50,7 +57,7 @@ export function SourceBadge({ source, chain }: { source: Source; chain?: ChainEn
             </div>
           ))
         ) : source === 'default' ? (
-          'Server default'
+          'Built-in (shipped with CertForge)'
         ) : (
           `Inherited from ${SOURCE_LABEL[source]}`
         )}
@@ -59,16 +66,55 @@ export function SourceBadge({ source, chain }: { source: Source; chain?: ChainEn
   );
 }
 
-export function InheritableField<T>({ id, label, help, value, inherited, chain, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
+function LevelLink({ href, children }: { href: string; children: ReactNode }) {
+  const router = useRouter({ warn: false });
+  const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (!router || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    router.history.push(href);
+  };
+  return (
+    <a href={href} onClick={onClick} className="underline underline-offset-2 hover:text-foreground">
+      {children}
+    </a>
+  );
+}
+
+/** One line: Built-in → Global → Organization → Certificate, the level in effect emphasised. */
+export function LevelChain({ effective, level, links }: { effective: Source; level?: 'global' | 'org' | 'cert'; links?: LevelLinks }) {
+  return (
+    <span aria-label="Defaults chain" className="inline-flex flex-wrap items-center gap-x-1 text-xs text-ink-muted">
+      {LEVELS.map((l, i) => {
+        const href = l !== 'default' && l !== level ? links?.[l] : undefined;
+        const label = SOURCE_LABEL[l];
+        return (
+          <Fragment key={l}>
+            {i > 0 && <span aria-hidden>→</span>}
+            <span className={l === effective ? 'font-semibold text-foreground' : undefined} aria-current={l === effective ? 'true' : undefined}>
+              {href ? <LevelLink href={href}>{label}</LevelLink> : label}
+            </span>
+          </Fragment>
+        );
+      })}
+    </span>
+  );
+}
+
+export function InheritableField<T>({ id, label, help, value, inherited, chain, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
   const overridden = value !== null && value !== undefined;
   const switchDisabled = !overridden && !!overrideDisabled;
   const inheritedView = pending ? (
     <span className="text-ink-muted">Inherited after save</span>
   ) : inherited.value === null || inherited.value === undefined ? (
-    <span className="text-ink-muted">Server default</span>
+    <span className="text-ink-muted">shipped default</span>
   ) : (
     display(inherited.value)
   );
+  // After a reset the value falls to the next level down: the effective source
+  // when it is below this form's level, else the level just below it.
+  const levelIdx = level ? LEVELS.indexOf(level) : -1;
+  const next: Source = levelIdx < 0 || LEVELS.indexOf(inherited.source) < levelIdx ? inherited.source : (LEVELS[Math.max(levelIdx - 1, 0)] as Source);
+  const effective: Source = overridden ? (level ?? 'cert') : inherited.source;
   return (
     <div role="group" aria-labelledby={`${id}-label`} className="grid gap-2 border-b border-border py-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -76,6 +122,7 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
           {label}
         </span>
         {help && <HelpTip id={help} />}
+        <LevelChain effective={effective} level={level} links={links} />
         {!overridden &&
           (pending ? (
             <span className="inline-flex h-5 items-center rounded-sm border border-dashed border-border px-1.5 text-xs text-ink-muted">Pending</span>
@@ -94,7 +141,7 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
             onCheckedChange={(on) => onChange(on ? ((inherited.value ?? initial) as T) : null)}
           />
           <span className="text-sm text-ink-muted" aria-hidden>
-            {overridden ? 'Overridden' : switchDisabled ? overrideDisabled : 'Inherited'}
+            {overridden ? 'Set here' : switchDisabled ? overrideDisabled : null}
           </span>
         </div>
       </div>
@@ -103,7 +150,7 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
           <div className="flex flex-wrap items-center gap-3">
             {editor(value as T, (v) => onChange(v))}
             <Button type="button" variant="link" size="sm" className="px-0" onClick={() => onChange(null)}>
-              Reset to inherited
+              Use {SOURCE_LABEL[next]} value
             </Button>
           </div>
           {error && (
@@ -114,7 +161,10 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
           )}
         </div>
       ) : (
-        <div className="text-sm">{inheritedView}</div>
+        <div className="text-sm">
+          {!pending && <span className="text-ink-muted">Using {SOURCE_LABEL[inherited.source]}: </span>}
+          {inheritedView}
+        </div>
       )}
     </div>
   );
