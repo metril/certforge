@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
@@ -15,7 +16,7 @@ import { RunsOnChip } from '@/components/RunsOnChip';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
@@ -41,6 +42,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const [formError, setFormError] = useState<string | null>(null);
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
   const [saving, setSaving] = useState(false);
+  const dirty = useDirty({ name, type, runsOn, config });
 
   const meta = useMemo(() => typeMeta(types, type) ?? types[0]!, [types, type]);
   const schema = useMemo(() => stripSecretDefaults(meta.schema as RJSFSchema), [meta]);
@@ -110,7 +112,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   };
 
   return (
-    <Sheet open onOpenChange={onOpenChange}>
+    <Sheet open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
@@ -206,9 +208,9 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
             </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
+              <SheetClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </SheetClose>
               <PermissionTip allowed={!blocked} action="keys:export">
                 <Button disabled={blocked || saving} onClick={() => void submit()}>
                   Save

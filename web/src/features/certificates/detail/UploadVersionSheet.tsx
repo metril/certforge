@@ -1,9 +1,10 @@
+import { useDirty } from '@/lib/useDirty';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useUploadVersion } from '@/api/queries/certificates';
 import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { UploadFields, type UploadFieldErrors } from '@/features/certificates/upload/UploadFields';
 import { emptyUploadValue, p12TooLarge, toUploadBody, type UploadValue } from '@/features/certificates/upload/uploadBody';
 import { isUploadFieldName, uploadErrorOutcome } from '@/features/certificates/upload/uploadErrors';
@@ -19,6 +20,7 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
   const [value, setValue] = useState<UploadValue>(emptyUploadValue);
   const [fieldErrors, setFieldErrors] = useState<UploadFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const dirty = useDirty({ ...value, file: value.file?.name ?? null });
 
   const ready = value.format === 'pem' ? value.certificatePem.trim() !== '' : !!value.file && !p12TooLarge(value.file);
 
@@ -45,7 +47,7 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
   }
 
   return (
-    <Sheet open onOpenChange={onOpenChange}>
+    <Sheet open form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md">
         <SheetHeader className="flex-row items-center gap-1.5">
           <SheetTitle>Upload new version</SheetTitle>
@@ -61,9 +63,9 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
           )}
         </div>
         <SheetFooter className="flex-row justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+          <SheetClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </SheetClose>
           <Button disabled={!ready || upload.isPending} onClick={() => void submit()}>
             {upload.isPending ? 'Uploading…' : 'Upload'}
           </Button>

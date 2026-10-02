@@ -4,9 +4,64 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+const SheetFormContext = React.createContext(false)
+
+type SheetProps = React.ComponentProps<typeof SheetPrimitive.Root> & {
+  /** Form sheet: outside clicks never close it. */
+  form?: boolean
+  /** With `form`: closing asks "Discard changes?" first. */
+  dirty?: boolean
+}
+
+function Sheet({ form = false, dirty = false, onOpenChange, ...props }: SheetProps) {
+  const [confirming, setConfirming] = React.useState(false)
+  const guarded = form && dirty
+  return (
+    <SheetFormContext.Provider value={form}>
+      <SheetPrimitive.Root
+        data-slot="sheet"
+        {...props}
+        onOpenChange={(o) => {
+          if (!o && guarded) setConfirming(true)
+          else onOpenChange?.(o)
+        }}
+      />
+      {guarded && (
+        <Dialog open={confirming} onOpenChange={setConfirming}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Discard changes?</DialogTitle>
+              <DialogDescription>Your unsaved changes will be lost.</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setConfirming(false)
+                  onOpenChange?.(false)
+                }}
+              >
+                Discard
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </SheetFormContext.Provider>
+  )
 }
 
 const SheetTrigger = React.forwardRef<
@@ -59,9 +114,10 @@ const SheetContent = React.forwardRef<
     showCloseButton?: boolean
   }
 >(function SheetContent(
-  { className, children, side = "right", showCloseButton = true, ...props },
+  { className, children, side = "right", showCloseButton = true, onInteractOutside, ...props },
   ref
 ) {
+  const form = React.useContext(SheetFormContext)
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -80,6 +136,10 @@ const SheetContent = React.forwardRef<
             "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           className
         )}
+        onInteractOutside={(e) => {
+          if (form) e.preventDefault()
+          onInteractOutside?.(e)
+        }}
         {...props}
       >
         {children}

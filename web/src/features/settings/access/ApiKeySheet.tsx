@@ -47,6 +47,7 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
   const [expiry, setExpiry] = useState<Expiry>('90d');
   const [customDate, setCustomDate] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const dirty = name !== '' || scope !== initialScope || expiry !== '90d' || customDate !== '' || JSON.stringify(picked) !== JSON.stringify(['certs:read']);
   const orgId = scope === GLOBAL ? null : (scope ?? null);
   const grantable = (s: ApiKeyScope) => canGrantScope(me, s, orgId);
   const customExpiresAt = expiry === 'custom' ? endOfDayLocalISO(customDate) : undefined;
@@ -91,7 +92,7 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} form dirty={open && dirty} onOpenChange={onOpenChange}>
       <SheetContent className="grid content-start gap-6 overflow-y-auto sm:max-w-md">
         <SheetHeader>
           <SheetTitle>New API key</SheetTitle>

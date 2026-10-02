@@ -87,6 +87,7 @@ test('screens', async ({ page }) => {
   await layout.getByRole('radiogroup', { name: 'Format of file 1' }).getByRole('radio', { name: 'PKCS#12' }).click();
   await snap(page, 'layout-p12');
   await page.keyboard.press('Escape');
+  await page.getByRole('dialog', { name: 'Discard changes?' }).getByRole('button', { name: 'Discard' }).click();
 
   // Settings → Issuance defaults, Global tab.
   await page.goto('/settings/issuance-defaults');

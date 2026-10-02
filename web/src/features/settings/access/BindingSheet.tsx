@@ -54,6 +54,7 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
   const [role, setRole] = useState<Role>('viewer');
   const [scope, setScope] = useState<string | undefined>(type === 'apikey' ? undefined : initialScope);
   const [error, setError] = useState<string | null>(null);
+  const dirty = subject !== '' || role !== 'viewer' || type !== (fixedType ?? defaultType);
   const users = useQuery({ ...usersQuery, enabled: open && type === 'user' });
   const keys = useQuery({ ...apiKeysQuery(), enabled: open && type === 'apikey' });
   // Only keys the caller may actually bind (apikeys:write at the key's own
@@ -92,7 +93,7 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} form dirty={open && dirty} onOpenChange={onOpenChange}>
       <SheetContent className="grid content-start gap-6 overflow-y-auto sm:max-w-md">
         <SheetHeader>
           <SheetTitle>{fixedType === 'oidc_group' ? 'Add group mapping' : 'Add binding'}</SheetTitle>

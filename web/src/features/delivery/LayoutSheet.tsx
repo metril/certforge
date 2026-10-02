@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Check, CircleAlert, Copy, Eye, EyeOff, Plus, TriangleAlert, X } from 'lucide-react';
@@ -15,7 +16,7 @@ import { SecretInput } from '@/components/SecretInput';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { help } from '@/lib/help';
 import { generatePassword } from '@/lib/password';
 import { useCopy } from '@/lib/useCopy';
@@ -71,6 +72,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<{ i: number; field: keyof FileErrors; msg: string } | null>(null);
   const [layoutServerError, setLayoutServerError] = useState<{ field: 'password' | 'extraCertificateIds'; msg: string } | null>(null);
+  const dirty = useDirty({ name, rows, extraCertificateIds, newPassword, storedPassword });
   const files = rows.map((r) => r.file);
   const errors = validateFiles(files);
   const title = layout ? (readOnly ? layout.name : `Edit ${layout.name}`) : 'New layout';
@@ -165,7 +167,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
   };
 
   return (
-    <Sheet open onOpenChange={onOpenChange}>
+    <Sheet open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
@@ -396,9 +398,9 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
             </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
+              <SheetClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </SheetClose>
               <Button disabled={save.isPending} onClick={() => void submit()}>
                 Save
               </Button>

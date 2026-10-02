@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useState } from 'react';
 import { ApiError, errorMessage } from '@/api/errors';
 import { useSaveHook } from '@/api/queries/delivery';
@@ -7,7 +8,7 @@ import { HelpTip } from '@/components/HelpTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { ArgvField, argvErrors } from '@/forms/widgets/ArgvField';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 
@@ -22,6 +23,7 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
   const [show, setShow] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const dirty = useDirty({ name, phase, argv, timeout });
   const errs = argvErrors(argv);
   const seconds = Number(timeout);
   const timeoutError = Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600 ? null : 'Use 1 to 3600 seconds.';
@@ -49,7 +51,7 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
   };
 
   return (
-    <Sheet open onOpenChange={onOpenChange}>
+    <Sheet open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
@@ -113,9 +115,9 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
             </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
+              <SheetClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </SheetClose>
               <Button disabled={save.isPending} onClick={() => void submit()}>
                 Save
               </Button>

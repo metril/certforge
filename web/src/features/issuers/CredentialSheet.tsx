@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { meQuery } from '@/api/queries/auth';
@@ -78,6 +79,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
   const nonSecretKeys = useMemo(() => shownKeys.filter((k) => !secretKeyList.includes(k)), [shownKeys, secretKeyList]);
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<{ field: string | null; message: string } | null>(null);
+  const dirty = useDirty({ name, config, methodId });
 
   // Controller ruling: on update, touching a non-secret config value while a
   // secret is still stored (untouched, sentinel-valued) is guaranteed to fail
@@ -137,7 +139,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{credential ? `Edit ${credential.name}` : `Add ${provider?.name ?? 'DNS'} credential`}</SheetTitle>

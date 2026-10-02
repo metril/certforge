@@ -16,6 +16,7 @@ export function OrgSheet({ org, onClose, onSaved }: { org: Org | 'new' | null; o
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dirty = name !== (editing?.name ?? '') || slug !== (editing?.slug ?? '');
 
   useEffect(() => {
     setName(editing?.name ?? '');
@@ -38,7 +39,7 @@ export function OrgSheet({ org, onClose, onSaved }: { org: Org | 'new' | null; o
   }
 
   return (
-    <Sheet open={org !== null} onOpenChange={(o) => !o && onClose()}>
+    <Sheet open={org !== null} form dirty={dirty} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="grid content-start gap-6 sm:max-w-md">
         <SheetHeader>
           <SheetTitle>{editing ? `Rename ${editing.name}` : 'New organization'}</SheetTitle>

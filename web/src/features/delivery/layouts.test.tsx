@@ -315,6 +315,7 @@ it('layout password write-only: edit sends __unchanged__ unless replaced, and ne
   await user.click(within(sheet2).getByRole('button', { name: 'Replace Password' }));
   await user.type(within(sheet2).getByLabelText('Password'), 'temporary-value');
   await user.click(within(sheet2).getByRole('button', { name: 'Cancel' }));
+  await user.click(await screen.findByRole('button', { name: 'Discard' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
   await user.click(screen.getByRole('button', { name: 'Edit nginx' }));

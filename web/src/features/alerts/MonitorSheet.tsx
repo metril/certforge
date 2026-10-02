@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
@@ -17,7 +18,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { INTERVALS, fmtInterval } from '@/lib/monitors';
 import { useMe } from '@/lib/org';
@@ -91,6 +92,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const dirty = useDirty(draft);
   const create = useCreateMonitor(orgId);
   const update = useUpdateMonitor(orgId, monitor?.id ?? '');
   const check = useCheckMonitor(orgId);
@@ -136,7 +138,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader className="flex-row items-start justify-between gap-2">
           <div>
@@ -281,9 +283,9 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 <span />
               )}
               <span className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                  Cancel
-                </Button>
+                <SheetClose asChild>
+                  <Button type="button" variant="outline">Cancel</Button>
+                </SheetClose>
                 <PermissionTip allowed={canWrite} action="alerts:write">
                   <Button type="submit" disabled={!canWrite || saving}>
                     Save

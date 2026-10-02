@@ -14,7 +14,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { canWriteChannel, TYPE_META } from '@/lib/channels';
@@ -113,6 +113,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [configError, setConfigError] = useState<ErrorSchema | undefined>(undefined);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const initialDraftRef = useRef<Draft>(draft);
 
   // Stripped so RJSF shows a secret's schema default only as a placeholder,
   // never fills it into formData — otherwise withStoredSentinels never adds
@@ -129,6 +130,9 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   // unsaved drafts") — a brand-new, unsaved channel has no saved config at
   // all, so it's always dirty regardless of the draft.
   const dirty = !channel || snapshot(schema, storedSecrets, { ...draft, config: draft.configs[draft.type] }) !== snapshot(schema, storedSecrets, { ...channel, config: channel.config as Record<string, unknown> });
+  // Discard guard: an existing channel reuses the saved-config comparison; a
+  // new one compares against its initial draft.
+  const formDirty = channel ? dirty : snapshot(schema, [], { ...draft, config: draft.configs[draft.type] }) !== snapshot(schema, [], { ...initialDraftRef.current, config: initialDraftRef.current.configs[initialDraftRef.current.type] });
   // A channel targets its own org, never the route org (a global admin can
   // edit another org's allOrgs channel) — a new channel always belongs to
   // the current route org.
@@ -172,7 +176,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} form dirty={formDirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{channel ? channel.name : 'New channel'}</SheetTitle>
@@ -268,9 +272,9 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
               <span />
             )}
             <span className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
+              <SheetClose asChild>
+                <Button type="button" variant="outline">Cancel</Button>
+              </SheetClose>
               <PermissionTip allowed={canWrite} action="alerts:write" reason={writeReason}>
                 <Button type="submit" disabled={!canWrite || saving}>
                   Save

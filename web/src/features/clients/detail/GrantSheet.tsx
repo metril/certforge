@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useState, type ReactNode } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert } from 'lucide-react';
@@ -16,7 +17,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 import { help } from '@/lib/help';
 
@@ -60,6 +61,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
   const [errors, setErrors] = useState<{ certs?: string; where?: string }>({});
   const [failures, setFailures] = useState<GrantBatchResult['failed']>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const dirty = useDirty({ certIds, delivery, layoutId, targetId, hookIds, autoRemediate });
   const busy = create.isPending || update.isPending;
 
   const granted = new Set(grants.map((g) => g.certificateId));
@@ -105,7 +107,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
   };
 
   return (
-    <Sheet open onOpenChange={onOpenChange}>
+    <Sheet open form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{editing ? `Edit ${editing.certificateName}` : 'Grant certificate'}</SheetTitle>
@@ -255,9 +257,9 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
           )}
         </div>
         <SheetFooter className="flex-row justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+          <SheetClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </SheetClose>
           <Button disabled={busy} onClick={() => void submit()}>
             {editing ? 'Save' : 'Grant'}
           </Button>
