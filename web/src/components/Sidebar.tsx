@@ -24,7 +24,7 @@ import { Wordmark } from './Wordmark';
 
 const rowClass =
   'flex h-9 items-center gap-3 border-l-2 border-transparent px-4 text-sm text-ink-muted hover:bg-subtle hover:text-ink';
-const activeClass = 'border-primary bg-panel font-semibold text-ink';
+const activeClass = 'border-primary bg-subtle font-semibold text-ink';
 
 // C1 (Critical): NavRow passes this component's rendered element straight
 // into `<TooltipTrigger asChild>`, which clones it and attaches a ref so

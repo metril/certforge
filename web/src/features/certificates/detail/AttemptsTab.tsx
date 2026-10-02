@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useQuery } from '@tanstack/react-query';
 import { errorMessage } from '@/api/errors';
 import { attemptsQuery } from '@/api/queries/certificates';
@@ -28,10 +29,10 @@ export function AttemptsTab({ orgId, certId, caId, onRenew }: { orgId: string; c
     ? (step: AttemptStep) => (step.name === 'rate_ledger' && step.status === 'failed' ? <RateLedgerPanel orgId={orgId} caId={caId} certId={certId} /> : null)
     : undefined;
   return (
-    <section aria-label="Attempts">
+    <Card role="region" aria-label="Attempts" className="px-4">
       {attempts.map((a, i) => (
         <AttemptLogViewer key={a.id} attempt={a} defaultOpen={i === 0} renderStepExtra={renderStepExtra} />
       ))}
-    </section>
+    </Card>
   );
 }

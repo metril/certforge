@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { eventsQuery } from '@/api/queries/events';
@@ -172,11 +173,11 @@ export function EventsPage() {
             </EmptyState>
           )
         ) : (
-          <div role="list" aria-label="Events">
+          <Card role="list" aria-label="Events" className="px-4 [&>*:last-child]:border-b-0">
             {list.isPending
               ? [0, 1, 2].map((i) => <div key={i} aria-hidden className="h-16 animate-pulse border-b border-border bg-subtle/40" />)
               : events.map((e) => <EventRow key={e.id} event={e} org={org.slug} />)}
-          </div>
+          </Card>
         )}
         {list.hasNextPage && (
           <Button variant="outline" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>

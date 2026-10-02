@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { RotateCw } from 'lucide-react';
@@ -71,7 +72,7 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
   }
   const siteName = (id: string | null) => (id ? (sites.find((s) => s.id === id)?.name ?? '–') : '–');
   return (
-    <div className="grid gap-2">
+    <Card className="grid gap-2 p-4">
       <div className={cn('hidden gap-3 border-b border-border pb-1 text-xs text-ink-muted md:grid', COLS)}>
         <span className="inline-flex items-center gap-1">
           Client <HelpTip id="cert.deployments" />
@@ -122,6 +123,6 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
           </li>
         ))}
       </ul>
-    </div>
+    </Card>
   );
 }

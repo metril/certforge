@@ -111,7 +111,7 @@ export function AttemptLogViewer({
   const shown = filter ? lines.filter((l) => l.text.toLowerCase().includes(filter.toLowerCase())) : lines;
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="border-b border-border">
+    <Collapsible open={open} onOpenChange={setOpen} className="border-b border-border last:border-b-0">
       <CollapsibleTrigger className="flex w-full flex-wrap items-center gap-3 py-2 text-left text-sm hover:bg-subtle">
         <ChevronRight className={cn('size-4 transition-transform', open && 'rotate-90')} aria-hidden />
         <ToneChip tone={o.tone} icon={o.icon} label={o.label} />

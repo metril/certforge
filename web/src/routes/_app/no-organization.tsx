@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useLogout } from '@/api/queries/auth';
+import { Card } from '@/components/Card';
 import { Button } from '@/components/ui/button';
 
 // Fix round 1 (review): a `Me` with no orgs used to redirect "/" into a
@@ -11,12 +12,12 @@ function NoOrganization() {
   const logout = useLogout();
   const navigate = useNavigate();
   return (
-    <div className="grid place-items-center gap-4 py-20 text-center">
+    <Card className="grid place-items-center gap-4 py-20 text-center">
       <p className="text-sm text-ink-muted">No organization exists for your account yet.</p>
       <Button variant="outline" onClick={() => logout.mutate(undefined, { onSettled: () => void navigate({ to: '/login' }) })}>
         Sign out
       </Button>
-    </div>
+    </Card>
   );
 }
 

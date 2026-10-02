@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { renderUI } from '@/test/render';
+import { Card } from './Card';
 import { FormSection } from './FormSection';
 import { PageHeader } from './PageHeader';
 import { PrimaryCell } from './PrimaryCell';
@@ -57,4 +58,25 @@ it('FormSection supports defaultOpen, summary and the static variant', () => {
   expect(screen.getByLabelText('A')).toBeInTheDocument();
   expect(screen.getByText('1 overridden')).toBeInTheDocument();
   expect(within(screen.getByRole('region', { name: 'Plain' })).getByLabelText('B')).toBeInTheDocument();
+});
+
+it('FormSection is a Card at top level and keeps the hairline look nested in a Card', () => {
+  renderUI(
+    <>
+      <FormSection title="Top">
+        <p>a</p>
+      </FormSection>
+      <Card>
+        <FormSection title="Nested">
+          <p>b</p>
+        </FormSection>
+      </Card>
+    </>,
+  );
+  const top = screen.getByRole('region', { name: 'Top' });
+  expect(top.className).toContain('bg-panel');
+  expect(top.querySelector('[data-slot="card-header"]')).toHaveTextContent('Top');
+  const nested = screen.getByRole('region', { name: 'Nested' });
+  expect(nested.className).toContain('border-t');
+  expect(nested.className).not.toContain('bg-panel');
 });

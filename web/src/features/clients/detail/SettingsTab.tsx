@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Ban, RefreshCw, Trash2 } from 'lucide-react';
@@ -62,8 +63,8 @@ export function SettingsTab({ client, orgId, orgSlug, sites, canWrite }: Props) 
   };
 
   return (
-    <div className="grid max-w-[720px] gap-8">
-      <section aria-label="Client details" className="grid gap-4">
+    <div className="grid max-w-[720px] gap-4">
+      <Card role="region" aria-label="Client details" className="grid gap-4 p-4">
         <Field id="client-name" label="Name" help="client.name" error={nameError}>
           <Input
             id="client-name"
@@ -101,8 +102,8 @@ export function SettingsTab({ client, orgId, orgSlug, sites, canWrite }: Props) 
             </Button>
           )}
         </div>
-      </section>
-      <section aria-label="Identity" className="grid gap-2 border-t border-border pt-6">
+      </Card>
+      <Card role="region" aria-label="Identity" className="grid gap-2 p-4">
         {client.status !== 'revoked' && (
           <ActionRow label="Re-enrol" help="client.reenroll">
             <PermissionTip allowed={canWrite} action="clients:write" side="left">
@@ -131,7 +132,7 @@ export function SettingsTab({ client, orgId, orgSlug, sites, canWrite }: Props) 
             </Button>
           </PermissionTip>
         </ActionRow>
-      </section>
+      </Card>
       <ConfirmDestructive
         open={confirm === 'reenroll'}
         onOpenChange={(o) => !o && setConfirm(null)}

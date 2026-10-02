@@ -23,6 +23,8 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
 
   // 2. A layout writing the fullchain into the bind-mounted ssl directory.
   await page.goto(`/o/${E2E.orgSlug}/delivery/layouts`);
+  await expect(page.getByRole('button', { name: 'New layout' }).first()).toBeVisible();
+  await snap(page, 'layouts');
   await page.getByRole('button', { name: 'New layout' }).click();
   const layout = page.getByRole('dialog', { name: 'New layout' });
   await layout.getByLabel('Name', { exact: true }).fill('pw-files');
@@ -68,6 +70,8 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
 
   // 5. The certificate's Deployments tab agrees.
   await page.goto(`/o/${E2E.orgSlug}/certificates`);
+  await expect(page.getByRole('table', { name: 'Certificates' }).getByRole('link', { name: E2E.certName })).toBeVisible();
+  await snap(page, 'certificates');
   await page.getByRole('table', { name: 'Certificates' }).getByRole('link', { name: E2E.certName }).click();
   await page.getByRole('tab', { name: 'Deployments' }).click();
   const deployments = page.getByRole('list', { name: 'Deployments' });

@@ -167,3 +167,15 @@ it('lists every org in the switcher, with the active org named in the trigger, o
   expect(screen.getByRole('menuitem', { name: 'Acme' })).toBeInTheDocument();
   expect(screen.getByRole('menuitem', { name: 'Other Co' })).toBeInTheDocument();
 });
+
+it('puts the sidebar on its own darker surface and the content on the canvas', async () => {
+  viewport(true);
+  server.use(...authHandlers({ authed: true }));
+  renderRoute('/o/acme/certificates');
+  const nav = await screen.findByRole('navigation', { name: 'Main' });
+  const aside = nav.closest('aside')!;
+  expect(aside.className).toContain('bg-sidebar');
+  expect(aside.className).toContain('border-r');
+  expect(screen.getByRole('main').parentElement!.className).toContain('bg-surface');
+  expect(screen.getByRole('main').parentElement!.className).not.toContain('bg-panel');
+});

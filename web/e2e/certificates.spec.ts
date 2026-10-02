@@ -94,6 +94,12 @@ test('screens', async ({ page }) => {
   await page.getByRole('tab', { name: 'Global' }).click();
   await expect(page.getByText('Checks and limits')).toBeVisible();
   await snap(page, 'settings-issuance');
+
+  for (const section of ['general', 'authentication', 'access'] as const) {
+    await page.goto(`/settings/${section}`);
+    await expect(page.getByRole('heading', { level: 2, name: /^(General|Authentication|Access)$/ })).toBeVisible();
+    await snap(page, `settings-${section}`);
+  }
 });
 
 test('375 px: upload and import', async ({ page }) => {

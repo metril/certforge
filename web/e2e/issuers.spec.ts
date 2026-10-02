@@ -27,6 +27,8 @@ test('CA kind switching', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
   await page.goto(`/o/${E2E.orgSlug}/issuers/cas`);
+  await expect(page.getByRole('button', { name: 'Add CA' }).first()).toBeVisible();
+  await snap(page, 'cas');
   await page.getByRole('button', { name: 'Add CA' }).click();
   const sheet = page.getByRole('dialog', { name: 'Add certificate authority' });
   await expect(sheet).toBeVisible();
@@ -213,6 +215,8 @@ test('DNS credential auth methods', async ({ page }) => {
 
   try {
     await page.goto(`/o/${E2E.orgSlug}/issuers/dns`);
+    await expect(page.getByRole('button', { name: 'Add credential' }).first()).toBeVisible();
+    await snap(page, 'dns-credentials');
     await page.getByRole('button', { name: 'Add credential' }).first().click();
     await page.getByRole('combobox').fill('cloudfl');
     await page.getByRole('option', { name: /Cloudflare/ }).click();

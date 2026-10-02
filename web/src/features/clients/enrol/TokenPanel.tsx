@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useState } from 'react';
 import type { ClientCreated } from '@/api/types';
 import { CopyField } from '@/components/CopyField';
@@ -14,7 +15,7 @@ type Kind = 'run' | 'compose';
 export function TokenPanel({ created }: { created: ClientCreated }) {
   const [kind, setKind] = useState<Kind>('run');
   return (
-    <section aria-label="Enrolment token" className="grid min-w-0 gap-4">
+    <Card role="region" aria-label="Enrolment token" className="grid min-w-0 gap-4 p-4">
       <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-[120px_minmax(0,1fr)] sm:items-center">
         <dt className="flex items-center gap-1.5 text-ink-muted">
           Token <HelpTip id="client.token" />
@@ -48,6 +49,6 @@ export function TokenPanel({ created }: { created: ClientCreated }) {
           value={kind === 'run' ? dockerRunSnippet(created.token) : composeSnippet(created.token)}
         />
       </div>
-    </section>
+    </Card>
   );
 }

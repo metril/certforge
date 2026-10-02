@@ -1,3 +1,4 @@
+import { Card, CardBody } from '@/components/Card';
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -98,6 +99,8 @@ export function SetupWizard() {
       <div className="mx-auto grid max-w-xl gap-8">
         <Wordmark />
         <Stepper steps={STEPS} current={step} onSelect={setStep} />
+        <Card>
+        <CardBody>
         <form
           className="grid gap-5"
           onSubmit={(e) => {
@@ -211,6 +214,8 @@ export function SetupWizard() {
             </Button>
           </div>
         </form>
+        </CardBody>
+        </Card>
       </div>
     </main>
   );

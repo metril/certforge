@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import type { ReactNode } from 'react';
 import { Clock } from 'lucide-react';
 import type { Client } from '@/api/types';
@@ -23,7 +24,7 @@ function Fact({ label, help, children }: { label: string; help?: HelpKey; childr
 export function ClientHeader({ client, siteName, actions }: { client: Client; siteName?: string; actions?: ReactNode }) {
   const expiring = agentCertExpiring(client);
   return (
-    <section aria-label="Client summary" className="grid gap-4">
+    <Card role="region" aria-label="Client summary" className="grid gap-4 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid min-w-0 gap-1">
           <h1 className="truncate text-xl font-semibold">{client.name}</h1>
@@ -69,6 +70,6 @@ export function ClientHeader({ client, siteName, actions }: { client: Client; si
       {client.status === 'pending' && client.tokenExpiresAt && (
         <p className="text-sm text-ink-muted">Token expires {fmtDateTime(client.tokenExpiresAt)}</p>
       )}
-    </section>
+    </Card>
   );
 }

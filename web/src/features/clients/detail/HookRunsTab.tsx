@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Ban, ChevronDown, CircleAlert, CircleCheck, Clock } from 'lucide-react';
@@ -74,7 +75,7 @@ export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: st
     );
   }
   return (
-    <div className="grid gap-2">
+    <Card className="grid gap-2 p-4">
       {/* Not aria-hidden: it holds the focusable hook.exit tip. */}
       <div className={cn('hidden gap-3 border-b border-border pb-1 text-xs text-ink-muted md:grid', COLS)}>
         <span>Ran</span>
@@ -134,6 +135,6 @@ export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: st
           Load more
         </Button>
       )}
-    </div>
+    </Card>
   );
 }

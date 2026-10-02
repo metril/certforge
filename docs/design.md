@@ -246,6 +246,7 @@ manual-dns: amber action card on the detail page with a TXT table (name, type, v
 - Toggle in the user menu with three options: System, Light, Dark. The choice persists per browser in localStorage and applies before first paint (inline script in `index.html`) to avoid a flash.
 - Status colours get separate dark values with the same hue so a chip reads the same in both themes. The validity bar, expiry horizon, and log viewer are checked in both themes as part of the Playwright smoke test (screenshot in each).
 - shadcn components are themed through the same tokens, so no component carries its own colours.
+- Surfaces form a four-step elevation ladder, darkest to lightest in dark and tinted greys in light: sidebar (`bg-sidebar`, with a right border) < page canvas (`bg-surface`) < card (`bg-panel` plus a border) < overlay (`bg-raised`: dialogs, sheets, popovers, menus, the palette). Shared components apply it: `Card`, a titled `FormSection`, `SchemaSection` and every table (`ui/table`, a framed container with a `bg-subtle` header) sit on the canvas as framed cards; a table or `FormSection` inside a `Card` drops its own frame. Nothing sits loose on the canvas, there is no borderless card variant, and no in-page shadow.
 
 **Cross-cutting patterns.**
 - Lists: TanStack Table, compact density, URL-synced filters as removable filter chips above the table, saved views in localStorage and shareable by URL, bulk actions (renew, grant, delete) via click-to-select rows and a floating action bar, status chips always icon plus word.
