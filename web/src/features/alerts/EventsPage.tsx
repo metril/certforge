@@ -109,6 +109,8 @@ export function EventsPage() {
     <AlertsHeader
       help="alerts.events"
       activeFilters={chips.length}
+      onClearFilters={clear}
+      filterChips={<FilterChips chips={chips} onRemove={removeChip} onClear={clear} />}
       filters={
         <>
           <ChipSet
@@ -155,7 +157,6 @@ export function EventsPage() {
     <>
       {header}
       <div className="grid gap-4">
-        <FilterChips chips={chips} onRemove={removeChip} onClear={clear} />
         {empty ? (
           filtered ? (
             <EmptyState message="No events match these filters.">

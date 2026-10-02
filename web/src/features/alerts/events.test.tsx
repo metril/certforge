@@ -182,7 +182,7 @@ it('empty and filtered empty states', async () => {
   const toolbar = await screen.findByRole('toolbar', { name: 'Event groups' });
   await user.click(within(toolbar).getByRole('button', { name: 'Certificates' }));
   expect(await screen.findByText('No events match these filters.')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+  await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
 });
 
@@ -194,9 +194,9 @@ it('a deep-linked partial kind shows a removable chip and the filtered empty sta
   serveEvents([]);
   const { user } = renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued'])}`);
   expect(await screen.findByText('No events match these filters.')).toBeInTheDocument();
-  const chip = screen.getByText('Certificate issued');
-  expect(chip).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Remove filter Certificate issued' }));
+  // Desktop: no chip echo; the toolbar's Clear filters resets it.
+  expect(screen.queryByRole('button', { name: 'Remove filter Certificate issued' })).not.toBeInTheDocument();
+  await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
 });
 

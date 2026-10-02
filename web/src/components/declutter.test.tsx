@@ -1,5 +1,5 @@
 import { screen, within } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { renderUI } from '@/test/render';
 import { Card } from './Card';
 import { FormSection } from './FormSection';
@@ -79,4 +79,23 @@ it('FormSection is a Card at top level and keeps the hairline look nested in a C
   const nested = screen.getByRole('region', { name: 'Nested' });
   expect(nested.className).toContain('border-t');
   expect(nested.className).not.toContain('bg-panel');
+});
+
+it('PageHeader shows a labelled filter toolbar at md and up, with Clear filters and no chips', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 768px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+  const onClear = vi.fn();
+  const { user } = renderUI(
+    <PageHeader title="X" tabs={<a href="#a">A</a>} filters={<input aria-label="Search" />} activeFilters={1} onClearFilters={onClear} filterChips={<span>CHIP</span>} />,
+  );
+  expect(within(screen.getByRole('search', { name: 'Filters' })).getByLabelText('Search')).toBeInTheDocument();
+  expect(screen.queryByText('CHIP')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+  expect(onClear).toHaveBeenCalled();
+  vi.unstubAllGlobals();
+});
+
+it('PageHeader keeps chips inside the mobile Filters popover', async () => {
+  const { user } = renderUI(<PageHeader title="X" filters={<input aria-label="Search" />} filterChips={<span>CHIP</span>} />);
+  await user.click(screen.getByRole('button', { name: /Filters/ }));
+  expect(await screen.findByText('CHIP')).toBeInTheDocument();
 });

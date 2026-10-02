@@ -11,8 +11,8 @@ const ALERTS_TABS = [
 ] as const;
 
 /** Alerts title, tabs, and (per page) one help tip, filters and actions.
- * Each tab page renders its own, so its filters can share the tab line. */
-export function AlertsHeader(props: Pick<PageHeaderProps, 'help' | 'filters' | 'activeFilters' | 'actions'>) {
+ * Each tab page renders its own, so its filters sit in the toolbar under the tabs. */
+export function AlertsHeader(props: Pick<PageHeaderProps, 'help' | 'filters' | 'activeFilters' | 'actions' | 'onClearFilters' | 'filtersTrailing' | 'filterChips'>) {
   const { slug: org } = useOrg();
   return (
     <PageHeader

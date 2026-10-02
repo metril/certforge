@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
+import { FilterField } from '@/components/FilterToolbar';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
@@ -90,14 +91,17 @@ export function CasPage() {
           ) : undefined
         }
         activeFilters={type ? 1 : 0}
+        onClearFilters={() => setFilter('all')}
         filters={
           showList ? (
-            <SegmentedControl<CaType | 'all'>
-              aria-label="Type"
-              value={type ?? 'all'}
-              onChange={setFilter}
-              options={FILTERS.map((f) => ({ value: f, label: f === 'all' ? 'All' : KIND_LABEL[f] }))}
-            />
+            <FilterField label="Type">
+              <SegmentedControl<CaType | 'all'>
+                aria-label="Type"
+                value={type ?? 'all'}
+                onChange={setFilter}
+                options={FILTERS.map((f) => ({ value: f, label: f === 'all' ? 'All' : KIND_LABEL[f] }))}
+              />
+            </FilterField>
           ) : undefined
         }
       />
