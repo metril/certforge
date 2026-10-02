@@ -138,7 +138,7 @@ it('shows each Org-tab field badge from the effective endpoint, not a raw-value 
   expect(keyTypeField.getByRole('button', { name: 'Global' })).toBeInTheDocument();
 });
 
-it("the Org tab's chain tooltip puts the shipped value on the Global row, with no separate Built-in row", async () => {
+it("the org scope's chain tooltip puts the shipped value on the Global row, with no separate Built-in row", async () => {
   const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   const keyTypeField = within(await screen.findByRole('group', { name: 'Key type' }));
   await user.click(keyTypeField.getByRole('button', { name: 'Global' }));
@@ -256,10 +256,9 @@ it('resets an org override: PUT sends null and keeps its sibling, badge settles 
 });
 
 it('Global tab: fields are plain controls showing the shipped value, with no Override switch or Built-in wording', async () => {
-  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
-  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  renderRoute('/settings/issuance-defaults?scope=global');
   const keyTypeField = within(await screen.findByRole('group', { name: 'Key type' }));
-  expect(keyTypeField.getByRole('radio', { name: 'EC P-256' })).toBeChecked();
+  expect(await keyTypeField.findByRole('radio', { name: 'EC P-256' })).toBeChecked();
   expect(screen.queryByRole('switch', { name: /^Override/ })).toBeNull();
   expect(screen.queryByText(/Built-in/)).toBeNull();
   expect(keyTypeField.queryByRole('button', { name: 'Reset' })).toBeNull();
@@ -267,10 +266,9 @@ it('Global tab: fields are plain controls showing the shipped value, with no Ove
 });
 
 it('Global tab: Reset appears once a field differs from the shipped value and removes its key', async () => {
-  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
-  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  const { user } = renderRoute('/settings/issuance-defaults?scope=global');
   const keyTypeField = within(await screen.findByRole('group', { name: 'Key type' }));
-  await user.click(keyTypeField.getByRole('radio', { name: 'RSA 2048' }));
+  await user.click(await keyTypeField.findByRole('radio', { name: 'RSA 2048' }));
   await user.hover(keyTypeField.getByRole('button', { name: 'Reset' }));
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Back to the value CertForge ships with');
   await user.click(keyTypeField.getByRole('button', { name: 'Reset' }));
@@ -279,10 +277,9 @@ it('Global tab: Reset appears once a field differs from the shipped value and re
 });
 
 it('Global tab save: with nothing stored, only the changed key is sent (shipped values are never pinned)', async () => {
-  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
-  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  const { user } = renderRoute('/settings/issuance-defaults?scope=global');
   const mustStaple = within(await screen.findByRole('group', { name: 'Must-Staple' }));
-  await user.click(mustStaple.getByRole('switch', { name: 'Must-Staple' }));
+  await user.click(await mustStaple.findByRole('switch', { name: 'Must-Staple' }));
   await user.click(screen.getByRole('button', { name: 'Save global defaults' }));
   await waitFor(() => expect(puts.issuance_defaults).toEqual({ mustStaple: true }));
 });
@@ -298,10 +295,9 @@ it('Global tab save: keeps stored keys, including verificationRules, a field thi
       }),
     ),
   );
-  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
-  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  const { user } = renderRoute('/settings/issuance-defaults?scope=global');
   const mustStaple = within(await screen.findByRole('group', { name: 'Must-Staple' }));
-  await user.click(mustStaple.getByRole('switch', { name: 'Must-Staple' }));
+  await user.click(await mustStaple.findByRole('switch', { name: 'Must-Staple' }));
   await user.click(screen.getByRole('button', { name: 'Save global defaults' }));
   await waitFor(() => expect(puts.issuance_defaults).toEqual({ keyType: 'rsa2048', mustStaple: true, verificationRules }));
 });
@@ -315,10 +311,10 @@ it('Org tab save: preserves verificationRules, a field this page does not render
   await waitFor(() => expect((puts.org as Record<string, unknown>).verificationRules).toEqual(verificationRules));
 });
 
-it('keeps the tab header wrapping at phone width', async () => {
+it('keeps the scope row wrapping at phone width', async () => {
   renderRoute('/settings/issuance-defaults?scope=org');
-  const tablist = await screen.findByRole('tablist');
-  expect(tablist.parentElement?.className).toContain('flex-wrap');
+  const scope = await screen.findByRole('radiogroup', { name: 'Defaults scope' });
+  expect(scope.closest('.flex-wrap')).not.toBeNull();
 });
 
 // Fix round 2 (Important #1): the Global tab needs settings:write (global-
@@ -329,12 +325,12 @@ it('disables Save global/org defaults for a viewer, even once dirty', async () =
   const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('switch', { name: 'Override Key type' }));
   expect(screen.getByRole('button', { name: 'Save org defaults' })).toBeDisabled();
-  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  await user.click(screen.getByRole('radio', { name: 'Global' }));
   await user.click(await screen.findByRole('switch', { name: 'Must-Staple' }));
   expect(screen.getByRole('button', { name: 'Save global defaults' })).toBeDisabled();
 });
 
-it('Issuance defaults opens on Global, ?scope=org selects the Organization tab, and the chain links to the other level', async () => {
+it('Issuance defaults: the scope control switches between Global and Organization, and the chain links to the other level', async () => {
   const { router, user } = renderRoute('/settings/issuance-defaults?scope=org');
   const keyType = within(await screen.findByRole('group', { name: 'Key type' }));
   await user.click(keyType.getByRole('button', { name: 'Global' }));
@@ -346,9 +342,9 @@ it('Issuance defaults opens on Global, ?scope=org selects the Organization tab, 
   expect(pop.getByRole('link', { name: 'Global' })).toHaveAttribute('href', '/settings/issuance-defaults?scope=global');
   expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Global: EC P-256');
   await user.keyboard('{Escape}');
-  await user.click(screen.getByRole('tab', { name: 'Global' }));
+  await user.click(screen.getByRole('radio', { name: 'Global' }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
-  await user.click(screen.getAllByRole('tab')[1]!);
+  await user.click(screen.getByRole('radio', { name: 'Organization' }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org' }));
 });
 
@@ -358,8 +354,7 @@ it('Global tab: the unset fields show the server-served shipped values, not a cl
       HttpResponse.json({ builtin: { keyType: 'ec384', renewPolicy: { mode: 'days', value: 21, useAri: false }, preferredChain: '', reuseKey: true, mustStaple: false, resolvers: [], verificationRules: [] } }),
     ),
   );
-  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
-  await user.click(await screen.findByRole('tab', { name: 'Global' }));
-  const keyType = within(screen.getByRole('group', { name: 'Key type' }));
+  renderRoute('/settings/issuance-defaults?scope=global');
+  const keyType = within(await screen.findByRole('group', { name: 'Key type' }));
   await waitFor(() => expect(keyType.getByRole('radio', { name: 'EC P-384' })).toBeChecked());
 });

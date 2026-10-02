@@ -4,6 +4,7 @@ import {
   backupStatus,
   issuanceSettingsSchema,
   keysStatic,
+  org,
   makeImportResult,
   makeRateLedger,
   notificationsSettings,
@@ -45,6 +46,7 @@ import {
 // which every default `me` fixture (admin) can — most audit tests don't
 // care about actor names and don't mock it themselves.
 export const server = setupServer(
+  http.get(url('/orgs'), () => HttpResponse.json({ items: [org] })),
   http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get(url('/orgs/:orgId/cas'), () => HttpResponse.json([])),
   http.get(url('/orgs/:orgId/certificates/:id/manual-dns'), () => HttpResponse.json([])),

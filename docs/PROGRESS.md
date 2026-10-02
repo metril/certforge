@@ -715,3 +715,4 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 - UI rework T6: the Flow page has a Search and Show (All / Problems) toolbar (`?q=`, `?status=problems`); matching nodes keep their whole path, lane counts read n/total, and an empty result offers Clear filters.
 - UI rework T7: Flow lanes and sub-groups collapse (`?collapsed=`) into one proxy row each, with connectors retargeted and merged by worst status; Collapse all / Expand all in the toolbar.
 UI rework T8: Global is the base layer of issuance defaults, so the UI no longer shows a separate Built-in level: Global fields are plain controls with a Reset to the shipped value, and Global saves send only stored or changed keys.
+UI rework T9: the issuance defaults scope is a Global | Organization segmented control with a searchable organization picker (`?scope=org&org=<slug>`), replacing tabs that only reached the first org; switching drops unsaved edits.
