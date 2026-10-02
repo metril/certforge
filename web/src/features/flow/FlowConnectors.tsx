@@ -70,9 +70,11 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected }: Pr
       out.push({
         key,
         d,
-        cls: synthetic ? 'stroke-ink-muted' : STROKE[p.status ?? 'idle'],
-        width: !selected ? 1 : on ? 2.5 : 1,
-        opacity: !selected ? 0.35 : on ? 1 : 0.1,
+        // Nothing selected: one neutral control-border stroke. A selected path
+        // is thicker and status-coloured; every other line is dimmed.
+        cls: !selected || !on ? 'stroke-input' : synthetic ? 'stroke-ink-muted' : STROKE[p.status ?? 'idle'],
+        width: !selected ? 1.5 : on ? 2.5 : 1,
+        opacity: !selected ? 1 : on ? 1 : 0.2,
         dashed: synthetic,
       });
     }
