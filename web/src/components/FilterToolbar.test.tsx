@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { renderUI } from '@/test/render';
 import { FilterField, FilterToolbar } from './FilterToolbar';
@@ -36,4 +36,13 @@ it('FilterField shows its label beside the control and a HelpTip when given help
   expect(screen.getByText('Severity')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Help' })).toBeInTheDocument();
   expect(screen.getByLabelText('Sev')).toBeInTheDocument();
+});
+
+it('FilterField associates its label with the control group', () => {
+  renderUI(
+    <FilterField label="Severity">
+      <input aria-label="Sev" />
+    </FilterField>,
+  );
+  expect(within(screen.getByRole('group', { name: 'Severity' })).getByLabelText('Sev')).toBeInTheDocument();
 });

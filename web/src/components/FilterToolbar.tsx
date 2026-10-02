@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { HelpTip } from '@/components/HelpTip';
 import type { HelpKey } from '@/lib/help';
 import { Button } from '@/components/ui/button';
@@ -35,13 +35,16 @@ export function FilterToolbar({ children, activeFilters = 0, onClear, trailing }
 
 /** An inline label to the left of one control; controls inside are h-8. */
 export function FilterField({ label, help, children }: { label: string; help?: HelpKey; children: ReactNode }) {
+  const id = useId();
   return (
     <div className="flex items-center gap-2 [&_[role=combobox]]:h-8 [&_[role=group]]:min-h-8 [&_[role=group]]:p-[3px] [&_[role=radio]]:h-6 [&_input]:h-8">
-      <label className="flex items-center gap-1 text-xs text-ink-muted">
-        {label}
+      <span className="flex items-center gap-1 text-xs text-ink-muted">
+        <span id={id}>{label}</span>
         {help && <HelpTip id={help} />}
-      </label>
-      {children}
+      </span>
+      <div role="group" aria-labelledby={id} className="contents">
+        {children}
+      </div>
     </div>
   );
 }

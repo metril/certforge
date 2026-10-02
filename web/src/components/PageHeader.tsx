@@ -53,6 +53,11 @@ export function PageHeader({ title, help, actions, tabs, tabsLabel = 'Sections',
         {filters}
         {filtersTrailing}
         {filterChips}
+        {activeFilters > 0 && onClearFilters && (
+          <Button variant="ghost" size="sm" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        )}
       </PopoverContent>
     </Popover>
   );
