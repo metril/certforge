@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { edgeKey, laneIndex, type Flow, type FlowNodeData, type FlowPath, type FlowStatus } from './flowGraph';
+import { edgeKey, laneIndex, pairStatus, type Flow, type FlowEdgeData, type FlowNodeData, type FlowPath, type FlowStatus } from './flowGraph';
 
 const STROKE: Record<FlowStatus, string> = {
   valid: 'stroke-valid',
@@ -35,11 +35,15 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected }: Pr
     const kinds = new Map<string, FlowNodeData['kind']>();
     for (const l of Object.values(flow.lanes)) for (const n of l.nodes) kinds.set(n.id, n.kind);
 
-    const pairs = new Map<string, Pair>();
+    const groups = new Map<string, FlowEdgeData[]>();
     for (const e of flow.edges) {
       const k = edgeKey(e.from, e.to);
-      if (!pairs.has(k)) pairs.set(k, { a: e.from, b: e.to, status: e.status });
+      const g = groups.get(k);
+      if (g) g.push(e);
+      else groups.set(k, [e]);
     }
+    const pairs = new Map<string, Pair>();
+    for (const [k, g] of groups) pairs.set(k, { a: g[0]!.from, b: g[0]!.to, status: pairStatus(g, selected ? path.nodes : null) });
     for (const k of path.synthetic) {
       const [a, b] = k.split('|');
       pairs.set(`s:${k}`, { a, b, status: null });

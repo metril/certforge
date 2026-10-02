@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { edgeKey, tracePath, type Flow, type FlowNodeData } from './flowGraph';
+import { edgeKey, pairStatus, tracePath, type Flow, type FlowNodeData } from './flowGraph';
 
 const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
   id: `${kind}:${id}`,
@@ -77,12 +77,12 @@ describe('tracePath', () => {
     expect(p.nodes.has('client:K1') && p.nodes.has('client:K2')).toBe(true);
     expect(p.nodes.has('certificate:C')).toBe(false);
     const h = tracePath(flow, 'hook:H1');
-    expect(ids(h.nodes)).toEqual(['ca:ca1', 'ca:ca2', 'certificate:B', 'client:K3', 'hook:H1']);
+    expect(ids(h.nodes)).toEqual(['ca:ca1', 'ca:ca2', 'certificate:B', 'channel:ch1', 'client:K3', 'hook:H1']);
   });
 
   it('restricts a client to the certificates and delivery nodes that reach it', () => {
     const p = tracePath(flow, 'client:K1');
-    expect(ids(p.nodes)).toEqual(['ca:ca1', 'certificate:A', 'client:K1', 'dnsCredential:dns1', 'layout:L1']);
+    expect(ids(p.nodes)).toEqual(['ca:ca1', 'certificate:A', 'channel:ch1', 'client:K1', 'dnsCredential:dns1', 'layout:L1']);
     const k2 = tracePath(flow, 'client:K2');
     expect(k2.nodes.has('certificate:A')).toBe(false);
     expect(k2.nodes.has('certificate:B')).toBe(true);
@@ -106,6 +106,40 @@ describe('tracePath', () => {
     const p = tracePath(direct, 'certificate:A');
     expect(p.nodes.has('client:K1')).toBe(true);
     expect(p.nodes.has('client:K2')).toBe(false);
-    expect(ids(tracePath(direct, 'client:K1').nodes)).toEqual(['ca:ca1', 'certificate:A', 'client:K1']);
+    expect(ids(tracePath(direct, 'client:K1').nodes)).toEqual(['ca:ca1', 'certificate:A', 'channel:ch1', 'client:K1']);
+  });
+});
+
+describe('channel links from delivery and client starts', () => {
+  it('links covering channels to every traced certificate from a delivery node', () => {
+    const p = tracePath(flow, 'layout:L1');
+    expect(p.nodes.has('channel:ch1')).toBe(true);
+    expect(p.nodes.has('channel:ch2')).toBe(false);
+    expect(ids(p.synthetic)).toEqual([edgeKey('certificate:A', 'channel:ch1'), edgeKey('certificate:B', 'channel:ch1')]);
+  });
+
+  it('links covering channels to the certificates reaching a client', () => {
+    const p = tracePath(flow, 'client:K2');
+    expect(p.nodes.has('channel:ch1')).toBe(true);
+    expect(ids(p.synthetic)).toEqual([edgeKey('certificate:B', 'channel:ch1')]);
+  });
+});
+
+describe('pairStatus', () => {
+  const dup = [
+    { from: 'layout:L1', to: 'client:K1', status: 'valid' as const, certificateId: 'A' },
+    { from: 'layout:L1', to: 'client:K1', status: 'failed' as const, certificateId: 'B' },
+    { from: 'layout:L1', to: 'client:K1', status: 'drift' as const, certificateId: 'C' },
+  ];
+  it('uses the worst status with no selection', () => {
+    expect(pairStatus(dup, null)).toBe('failed');
+    expect(pairStatus(dup, new Set())).toBe('failed');
+  });
+  it('uses the status of the edge whose certificate is on the path', () => {
+    expect(pairStatus(dup, new Set(['certificate:A']))).toBe('valid');
+    expect(pairStatus(dup, new Set(['certificate:C', 'certificate:A']))).toBe('drift');
+  });
+  it('falls back to the worst status when no duplicate is on the path', () => {
+    expect(pairStatus(dup, new Set(['certificate:Z']))).toBe('failed');
   });
 });

@@ -121,10 +121,16 @@ export function tracePath(flow: Flow, selectedId: string | null | undefined): Fl
       }
       break;
     case 'delivery':
-      for (const c of certsOf(sel.id)) certPath(c, { delivery: sel.id });
+      for (const c of certsOf(sel.id)) {
+        certPath(c, { delivery: sel.id });
+        link(c);
+      }
       break;
     case 'clients':
-      for (const c of certsOf(sel.id)) certPath(c, { client: sel.id });
+      for (const c of certsOf(sel.id)) {
+        certPath(c, { client: sel.id });
+        link(c);
+      }
       break;
     case 'alerts':
       if (sel.coversCertificates) {
@@ -137,4 +143,16 @@ export function tracePath(flow: Flow, selectedId: string | null | undefined): Fl
       break;
   }
   return path;
+}
+
+const SEVERITY: FlowStatus[] = ['failed', 'expired', 'drift', 'expiring', 'pending', 'valid', 'idle'];
+
+/** One status for the duplicate edges drawn between the same two nodes (a
+ * delivery to client edge exists once per certificate). With a selection,
+ * the status of an edge whose certificate is on the path wins; otherwise the
+ * worst status among them. */
+export function pairStatus(edges: FlowEdgeData[], pathNodes?: Set<string> | null): FlowStatus {
+  const onPath = pathNodes && pathNodes.size > 0 ? edges.filter((e) => e.certificateId && pathNodes.has(`certificate:${e.certificateId}`)) : [];
+  const pool = onPath.length > 0 ? onPath : edges;
+  return pool.reduce((w, e) => (SEVERITY.indexOf(e.status) < SEVERITY.indexOf(w) ? e.status : w), pool[0]!.status);
 }
