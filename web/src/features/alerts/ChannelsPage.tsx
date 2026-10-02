@@ -133,10 +133,17 @@ function channelColumns(me: Me, org: Org) {
     }),
     col.accessor('type', {
       header: 'Type',
-      meta: { className: 'w-32' },
+      meta: { className: 'w-40' },
       cell: ({ getValue }) => {
         const m = TYPE_META[getValue()];
-        return <ToneChip tone="neutral" icon={m.icon} label={m.label} />;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToneChip tone="neutral" icon={m.icon} label={m.label} className="max-w-full min-w-0" truncate tabIndex={0} />
+            </TooltipTrigger>
+            <TooltipContent>{m.label}</TooltipContent>
+          </Tooltip>
+        );
       },
     }),
     col.accessor('summary', {

@@ -561,6 +561,7 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 
 - Task 1: control tokens (`--cf-control-border`, `--cf-field`, `--cf-selected`, `--shadow-control`) in light, dark and the no-JS fallback, mapped in `app.css` (`--color-input` now the control border); `tokens.test.ts` covers the new text pairs and a 3:1 control-border check.
 - Task 2: primitives carry the tokens: Input/Textarea/Combobox/MultiCombobox triggers (`bg-field border-input`, primary focus border and ring), Button outline/secondary/ghost, Tabs default variant (bordered strip, active panel fill with a primary bar), TabLabel (inactive hover border), SegmentedControl (`bg-selected text-primary` active), Sheet content `bg-panel`. Outline buttons use the `shadow-ctl` utility (`--shadow-ctl` in `app.css` aliases `--shadow-control`) because `no-hardcoded-values.test.ts` forbids `shadow-[`.
+- Task 3: Channels Type column `w-32` to `w-40` so the Home Assistant chip fits; `ToneChip` gains an opt-in `truncate` prop (label in an ellipsising span) and the Type chip carries a tooltip with the full label. Desktop table only renders at 768px and up (below that is the card list, unchanged), and its wrapper scrolls internally, so the extra 24px adds no page-level horizontal scroll.
 
 ## Backlog
 

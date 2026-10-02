@@ -54,13 +54,15 @@ type ToneChipProps = {
   icon: LucideIcon;
   label: string;
   help?: HelpKey;
+  /** Ellipsise the label when the chip is capped (e.g. `max-w-full`). */
+  truncate?: boolean;
 } & Omit<ComponentPropsWithoutRef<'span'>, 'children'>;
 
 // forwardRef so a ToneChip (or StatusChip/DeploymentChip, which render it)
 // can sit inside a `Tooltip`/`PermissionTip`'s `asChild` trigger — Radix
 // clones the child and attaches a ref to the real DOM node, the same
 // requirement Sidebar's TargetLink documents.
-export const ToneChip = forwardRef<HTMLSpanElement, ToneChipProps>(function ToneChip({ tone, icon: Icon, label, help, className, ...rest }, ref) {
+export const ToneChip = forwardRef<HTMLSpanElement, ToneChipProps>(function ToneChip({ tone, icon: Icon, label, help, truncate, className, ...rest }, ref) {
   return (
     <span
       ref={ref}
@@ -68,7 +70,7 @@ export const ToneChip = forwardRef<HTMLSpanElement, ToneChipProps>(function Tone
       {...rest}
     >
       <Icon className={cn('size-3.5 shrink-0', ICON[tone])} aria-hidden />
-      {label}
+      {truncate ? <span className="truncate">{label}</span> : label}
       {help && <HelpTip id={help} />}
     </span>
   );
