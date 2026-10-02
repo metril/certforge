@@ -236,3 +236,11 @@ it('card: copy fingerprint works by keyboard without opening the sheet', async (
   expect(await screen.findByText('Copied')).toBeInTheDocument();
   expect(router.state.location.search).toEqual({});
 });
+
+it('shows Enabled outside the collapsed Advanced section', async () => {
+  monitors = [makeMonitor()];
+  renderRoute('/o/acme/alerts/monitors?edit=mon-1');
+  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeVisible();
+  expect(within(sheet).getByRole('button', { name: /^Advanced/ })).toHaveAttribute('aria-expanded', 'false');
+});

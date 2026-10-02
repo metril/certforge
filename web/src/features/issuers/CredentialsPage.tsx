@@ -7,6 +7,7 @@ import type { DnsCredential, ProviderSchema } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { HintLabel } from '@/components/HintLabel';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,9 @@ function Header() {
     <TableHeader>
       <TableRow>
         <TableHead className={stickyCol}>Name</TableHead>
-        <TableHead className="w-28">Used by</TableHead>
+        <TableHead className="w-28">
+          <HintLabel id="dns.usedBy">Used by</HintLabel>
+        </TableHead>
         <TableHead className="w-32">
           <span className="sr-only">Actions</span>
         </TableHead>

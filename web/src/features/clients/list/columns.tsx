@@ -1,9 +1,11 @@
+import type { ReactNode } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { plural } from '@/api/queries/certificates';
 import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { ToneChip } from '@/components/StatusChip';
+import { help } from '@/lib/help';
 import { CLIENT_STATUS_META } from '@/lib/clientStatus';
 import { fmtDateTime, relTime } from '@/lib/time';
 
@@ -21,6 +23,18 @@ export function clientMeta(c: Client, site?: string): string[] {
   ].filter(Boolean) as string[];
 }
 
+/** Tooltip for the Name cell's meta line: the line itself, plus what drift means when it shows. */
+export function clientMetaTitle(c: Client, site?: string): ReactNode {
+  const text = clientMeta(c, site).join(' · ');
+  if (c.driftCount === 0 && c.failedCount === 0) return text;
+  return (
+    <>
+      {text}
+      <span className="mt-1 block text-ink-muted">{help['client.drift'].text}</span>
+    </>
+  );
+}
+
 const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 /** siteName in one org; orgName under All orgs (sites are per org). */
@@ -34,6 +48,7 @@ export function clientColumns({ slugOf, siteName, orgName }: { slugOf: (c: Clien
           primary={row.original.name}
           link={{ to: '/o/$org/clients/$id', params: { org: slugOf(row.original), id: row.original.id } }}
           meta={clientMeta(row.original, siteName?.(row.original.siteId))}
+          metaTitle={clientMetaTitle(row.original, siteName?.(row.original.siteId))}
         />
       ),
     }),
@@ -63,7 +78,7 @@ export function clientColumns({ slugOf, siteName, orgName }: { slugOf: (c: Clien
     }),
     col.accessor('lastSeen', {
       header: 'Last seen',
-      meta: { sortKey: 'lastSeen', className: 'w-32' },
+      meta: { sortKey: 'lastSeen', className: 'w-32', hint: 'client.lastSeen' },
       cell: ({ getValue }) => {
         const v = getValue();
         return v ? (

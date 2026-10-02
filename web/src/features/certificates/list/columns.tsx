@@ -51,7 +51,7 @@ export function certColumns(
     col.display({
       id: 'validity',
       header: 'Validity',
-      meta: { sortKey: 'notAfter', className: 'w-60' },
+      meta: { sortKey: 'notAfter', className: 'w-60', hint: 'cert.validity' },
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <div className="w-32">
@@ -65,7 +65,7 @@ export function certColumns(
     }),
     col.accessor('nextRenewAt', {
       header: 'Next renewal',
-      meta: { sortKey: 'nextRenewAt', className: 'w-32' },
+      meta: { sortKey: 'nextRenewAt', className: 'w-32', hint: 'cert.nextRenew' },
       cell: ({ getValue }) => {
         const v = getValue();
         return v ? <span className="whitespace-nowrap">{relDays(v)}</span> : '–';

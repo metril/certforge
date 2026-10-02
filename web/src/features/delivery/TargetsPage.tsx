@@ -10,6 +10,7 @@ import type { DeployTarget } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { HintLabel } from '@/components/HintLabel';
 import { PermissionTip } from '@/components/PermissionTip';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { RunsOnChip } from '@/components/RunsOnChip';
@@ -114,7 +115,9 @@ export function TargetsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead className="w-32">Runs on</TableHead>
-                  <TableHead className="w-28">Used by</TableHead>
+                  <TableHead className="w-28">
+                    <HintLabel id="target.usedBy">Used by</HintLabel>
+                  </TableHead>
                   <TableHead className="w-20">
                     <span className="sr-only">Actions</span>
                   </TableHead>

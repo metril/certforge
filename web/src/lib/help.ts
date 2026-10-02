@@ -162,7 +162,6 @@ export const help = {
   // Fix round 1 (review): the list column needs its own key — `cert.names`
   // is wizard copy about pasting names into the create-certificate step
   // (Task 12), not what a read-only SANs column means.
-  'cert.namesColumn': { text: 'Subject alternative names besides the common name shown under Name.', learnMore: 'certificates.md#names' },
   'cert.nextRenew': { text: 'When CertForge next tries to renew. ARI can move it earlier.' },
   'cert.managed': {
     text: 'Renewed outside CertForge. Upload each new version yourself.',
@@ -236,7 +235,6 @@ export const help = {
   'overview.page': { text: 'Certificate health at a glance: status counts, what needs attention, upcoming expiries and recent activity.', learnMore: 'web-ui.md#overview' },
   'overview.attention': { text: 'Expired, waiting on you, failing, overdue, not deployed or offline, most urgent first.', learnMore: 'web-ui.md#overview' },
   'attention.monitor': { text: 'An external monitor sees the wrong certificate or cannot connect.', learnMore: 'monitoring.md#states' },
-  'cert.grants': { text: 'Clients this certificate is granted to.' },
   'cert.deployments': { text: 'One row per client holding this certificate, with what its agent installed.', learnMore: 'agent.md#grants-and-reconcile' },
   'overview.activity': { text: 'The last 20 audit events here. Open one to see what changed.', learnMore: 'web-ui.md#audit-log' },
   'user.source': { text: 'The identity provider that signed the user in, or Local for the break-glass admin.' },
@@ -279,7 +277,6 @@ export const help = {
   'client.name': { text: 'Unique in this org. Shown in lists and audit events.' },
   'client.site': { text: 'Sites group clients for filtering. They never limit access.' },
   'client.agentVersion': { text: 'certforge-agent version the host reported when it last connected.' },
-  'client.grants': { text: 'Certificates granted to this client.' },
   'client.drift': { text: 'Grants whose files on the host no longer match, and grants whose last deploy failed.', learnMore: 'agent.md#drift' },
   'client.lastSeen': { text: 'Last connection, heartbeat or report from the agent.' },
   'client.token': { text: 'Single use and shown only now. Start the agent with it before it expires.', learnMore: 'agent.md#enrolment' },
@@ -482,10 +479,6 @@ export const help = {
   'backup.restore': {
     text: 'Restore runs offline with certforge restore while the server is stopped.',
     learnMore: 'operations.md#restore',
-  },
-  'settings.backup': {
-    text: 'Scheduled backups go to a directory on the server, keeping the newest files.',
-    learnMore: 'configuration.md#backup-section',
   },
 } satisfies Record<string, Help>;
 

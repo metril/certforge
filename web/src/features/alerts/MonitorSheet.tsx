@@ -247,10 +247,16 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 {!presetSelected && <span className="text-xs text-ink-muted">Currently {fmtInterval(draft.intervalSeconds)}</span>}
               </div>
             </Field>
+            <SwitchField
+              id="monitor-enabled"
+              label="Enabled"
+              checked={draft.enabled}
+              onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
+            />
             <FormSection
               title="Advanced"
               collapsible
-              count={(draft.sni.trim() !== '' ? 1 : 0) + (draft.expectedCertificateId ? 1 : 0) + (draft.enabled ? 0 : 1)}
+              count={(draft.sni.trim() !== '' ? 1 : 0) + (draft.expectedCertificateId ? 1 : 0)}
               forceOpen={!!(serverErrors.sni || serverErrors.expectedCertificateId)}
             >
             <Field id="monitor-sni" label="SNI" help="monitor.sni" optional error={serverErrors.sni}>
@@ -273,12 +279,6 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 emptyText="No certificate matches."
               />
             </Field>
-            <SwitchField
-              id="monitor-enabled"
-              label="Enabled"
-              checked={draft.enabled}
-              onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-            />
             </FormSection>
             <SheetFooter className="flex-row justify-between gap-2 px-0">
               {monitor ? (

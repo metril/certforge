@@ -21,10 +21,11 @@ import { RowActions, UsedBy } from './RowActions';
 
 const stickyCol = 'sticky left-0 z-10 bg-panel';
 
-/** Muted second line: file names, extra certificates, and whether an export password is stored. */
-function layoutMeta(l: Layout): string[] {
+/** Muted second line: file names, extra certificates, and whether an export password is stored.
+ * `full` swaps the names for full output paths (the tooltip's version). */
+function layoutMeta(l: Layout, full = false): string[] {
   return [
-    l.files.map((f) => f.path.split('/').pop()).join(', '),
+    l.files.map((f) => (full ? f.path : f.path.split('/').pop())).join(', '),
     l.extraCertificateIds.length > 0 ? `+${l.extraCertificateIds.length} extra` : '',
     l.passwordSet ? 'password set' : '',
   ];
@@ -87,7 +88,7 @@ export function LayoutsPage() {
               {layouts.map((l) => (
                 <TableRow key={l.id}>
                   <TableCell className={cn('py-1.5', stickyCol)}>
-                    <PrimaryCell primary={l.name} meta={layoutMeta(l)} />
+                    <PrimaryCell primary={l.name} meta={layoutMeta(l)} metaTitle={layoutMeta(l, true).filter(Boolean).join(' · ')} />
                   </TableCell>
                   <TableCell className="py-1">
                     <UsedBy count={l.grantCount} />

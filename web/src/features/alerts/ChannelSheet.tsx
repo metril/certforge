@@ -235,7 +235,14 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
             extraErrors={configError}
           />
           <EventKindPicker value={draft.events} onChange={(events) => setDraft((d) => ({ ...d, events }))} />
-          <FormSection title="Advanced" collapsible count={(draft.minSeverity !== 'info' ? 1 : 0) + (draft.allOrgs ? 1 : 0) + (draft.enabled ? 0 : 1)}>
+          <SwitchField
+            id="channel-enabled"
+            label="Enabled"
+            help="channel.enabled"
+            checked={draft.enabled}
+            onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
+          />
+          <FormSection title="Advanced" collapsible count={(draft.minSeverity !== 'info' ? 1 : 0) + (draft.allOrgs ? 1 : 0)}>
             <Field id="channel-severity" label="Minimum severity" help="channel.minSeverity">
               <SegmentedControl<Severity>
                 id="channel-severity"
@@ -256,13 +263,6 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
                 onCheckedChange={(allOrgs) => setDraft((d) => ({ ...d, allOrgs }))}
               />
             </PermissionTip>
-            <SwitchField
-              id="channel-enabled"
-              label="Enabled"
-              help="channel.enabled"
-              checked={draft.enabled}
-              onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-            />
           </FormSection>
           <SheetFooter className="flex-row justify-between gap-2 px-0">
             {channel ? (

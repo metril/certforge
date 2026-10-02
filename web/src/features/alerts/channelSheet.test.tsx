@@ -276,3 +276,11 @@ it('channel secrets not cached', async () => {
   const cached = JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.state.data));
   expect(cached).not.toContain('s3cr3t-token');
 });
+
+it('shows Enabled outside the collapsed Advanced section', async () => {
+  channels = [makeChannel()];
+  renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeVisible();
+  expect(within(sheet).getByRole('button', { name: 'Advanced' })).toHaveAttribute('aria-expanded', 'false');
+});
