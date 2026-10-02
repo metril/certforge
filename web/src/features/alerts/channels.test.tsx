@@ -52,32 +52,27 @@ it('alerts index redirects to channels', async () => {
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/alerts/channels'));
 });
 
-it('lists channels with type, summary and event chips', async () => {
+it('lists channels with type, summary and events as plain text', async () => {
   channels = [makeChannel({ events: ['cert.issued', 'cert.expiring'], minSeverity: 'warning' })];
   renderRoute('/o/acme/alerts/channels');
   const table = await screen.findByRole('table', { name: 'Channels' });
   expect(within(table).getByText('ops-webhook')).toBeInTheDocument();
-  expect(within(table).getByText('Webhook')).toBeInTheDocument();
-  expect(within(table).getByText('hooks.example.com')).toBeInTheDocument();
-  expect(within(table).getByText('Certificate issued')).toBeInTheDocument();
-  expect(within(table).getByText('Certificate expiring')).toBeInTheDocument();
-  expect(within(table).getByText('Warning+')).toBeInTheDocument();
+  expect(within(table).getByText(/Webhook · .*hooks\.example\.com/)).toBeInTheDocument();
+  expect(within(table).getByText(/Certificate issued, Certificate expiring \(Warning\+\)/)).toBeInTheDocument();
 });
 
-it('more than three events shows +N', async () => {
+it('lists every selected event in the meta line', async () => {
   channels = [makeChannel({ events: ['cert.issued', 'cert.expiring', 'cert.expired', 'deploy.failed'] })];
-  const { user } = renderRoute('/o/acme/alerts/channels');
+  renderRoute('/o/acme/alerts/channels');
   const table = await screen.findByRole('table', { name: 'Channels' });
-  const more = within(table).getByText('+1');
-  await user.hover(more);
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Deploy failed');
+  expect(within(table).getByText(/Deploy failed/)).toBeInTheDocument();
 });
 
 it('empty events shows All events', async () => {
   channels = [makeChannel({ events: [] })];
   renderRoute('/o/acme/alerts/channels');
   const table = await screen.findByRole('table', { name: 'Channels' });
-  expect(within(table).getByText('All events')).toBeInTheDocument();
+  expect(within(table).getByText(/All events/)).toBeInTheDocument();
 });
 
 it('all-orgs badge and owner org', async () => {
@@ -85,8 +80,8 @@ it('all-orgs badge and owner org', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'admin', orgId: null }], [org, org2]))));
   renderRoute('/o/acme/alerts/channels');
   const table = await screen.findByRole('table', { name: 'Channels' });
-  expect(within(table).getByText('All orgs')).toBeInTheDocument();
-  expect(within(table).getByText('Lab')).toBeInTheDocument();
+  expect(within(table).getByText(/All orgs/)).toBeInTheDocument();
+  expect(within(table).getByText(/Lab/)).toBeInTheDocument();
 });
 
 // The switch always sends a full ChannelInput (public config plus a stored-

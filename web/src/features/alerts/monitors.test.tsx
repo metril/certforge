@@ -60,10 +60,8 @@ it('lists monitors with state and fingerprint', async () => {
   renderRoute('/o/acme/alerts/monitors');
   const table = await screen.findByRole('table', { name: 'Monitors' });
   expect(within(table).getByText('edge')).toBeInTheDocument();
-  expect(within(table).getByText('edge.example.com:443')).toBeInTheDocument();
-  expect(within(table).getByText('1 h')).toBeInTheDocument();
+  expect(within(table).getByText(new RegExp(`edge\\.example\\.com:443 · 1 h · ${'ab'.repeat(8)}…`))).toBeInTheDocument();
   expect(within(table).getByText('OK')).toBeInTheDocument();
-  expect(within(table).getByText(`${'ab'.repeat(8)}…`)).toBeInTheDocument();
 });
 
 it('paused chip when disabled', async () => {

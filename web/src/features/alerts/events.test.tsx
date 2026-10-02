@@ -1,10 +1,15 @@
 import { http, HttpResponse } from 'msw';
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { NotifyEvent } from '@/api/types';
 import { server } from '@/test/server';
 import { authHandlers, iso, makeEvent, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
+
+// Filters sit on the tab line from md; below it they fold into a popover.
+beforeEach(() => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 768px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+});
 
 const CERT_KINDS = ['cert.issued', 'cert.renewal_failed', 'cert.expiring', 'cert.expired'];
 

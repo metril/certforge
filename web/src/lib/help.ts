@@ -384,7 +384,7 @@ export const help = {
   'import.hasKey': { text: "Without a key the certificate can't be deployed with key files until its first renewal." },
   // Task 2 (Phase 6B): the Alerts area — tabs, channels table.
   'alerts.channels': {
-    text: 'Where CertForge sends events: webhooks, email, chat and push services.',
+    text: 'Where CertForge sends events: webhooks, email, chat and push services. Last delivery is the most recent result, tests included. An All orgs channel receives events from every organization; only a global admin can set it.',
     learnMore: 'notifications.md#channels',
   },
   'channel.allOrgs': {
@@ -397,7 +397,7 @@ export const help = {
   },
   'channel.limit': { text: 'An organization can have at most 50 channels.' },
   'alerts.monitors': {
-    text: 'Checks which certificate a TLS endpoint serves and alerts when it changes.',
+    text: 'Checks which certificate a TLS endpoint serves and alerts when it changes. State comes from the last check: OK, Mismatch, Expiring (under 14 days) or Unreachable. The check button runs one now.',
     learnMore: 'monitoring.md#external-monitors',
   },
   'alerts.events': {

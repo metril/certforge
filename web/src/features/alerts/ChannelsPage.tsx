@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { createColumnHelper } from '@tanstack/react-table';
-import { Globe, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { channelsQuery, updateChannel } from '@/api/queries/channels';
@@ -10,20 +10,19 @@ import type { Channel, Me, Org, Severity } from '@/api/types';
 import { DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
-import { ToneChip } from '@/components/StatusChip';
+import { PrimaryCell } from '@/components/PrimaryCell';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { canWriteChannel, toChannelInput, TYPE_META } from '@/lib/channels';
-import { KIND_LABEL, SEVERITY_META } from '@/lib/events';
+import { KIND_LABEL } from '@/lib/events';
 import { help } from '@/lib/help';
 import { useMe, useOrg } from '@/lib/org';
 import { can, isGlobalAdmin } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { AlertsHeader } from './AlertsLayout';
 import { ChannelSheet } from './ChannelSheet';
 import { DeliveryChip } from './DeliveryChip';
 
@@ -31,8 +30,10 @@ const col = createColumnHelper<Channel>();
 const CHANNEL_LIMIT = 50;
 // UI conventions: the severity chip that follows the kind chips, only shown
 // above info (Events column, Deviations "event severity chips").
-const MIN_SEVERITY_LABEL: Partial<Record<Severity, string>> = { warning: 'Warning+', critical: 'Critical' };
-const chipCls = 'inline-flex h-6 items-center whitespace-nowrap rounded-sm border border-border bg-subtle px-1.5 text-xs';
+const MIN_SEVERITY_LABEL: Partial<Record<Severity, string>> = {
+  warning: 'Warning+',
+  critical: 'Critical',
+};
 
 function ownerOrgName(me: Pick<Me, 'orgs'>, channel: Channel, routeOrgId: string): string | undefined {
   return channel.orgId !== routeOrgId ? me.orgs.find((o) => o.id === channel.orgId)?.name : undefined;
@@ -68,37 +69,16 @@ function EnabledSwitch({ channel, routeOrgId }: { channel: Channel; routeOrgId: 
   );
 }
 
-function EventsCell({ channel }: { channel: Channel }) {
-  const shown = channel.events.slice(0, 3);
-  const rest = channel.events.slice(3);
-  return (
-    <div className="flex flex-wrap items-center gap-1">
-      {channel.events.length === 0 ? (
-        <span className={`${chipCls} text-ink-muted`}>All events</span>
-      ) : (
-        <>
-          {shown.map((k) => (
-            <span key={k} className={chipCls}>
-              {KIND_LABEL[k]}
-            </span>
-          ))}
-          {rest.length > 0 && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0} className={`${chipCls} cursor-default`}>
-                  +{rest.length}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>{rest.map((k) => KIND_LABEL[k]).join(', ')}</TooltipContent>
-            </Tooltip>
-          )}
-        </>
-      )}
-      {channel.minSeverity !== 'info' && (
-        <ToneChip tone={SEVERITY_META[channel.minSeverity].tone} icon={SEVERITY_META[channel.minSeverity].icon} label={MIN_SEVERITY_LABEL[channel.minSeverity]!} />
-      )}
-    </div>
-  );
+/** Plain-text summary of the kinds a channel receives (no chips). */
+function eventsText(channel: Channel): string {
+  const kinds = channel.events.length === 0 ? 'All events' : channel.events.map((k) => KIND_LABEL[k]).join(', ');
+  const floor = MIN_SEVERITY_LABEL[channel.minSeverity];
+  return floor ? `${kinds} (${floor})` : kinds;
+}
+
+/** Muted second line shared by the table row and the mobile card. */
+function channelMeta(me: Me, org: Org, c: Channel): string[] {
+  return [TYPE_META[c.type].label, c.summary, ownerOrgName(me, c, org.id) ?? '', c.allOrgs ? 'All orgs' : '', eventsText(c)].filter(Boolean);
 }
 
 function LastDeliveryCell({ channel }: { channel: Channel }) {
@@ -116,69 +96,24 @@ function channelColumns(me: Me, org: Org) {
   return [
     col.accessor('name', {
       header: 'Name',
-      meta: { className: 'w-48' },
-      cell: ({ row }) => {
-        const c = row.original;
-        const owner = ownerOrgName(me, c, org.id);
-        return (
-          <div className="grid min-w-0 gap-0.5">
-            <span className="flex items-center gap-1.5">
-              <span className="truncate font-semibold">{c.name}</span>
-              {c.allOrgs && <ToneChip tone="neutral" icon={Globe} label="All orgs" help="channel.allOrgs" />}
-            </span>
-            {owner && <span className="truncate text-xs text-ink-muted">{owner}</span>}
-          </div>
-        );
-      },
-    }),
-    col.accessor('type', {
-      header: 'Type',
-      meta: { className: 'w-40' },
-      cell: ({ getValue }) => {
-        const m = TYPE_META[getValue()];
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToneChip tone="neutral" icon={m.icon} label={m.label} className="max-w-full min-w-0" truncate tabIndex={0} />
-            </TooltipTrigger>
-            <TooltipContent>{m.label}</TooltipContent>
-          </Tooltip>
-        );
-      },
-    }),
-    col.accessor('summary', {
-      header: 'Destination',
-      meta: { className: 'w-48' },
-      cell: ({ getValue }) => (
-        <span title={getValue()} className="block truncate font-mono text-xs">
-          {getValue()}
-        </span>
-      ),
-    }),
-    col.display({ id: 'events', header: 'Events', meta: { className: 'w-56' }, cell: ({ row }) => <EventsCell channel={row.original} /> }),
-    col.display({
-      id: 'enabled',
-      header: 'Enabled',
-      meta: { className: 'w-20' },
-      cell: ({ row }) => <EnabledSwitch channel={row.original} routeOrgId={org.id} />,
+      cell: ({ row }) => <PrimaryCell primary={row.original.name} meta={channelMeta(me, org, row.original)} />,
     }),
     col.display({
       id: 'lastDelivery',
-      header: () => (
-        <span className="inline-flex items-center gap-1">
-          Last delivery
-          <HelpTip id="channel.lastDelivery" />
-        </span>
-      ),
-      meta: { className: 'w-40' },
+      header: 'Last delivery',
+      meta: { className: 'w-44' },
       cell: ({ row }) => <LastDeliveryCell channel={row.original} />,
+    }),
+    col.display({
+      id: 'enabled',
+      header: 'Enabled',
+      meta: { className: 'w-24' },
+      cell: ({ row }) => <EnabledSwitch channel={row.original} routeOrgId={org.id} />,
     }),
   ];
 }
 
 function ChannelCard({ channel, org, me, onOpen }: { channel: Channel; org: Org; me: Me; onOpen: () => void }) {
-  const m = TYPE_META[channel.type];
-  const owner = ownerOrgName(me, channel, org.id);
   return (
     <div
       role="button"
@@ -201,15 +136,7 @@ function ChannelCard({ channel, org, me, onOpen }: { channel: Channel; org: Org;
         <span className="truncate font-semibold">{channel.name}</span>
         <EnabledSwitch channel={channel} routeOrgId={org.id} />
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <ToneChip tone="neutral" icon={m.icon} label={m.label} />
-        {channel.allOrgs && <ToneChip tone="neutral" icon={Globe} label="All orgs" />}
-        {owner && <span className="text-xs text-ink-muted">{owner}</span>}
-      </div>
-      <span title={channel.summary} className="truncate font-mono text-xs text-ink-muted">
-        {channel.summary}
-      </span>
-      <EventsCell channel={channel} />
+      <span className="text-xs text-ink-muted">{channelMeta(me, org, channel).join(' · ')}</span>
       <LastDeliveryCell channel={channel} />
     </div>
   );
@@ -229,7 +156,11 @@ export function ChannelsPage() {
   // limit (batch 1 review).
   const atLimit = channels.filter((c) => c.orgId === org.id).length >= CHANNEL_LIMIT;
   const addAllowed = canWrite && !atLimit;
-  const openSheet = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, edit: id }), replace: id === undefined });
+  const openSheet = (id: string | undefined) =>
+    void navigate({
+      search: (prev) => ({ ...prev, edit: id }),
+      replace: id === undefined,
+    });
   const columns = useMemo(() => channelColumns(me, org), [me, org]);
   const editing = channels.find((c) => c.id === edit);
   const editNotFound = !q.isPending && !q.isError && !!edit && edit !== 'new' && !editing;
@@ -244,44 +175,46 @@ export function ChannelsPage() {
   );
 
   return (
-    <div className="grid gap-4">
-      {q.isPending ? (
-        <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-      ) : q.isError ? (
-        <ErrorState message={`Couldn't load channels. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
-      ) : channels.length === 0 ? (
-        <EmptyState message="No channels yet.">{add}</EmptyState>
-      ) : (
-        <>
-          <div className="flex justify-end">{add}</div>
-          {isMdUp ? (
-            <DataTable ariaLabel="Channels" data={channels} columns={columns} getRowId={(c) => c.id} onRowClick={(id) => openSheet(id)} />
-          ) : (
-            <div className="grid gap-2">
-              {channels.map((c) => (
-                <ChannelCard key={c.id} channel={c} org={org} me={me} onOpen={() => openSheet(c.id)} />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-      {(edit === 'new' || editing) && (
-        // Mount only once the channel is loaded so the sheet initialises from it.
-        <ChannelSheet key={edit} orgId={org.id} open channel={editing} onOpenChange={(o) => !o && openSheet(undefined)} />
-      )}
-      {editNotFound && (
-        <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
-          <SheetContent side="right" className="w-full sm:max-w-lg">
-            <SheetHeader>
-              <SheetTitle>Channel not found</SheetTitle>
-              <SheetDescription>It may have been deleted.</SheetDescription>
-            </SheetHeader>
-            <div className="px-4">
-              <Button onClick={() => openSheet(undefined)}>Back to channels</Button>
-            </div>
-          </SheetContent>
-        </Sheet>
-      )}
-    </div>
+    <>
+      <AlertsHeader help="alerts.channels" actions={q.isPending || q.isError || channels.length === 0 ? undefined : add} />
+      <div className="grid gap-4">
+        {q.isPending ? (
+          <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
+        ) : q.isError ? (
+          <ErrorState message={`Couldn't load channels. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
+        ) : channels.length === 0 ? (
+          <EmptyState message="No channels yet.">{add}</EmptyState>
+        ) : (
+          <>
+            {isMdUp ? (
+              <DataTable ariaLabel="Channels" data={channels} columns={columns} getRowId={(c) => c.id} onRowClick={(id) => openSheet(id)} />
+            ) : (
+              <div className="grid gap-2">
+                {channels.map((c) => (
+                  <ChannelCard key={c.id} channel={c} org={org} me={me} onOpen={() => openSheet(c.id)} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {(edit === 'new' || editing) && (
+          // Mount only once the channel is loaded so the sheet initialises from it.
+          <ChannelSheet key={edit} orgId={org.id} open channel={editing} onOpenChange={(o) => !o && openSheet(undefined)} />
+        )}
+        {editNotFound && (
+          <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
+            <SheetContent side="right" className="w-full sm:max-w-lg">
+              <SheetHeader>
+                <SheetTitle>Channel not found</SheetTitle>
+                <SheetDescription>It may have been deleted.</SheetDescription>
+              </SheetHeader>
+              <div className="px-4">
+                <Button onClick={() => openSheet(undefined)}>Back to channels</Button>
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
+      </div>
+    </>
   );
 }
