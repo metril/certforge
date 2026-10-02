@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { Crown } from 'lucide-react';
 import type { EffectiveMap } from '@/api/types';
-import { effectiveText, ISSUANCE_FIELDS, type FieldCtx } from '@/features/settings/issuanceFields';
+import { effectiveText, isUnset, ISSUANCE_FIELDS, type FieldCtx } from '@/features/settings/issuanceFields';
 import { SourceBadge } from '@/forms/InheritableField';
 
 // Fix round 1 (review, Important #1): OverviewTab and SettingsTab each had
@@ -31,7 +31,7 @@ export function EffectiveConfigList({ eff, ctx }: { eff: EffectiveMap; ctx: Fiel
             <dt className="text-ink-muted">{f.label}</dt>
             <dd className="flex flex-wrap items-center gap-2">
               {effectiveText(f, e, ctx)}
-              <SourceBadge source={e.source} />
+              {!isUnset(f, e) && <SourceBadge source={e.source} />}
             </dd>
           </Fragment>
         );

@@ -4,7 +4,7 @@ import { effectiveDefaultsQuery } from '@/api/queries/defaults';
 import type { EffectiveValue, IssuanceDefaults } from '@/api/types';
 import { Field } from '@/components/Field';
 import { Input } from '@/components/ui/input';
-import { effectiveText, ISSUANCE_FIELDS, useFieldCtx, type FieldKey } from '@/features/settings/issuanceFields';
+import { effectiveText, isUnset, ISSUANCE_FIELDS, useFieldCtx, type FieldKey } from '@/features/settings/issuanceFields';
 import { CoveragePanel } from '@/forms/CoveragePanel';
 import { SourceBadge } from '@/forms/InheritableField';
 import { coverage, type Inherited } from '@/lib/coverage';
@@ -43,7 +43,7 @@ export function ReviewStep({ orgId, state, dispatch, inherited }: Props) {
                 <dt className="text-ink-muted">{f.label}</dt>
                 <dd className="flex flex-wrap items-center gap-2">
                   {effectiveText(f, e, ctx)}
-                  <SourceBadge source={e.source} />
+                  {!isUnset(f, e) && <SourceBadge source={e.source} />}
                 </dd>
               </Fragment>
             );

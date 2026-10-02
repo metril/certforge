@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { HelpKey } from '@/lib/help';
+import { UnsetValue, type Unset } from './UnsetValue';
 
 /** One level's value for a field, shown in the source badge's popover. */
 export type ChainEntry = { level: Source; value: ReactNode };
@@ -30,7 +31,7 @@ type Props<T> = {
   /** The shipped defaults are not known (loading, or unavailable): a value falling back to them is shown as such, never as "not set". */
   builtinState?: 'loading' | 'error';
   /** What "nothing set anywhere" does for this field, when the built-in is not a value. */
-  unsetText?: string;
+  unset?: Unset;
   /** The level this form edits; it is "here", so it gets no link. */
   level?: 'global' | 'org' | 'cert';
   links?: LevelLinks;
@@ -117,17 +118,18 @@ function FieldSourceBadge({ effective, level, links, entries }: { effective: Sou
   );
 }
 
-export function InheritableField<T>({ id, label, help, value, inherited, chain, builtinState, unsetText, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
+export function InheritableField<T>({ id, label, help, value, inherited, chain, builtinState, unset, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
   const overridden = value !== null && value !== undefined;
   const unknownShipped = (inherited.value === null || inherited.value === undefined) && inherited.source === 'default';
   if (level === 'global') {
     return (
       <BaseField
-        {...{ id, label, help, value, inherited, builtinState, unsetText, initial, display, editor, onChange, error, overrideDisabled }}
+        {...{ id, label, help, value, inherited, builtinState, unset, initial, display, editor, onChange, error, overrideDisabled }}
         unknownShipped={unknownShipped}
       />
     );
   }
+  const inheritedUnset = !!unset && (inherited.value === null || inherited.value === undefined) && !(inherited.source === 'default' && builtinState);
   const switchDisabled = !overridden && !!overrideDisabled;
   const inheritedView = pending ? (
     <span className="text-ink-muted">Inherited after save</span>
@@ -136,7 +138,7 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
   ) : (inherited.value === null || inherited.value === undefined) && inherited.source === 'default' && builtinState === 'error' ? (
     <span className="text-ink-muted">Default unavailable</span>
   ) : inherited.value === null || inherited.value === undefined ? (
-    <span className="text-ink-muted">{unsetText ?? 'not set'}</span>
+    unset ? <UnsetValue unset={unset} /> : <span className="text-ink-muted">not set</span>
   ) : (
     display(inherited.value)
   );
@@ -156,7 +158,7 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
         {help && <HelpTip id={help} />}
         {pending ? (
           <span className="inline-flex h-5 items-center rounded-sm border border-dashed border-border px-1.5 text-xs text-ink-muted">Pending</span>
-        ) : (
+        ) : !overridden && inheritedUnset ? null : (
           <FieldSourceBadge effective={effective} level={level} links={links} entries={entries} />
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -200,10 +202,10 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
   );
 }
 
-type BaseProps<T> = Pick<Props<T>, 'id' | 'label' | 'help' | 'value' | 'inherited' | 'builtinState' | 'unsetText' | 'initial' | 'display' | 'editor' | 'onChange' | 'error' | 'overrideDisabled'> & { unknownShipped: boolean };
+type BaseProps<T> = Pick<Props<T>, 'id' | 'label' | 'help' | 'value' | 'inherited' | 'builtinState' | 'unset' | 'initial' | 'display' | 'editor' | 'onChange' | 'error' | 'overrideDisabled'> & { unknownShipped: boolean };
 
 /** A Global field: Global is the base layer, so there is no Override switch. The control shows the stored value, else the value CertForge ships with; Reset removes the stored key. */
-function BaseField<T>({ id, label, help, value, inherited, builtinState, unsetText, initial, display, editor, onChange, error, overrideDisabled, unknownShipped }: BaseProps<T>) {
+function BaseField<T>({ id, label, help, value, inherited, builtinState, unset, initial, display, editor, onChange, error, overrideDisabled, unknownShipped }: BaseProps<T>) {
   const stored = value !== null && value !== undefined;
   const shipped = inherited.value as T | null | undefined;
   const hasShipped = shipped !== null && shipped !== undefined;
@@ -219,7 +221,7 @@ function BaseField<T>({ id, label, help, value, inherited, builtinState, unsetTe
   } else {
     body = (
       <>
-        <span className="text-sm text-ink-muted">{unsetText ?? 'not set'}</span>
+        {unset ? <UnsetValue unset={unset} /> : <span className="text-sm text-ink-muted">not set</span>}
         {overrideDisabled && <span className="text-sm text-ink-muted">({overrideDisabled})</span>}
         {!overrideDisabled && (
           <Button type="button" variant="ghost" size="sm" onClick={() => onChange(initial)}>

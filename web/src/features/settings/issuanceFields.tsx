@@ -13,6 +13,7 @@ import { SegmentedControl, type SegmentOption } from '@/components/SegmentedCont
 import { SwitchField } from '@/components/SwitchField';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { UnsetValue, type Unset } from '@/forms/UnsetValue';
 import { InheritableField, type ChainEntry, type LevelLinks } from '@/forms/InheritableField';
 import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
 import { isPrivate, KIND_LABEL } from '@/lib/caKinds';
@@ -41,7 +42,7 @@ export type IssuanceField = {
   /** When set, Override cannot be turned on for this field (e.g. an empty CA list has nothing to pick) — an already-overridden field can still be reset. */
   disabledReason?: (c: FieldCtx) => string | undefined;
   /** What an unset-everywhere field does, when the built-in is not a value. */
-  unsetText?: string;
+  unset?: Unset;
 };
 
 export function def<K extends FieldKey>(d: {
@@ -52,7 +53,7 @@ export function def<K extends FieldKey>(d: {
   display: (v: V<K>, c: FieldCtx) => ReactNode;
   editor: (v: V<K>, set: (v: V<K> | null) => void, c: FieldCtx, id: string) => ReactNode;
   disabledReason?: (c: FieldCtx) => string | undefined;
-  unsetText?: string;
+  unset?: Unset;
 }): IssuanceField {
   return d as unknown as IssuanceField;
 }
@@ -83,7 +84,7 @@ function boolEditor(label: string, on: string, off: string) {
 export const ISSUANCE_FIELDS: IssuanceField[] = [
   def({
     key: 'caId',
-    unsetText: 'none — issuance fails until one is set',
+    unset: { label: 'Not set', tone: 'expiring', tip: 'Issuance fails until a certificate authority is set.' },
     label: 'Certificate authority',
     help: 'defaults.caId',
     initial: (c) => c.cas[0]?.id ?? '',
@@ -108,7 +109,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
   }),
   def({
     key: 'accountId',
-    unsetText: 'none — ACME CAs need one, private CAs do not',
+    unset: { label: 'Not set', tone: 'neutral', tip: 'ACME CAs need an account. Private CAs do not.' },
     label: 'ACME account',
     help: 'defaults.accountId',
     initial: (c) => c.accounts[0]?.id ?? '',
@@ -196,7 +197,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
   }),
   def({
     key: 'propagationSeconds',
-    unsetText: "the DNS provider's own timeout",
+    unset: { label: 'Provider default', tip: "Uses the DNS provider's own timeout." },
     label: 'Propagation wait',
     help: 'defaults.propagationSeconds',
     initial: () => 120,
@@ -271,16 +272,22 @@ export function fromEffective(eff: EffectiveMap) {
   return (k: FieldKey): EffectiveValue => unsetIfShipped(k, (eff[k] as EffectiveValue | undefined) ?? fromDefault());
 }
 
-/** The API flattens a field with no shipped value (propagationSeconds) to 0 with source 'default'; a real 0 always carries the level that set it. So a default-sourced value of a field with an unsetText is "not set", never a number. */
+/** The API flattens a field with no shipped value (propagationSeconds) to 0 with source 'default'; a real 0 always carries the level that set it. So a default-sourced value of a field with an unset is "not set", never a number. */
 function unsetIfShipped(k: FieldKey, e: EffectiveValue): EffectiveValue {
   const f = ISSUANCE_FIELDS.find((x) => x.key === k);
-  return f?.unsetText && e.source === 'default' && e.value != null ? ({ ...e, value: null } as EffectiveValue) : e;
+  return f?.unset && e.source === 'default' && e.value != null ? ({ ...e, value: null } as EffectiveValue) : e;
+}
+
+/** Whether an effective value is unset at every level (no source badge is shown for it). */
+export function isUnset(f: IssuanceField, e: EffectiveValue): boolean {
+  const v = unsetIfShipped(f.key, e).value;
+  return !!f.unset && (v === null || v === undefined);
 }
 
 /** One effective value as text, for the certificate detail and the wizard's summary and review. */
 export function effectiveText(f: IssuanceField, e: EffectiveValue, ctx: FieldCtx): ReactNode {
   const v = unsetIfShipped(f.key, e).value;
-  if (v === null || v === undefined) return f.unsetText ?? 'Global';
+  if (v === null || v === undefined) return f.unset ? <UnsetValue unset={f.unset} /> : 'Global';
   return f.display(v, ctx);
 }
 
@@ -291,7 +298,7 @@ export function builtinStateOf(q: { data?: { builtin?: unknown } | undefined; is
 }
 
 // `builtin` is the server's BuiltinDefaults (effective endpoint's `builtin`);
-// fields absent from it have no value (see each field's unsetText). While it
+// fields absent from it have no value (see each field's unset). While it
 // is unknown (undefined) a Global row with nothing stored is left out rather than guessed.
 export function chainFor(builtin: IssuanceDefaults | undefined, global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
   return (k: FieldKey): ChainEntry[] => {
@@ -300,7 +307,7 @@ export function chainFor(builtin: IssuanceDefaults | undefined, global: Issuance
     const out: ChainEntry[] = [];
     // The shipped value is Global's own until an admin changes it.
     if (global[k] != null) out.push({ level: 'global', value: show(global[k]) });
-    else if (builtin) out.push({ level: 'global', value: show(builtin[k], f?.unsetText) });
+    else if (builtin) out.push({ level: 'global', value: show(builtin[k], f?.unset?.label) });
     if (org) out.push({ level: 'org', value: show(org[k]) });
     return out;
   };
@@ -416,7 +423,7 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
           inherited={inherited(f.key) as { value: unknown; source: Source }}
           chain={chain?.(f.key)}
           builtinState={builtinState}
-          unsetText={f.unsetText}
+          unset={f.unset}
           level={level}
           links={links}
           initial={f.initial(ctx)}

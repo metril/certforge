@@ -262,7 +262,7 @@ it('Global tab: fields are plain controls showing the shipped value, with no Ove
   expect(screen.queryByRole('switch', { name: /^Override/ })).toBeNull();
   expect(screen.queryByText(/Built-in/)).toBeNull();
   expect(keyTypeField.queryByRole('button', { name: 'Reset' })).toBeNull();
-  expect(screen.getByText('none — issuance fails until one is set')).toBeInTheDocument();
+  expect(screen.getAllByText('Not set').length).toBeGreaterThan(0);
 });
 
 it('Global tab: Reset appears once a field differs from the shipped value and removes its key', async () => {

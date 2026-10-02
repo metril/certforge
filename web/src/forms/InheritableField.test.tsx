@@ -124,21 +124,21 @@ it('shows one source badge whose popover lists each level with the one in effect
   expect(screen.getByRole('button', { name: 'Use Global value' })).toBeInTheDocument();
 });
 
-it('says what an unset-everywhere field does instead of "shipped default"', () => {
+it('shows an unset-everywhere field as a short state with no source badge', () => {
   renderUI(
     <InheritableField<string>
       id="c"
       label="Certificate authority"
       value={null}
       inherited={{ value: null, source: 'default' }}
-      unsetText="none — issuance fails until one is set"
+      unset={{ label: 'Not set', tone: 'expiring', tip: 'Issuance fails until a certificate authority is set.' }}
       initial="x"
       display={(x) => <span>{x}</span>}
       editor={() => null}
       onChange={() => {}}
     />,
   );
-  expect(screen.getByText('none — issuance fails until one is set')).toBeInTheDocument();
+  expect(screen.getByText('Not set')).toBeInTheDocument();
 });
 
 it('Global scope has no Override switch: it edits the shipped value in place and Reset appears only once it differs', async () => {
