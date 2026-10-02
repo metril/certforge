@@ -38,7 +38,7 @@ export function ListInput({ id, value, onChange, placeholder, validate, disabled
 
   return (
     <div className="grid gap-1">
-      <div className={cn('flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-input bg-panel px-1.5 py-1 focus-within:ring-2 focus-within:ring-ring', disabled && 'opacity-60')}>
+      <div className={cn('flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-input bg-field px-1.5 py-1 transition-[color,box-shadow] hover:border-ink-muted focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/40', disabled && 'opacity-60')}>
         {value.map((v) => (
           <span key={v} className="inline-flex h-6 items-center gap-1 rounded-sm bg-subtle pl-2 pr-1 font-mono text-xs">
             {v}
