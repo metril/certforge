@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/flow"
@@ -37,13 +39,22 @@ func flowOut(g flow.Graph) gen.Flow {
 			if n.StatusDetail != "" {
 				fn.StatusDetail = ptr(n.StatusDetail)
 			}
+			if n.CoversCertificates {
+				fn.CoversCertificates = ptr(true)
+			}
 			nodes = append(nodes, fn)
 		}
 		return gen.FlowLane{Hidden: l.Hidden, Nodes: nodes}
 	}
 	edges := make([]gen.FlowEdge, 0, len(g.Edges))
 	for _, e := range g.Edges {
-		edges = append(edges, gen.FlowEdge{From: e.From, To: e.To, Status: gen.FlowStatus(e.Status), Inferred: e.Inferred})
+		fe := gen.FlowEdge{From: e.From, To: e.To, Status: gen.FlowStatus(e.Status)}
+		if e.CertID != "" {
+			if id, err := uuid.Parse(e.CertID); err == nil {
+				fe.CertificateId = &id
+			}
+		}
+		edges = append(edges, fe)
 	}
 	return gen.Flow{
 		Lanes: gen.FlowLanes{Issuers: lane(g.Issuers), Certificates: lane(g.Certificates), Delivery: lane(g.Delivery),

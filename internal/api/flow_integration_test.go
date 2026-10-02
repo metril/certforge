@@ -54,17 +54,22 @@ func TestGetFlow(t *testing.T) {
 	if _, ok := flowLaneIDs(fl.Lanes.Clients)["client:"+c.ID.String()]; !ok {
 		t.Fatal("client node missing")
 	}
-	var recorded, inferred bool
+	var toLayout, toClient bool
 	for _, e := range fl.Edges {
 		switch {
-		case e.From == certNode && e.To == "layout:"+layout.String() && !e.Inferred:
-			recorded = true
-		case e.From == certNode && e.To == "channel:"+ch.ID.String() && e.Inferred:
-			inferred = true
+		case e.From == certNode && e.To == "layout:"+layout.String() && e.CertificateId == nil:
+			toLayout = true
+		case e.From == "layout:"+layout.String() && e.To == "client:"+c.ID.String() && e.CertificateId != nil && *e.CertificateId == certID:
+			toClient = true
+		case e.To == "channel:"+ch.ID.String() || e.From == "channel:"+ch.ID.String():
+			t.Errorf("channel has an edge: %+v", e)
 		}
 	}
-	if !recorded || !inferred {
-		t.Fatalf("edges: recorded=%v inferred=%v in %+v", recorded, inferred, fl.Edges)
+	if !toLayout || !toClient {
+		t.Fatalf("edges: cert->layout=%v layout->client=%v in %+v", toLayout, toClient, fl.Edges)
+	}
+	if n := flowLaneIDs(fl.Lanes.Alerts)["channel:"+ch.ID.String()]; n.CoversCertificates == nil || !*n.CoversCertificates {
+		t.Fatalf("channel node = %+v, want coversCertificates", n)
 	}
 }
 

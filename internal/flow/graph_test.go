@@ -97,7 +97,7 @@ func TestAssembleEdgesAndStatus(t *testing.T) {
 			t.Errorf("missing edge cert -> %s", to)
 		}
 	}
-	if e, ok := hasEdge(g, "layout:"+layout.String(), "client:"+client.String()); !ok || e.Status != StatusDrift || e.Inferred {
+	if e, ok := hasEdge(g, "layout:"+layout.String(), "client:"+client.String()); !ok || e.Status != StatusDrift || e.CertID != cert.String() {
 		t.Errorf("layout->client = %+v ok=%v", e, ok)
 	}
 	if _, ok := hasEdge(g, "target:"+target.String(), "client:"+client.String()); ok {
@@ -106,12 +106,10 @@ func TestAssembleEdgesAndStatus(t *testing.T) {
 	if e, ok := hasEdge(g, cn, "target:"+target.String()); !ok || e.Status != StatusFailed {
 		t.Errorf("cert->target = %+v", e)
 	}
-	// Inferred alert edge only for the enabled channel.
-	if e, ok := hasEdge(g, cn, "channel:"+ch.String()); !ok || !e.Inferred {
-		t.Errorf("cert->channel = %+v ok=%v, want inferred", e, ok)
-	}
-	if _, ok := hasEdge(g, cn, "channel:"+offCh.String()); ok {
-		t.Error("disabled channel got an edge")
+	for _, e := range g.Edges {
+		if e.To == "channel:"+ch.String() || e.From == "channel:"+ch.String() {
+			t.Errorf("channel must have no edges, got %+v", e)
+		}
 	}
 	// Node statuses.
 	byID := map[string]Node{}
@@ -128,6 +126,9 @@ func TestAssembleEdgesAndStatus(t *testing.T) {
 	}
 	if n := byID["channel:"+ch.String()]; n.Status != StatusFailed || n.StatusDetail != "500" {
 		t.Errorf("channel node = %+v", n)
+	}
+	if !byID["channel:"+ch.String()].CoversCertificates || byID["channel:"+offCh.String()].CoversCertificates {
+		t.Error("coversCertificates wrong")
 	}
 	if n := byID["channel:"+offCh.String()]; n.Status != StatusIdle || n.StatusDetail != "disabled" {
 		t.Errorf("disabled channel node = %+v", n)
@@ -208,26 +209,57 @@ func TestAssembleTruncation(t *testing.T) {
 	}
 }
 
-func TestAssembleEdgeCapDropsInferredFirst(t *testing.T) {
+func TestAssembleEdgeCap(t *testing.T) {
+	var dns []Item
+	var ids []uuid.UUID
+	for i := 0; i < 12; i++ {
+		d := id()
+		ids = append(ids, d)
+		dns = append(dns, Item{ID: d, Name: fmt.Sprintf("d%02d", i)})
+	}
 	var certs []Cert
-	for i := 0; i < 400; i++ {
-		certs = append(certs, Cert{ID: id(), Name: fmt.Sprintf("c%03d", i), Status: "active"})
+	for i := 0; i < 450; i++ {
+		certs = append(certs, Cert{ID: id(), Name: fmt.Sprintf("c%03d", i), Status: "active", DNSCredIDs: ids})
 	}
-	var chans []Channel
-	for i := 0; i < 20; i++ {
-		chans = append(chans, Channel{ID: id(), Name: fmt.Sprintf("ch%02d", i), Enabled: true})
-	}
-	ca := id()
-	for i := range certs {
-		certs[i].CAID = &ca
-	}
-	g := Assemble(Input{OrgSlug: "a", Certs: certs, Channels: chans, CAs: []Item{{ID: ca, Name: "ca"}}}, allPerms(), now)
+	g := Assemble(Input{OrgSlug: "a", Certs: certs, DNSCreds: dns}, allPerms(), now)
 	if len(g.Edges) != MaxEdges || !g.Truncated {
 		t.Fatalf("edges=%d truncated=%v", len(g.Edges), g.Truncated)
 	}
-	for _, e := range g.Edges[:400] {
-		if e.Inferred {
-			t.Fatal("a recorded edge was dropped in favour of an inferred one")
+}
+
+// Delivery-to-client edges are per certificate, and a hidden delivery lane
+// still links the certificate to its visible client.
+func TestAssembleSharedLayoutAndHiddenDelivery(t *testing.T) {
+	certA, certB, layout, cA, cB := id(), id(), id(), id(), id()
+	in := Input{OrgSlug: "a",
+		Certs:   []Cert{{ID: certA, Name: "a", Status: "active"}, {ID: certB, Name: "b", Status: "active"}},
+		Layouts: []Item{{ID: layout, Name: "pem"}},
+		Clients: []Client{{ID: cA, Name: "ha", Status: "active"}, {ID: cB, Name: "hb", Status: "active"}},
+		Grants: []Grant{
+			{CertID: certA, ClientID: &cA, LayoutID: &layout, State: "ok"},
+			{CertID: certB, ClientID: &cB, LayoutID: &layout, State: "ok"},
+		}}
+	g := Assemble(in, allPerms(), now)
+	var toClient []Edge
+	for _, e := range g.Edges {
+		if e.From == "layout:"+layout.String() {
+			toClient = append(toClient, e)
 		}
+	}
+	if len(toClient) != 2 {
+		t.Fatalf("layout->client edges = %+v", toClient)
+	}
+	for _, e := range toClient {
+		want := certA.String()
+		if e.To == "client:"+cB.String() {
+			want = certB.String()
+		}
+		if e.CertID != want {
+			t.Errorf("edge %+v has wrong certificate", e)
+		}
+	}
+	g = Assemble(in, Perms{Clients: true}, now)
+	if _, ok := hasEdge(g, "certificate:"+certA.String(), "client:"+cA.String()); !ok {
+		t.Errorf("no direct cert->client edge with delivery hidden: %+v", g.Edges)
 	}
 }

@@ -2444,8 +2444,8 @@ paths:
         alerts) and the edges between them. A lane whose resource the caller cannot read
         (cas, accounts or dnscreds:read for issuers, delivery:read, clients:read, alerts:read)
         comes back hidden with no nodes, and edges touching it are dropped. Alert edges are
-        inferred from each channel's filters, not recorded, and carry inferred true. At most 500
-        nodes; truncated is true when more existed.
+        Channel nodes carry coversCertificates when they would receive this org's certificate
+        events. At most 500 nodes; truncated is true when more existed.
       responses:
         "200":
           description: The system map.
@@ -4449,6 +4449,7 @@ components:
         status: {$ref: "#/components/schemas/FlowStatus"}
         statusDetail: {type: string, description: Short reason for the status; absent when there is nothing to add.}
         href: {type: string, description: Web UI path to the resource.}
+        coversCertificates: {type: boolean, description: "Channel nodes only: true when the channel is enabled and its event kinds and minimum severity would deliver this org's certificate events."}
     FlowLane:
       type: object
       description: One column of the map.
@@ -4462,12 +4463,12 @@ components:
     FlowEdge:
       type: object
       description: A connection between two nodes.
-      required: [from, to, status, inferred]
+      required: [from, to, status]
       properties:
         from: {type: string, description: Source node id.}
         to: {type: string, description: Target node id.}
         status: {$ref: "#/components/schemas/FlowStatus"}
-        inferred: {type: boolean, description: True when the link is derived from channel filters rather than recorded configuration.}
+        certificateId: {type: string, format: uuid, description: "Set on delivery to client edges: the certificate this link carries, so one certificate's path does not light up another's clients. Absent when a certificate is already an endpoint."}
     FlowLanes:
       type: object
       description: The five lanes, left to right.

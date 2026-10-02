@@ -1906,7 +1906,7 @@ export interface paths {
         };
         /**
          * System map of how certificates connect to issuers, delivery, clients and alerts
-         * @description Needs certs:read. Returns five lanes of nodes (issuers, certificates, delivery, clients, alerts) and the edges between them. A lane whose resource the caller cannot read (cas, accounts or dnscreds:read for issuers, delivery:read, clients:read, alerts:read) comes back hidden with no nodes, and edges touching it are dropped. Alert edges are inferred from each channel's filters, not recorded, and carry inferred true. At most 500 nodes; truncated is true when more existed.
+         * @description Needs certs:read. Returns five lanes of nodes (issuers, certificates, delivery, clients, alerts) and the edges between them. A lane whose resource the caller cannot read (cas, accounts or dnscreds:read for issuers, delivery:read, clients:read, alerts:read) comes back hidden with no nodes, and edges touching it are dropped. Alert edges are Channel nodes carry coversCertificates when they would receive this org's certificate events. At most 500 nodes; truncated is true when more existed.
          */
         get: operations["getFlow"];
         put?: never;
@@ -4254,6 +4254,8 @@ export interface components {
             statusDetail?: string;
             /** @description Web UI path to the resource. */
             href: string;
+            /** @description Channel nodes only: true when the channel is enabled and its event kinds and minimum severity would deliver this org's certificate events. */
+            coversCertificates?: boolean;
         };
         /** @description One column of the map. */
         FlowLane: {
@@ -4269,8 +4271,11 @@ export interface components {
             /** @description Target node id. */
             to: string;
             status: components["schemas"]["FlowStatus"];
-            /** @description True when the link is derived from channel filters rather than recorded configuration. */
-            inferred: boolean;
+            /**
+             * Format: uuid
+             * @description Set on delivery to client edges: the certificate this link carries, so one certificate's path does not light up another's clients. Absent when a certificate is already an endpoint.
+             */
+            certificateId?: string;
         };
         /** @description The five lanes, left to right. */
         FlowLanes: {

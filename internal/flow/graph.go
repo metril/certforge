@@ -69,6 +69,9 @@ type Node struct {
 	Status       Status
 	StatusDetail string
 	Href         string
+	// CoversCertificates is set on channel nodes that would receive this
+	// org's certificate events.
+	CoversCertificates bool
 }
 
 // Lane is one column.
@@ -81,7 +84,10 @@ type Lane struct {
 type Edge struct {
 	From, To string
 	Status   Status
-	Inferred bool
+	// CertID scopes a delivery -> client edge to one certificate, so tracing
+	// a certificate does not light up another one's clients. Empty when a
+	// certificate is already an endpoint.
+	CertID string
 }
 
 // Graph is the assembled map.
@@ -240,17 +246,17 @@ type builder struct {
 	now   time.Time
 	base  string
 	nodes map[string]*Node
-	edges map[[2]string]*Edge
-	order [][2]string
+	edges map[[3]string]*Edge
+	order [][3]string
 }
 
-func (b *builder) edge(from, to string, st Status, inferred bool) {
-	k := [2]string{from, to}
+func (b *builder) edge(from, to, certID string, st Status) {
+	k := [3]string{from, to, certID}
 	if e, ok := b.edges[k]; ok {
 		e.Status = Worse(e.Status, st)
 		return
 	}
-	b.edges[k] = &Edge{From: from, To: to, Status: st, Inferred: inferred}
+	b.edges[k] = &Edge{From: from, To: to, Status: st, CertID: certID}
 	b.order = append(b.order, k)
 }
 
@@ -261,7 +267,7 @@ func (b *builder) href(parts ...string) string { return b.base + strings.Join(pa
 // by the cap) is dropped.
 func Assemble(in Input, perms Perms, now time.Time) Graph {
 	b := &builder{in: in, perms: perms, now: now, base: "/o/" + in.OrgSlug,
-		nodes: map[string]*Node{}, edges: map[[2]string]*Edge{}}
+		nodes: map[string]*Node{}, edges: map[[3]string]*Edge{}}
 	g := Graph{GeneratedAt: now}
 
 	// Side lanes first so certificates get what is left of the cap.
@@ -321,7 +327,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 			case c.LastStatus == "pending":
 				st = StatusPending
 			}
-			alerts = append(alerts, Node{ID: nid(KindChannel, c.ID), Kind: KindChannel, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/alerts/channels?edit=", c.ID.String())})
+			alerts = append(alerts, Node{ID: nid(KindChannel, c.ID), Kind: KindChannel, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/alerts/channels?edit=", c.ID.String()), CoversCertificates: ChannelCoversCerts(c)})
 		}
 	}
 
@@ -364,13 +370,13 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 		cid := nid(KindCertificate, c.ID)
 		st := b.nodes[cid].Status
 		if c.CAID != nil {
-			b.edge(cid, nid(KindCA, *c.CAID), st, false)
+			b.edge(cid, nid(KindCA, *c.CAID), "", st)
 		}
 		if c.AccountID != nil {
-			b.edge(cid, nid(KindAccount, *c.AccountID), st, false)
+			b.edge(cid, nid(KindAccount, *c.AccountID), "", st)
 		}
 		for _, d := range c.DNSCredIDs {
-			b.edge(cid, nid(KindDNSCredential, d), st, false)
+			b.edge(cid, nid(KindDNSCredential, d), "", st)
 		}
 	}
 
@@ -392,34 +398,29 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 		if gr.ClientID != nil {
 			client = nid(KindClient, *gr.ClientID)
 		}
-		if len(mids) == 0 {
+		// Middle nodes that are absent (hidden lane or cut by the cap) are
+		// skipped; with none left, link the certificate straight to its client.
+		present := mids[:0:0]
+		for _, m := range mids {
+			if b.nodes[m] != nil {
+				present = append(present, m)
+			}
+		}
+		if len(present) == 0 {
 			if client != "" {
-				b.edge(cid, client, st, false)
+				b.edge(cid, client, "", st)
 			}
 			continue
 		}
-		for _, m := range mids {
-			b.edge(cid, m, st, false)
+		for _, m := range present {
+			b.edge(cid, m, "", st)
 			if client != "" {
-				b.edge(m, client, st, false)
+				b.edge(m, client, gr.CertID.String(), st)
 			}
-			if n, ok := b.nodes[m]; ok {
-				n.Status = Worse(n.Status, st)
-				if st == StatusFailed && n.StatusDetail == "" {
-					n.StatusDetail = gr.Error
-				}
-			}
-		}
-	}
-
-	// Inferred alert edges, appended last so the cap drops them first.
-	if perms.Alerts {
-		for _, ch := range in.Channels {
-			if !ChannelCoversCerts(ch) {
-				continue
-			}
-			for _, c := range certs {
-				b.edge(nid(KindCertificate, c.ID), nid(KindChannel, ch.ID), StatusIdle, true)
+			n := b.nodes[m]
+			n.Status = Worse(n.Status, st)
+			if st == StatusFailed && n.StatusDetail == "" {
+				n.StatusDetail = gr.Error
 			}
 		}
 	}

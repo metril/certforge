@@ -1669,11 +1669,11 @@ type Flow struct {
 
 // FlowEdge A connection between two nodes.
 type FlowEdge struct {
+	// CertificateId Set on delivery to client edges: the certificate this link carries, so one certificate's path does not light up another's clients. Absent when a certificate is already an endpoint.
+	CertificateId *openapi_types.UUID `json:"certificateId,omitempty"`
+
 	// From Source node id.
 	From string `json:"from"`
-
-	// Inferred True when the link is derived from channel filters rather than recorded configuration.
-	Inferred bool `json:"inferred"`
 
 	// Status Health of a node or edge.
 	Status FlowStatus `json:"status"`
@@ -1711,6 +1711,9 @@ type FlowLanes struct {
 
 // FlowNode One box on the system map.
 type FlowNode struct {
+	// CoversCertificates Channel nodes only: true when the channel is enabled and its event kinds and minimum severity would deliver this org's certificate events.
+	CoversCertificates *bool `json:"coversCertificates,omitempty"`
+
 	// Href Web UI path to the resource.
 	Href string `json:"href"`
 
