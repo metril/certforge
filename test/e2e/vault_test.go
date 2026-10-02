@@ -252,8 +252,12 @@ func TestVaultAgainstCompose(t *testing.T) {
 
 	// 2. Rewrap: start it, then poll /keys/status until it stops running
 	// (successfully or not — polling past a failure until the timeout
-	// would only replace a clear error with a useless "timed out").
-	c.call(ctx, t, http.MethodPost, "/api/v1/keys/rewrap", nil, nil)
+	// would only replace a clear error with a useless "timed out"). Boot
+	// enqueues a rewrap of its own after the restart above, so a 409 here
+	// means that run is still going; the poll below waits for it instead.
+	if code, body := c.callStatus(ctx, t, http.MethodPost, "/api/v1/keys/rewrap", nil); code != http.StatusConflict && code/100 != 2 {
+		t.Fatalf("POST /api/v1/keys/rewrap: %d %s", code, body)
+	}
 	status := waitFor60(ctx, t, "rewrap finished", func() (keysStatusOut, bool) {
 		var st keysStatusOut
 		c.call(ctx, t, http.MethodGet, "/api/v1/keys/status", nil, &st)
