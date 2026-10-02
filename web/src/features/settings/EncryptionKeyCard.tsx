@@ -84,15 +84,18 @@ function RewrapButton({ canWrite, disabled, noPrevious, onClick }: { canWrite: b
 /** Older key configured, a re-encryption running or unfinished, or a failing
  * key check: the only times the full card (and its stepper) is worth showing. */
 function needsAttention(keys: KeysStatus): boolean {
-  return keys.previous.length > 0 || !keys.canaryOk || !!keys.rewrap?.running || (keys.rewrap?.remaining ?? 0) > 0;
+  return keys.previous.length > 0 || !keys.canaryOk || !!keys.rewrap?.running || !!keys.rewrap?.error || (keys.rewrap?.remaining ?? 0) > 0;
 }
 
 /** Which of the three rotation steps is current (0-based). */
 function rotationStep(keys: KeysStatus): number {
   const older = keys.previous.length > 0;
-  const busy = !!keys.rewrap?.running || (keys.rewrap?.remaining ?? 0) > 0;
+  const r = keys.rewrap;
+  const busy = !!r?.running || !!r?.error || (r?.remaining ?? 0) > 0;
   if (!older) return busy ? 1 : 0;
-  return busy || keys.rewrap === null ? 1 : 2;
+  // A finished run can be left over from an earlier rotation: only one for the current key counts.
+  const doneForCurrentKey = !!r && r.activeKekId === keys.kekId && !busy;
+  return doneForCurrentKey ? 2 : 1;
 }
 
 /** Read-only three-step progress, styled like components/Stepper (whose

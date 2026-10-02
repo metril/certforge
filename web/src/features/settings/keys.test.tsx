@@ -87,6 +87,33 @@ it('stepper: remove the old key once nothing is left', async () => {
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Delete CF_KEK_PREVIOUS from the environment and restart.');
 });
 
+it('stepper: a finished run for another key does not suggest removing the old key', async () => {
+  server.use(http.get(url('/keys/status'), () => HttpResponse.json({ ...keysDone, rewrap: { ...keysDone.rewrap!, activeKekId: 'older-key' } })));
+  renderRoute('/settings/backup');
+  await screen.findByText('Finished');
+  expect(stepOf('Re-encrypting')).toHaveAttribute('aria-current', 'step');
+  expect(stepOf('Remove the old key')).not.toHaveAttribute('aria-current');
+});
+
+it('stepper: a finished run for the active key moves to removing the old key', async () => {
+  server.use(http.get(url('/keys/status'), () => HttpResponse.json({ ...keysDone, rewrap: { ...keysDone.rewrap!, activeKekId: keysDone.kekId } })));
+  renderRoute('/settings/backup');
+  await screen.findByText('Finished');
+  expect(stepOf('Remove the old key')).toHaveAttribute('aria-current', 'step');
+});
+
+it('a failed re-encryption with nothing left and no older key shows the full card with the error', async () => {
+  server.use(
+    http.get(url('/keys/status'), () =>
+      HttpResponse.json({ ...keysDone, previous: [], rewrap: { ...keysDone.rewrap!, error: 'vault unreachable' } }),
+    ),
+  );
+  renderRoute('/settings/backup');
+  expect(await screen.findByText('Failed')).toBeInTheDocument();
+  expect(screen.getByText('vault unreachable')).toBeInTheDocument();
+  expect(stepOf('Re-encrypting')).toHaveAttribute('aria-current', 'step');
+});
+
 it('unfinished re-encryption without an older key still shows the card', async () => {
   server.use(http.get(url('/keys/status'), () => HttpResponse.json({ ...keysRunning, previous: [], rewrap: { ...keysRunning.rewrap!, running: false } })));
   renderRoute('/settings/backup');
