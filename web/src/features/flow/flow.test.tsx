@@ -1,0 +1,149 @@
+import { http, HttpResponse } from 'msw';
+import { screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import { server } from '@/test/server';
+import { authHandlers, problem, url } from '@/test/fixtures';
+import { renderRoute } from '@/test/render';
+import type { Flow, FlowNodeData } from './flowGraph';
+
+const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
+  id: `${kind}:${id}`,
+  kind,
+  name: id,
+  status: 'valid',
+  href: `/o/acme/certificates/${id}`,
+  ...extra,
+});
+const lane = (nodes: FlowNodeData[], hidden = false) => ({ hidden, nodes });
+const e = (from: string, to: string, certificateId?: string) => ({ from, to, status: 'valid' as const, certificateId });
+
+const base: Flow = {
+  truncated: false,
+  generatedAt: '2026-01-01T00:00:00Z',
+  lanes: {
+    issuers: lane([node('ca', 'letsencrypt', { href: '/o/acme/issuers/cas?edit=ca1' })]),
+    certificates: lane([node('certificate', 'www', { status: 'expiring', statusDetail: 'Expires in 5 days' }), node('certificate', 'api')]),
+    delivery: lane([node('layout', 'nginx')]),
+    clients: lane([node('client', 'web-1'), node('client', 'web-2')]),
+    alerts: lane([node('channel', 'ops', { coversCertificates: true })]),
+  },
+  edges: [
+    e('certificate:www', 'ca:letsencrypt'),
+    e('certificate:api', 'ca:letsencrypt'),
+    e('certificate:www', 'layout:nginx'),
+    e('certificate:api', 'layout:nginx'),
+    e('layout:nginx', 'client:web-1', 'www'),
+    e('layout:nginx', 'client:web-2', 'api'),
+  ],
+};
+
+function useFlow(f: () => Flow | Response) {
+  server.use(http.get(url('/orgs/org-1/flow'), () => {
+    const r = f();
+    return r instanceof Response ? r : HttpResponse.json(r);
+  }));
+}
+
+function setWidth(wide: boolean) {
+  window.matchMedia = ((query: string) => ({
+    matches: wide && query.includes('1024px'),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
+const original = window.matchMedia;
+beforeEach(() => server.use(...authHandlers({ authed: true })));
+afterEach(() => {
+  window.matchMedia = original;
+});
+
+const lanes = ['Issuers', 'Certificates', 'Delivery', 'Clients', 'Alerts'];
+
+it('renders the five lanes with counts and connectors on a wide screen', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { container } = renderRoute('/o/acme/flow');
+  for (const l of lanes) expect(await screen.findByRole('region', { name: l })).toBeInTheDocument();
+  expect(within(screen.getByRole('region', { name: 'Certificates' })).getByText('2')).toBeInTheDocument();
+  await waitFor(() => expect(container.querySelectorAll('[data-flow-connectors] path').length).toBe(6));
+  expect(screen.getByRole('link', { name: 'Flow' })).toBeInTheDocument();
+});
+
+it('selecting a node dims the rest, shows the path panel with Open links, and clears with Escape', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router, container } = renderRoute('/o/acme/flow');
+  const www = await screen.findByRole('button', { name: /Certificate www/ });
+  await user.click(www);
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ focus: 'certificate:www' }));
+  const panel = await screen.findByRole('region', { name: 'Path' });
+  expect(within(panel).getByText('letsencrypt')).toBeInTheDocument();
+  expect(within(panel).getByText('web-1')).toBeInTheDocument();
+  expect(within(panel).queryByText('web-2')).toBeNull();
+  expect(within(panel).getByRole('link', { name: 'Open letsencrypt' })).toHaveAttribute('href', '/o/acme/issuers/cas?edit=ca1');
+  expect(screen.getByRole('button', { name: /Certificate api/ })).toHaveClass('opacity-40');
+  expect(screen.getByRole('button', { name: /Client web-2/ })).toHaveClass('opacity-40');
+  expect(screen.getByRole('button', { name: /Client web-1/ })).not.toHaveClass('opacity-40');
+  expect(container.querySelectorAll('[data-dashed]').length).toBe(1);
+
+  www.focus();
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Path' })).toBeNull());
+  expect(screen.getByRole('button', { name: /Certificate api/ })).not.toHaveClass('opacity-40');
+});
+
+it('moves focus within a lane with the arrow keys and clears by clicking the selected node', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user } = renderRoute('/o/acme/flow?focus=certificate:www');
+  const api = await screen.findByRole('button', { name: /Certificate api/ });
+  const www = screen.getByRole('button', { name: /Certificate www/ });
+  www.focus();
+  await user.keyboard('{ArrowDown}');
+  expect(api).toHaveFocus();
+  await user.click(www);
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Path' })).toBeNull());
+});
+
+it('shows empty, hidden and truncated states', async () => {
+  setWidth(true);
+  useFlow(() => ({
+    ...base,
+    truncated: true,
+    lanes: { ...base.lanes, issuers: lane([]), alerts: lane([], true), clients: lane([]) },
+    edges: [],
+  }));
+  renderRoute('/o/acme/flow');
+  const issuers = await screen.findByRole('region', { name: 'Issuers' });
+  expect(within(issuers).getByRole('link', { name: 'Add an issuer' })).toHaveAttribute('href', '/o/acme/issuers');
+  expect(within(screen.getByRole('region', { name: 'Alerts' })).getByText('No access')).toBeInTheDocument();
+  expect(screen.getByText('Truncated')).toBeInTheDocument();
+});
+
+it('shows Retry when the flow fetch fails', async () => {
+  useFlow(() => problem(500, 'boom'));
+  renderRoute('/o/acme/flow');
+  expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
+});
+
+it('narrow screens filter every lane to the selected path and offer a Clear button', async () => {
+  setWidth(false);
+  useFlow(() => base);
+  const { user, container } = renderRoute('/o/acme/flow');
+  const www = await screen.findByRole('button', { name: /Certificate www/ });
+  expect(container.querySelector('[data-flow-connectors]')).toBeNull();
+  expect(screen.getByRole('button', { name: /Certificate api/ })).toBeInTheDocument();
+  await user.click(www);
+  const panel = await screen.findByRole('region', { name: 'Path' });
+  await waitFor(() => expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull());
+  expect(screen.queryByRole('button', { name: /Client web-2/ })).toBeNull();
+  expect(screen.getByRole('button', { name: /Client web-1/ })).toBeInTheDocument();
+  await user.click(within(panel).getByRole('button', { name: 'Clear' }));
+  expect(await screen.findByRole('button', { name: /Certificate api/ })).toBeInTheDocument();
+});

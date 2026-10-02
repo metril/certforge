@@ -566,6 +566,7 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 - Task 5: server-defaults clarity: `InheritableField` labels Built-in / Global / Organization / Certificate, shows a one-line chain (level in effect bold, other levels linked via `links`/`level` props from `IssuanceDefaultsForm`), "Using {level}: {value}" / "Set here" and "Use {level} value"; Issuance defaults opens on Global with a `?scope=global|org` search param and a precedence strip; `defaults.*` help copy updated.
 - Task 6: shared `PageHeader` (help, actions, tabs, filters that fold into a "Filters" popover below `md`), `PrimaryCell` (name plus a " · "-joined muted meta line) and `FormSection` (titled group; `collapsible` closed by default with a `count` badge); reference use on Hooks (Delivery tabs, Name cell, Limits section). `ListInput` now uses the field tokens.
 - Task 9: Overview regrouped into three blocks under `features/overview/blocks/` (`StatusRow` = tiles + health strip, `AttentionBlock` = queue, manual-DNS cards and upcoming renewals, `InsightsCard` = Expiry horizon / Recent activity tabs); `PageHeader` with the new `overview.page` help key; attention logic unchanged.
+- Task 12: Flow system-map page (`/o/:org/flow`, `features/flow/`): five-lane map with SVG connectors, `?focus=` path highlighting (`flowGraph.ts` path tracing), read-only path panel, stacked path-filter mode below 1024px; Sidebar and command-palette entry.
 
 ## Backlog
 

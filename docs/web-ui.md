@@ -20,6 +20,16 @@ The login page shows **Sign in with single sign-on** when Settings → Authentic
 
 Below `md` width, the needs-attention queue and upcoming renewals render as stacked card rows instead of a table line, and the horizon scales to the screen width.
 
+## Flow
+
+`/o/:org/flow` (sidebar item after Overview, also in the command palette) is a read-only map of how one organisation's certificates are made and used: Issuers (CAs, ACME accounts, DNS credentials), Certificates, Delivery (layouts, targets, hooks), Clients and Alerts (channels), left to right. Each node is a button with its kind icon, name and one status chip; a tooltip carries the status detail.
+
+- **Selecting** a node (click or Enter, `?focus=<node id>`) keeps its path at full strength and dims everything else, and the path's connectors thicken. A certificate shows its issuers, delivery nodes, the clients each delivery reaches for that certificate, and the channels that would receive its events; an issuer shows every certificate using it and only their downstream; a delivery node or client shows the certificates connected to it and their paths through it; a channel shows every certificate. Arrow Up/Down moves within a lane; Escape, the Clear button or clicking the selected node clears.
+- **Path panel** above the map lists the stages in lane order with each node's status and an **Open** link (the server's `href`, which already carries the org prefix; one without it gets it added).
+- **Dashed links** from certificates to channels are drawn by the page only for the selected path: channels match events by type and severity, not by certificate, so the map never shows them by default.
+- Lanes without read permission show "No access"; an empty lane links to where its first item is created; a **Truncated** chip appears when the server capped the map.
+- Below 1024px the lanes stack, connectors are hidden, and selecting a node filters every lane to its path with a "Path" summary and Clear button.
+
 ## Clients
 
 `/o/:org/clients` lists the org's agents: status (Pending, Active, Revoked), connection (Online, Offline, Never connected), site, agent version, grants, drift and failed counts, and last seen. Filter by status and site (kept in the URL as `?status=` and `?site=`; a site is a filter, never a scope), search by name or hostname, sort by name, status or last seen, and save views. Below `md` width the list renders as cards. Under All orgs the list is read-only with an Org column. Each row opens the client. **Enrol client** takes a name and an optional site, then shows the one-time token with its agent URL and expiry, a `docker run` line and a Compose file to copy, and a live panel that waits for the agent (checked every 2 seconds) and shows its host once it connects. An expired token offers **New token**. The token is shown once and never stored in the browser. Once the agent connects, **Grant certificate** goes straight to the grant sheet.

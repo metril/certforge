@@ -31,6 +31,7 @@ export const help = {
     learnMore: 'configuration.md#first-run-setup-wizard',
   },
   'setup.orgSlug': { text: 'Short name used in URLs. Lowercase letters, digits, and hyphens.' },
+  'flow.map': { text: 'Follows each certificate from its issuers through delivery to the clients that hold it. Select a node to trace its path.' },
   'status.pending': { text: 'Waiting for its first certificate, or for a manual DNS step.' },
   'status.active': { text: 'Holds a valid certificate and renews on schedule.' },
   'status.failed': { text: 'The last attempt failed. CertForge retries with backoff.' },

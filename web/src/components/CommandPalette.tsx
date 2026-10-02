@@ -91,6 +91,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       : org
         ? [
             { label: 'Overview', keywords: ['dashboard', 'triage'], go: () => void navigate({ to: '/o/$org/overview', params: { org: org.slug } }) },
+            { label: 'Flow', keywords: ['map', 'system', 'path', 'topology'], go: () => void navigate({ to: '/o/$org/flow', params: { org: org.slug } }) },
             ...(canReadCerts
               ? [{ label: 'Certificates', keywords: ['list'], go: () => void navigate({ to: '/o/$org/certificates', params: { org: org.slug } }) }]
               : []),
