@@ -22,7 +22,7 @@ import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { stripSecretDefaults, storedSecretsFor } from '@/lib/secretForm';
+import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
 import { RUNS_ON_META, defaultRunsOn, forcedRunsOn, keyGateBlocks, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
@@ -42,10 +42,10 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const [formError, setFormError] = useState<string | null>(null);
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
   const [saving, setSaving] = useState(false);
-  const dirty = useDirty({ name, type, runsOn, config });
-
   const meta = useMemo(() => typeMeta(types, type) ?? types[0]!, [types, type]);
   const schema = useMemo(() => stripSecretDefaults(meta.schema as RJSFSchema), [meta]);
+  // Settled so the form's mount-time onChange (defaults, secret sentinels) is not an edit.
+  const dirty = useDirty({ name, type, runsOn, config: settledConfig(schema, config, storedSecretsFor(target, type)) });
   const canExportKeys = can(me, 'keys:export', orgId);
   // Locked once the target exists (R3: runsOn/type are immutable after
   // create) or for a viewer opening it read-only.

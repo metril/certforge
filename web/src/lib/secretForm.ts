@@ -1,5 +1,7 @@
 import type { RJSFSchema } from '@rjsf/utils';
+import { getDefaultFormState } from '@rjsf/utils';
 import { UNCHANGED } from '@/api/types';
+import { validator } from '@/forms/validator';
 import { secretKeys } from '@/forms/uiSchema';
 
 /** A stored secret the SchemaForm hasn't touched yet reads back as
@@ -62,4 +64,13 @@ export function stripSecretDefaults(schema: RJSFSchema): RJSFSchema {
     next[key] = { ...rest, examples: hasExamples ? examples : [def] } as RJSFSchema;
   }
   return changed ? { ...schema, properties: next } : schema;
+}
+
+/** Config as a SchemaForm would settle it on mount: schema defaults filled and
+ * stored-secret sentinels applied. Dirty checks compare this so the form's own
+ * mount-time onChange (RJSF default-filling, SecretInput sentinels) is not
+ * mistaken for an edit. */
+export function settledConfig(schema: RJSFSchema, config: Record<string, unknown>, storedSecrets: string[]): Record<string, unknown> {
+  const filled = (getDefaultFormState(validator, schema, config) ?? config) as Record<string, unknown>;
+  return withStoredSentinels(schema, filled, storedSecrets);
 }

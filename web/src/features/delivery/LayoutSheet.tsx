@@ -9,6 +9,7 @@ import { UNCHANGED } from '@/api/types';
 import type { Layout, OutputFile, OutputFormat, OutputPart, P12Encoding } from '@/api/types';
 import { ChipSet } from '@/components/ChipSet';
 import type { ComboOption } from '@/components/Combobox';
+import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { MultiCombobox } from '@/components/MultiCombobox';
@@ -72,7 +73,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<{ i: number; field: keyof FileErrors; msg: string } | null>(null);
   const [layoutServerError, setLayoutServerError] = useState<{ field: 'password' | 'extraCertificateIds'; msg: string } | null>(null);
-  const dirty = useDirty({ name, rows, extraCertificateIds, newPassword, storedPassword });
+  const dirty = useDirty({ name, rows, extraCertificateIds, newPassword, storedPassword: storedPassword ?? (hasStoredPassword ? UNCHANGED : undefined) });
   const files = rows.map((r) => r.file);
   const errors = validateFiles(files);
   const title = layout ? (readOnly ? layout.name : `Edit ${layout.name}`) : 'New layout';
@@ -192,6 +193,7 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
               const e: FileErrors = { ...(showErrors ? errors[i] : {}), ...(serverError?.i === i ? { [serverError.field]: serverError.msg } : {}) };
               const f = row.file;
               const n = i + 1;
+              const def = emptyFile();
               const fid = `layout-file-${i}`;
               return (
                 <li key={row.id} aria-label={`File ${n}`} className="grid gap-3 rounded-md border border-border p-3">
@@ -294,25 +296,32 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                       />
                     </Field>
                   )}
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Field id={`${fid}-owner`} label="Owner" help="layout.owner" optional error={e.owner}>
-                      <Input id={`${fid}-owner`} placeholder="root" value={f.owner} disabled={readOnly} onChange={(ev) => setFile(i, { owner: ev.target.value })} />
-                    </Field>
-                    <Field id={`${fid}-group`} label="Group" help="layout.group" optional error={e.group}>
-                      <Input id={`${fid}-group`} placeholder="www-data" value={f.group} disabled={readOnly} onChange={(ev) => setFile(i, { group: ev.target.value })} />
-                    </Field>
-                    <Field id={`${fid}-mode`} label="Mode" help="layout.mode" error={e.mode}>
-                      <Input
-                        id={`${fid}-mode`}
-                        className="font-mono text-xs"
-                        inputMode="numeric"
-                        placeholder="0640"
-                        value={f.mode}
-                        disabled={readOnly}
-                        onChange={(ev) => setFile(i, { mode: ev.target.value })}
-                      />
-                    </Field>
-                  </div>
+                  <FormSection
+                    title="Advanced"
+                    collapsible
+                    count={(f.owner !== def.owner ? 1 : 0) + (f.group !== def.group ? 1 : 0) + (f.mode !== def.mode ? 1 : 0)}
+                    forceOpen={!!(e.owner || e.group || e.mode)}
+                  >
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <Field id={`${fid}-owner`} label="Owner" help="layout.owner" optional error={e.owner}>
+                        <Input id={`${fid}-owner`} placeholder="root" value={f.owner} disabled={readOnly} onChange={(ev) => setFile(i, { owner: ev.target.value })} />
+                      </Field>
+                      <Field id={`${fid}-group`} label="Group" help="layout.group" optional error={e.group}>
+                        <Input id={`${fid}-group`} placeholder="www-data" value={f.group} disabled={readOnly} onChange={(ev) => setFile(i, { group: ev.target.value })} />
+                      </Field>
+                      <Field id={`${fid}-mode`} label="Mode" help="layout.mode" error={e.mode}>
+                        <Input
+                          id={`${fid}-mode`}
+                          className="font-mono text-xs"
+                          inputMode="numeric"
+                          placeholder="0640"
+                          value={f.mode}
+                          disabled={readOnly}
+                          onChange={(ev) => setFile(i, { mode: ev.target.value })}
+                        />
+                      </Field>
+                    </div>
+                  </FormSection>
                   {keyReadableByOthers(f) && (
                     <p className="flex items-center gap-1.5 text-xs">
                       <TriangleAlert className="size-3.5 text-expiring" aria-hidden />
@@ -372,18 +381,20 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
               )}
             </Field>
           )}
-          <Field id="layout-extras" label="Extra certificates" help="layout.extraCerts" error={extrasError}>
-            <MultiCombobox
-              id="layout-extras"
-              aria-label="Extra certificates"
-              value={extraCertificateIds}
-              onChange={changeExtras}
-              options={certOptions}
-              placeholder="Add certificates"
-              emptyText="No certificate matches."
-              disabled={readOnly}
-            />
-          </Field>
+          <FormSection title="Advanced" collapsible count={extraCertificateIds.length > 0 ? 1 : 0} forceOpen={!!extrasError}>
+            <Field id="layout-extras" label="Extra certificates" help="layout.extraCerts" error={extrasError}>
+              <MultiCombobox
+                id="layout-extras"
+                aria-label="Extra certificates"
+                value={extraCertificateIds}
+                onChange={changeExtras}
+                options={certOptions}
+                placeholder="Add certificates"
+                emptyText="No certificate matches."
+                disabled={readOnly}
+              />
+            </Field>
+          </FormSection>
           {formError && (
             <p role="alert" className="flex items-center gap-1.5 text-sm">
               <CircleAlert className="size-4 text-failed" aria-hidden />
