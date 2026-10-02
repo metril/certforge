@@ -42,6 +42,8 @@ it('truncates a long registration URI within its cell', async () => {
   const row = (await screen.findByText('ops@example.com')).closest('tr')!;
   const cell = within(row).getByText(account.registrationUri).closest('td')!;
   expect(cell.className).toMatch(/min-w-0/);
+  expect(cell.className).toMatch(/overflow-hidden/);
+  expect(within(row).getByText(account.registrationUri).parentElement!.className).toMatch(/max-w-full/);
   const code = within(row).getByText(account.registrationUri);
   expect(code.tagName).toBe('CODE');
   expect(code.className).toMatch(/truncate/);

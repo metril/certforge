@@ -7,7 +7,7 @@ import { useCopy } from '@/lib/useCopy';
 export function CopyField({ value, label, display, className }: { value: string; label: string; display?: string; className?: string }) {
   const { status, copy } = useCopy(value);
   return (
-    <span className={cn('inline-flex min-w-0 items-center gap-1', className)}>
+    <span className={cn('inline-flex max-w-full min-w-0 items-center gap-1', className)}>
       <Tooltip>
         <TooltipTrigger asChild>
           {/* Fix round 1 (#2): `truncate` alone doesn't shrink a flex item
