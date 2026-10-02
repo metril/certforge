@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, CircleCheck } from 'lucide-react';
 import { effectiveDefaultsQuery } from '@/api/queries/defaults';
 import type { IssuanceDefaults } from '@/api/types';
-import { ISSUANCE_FIELDS, useFieldCtx } from '@/features/settings/issuanceFields';
+import { effectiveText, ISSUANCE_FIELDS, useFieldCtx } from '@/features/settings/issuanceFields';
 import { coverage, isCovered, type Inherited } from '@/lib/coverage';
 import { classifyName } from '@/lib/names';
 import { METHOD_LABEL } from '@/lib/rules';
@@ -28,7 +28,7 @@ export function SummaryRail({ orgId, state, inherited, privateCa }: { orgId: str
   const show = (k: keyof IssuanceDefaults) => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k)!;
     const e = effectiveOf(state.overrides, eff, k);
-    return e.value === null || e.value === undefined ? 'Global' : f.display(e.value, ctx);
+    return effectiveText(f, e, ctx);
   };
   const rows: [string, ReactNode][] = [
     ['Names', `${state.names.length} in ${zones} ${zones === 1 ? 'zone' : 'zones'}`],

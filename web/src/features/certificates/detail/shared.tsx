@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { Crown } from 'lucide-react';
 import type { EffectiveMap } from '@/api/types';
-import { ISSUANCE_FIELDS, type FieldCtx } from '@/features/settings/issuanceFields';
+import { effectiveText, ISSUANCE_FIELDS, type FieldCtx } from '@/features/settings/issuanceFields';
 import { SourceBadge } from '@/forms/InheritableField';
 
 // Fix round 1 (review, Important #1): OverviewTab and SettingsTab each had
@@ -30,7 +30,7 @@ export function EffectiveConfigList({ eff, ctx }: { eff: EffectiveMap; ctx: Fiel
           <Fragment key={f.key}>
             <dt className="text-ink-muted">{f.label}</dt>
             <dd className="flex flex-wrap items-center gap-2">
-              {e.value === null || e.value === undefined ? 'Global' : f.display(e.value, ctx)}
+              {effectiveText(f, e, ctx)}
               <SourceBadge source={e.source} />
             </dd>
           </Fragment>

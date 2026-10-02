@@ -4,7 +4,7 @@ import { effectiveDefaultsQuery } from '@/api/queries/defaults';
 import type { EffectiveValue, IssuanceDefaults } from '@/api/types';
 import { Field } from '@/components/Field';
 import { Input } from '@/components/ui/input';
-import { ISSUANCE_FIELDS, useFieldCtx, type FieldKey } from '@/features/settings/issuanceFields';
+import { effectiveText, ISSUANCE_FIELDS, useFieldCtx, type FieldKey } from '@/features/settings/issuanceFields';
 import { CoveragePanel } from '@/forms/CoveragePanel';
 import { SourceBadge } from '@/forms/InheritableField';
 import { coverage, type Inherited } from '@/lib/coverage';
@@ -42,7 +42,7 @@ export function ReviewStep({ orgId, state, dispatch, inherited }: Props) {
               <Fragment key={f.key}>
                 <dt className="text-ink-muted">{f.label}</dt>
                 <dd className="flex flex-wrap items-center gap-2">
-                  {e.value === null || e.value === undefined ? 'Global' : f.display(e.value, ctx)}
+                  {effectiveText(f, e, ctx)}
                   <SourceBadge source={e.source} />
                 </dd>
               </Fragment>

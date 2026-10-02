@@ -268,7 +268,20 @@ export function fromBuiltin(builtin: IssuanceDefaults | undefined) {
 // built-in and names the level, so this is a plain lookup, never a
 // raw-value comparison.
 export function fromEffective(eff: EffectiveMap) {
-  return (k: FieldKey): EffectiveValue => (eff[k] as EffectiveValue | undefined) ?? fromDefault();
+  return (k: FieldKey): EffectiveValue => unsetIfShipped(k, (eff[k] as EffectiveValue | undefined) ?? fromDefault());
+}
+
+/** The API flattens a field with no shipped value (propagationSeconds) to 0 with source 'default'; a real 0 always carries the level that set it. So a default-sourced value of a field with an unsetText is "not set", never a number. */
+function unsetIfShipped(k: FieldKey, e: EffectiveValue): EffectiveValue {
+  const f = ISSUANCE_FIELDS.find((x) => x.key === k);
+  return f?.unsetText && e.source === 'default' && e.value != null ? ({ ...e, value: null } as EffectiveValue) : e;
+}
+
+/** One effective value as text, for the certificate detail and the wizard's summary and review. */
+export function effectiveText(f: IssuanceField, e: EffectiveValue, ctx: FieldCtx): ReactNode {
+  const v = unsetIfShipped(f.key, e).value;
+  if (v === null || v === undefined) return f.unsetText ?? 'Global';
+  return f.display(v, ctx);
 }
 
 /** Whether the server's built-in defaults are known: 'loading' while the effective query has no data yet, 'error' when it failed or the response carries no `builtin` (an older cached response). Undefined once known. */

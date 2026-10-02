@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import type { DnsCredential, IssuanceDefaults } from '@/api/types';
 import { account, ca, caLocal, makeClient } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
-import { builtinStateOf, chainFor, fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, IssuanceDefaultsForm, ISSUANCE_FIELDS, rulesSummary, type FieldCtx, type FormProps } from './issuanceFields';
+import { EffectiveConfigList } from '@/features/certificates/detail/shared';
+import { builtinStateOf, chainFor, effectiveText, fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, IssuanceDefaultsForm, ISSUANCE_FIELDS, rulesSummary, type FieldCtx, type FormProps } from './issuanceFields';
 
 const ctx: FieldCtx = { cas: [], accounts: [], credentials: [], clients: [] };
 const renewPolicy = ISSUANCE_FIELDS.find((f) => f.key === 'renewPolicy')!;
@@ -270,5 +271,35 @@ describe('unknown shipped defaults', () => {
     expect(builtinStateOf({ data: undefined, isError: true })).toBe('error');
     expect(builtinStateOf({ data: {} })).toBe('error');
     expect(builtinStateOf({ data: { builtin: {} } })).toBeUndefined();
+  });
+});
+
+describe('propagation wait with nothing set (API reports 0, source default)', () => {
+  const unsetEff = { propagationSeconds: { value: 0, source: 'default' } } as never;
+  const setEff = { propagationSeconds: { value: 0, source: 'org' } } as never;
+  const prop = ISSUANCE_FIELDS.find((f) => f.key === 'propagationSeconds')!;
+  const OrgForm = ({ eff }: { eff: never }) => (
+    <IssuanceDefaultsForm value={{}} onChange={() => {}} inherited={fromEffective(eff)} level="org" ctx={ctx} />
+  );
+  it('org scope reads as the DNS provider timeout, not 0 s', () => {
+    renderUI(<OrgForm eff={unsetEff} />);
+    expect(screen.getByText("the DNS provider's own timeout")).toBeInTheDocument();
+    expect(screen.queryByText('0 s')).toBeNull();
+  });
+  it('org scope shows an explicit 0 as 0 s', () => {
+    renderUI(<OrgForm eff={setEff} />);
+    expect(screen.getByText('0 s')).toBeInTheDocument();
+  });
+  it('certificate detail effective configuration follows the same rule', () => {
+    const { unmount } = renderUI(<EffectiveConfigList eff={unsetEff} ctx={ctx} />);
+    expect(screen.getByText("the DNS provider's own timeout")).toBeInTheDocument();
+    unmount();
+    renderUI(<EffectiveConfigList eff={setEff} ctx={ctx} />);
+    expect(screen.getByText('0 s')).toBeInTheDocument();
+  });
+  it('wizard summary/review text (effectiveText) follows the same rule', () => {
+    expect(effectiveText(prop, { value: 0, source: 'default' }, ctx)).toBe("the DNS provider's own timeout");
+    expect(effectiveText(prop, { value: 0, source: 'cert' }, ctx)).toBe('0 s');
+    expect(effectiveText(prop, { value: 90, source: 'global' }, ctx)).toBe('90 s');
   });
 });
