@@ -218,3 +218,27 @@ describe('editor widths (review fix round 1, #8: no fixed width that overflows a
     expect(src).not.toMatch(/className="w-96/);
   });
 });
+
+describe('IssuanceDefaultsForm sections', () => {
+  const inherited = () => ({ value: null, source: 'default' as const });
+
+  function H({ initial }: { initial: IssuanceDefaults }) {
+    const [value, setValue] = useState<IssuanceDefaults>(initial);
+    return <IssuanceDefaultsForm value={value} onChange={setValue} inherited={inherited} ctx={ctx} />;
+  }
+
+  it('groups fields into Issuer, Keys and renewal and Verification', () => {
+    renderUI(<H initial={{}} />);
+    for (const t of ['Issuer', 'Keys and renewal', 'Verification']) expect(screen.getByRole('heading', { name: t })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Reset section/ })).not.toBeInTheDocument();
+  });
+
+  it('shows N overridden and resets only that section', async () => {
+    const { user } = renderUI(<H initial={{ keyType: 'rsa2048', reuseKey: true, propagationSeconds: 60 }} />);
+    const keys = screen.getByRole('region', { name: 'Keys and renewal' });
+    expect(within(keys).getByText(/2 overridden/)).toBeInTheDocument();
+    await user.click(within(keys).getByRole('button', { name: 'Reset section Keys and renewal' }));
+    expect(within(keys).queryByText(/overridden/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Verification' })).getByText(/1 overridden/)).toBeInTheDocument();
+  });
+});

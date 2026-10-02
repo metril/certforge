@@ -116,6 +116,8 @@ The redirect URI to register (copy button), the single sign-on form rendered fro
 
 Two tabs: **Global** (opened first; `?scope=global|org` picks the tab) and the current org, under a one-line Built-in → Global → Organization → Certificate strip whose tooltip explains that the most specific level wins. Each field shows a source badge (Built-in, Global, Organization, Certificate) with a hover chain, the same chain inline with the level in effect in bold and links to the other levels' editors, and "Using {level}: {value}" or "Set here"; an unset field inherits from the level above and a change applies at each certificate's next renewal. Global and org each save independently.
 
+The fields (here, the new-certificate Options step and a certificate's Settings) sit in three sections: **Issuer** (CA, ACME account, preferred chain), **Keys and renewal** (key type, renewal, reuse key, Must-Staple) and **Verification** (propagation wait, resolvers, rules). A section with overrides shows "N overridden" and a **Reset section** button that sends all of them back to the inherited value at once; the per-field controls still work.
+
 The Global tab also carries a **Checks and limits** block, rendered straight from the server's `issuance` settings schema: a **Check CAA records** switch and a two-column grid of four rate limits (certificates per registered domain per week, duplicate certificates per week, failed validations per hour, new orders per 3 hours — 0 disables a limit). This section is global only and has its own Save; it does not appear on the org tab.
 
 ## Settings → Agents

@@ -567,6 +567,7 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 - Task 6: shared `PageHeader` (help, actions, tabs, filters that fold into a "Filters" popover below `md`), `PrimaryCell` (name plus a " · "-joined muted meta line) and `FormSection` (titled group; `collapsible` closed by default with a `count` badge); reference use on Hooks (Delivery tabs, Name cell, Limits section). `ListInput` now uses the field tokens.
 - Task 9: Overview regrouped into three blocks under `features/overview/blocks/` (`StatusRow` = tiles + health strip, `AttentionBlock` = queue, manual-DNS cards and upcoming renewals, `InsightsCard` = Expiry horizon / Recent activity tabs); `PageHeader` with the new `overview.page` help key; attention logic unchanged.
 - Task 12: Flow system-map page (`/o/:org/flow`, `features/flow/`): five-lane map with SVG connectors, `?focus=` path highlighting (`flowGraph.ts` path tracing), read-only path panel, stacked path-filter mode below 1024px; Sidebar and command-palette entry.
+- Task 8: declutter forms: `FormSection` gains `forceOpen`; optional fields in the channel, monitor, DNS credential, ACME CA, grant and layout-file sheets sit under a closed **Advanced** section with a non-default count; `IssuanceDefaultsForm` groups fields into Issuer / Keys and renewal / Verification with "N overridden" and **Reset section**; untouched target and layout edits no longer raise "Discard changes?" (dirty checks compare the settled config); schema-driven bodies and sheets with four fields or fewer stay flat.
 
 ## Backlog
 

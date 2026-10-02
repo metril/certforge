@@ -5,6 +5,8 @@ import { casQuery } from '@/api/queries/cas';
 import { allClientsQuery } from '@/api/queries/clients';
 import { dnsCredentialsQuery } from '@/api/queries/dns';
 import type { AcmeAccount, CA, Client, DnsCredential, EffectiveMap, EffectiveValue, IssuanceDefaults, KeyType, Source, VerificationRule } from '@/api/types';
+import { Button } from '@/components/ui/button';
+import { FormSection } from '@/components/FormSection';
 import { Combobox } from '@/components/Combobox';
 import { ListInput } from '@/components/ListInput';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
@@ -311,6 +313,8 @@ export type FormProps = {
   error?: (k: FieldKey) => string | null | undefined;
   /** True while a field was reset to inherited this session but the save hasn't landed (review fix round 1, #3). */
   pending?: (k: FieldKey) => boolean;
+  /** Hides "Reset section" (the per-field controls are the caller's to disable). */
+  readOnly?: boolean;
 };
 
 // Task 4 (R12 deviation): the effective CA (this form's own `caId` override,
@@ -324,7 +328,15 @@ function effectiveCa(value: IssuanceDefaults, inherited: FormProps['inherited'],
   return cas.find((c) => c.id === id);
 }
 
-export function IssuanceDefaultsForm({ value, onChange, inherited, chain, level, links, ctx, exclude = [], error, pending }: FormProps) {
+// Fields grouped under titled sections; a section's "Reset section" returns its
+// overridden fields to the inherited value in one step.
+const SECTIONS: { title: string; keys: FieldKey[] }[] = [
+  { title: 'Issuer', keys: ['caId', 'accountId', 'preferredChain'] },
+  { title: 'Keys and renewal', keys: ['keyType', 'renewPolicy', 'reuseKey', 'mustStaple'] },
+  { title: 'Verification', keys: ['propagationSeconds', 'resolvers', 'verificationRules'] },
+];
+
+export function IssuanceDefaultsForm({ value, onChange, inherited, chain, level, links, ctx, exclude = [], error, pending, readOnly = false }: FormProps) {
   const eca = effectiveCa(value, inherited, ctx.cas);
   const privateCa = !!eca && isPrivate(eca);
   // Batch 2 review (Minor): the onChange interception above only fires when
@@ -343,48 +355,79 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, level,
     // null, which flips the condition straight back to false).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [privateCa, value.accountId]);
+  const renderField = (f: IssuanceField) => {
+      const id = `f-${f.key}`;
+      const accountPrivate = f.key === 'accountId' && privateCa;
+      return (
+        <InheritableField<unknown>
+          key={f.key}
+          id={id}
+          label={f.label}
+          help={accountPrivate ? 'defaults.accountPrivate' : f.help}
+          value={value[f.key] as unknown}
+          // EffectiveValue is a union across each field's own Effective*
+          // shape (EffectiveUuid | EffectiveString | ...); TS widens their
+          // merged 'value' key to optional, but every variant always
+          // carries it (see api/openapi.yaml's Effective* schemas, all
+          // `required: [value, source]`) — this cast only relaxes that,
+          // it doesn't change what's passed.
+          inherited={inherited(f.key) as { value: unknown; source: Source }}
+          chain={chain?.(f.key)}
+          level={level}
+          links={links}
+          initial={f.initial(ctx)}
+          display={(v) => f.display(v, ctx)}
+          editor={(v, set) => f.editor(v, set, ctx, id)}
+          onChange={(v) => {
+            const next = { ...value, [f.key]: v } as IssuanceDefaults;
+            // Choosing a private CA (or resetting the override back to an
+            // inherited private one) makes an accountId override
+            // meaningless — ACME accounts never apply to a private CA,
+            // and the API 422s a cert-level account override once its
+            // effective CA is private — so clear it in the same update.
+            if (f.key === 'caId') {
+              const nextCa = effectiveCa(next, inherited, ctx.cas);
+              if (nextCa && isPrivate(nextCa) && next.accountId != null) next.accountId = null;
+            }
+            onChange(next);
+          }}
+          error={error?.(f.key)}
+          overrideDisabled={accountPrivate ? 'Not used by private CAs' : f.disabledReason?.(ctx)}
+          pending={pending?.(f.key)}
+        />
+      );
+  };
   return (
-    <div className="grid">
-      {ISSUANCE_FIELDS.filter((f) => !exclude.includes(f.key)).map((f) => {
-        const id = `f-${f.key}`;
-        const accountPrivate = f.key === 'accountId' && privateCa;
+    <div className="grid gap-4">
+      {SECTIONS.map((sec) => {
+        const fields = sec.keys.filter((k) => !exclude.includes(k)).map((k) => ISSUANCE_FIELDS.find((f) => f.key === k)!);
+        if (fields.length === 0) return null;
+        const overridden = fields.filter((f) => value[f.key] != null);
         return (
-          <InheritableField<unknown>
-            key={f.key}
-            id={id}
-            label={f.label}
-            help={accountPrivate ? 'defaults.accountPrivate' : f.help}
-            value={value[f.key] as unknown}
-            // EffectiveValue is a union across each field's own Effective*
-            // shape (EffectiveUuid | EffectiveString | ...); TS widens their
-            // merged 'value' key to optional, but every variant always
-            // carries it (see api/openapi.yaml's Effective* schemas, all
-            // `required: [value, source]`) — this cast only relaxes that,
-            // it doesn't change what's passed.
-            inherited={inherited(f.key) as { value: unknown; source: Source }}
-            chain={chain?.(f.key)}
-            level={level}
-            links={links}
-            initial={f.initial(ctx)}
-            display={(v) => f.display(v, ctx)}
-            editor={(v, set) => f.editor(v, set, ctx, id)}
-            onChange={(v) => {
-              const next = { ...value, [f.key]: v } as IssuanceDefaults;
-              // Choosing a private CA (or resetting the override back to an
-              // inherited private one) makes an accountId override
-              // meaningless — ACME accounts never apply to a private CA,
-              // and the API 422s a cert-level account override once its
-              // effective CA is private — so clear it in the same update.
-              if (f.key === 'caId') {
-                const nextCa = effectiveCa(next, inherited, ctx.cas);
-                if (nextCa && isPrivate(nextCa) && next.accountId != null) next.accountId = null;
-              }
-              onChange(next);
-            }}
-            error={error?.(f.key)}
-            overrideDisabled={accountPrivate ? 'Not used by private CAs' : f.disabledReason?.(ctx)}
-            pending={pending?.(f.key)}
-          />
+          <FormSection
+            key={sec.title}
+            title={sec.title}
+            summary={
+              overridden.length > 0 ? (
+                <span className="flex items-center gap-2">
+                  {overridden.length} overridden
+                  {!readOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Reset section ${sec.title}`}
+                      onClick={() => onChange({ ...value, ...Object.fromEntries(overridden.map((f) => [f.key, null])) } as IssuanceDefaults)}
+                    >
+                      Reset section
+                    </Button>
+                  )}
+                </span>
+              ) : undefined
+            }
+          >
+            <div className="grid">{fields.map(renderField)}</div>
+          </FormSection>
         );
       })}
     </div>
