@@ -15,7 +15,7 @@ export const SECTIONS = [
   { slug: 'issuance-defaults', label: 'Issuance defaults' },
   { slug: 'agents', label: 'Agents' },
   { slug: 'integrations', label: 'Integrations' },
-  { slug: 'backup', label: 'Backup and keys' },
+  { slug: 'backup', label: 'Backups' },
 ] as const;
 export type SectionSlug = (typeof SECTIONS)[number]['slug'];
 

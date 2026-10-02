@@ -56,8 +56,8 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
           {section === 'integrations' && <IntegrationsSection />}
           {section === 'backup' && (
             <>
-              <EncryptionKeyCard />
               <BackupSection />
+              <EncryptionKeyCard />
             </>
           )}
         </section>

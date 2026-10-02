@@ -174,7 +174,7 @@ certforge/
 | | Delivery | Deploy targets, File layouts (output specs), Hooks | Where a cert goes |
 | | Alerts | Notification channels, External monitors | What tells you about a problem |
 | Govern | Audit log | – | First stop when diagnosing |
-| | Settings | General (base URL, orgs, sites), Access (users, bindings, API keys), Authentication (OIDC), Issuance defaults, Agents, Integrations (Vault, SMTP, Prometheus), Backup and keys | Set up once |
+| | Settings | General (base URL, orgs, sites), Access (users, bindings, API keys), Authentication (OIDC), Issuance defaults, Agents, Integrations (Vault, SMTP, Prometheus), Backups | Set up once |
 
 Scope: global = CAs, private CAs, Settings, users, KEK (shown with a "Shared" badge in org views, admin-only edit). Org-scoped = everything else. Site is a filter (`?site=`), not a scope. Org switcher has "All orgs" for admins (read-only across Overview, Certificates, Clients, Audit).
 

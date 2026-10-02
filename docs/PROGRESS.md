@@ -722,3 +722,4 @@ UI rework batch 4 review fixes: Global saves never pin a value equal to the ship
 - UI rework: unset defaults (CA, ACME account, propagation wait) now show a short state ("Not set" chip, "Provider default") with the explanation in a tooltip, and no source badge.
 - UI follow-up T1: the Alerts events table can no longer scroll sideways; Deliveries is one worst-outcome chip with a per-channel popover, fixed tables clip cell overflow, and an e2e checks realistic long data at 1024 to 1920 px.
 - UI follow-up T2a: the events Severity filter is a short All / Warning+ / Critical segmented control with per-option tooltips instead of a combobox.
+- UI follow-up: the Settings section "Backup and keys" is now "Backups" (slug unchanged) and lists backups before the encryption key card.

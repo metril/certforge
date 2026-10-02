@@ -32,7 +32,7 @@ function newerOutcome(s: BackupStatus): 'success' | 'failure' | 'never' {
   return Date.parse(s.lastSuccessAt) >= Date.parse(s.lastFailureAt) ? 'success' : 'failure';
 }
 
-/** Settings → Backup and keys' own status card (task-7-brief), fed by `GET
+/** Settings → Backups' own status card (task-7-brief), fed by `GET
  * /backup/status`. No polling (unlike EncryptionKeyCard's rewrap progress):
  * a backup either completes inline (Back up now) or runs hourly in the
  * background, so there's nothing here that changes moment to moment. */

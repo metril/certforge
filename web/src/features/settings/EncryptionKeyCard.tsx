@@ -79,7 +79,7 @@ function RewrapButton({ canWrite, disabled, noPrevious, onClick }: { canWrite: b
   return btn;
 }
 
-/** Settings → Backup and keys' Encryption key card, fed by `GET
+/** Settings → Backups' Encryption key card, fed by `GET
  * /keys/status` (Review Focus "polling that never stops": the query polls
  * every 5s only while `rewrap.running`, and not at all otherwise —
  * keysStatusQuery's own `refetchInterval`). Replaces `KekStatus` (which

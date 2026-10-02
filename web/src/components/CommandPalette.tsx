@@ -148,7 +148,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       keywords: ['vault', 'approle', 'openbao', 'integrations', 'smtp', 'email', 'prometheus', 'metrics', 'notifications'],
       go: () => void navigate({ to: '/settings/$section', params: { section: 'integrations' } }),
     },
-    { label: 'Settings: Backup and keys', keywords: ['kek', 'backup'], go: () => void navigate({ to: '/settings/$section', params: { section: 'backup' } }) },
+    { label: 'Settings: Backups', keywords: ['backup', 'restore', 'encryption key', 'kek'], go: () => void navigate({ to: '/settings/$section', params: { section: 'backup' } }) },
     // Task 7 (Phase 6B): runs the same `runBackup` helper as the section's
     // own "Back up now" button; a 409 (escrow not confirmed) is already
     // toasted by runBackup, and additionally sends the caller to the

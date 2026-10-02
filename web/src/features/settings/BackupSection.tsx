@@ -93,7 +93,7 @@ function mapBackupSaveError(message: string, _value: Record<string, unknown>, sc
   return fieldErrorFromMessage(schema, message);
 }
 
-/** Settings → Backup and keys' own backup section (task-7-brief), mounted
+/** Settings → Backups' own backup section (task-7-brief), mounted
  * after `EncryptionKeyCard` by SettingsPage. */
 export function BackupSection() {
   const me = useMe();

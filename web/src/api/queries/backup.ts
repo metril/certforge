@@ -26,7 +26,7 @@ export async function downloadBackup(): Promise<void> {
  * `lastSuccessAt`/`lastSizeBytes`/`lastFile`; a 409 changes nothing
  * server-side, but the brief still calls for a refetch). Rethrows so a
  * caller that needs to react further — the palette navigates to Settings →
- * Backup and keys on a 409 — can do so without re-toasting.
+ * Backups on a 409 — can do so without re-toasting.
  *
  * Final review: lives here, in a plain query module, rather than in
  * `features/settings/BackupSection.tsx` where task 7 first wrote it —

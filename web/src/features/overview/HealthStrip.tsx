@@ -8,10 +8,10 @@ import { daysUntil, relDays } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 // A degraded check's fix lives on its own settings section (Deviations,
-// "HealthStrip"): backup goes to Settings -> Backup and keys, everything
+// "HealthStrip"): backup goes to Settings -> Backups, everything
 // else (today, only vault) stays on Integrations.
 const DEGRADED_LINK: Record<string, { section: SectionSlug; label: string }> = {
-  backup: { section: 'backup', label: 'Backup and keys' },
+  backup: { section: 'backup', label: 'Backups' },
 };
 const DEFAULT_DEGRADED_LINK: { section: SectionSlug; label: string } = { section: 'integrations', label: 'Integrations' };
 

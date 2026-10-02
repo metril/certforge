@@ -228,7 +228,7 @@ it('escrow save refreshes status', async () => {
 it('restore is tooltip only', async () => {
   server.use(...authHandlers({ authed: true }), ...handlers());
   renderRoute('/settings/backup');
-  await screen.findByText('Backups');
+  await screen.findByRole('heading', { level: 3, name: 'Backups' });
   expect(screen.getByText('Restore')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /restore/i })).not.toBeInTheDocument();
   expect(document.querySelector('input[type="file"]')).toBeNull();

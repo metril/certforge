@@ -459,7 +459,7 @@ export const help = {
   'settings.notifications': { text: 'Applies to every channel: URL policy, expiry warning and failure threshold.', learnMore: 'configuration.md#notifications-section' },
   'settings.prometheus': { text: 'Serves /metrics for Prometheus behind a bearer token.', learnMore: 'configuration.md#prometheus-section' },
   'prometheus.scrape': { text: 'Scrape this URL with the token as a bearer credential. The token never goes in the URL.', learnMore: 'monitoring.md#metrics-reference' },
-  // Task 7 (Phase 6B): Settings → Backup and keys' status card, actions and schema.
+  // Task 7 (Phase 6B): Settings → Backups' status card, actions and schema.
   'backup.status': {
     text: 'Result of the last backup the server wrote on its schedule.',
     learnMore: 'operations.md#backup-schedule',
