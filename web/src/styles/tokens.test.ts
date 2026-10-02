@@ -35,6 +35,7 @@ const TEXT: [string, string][] = [
   ['ink', 'surface'], ['ink', 'panel'], ['ink', 'subtle'], ['ink-muted', 'panel'], ['ink-muted', 'surface'],
   ['ink-muted', 'subtle'], ['primary', 'panel'], ['on-primary', 'primary'], ['on-status', 'expired'], ['on-status', 'failed'],
   ['ink', 'field'], ['ink-muted', 'field'], ['primary', 'selected'], ['ink', 'selected'],
+  ['ink', 'sidebar'], ['ink-muted', 'sidebar'], ['ink', 'raised'], ['ink-muted', 'raised'],
 ];
 const TONES = ['valid', 'expiring', 'expired', 'failed', 'drift', 'pending'];
 
@@ -54,8 +55,11 @@ describe.each([['light', light], ['dark', dark]] as const)('%s tokens', (_, t) =
     // modifier) would drop below this — the review round 1 fix removed it.
     expect(contrast(t['on-status']!, t['failed']!)).toBeGreaterThanOrEqual(4.5);
   });
-  it.each(['panel', 'surface', 'subtle', 'field'])('control-border reaches 3:1 against %s', (bg) => {
+  it.each(['panel', 'surface', 'subtle', 'field', 'raised'])('control-border reaches 3:1 against %s', (bg) => {
     expect(contrast(t['control-border']!, t[bg]!)).toBeGreaterThanOrEqual(3);
+  });
+  it.each(['surface', 'panel'])('border reaches 1.4:1 against %s', (bg) => {
+    expect(contrast(t.border!, t[bg]!)).toBeGreaterThanOrEqual(1.4);
   });
   it('switch: the unchecked track (control-track) reaches 3:1 against panel and surface', () => {
     // Task 1 review carry-in: Switch's unchecked track must reach >=3:1
