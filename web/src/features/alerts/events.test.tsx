@@ -79,15 +79,16 @@ it('a deep-linked kind shows as selected', async () => {
   expect(await screen.findByRole('combobox', { name: 'Kind' })).toHaveTextContent('2 kinds');
 });
 
-it('severity combobox sets the minimum', async () => {
+it('severity segmented control sets the minimum', async () => {
   const seen = captureQuery();
   const { user } = renderRoute('/o/acme/alerts/events');
-  const trigger = await screen.findByRole('combobox', { name: 'Severity' });
-  expect(trigger).toHaveTextContent('Any');
-  await user.click(trigger);
-  await user.click(await screen.findByRole('option', { name: 'Warning and above' }));
+  const group = await screen.findByRole('group', { name: 'Severity' });
+  expect(within(group).getByRole('radio', { name: 'All' })).toBeChecked();
+  await user.click(within(group).getByRole('radio', { name: 'Warning+' }));
   await waitFor(() => expect(seen.severity).toBe('warning'));
-  expect(screen.getByRole('combobox', { name: 'Severity' })).toHaveTextContent('Warning and above');
+  expect(within(screen.getByRole('group', { name: 'Severity' })).getByRole('radio', { name: 'Warning+' })).toBeChecked();
+  await user.click(within(group).getByRole('radio', { name: 'All' }));
+  await waitFor(() => expect(seen.severity).toBeNull());
 });
 
 it('time combobox sends since and defaults to all time', async () => {
@@ -129,22 +130,48 @@ it('clear filters resets all three', async () => {
   expect(screen.getByRole('combobox', { name: 'Time' })).toHaveTextContent('All time');
 });
 
-it('delivery chip tooltip shows attempts and error', async () => {
-  serveEvents([
-    makeEvent({ deliveries: [{ channelId: 'c-1', channelName: 'ops-webhook', status: 'failed', attempts: 2, lastError: 'connection refused', deliveredAt: null }] }),
-  ]);
-  const { user } = renderRoute('/o/acme/alerts/events');
-  const chip = await screen.findByText('ops-webhook');
-  await user.hover(chip);
-  const tooltip = await screen.findByRole('tooltip');
-  expect(tooltip).toHaveTextContent('2 attempts');
-  expect(tooltip).toHaveTextContent('connection refused');
+const dlv = (id: string, status: 'pending' | 'delivered' | 'failed', extra: Partial<NotifyEvent['deliveries'][number]> = {}) => ({
+  channelId: id, channelName: `chan-${id}`, status, attempts: 1, lastError: null, deliveredAt: null, ...extra,
 });
 
-it('no matching channels', async () => {
-  serveEvents([makeEvent({ deliveries: [] })]);
+it.each([
+  ['one sent', [dlv('a', 'delivered')], 'Sent'],
+  ['several sent', [dlv('a', 'delivered'), dlv('b', 'delivered')], '2 sent'],
+  ['pending', [dlv('a', 'pending'), dlv('b', 'delivered'), dlv('c', 'pending')], '2 pending'],
+  ['failed mix', [dlv('a', 'failed'), dlv('b', 'pending'), dlv('c', 'delivered'), dlv('d', 'delivered')], '1 of 4 failed'],
+])('delivery summary: %s', async (_n, deliveries, label) => {
+  serveEvents([makeEvent({ deliveries })]);
   renderRoute('/o/acme/alerts/events');
-  expect(await screen.findByText('No matching channels')).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: `Deliveries: ${label}` })).toHaveTextContent(label);
+});
+
+it('delivery summary popover lists every channel with attempts and error', async () => {
+  serveEvents([
+    makeEvent({ deliveries: [dlv('a', 'delivered', { channelName: 'ops-pager-production-primary', attempts: 1, deliveredAt: iso(0) }), dlv('b', 'failed', { channelName: 'ops-webhook', attempts: 2, lastError: 'connection refused' })] }),
+  ]);
+  const { user } = renderRoute('/o/acme/alerts/events');
+  await user.click(await screen.findByRole('button', { name: 'Deliveries: 1 of 2 failed' }));
+  const pop = await screen.findByText('ops-webhook');
+  const content = pop.closest('[data-slot=popover-content]') as HTMLElement;
+  expect(within(content).getByText('ops-pager-production-primary')).toBeInTheDocument();
+  expect(content).toHaveTextContent('2 attempts');
+  expect(content).toHaveTextContent('connection refused');
+});
+
+it('no matching channels reads None with a tooltip', async () => {
+  serveEvents([makeEvent({ deliveries: [] })]);
+  const { user } = renderRoute('/o/acme/alerts/events');
+  const none = await screen.findByText('None');
+  await user.hover(none);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('No channel matched this event.');
+});
+
+it('the below-lg card list uses the delivery summary', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 768px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+  serveEvents([makeEvent({ deliveries: [dlv('a', 'failed'), dlv('b', 'delivered')] })]);
+  renderRoute('/o/acme/alerts/events');
+  expect(await screen.findByRole('button', { name: 'Deliveries: 1 of 2 failed' })).toBeInTheDocument();
+  expect(screen.queryByText('chan-a')).not.toBeInTheDocument();
 });
 
 it('load more follows cursor', async () => {
@@ -217,7 +244,7 @@ it('resource links by type', async () => {
 it('global event chip', async () => {
   serveEvents([makeEvent({ orgId: null, kind: 'backup.completed', resource: { type: 'backup', id: 'b-1', name: 'certforge-20260101T000000Z.cfbak' } })]);
   renderRoute('/o/acme/alerts/events');
-  expect(await screen.findByText('Global')).toBeInTheDocument();
+  expect(await screen.findByLabelText('Global event')).toBeInTheDocument();
 });
 
 it('empty and filtered empty states', async () => {
@@ -226,8 +253,7 @@ it('empty and filtered empty states', async () => {
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Add channel' })).toHaveAttribute('href', '/o/acme/alerts/channels?edit=new');
 
-  await user.click(screen.getByRole('combobox', { name: 'Severity' }));
-  await user.click(await screen.findByRole('option', { name: 'Critical' }));
+  await user.click(within(screen.getByRole('group', { name: 'Severity' })).getByRole('radio', { name: 'Critical' }));
   expect(await screen.findByText('No events match these filters.')).toBeInTheDocument();
   await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();

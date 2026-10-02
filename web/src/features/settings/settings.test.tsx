@@ -45,8 +45,8 @@ beforeEach(() => {
     ),
     http.get(url('/settings/backup'), () =>
       HttpResponse.json({
-        schema: { type: 'object', properties: { kekEscrowConfirmed: { type: 'boolean', title: 'KEK escrow confirmed', description: 'Stored safely outside this server.' } } },
-        value: { kekEscrowConfirmed: false },
+        schema: { type: 'object', properties: { retainCount: { type: 'integer', title: 'Retain' } } },
+        value: { retainCount: 7 },
         stored: null,
       }),
     ),
@@ -118,14 +118,12 @@ it('lists organizations read-only under General', async () => {
 
 // Task 7: the Encryption key card (fed by GET /keys/status) replaces
 // KekStatus (which read /readyz's checks.kek); its own coverage
-// (kind/canary/previous/rewrap/permissions/polling) lives in keys.test.tsx.
-it('shows the encryption key card and saves the escrow switch', async () => {
-  const { user } = renderRoute('/settings/backup');
-  expect(await screen.findByText('Static')).toBeInTheDocument();
-  expect(screen.getByText('Canary OK')).toBeInTheDocument();
-  await user.click(screen.getByRole('switch', { name: 'KEK escrow confirmed' }));
-  await user.click(screen.getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(puts.backup).toEqual({ kekEscrowConfirmed: true }));
+// (quiet row, kind/key check/older keys/re-encryption/permissions/polling) lives in keys.test.tsx.
+it('shows the quiet encryption key row under the backups', async () => {
+  renderRoute('/settings/backup');
+  expect(await screen.findByText('Key check OK')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Encryption key' })).toBeInTheDocument();
+  expect(screen.queryByText('Static')).not.toBeInTheDocument();
 });
 
 it('shows each Org-tab field badge from the effective endpoint, not a raw-value comparison', async () => {

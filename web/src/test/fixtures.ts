@@ -808,7 +808,7 @@ export function makeEvent(p: Partial<NotifyEvent> = {}): NotifyEvent {
 }
 
 export const backupStatus: BackupStatus = {
-  schedule: 'off', escrowConfirmed: false, directory: null, lastSuccessAt: null, lastFailureAt: null,
+  schedule: 'off', directory: null, lastSuccessAt: null, lastFailureAt: null,
   lastError: null, lastSizeBytes: null, lastFile: null, nextAt: null,
 };
 

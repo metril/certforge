@@ -55,10 +55,10 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
           {section === 'agents' && <AgentsSection />}
           {section === 'integrations' && <IntegrationsSection />}
           {section === 'backup' && (
-            <>
-              <EncryptionKeyCard />
+            <div className="grid gap-4">
               <BackupSection />
-            </>
+              <EncryptionKeyCard />
+            </div>
           )}
         </section>
       </div>

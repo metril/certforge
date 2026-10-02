@@ -32,7 +32,8 @@ it('walks the four setup steps, completes setup, and signs in', async () => {
   expect(screen.getByText('Matches this browser')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Next' }));
 
-  expect(await screen.findByText('kek')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+  expect(screen.queryByText('kek')).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Next' }));
 
   await user.type(screen.getByLabelText('Organization'), 'Acme');
@@ -54,6 +55,7 @@ it('blocks the key step while the server is not ready', async () => {
   await user.click(screen.getByRole('button', { name: 'Next' }));
   await user.click(screen.getByRole('button', { name: 'Next' }));
   expect(await screen.findByText('failed')).toBeInTheDocument();
+  expect(screen.getAllByText('Encryption key').length).toBeGreaterThan(1);
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
 });
 
@@ -78,7 +80,7 @@ it('treats a readiness response missing the kek check as not ready', async () =>
   await user.type(screen.getByLabelText('Confirm password'), PASSWORD);
   await user.click(screen.getByRole('button', { name: 'Next' }));
   await user.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText('database');
+  await screen.findByText('Encryption key', { selector: 'li span' });
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
 });
 
@@ -98,7 +100,7 @@ it('recovers from a 409 (setup completed elsewhere) by sending the admin to sign
   await user.type(screen.getByLabelText('Confirm password'), PASSWORD);
   await user.click(screen.getByRole('button', { name: 'Next' }));
   await user.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText('kek');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
   await user.click(screen.getByRole('button', { name: 'Next' }));
   await user.type(screen.getByLabelText('Organization'), 'Acme');
   await user.click(screen.getByRole('button', { name: 'Finish setup' }));

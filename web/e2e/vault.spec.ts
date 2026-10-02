@@ -2,10 +2,10 @@ import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
 import { snap } from './screens';
 
-// lib/help.ts's 'keys.rewrapNoPrevious' text, copied rather than imported:
-// that module reads `import.meta.env` (a Vite-only global), which doesn't
-// exist under Playwright's own Node-based test runner.
-const REWRAP_NO_PREVIOUS = 'Nothing to rewrap: no previous key is configured.';
+// The quiet row's tooltip, copied rather than imported from the app: lib/help.ts
+// reads `import.meta.env` (a Vite-only global), which doesn't exist under
+// Playwright's own Node-based test runner.
+const KEY_ROW_TOOLTIP = "Set in the server's environment. Needed to restore any backup. To replace it, set the new key as CF_KEK, move the old one to CF_KEK_PREVIOUS, and restart.";
 
 test('Vault settings test button', async ({ page }) => {
   await page.goto('/login');
@@ -69,24 +69,12 @@ test('keys card', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
   await page.goto('/settings/backup');
-  const card = page.getByRole('region', { name: 'Encryption key' });
-  await expect(card).toBeVisible();
-  // e2e-web boots with a static KEK and no previous key (5a-facts.md).
-  // exact: true — otherwise this also matches the Key ID's own
-  // "static-<hex>" text (case-insensitive substring).
-  await expect(card.getByText('Static', { exact: true })).toBeVisible();
-  const keyId = card.locator('dd').filter({ has: page.locator('code') }).first();
-  await expect(keyId.locator('code')).not.toBeEmpty();
-  await expect(card.getByText('Canary OK')).toBeVisible();
-
-  const rewrap = card.getByRole('button', { name: 'Rewrap now' });
-  await expect(rewrap).toBeDisabled();
-  // force: true — the disabled button itself is `pointer-events: none`
-  // (Tailwind's disabled: variant); the real hover target the browser
-  // hit-tests to is its own wrapping tooltip-trigger span, so Playwright's
-  // own actionability check (which insists on hovering the button element
-  // exactly) never settles without it.
-  await rewrap.hover({ force: true });
-  await expect(page.getByRole('tooltip')).toContainText(REWRAP_NO_PREVIOUS);
+  // e2e-web boots with a static key and no older key (5a-facts.md), so the
+  // card collapses to its quiet row: heading, a Key check OK chip, and a tooltip.
+  await expect(page.getByRole('heading', { name: 'Encryption key' })).toBeVisible();
+  await expect(page.getByText('Key check OK')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Re-encrypt now' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Help' }).last().hover();
+  await expect(page.getByRole('tooltip')).toContainText(KEY_ROW_TOOLTIP);
   await snap(page, 'keys');
 });

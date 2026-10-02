@@ -2,7 +2,7 @@
 
 `cfctl` is a small operator CLI over CertForge's REST API: check server
 status, list and act on certificates, clients, notification channels,
-external monitors and events, read or rewrap KEK status, take an on-demand
+external monitors and events, read encryption key status or re-encrypt, take an on-demand
 backup, and read the audit log — the same operations and authorization the
 web UI uses, scriptable from a shell. It talks to a running server only
 (see `operations.md#backup` for the offline `certforge backup`/`restore`

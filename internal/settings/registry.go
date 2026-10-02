@@ -31,6 +31,9 @@ type Section struct {
 	secrets      []string
 	checks       []func(json.RawMessage) error
 	updateChecks []func(stored, next json.RawMessage) error
+	// ignored are properties the schema no longer declares but an older stored
+	// value or client may still carry: dropped on read, validate and write.
+	ignored []string
 }
 
 // SectionKey is the settings-table key that stores section name.
@@ -44,6 +47,7 @@ func (s *Section) SecretKeys() []string { return slices.Clone(s.secrets) }
 
 // Validate checks raw JSON against the section schema, then the extra checks.
 func (s *Section) Validate(raw []byte) error {
+	raw = s.stripIgnored(raw)
 	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -75,6 +79,33 @@ func (s *Section) ValidateUpdate(stored, next json.RawMessage) error {
 	return nil
 }
 
+// stripIgnored removes the section's ignored (retired) properties from raw.
+// A value that is not a JSON object is returned unchanged for the schema to reject.
+func (s *Section) stripIgnored(raw []byte) json.RawMessage {
+	if len(s.ignored) == 0 {
+		return raw
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return raw
+	}
+	changed := false
+	for _, k := range s.ignored {
+		if _, ok := doc[k]; ok {
+			delete(doc, k)
+			changed = true
+		}
+	}
+	if !changed {
+		return raw
+	}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
 // Public returns raw without the section's secret properties.
 func (s *Section) Public(raw json.RawMessage) (json.RawMessage, error) {
 	pub, _, err := s.split(raw)
@@ -83,6 +114,7 @@ func (s *Section) Public(raw json.RawMessage) (json.RawMessage, error) {
 
 // split separates the secret properties (as strings) from the rest.
 func (s *Section) split(raw json.RawMessage) (json.RawMessage, map[string]string, error) {
+	raw = s.stripIgnored(raw)
 	if len(s.secrets) == 0 {
 		return raw, nil, nil
 	}
@@ -206,6 +238,20 @@ func (r *Registry) AddCheck(name string, fn func(raw json.RawMessage) error) err
 	return nil
 }
 
+// IgnoreProperties marks retired properties of a section: an older stored
+// value or client may still carry them, so they are dropped silently on
+// read, validate and write instead of failing the schema. Call it at startup.
+func (r *Registry) IgnoreProperties(name string, keys ...string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.sections[name]
+	if !ok {
+		return fmt.Errorf("settings: section %q not registered", name)
+	}
+	s.ignored = append(s.ignored, keys...)
+	return nil
+}
+
 // AddUpdateCheck adds a check comparing a section's previous stored public
 // value against an incoming candidate value (Section.ValidateUpdate). Call
 // it at startup, before the registry serves requests.
@@ -264,12 +310,6 @@ const backupSchema = `{
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "kekEscrowConfirmed": {
-      "type": "boolean",
-      "title": "KEK escrow confirmed",
-      "description": "The KEK is stored safely outside this server. Backups refuse to run until this is on.",
-      "default": false
-    },
     "schedule": {
       "type": "string",
       "title": "Schedule",
@@ -339,8 +379,13 @@ func checkBackupDirectory(raw json.RawMessage) error {
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
 	r.MustRegister("general", json.RawMessage(generalSchema), json.RawMessage(`{}`))
-	r.MustRegister("backup", json.RawMessage(backupSchema), json.RawMessage(`{"kekEscrowConfirmed":false,"schedule":"off","retainCount":7}`))
+	r.MustRegister("backup", json.RawMessage(backupSchema), json.RawMessage(`{"schedule":"off","retainCount":7}`))
 	if err := r.AddCheck("backup", checkBackupDirectory); err != nil {
+		panic(err)
+	}
+	// kekEscrowConfirmed was retired: backups no longer need the confirmation,
+	// but a stored value (or an older client) may still carry it.
+	if err := r.IgnoreProperties("backup", "kekEscrowConfirmed"); err != nil {
 		panic(err)
 	}
 	return r

@@ -162,3 +162,35 @@ func TestAddUpdateCheck(t *testing.T) {
 		t.Fatal("AddUpdateCheck on unknown section succeeded")
 	}
 }
+
+// The retired kekEscrowConfirmed property is tolerated: a stored value (or an
+// older client) carrying it still validates, and it is dropped before storing.
+func TestBackupRetiredEscrowKeyTolerated(t *testing.T) {
+	sec, ok := DefaultRegistry().Section("backup")
+	if !ok {
+		t.Fatal("backup section not registered")
+	}
+	for _, v := range []string{"true", "false"} {
+		raw := json.RawMessage(`{"kekEscrowConfirmed":` + v + `,"schedule":"off","retainCount":7}`)
+		if err := sec.Validate(raw); err != nil {
+			t.Fatalf("kekEscrowConfirmed=%s: %v", v, err)
+		}
+		pub, err := sec.Public(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(pub, &doc); err != nil {
+			t.Fatal(err)
+		}
+		if _, has := doc["kekEscrowConfirmed"]; has {
+			t.Fatalf("kekEscrowConfirmed=%s survived: %s", v, pub)
+		}
+		if doc["schedule"] != "off" {
+			t.Fatalf("other fields lost: %s", pub)
+		}
+	}
+	if err := sec.Validate(json.RawMessage(`{"bogus":1}`)); err == nil {
+		t.Fatal("unknown properties must still be rejected")
+	}
+}

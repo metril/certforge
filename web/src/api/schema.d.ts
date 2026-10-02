@@ -2121,7 +2121,7 @@ export interface paths {
         put?: never;
         /**
          * Create and download a backup
-         * @description Needs settings:write. Streams an encrypted archive of the whole database, table by table, as it is written. 409 "confirm KEK escrow first" unless the backup section's kekEscrowConfirmed is true. Recorded as backup.created {sizeBytes} once streaming completes, or backup.failed {error} (system actor) if it fails partway through. Restoring is CLI-only: no restore over HTTP; see operations.md#restore.
+         * @description Needs settings:write. Streams an encrypted archive of the whole database, table by table, as it is written. Recorded as backup.created {sizeBytes} once streaming completes, or backup.failed {error} (system actor) if it fails partway through. Restoring is CLI-only: no restore over HTTP; see operations.md#restore.
          */
         post: operations["createBackup"];
         delete?: never;
@@ -2139,7 +2139,7 @@ export interface paths {
         };
         /**
          * Backup schedule and history
-         * @description Needs settings:read. The configured schedule, escrow confirmation, and the most recent scheduled or on-demand outcome.
+         * @description Needs settings:read. The configured schedule and the most recent scheduled or on-demand outcome.
          */
         get: operations["getBackupStatus"];
         put?: never;
@@ -4571,8 +4571,6 @@ export interface components {
         /** @description Backup configuration and the most recent outcome (Shared contracts, Other operations row). */
         BackupStatus: {
             schedule: components["schemas"]["BackupSchedule"];
-            /** @description The backup section's kekEscrowConfirmed; createBackup and the scheduled job both require this before writing an archive. */
-            escrowConfirmed: boolean;
             /** @description Where scheduled backups are written; null while schedule is off. */
             directory: string | null;
             /**
@@ -8720,7 +8718,6 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
-            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };

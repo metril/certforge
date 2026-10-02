@@ -15,7 +15,7 @@ import (
 const StatusKey = "backup.status"
 
 // statusRecord is StatusKey's persisted shape: only what an actual backup
-// attempt produces. Schedule, EscrowConfirmed, Directory and NextAt in
+// attempt produces. Schedule, Directory and NextAt in
 // Status below are all derived from the live "backup" settings section
 // instead, not persisted here, so a schedule/directory edit is reflected
 // immediately rather than only after the next run.
@@ -58,8 +58,7 @@ type statusPatch struct {
 // BackupStatus schema, kept independent of internal/api/gen — same
 // convention as kek.RewrapStatus / monitor's own structs).
 type Status struct {
-	Schedule        string
-	EscrowConfirmed bool
+	Schedule string
 	// Directory is "" while Schedule == "off" (Shared contract: "null
 	// while schedule is off").
 	Directory     string
@@ -88,13 +87,12 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		return Status{}, err
 	}
 	out := Status{
-		Schedule:        set.Schedule,
-		EscrowConfirmed: set.KEKEscrowConfirmed,
-		LastSuccessAt:   rec.LastSuccessAt,
-		LastFailureAt:   rec.LastFailureAt,
-		LastError:       rec.LastError,
-		LastSizeBytes:   rec.LastSizeBytes,
-		LastFile:        rec.LastFile,
+		Schedule:      set.Schedule,
+		LastSuccessAt: rec.LastSuccessAt,
+		LastFailureAt: rec.LastFailureAt,
+		LastError:     rec.LastError,
+		LastSizeBytes: rec.LastSizeBytes,
+		LastFile:      rec.LastFile,
 	}
 	if set.Schedule != "off" {
 		out.Directory = set.Directory

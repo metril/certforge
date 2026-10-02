@@ -96,7 +96,7 @@ export const help = {
     learnMore: 'vault.md#approle',
   },
   'vault.transitKek': {
-    text: "The key-encryption key is wrapped by this Vault's Transit engine. It is set by environment variables.",
+    text: "The encryption key lives in this Vault's Transit engine. Set by environment variables.",
     learnMore: 'vault.md#transit-kek',
   },
   'org.slugPermanent': { text: 'Slugs are part of every URL, so they never change.' },
@@ -105,24 +105,25 @@ export const help = {
   // its own 'backup.kek' entry (no longer referenced by any component).
   'keys.kind': {
     text: 'Static: a key from the environment. Vault Transit: the key never leaves Vault.',
-    learnMore: 'operations.md#kek-rotation',
+    learnMore: 'operations.md#encryption-key-rotation',
   },
   'keys.canary': {
     text: 'Proves the active key decrypts a known value.',
-    learnMore: 'operations.md#kek-rotation',
+    learnMore: 'operations.md#encryption-key-rotation',
   },
   'keys.previous': {
-    text: 'Older keys still accepted for reading. Rewrap, then remove them from the environment.',
-    learnMore: 'operations.md#kek-rotation',
+    text: 'Older keys still accepted for reading. Re-encrypt, then remove them from the environment.',
+    learnMore: 'operations.md#encryption-key-rotation',
   },
   'keys.rewrap': {
-    text: 'Re-encrypts every sealed value with the active key. It resumes where it stopped.',
-    learnMore: 'operations.md#rewrap',
+    text: 'Re-encrypts every secret with the active key. Resumes where it stopped.',
+    learnMore: 'operations.md#re-encryption',
   },
   'keys.rewrapNoPrevious': {
-    text: 'Nothing to rewrap: no previous key is configured.',
-    learnMore: 'operations.md#rewrap',
+    text: 'Nothing to re-encrypt: no older key is set.',
+    learnMore: 'operations.md#re-encryption',
   },
+  'keys.removeOld': { text: 'Delete CF_KEK_PREVIOUS from the environment and restart.', learnMore: 'operations.md#encryption-key-rotation' },
   'defaults.caId': { text: 'CA used when a certificate does not pick one.' },
   'defaults.accountId': { text: 'ACME account used to order from that CA.' },
   // Task 4: the account field is disabled for a private effective CA.
@@ -459,17 +460,17 @@ export const help = {
   'settings.notifications': { text: 'Applies to every channel: URL policy, expiry warning and failure threshold.', learnMore: 'configuration.md#notifications-section' },
   'settings.prometheus': { text: 'Serves /metrics for Prometheus behind a bearer token.', learnMore: 'configuration.md#prometheus-section' },
   'prometheus.scrape': { text: 'Scrape this URL with the token as a bearer credential. The token never goes in the URL.', learnMore: 'monitoring.md#metrics-reference' },
-  // Task 7 (Phase 6B): Settings → Backup and keys' status card, actions and schema.
+  // Task 7 (Phase 6B): Settings → Backups' status card, actions and schema.
   'backup.status': {
     text: 'Result of the last backup the server wrote on its schedule.',
     learnMore: 'operations.md#backup-schedule',
   },
   'backup.now': {
-    text: 'Downloads an encrypted archive of the database. Restoring it needs the same KEK.',
+    text: 'Downloads an encrypted copy of the database. Restoring it needs the same encryption key.',
     learnMore: 'operations.md#backup',
   },
-  'backup.needsEscrow': {
-    text: 'Confirm the KEK is stored safely first. Without it no backup can be restored.',
+  'backup.keyReminder': {
+    text: "Restoring a backup needs the encryption key from the server's environment. Keep a copy somewhere safe.",
     learnMore: 'operations.md#backup',
   },
   'backup.restore': {

@@ -720,3 +720,9 @@ UI rework batch 3 review fixes: Flow filtering and collapsing no longer rescan e
 UI rework batch 4 review fixes: Global saves never pin a value equal to the shipped default and Reset shows for any stored key, unknown `?org=` slugs are rewritten to the default org, and the wizard's defaults links name the current org.
 - UI rework: propagation wait with nothing set now reads as the provider default on org scope, certificate detail and the wizard (the API reports 0 with source default); an explicit 0 still reads "0 s".
 - UI rework: unset defaults (CA, ACME account, propagation wait) now show a short state ("Not set" chip, "Provider default") with the explanation in a tooltip, and no source badge.
+- UI follow-up T1: the Alerts events table can no longer scroll sideways; Deliveries is one worst-outcome chip with a per-channel popover, fixed tables clip cell overflow, and an e2e checks realistic long data at 1024 to 1920 px.
+- UI follow-up T2a: the events Severity filter is a short All / Warning+ / Critical segmented control with per-option tooltips instead of a combobox.
+- UI follow-up: the Settings section "Backup and keys" is now "Backups" (slug unchanged) and lists backups before the encryption key card.
+- UI follow-up: the settings screens and user docs say "encryption key" and "re-encrypt" instead of KEK, rewrap and canary; the setup wizard lists only failing readiness checks.
+- UI follow-up: backups no longer need a key copy confirmation (manual, scheduled and CLI), the `kekEscrowConfirmed` setting is retired but a stored value is still tolerated, and the encryption key shows as one quiet row unless an older key, a re-encryption or a failing check needs attention.
+- UI follow-up: the encryption key card suggests removing the old key only after a re-encryption for the current key finished without error, and a failed re-encryption always shows the full card with its error.

@@ -13,6 +13,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { FilterChips } from '@/components/FilterChips';
 import { FilterField } from '@/components/FilterToolbar';
 import { MultiCombobox } from '@/components/MultiCombobox';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -21,13 +22,14 @@ import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { DAY, fmtDateTime, relTime } from '@/lib/time';
 import { AlertsHeader } from './AlertsLayout';
-import { DeliveryChip } from './DeliveryChip';
+import { DeliverySummary } from './DeliveryChip';
 import { EventRow, ResourceLink } from './EventRow';
 
 type Range = '24h' | '7d' | '30d';
 const RANGE_DAYS: Record<Range, number> = { '24h': 1, '7d': 7, '30d': 30 };
 const RANGE_LABEL: Record<Range | 'all', string> = { all: 'All time', '24h': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days' };
-const SEVERITY_LABEL = { any: 'Any', warning: 'Warning and above', critical: 'Critical' } as const;
+const SEVERITY_LABEL = { any: 'All', warning: 'Warning+', critical: 'Critical' } as const;
+const SEVERITY_HINT = { any: 'Every event', warning: 'Warnings and criticals', critical: 'Critical only' } as const;
 
 const KIND_OPTIONS = KIND_GROUPS.flatMap((g) => g.kinds.map((k) => ({ value: k, label: KIND_LABEL[k], group: g.label })));
 const ALL_KINDS = KIND_OPTIONS.map((o) => o.value as EventKind);
@@ -55,13 +57,13 @@ function columns(org: string) {
     col.display({
       id: 'severity',
       header: 'Severity',
-      meta: { className: 'w-24' },
+      meta: { className: 'w-28' },
       cell: ({ row }) => {
         const sev = SEVERITY_META[row.original.severity];
         return <ToneChip tone={sev.tone} icon={sev.icon} label={sev.label} />;
       },
     }),
-    col.display({ id: 'kind', header: 'Kind', meta: { className: 'w-32' }, cell: ({ row }) => <span className="block truncate font-medium">{KIND_LABEL[row.original.kind]}</span> }),
+    col.display({ id: 'kind', header: 'Kind', meta: { className: 'w-40' }, cell: ({ row }) => <span className="block truncate font-medium">{KIND_LABEL[row.original.kind]}</span> }),
     col.display({
       id: 'resource',
       header: 'Resource',
@@ -69,7 +71,16 @@ function columns(org: string) {
       cell: ({ row }) => (
         <div className="flex min-w-0 items-center gap-2">
           <ResourceLink event={row.original} org={org} className="block min-w-0 truncate font-medium hover:underline" />
-          {row.original.orgId === null && <ToneChip tone="neutral" icon={Globe} label="Global" />}
+          {row.original.orgId === null && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} aria-label="Global event" className="inline-flex shrink-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Globe className="size-4 text-ink-muted" aria-hidden />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Global event</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       ),
     }),
@@ -88,17 +99,8 @@ function columns(org: string) {
     col.display({
       id: 'deliveries',
       header: 'Deliveries',
-      meta: { className: 'w-32' },
-      cell: ({ row }) =>
-        row.original.deliveries.length === 0 ? (
-          <span className="text-xs text-ink-muted">No matching channels</span>
-        ) : (
-          <div className="flex flex-wrap items-center gap-1">
-            {row.original.deliveries.map((d) => (
-              <DeliveryChip key={d.channelId} kind="event" channelName={d.channelName} status={d.status} attempts={d.attempts} deliveredAt={d.deliveredAt} lastError={d.lastError} />
-            ))}
-          </div>
-        ),
+      meta: { className: 'w-36' },
+      cell: ({ row }) => <DeliverySummary deliveries={row.original.deliveries} />,
     }),
   ];
 }
@@ -151,17 +153,13 @@ export function EventsPage() {
             </div>
           </FilterField>
           <FilterField label="Severity" help="event.severity">
-            <div className="w-44">
-              <Combobox
-                aria-label="Severity"
-                clearable={false}
-                value={severity ?? 'any'}
-                onChange={(v) => set({ severity: v === 'warning' || v === 'critical' ? v : undefined })}
-                options={(Object.keys(SEVERITY_LABEL) as (keyof typeof SEVERITY_LABEL)[]).map((v) => ({ value: v, label: SEVERITY_LABEL[v] }))}
-                placeholder="Any"
-                emptyText="No match."
-              />
-            </div>
+            <SegmentedControl
+              size="sm"
+              aria-label="Severity"
+              value={severity ?? 'any'}
+              onChange={(v) => set({ severity: v === 'warning' || v === 'critical' ? v : undefined })}
+              options={(Object.keys(SEVERITY_LABEL) as (keyof typeof SEVERITY_LABEL)[]).map((v) => ({ value: v, label: SEVERITY_LABEL[v], hint: SEVERITY_HINT[v] }))}
+            />
           </FilterField>
           <FilterField label="Time">
             <div className="w-44">

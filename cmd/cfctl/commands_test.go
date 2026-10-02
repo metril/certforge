@@ -455,7 +455,7 @@ func TestBackupCreateSlowBodySurvivesTimeout(t *testing.T) {
 // temp file behind either.
 func TestBackupCreateLeavesNoTempFileOnError(t *testing.T) {
 	srv := newFakeAPI(t, "tok", route{"POST", "/backup", func(w http.ResponseWriter, r *http.Request) {
-		writeProblem(w, http.StatusConflict, "Conflict", "confirm KEK escrow first")
+		writeProblem(w, http.StatusConflict, "Conflict", "backup already running")
 	}})
 	dir := t.TempDir()
 	out := filepath.Join(dir, "backup.cfbak")
@@ -464,7 +464,7 @@ func TestBackupCreateLeavesNoTempFileOnError(t *testing.T) {
 	if code := backupCreate(context.Background(), e, []string{"--out", out}); code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "confirm KEK escrow first") {
+	if !strings.Contains(stderr.String(), "backup already running") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 	entries, err := os.ReadDir(dir)

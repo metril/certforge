@@ -99,31 +99,31 @@ func (e *testEnv) auditCount(t *testing.T, action string) int {
 	return n
 }
 
-// TestCreateBackupRequiresEscrow: createBackup refuses with 409 while the
-// backup section's kekEscrowConfirmed is off (the section's own default),
-// and never streams a byte.
-func TestCreateBackupRequiresEscrow(t *testing.T) {
+// TestCreateBackupRunsWithDefaultSettings: createBackup needs no
+// confirmation: with the backup section never saved it still streams an
+// archive and audits backup.created.
+func TestCreateBackupRunsWithDefaultSettings(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	csrf, _ := e.seedAdminSession()
 
 	resp, body := e.do(http.MethodPost, "/api/v1/backup", nil, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %.200s", resp.StatusCode, body)
 	}
-	if n := e.auditCount(t, "backup.created"); n != 0 {
-		t.Fatalf("backup.created audit count = %d, want 0", n)
+	if n := e.auditCount(t, "backup.created"); n != 1 {
+		t.Fatalf("backup.created audit count = %d, want 1", n)
 	}
 }
 
 // TestCreateBackupStreamsAndAudits: needs settings:write (403 for a
-// viewer), streams a valid archive with the right headers once escrow is
-// confirmed, audits backup.created {sizeBytes}, and updates the shared
+// viewer), streams a valid archive with the right headers with no
+// confirmation needed, audits backup.created {sizeBytes}, and updates the shared
 // status row (LastSuccessAt/LastSizeBytes move, LastFile stays null — an
 // on-demand backup is never written to disk).
 func TestCreateBackupStreamsAndAudits(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	csrf, org := e.seedAdminSession()
-	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "off", RetainCount: 7})
+	setBackupSettings(t, e, backup.Settings{Schedule: "off", RetainCount: 7})
 
 	viewerClient, viewerCsrf, _ := e.userSession("viewer1", "viewer", &org)
 	resp, body := e.doClient(viewerClient, http.MethodPost, "/api/v1/backup", nil, http.Header{authn.CSRFHeader: {viewerCsrf}}) //nolint:bodyclose // testEnv.doClient closes the body
@@ -159,15 +159,14 @@ func TestCreateBackupStreamsAndAudits(t *testing.T) {
 		t.Fatalf("status endpoint = %d, body = %s", statusResp.StatusCode, statusBody)
 	}
 	var st struct {
-		EscrowConfirmed bool    `json:"escrowConfirmed"`
-		LastSuccessAt   *string `json:"lastSuccessAt"`
-		LastSizeBytes   *int64  `json:"lastSizeBytes"`
-		LastFile        *string `json:"lastFile"`
+		LastSuccessAt *string `json:"lastSuccessAt"`
+		LastSizeBytes *int64  `json:"lastSizeBytes"`
+		LastFile      *string `json:"lastFile"`
 	}
 	if err := json.Unmarshal(statusBody, &st); err != nil {
 		t.Fatal(err)
 	}
-	if !st.EscrowConfirmed || st.LastSuccessAt == nil || st.LastSizeBytes == nil || *st.LastSizeBytes == 0 {
+	if st.LastSuccessAt == nil || st.LastSizeBytes == nil || *st.LastSizeBytes == 0 {
 		t.Fatalf("status = %+v", st)
 	}
 	if st.LastFile != nil {
@@ -183,7 +182,7 @@ func TestCreateBackupStreamsAndAudits(t *testing.T) {
 func TestCreateBackupMidStreamErrorAborts(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	csrf, _ := e.seedAdminSession()
-	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "off", RetainCount: 7})
+	setBackupSettings(t, e, backup.Settings{Schedule: "off", RetainCount: 7})
 	e.deps.Backup.StreamFunc = func(_ context.Context, w io.Writer) (backup.Summary, error) {
 		// net/http buffers small writes and drops them unflushed on an
 		// ErrAbortHandler panic (they never reach the socket), so the
@@ -229,7 +228,7 @@ func TestCreateBackupMidStreamErrorAborts(t *testing.T) {
 func TestBackupAPIRestoreRoundTrip(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	csrf, org := e.seedAdminSession()
-	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "off", RetainCount: 7})
+	setBackupSettings(t, e, backup.Settings{Schedule: "off", RetainCount: 7})
 	if _, err := e.deps.Pool.Exec(context.Background(),
 		`INSERT INTO sites (org_id, name) VALUES ($1, 'site1')`, org); err != nil {
 		t.Fatal(err)
@@ -300,7 +299,7 @@ func TestBackupAPIRestoreRoundTrip(t *testing.T) {
 func TestScheduledBackupEmitsEvent(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	dir := t.TempDir()
-	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: dir})
+	setBackupSettings(t, e, backup.Settings{Schedule: "daily", RetainCount: 7, Directory: dir})
 
 	if err := e.deps.Backup.RunScheduled(context.Background()); err != nil {
 		t.Fatalf("RunScheduled: %v", err)
@@ -353,7 +352,7 @@ func TestScheduledBackupEmitsEvent(t *testing.T) {
 func TestScheduledBackupFailureRecordsEventAuditAndBackoff(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	badDir := "/nonexistent-" + t.Name() + "/backups"
-	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: badDir})
+	setBackupSettings(t, e, backup.Settings{Schedule: "daily", RetainCount: 7, Directory: badDir})
 
 	if err := e.deps.Backup.RunScheduled(context.Background()); err != nil {
 		t.Fatalf("RunScheduled: %v", err)
@@ -403,7 +402,7 @@ func TestScheduledBackupFailureRecordsEventAuditAndBackoff(t *testing.T) {
 func TestOnDemandBackupDoesNotPostponeSchedule(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	dir := t.TempDir()
-	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: dir})
+	setBackupSettings(t, e, backup.Settings{Schedule: "daily", RetainCount: 7, Directory: dir})
 
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	e.deps.Backup.Now = func() time.Time { return base }
@@ -450,7 +449,7 @@ func TestOnDemandBackupDoesNotPostponeSchedule(t *testing.T) {
 func TestScheduledSuccessSaveIsAtomicWithConcurrentStatusWrites(t *testing.T) {
 	e := newTestEnvOpts(t, withBackup(t))
 	dir := t.TempDir()
-	setBackupSettings(t, e, backup.Settings{KEKEscrowConfirmed: true, Schedule: "daily", RetainCount: 7, Directory: dir})
+	setBackupSettings(t, e, backup.Settings{Schedule: "daily", RetainCount: 7, Directory: dir})
 
 	wantFailure := time.Date(2020, 6, 15, 0, 0, 0, 0, time.UTC)
 	e.deps.Backup.StreamFunc = func(ctx context.Context, w io.Writer) (backup.Summary, error) {

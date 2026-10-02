@@ -48,7 +48,7 @@ export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort,
               const dir = key && sort === key ? 'ascending' : key && sort === `-${key}` ? 'descending' : undefined;
               const label = flexRender(h.column.columnDef.header, h.getContext());
               return (
-                <TableHead key={h.id} aria-sort={key ? (dir ?? 'none') : undefined} className={meta?.className}>
+                <TableHead key={h.id} aria-sort={key ? (dir ?? 'none') : undefined} className={cn('overflow-x-clip', meta?.className)}>
                   <span className="inline-flex items-center gap-1">
                     {key && onSort ? (
                       <button type="button" className="inline-flex items-center gap-1 hover:text-ink" onClick={() => onSort(dir === 'ascending' ? `-${key}` : key)}>
@@ -73,7 +73,7 @@ export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort,
           ? Array.from({ length: skeletonRows }).map((_, i) => (
               <TableRow key={`skeleton-${i}`} aria-hidden className="h-9 rounded-none">
                 {columns.map((c, j) => (
-                  <TableCell key={j} className={c.meta?.className}>
+                  <TableCell key={j} className={cn('overflow-x-clip', c.meta?.className)}>
                     <div className="h-3 w-3/4 animate-pulse rounded-sm bg-subtle" />
                   </TableCell>
                 ))}
@@ -108,7 +108,7 @@ export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort,
                     // non-sticky cells, which were already showing the
                     // row's own background through their default
                     // transparent one).
-                    <TableCell key={c.id} className={cn(c.column.columnDef.meta?.className, isSel && 'bg-primary/10')}>
+                    <TableCell key={c.id} className={cn('overflow-x-clip', c.column.columnDef.meta?.className, isSel && 'bg-primary/10')}>
                       {flexRender(c.column.columnDef.cell, c.getContext())}
                     </TableCell>
                   ))}

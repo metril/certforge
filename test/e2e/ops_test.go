@@ -313,9 +313,6 @@ func TestOpsAgainstCompose(t *testing.T) {
 	c.call(ctx, t, http.MethodPut, "/api/v1/settings/prometheus", map[string]any{
 		"enabled": true, "bearerToken": promToken,
 	}, nil)
-	c.call(ctx, t, http.MethodPut, "/api/v1/settings/backup", map[string]any{
-		"kekEscrowConfirmed": true,
-	}, nil)
 
 	var apiKey struct {
 		APIKey struct {

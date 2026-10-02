@@ -201,6 +201,7 @@ func (s *Store) GetSection(ctx context.Context, sec *Section) (value, stored jso
 	if err != nil {
 		return nil, nil, err
 	}
+	raw = sec.stripIgnored(raw)
 	return raw, raw, nil
 }
 
@@ -213,7 +214,7 @@ func (s *Store) PutSection(ctx context.Context, sec *Section, raw json.RawMessag
 	if err := sec.Validate(raw); err != nil {
 		return err
 	}
-	return s.Set(ctx, sec.Key(), raw)
+	return s.Set(ctx, sec.Key(), sec.stripIgnored(raw))
 }
 
 // PutSectionTx validates raw and stores it inside tx. Secret properties go to

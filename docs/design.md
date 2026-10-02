@@ -42,7 +42,7 @@ Everything else is a row in a `settings` table (typed key, JSON value, secrets e
 - **Settings → Integrations**: Vault (address, auth method, AppRole or token, namespace), SMTP, Prometheus toggle.
 - **Settings → Issuance defaults**: renewal policy, key type, preferred chain, ARI on/off, rate-limit thresholds, resolvers.
 - **Settings → Agents**: agent CA view and rotation, agent-listener TLS cert (self-signed, upload, or pick a CertForge-issued cert), enrolment token TTL, heartbeat interval, hook allowlist defaults.
-- **Settings → Backup**: trigger backup, KEK escrow status, restore upload.
+- **Settings → Backup**: trigger backup, key reminder, restore upload.
 - **Entities with full CRUD screens**: orgs, sites, users and role bindings, API keys, CAs and ACME accounts, DNS credentials (form generated from provider schema), certificates, clients, grants and output specs, deploy targets, hooks, notification channels, external monitors, private CAs.
 
 Every pluggable type (DNS provider, deploy target, notifier, signer) publishes a JSON Schema, and the UI renders its form from that schema. Adding a new provider or target never requires a UI change. `cfctl` and the API are alternatives to the UI, never prerequisites for it.
@@ -174,7 +174,7 @@ certforge/
 | | Delivery | Deploy targets, File layouts (output specs), Hooks | Where a cert goes |
 | | Alerts | Notification channels, External monitors | What tells you about a problem |
 | Govern | Audit log | – | First stop when diagnosing |
-| | Settings | General (base URL, orgs, sites), Access (users, bindings, API keys), Authentication (OIDC), Issuance defaults, Agents, Integrations (Vault, SMTP, Prometheus), Backup and keys | Set up once |
+| | Settings | General (base URL, orgs, sites), Access (users, bindings, API keys), Authentication (OIDC), Issuance defaults, Agents, Integrations (Vault, SMTP, Prometheus), Backups | Set up once |
 
 Scope: global = CAs, private CAs, Settings, users, KEK (shown with a "Shared" badge in org views, admin-only edit). Org-scoped = everything else. Site is a filter (`?site=`), not a scope. Org switcher has "All orgs" for admins (read-only across Overview, Certificates, Clients, Audit).
 
@@ -327,7 +327,7 @@ Phase 7 delivered the target framework; vendor targets (Docker secrets, Kubernet
 - **lego providers read credentials from env vars.** Build providers under a global mutex (set env, construct, restore), subprocess fallback. Generate schemas from lego's per-provider `.toml`; pin the lego version.
 - **TLS-terminating proxies strip client certs.** Agent port needs TLS passthrough. Never trust forwarded client-cert headers by default.
 - **Half-open WebSockets behind CGNAT.** Ping 25s with read deadline, jittered reconnect, new session evicts old. Single replica in v1; multi-replica needs LISTEN/NOTIFY fan-out.
-- **KEK loss = all keys lost.** `kek_id` per row, rewrap job, canary decrypt at startup, backup refuses to run without KEK escrow plan.
+- **KEK loss = all keys lost.** `kek_id` per row, rewrap job, canary decrypt at startup, backups carry a dismissible reminder to keep a copy of the key.
 - **Agent CA and listener cert rotation.** Multi-CA trust bundle, push `trust_bundle_update`, re-issue agent certs, then retire old CA.
 - **Server compromise = code exec on every agent.** Hooks off by default, local allowlist `CF_HOOK_ALLOW`, argv only, never a shell.
 - **Shorter cert lifetimes** (45-day, 6-day). Default to percentage renewal + ARI, not a hard 30 days.

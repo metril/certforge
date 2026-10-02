@@ -5,7 +5,7 @@ import { snap } from './screens';
 // lib/help.ts's 'target.runsOnForced'/'target.runsOnLocked' text, copied
 // rather than imported: that module reads `import.meta.env` (a Vite-only
 // global), which doesn't exist under Playwright's own Node-based test runner
-// (same convention as vault.spec.ts's own REWRAP_NO_PREVIOUS).
+// (same convention as vault.spec.ts's own KEY_ROW_TOOLTIP).
 const RUNS_ON_FORCED = 'This type can only run here.';
 const RUNS_ON_LOCKED = 'Fixed once the target exists. Create a new target to change it.';
 
