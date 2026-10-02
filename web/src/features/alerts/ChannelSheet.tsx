@@ -15,7 +15,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { canWriteChannel, TYPE_META } from '@/lib/channels';
@@ -104,6 +104,7 @@ function toInput(d: Draft, schema: RJSFSchema, storedSecrets: string[]): Channel
 type Props = { orgId: string; open: boolean; channel?: Channel; onOpenChange: (open: boolean) => void };
 
 export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
   const isSmUp = useMediaQuery('(min-width: 640px)');
@@ -156,7 +157,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
       if (channel) await updateChannel(channel, input);
       else await createChannel(orgId, input);
       await qc.invalidateQueries({ queryKey: ['channels', orgId] });
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       const message = errorMessage(e);
       if (e instanceof ApiError && e.status === 422) {
@@ -177,7 +178,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   }
 
   return (
-    <Sheet open={open} form dirty={formDirty} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={formDirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{channel ? channel.name : 'New channel'}</SheetTitle>
@@ -300,7 +301,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
           onConfirm={async () => {
             await deleteChannel(channel);
             await qc.invalidateQueries({ queryKey: ['channels', orgId] });
-            onOpenChange(false);
+            guard.close();
           }}
         />
       )}

@@ -16,7 +16,7 @@ import { RunsOnChip } from '@/components/RunsOnChip';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
@@ -29,6 +29,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 type Props = { orgId: string; target?: DeployTarget; types: ProviderSchema[]; readOnly: boolean; onOpenChange: (open: boolean) => void };
 
 export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const me = useMe();
   const qc = useQueryClient();
   const isSmUp = useMediaQuery('(min-width: 640px)');
@@ -94,7 +95,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
       else await createDeployTarget(orgId, body);
       toast.success('Deploy target saved');
       await Promise.all([qc.invalidateQueries({ queryKey: ['deploy-targets', orgId] }), invalidateGrants(qc, orgId)]);
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       const msg = errorMessage(e);
       const field = fieldErrorFromMessage(schema, msg);
@@ -112,7 +113,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   };
 
   return (
-    <Sheet open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>

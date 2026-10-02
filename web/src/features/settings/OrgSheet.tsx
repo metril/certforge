@@ -6,10 +6,11 @@ import type { Org } from '@/api/types';
 import { Field } from '@/components/Field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
 import { SLUG_RE, toSlug } from '@/features/setup/slug';
 
 export function OrgSheet({ org, onClose, onSaved }: { org: Org | 'new' | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  const guard = useSheetGuard((o) => !o && onClose());
   const save = useSaveOrg();
   const editing = org !== null && org !== 'new' ? org : null;
   const [name, setName] = useState('');
@@ -32,14 +33,14 @@ export function OrgSheet({ org, onClose, onSaved }: { org: Org | 'new' | null; o
     try {
       await save.mutateAsync({ id: editing?.id, body: { slug, name: name.trim() } });
       await onSaved();
-      onClose();
+      guard.close();
     } catch (e) {
       setError(errorMessage(e));
     }
   }
 
   return (
-    <Sheet open={org !== null} form dirty={dirty} onOpenChange={(o) => !o && onClose()}>
+    <Sheet guard={guard} open={org !== null} form dirty={dirty} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="grid content-start gap-6 sm:max-w-md">
         <SheetHeader>
           <SheetTitle>{editing ? `Rename ${editing.name}` : 'New organization'}</SheetTitle>

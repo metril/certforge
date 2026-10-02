@@ -12,7 +12,7 @@ import { PermissionTip } from '@/components/PermissionTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import type { SchemaFormHandle } from '@/forms/SchemaForm';
 import { KIND_LABEL } from '@/lib/caKinds';
 import { help } from '@/lib/help';
@@ -49,6 +49,7 @@ const KIND_OPTIONS: CaType[] = ['acme', 'localca', 'vaultpki'];
 type Props = { orgId: string; open: boolean; ca?: CA; initialKind?: CaType; onOpenChange: (open: boolean) => void };
 
 export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
   // cas:write is global-only (internal/authz/authz.go): a control the
@@ -97,7 +98,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
     setSaving(true);
     try {
       await saveCa(qc, orgId, toCaInput(draft, { presets, ca }), ca?.id);
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       // Fix round 2 (carried): a plain network failure (offline, timeout —
       // not an ApiError) must still surface, not just stop the button
@@ -116,7 +117,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
   }
 
   return (
-    <Sheet open={open} form dirty={dirty} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{ca ? `Edit ${ca.name}` : 'Add certificate authority'}</SheetTitle>

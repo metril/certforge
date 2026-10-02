@@ -169,7 +169,7 @@ Press `Ctrl`/`Cmd` `K` from anywhere in the app to open it. Type to jump straigh
 
 ## Side panels
 
-Form sheets (create and edit panels) never close on an outside click. With unsaved changes, Escape, the X and Cancel ask **Discard changes?**; Cancel there keeps the panel and your draft, Discard closes it. A panel with no changes closes at once (dirty checks compare the config as the form settles it, so schema defaults and stored-secret placeholders filled on open are not edits), and saving closes it without a prompt. Read-only panels (details, audit event, download) and the mobile menu close as before.
+Form sheets (create and edit panels) never close on an outside click. With unsaved changes, Escape, the X and Cancel ask **Discard changes?**; Cancel there keeps the panel and your draft, Discard closes it. A panel with no changes closes at once (dirty checks compare the config as the form settles it, so schema defaults and stored-secret placeholders filled on open are not edits), and saving closes it without a prompt. The same prompt guards leaving a dirty form panel by any other route: browser Back/Forward, a sidebar or other link, or a programmatic navigation. Cancel stays on the page with the draft and URL intact, Discard carries on with the navigation, and a reload or tab close shows the browser's own prompt. Navigation that keeps the same panel open is not blocked. Read-only panels (details, audit event, download) and the mobile menu close as before.
 
 ## Shared layout components
 

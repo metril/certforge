@@ -19,7 +19,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { INTERVALS, fmtInterval } from '@/lib/monitors';
 import { useMe } from '@/lib/org';
@@ -85,6 +85,7 @@ function targetChanged(monitor: Monitor, d: Draft): boolean {
 type Props = { orgId: string; open: boolean; monitor?: Monitor; onOpenChange: (open: boolean) => void };
 
 export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
   const { data: allCerts = [] } = useQuery(allCertificatesQuery(orgId));
@@ -123,7 +124,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
         await create.mutateAsync(input);
       }
       await qc.invalidateQueries({ queryKey: ['monitors', orgId] });
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       const message = errorMessage(e);
       if (e instanceof ApiError && e.status === 422) {
@@ -139,7 +140,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   }
 
   return (
-    <Sheet open={open} form dirty={dirty} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader className="flex-row items-start justify-between gap-2">
           <div>
@@ -315,7 +316,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
           onConfirm={async () => {
             // useDeleteMonitor's own onSuccess already invalidates ['monitors', orgId].
             await del.mutateAsync(monitor.id);
-            onOpenChange(false);
+            guard.close();
           }}
         />
       )}

@@ -12,7 +12,7 @@ import { Field } from '@/components/Field';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
 import { GLOBAL, keyState, scopeLabel } from '@/lib/apiKeys';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
@@ -26,6 +26,7 @@ const ROLES: Role[] = ['viewer', 'auditor', 'operator', 'org-admin', 'admin'];
 type Props = { open: boolean; onOpenChange: (open: boolean) => void; fixedType?: SubjectType };
 
 export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const me = useMe();
   const create = useCreateBinding();
   const refreshMe = useRefreshMe();
@@ -86,14 +87,14 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
       // and re-run route guards so gating updates immediately, not just on
       // the query's own next background refetch.
       if (type === 'user' && trimmed === me.user.id) await refreshMe();
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       setError(e instanceof ApiError && e.status === 409 ? 'This binding already exists.' : errorMessage(e));
     }
   }
 
   return (
-    <Sheet open={open} form dirty={open && dirty} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={open && dirty} onOpenChange={onOpenChange}>
       <SheetContent className="grid content-start gap-6 overflow-y-auto sm:max-w-md">
         <SheetHeader>
           <SheetTitle>{fixedType === 'oidc_group' ? 'Add group mapping' : 'Add binding'}</SheetTitle>

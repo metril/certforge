@@ -14,7 +14,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { FormSection } from '@/components/FormSection';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { advancedSchema, authMethodsOf, hasAdvancedValue, inferMethod, methodKeys, methodSchema } from '@/forms/authMethods';
 import { can } from '@/lib/permissions';
@@ -40,6 +40,7 @@ function fieldFromTitle(title: string | undefined): string | null {
 }
 
 export function CredentialSheet({ orgId, open, onOpenChange, provider, credential, onSaved, onChangeProvider }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const save = useSaveCredential(orgId);
   // useMe() needs the router context, which the certificate wizard's create-only
   // use of this sheet lacks; the cached me query serves both (no fetch on create).
@@ -131,7 +132,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
     try {
       const saved = await save.mutateAsync({ id: credential?.id, body });
       onSaved?.(saved);
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       const field = e instanceof ApiError ? fieldFromTitle(e.problem.title) : null;
       setServerError({ field, message: errorMessage(e) });
@@ -139,7 +140,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
   }
 
   return (
-    <Sheet open={open} form dirty={dirty} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{credential ? `Edit ${credential.name}` : `Add ${provider?.name ?? 'DNS'} credential`}</SheetTitle>

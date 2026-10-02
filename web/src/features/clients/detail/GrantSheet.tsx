@@ -18,7 +18,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 import { help } from '@/lib/help';
 
@@ -43,6 +43,7 @@ function QueryField({ label, q, children }: { label: string; q: UseQueryResult<u
 }
 
 export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const certs = useQuery(allCertificatesQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const targetsQ = useQuery(deployTargetsQuery(orgId));
@@ -91,7 +92,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
     if (editing) {
       try {
         await update.mutateAsync({ id: editing.id, body: rest });
-        onOpenChange(false);
+        guard.close();
       } catch (e) {
         setFormError(errorMessage(e));
       }
@@ -100,7 +101,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
     const r = await create.mutateAsync({ certificateIds: certIds, rest });
     if (r.created.length > 0) toast.success(`Granted ${plural(r.created.length, 'certificate')}`);
     if (r.failed.length === 0) {
-      onOpenChange(false);
+      guard.close();
       return;
     }
     setCertIds(r.failed.map((f) => f.certificateId));
@@ -108,7 +109,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
   };
 
   return (
-    <Sheet open form dirty={dirty} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{editing ? `Edit ${editing.certificateName}` : 'Grant certificate'}</SheetTitle>

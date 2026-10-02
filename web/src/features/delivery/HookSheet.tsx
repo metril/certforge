@@ -9,13 +9,14 @@ import { HelpTip } from '@/components/HelpTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { ArgvField, argvErrors } from '@/forms/widgets/ArgvField';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 
 type Props = { orgId: string; hook?: Hook; readOnly: boolean; onOpenChange: (open: boolean) => void };
 
 export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const save = useSaveHook(orgId);
   const [name, setName] = useState(hook?.name ?? '');
   const [phase, setPhase] = useState<HookPhase>(hook?.phase ?? 'post_deploy');
@@ -39,7 +40,7 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
     if (!nameOk || errs.some(Boolean) || timeoutError) return;
     try {
       await save.mutateAsync({ id: hook?.id, body: { name: trimmedName, phase, argv, timeoutSeconds: seconds } });
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       const msg = errorMessage(e);
       // Only a name conflict ("A hook named ... exists in this org" — the
@@ -52,7 +53,7 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
   };
 
   return (
-    <Sheet open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
