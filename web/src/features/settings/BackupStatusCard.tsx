@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleDashed, CircleX, Info, X } from 'lucide-react';
 import { backupStatusQuery } from '@/api/queries/backup';
 import { errorMessage } from '@/api/errors';
 import type { BackupStatus } from '@/api/types';
-import { Card } from '@/components/Card';
+import { Card, CardBody, CardHeader } from '@/components/Card';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { ToneChip } from '@/components/StatusChip';
@@ -14,7 +14,7 @@ import { relTime } from '@/lib/time';
 
 function CardSkeleton() {
   return (
-    <div aria-hidden className="mb-8 grid gap-3 rounded-md border border-border bg-panel p-4">
+    <div aria-hidden className="grid gap-3 rounded-md border border-border bg-panel p-4">
       <div className="h-4 w-40 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-2/3 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-1/2 animate-pulse rounded-sm bg-subtle" />
@@ -77,7 +77,7 @@ function newerOutcome(s: BackupStatus): 'success' | 'failure' | 'never' {
  * /backup/status`. No polling (unlike EncryptionKeyCard's rewrap progress):
  * a backup either completes inline (Back up now) or runs hourly in the
  * background, so there's nothing here that changes moment to moment. */
-export function BackupStatusCard() {
+export function BackupStatusCard({ actions }: { actions?: ReactNode }) {
   const q = useQuery(backupStatusQuery);
 
   if (q.isPending) return <CardSkeleton />;
@@ -90,12 +90,17 @@ export function BackupStatusCard() {
   const hasArchive = s.lastSizeBytes != null && s.lastFile != null;
 
   return (
-    <Card role="region" aria-label="Backups" className="mb-8 grid gap-4 p-4">
+    <Card role="region" aria-label="Backups">
+      <CardHeader
+        title={
+          <span className="flex items-center gap-1.5">
+            Status
+            <HelpTip id="backup.status" />
+          </span>
+        }
+      />
+      <CardBody className="grid gap-4">
       <KeyReminder />
-      <h3 className="flex items-center gap-1.5 text-base font-semibold">
-        Backups
-        <HelpTip id="backup.status" />
-      </h3>
       <dl className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
         <div className="grid gap-1">
           <dt className="text-ink-muted">Last backup</dt>
@@ -138,6 +143,8 @@ export function BackupStatusCard() {
           </div>
         )}
       </dl>
+      {actions && <div className="flex flex-wrap items-center gap-6 border-t border-border pt-4">{actions}</div>}
+      </CardBody>
     </Card>
   );
 }

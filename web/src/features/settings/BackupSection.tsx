@@ -93,24 +93,24 @@ export function BackupSection() {
   }
 
   return (
-    <div className="grid max-w-[720px] gap-6">
-      <BackupStatusCard />
-      <div className="flex flex-wrap items-center gap-6">
-        <div className="flex items-center gap-2">
-          <BackUpNowButton
-            canWrite={canWrite}
-            running={running}
-            onClick={() => void handleBackup()}
-          />
-          <HelpTip id="backup.now" />
-        </div>
-        <div className="flex items-center gap-1.5 text-sm text-ink-muted">
-          Restore
-          <HelpTip id="backup.restore" />
-        </div>
-      </div>
+    <div className="grid max-w-[720px] gap-4">
+      <BackupStatusCard
+        actions={
+          <>
+            <div className="flex items-center gap-2">
+              <BackUpNowButton canWrite={canWrite} running={running} onClick={() => void handleBackup()} />
+              <HelpTip id="backup.now" />
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-ink-muted">
+              Restore
+              <HelpTip id="backup.restore" />
+            </div>
+          </>
+        }
+      />
       <SchemaSection
         section="backup"
+        title="Schedule"
         uiSchemaOverrides={backupUiSchema}
         mapSaveError={mapBackupSaveError}
         onSaved={() => void qc.invalidateQueries({ queryKey: ['backup-status'] })}

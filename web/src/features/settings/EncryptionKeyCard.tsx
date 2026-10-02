@@ -44,7 +44,7 @@ const SpinIcon = forwardRef<SVGSVGElement, LucideProps>(function SpinIcon(props,
 
 function CardSkeleton() {
   return (
-    <div aria-hidden className="mt-8 grid max-w-[720px] gap-3 rounded-md border border-border bg-panel p-4">
+    <div aria-hidden className="grid max-w-[720px] gap-3 rounded-md border border-border bg-panel p-4">
       <div className="h-4 w-40 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-2/3 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-1/2 animate-pulse rounded-sm bg-subtle" />
@@ -137,7 +137,7 @@ function RotationSteps({ keys }: { keys: KeysStatus }) {
 /** The everyday state: one quiet row, no controls. */
 function QuietKeyRow() {
   return (
-    <Card className="mt-8 flex max-w-[720px] items-center gap-3 px-4 py-3">
+    <Card className="flex max-w-[720px] items-center gap-3 px-4 py-3">
       <h3 className="text-sm font-semibold">Encryption key</h3>
       <ToneChip tone="valid" icon={ShieldCheck} label="Key check OK" />
       <Tooltip>
@@ -190,7 +190,7 @@ export function EncryptionKeyCard() {
   }
 
   return (
-    <Card role="region" aria-label="Encryption key" className="mt-8 grid max-w-[720px] gap-4 p-4">
+    <Card role="region" aria-label="Encryption key" className="grid max-w-[720px] gap-4 p-4">
       <h3 className="text-base font-semibold">Encryption key</h3>
       <RotationSteps keys={keys} />
       <dl className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
