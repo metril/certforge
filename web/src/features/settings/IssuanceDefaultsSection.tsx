@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { LevelLinks } from '@/forms/InheritableField';
@@ -150,7 +150,7 @@ function GlobalScope({ org, links }: { org: Org; links: LevelLinks }) {
       onSave={async () => {
         setGlobalError(null);
         try {
-          await saveGlobal.mutateAsync(globalPayload(globalDraft ?? globalStored ?? {}) as Record<string, unknown>);
+          await saveGlobal.mutateAsync(globalPayload(globalDraft ?? globalStored ?? {}, globalStored, builtin) as Record<string, unknown>);
           setGlobalDraft(null);
         } catch (e) {
           setGlobalError(mapError(e));
@@ -238,6 +238,12 @@ export function IssuanceDefaultsSection() {
   const orgsQ = useQuery({ ...orgsQuery, enabled: isGlobalAdmin(me) });
   const orgs: Org[] = (isGlobalAdmin(me) ? orgsQ.data : undefined) ?? me.orgs;
   const wanted = orgs.find((o) => o.slug === (search.org ?? activeSlug));
+  const listReady = !isGlobalAdmin(me) || !orgsQ.isPending;
+  const fallbackSlug = (wanted ?? orgs[0])?.slug;
+  const badOrg = !!search.org && !orgs.some((o) => o.slug === search.org) && listReady && !!fallbackSlug;
+  useEffect(() => {
+    if (badOrg) void navigate({ search: (prev) => ({ ...prev, org: fallbackSlug }), replace: true });
+  }, [badOrg, fallbackSlug, navigate]);
   // A deep-linked org may not be in me.orgs for a global admin: wait for the full list instead of flashing the first org.
   if (!wanted && search.org && isGlobalAdmin(me) && orgsQ.isPending) return <p className="text-sm text-ink-muted">Loading…</p>;
   const org = wanted ?? orgs[0];

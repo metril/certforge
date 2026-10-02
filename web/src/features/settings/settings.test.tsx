@@ -358,3 +358,32 @@ it('Global tab: the unset fields show the server-served shipped values, not a cl
   const keyType = within(await screen.findByRole('group', { name: 'Key type' }));
   await waitFor(() => expect(keyType.getByRole('radio', { name: 'EC P-384' })).toBeChecked());
 });
+
+it('Global tab save: editing a field and changing it back never pins the shipped value', async () => {
+  const { user } = renderRoute('/settings/issuance-defaults?scope=global');
+  const keyTypeField = within(await screen.findByRole('group', { name: 'Key type' }));
+  await user.click(await keyTypeField.findByRole('radio', { name: 'RSA 2048' }));
+  await user.click(keyTypeField.getByRole('radio', { name: 'EC P-256' }));
+  const mustStaple = within(screen.getByRole('group', { name: 'Must-Staple' }));
+  await user.click(mustStaple.getByRole('switch', { name: 'Must-Staple' }));
+  await user.click(screen.getByRole('button', { name: 'Save global defaults' }));
+  await waitFor(() => expect(puts.issuance_defaults).toEqual({ mustStaple: true }));
+});
+
+it('Global tab: a stored key equal to the shipped value shows Reset, and Reset removes it from the save', async () => {
+  server.use(
+    http.get(url('/settings/issuance_defaults'), () =>
+      HttpResponse.json({ schema: {}, value: { keyType: 'ec256' }, stored: { keyType: 'ec256', reuseKey: true } }),
+    ),
+  );
+  const { user } = renderRoute('/settings/issuance-defaults?scope=global');
+  const keyTypeField = within(await screen.findByRole('group', { name: 'Key type' }));
+  await user.click(await keyTypeField.findByRole('button', { name: 'Reset' }));
+  await user.click(screen.getByRole('button', { name: 'Save global defaults' }));
+  await waitFor(() => expect(puts.issuance_defaults).toEqual({ reuseKey: true }));
+});
+
+it('an unknown ?org= slug is replaced in the URL by the default organization', async () => {
+  const { router } = renderRoute('/settings/issuance-defaults?scope=org&org=nope');
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org', org: 'acme' }));
+});

@@ -208,7 +208,6 @@ function BaseField<T>({ id, label, help, value, inherited, builtinState, unsetTe
   const shipped = inherited.value as T | null | undefined;
   const hasShipped = shipped !== null && shipped !== undefined;
   const shown = stored ? (value as T) : hasShipped ? shipped : undefined;
-  const differs = stored && (!hasShipped || JSON.stringify(value) !== JSON.stringify(shipped));
   void display;
   let body: ReactNode;
   if (shown !== undefined) {
@@ -241,7 +240,7 @@ function BaseField<T>({ id, label, help, value, inherited, builtinState, unsetTe
       <div className="grid gap-1.5">
         <div className="flex flex-wrap items-center gap-3">
           {body}
-          {differs && (
+          {stored && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>

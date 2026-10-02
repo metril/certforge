@@ -307,8 +307,12 @@ export function chainFor(builtin: IssuanceDefaults | undefined, global: Issuance
 // being dropped — a "replace the whole object" PUT would otherwise delete
 // it on any unrelated save, Global or Org.
 /** The Global save body: only keys with a value (stored ones plus what the user changed), so opening and saving never pins the shipped values. */
-export function globalPayload(value: IssuanceDefaults): IssuanceDefaults {
-  return Object.fromEntries(Object.entries(value).filter(([, v]) => v != null)) as IssuanceDefaults;
+export function globalPayload(value: IssuanceDefaults, stored?: IssuanceDefaults | null, shipped?: IssuanceDefaults): IssuanceDefaults {
+  // A key the user touched and set back to the shipped value was never stored: drop it rather than pin it.
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  return Object.fromEntries(
+    Object.entries(value).filter(([k, v]) => v != null && !(shipped && stored?.[k as FieldKey] == null && shipped[k as FieldKey] != null && same(v, shipped[k as FieldKey]))),
+  ) as IssuanceDefaults;
 }
 
 export function fullPayload(value: IssuanceDefaults): IssuanceDefaults {
