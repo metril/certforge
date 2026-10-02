@@ -557,6 +557,10 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 - Release pipeline: `.github/workflows/release.yml` (push to `main`, `concurrency: release`) runs `googleapis/release-please-action@v4` against `release-please-config.json`/`.release-please-manifest.json` (`release-type: go`, `bump-minor-pre-major: true`, bootstrapped at b5f0162), then, only when it cut a release, an `images` matrix (`certforge`/`Dockerfile.server`+`WITH_WEB=1`, `certforge-agent`/`Dockerfile.agent`, `fail-fast: false`) pushes multi-arch (amd64+arm64) GHCR images tagged `X.Y.Z`/`X.Y`/`latest` (`X` only past `v0.`) with provenance and SBOM, and a `binaries` job builds `certforge-agent`/`cfctl` for amd64/arm64, tars them, writes `SHA256SUMS`, and uploads everything to the GitHub release. Publishing lives in the same workflow as the tag because a `GITHUB_TOKEN`-created tag does not itself trigger other workflows. `CHANGELOG.md`'s hand-written `## [Unreleased]` section is renamed `## [Pre-release history]`; release-please inserts new sections above it from here on.
 - Release pipeline: docs close-out. `docs/development.md` gets a "Releases" section (flow, `Release-As:` footer, the one-time GitHub settings — the `RELEASE_PLEASE_TOKEN` PAT or the Actions "create and approve PRs" setting, GHCR package visibility — and the Go builder bump called out as a pre-release blocker) and drops the old "hand-edit CHANGELOG.md" rule. README.md, docs/agent.md and docs/cfctl.md now point at pinned `ghcr.io/metril/*:<version>` images and the release binary tarballs instead of only `:latest`/from-source.
 
+## UI clarity pass
+
+- Task 1: control tokens (`--cf-control-border`, `--cf-field`, `--cf-selected`, `--shadow-control`) in light, dark and the no-JS fallback, mapped in `app.css` (`--color-input` now the control border); `tokens.test.ts` covers the new text pairs and a 3:1 control-border check.
+
 ## Backlog
 
 - Phase 7 delivered the target framework; vendor targets (Docker secrets, Kubernetes Secret, Proxmox VE, TrueNAS, OPNsense, UniFi, Home Assistant) on demand.

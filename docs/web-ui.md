@@ -2,6 +2,10 @@
 
 The chrome, the dashboard and the fleet screens: Overview, Clients, the command palette.
 
+## Visual system
+
+Light and dark share one token set (`web/src/styles/tokens.css`). Controls use their own tokens so they read as bounded in both themes: `--cf-control-border` (at least 3:1 against panel, surface, subtle and field) for input and outline-button borders, `--cf-field` for the input fill, `--cf-selected` for the active tab or segment fill, and `--shadow-control` for outline buttons only. Table and card dividers stay on `--cf-border`. `styles/tokens.test.ts` enforces the contrast pairs.
+
 ## Sign in
 
 The login page shows **Sign in with single sign-on** when Settings → Authentication has it enabled; the local admin password sits behind **Break-glass login**. Without single sign-on the password form is shown directly. A failed single sign-on returns here with a one-line reason (expired or interrupted sign-in, refused by the identity provider, account disabled, or not configured).

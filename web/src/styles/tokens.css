@@ -15,6 +15,10 @@
      (thus >=3:1) against panel and surface by the tokens test below, which
      is what the Switch contrast ruling (Task 1 review carry-in) requires. */
   --cf-control-track: #566173;
+  --cf-control-border: #7D8799;
+  --cf-field: #FBFCFD;
+  --cf-selected: #E6ECFA;
+  --shadow-control: 0 1px 2px rgba(29, 37, 51, 0.08);
   --cf-valid: #2E7D57;
   --cf-expiring: #B7791F;
   --cf-expired: #7F1D2D;
@@ -36,6 +40,10 @@
   --cf-on-primary: #161B24;
   --cf-on-status: #161B24;
   --cf-control-track: #9AA3B2;
+  --cf-control-border: #6B7689;
+  --cf-field: #1A202B;
+  --cf-selected: #26304A;
+  --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.5);
   --cf-valid: #5BC08A;
   --cf-expiring: #E0A83F;
   --cf-expired: #D9647A;
@@ -59,6 +67,10 @@
     --cf-on-primary: #161B24;
     --cf-on-status: #161B24;
     --cf-control-track: #9AA3B2;
+    --cf-control-border: #6B7689;
+    --cf-field: #1A202B;
+    --cf-selected: #26304A;
+    --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.5);
     --cf-valid: #5BC08A;
     --cf-expiring: #E0A83F;
     --cf-expired: #D9647A;
