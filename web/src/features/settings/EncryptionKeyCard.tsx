@@ -58,7 +58,7 @@ function CardSkeleton() {
 function RewrapButton({ canWrite, disabled, noPrevious, onClick }: { canWrite: boolean; disabled: boolean; noPrevious: boolean; onClick: () => void }) {
   const btn = (
     <Button type="button" disabled={!canWrite || disabled} onClick={onClick}>
-      Rewrap now
+      Re-encrypt now
     </Button>
   );
   if (!canWrite) return <PermissionTip allowed={false} action="settings:write">{btn}</PermissionTip>;
@@ -104,7 +104,7 @@ export function EncryptionKeyCard() {
       await startRewrap.mutateAsync();
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
-        toast.error('A rewrap is already running');
+        toast.error('Re-encryption is already running');
         void q.refetch();
         return;
       }
@@ -134,20 +134,20 @@ export function EncryptionKeyCard() {
         </div>
         <div className="grid gap-1">
           <dt className="flex items-center gap-1 text-ink-muted">
-            Canary
+            Key check
             <HelpTip id="keys.canary" />
           </dt>
           <dd>
             {keys.canaryOk ? (
-              <ToneChip tone="valid" icon={ShieldCheck} label="Canary OK" />
+              <ToneChip tone="valid" icon={ShieldCheck} label="Key check OK" />
             ) : (
-              <ToneChip tone="failed" icon={ShieldAlert} label="Canary failed" />
+              <ToneChip tone="failed" icon={ShieldAlert} label="Key check failed" />
             )}
           </dd>
         </div>
         <div className="grid gap-1">
           <dt className="flex items-center gap-1 text-ink-muted">
-            Previous keys
+            Older keys
             <HelpTip id="keys.previous" />
           </dt>
           <dd>
@@ -192,7 +192,7 @@ export function EncryptionKeyCard() {
             {rewrap.tables.map((t) => (
               <li key={t.table} className="flex flex-wrap items-center gap-x-3 gap-y-1 md:flex-nowrap">
                 <span className="w-40 shrink-0">{TABLE_LABEL[t.table]}</span>
-                <Meter value={t.scanned} max={t.scanned + t.remaining} label={`${TABLE_LABEL[t.table]} rewrap progress`} />
+                <Meter value={t.scanned} max={t.scanned + t.remaining} label={`${TABLE_LABEL[t.table]} re-encryption progress`} />
                 <span className="font-mono text-xs">
                   {t.rewrapped} / {t.scanned}
                 </span>

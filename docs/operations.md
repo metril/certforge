@@ -3,7 +3,7 @@
 ## Health endpoints
 
 - `GET /healthz` — liveness. Always `200 {"status":"ok"}` if the process is up and serving HTTP; it does not touch the database.
-- `GET /readyz` — readiness. Checks the database connection and the KEK canary (see [configuration.md](configuration.md#the-kek)), plus Vault reachability once either is in play:
+- `GET /readyz` — readiness. Checks the database connection and the encryption key check (see [configuration.md](configuration.md#the-kek)), plus Vault reachability once either is in play:
   - `200 {"status":"ready","checks":{"database":"ok","kek":"ok"}}` when database and KEK checks pass.
   - `503 {"status":"unavailable","checks":{...}}` when either fails. Each entry in `checks` is `"ok"` or `"failed"` (`kek` is `"unknown"` if the database ping itself failed, since the canary could not be checked). Failure details are logged server-side, not returned, because the endpoint is unauthenticated.
   - `checks.vault` appears only when the server has a reason to reach Vault: the KEK is Transit (`docs/vault.md#transit-kek`), or the Integrations Vault section (`docs/vault.md#integrations`) has an address configured. It is `"ok"`, `"degraded"` or `"failed"`, based on a `sys/health` probe cached for 30 seconds — a burst of readiness polls never hammers Vault. A Transit-KEK failure is `"failed"` and makes the whole response `503`: the server cannot decrypt secrets without it. An Integrations-section failure (KEK not Transit) is `"degraded"` and leaves the server `200 ready`: that Vault only backs vaultpki CAs and vault-kv deploy targets, which fail their own way without it, and the rest of the server stays usable. Either way the body carries only the one word — never the configured address, token or any other Vault detail (R10); the redacted probe error is logged server-side.
@@ -72,22 +72,24 @@ Public, unauthenticated routes (`/auth/login`, `/setup/complete`) are as exposed
 
 Enrolment tokens pin the CA that signs the listener certificate, so tokens created before or after a rotation work until the old CA is retired; after that, a token pinned to it is refused (409) and the client needs re-enrolling for a new one.
 
-## KEK rotation
+<a id="kek-rotation"></a>
+## Encryption key rotation
 
-CertForge's key-encryption key (KEK) can be rotated live, with no downtime and no offline migration step (ADR 0014). `GET /api/v1/keys/status` reports the active KEK's identity, any previous KEKs still configured, a canary round-trip and the most recent rewrap's progress. Settings → Backups' **Encryption key** card (`docs/web-ui.md`) shows all of this and starts a rewrap without leaving the browser.
+CertForge's encryption key (called KEK, for key-encryption key, in environment variable names) can be rotated live, with no downtime and no offline migration step (ADR 0014). `GET /api/v1/keys/status` reports the active key's identity, any older keys still configured, a key check and the most recent re-encryption's progress. Settings → Backups' **Encryption key** card (`docs/web-ui.md`) shows all of this and starts a re-encryption without leaving the browser.
 
 **Static → static** (a new `CF_KEK`/`CF_KEK_FILE` value):
 1. Move the current value to `CF_KEK_PREVIOUS` (or `CF_KEK_PREVIOUS_FILE`), set the new value as `CF_KEK`/`CF_KEK_FILE`, and restart.
-2. Boot enqueues a rewrap automatically. Watch `GET /keys/status`'s `rewrap.remaining` (or trigger a fresh run any time with `POST /api/v1/keys/rewrap`, `settings:write`, 409 while one is already running).
-3. Once `remaining` reaches 0, remove `CF_KEK_PREVIOUS[_FILE]` and restart again. Every row is now decryptable under the new KEK alone.
+2. Boot enqueues a re-encryption automatically. Watch `GET /keys/status`'s `rewrap.remaining` (or trigger a fresh run any time with `POST /api/v1/keys/rewrap`, `settings:write`, 409 while one is already running).
+3. Once `remaining` reaches 0, remove `CF_KEK_PREVIOUS[_FILE]` and restart again. Every row is now decryptable under the new key alone.
 
 **Static → Vault Transit**: set `CF_KEK_PREVIOUS`/`CF_KEK_PREVIOUS_FILE` to the current static key, configure `CF_KEK_VAULT_*` for the new Transit-backed KEK (`docs/vault.md#transit-kek`), and follow the same steps. This is also the path an existing (pre-5A) install takes on its first boot after upgrading: `EnsureRoot`'s legacy lookup needs the original static KEK, as either `CF_KEK` or `CF_KEK_PREVIOUS`, to seed the sealed root secret with the exact bytes every previously-derived key (the audit HMAC key above all) already used — skipping this on that one boot fails startup outright (`settings.ErrNoLegacyRoot`) rather than silently forking the audit chain.
 
 At most one static and one Vault-Transit previous KEK may be configured at a time (`CF_KEK_PREVIOUS[_FILE]` and `CF_KEK_PREVIOUS_VAULT_*`, same suffixes as `CF_KEK_VAULT_*`); a previous KEK removed before `remaining` reaches 0 leaves those rows undecryptable until it is reconfigured (loud failure, `crypto.ErrWrongKEK`, never silent data loss).
 
-### Rewrap
+<a id="rewrap"></a>
+### Re-encryption
 
-`internal/kek.RewrapWorker` walks every sealed column (`settings`, `cas` — `eab_hmac` and `secret_cfg` together, `acme_accounts`, `dns_provider_credentials`, `output_specs`, `agent_cas`, `certificate_versions`) in keyset pages, moving each row still sealed under a previous KEK onto the active one. It rewraps the KEK canary first as a fast, explicit check: a previous KEK misconfigured or removed too soon fails the whole run immediately rather than after scanning far larger tables first. Progress is visible mid-run (`GET /keys/status`'s `rewrap` object updates after every page) and the job is safe to resume or re-run: a row already on the active KEK is a cheap no-op, and every write is a compare-and-swap, so a lost race against a concurrent write is simply counted in `remaining` and retried by the next run instead of overwriting data the job never decrypted.
+`internal/kek.RewrapWorker` walks every sealed column (`settings`, `cas` — `eab_hmac` and `secret_cfg` together, `acme_accounts`, `dns_provider_credentials`, `output_specs`, `agent_cas`, `certificate_versions`) in keyset pages, moving each row still sealed under an older key onto the active one. It re-encrypts the key-check value first as a fast, explicit check: an older key misconfigured or removed too soon fails the whole run immediately rather than after scanning far larger tables first. Progress is visible mid-run (`GET /keys/status`'s `rewrap` object updates after every page) and the job is safe to resume or re-run: a row already on the active KEK is a cheap no-op, and every write is a compare-and-swap, so a lost race against a concurrent write is simply counted in `remaining` and retried by the next run instead of overwriting data the job never decrypted.
 
 ## Backup
 

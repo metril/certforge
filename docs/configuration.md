@@ -7,9 +7,9 @@ CertForge is configured from the web UI. The environment only carries what the s
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
 | `CF_DATABASE_URL` | yes | – | Postgres URL, for example `postgres://certforge:pw@postgres:5432/certforge?sslmode=disable` |
-| `CF_KEK` | one of `CF_KEK`, `CF_KEK_FILE`, `CF_KEK_VAULT_ADDR` | – | Key-encryption key: 32 random bytes, base64 |
-| `CF_KEK_FILE` | see above | – | Path to a file with the KEK (base64, or exactly 32 raw bytes) |
-| `CF_KEK_VAULT_ADDR` | see above | – | Vault (or OpenBao) address; selects a Transit-backed KEK instead of a static one (see `docs/vault.md#transit-kek`) |
+| `CF_KEK` | one of `CF_KEK`, `CF_KEK_FILE`, `CF_KEK_VAULT_ADDR` | – | Encryption key: 32 random bytes, base64 |
+| `CF_KEK_FILE` | see above | – | Path to a file with the encryption key (base64, or exactly 32 raw bytes) |
+| `CF_KEK_VAULT_ADDR` | see above | – | Vault (or OpenBao) address; selects a Transit-backed encryption key instead of a static one (see `docs/vault.md#transit-kek`) |
 | `CF_KEK_VAULT_TRANSIT_KEY` | with `CF_KEK_VAULT_ADDR` | – | Transit key name |
 | `CF_KEK_VAULT_MOUNT` | no | `transit` | Transit secrets engine mount |
 | `CF_KEK_VAULT_NAMESPACE` | no | – | Vault Enterprise namespace |
@@ -19,9 +19,9 @@ CertForge is configured from the web UI. The environment only carries what the s
 | `CF_KEK_VAULT_ROLE_ID` | with `CF_KEK_VAULT_SECRET_ID[_FILE]` | – | AppRole role id |
 | `CF_KEK_VAULT_SECRET_ID` | with `CF_KEK_VAULT_ROLE_ID` | – | AppRole secret id |
 | `CF_KEK_VAULT_SECRET_ID_FILE` | see above | – | Path to a file holding the secret id |
-| `CF_KEK_PREVIOUS` | no | – | A retired KEK (32 random bytes, base64) still needed to decrypt rows a rewrap hasn't reached yet; see `docs/operations.md#rewrap` |
-| `CF_KEK_PREVIOUS_FILE` | see above | – | Path to a file with the previous KEK |
-| `CF_KEK_PREVIOUS_VAULT_ADDR` | no | – | A retired Vault (or OpenBao) Transit KEK's address, in place of `CF_KEK_PREVIOUS[_FILE]` |
+| `CF_KEK_PREVIOUS` | no | – | An older encryption key (32 random bytes, base64) still needed to decrypt rows that re-encryption hasn't reached yet; see `docs/operations.md#rewrap` |
+| `CF_KEK_PREVIOUS_FILE` | see above | – | Path to a file with the older key |
+| `CF_KEK_PREVIOUS_VAULT_ADDR` | no | – | An older Vault (or OpenBao) Transit key's address, in place of `CF_KEK_PREVIOUS[_FILE]` |
 | `CF_KEK_PREVIOUS_VAULT_TRANSIT_KEY` | with `CF_KEK_PREVIOUS_VAULT_ADDR` | – | Its Transit key name |
 | `CF_KEK_PREVIOUS_VAULT_MOUNT` | no | `transit` | Its Transit secrets engine mount |
 | `CF_KEK_PREVIOUS_VAULT_NAMESPACE` | no | – | Its Vault Enterprise namespace |
@@ -36,7 +36,10 @@ CertForge is configured from the web UI. The environment only carries what the s
 | `CF_BASE_URL` | no | – | Public URL. The setup wizard stores its own value in Settings → General, which takes precedence |
 | `CF_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` |
 
-## The KEK
+<a id="the-kek"></a>
+## The encryption key
+
+The encryption key (called KEK, for key-encryption key, in environment variable names) encrypts every private key and secret in the database. The server will not start without it.
 
 Generate one:
 
@@ -44,7 +47,7 @@ Generate one:
 head -c 32 /dev/urandom | base64
 ```
 
-Losing the KEK means losing every private key and secret in the database. Store a copy outside the server before issuing anything. The server derives a KEK id from the key, stores it with every encrypted row, and checks the sealed root secret and a canary at startup. Once a root secret is sealed (every boot after the very first), a wrong KEK fails to decrypt it and the server refuses to start, rather than serving degraded — see `docs/security.md#root-secret`. Only a fresh database (no root sealed yet) accepts whatever KEK it is first given. `/readyz` reports `kek: failed` for the narrower remaining case: the root decrypts but the canary does not.
+Losing the encryption key means losing every private key and secret in the database. Store a copy outside the server before issuing anything. The server derives a key id from the key, stores it with every encrypted row, and checks the sealed root secret and a canary at startup. Once a root secret is sealed (every boot after the very first), a wrong key fails to decrypt it and the server refuses to start, rather than serving degraded — see `docs/security.md#root-secret`. Only a fresh database (no root sealed yet) accepts whatever key it is first given. `/readyz` reports `kek: failed` for the narrower remaining case: the root decrypts but the key check does not.
 
 For `CF_KEK_FILE` in the container, the file must be readable by uid 65532: `chown 65532 kek && chmod 0400 kek`.
 
@@ -139,7 +142,7 @@ certforge-agent itself (the binary running alongside Traefik or another target) 
 
 ### Backup section
 
-Shows the key-encryption key's status (from `/readyz`'s `kek` check) and controls scheduled, encrypted backups (section `backup`). The archive format and CLI are documented in `docs/operations.md#backup`/`#restore`; the scheduled job and `checks.backup` readiness check in `docs/operations.md#backup-schedule`/`#health-endpoints`; the download/status API in `docs/operations.md#backup`.
+Shows the encryption key's status (from `/readyz`'s `kek` check) and controls scheduled, encrypted backups (section `backup`). The archive format and CLI are documented in `docs/operations.md#backup`/`#restore`; the scheduled job and `checks.backup` readiness check in `docs/operations.md#backup-schedule`/`#health-endpoints`; the download/status API in `docs/operations.md#backup`.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -218,7 +221,7 @@ The `/setup` wizard walks this in four steps:
 |---|---|---|
 | Admin password | Admin password, Confirm password | At least 12 characters. This is the local break-glass login. |
 | Base URL | Base URL | Pre-filled with the address in your browser. A warning appears if it differs, for example behind a reverse proxy. |
-| Encryption key | – | Shows the server's readiness checks. The key (`CF_KEK` or `CF_KEK_FILE`) must load and pass its canary before you can continue. Fix the environment and select **Check again**. |
+| Encryption key | – | Shows any readiness check that is not passing. The key (`CF_KEK` or `CF_KEK_FILE`) must load and pass its check before you can continue. Fix the environment and select **Check again**. |
 | First organization | Organization, Slug | The slug appears in URLs (`/o/<slug>/…`). |
 
 **Finish setup** creates the admin and the organization, signs you in, and opens the organization.

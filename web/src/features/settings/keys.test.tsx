@@ -35,15 +35,15 @@ it('static key basics', async () => {
   const { user } = renderRoute('/settings/backup');
   expect(await screen.findByText('Static')).toBeInTheDocument();
   expect(screen.queryByText(/vault\.example\.com/)).not.toBeInTheDocument();
-  expect(screen.getByText('Canary OK')).toBeInTheDocument();
+  expect(screen.getByText('Key check OK')).toBeInTheDocument();
   expect(screen.getByText('None')).toBeInTheDocument();
-  // No previous key and no rewrap has ever run: Rewrap now is disabled with
+  // No previous key and no rewrap has ever run: Re-encrypt now is disabled with
   // the keys.rewrapNoPrevious tooltip, not merely absent (batch 3 review,
   // Minor: actually hover and assert its text, not just `disabled`).
-  const button = screen.getByRole('button', { name: 'Rewrap now' });
+  const button = screen.getByRole('button', { name: 'Re-encrypt now' });
   expect(button).toBeDisabled();
   await user.hover(button);
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Nothing to rewrap: no previous key is configured.');
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Nothing to re-encrypt: no older key is set.');
 });
 
 it('transit shows address', async () => {
@@ -62,7 +62,7 @@ it('previous key chips', async () => {
 it('canary failed chip', async () => {
   server.use(http.get(url('/keys/status'), () => HttpResponse.json({ ...keysStatic, canaryOk: false })));
   renderRoute('/settings/backup');
-  expect(await screen.findByText('Canary failed')).toBeInTheDocument();
+  expect(await screen.findByText('Key check failed')).toBeInTheDocument();
 });
 
 it('progress bars per table', async () => {
@@ -90,8 +90,8 @@ it('rewrap now starts and polls', async () => {
     http.post(url('/keys/rewrap'), () => HttpResponse.json(keysRunning, { status: 202 })),
   );
   renderRoute('/settings/backup');
-  for (let i = 0; i < 10 && !screen.queryByRole('button', { name: 'Rewrap now' }); i++) await tick(50);
-  const button = screen.getByRole('button', { name: 'Rewrap now' });
+  for (let i = 0; i < 10 && !screen.queryByRole('button', { name: 'Re-encrypt now' }); i++) await tick(50);
+  const button = screen.getByRole('button', { name: 'Re-encrypt now' });
   expect(button).toBeEnabled();
   // fireEvent (synchronous), not userEvent, under fake timers: userEvent's
   // own pointer-event simulation relies on real timers/RAF even with a
@@ -123,17 +123,17 @@ it('409 toasts running', async () => {
     http.post(url('/keys/rewrap'), () => problem(409, 'a rewrap is already running')),
   );
   const { user } = renderRoute('/settings/backup');
-  const button = await screen.findByRole('button', { name: 'Rewrap now' });
+  const button = await screen.findByRole('button', { name: 'Re-encrypt now' });
   const before = getCalls;
   await user.click(button);
-  expect(await screen.findByText('A rewrap is already running')).toBeInTheDocument();
+  expect(await screen.findByText('Re-encryption is already running')).toBeInTheDocument();
   await waitFor(() => expect(getCalls).toBeGreaterThan(before));
 });
 
 it('rewrap disabled while running', async () => {
   server.use(http.get(url('/keys/status'), () => HttpResponse.json(keysRunning)));
   renderRoute('/settings/backup');
-  expect(await screen.findByRole('button', { name: 'Rewrap now' })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: 'Re-encrypt now' })).toBeDisabled();
 });
 
 it('needs settings:write', async () => {
@@ -142,7 +142,7 @@ it('needs settings:write', async () => {
     http.get(url('/keys/status'), () => HttpResponse.json(keysDone)),
   );
   const { user } = renderRoute('/settings/backup');
-  const button = await screen.findByRole('button', { name: 'Rewrap now' });
+  const button = await screen.findByRole('button', { name: 'Re-encrypt now' });
   expect(button).toBeDisabled();
   await user.hover(button);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the settings:write permission');

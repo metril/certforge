@@ -96,7 +96,7 @@ export const help = {
     learnMore: 'vault.md#approle',
   },
   'vault.transitKek': {
-    text: "The key-encryption key is wrapped by this Vault's Transit engine. It is set by environment variables.",
+    text: "The encryption key lives in this Vault's Transit engine. Set by environment variables.",
     learnMore: 'vault.md#transit-kek',
   },
   'org.slugPermanent': { text: 'Slugs are part of every URL, so they never change.' },
@@ -105,23 +105,23 @@ export const help = {
   // its own 'backup.kek' entry (no longer referenced by any component).
   'keys.kind': {
     text: 'Static: a key from the environment. Vault Transit: the key never leaves Vault.',
-    learnMore: 'operations.md#kek-rotation',
+    learnMore: 'operations.md#encryption-key-rotation',
   },
   'keys.canary': {
     text: 'Proves the active key decrypts a known value.',
-    learnMore: 'operations.md#kek-rotation',
+    learnMore: 'operations.md#encryption-key-rotation',
   },
   'keys.previous': {
-    text: 'Older keys still accepted for reading. Rewrap, then remove them from the environment.',
-    learnMore: 'operations.md#kek-rotation',
+    text: 'Older keys still accepted for reading. Re-encrypt, then remove them from the environment.',
+    learnMore: 'operations.md#encryption-key-rotation',
   },
   'keys.rewrap': {
-    text: 'Re-encrypts every sealed value with the active key. It resumes where it stopped.',
-    learnMore: 'operations.md#rewrap',
+    text: 'Re-encrypts every secret with the active key. Resumes where it stopped.',
+    learnMore: 'operations.md#re-encryption',
   },
   'keys.rewrapNoPrevious': {
-    text: 'Nothing to rewrap: no previous key is configured.',
-    learnMore: 'operations.md#rewrap',
+    text: 'Nothing to re-encrypt: no older key is set.',
+    learnMore: 'operations.md#re-encryption',
   },
   'defaults.caId': { text: 'CA used when a certificate does not pick one.' },
   'defaults.accountId': { text: 'ACME account used to order from that CA.' },
@@ -465,7 +465,7 @@ export const help = {
     learnMore: 'operations.md#backup-schedule',
   },
   'backup.now': {
-    text: 'Downloads an encrypted archive of the database. Restoring it needs the same KEK.',
+    text: 'Downloads an encrypted copy of the database. Restoring it needs the same encryption key.',
     learnMore: 'operations.md#backup',
   },
   'backup.needsEscrow': {

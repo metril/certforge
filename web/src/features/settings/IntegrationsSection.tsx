@@ -178,7 +178,7 @@ export function IntegrationsSection() {
     <div className="grid max-w-[720px] gap-8">
       {keysStatus.data?.kind === 'vault-transit' && (
         <div className="flex items-center gap-1.5 text-sm">
-          <span className="font-medium">Transit KEK</span>
+          <span className="font-medium">Encryption key</span>
           <span className="font-mono text-xs text-ink-muted">{keysStatus.data.vaultAddress}</span>
           <HelpTip id="vault.transitKek" />
         </div>

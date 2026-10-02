@@ -5,7 +5,7 @@ import { snap } from './screens';
 // lib/help.ts's 'keys.rewrapNoPrevious' text, copied rather than imported:
 // that module reads `import.meta.env` (a Vite-only global), which doesn't
 // exist under Playwright's own Node-based test runner.
-const REWRAP_NO_PREVIOUS = 'Nothing to rewrap: no previous key is configured.';
+const REWRAP_NO_PREVIOUS = 'Nothing to re-encrypt: no older key is set.';
 
 test('Vault settings test button', async ({ page }) => {
   await page.goto('/login');
@@ -77,9 +77,9 @@ test('keys card', async ({ page }) => {
   await expect(card.getByText('Static', { exact: true })).toBeVisible();
   const keyId = card.locator('dd').filter({ has: page.locator('code') }).first();
   await expect(keyId.locator('code')).not.toBeEmpty();
-  await expect(card.getByText('Canary OK')).toBeVisible();
+  await expect(card.getByText('Key check OK')).toBeVisible();
 
-  const rewrap = card.getByRole('button', { name: 'Rewrap now' });
+  const rewrap = card.getByRole('button', { name: 'Re-encrypt now' });
   await expect(rewrap).toBeDisabled();
   // force: true — the disabled button itself is `pointer-events: none`
   // (Tailwind's disabled: variant); the real hover target the browser

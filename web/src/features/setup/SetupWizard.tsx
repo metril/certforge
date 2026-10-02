@@ -45,6 +45,9 @@ function Row({ id, label, help, error, children }: { id: string; label: string; 
   );
 }
 
+// Readiness check names -> what the person setting up sees.
+const CHECK_LABEL: Record<string, string> = { kek: 'Encryption key', database: 'Database' };
+
 export function SetupWizard() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -63,6 +66,10 @@ export function SetupWizard() {
   // Fix round 1 (controller ruling): gate specifically on the kek check, not
   // overall readiness.ok, and fail closed if the key is missing entirely.
   const kekOk = readiness.data?.checks.find((c) => c.name === 'kek')?.ok === true;
+  // Only checks that are not passing are listed; a missing kek check counts as failing.
+  const failing: { name: string; message?: string }[] = readiness.data
+    ? [...readiness.data.checks.filter((c) => !c.ok), ...(readiness.data.checks.some((c) => c.name === 'kek') ? [] : [{ name: 'kek' }])]
+    : [];
   const canNext = [
     password.length >= 12 && confirm === password,
     isHttpUrl(cleanBase),
@@ -150,13 +157,13 @@ export function SetupWizard() {
                   {errorMessage(readiness.error)}
                 </p>
               )}
-              {readiness.data && (
+              {failing.length > 0 && (
                 <ul className="grid gap-1.5">
-                  {(readiness.data.checks.length ? readiness.data.checks : [{ name: 'server', ok: readiness.data.ok }]).map((c) => (
+                  {failing.map((c) => (
                     <li key={c.name} className="flex items-center gap-2">
-                      {c.ok ? <CircleCheck className="size-4 text-valid" aria-hidden /> : <CircleX className="size-4 text-failed" aria-hidden />}
-                      <span className="font-mono text-xs">{c.name}</span>
-                      {'message' in c && c.message && <span className="text-ink-muted">{c.message}</span>}
+                      <CircleX className="size-4 text-failed" aria-hidden />
+                      <span>{CHECK_LABEL[c.name] ?? c.name}</span>
+                      {c.message && <span className="text-ink-muted">{c.message}</span>}
                     </li>
                   ))}
                 </ul>

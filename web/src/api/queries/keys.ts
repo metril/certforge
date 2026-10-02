@@ -18,7 +18,7 @@ export function useStartRewrap() {
     // ("a rewrap is already running") is caught and toasted explicitly by
     // EncryptionKeyCard with its own fixed copy and a refetch, instead of
     // the mutation cache's generic error toast firing too.
-    meta: { silent: true, success: 'Rewrap started' },
+    meta: { silent: true, success: 'Re-encryption started' },
     onSuccess: (data: KeysStatus) => qc.setQueryData(['keys-status'], data),
   });
 }

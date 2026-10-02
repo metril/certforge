@@ -313,13 +313,13 @@ it('transit line only for vault-transit', async () => {
   server.use(...authHandlers({ authed: true }), ...handlers());
   renderRoute('/settings/integrations');
   await screen.findByLabelText('Address');
-  expect(screen.queryByText('Transit KEK')).not.toBeInTheDocument();
+  expect(screen.queryByText('Encryption key')).not.toBeInTheDocument();
 });
 
 it('shows the Transit KEK line for a vault-transit KEK', async () => {
   server.use(...authHandlers({ authed: true }), ...handlers({ keys: { ...keysRunning, rewrap: null } }));
   renderRoute('/settings/integrations');
-  expect(await screen.findByText('Transit KEK')).toBeInTheDocument();
+  expect(await screen.findByText('Encryption key')).toBeInTheDocument();
   expect(screen.getByText(keysRunning.vaultAddress!)).toBeInTheDocument();
 });
 

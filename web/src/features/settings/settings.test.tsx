@@ -122,7 +122,7 @@ it('lists organizations read-only under General', async () => {
 it('shows the encryption key card and saves the escrow switch', async () => {
   const { user } = renderRoute('/settings/backup');
   expect(await screen.findByText('Static')).toBeInTheDocument();
-  expect(screen.getByText('Canary OK')).toBeInTheDocument();
+  expect(screen.getByText('Key check OK')).toBeInTheDocument();
   await user.click(screen.getByRole('switch', { name: 'KEK escrow confirmed' }));
   await user.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(puts.backup).toEqual({ kekEscrowConfirmed: true }));
