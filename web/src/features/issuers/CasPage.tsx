@@ -1,21 +1,21 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { CircleCheck, CircleX, Clock, Lock, Pencil, Plus, Trash2, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, Clock, Pencil, Plus, Trash2, type LucideIcon } from 'lucide-react';
 import { casQuery, useDeleteCa } from '@/api/queries/cas';
 import type { CA, CaType } from '@/api/types';
 import { errorMessage } from '@/api/errors';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { HelpTip } from '@/components/HelpTip';
+import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { caTone, isPrivate, KIND_ICON, KIND_LABEL, kindOf } from '@/lib/caKinds';
+import { caTone, isPrivate, KIND_LABEL, kindOf } from '@/lib/caKinds';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import type { Tone } from '@/lib/status';
@@ -23,6 +23,7 @@ import { relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { CaDetailSheet } from './CaDetailSheet';
 import { CaSheet } from './CaSheet';
+import { IssuersHeader } from './IssuersLayout';
 
 // Fix round 1 (#3/#4): first column stays put while the row scrolls
 // horizontally, so a name never leaves view; matches the row's own bg so
@@ -73,137 +74,148 @@ export function CasPage() {
   const notFound = editNotFound || viewNotFound;
   const filtered = type ? cas.filter((c) => kindOf(c) === type) : cas;
 
+  const showList = !isPending && !isError && cas.length > 0;
   return (
-    <section className="grid gap-4" aria-label="Certificate authorities">
-      {isPending ? (
-        <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-      ) : isError ? (
-        <ErrorState message={`Couldn't load certificate authorities. ${errorMessage(error)}`} onRetry={() => void refetch()} />
-      ) : cas.length === 0 ? (
-        <EmptyState message="No certificate authorities yet.">
-          <PermissionTip allowed={canWrite} action="cas:write">
-            <Button disabled={!canWrite} onClick={() => openSheet('new')}>
-              Add CA
-            </Button>
-          </PermissionTip>
-        </EmptyState>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <SegmentedControl<CaType | 'all'>
-              aria-label="Type"
-              value={type ?? 'all'}
-              onChange={setFilter}
-              options={FILTERS.map((f) => ({ value: f, label: f === 'all' ? 'All' : KIND_LABEL[f] }))}
-            />
+    <>
+      <IssuersHeader
+        help="ca.type"
+        actions={
+          showList ? (
             <PermissionTip allowed={canWrite} action="cas:write">
               <Button disabled={!canWrite} onClick={() => openSheet('new', type)}>
                 <Plus className="size-4" aria-hidden />
                 Add CA
               </Button>
             </PermissionTip>
-          </div>
-          {filtered.length === 0 ? (
-            <EmptyState message={`No ${KIND_LABEL[type!]} yet.`}>
-              <PermissionTip allowed={canWrite} action="cas:write">
-                <Button disabled={!canWrite} onClick={() => openSheet('new', type)}>
-                  Add CA
-                </Button>
-              </PermissionTip>
-            </EmptyState>
-          ) : (
-            <Table className="table-fixed">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className={cn('w-40', stickyCol)}>Name</TableHead>
-                  <TableHead className="w-32">Type</TableHead>
-                  <TableHead>Endpoint</TableHead>
-                  <TableHead className="w-28">Expires</TableHead>
-                  <TableHead className="w-24">
-                    <span className="inline-flex items-center gap-1">
-                      EAB <HelpTip id="ca.eab" />
-                    </span>
-                  </TableHead>
-                  <TableHead className="w-20">
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((c) => {
-                  const kind = kindOf(c);
-                  const tone = c.notAfter ? caTone(c.notAfter) : 'neutral';
-                  return (
-                    <TableRow key={c.id} className="cursor-pointer" onClick={() => (isPrivate(c) ? openView(c.id) : openSheet(c.id))}>
-                      <TableCell className={cn('truncate py-1 font-semibold', stickyCol)}>{c.name}</TableCell>
-                      <TableCell className="py-1">
-                        <ToneChip tone="neutral" icon={KIND_ICON[kind]} label={KIND_LABEL[kind]} />
-                      </TableCell>
-                      <TableCell className="min-w-0 truncate py-1 font-mono text-xs" title={endpointOf(c)}>
-                        {endpointOf(c)}
-                      </TableCell>
-                      <TableCell className="py-1">
-                        {c.notAfter ? <ToneChip tone={tone} icon={EXPIRY_ICON[tone] ?? CircleCheck} label={relTime(c.notAfter)} /> : '–'}
-                      </TableCell>
-                      <TableCell className="py-1">
-                        {c.hasEab ? (
-                          <span className="inline-flex items-center gap-1 text-xs">
-                            <Lock className="size-3.5 text-ink-muted" aria-hidden />
-                            Stored
-                          </span>
-                        ) : (
-                          '–'
-                        )}
-                      </TableCell>
-                      <TableCell className="py-1 text-right" onClick={(e) => e.stopPropagation()}>
-                        <PermissionTip allowed={canWrite} action="cas:write" side="left">
-                          <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} aria-label={`Edit ${c.name}`} onClick={() => openSheet(c.id)}>
-                            <Pencil className="size-3.5" aria-hidden />
-                          </Button>
-                        </PermissionTip>
-                        <PermissionTip allowed={canWrite} action="cas:write" side="left">
-                          <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
-                            <Trash2 className="size-3.5" aria-hidden />
-                          </Button>
-                        </PermissionTip>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </>
-      )}
-      {(edit === 'new' || editing) && (
-        // Mount only once the CA is loaded so the form initialises from it.
-        <CaSheet key={edit} orgId={org.id} open ca={editing} initialKind={kind} onOpenChange={(o) => !o && openSheet(undefined)} />
-      )}
-      {viewing && (
-        <CaDetailSheet key={view} orgId={org.id} ca={viewing} onEdit={() => openSheet(viewing.id)} onOpenChange={(o) => !o && openView(undefined)} />
-      )}
-      {notFound && (
-        <Sheet open onOpenChange={(o) => !o && (editNotFound ? openSheet(undefined) : openView(undefined))}>
-          <SheetContent side="right" className="w-full sm:max-w-lg">
-            <SheetHeader>
-              <SheetTitle>CA not found</SheetTitle>
-              <SheetDescription>It may have been deleted.</SheetDescription>
-            </SheetHeader>
-            <div className="px-4">
-              <Button onClick={() => (editNotFound ? openSheet(undefined) : openView(undefined))}>Back to CAs</Button>
-            </div>
-          </SheetContent>
-        </Sheet>
-      )}
-      <ConfirmDestructive
-        open={!!deleting}
-        onOpenChange={(o) => !o && setDeleting(null)}
-        title="Delete CA"
-        consequence="Certificates and accounts that use this CA stop renewing."
-        confirmText={deleting?.name ?? ''}
-        actionLabel="Delete CA"
-        onConfirm={() => del.mutateAsync(deleting!.id)}
+          ) : undefined
+        }
+        activeFilters={type ? 1 : 0}
+        filters={
+          showList ? (
+            <SegmentedControl<CaType | 'all'>
+              aria-label="Type"
+              value={type ?? 'all'}
+              onChange={setFilter}
+              options={FILTERS.map((f) => ({ value: f, label: f === 'all' ? 'All' : KIND_LABEL[f] }))}
+            />
+          ) : undefined
+        }
       />
-    </section>
+      <section className="grid gap-4" aria-label="Certificate authorities">
+        {isPending ? (
+          <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
+        ) : isError ? (
+          <ErrorState message={`Couldn't load certificate authorities. ${errorMessage(error)}`} onRetry={() => void refetch()} />
+        ) : cas.length === 0 ? (
+          <EmptyState message="No certificate authorities yet.">
+            <PermissionTip allowed={canWrite} action="cas:write">
+              <Button disabled={!canWrite} onClick={() => openSheet('new')}>
+                Add CA
+              </Button>
+            </PermissionTip>
+          </EmptyState>
+        ) : (
+          <>
+            {filtered.length === 0 ? (
+              <EmptyState message={`No ${KIND_LABEL[type!]} yet.`}>
+                <PermissionTip allowed={canWrite} action="cas:write">
+                  <Button disabled={!canWrite} onClick={() => openSheet('new', type)}>
+                    Add CA
+                  </Button>
+                </PermissionTip>
+              </EmptyState>
+            ) : (
+              <Table className="table-fixed">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className={stickyCol}>Name</TableHead>
+                    <TableHead className="w-28">Expires</TableHead>
+                    <TableHead className="w-20">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((c) => {
+                    const tone = c.notAfter ? caTone(c.notAfter) : 'neutral';
+                    return (
+                      <TableRow key={c.id} className="cursor-pointer" onClick={() => (isPrivate(c) ? openView(c.id) : openSheet(c.id))}>
+                        <TableCell className={cn('py-1.5', stickyCol)}>
+                          <PrimaryCell primary={c.name} meta={[KIND_LABEL[kindOf(c)], endpointOf(c), c.hasEab ? 'EAB stored' : '']} />
+                        </TableCell>
+                        <TableCell className="py-1">
+                          {c.notAfter ? <ToneChip tone={tone} icon={EXPIRY_ICON[tone] ?? CircleCheck} label={relTime(c.notAfter)} /> : '–'}
+                        </TableCell>
+                        <TableCell className="py-1 text-right" onClick={(e) => e.stopPropagation()}>
+                          <PermissionTip allowed={canWrite} action="cas:write" side="left">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="size-7"
+                              disabled={!canWrite}
+                              aria-label={`Edit ${c.name}`}
+                              onClick={() => openSheet(c.id)}
+                            >
+                              <Pencil className="size-3.5" aria-hidden />
+                            </Button>
+                          </PermissionTip>
+                          <PermissionTip allowed={canWrite} action="cas:write" side="left">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="size-7"
+                              disabled={!canWrite}
+                              aria-label={`Delete ${c.name}`}
+                              onClick={() => setDeleting(c)}
+                            >
+                              <Trash2 className="size-3.5" aria-hidden />
+                            </Button>
+                          </PermissionTip>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </>
+        )}
+        {(edit === 'new' || editing) && (
+          // Mount only once the CA is loaded so the form initialises from it.
+          <CaSheet key={edit} orgId={org.id} open ca={editing} initialKind={kind} onOpenChange={(o) => !o && openSheet(undefined)} />
+        )}
+        {viewing && (
+          <CaDetailSheet
+            key={view}
+            orgId={org.id}
+            ca={viewing}
+            onEdit={() => openSheet(viewing.id)}
+            onOpenChange={(o) => !o && openView(undefined)}
+          />
+        )}
+        {notFound && (
+          <Sheet open onOpenChange={(o) => !o && (editNotFound ? openSheet(undefined) : openView(undefined))}>
+            <SheetContent side="right" className="w-full sm:max-w-lg">
+              <SheetHeader>
+                <SheetTitle>CA not found</SheetTitle>
+                <SheetDescription>It may have been deleted.</SheetDescription>
+              </SheetHeader>
+              <div className="px-4">
+                <Button onClick={() => (editNotFound ? openSheet(undefined) : openView(undefined))}>Back to CAs</Button>
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
+        <ConfirmDestructive
+          open={!!deleting}
+          onOpenChange={(o) => !o && setDeleting(null)}
+          title="Delete CA"
+          consequence="Certificates and accounts that use this CA stop renewing."
+          confirmText={deleting?.name ?? ''}
+          actionLabel="Delete CA"
+          onConfirm={() => del.mutateAsync(deleting!.id)}
+        />
+      </section>
+    </>
   );
 }
