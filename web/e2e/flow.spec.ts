@@ -22,6 +22,9 @@ test('flow: select the seeded certificate and see its issuer in the path panel',
   await expect(panel.getByRole('link', { name: /^Open / }).first()).toBeVisible();
   await snap(page, 'flow-selected');
 
+  // snap() toggles the theme, which moves focus out of the map; Escape only
+  // clears the selection while focus is inside it.
+  await page.getByRole('button', { name: new RegExp(`^Certificate ${E2E.certName},`) }).focus();
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
 });
