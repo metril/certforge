@@ -381,20 +381,18 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
               )}
             </Field>
           )}
-          <FormSection title="Advanced" collapsible count={extraCertificateIds.length > 0 ? 1 : 0} forceOpen={!!extrasError}>
-            <Field id="layout-extras" label="Extra certificates" help="layout.extraCerts" error={extrasError}>
-              <MultiCombobox
-                id="layout-extras"
-                aria-label="Extra certificates"
-                value={extraCertificateIds}
-                onChange={changeExtras}
-                options={certOptions}
-                placeholder="Add certificates"
-                emptyText="No certificate matches."
-                disabled={readOnly}
-              />
-            </Field>
-          </FormSection>
+          <Field id="layout-extras" label="Extra certificates" help="layout.extraCerts" error={extrasError}>
+            <MultiCombobox
+              id="layout-extras"
+              aria-label="Extra certificates"
+              value={extraCertificateIds}
+              onChange={changeExtras}
+              options={certOptions}
+              placeholder="Add certificates"
+              emptyText="No certificate matches."
+              disabled={readOnly}
+            />
+          </Field>
           {formError && (
             <p role="alert" className="flex items-center gap-1.5 text-sm">
               <CircleAlert className="size-4 text-failed" aria-hidden />

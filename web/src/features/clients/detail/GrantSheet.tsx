@@ -11,6 +11,7 @@ import { useCreateGrants, useUpdateGrant, type GrantBatchResult } from '@/api/qu
 import type { Client, Grant, GrantDelivery } from '@/api/types';
 import { ChipSet } from '@/components/ChipSet';
 import { Combobox } from '@/components/Combobox';
+import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
 import { MultiCombobox } from '@/components/MultiCombobox';
 import { SegmentedControl } from '@/components/SegmentedControl';
@@ -188,60 +189,62 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
               />
             </QueryField>
           </Field>
-          <Field id="grant-hooks" label="Hooks" help="grant.hooks" optional>
-            <QueryField label="hooks" q={hooksQ}>
-              {hooks.length ? (
-                <div className="grid gap-2">
-                  <ChipSet
-                    id="grant-hooks"
-                    aria-label="Hooks"
-                    value={hookIds}
-                    onChange={setHookIds}
-                    options={hooks.map((h) => ({ value: h.id, label: h.name, hint: PHASE_LABEL[h.phase] }))}
-                  />
-                  {hookIds.length > 0 && (
-                    <ol aria-label="Hook run order" className="grid gap-1">
-                      {hookIds.map((hid, i) => {
-                        const h = hooks.find((x) => x.id === hid);
-                        const name = h?.name ?? hid;
-                        return (
-                          <li key={hid} className="flex min-h-9 items-center gap-2 rounded-md border border-border px-2 text-sm">
-                            <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
-                            <span className="min-w-0 flex-1 truncate">{name}</span>
-                            {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
-                            <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
-                              <ArrowUp className="size-3.5" aria-hidden />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="size-7"
-                              aria-label={`Move ${name} down`}
-                              disabled={i === hookIds.length - 1}
-                              onClick={() => moveHook(i, 1)}
-                            >
-                              <ArrowDown className="size-3.5" aria-hidden />
-                            </Button>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-ink-muted">No hooks in this org.</p>
-              )}
-            </QueryField>
-          </Field>
-          <SwitchField
-            id="grant-auto"
-            label="Auto-remediate"
-            help="grant.autoRemediate"
-            checked={autoRemediate}
-            onCheckedChange={setAutoRemediate}
-            onText="Reinstall on drift"
-            offText="Report only"
-          />
+          <FormSection title="Advanced" collapsible count={(hookIds.length > 0 ? 1 : 0) + (autoRemediate ? 1 : 0)}>
+            <Field id="grant-hooks" label="Hooks" help="grant.hooks" optional>
+              <QueryField label="hooks" q={hooksQ}>
+                {hooks.length ? (
+                  <div className="grid gap-2">
+                    <ChipSet
+                      id="grant-hooks"
+                      aria-label="Hooks"
+                      value={hookIds}
+                      onChange={setHookIds}
+                      options={hooks.map((h) => ({ value: h.id, label: h.name, hint: PHASE_LABEL[h.phase] }))}
+                    />
+                    {hookIds.length > 0 && (
+                      <ol aria-label="Hook run order" className="grid gap-1">
+                        {hookIds.map((hid, i) => {
+                          const h = hooks.find((x) => x.id === hid);
+                          const name = h?.name ?? hid;
+                          return (
+                            <li key={hid} className="flex min-h-9 items-center gap-2 rounded-md border border-border px-2 text-sm">
+                              <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
+                              <span className="min-w-0 flex-1 truncate">{name}</span>
+                              {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
+                              <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
+                                <ArrowUp className="size-3.5" aria-hidden />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="size-7"
+                                aria-label={`Move ${name} down`}
+                                disabled={i === hookIds.length - 1}
+                                onClick={() => moveHook(i, 1)}
+                              >
+                                <ArrowDown className="size-3.5" aria-hidden />
+                              </Button>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-muted">No hooks in this org.</p>
+                )}
+              </QueryField>
+            </Field>
+            <SwitchField
+              id="grant-auto"
+              label="Auto-remediate"
+              help="grant.autoRemediate"
+              checked={autoRemediate}
+              onCheckedChange={setAutoRemediate}
+              onText="Reinstall on drift"
+              offText="Report only"
+            />
+          </FormSection>
           {failures.length > 0 && (
             <ul role="alert" aria-label="Not granted" className="grid gap-1 rounded-md border border-failed p-3 text-sm">
               {failures.map((f) => (

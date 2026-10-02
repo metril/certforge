@@ -16,12 +16,15 @@ export type FormSectionProps = {
   defaultOpen?: boolean;
   /** Collapsible only: hidden non-default values; shown as a badge when > 0. */
   count?: number;
+  /** Collapsible only: keep open while true (e.g. a field inside has a validation error). */
+  forceOpen?: boolean;
   children: ReactNode;
 };
 
 /** Titled form group separated by a top border; body is a `gap-4` grid. */
-export function FormSection({ title, help, summary, collapsible = false, defaultOpen = false, count = 0, children }: FormSectionProps) {
-  const [open, setOpen] = useState(defaultOpen);
+export function FormSection({ title, help, summary, collapsible = false, defaultOpen = false, count = 0, forceOpen = false, children }: FormSectionProps) {
+  const [openState, setOpen] = useState(defaultOpen);
+  const open = openState || forceOpen;
   const titleId = useId();
   if (!collapsible) {
     return (

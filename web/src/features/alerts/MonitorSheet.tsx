@@ -11,6 +11,7 @@ import type { Monitor, MonitorInput } from '@/api/types';
 import { Combobox, type ComboOption } from '@/components/Combobox';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { CopyField } from '@/components/CopyField';
+import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -234,15 +235,6 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 />
               </Field>
             </div>
-            <Field id="monitor-sni" label="SNI" help="monitor.sni" optional error={serverErrors.sni}>
-              <Input
-                id="monitor-sni"
-                className="font-mono text-xs"
-                value={draft.sni}
-                placeholder={draft.host || 'host'}
-                onChange={(e) => setDraft((d) => ({ ...d, sni: e.target.value }))}
-              />
-            </Field>
             <Field id="monitor-interval" label="Check interval" help="monitor.interval" error={serverErrors.intervalSeconds}>
               <div className="grid gap-1">
                 <SegmentedControl
@@ -254,6 +246,21 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 />
                 {!presetSelected && <span className="text-xs text-ink-muted">Currently {fmtInterval(draft.intervalSeconds)}</span>}
               </div>
+            </Field>
+            <FormSection
+              title="Advanced"
+              collapsible
+              count={(draft.sni.trim() !== '' ? 1 : 0) + (draft.expectedCertificateId ? 1 : 0) + (draft.enabled ? 0 : 1)}
+              forceOpen={!!(serverErrors.sni || serverErrors.expectedCertificateId)}
+            >
+            <Field id="monitor-sni" label="SNI" help="monitor.sni" optional error={serverErrors.sni}>
+              <Input
+                id="monitor-sni"
+                className="font-mono text-xs"
+                value={draft.sni}
+                placeholder={draft.host || 'host'}
+                onChange={(e) => setDraft((d) => ({ ...d, sni: e.target.value }))}
+              />
             </Field>
             <Field id="monitor-expected" label="Expected certificate" help="monitor.expected" error={serverErrors.expectedCertificateId}>
               <Combobox
@@ -272,6 +279,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
               checked={draft.enabled}
               onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
             />
+            </FormSection>
             <SheetFooter className="flex-row justify-between gap-2 px-0">
               {monitor ? (
                 <PermissionTip allowed={canWrite} action="alerts:write">

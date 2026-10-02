@@ -99,6 +99,7 @@ it('min severity segmented', async () => {
   channels = [makeChannel()];
   const { user } = renderRoute('/o/acme/alerts/channels?edit=ch-1');
   const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  await user.click(within(sheet).getByRole('button', { name: 'Advanced' }));
   await user.click(within(sheet).getByRole('radio', { name: 'Critical' }));
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(put).toBeDefined());
@@ -110,6 +111,7 @@ it('all orgs disabled for non-admin', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: org.id }]))));
   const { user } = renderRoute('/o/acme/alerts/channels?edit=ch-1');
   const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  await user.click(within(sheet).getByRole('button', { name: 'Advanced' }));
   const sw = within(sheet).getByRole('switch', { name: 'All orgs' });
   expect(sw).toBeDisabled();
   await user.hover(sw);

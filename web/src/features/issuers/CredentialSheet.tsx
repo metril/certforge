@@ -2,7 +2,7 @@ import { useDirty } from '@/lib/useDirty';
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { meQuery } from '@/api/queries/auth';
-import { ChevronDown, CircleAlert } from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import type { RJSFSchema } from '@rjsf/utils';
 import { revealCredentialSecret, useSaveCredential } from '@/api/queries/dns';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -12,7 +12,7 @@ import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { FormSection } from '@/components/FormSection';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
@@ -184,15 +184,15 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
             <SchemaForm key={method?.id} ref={formRef} schema={mainSchema} value={method ? pick(mainKeys) : config} onChange={method ? mergeOwn(mainKeys) : setConfig} storedSecrets={storedSecrets} onRevealSecret={onRevealSecret} revealDisabledReason={revealDisabledReason} />
           )}
           {advKeys.length > 0 && (
-            <Collapsible defaultOpen={advOpen}>
-              <CollapsibleTrigger className="flex items-center gap-1 text-sm font-semibold">
-                <ChevronDown className="size-4" aria-hidden />
-                Advanced
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-3">
-                <SchemaForm ref={advFormRef} schema={advSchema} value={pick(advKeys)} onChange={mergeOwn(advKeys)} storedSecrets={storedSecrets} onRevealSecret={onRevealSecret} revealDisabledReason={revealDisabledReason} />
-              </CollapsibleContent>
-            </Collapsible>
+            <FormSection
+              title="Advanced"
+              collapsible
+              defaultOpen={advOpen}
+              count={advKeys.filter((k) => config[k] !== undefined && config[k] !== '').length}
+              forceOpen={!!serverError?.field && advKeys.includes(serverError.field)}
+            >
+              <SchemaForm ref={advFormRef} schema={advSchema} value={pick(advKeys)} onChange={mergeOwn(advKeys)} storedSecrets={storedSecrets} onRevealSecret={onRevealSecret} revealDisabledReason={revealDisabledReason} />
+            </FormSection>
           )}
           {showSecretsNotice && (
             <p className="text-xs text-ink-muted">Connection settings changed — stored secrets above must be re-entered before saving.</p>

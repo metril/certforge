@@ -7,6 +7,7 @@ import { createChannel, deleteChannel, updateChannel } from '@/api/queries/chann
 import { metaSchemasQuery } from '@/api/queries/dns';
 import { type Channel, type ChannelInput, type ChannelType, type EventKind, type Severity } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
+import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -234,33 +235,35 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
             extraErrors={configError}
           />
           <EventKindPicker value={draft.events} onChange={(events) => setDraft((d) => ({ ...d, events }))} />
-          <Field id="channel-severity" label="Minimum severity" help="channel.minSeverity">
-            <SegmentedControl<Severity>
-              id="channel-severity"
-              aria-label="Minimum severity"
-              value={draft.minSeverity}
-              onChange={(minSeverity) => setDraft((d) => ({ ...d, minSeverity }))}
-              options={SEVERITY_ORDER.map((s) => ({ value: s, label: SEVERITY_META[s].label }))}
-            />
-          </Field>
-          <PermissionTip allowed={isGlobalAdmin(me)} action="alerts:write" reason="Needs a global admin">
+          <FormSection title="Advanced" collapsible count={(draft.minSeverity !== 'info' ? 1 : 0) + (draft.allOrgs ? 1 : 0) + (draft.enabled ? 0 : 1)}>
+            <Field id="channel-severity" label="Minimum severity" help="channel.minSeverity">
+              <SegmentedControl<Severity>
+                id="channel-severity"
+                aria-label="Minimum severity"
+                value={draft.minSeverity}
+                onChange={(minSeverity) => setDraft((d) => ({ ...d, minSeverity }))}
+                options={SEVERITY_ORDER.map((s) => ({ value: s, label: SEVERITY_META[s].label }))}
+              />
+            </Field>
+            <PermissionTip allowed={isGlobalAdmin(me)} action="alerts:write" reason="Needs a global admin">
+              <SwitchField
+                id="channel-allOrgs"
+                label="All orgs"
+                onText="Every org's events"
+                offText="This org only"
+                checked={draft.allOrgs}
+                disabled={!isGlobalAdmin(me)}
+                onCheckedChange={(allOrgs) => setDraft((d) => ({ ...d, allOrgs }))}
+              />
+            </PermissionTip>
             <SwitchField
-              id="channel-allOrgs"
-              label="All orgs"
-              onText="Every org's events"
-              offText="This org only"
-              checked={draft.allOrgs}
-              disabled={!isGlobalAdmin(me)}
-              onCheckedChange={(allOrgs) => setDraft((d) => ({ ...d, allOrgs }))}
+              id="channel-enabled"
+              label="Enabled"
+              help="channel.enabled"
+              checked={draft.enabled}
+              onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
             />
-          </PermissionTip>
-          <SwitchField
-            id="channel-enabled"
-            label="Enabled"
-            help="channel.enabled"
-            checked={draft.enabled}
-            onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-          />
+          </FormSection>
           <SheetFooter className="flex-row justify-between gap-2 px-0">
             {channel ? (
               <PermissionTip allowed={canWrite} action="alerts:write" reason={writeReason}>

@@ -100,6 +100,7 @@ it('expected certificate sends id or null', async () => {
   server.use(http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert({ id: 'c-1', name: 'www' })], nextCursor: null })));
   const { user, router } = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
   const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  await user.click(within(sheet).getByRole('button', { name: /^Advanced/ }));
   const combo = await within(sheet).findByRole('combobox', { name: 'Expected certificate' });
   await user.click(combo);
   await user.click(await screen.findByText('www'));
@@ -109,6 +110,7 @@ it('expected certificate sends id or null', async () => {
 
   await router.navigate({ to: '/o/$org/alerts/monitors', params: { org: 'acme' }, search: { edit: 'mon-1' } });
   const sheet2 = await screen.findByRole('dialog', { name: 'edge' });
+  await user.click(within(sheet2).getByRole('button', { name: /^Advanced/ }));
   await user.click(within(sheet2).getByRole('combobox', { name: 'Expected certificate' }));
   await user.click(await screen.findByText('Any CertForge certificate'));
   await user.click(within(sheet2).getByRole('button', { name: 'Save' }));
