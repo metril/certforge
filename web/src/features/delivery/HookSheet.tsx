@@ -4,6 +4,7 @@ import { ApiError, errorMessage } from '@/api/errors';
 import { useSaveHook } from '@/api/queries/delivery';
 import type { Hook, HookPhase } from '@/api/types';
 import { Field } from '@/components/Field';
+import { FormSection } from '@/components/FormSection';
 import { HelpTip } from '@/components/HelpTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
@@ -86,6 +87,7 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
             </span>
             <ArgvField id="hook-argv" value={argv} onChange={setArgv} errors={show ? errs : []} disabled={readOnly} />
           </div>
+          <FormSection title="Limits">
           <Field id="hook-timeout" label="Timeout" help="hook.timeout" error={show ? timeoutError : null}>
             <div className="flex items-center gap-2">
               <Input
@@ -102,6 +104,7 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
               <span className="text-sm text-ink-muted">seconds</span>
             </div>
           </Field>
+          </FormSection>
           {formError && (
             <p role="alert" className="text-sm">
               {formError}

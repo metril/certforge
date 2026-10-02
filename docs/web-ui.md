@@ -160,3 +160,7 @@ Press `Ctrl`/`Cmd` `K` from anywhere in the app to open it. Type to jump straigh
 ## Side panels
 
 Form sheets (create and edit panels) never close on an outside click. With unsaved changes, Escape, the X and Cancel ask **Discard changes?**; Cancel there keeps the panel and your draft, Discard closes it. A panel with no changes closes at once, and saving closes it without a prompt. Read-only panels (details, audit event, download) and the mobile menu close as before.
+
+## Shared layout components
+
+`PageHeader` puts the title (and one help tip) left and actions right; route-link `tabs` sit beneath, with `filters` on the tab line, right-aligned. Below `md` the filters fold into a **Filters** button that shows the active-filter count. `PrimaryCell` is the two-line table cell: a name (optionally a link) over a muted line of short parts joined by ` · `, which truncates with a tooltip. `FormSection` groups fields under a titled, top-bordered heading with an optional summary; `collapsible` makes it a keyboard-operable disclosure (closed by default, e.g. **Advanced**) that shows a count badge when hidden values differ from their defaults.

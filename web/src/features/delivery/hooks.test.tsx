@@ -67,7 +67,7 @@ it('lists hooks with phase, command and timeout', async () => {
   renderRoute('/o/acme/delivery/hooks');
   const table = await screen.findByRole('table', { name: 'Hooks' });
   const row = within(table).getByText('reload nginx').closest('tr')!;
-  for (const text of ['Post-deploy', '/usr/sbin/nginx -s reload', '60 s', '1 grant']) expect(within(row).getByText(text)).toBeInTheDocument();
+  for (const text of ['Post-deploy · 60 s', '/usr/sbin/nginx -s reload', '1 grant']) expect(within(row).getByText(text)).toBeInTheDocument();
   expect(within(table).getByRole('button', { name: 'Warning' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Delete reload nginx' })).toBeDisabled();
 });
