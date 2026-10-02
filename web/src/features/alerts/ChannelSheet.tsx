@@ -197,7 +197,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
             <Input id="channel-name" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="ops-webhook" />
           </Field>
           <Field id="channel-type" label="Type" help="channel.type">
-            <span className="inline-flex items-center gap-1.5">
+            <span className="flex items-start gap-1.5">
               <SegmentedControl<ChannelType>
                 id="channel-type"
                 aria-label="Type"
@@ -223,7 +223,9 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
                   };
                 })}
               />
-              <HelpTip id={`notifier.${draft.type}` as HelpKey} />
+              <span className="flex h-9 shrink-0 items-center">
+                <HelpTip id={`notifier.${draft.type}` as HelpKey} />
+              </span>
             </span>
           </Field>
           <SchemaForm
