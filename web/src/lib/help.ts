@@ -174,7 +174,9 @@ export const help = {
     text: "The CA's suggested renewal window. CertForge renews inside it when that is earlier.",
     learnMore: 'certificates.md#ari',
   },
-  'status.column': { text: 'State of the certificate itself, not of its last attempt.' },
+  'status.column': {
+    text: 'Status is the state of the certificate itself, not of its last attempt. The validity bar spans issue to expiry: hatching marks the renewal window, the notch is now. Under each name: common name, CA, grants and any other names. ARI can move the next renewal earlier.',
+  },
   'rules.method': { text: 'How each rule proves control of its names. One certificate can mix methods.', learnMore: 'certificates.md#mixing-methods' },
   'rules.match': { text: 'Name pattern. The first matching rule wins; * matches everything.' },
   'rules.credential': { text: 'DNS credential that writes the _acme-challenge TXT record.' },

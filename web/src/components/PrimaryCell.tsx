@@ -18,7 +18,7 @@ export function PrimaryCell({ primary, link, meta = [] }: PrimaryCellProps) {
   const parts = meta.filter((m): m is string => !!m);
   const text = parts.join(' · ');
   const head = link ? (
-    <Link {...(link as LinkProps)} className="block truncate font-semibold hover:underline">
+    <Link {...(link as LinkProps)} onClick={(e) => e.stopPropagation()} className="block truncate font-semibold hover:underline">
       {primary}
     </Link>
   ) : (

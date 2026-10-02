@@ -1,17 +1,23 @@
-import { Link } from '@tanstack/react-router';
 import { createColumnHelper } from '@tanstack/react-table';
+import { plural } from '@/api/queries/certificates';
 import type { Certificate } from '@/api/types';
+import { PrimaryCell } from '@/components/PrimaryCell';
 import { StatusChip } from '@/components/StatusChip';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CertValidity } from '@/components/ValidityBar';
 import { relDays } from '@/lib/time';
-import { cn } from '@/lib/utils';
 
 const col = createColumnHelper<Certificate>();
 
 // Matches the CasPage/CredentialsPage convention: the leading column stays
 // in view while a narrow table scrolls horizontally.
 const stickyCol = 'sticky left-0 z-10 bg-panel';
+
+/** Muted second line of the Name cell: common name, CA, grants, then every
+ * other name (the PrimaryCell tooltip shows the whole line). */
+export function certMeta(c: Certificate, ca: string | undefined): string[] {
+  const names = c.sans.filter((n) => n !== c.commonName).join(', ');
+  return [c.commonName, ca, c.grantCount ? plural(c.grantCount, 'grant') : '', names].filter(Boolean) as string[];
+}
 
 export function certColumns(
   org: string | ((c: Certificate) => string),
@@ -22,19 +28,13 @@ export function certColumns(
   return [
     col.accessor('name', {
       header: 'Name',
-      meta: { sortKey: 'name', className: cn('w-44', stickyCol) },
+      meta: { sortKey: 'name', className: stickyCol },
       cell: ({ row }) => (
-        <div className="grid min-w-0">
-          <Link
-            to="/o/$org/certificates/$id/$tab"
-            params={{ org: slugOf(row.original), id: row.original.id, tab: 'overview' }}
-            onClick={(e) => e.stopPropagation()}
-            className="truncate font-semibold hover:underline"
-          >
-            {row.original.name}
-          </Link>
-          <span className="truncate font-mono text-xs text-ink-muted">{row.original.commonName}</span>
-        </div>
+        <PrimaryCell
+          primary={row.original.name}
+          link={{ to: '/o/$org/certificates/$id/$tab', params: { org: slugOf(row.original), id: row.original.id, tab: 'overview' } }}
+          meta={certMeta(row.original, caName(row.original.effective?.caId?.value ?? undefined))}
+        />
       ),
     }),
     ...(orgName
@@ -47,34 +47,11 @@ export function certColumns(
           }),
         ]
       : []),
-    // Controller ruling (design.md screen inventory, "certificates" row):
-    // the names column is the SANs, truncated with a tooltip listing every
-    // name in full — not just a count.
-    col.accessor('sans', {
-      header: 'Names',
-      meta: { help: 'cert.namesColumn', className: 'w-40' },
-      cell: ({ getValue }) => {
-        const sans = getValue();
-        if (sans.length === 0) return <span className="text-ink-muted">–</span>;
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span tabIndex={0} className="block truncate font-mono text-xs">
-                {sans.join(', ')}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-72 font-mono text-xs break-all">
-              {sans.join(', ')}
-            </TooltipContent>
-          </Tooltip>
-        );
-      },
-    }),
-    col.accessor('status', { header: 'Status', meta: { help: 'status.column' }, cell: ({ getValue }) => <StatusChip status={getValue()} /> }),
+    col.accessor('status', { header: 'Status', meta: { className: 'w-28' }, cell: ({ getValue }) => <StatusChip status={getValue()} /> }),
     col.display({
       id: 'validity',
       header: 'Validity',
-      meta: { sortKey: 'notAfter', help: 'cert.validity', className: 'w-60' },
+      meta: { sortKey: 'notAfter', className: 'w-60' },
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <div className="w-32">
@@ -86,25 +63,12 @@ export function certColumns(
         </div>
       ),
     }),
-    col.display({
-      id: 'ca',
-      header: 'CA',
-      cell: ({ row }) => caName(row.original.effective?.caId?.value ?? undefined) ?? '–',
-    }),
     col.accessor('nextRenewAt', {
       header: 'Next renewal',
-      meta: { sortKey: 'nextRenewAt', help: 'cert.nextRenew' },
+      meta: { sortKey: 'nextRenewAt', className: 'w-32' },
       cell: ({ getValue }) => {
         const v = getValue();
         return v ? <span className="whitespace-nowrap">{relDays(v)}</span> : '–';
-      },
-    }),
-    col.accessor('grantCount', {
-      header: 'Grants',
-      meta: { help: 'cert.grants', className: 'w-20' },
-      cell: ({ getValue }) => {
-        const n = getValue();
-        return n === undefined ? <span className="text-ink-muted">–</span> : <span className="tabular-nums">{n}</span>;
       },
     }),
   ];

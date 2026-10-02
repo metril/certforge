@@ -32,7 +32,7 @@ Below `md` width, the needs-attention queue and upcoming renewals render as stac
 
 ## Clients
 
-`/o/:org/clients` lists the org's agents: status (Pending, Active, Revoked), connection (Online, Offline, Never connected), site, agent version, grants, drift and failed counts, and last seen. Filter by status and site (kept in the URL as `?status=` and `?site=`; a site is a filter, never a scope), search by name or hostname, sort by name, status or last seen, and save views. Below `md` width the list renders as cards. Under All orgs the list is read-only with an Org column. Each row opens the client. **Enrol client** takes a name and an optional site, then shows the one-time token with its agent URL and expiry, a `docker run` line and a Compose file to copy, and a live panel that waits for the agent (checked every 2 seconds) and shows its host once it connects. An expired token offers **New token**. The token is shown once and never stored in the browser. Once the agent connects, **Grant certificate** goes straight to the grant sheet.
+`/o/:org/clients` lists the org's agents in four columns: the name over a muted line (hostname, site, agent version, grants, drift and failed counts), the status chip (Pending, Active, Revoked), the connection (Online, Offline, Never connected) and last seen. Filters sit on the header's right (a **Filters** button below `md`): status and site (kept in the URL as `?status=` and `?site=`; a site is a filter, never a scope), search by name or hostname, sort by name, status or last seen, and save views. Below `md` width the list renders as cards. Under All orgs the list is read-only with an Org column. Each row opens the client. **Enrol client** takes a name and an optional site, then shows the one-time token with its agent URL and expiry, a `docker run` line and a Compose file to copy, and a live panel that waits for the agent (checked every 2 seconds) and shows its host once it connects. An expired token offers **New token**. The token is shown once and never stored in the browser. Once the agent connects, **Grant certificate** goes straight to the grant sheet.
 
 ## Client detail
 
@@ -54,7 +54,7 @@ An unmanaged certificate (uploaded — import takes over renewals, so an importe
 
 ## Certificate deployments
 
-A certificate's **Deployments** tab lists every client that holds it: connection, site, delivery, the grant's layout and deploy target (each opens it under Delivery), deployment state, whether the installed files match the current version, and **Redeploy**. The client name opens that client with the grant expanded. The certificates list's **Grants** column counts these.
+A certificate's **Deployments** tab lists every client that holds it: connection, site, delivery, the grant's layout and deploy target (each opens it under Delivery), deployment state, whether the installed files match the current version, and **Redeploy**. The client name opens that client with the grant expanded. The certificates list shows that count as "N grants" in the name's muted line.
 
 ## Issuers
 

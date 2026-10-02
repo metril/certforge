@@ -139,7 +139,7 @@ it('shows Import in the header on the unfiltered empty state', async () => {
 it('shows card rows instead of a table below 768px', async () => {
   stubViewport(false);
   renderRoute('/o/acme/certificates');
-  const card = await screen.findByRole('link', { name: /www/ });
+  const card = await screen.findByRole('link', { name: /^www/ });
   expect(screen.queryByRole('table')).toBeNull();
   expect(within(card).getByText('Active')).toBeInTheDocument();
   expect(within(card).getByRole('img', { name: /^Valid .* to / })).toBeInTheDocument();
@@ -261,7 +261,7 @@ it('shows card skeletons instead of a table while pending below 768px', async ()
   resolve();
   // The card `<Link>` wraps its whole card (name, status, validity, next
   // renewal), so its accessible name isn't the bare name `rowOf` expects.
-  expect(await screen.findByRole('link', { name: /www/ })).toBeInTheDocument();
+  expect(await screen.findByRole('link', { name: /^www/ })).toBeInTheDocument();
 });
 
 it('drops the cursor from the request when a filter changes after loading more', async () => {
@@ -365,5 +365,5 @@ it('shows how many clients hold each certificate', async () => {
   renderRoute('/o/acme/certificates');
   const table = await screen.findByRole('table', { name: 'Certificates' });
   const www = within(table).getByRole('link', { name: 'www' }).closest('tr')!;
-  expect(within(www).getByText('3')).toBeInTheDocument();
+  expect(within(www).getByText(/3 grants/)).toBeInTheDocument();
 });
