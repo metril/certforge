@@ -53,7 +53,7 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
             aria-expanded={open}
             aria-label={rest['aria-label']}
             disabled={disabled}
-            className={cn('h-9 min-w-0 flex-1 justify-between font-normal', mono && 'font-mono text-xs')}
+            className={cn('h-9 min-w-0 flex-1 justify-between bg-field font-normal hover:border-ink-muted hover:bg-field focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40', mono && 'font-mono text-xs')}
           >
             {selected ? <span className="truncate">{selected.label}</span> : <span className="text-ink-muted">{placeholder}</span>}
             <ChevronsUpDown className="size-4 shrink-0 text-ink-muted" aria-hidden />

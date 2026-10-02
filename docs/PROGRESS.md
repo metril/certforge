@@ -560,6 +560,7 @@ Phase 7 is split into two plans: 7A deploy-targets backend (schema 00015 and rew
 ## UI clarity pass
 
 - Task 1: control tokens (`--cf-control-border`, `--cf-field`, `--cf-selected`, `--shadow-control`) in light, dark and the no-JS fallback, mapped in `app.css` (`--color-input` now the control border); `tokens.test.ts` covers the new text pairs and a 3:1 control-border check.
+- Task 2: primitives carry the tokens: Input/Textarea/Combobox/MultiCombobox triggers (`bg-field border-input`, primary focus border and ring), Button outline/secondary/ghost, Tabs default variant (bordered strip, active panel fill with a primary bar), TabLabel (inactive hover border), SegmentedControl (`bg-selected text-primary` active), Sheet content `bg-panel`. Outline buttons use the `shadow-ctl` utility (`--shadow-ctl` in `app.css` aliases `--shadow-control`) because `no-hardcoded-values.test.ts` forbids `shadow-[`.
 
 ## Backlog
 
