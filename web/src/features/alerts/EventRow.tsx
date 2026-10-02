@@ -12,41 +12,41 @@ const linkCls = 'shrink-0 truncate font-medium hover:underline';
  * to their own page or sheet; a grant (deploy.* events) shows its name only
  * (Shared contracts: a grant's name is already "<cert> -> <client or
  * target>", so no further page to link to). */
-function ResourceLink({ event, org }: { event: NotifyEvent; org: string }) {
+export function ResourceLink({ event, org, className = linkCls }: { event: NotifyEvent; org: string; className?: string }) {
   const { resource } = event;
   switch (resource.type) {
     case 'certificate':
       return (
-        <Link to="/o/$org/certificates/$id/$tab" params={{ org, id: resource.id, tab: 'overview' }} className={linkCls}>
+        <Link to="/o/$org/certificates/$id/$tab" params={{ org, id: resource.id, tab: 'overview' }} className={className}>
           {resource.name}
         </Link>
       );
     case 'client':
       return (
-        <Link to="/o/$org/clients/$id" params={{ org, id: resource.id }} className={linkCls}>
+        <Link to="/o/$org/clients/$id" params={{ org, id: resource.id }} className={className}>
           {resource.name}
         </Link>
       );
     case 'monitor':
       return (
-        <Link to="/o/$org/alerts/monitors" params={{ org }} search={{ edit: resource.id }} className={linkCls}>
+        <Link to="/o/$org/alerts/monitors" params={{ org }} search={{ edit: resource.id }} className={className}>
           {resource.name}
         </Link>
       );
     case 'channel':
       return (
-        <Link to="/o/$org/alerts/channels" params={{ org }} search={{ edit: resource.id }} className={linkCls}>
+        <Link to="/o/$org/alerts/channels" params={{ org }} search={{ edit: resource.id }} className={className}>
           {resource.name}
         </Link>
       );
     case 'backup':
       return (
-        <Link to="/settings/$section" params={{ section: 'backup' }} className={linkCls}>
+        <Link to="/settings/$section" params={{ section: 'backup' }} className={className}>
           {resource.name}
         </Link>
       );
     default:
-      return <span className="shrink-0 truncate font-medium">{resource.name}</span>;
+      return <span className={className.replace('hover:underline', '')}>{resource.name}</span>;
   }
 }
 

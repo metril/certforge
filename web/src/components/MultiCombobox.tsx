@@ -14,14 +14,24 @@ type Props = {
   placeholder: string;
   emptyText: string;
   disabled?: boolean;
+  /** Overrides the trigger text (default "N selected"). */
+  triggerLabel?: (value: string[], labelOf: (v: string) => string) => string;
+  /** Hide the removable chips under the trigger (for compact toolbars). */
+  hideChips?: boolean;
   'aria-label': string;
 };
 
 /** design.md Controls: "multi-lookups render selected items as removable
  * chips". The popover stays open while picking; selection order is kept. */
-export function MultiCombobox({ id, value, onChange, options, placeholder, emptyText, disabled, ...rest }: Props) {
+export function MultiCombobox({ id, value, onChange, options, placeholder, emptyText, disabled, triggerLabel, hideChips, ...rest }: Props) {
   const [open, setOpen] = useState(false);
   const labelOf = (v: string) => options.find((o) => o.value === v)?.label ?? v;
+  const groups: { label?: string; options: ComboOption[] }[] = [];
+  for (const o of options) {
+    const last = groups[groups.length - 1];
+    if (last && last.label === o.group) last.options.push(o);
+    else groups.push({ label: o.group, options: [o] });
+  }
   const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   return (
     <div className="grid min-w-0 gap-2">
@@ -37,7 +47,7 @@ export function MultiCombobox({ id, value, onChange, options, placeholder, empty
             disabled={disabled}
             className="h-9 min-w-0 justify-between bg-field font-normal hover:border-ink-muted hover:bg-field focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40"
           >
-            <span className={cn('truncate', value.length === 0 && 'text-ink-muted')}>{value.length ? `${value.length} selected` : placeholder}</span>
+            <span className={cn('truncate', value.length === 0 && 'text-ink-muted')}>{value.length ? (triggerLabel ? triggerLabel(value, labelOf) : `${value.length} selected`) : placeholder}</span>
             <ChevronsUpDown className="size-4 shrink-0 text-ink-muted" aria-hidden />
           </Button>
         </PopoverTrigger>
@@ -46,8 +56,9 @@ export function MultiCombobox({ id, value, onChange, options, placeholder, empty
             <CommandInput placeholder="Search" />
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>
-              <CommandGroup>
-                {options.map((o) => (
+              {groups.map((g) => (
+                <CommandGroup key={g.label ?? ''} heading={g.label}>
+                {g.options.map((o) => (
                   <OptionWithHint key={o.value} disabled={o.disabled} hint={o.hint}>
                     <CommandItem
                       value={o.value}
@@ -64,12 +75,13 @@ export function MultiCombobox({ id, value, onChange, options, placeholder, empty
                     </CommandItem>
                   </OptionWithHint>
                 ))}
-              </CommandGroup>
+                </CommandGroup>
+              ))}
             </CommandList>
           </Command>
         </PopoverContent>
       </Popover>
-      {value.length > 0 && (
+      {!hideChips && value.length > 0 && (
         <ul aria-label={`Selected ${rest['aria-label'].toLowerCase()}`} className="flex flex-wrap gap-1.5">
           {value.map((v) => (
             <li key={v} className="inline-flex h-7 items-center gap-1 rounded-sm border border-primary bg-primary pl-2 pr-0.5 text-sm text-on-primary">

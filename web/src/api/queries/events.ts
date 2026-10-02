@@ -2,7 +2,7 @@ import { infiniteQueryOptions } from '@tanstack/react-query';
 import { api, call } from '../client';
 import type { EventKind, EventPage, Severity } from '../types';
 
-export type EventsFilter = { kind?: EventKind[]; severity?: Severity };
+export type EventsFilter = { kind?: EventKind[]; severity?: Severity; /** RFC 3339 lower bound; keep it stable between renders (the query key). */ since?: string };
 
 export const eventsQuery = (orgId: string, f: EventsFilter) =>
   infiniteQueryOptions({
@@ -10,7 +10,7 @@ export const eventsQuery = (orgId: string, f: EventsFilter) =>
     queryFn: ({ pageParam }) =>
       call(
         api.GET('/orgs/{orgId}/events', {
-          params: { path: { orgId }, query: { kind: f.kind, severity: f.severity, cursor: pageParam } },
+          params: { path: { orgId }, query: { kind: f.kind, severity: f.severity, since: f.since, cursor: pageParam } },
         }),
       ),
     initialPageParam: undefined as string | undefined,

@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn, keywordFilter } from '@/lib/utils';
 
-export type ComboOption = { value: string; label: string; hint?: string; keywords?: string[]; disabled?: boolean };
+export type ComboOption = { value: string; label: string; hint?: string; keywords?: string[]; disabled?: boolean; /** MultiCombobox only: options sharing a group render under one heading. */ group?: string };
 
 /** Shared by Combobox and MultiCombobox (B4): a disabled option with a
  * `hint` gets a Tooltip showing it (the same wrap-in-a-tabbable-span
@@ -35,10 +35,12 @@ type Props = {
   footer?: ReactNode;
   disabled?: boolean;
   mono?: boolean;
+  /** Show the trailing clear button when a value is picked (default true). */
+  clearable?: boolean;
   'aria-label'?: string;
 };
 
-export function Combobox({ id, value, onChange, options, placeholder, emptyText, footer, disabled, mono, ...rest }: Props) {
+export function Combobox({ id, value, onChange, options, placeholder, emptyText, footer, disabled, mono, clearable = true, ...rest }: Props) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.value === value);
   return (
@@ -93,7 +95,7 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
           </Command>
         </PopoverContent>
       </Popover>
-      {selected && !disabled && (
+      {clearable && selected && !disabled && (
         <Button
           type="button"
           variant="ghost"

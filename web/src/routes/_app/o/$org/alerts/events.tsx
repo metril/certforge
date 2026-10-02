@@ -15,6 +15,8 @@ export const Route = createFileRoute('/_app/o/$org/alerts/events')({
     // Group/kind filter (repeatable) and the severity floor (task 5).
     kind: z.array(eventKind).optional().catch(undefined),
     severity: severity.optional().catch(undefined),
+    // Time window; absent means all time.
+    range: z.enum(['24h', '7d', '30d']).optional().catch(undefined),
   }),
   component: EventsPage,
 });

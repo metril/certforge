@@ -11,8 +11,6 @@ beforeEach(() => {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 768px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
 });
 
-const CERT_KINDS = ['cert.issued', 'cert.renewal_failed', 'cert.expiring', 'cert.expired'];
-
 /** A `kind` deep link the way TanStack Router's own default search
  * serialization actually round-trips an array: a lone `?kind=cert.issued`
  * (no repeated key) decodes to the bare string "cert.issued", not an
@@ -29,13 +27,13 @@ function serveEvents(items: NotifyEvent[], nextCursor: string | null = null) {
   );
 }
 
-it('renders newest first with severity, kind and summary', async () => {
+it('renders a table newest first with severity, kind and summary', async () => {
   serveEvents([
     makeEvent({ id: 'ev-1', kind: 'cert.expired', severity: 'critical', summary: 'www.example.com expired' }),
     makeEvent({ id: 'ev-2', kind: 'cert.expiring', severity: 'warning', summary: 'api.example.com expires soon' }),
   ]);
   renderRoute('/o/acme/alerts/events');
-  const list = await screen.findByRole('list', { name: 'Events' });
+  const list = await screen.findByRole('table', { name: 'Events' });
   const rows = await within(list).findAllByText(/Certificate expired|Certificate expiring/);
   expect(rows[0]).toHaveTextContent('Certificate expired');
   expect(rows[1]).toHaveTextContent('Certificate expiring');
@@ -45,41 +43,90 @@ it('renders newest first with severity, kind and summary', async () => {
   expect(within(list).getByText('api.example.com expires soon')).toBeInTheDocument();
 });
 
-it('group chip sets kind params', async () => {
-  let seen: string[] = [];
+function captureQuery() {
+  const seen: { kind: string[]; severity: string | null; since: string | null } = { kind: [], severity: null, since: null };
   server.use(
     ...authHandlers({ authed: true }),
     http.get(url('/orgs/:orgId/events'), ({ request }) => {
-      seen = new URL(request.url).searchParams.getAll('kind');
+      const q = new URL(request.url).searchParams;
+      seen.kind = q.getAll('kind');
+      seen.severity = q.get('severity');
+      seen.since = q.get('since');
       return HttpResponse.json({ items: [], nextCursor: null });
     }),
   );
+  return seen;
+}
+
+it('kind multi-select sets kind params and summarises the trigger', async () => {
+  const seen = captureQuery();
   const { user } = renderRoute('/o/acme/alerts/events');
-  const toolbar = await screen.findByRole('toolbar', { name: 'Event groups' });
-  await user.click(within(toolbar).getByRole('button', { name: 'Certificates' }));
-  await waitFor(() => expect(seen).toEqual(CERT_KINDS));
+  const trigger = await screen.findByRole('combobox', { name: 'Kind' });
+  expect(trigger).toHaveTextContent('All kinds');
+  await user.click(trigger);
+  expect(await screen.findByText('Deployments')).toBeInTheDocument();
+  await user.click(await screen.findByRole('option', { name: /Deploy failed/ }));
+  await waitFor(() => expect(seen.kind).toEqual(['deploy.failed']));
+  expect(screen.getByRole('combobox', { name: 'Kind' })).toHaveTextContent('Deploy failed');
+  await user.click(screen.getByRole('option', { name: /Drift/ }));
+  await waitFor(() => expect(seen.kind).toEqual(['deploy.failed', 'deploy.drift']));
+  expect(screen.getByRole('combobox', { name: 'Kind' })).toHaveTextContent('2 kinds');
 });
 
-it('partial group from URL is not filled', async () => {
+it('a deep-linked kind shows as selected', async () => {
   serveEvents([]);
-  renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued'])}`);
-  const toolbar = await screen.findByRole('toolbar', { name: 'Event groups' });
-  expect(within(toolbar).getByRole('button', { name: 'Certificates' })).toHaveAttribute('aria-pressed', 'false');
+  renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued', 'cert.expired'])}`);
+  expect(await screen.findByRole('combobox', { name: 'Kind' })).toHaveTextContent('2 kinds');
 });
 
-it('severity segmented sets minimum', async () => {
-  let seen: string | null = 'unset';
+it('severity combobox sets the minimum', async () => {
+  const seen = captureQuery();
+  const { user } = renderRoute('/o/acme/alerts/events');
+  const trigger = await screen.findByRole('combobox', { name: 'Severity' });
+  expect(trigger).toHaveTextContent('Any');
+  await user.click(trigger);
+  await user.click(await screen.findByRole('option', { name: 'Warning and above' }));
+  await waitFor(() => expect(seen.severity).toBe('warning'));
+  expect(screen.getByRole('combobox', { name: 'Severity' })).toHaveTextContent('Warning and above');
+});
+
+it('time combobox sends since and defaults to all time', async () => {
+  const seen = captureQuery();
+  const { user } = renderRoute('/o/acme/alerts/events');
+  const trigger = await screen.findByRole('combobox', { name: 'Time' });
+  expect(trigger).toHaveTextContent('All time');
+  await waitFor(() => expect(seen.since).toBeNull());
+  await user.click(trigger);
+  await user.click(await screen.findByRole('option', { name: 'Last 7 days' }));
+  await waitFor(() => expect(seen.since).not.toBeNull());
+  const age = Date.now() - new Date(seen.since!).getTime();
+  expect(Math.abs(age - 7 * 86_400_000)).toBeLessThan(120_000);
+});
+
+it('does not refetch repeatedly with a range set', async () => {
+  let calls = 0;
   server.use(
     ...authHandlers({ authed: true }),
-    http.get(url('/orgs/:orgId/events'), ({ request }) => {
-      seen = new URL(request.url).searchParams.get('severity');
+    http.get(url('/orgs/:orgId/events'), () => {
+      calls++;
       return HttpResponse.json({ items: [], nextCursor: null });
     }),
   );
-  const { user } = renderRoute('/o/acme/alerts/events');
-  expect(await screen.findByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true');
-  await user.click(screen.getByRole('radio', { name: 'Warning+' }));
-  await waitFor(() => expect(seen).toBe('warning'));
+  renderRoute('/o/acme/alerts/events?range=24h');
+  await screen.findByText('No events match these filters.');
+  await new Promise((r) => setTimeout(r, 200));
+  expect(calls).toBe(1);
+});
+
+it('clear filters resets all three', async () => {
+  const seen = captureQuery();
+  const { user } = renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued'])}&severity=critical&range=30d`);
+  await waitFor(() => expect(seen.severity).toBe('critical'));
+  await user.click(within(await screen.findByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
+  await waitFor(() => expect(seen.kind).toEqual([]));
+  expect(seen.severity).toBeNull();
+  expect(seen.since).toBeNull();
+  expect(screen.getByRole('combobox', { name: 'Time' })).toHaveTextContent('All time');
 });
 
 it('delivery chip tooltip shows attempts and error', async () => {
@@ -179,40 +226,18 @@ it('empty and filtered empty states', async () => {
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Add channel' })).toHaveAttribute('href', '/o/acme/alerts/channels?edit=new');
 
-  const toolbar = await screen.findByRole('toolbar', { name: 'Event groups' });
-  await user.click(within(toolbar).getByRole('button', { name: 'Certificates' }));
+  await user.click(screen.getByRole('combobox', { name: 'Severity' }));
+  await user.click(await screen.findByRole('option', { name: 'Critical' }));
   expect(await screen.findByText('No events match these filters.')).toBeInTheDocument();
   await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
 });
 
-// Batch 2 review: a deep-linked partial `?kind` (not a full group) used to
-// filter the list while showing no chip and no way to clear it, and its
-// empty result read as the unfiltered "No events yet." instead of "No
-// events match these filters.".
-it('a deep-linked partial kind shows a removable chip and the filtered empty state', async () => {
+it('a deep-linked partial kind gives the filtered empty state and clears', async () => {
   serveEvents([]);
   const { user } = renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued'])}`);
   expect(await screen.findByText('No events match these filters.')).toBeInTheDocument();
-  // Desktop: no chip echo; the toolbar's Clear filters resets it.
-  expect(screen.queryByRole('button', { name: 'Remove filter Certificate issued' })).not.toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Kind' })).toHaveTextContent('Certificate issued');
   await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
-});
-
-// A leftover kind outside any full group must survive an unrelated group
-// toggle (toggleGroups only adds/removes the group that actually changed).
-it('toggling a group keeps a leftover kind from the URL', async () => {
-  let seen: string[] = [];
-  server.use(
-    ...authHandlers({ authed: true }),
-    http.get(url('/orgs/:orgId/events'), ({ request }) => {
-      seen = new URL(request.url).searchParams.getAll('kind');
-      return HttpResponse.json({ items: [], nextCursor: null });
-    }),
-  );
-  const { user } = renderRoute(`/o/acme/alerts/events?${kindSearch(['cert.issued'])}`);
-  const toolbar = await screen.findByRole('toolbar', { name: 'Event groups' });
-  await user.click(within(toolbar).getByRole('button', { name: 'Deployments' }));
-  await waitFor(() => expect(seen).toEqual(['cert.issued', 'deploy.failed', 'deploy.drift']));
 });

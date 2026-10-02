@@ -18,6 +18,19 @@ it('repeats kind params', async () => {
   expect(seen).toEqual(['cert.issued', 'monitor.mismatch']);
 });
 
+it('sends since', async () => {
+  let seen: string | null = null;
+  server.use(
+    http.get(url('/orgs/:orgId/events'), ({ request }) => {
+      seen = new URL(request.url).searchParams.get('since');
+      return HttpResponse.json({ items: [], nextCursor: null });
+    }),
+  );
+  const qc = new QueryClient();
+  await qc.fetchInfiniteQuery(eventsQuery('org-1', { since: '2026-01-01T00:00:00.000Z' }));
+  expect(seen).toBe('2026-01-01T00:00:00.000Z');
+});
+
 it('follows next cursor', async () => {
   const pages = [
     { items: [makeEvent({ id: 'ev-1' })], nextCursor: 'c2' },
