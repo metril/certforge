@@ -720,3 +720,4 @@ UI rework batch 3 review fixes: Flow filtering and collapsing no longer rescan e
 UI rework batch 4 review fixes: Global saves never pin a value equal to the shipped default and Reset shows for any stored key, unknown `?org=` slugs are rewritten to the default org, and the wizard's defaults links name the current org.
 - UI rework: propagation wait with nothing set now reads as the provider default on org scope, certificate detail and the wizard (the API reports 0 with source default); an explicit 0 still reads "0 s".
 - UI rework: unset defaults (CA, ACME account, propagation wait) now show a short state ("Not set" chip, "Provider default") with the explanation in a tooltip, and no source badge.
+- UI follow-up T1: the Alerts events table can no longer scroll sideways; Deliveries is one worst-outcome chip with a per-channel popover, fixed tables clip cell overflow, and an e2e checks realistic long data at 1024 to 1920 px.

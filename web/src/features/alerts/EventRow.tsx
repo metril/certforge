@@ -4,7 +4,7 @@ import type { NotifyEvent } from '@/api/types';
 import { ToneChip } from '@/components/StatusChip';
 import { KIND_LABEL, SEVERITY_META } from '@/lib/events';
 import { fmtDateTime, relTime } from '@/lib/time';
-import { DeliveryChip } from './DeliveryChip';
+import { DeliverySummary } from './DeliveryChip';
 
 const linkCls = 'shrink-0 truncate font-medium hover:underline';
 
@@ -66,14 +66,8 @@ export function EventRow({ event, org }: { event: NotifyEvent; org: string }) {
         <p className="min-w-0 flex-1 text-sm md:line-clamp-2">{event.summary}</p>
         <ResourceLink event={event} org={org} />
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {event.deliveries.length === 0 ? (
-          <span className="text-xs text-ink-muted">No matching channels</span>
-        ) : (
-          event.deliveries.map((d) => (
-            <DeliveryChip key={d.channelId} kind="event" channelName={d.channelName} status={d.status} attempts={d.attempts} deliveredAt={d.deliveredAt} lastError={d.lastError} />
-          ))
-        )}
+      <div className="flex items-center">
+        <DeliverySummary deliveries={event.deliveries} />
       </div>
     </div>
   );

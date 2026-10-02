@@ -21,7 +21,7 @@ import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { DAY, fmtDateTime, relTime } from '@/lib/time';
 import { AlertsHeader } from './AlertsLayout';
-import { DeliveryChip } from './DeliveryChip';
+import { DeliverySummary } from './DeliveryChip';
 import { EventRow, ResourceLink } from './EventRow';
 
 type Range = '24h' | '7d' | '30d';
@@ -55,13 +55,13 @@ function columns(org: string) {
     col.display({
       id: 'severity',
       header: 'Severity',
-      meta: { className: 'w-24' },
+      meta: { className: 'w-28' },
       cell: ({ row }) => {
         const sev = SEVERITY_META[row.original.severity];
         return <ToneChip tone={sev.tone} icon={sev.icon} label={sev.label} />;
       },
     }),
-    col.display({ id: 'kind', header: 'Kind', meta: { className: 'w-32' }, cell: ({ row }) => <span className="block truncate font-medium">{KIND_LABEL[row.original.kind]}</span> }),
+    col.display({ id: 'kind', header: 'Kind', meta: { className: 'w-40' }, cell: ({ row }) => <span className="block truncate font-medium">{KIND_LABEL[row.original.kind]}</span> }),
     col.display({
       id: 'resource',
       header: 'Resource',
@@ -69,7 +69,16 @@ function columns(org: string) {
       cell: ({ row }) => (
         <div className="flex min-w-0 items-center gap-2">
           <ResourceLink event={row.original} org={org} className="block min-w-0 truncate font-medium hover:underline" />
-          {row.original.orgId === null && <ToneChip tone="neutral" icon={Globe} label="Global" />}
+          {row.original.orgId === null && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} aria-label="Global event" className="inline-flex shrink-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Globe className="size-4 text-ink-muted" aria-hidden />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Global event</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       ),
     }),
@@ -88,17 +97,8 @@ function columns(org: string) {
     col.display({
       id: 'deliveries',
       header: 'Deliveries',
-      meta: { className: 'w-32' },
-      cell: ({ row }) =>
-        row.original.deliveries.length === 0 ? (
-          <span className="text-xs text-ink-muted">No matching channels</span>
-        ) : (
-          <div className="flex flex-wrap items-center gap-1">
-            {row.original.deliveries.map((d) => (
-              <DeliveryChip key={d.channelId} kind="event" channelName={d.channelName} status={d.status} attempts={d.attempts} deliveredAt={d.deliveredAt} lastError={d.lastError} />
-            ))}
-          </div>
-        ),
+      meta: { className: 'w-36' },
+      cell: ({ row }) => <DeliverySummary deliveries={row.original.deliveries} />,
     }),
   ];
 }

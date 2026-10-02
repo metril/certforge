@@ -175,12 +175,9 @@ test('event log', async ({ page }) => {
   await page.keyboard.press('Escape');
   const list = page.getByRole('table', { name: 'Events' });
   await expect(list.getByText('Test', { exact: true }).first()).toBeVisible();
-  // "e2e-event-log" also names the row's own resource link (a channel
-  // event's resource is the channel itself) and appears inside the event
-  // summary text; `.last()` picks the delivery chip specifically, the
-  // rightmost/innermost of the three (DOM order: summary, resource link,
-  // delivery chip).
-  await expect(list.getByText('e2e-event-log').last()).toBeVisible();
+  // The deliveries cell is one summary chip per event; the channel name
+  // lives in its popover.
+  await expect(list.getByRole('button', { name: /^Deliveries: / }).first()).toBeVisible();
   await snap(page, 'events');
 });
 
@@ -236,4 +233,56 @@ test('alerts and integrations/backup screens do not scroll sideways at 375 px', 
 
   await page.goto('/settings/backup');
   await noScroll();
+});
+
+// Real data has long channel names, a global event with a long resource name
+// and a very long summary; a fixed-layout table must clip them, never scroll.
+test('events table does not scroll sideways with realistic data', async ({ page }) => {
+  const at = new Date().toISOString();
+  const dl = (id: string, status: 'pending' | 'delivered' | 'failed', name: string) => ({
+    channelId: id, channelName: name, status, attempts: status === 'failed' ? 3 : 1, lastError: status === 'failed' ? 'connection refused by the remote endpoint' : null, deliveredAt: status === 'delivered' ? at : null,
+  });
+  const ev = (id: string, o: Record<string, unknown>) => ({
+    id, kind: 'cert.issued', at, orgId: 'stub-org', severity: 'info', resource: { type: 'certificate', id: 'c-1', name: 'www.example.com' }, summary: 'www.example.com issued', details: {}, deliveries: [], ...o,
+  });
+  const items = [
+    ev('e1', {
+      deliveries: [
+        dl('c1', 'delivered', 'ops-pager-production-primary'),
+        dl('c2', 'failed', 'ops-pager-production-secondary'),
+        dl('c3', 'pending', 'ops-chat-production-primary'),
+        dl('c4', 'delivered', 'ops-mail-production-primary'),
+      ],
+    }),
+    ev('e2', { kind: 'backup.completed', orgId: null, resource: { type: 'backup', id: 'b-1', name: 'certforge-backup-20260101T000000Z-with-a-long-name.cfbak' }, summary: 'Backup completed' }),
+    ev('e3', { kind: 'cert.expiring', severity: 'critical', summary: 'www.example.com expires in 2 days', deliveries: [dl('c1', 'delivered', 'ops-pager-production-primary')] }),
+    ev('e4', { summary: 'No channel matched', deliveries: [] }),
+    ev('e5', { summary: 'x'.repeat(300) }),
+    ev('e6', { kind: 'cert.expired', severity: 'critical', summary: 'api.example.com expired', deliveries: [dl('c1', 'pending', 'ops-pager-production-primary')] }),
+  ];
+  await page.route(/\/api\/v1\/orgs\/[^/]+\/events(\?.*)?$/, (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ json: { items, nextCursor: null } }) : route.continue(),
+  );
+
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+
+  for (const width of [1024, 1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/o/${E2E.orgSlug}/alerts/events`);
+    const table = page.getByRole('table', { name: 'Events' });
+    await expect(table.getByRole('row')).toHaveCount(items.length + 1);
+    const kind = table.locator('td span', { hasText: /^Certificate expiring$/ }).first();
+    await expect(kind).toBeVisible();
+    const m = await page.evaluate(() => {
+      const c = document.querySelector('[data-slot=table-container]')!;
+      const d = document.scrollingElement!;
+      return { cScroll: c.scrollWidth, cClient: c.clientWidth, dScroll: d.scrollWidth, dClient: d.clientWidth };
+    });
+    expect(m.cScroll, `table container at ${width}`).toBeLessThanOrEqual(m.cClient);
+    expect(m.dScroll, `document at ${width}`).toBeLessThanOrEqual(m.dClient);
+    expect(await kind.evaluate((el) => el.scrollWidth <= el.clientWidth), `Kind cell clipped at ${width}`).toBe(true);
+    if (width === 1280) await snap(page, 'events-realistic');
+  }
 });
