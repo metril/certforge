@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { errorMessage } from '@/api/errors';
@@ -37,7 +38,7 @@ export function ActivityTab({ orgId, orgSlug, clientId }: { orgId: string; orgSl
     );
   }
   return (
-    <div className="grid gap-2">
+    <Card className="grid gap-2 p-4">
       <div className="flex justify-end">{auditLink('Open in audit log')}</div>
       <ul aria-label="Client activity" className="grid">
         {events.map((e) => {
@@ -63,6 +64,6 @@ export function ActivityTab({ orgId, orgSlug, clientId }: { orgId: string; orgSl
           Load more
         </Button>
       )}
-    </div>
+    </Card>
   );
 }

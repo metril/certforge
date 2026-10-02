@@ -5,9 +5,9 @@ import { TAB_ACTIVE, TAB_LINK, TabLabel } from '@/components/TabLabel';
 import { useOrg } from '@/lib/org';
 
 /** Issuers title, tabs, and (per page) one help tip, filters and actions.
- * Each tab page renders its own, so its filters can share the tab line. The
+ * Each tab page renders its own, so its filters sit in the toolbar under the tabs. The
  * CAs tab covers every kind (Type filter, kind-aware CaSheet). */
-export function IssuersHeader(props: Pick<PageHeaderProps, 'help' | 'filters' | 'activeFilters' | 'actions'>) {
+export function IssuersHeader(props: Pick<PageHeaderProps, 'help' | 'filters' | 'activeFilters' | 'actions' | 'onClearFilters' | 'filtersTrailing' | 'filterChips'>) {
   const { slug: org } = useOrg();
   return (
     <PageHeader

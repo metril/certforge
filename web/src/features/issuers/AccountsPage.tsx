@@ -20,11 +20,8 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { cn } from '@/lib/utils';
 import { IssuersHeader } from './IssuersLayout';
 
-// Fix round 1 (#3/#4): sticky first column; see CasPage.tsx.
-const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 function RegisterDialog({ orgId, open, onOpenChange }: { orgId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { data: cas = [] } = useQuery(casQuery(orgId));
@@ -137,9 +134,9 @@ export function AccountsPage() {
             <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className={stickyCol}>Account</TableHead>
+                  <TableHead className="w-2/5">Account</TableHead>
                   <TableHead className="w-28">Status</TableHead>
-                  <TableHead className="w-56">Registration</TableHead>
+                  <TableHead className="hidden sm:table-cell">Registration</TableHead>
                   <TableHead className="w-12">
                     <span className="sr-only">Actions</span>
                   </TableHead>
@@ -148,7 +145,7 @@ export function AccountsPage() {
               <TableBody>
                 {accounts.map((a) => (
                   <TableRow key={a.id}>
-                    <TableCell className={cn('py-1.5', stickyCol)}>
+                    <TableCell className="py-1.5">
                       <PrimaryCell primary={a.email} meta={[caName(a.caId)]} />
                     </TableCell>
                     <TableCell className="py-1">
@@ -158,7 +155,7 @@ export function AccountsPage() {
                         <ToneChip tone="neutral" icon={Ban} label={a.status.charAt(0).toUpperCase() + a.status.slice(1)} />
                       )}
                     </TableCell>
-                    <TableCell className="min-w-0 py-1">
+                    <TableCell className="hidden min-w-0 overflow-hidden py-1 sm:table-cell">
                       {a.registrationUri && <CopyField value={a.registrationUri} label="registration URI" className="min-w-0" />}
                     </TableCell>
                     <TableCell className="py-1 text-right">

@@ -17,7 +17,7 @@ const AGENTS_UI_SCHEMA = {
 
 export function AgentsSection() {
   return (
-    <div className="grid gap-10">
+    <div className="grid gap-4">
       <SchemaSection section="agents" uiSchemaOverrides={AGENTS_UI_SCHEMA} />
       <AgentCaPanel />
     </div>

@@ -90,7 +90,7 @@ export function EnrolPage() {
           )}
         </div>
       ) : (
-        <form noValidate onSubmit={(e) => void submit(e)} className="grid max-w-[560px] gap-4">
+        <form noValidate onSubmit={(e) => void submit(e)} className="grid max-w-[560px] gap-4 rounded-md border border-border bg-panel p-4">
           <Field id="client-name" label="Name" help="client.name" error={nameError}>
             <Input
               id="client-name"

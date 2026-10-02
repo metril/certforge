@@ -52,6 +52,19 @@ export function FlowChip({ node, className }: { node: Pick<FlowNodeData, 'kind' 
   return <ToneChip tone={m.tone} icon={m.icon} label={flowStatusLabel(node.kind, node.status, node.statusDetail)} className={className} />;
 }
 
+/** Arrow Up/Down moves focus between the nodes and group proxies of one lane. */
+export function laneArrowKeys(e: KeyboardEvent<HTMLButtonElement>) {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const lane = e.currentTarget.closest('[data-flow-lane]');
+  if (!lane) return;
+  const all = [...lane.querySelectorAll<HTMLButtonElement>('button[data-flow-node],button[data-flow-proxy]')];
+  const next = all[all.indexOf(e.currentTarget) + (e.key === 'ArrowDown' ? 1 : -1)];
+  if (next) {
+    e.preventDefault();
+    next.focus();
+  }
+}
+
 type Props = {
   node: FlowNodeData;
   selected: boolean;
@@ -62,17 +75,6 @@ type Props = {
 
 export function FlowNode({ node, selected, dimmed, onSelect, register }: Props) {
   const Icon = KIND_META[node.kind].icon;
-  const move = (e: KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    const lane = e.currentTarget.closest('[data-flow-lane]');
-    if (!lane) return;
-    const all = [...lane.querySelectorAll<HTMLButtonElement>('button[data-flow-node]')];
-    const next = all[all.indexOf(e.currentTarget) + (e.key === 'ArrowDown' ? 1 : -1)];
-    if (next) {
-      e.preventDefault();
-      next.focus();
-    }
-  };
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -84,7 +86,7 @@ export function FlowNode({ node, selected, dimmed, onSelect, register }: Props) 
           aria-pressed={selected}
           aria-label={`${KIND_META[node.kind].label} ${node.name}, ${flowStatusLabel(node.kind, node.status, node.statusDetail)}`}
           onClick={() => onSelect(node.id)}
-          onKeyDown={move}
+          onKeyDown={laneArrowKeys}
           className={cn(
             'relative z-10 grid w-full min-w-0 gap-1.5 rounded-md border border-border bg-panel px-2.5 py-2 text-left text-sm transition-opacity hover:border-ink-muted focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none',
             selected && 'border-primary ring-2 ring-primary/40',

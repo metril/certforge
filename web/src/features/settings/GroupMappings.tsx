@@ -1,3 +1,4 @@
+import { Card, CardBody, CardHeader } from '@/components/Card';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
@@ -27,10 +28,16 @@ export function GroupMappings() {
   const [removing, setRemoving] = useState<RoleBinding | null>(null);
   if (!canAnywhere(me, 'bindings:read')) return null;
   return (
-    <section aria-labelledby="group-mappings" className="grid gap-2">
-      <h3 id="group-mappings" className="flex items-center gap-1.5 text-sm font-semibold">
-        Group mappings <HelpTip id="auth.groupMappings" />
-      </h3>
+    <Card role="region" aria-labelledby="group-mappings">
+      <CardHeader
+        titleId="group-mappings"
+        title={
+          <span className="flex items-center gap-1.5">
+            Group mappings <HelpTip id="auth.groupMappings" />
+          </span>
+        }
+      />
+      <CardBody className="grid gap-2">
       <ul className="grid">
         {(q.data ?? []).map((b) => (
           <li key={b.id} className="flex h-9 items-center gap-3 border-b border-border text-sm">
@@ -64,6 +71,7 @@ export function GroupMappings() {
           <TooltipContent side="right">{help['binding.groupDisabled'].text}</TooltipContent>
         </Tooltip>
       )}
+      </CardBody>
       <BindingSheet open={adding} onOpenChange={setAdding} fixedType="oidc_group" />
       <ConfirmDestructive
         open={removing !== null}
@@ -74,6 +82,6 @@ export function GroupMappings() {
         actionLabel="Remove"
         onConfirm={() => del.mutateAsync(removing!.id)}
       />
-    </section>
+    </Card>
   );
 }

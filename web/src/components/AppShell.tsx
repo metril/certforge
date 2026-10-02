@@ -56,10 +56,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <aside className={cn('sticky top-0 hidden h-dvh shrink-0 md:block', wide ? 'w-58' : 'w-14')}>
+      <aside className={cn('sticky top-0 hidden h-dvh shrink-0 border-r border-border bg-sidebar md:block', wide ? 'w-58' : 'w-14')}>
         <Sidebar compact={!wide} onSearch={openPalette} />
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col border-border bg-panel md:border-l">
+      <div className="flex min-w-0 flex-1 flex-col bg-surface">
         <header className="flex h-12 items-center gap-2 border-b border-border px-4 md:hidden">
           <Sheet open={drawer} onOpenChange={setDrawer}>
             <SheetTrigger asChild>
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Menu className="size-5" aria-hidden />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 bg-surface p-0">
+            <SheetContent side="left" className="w-64 border-r border-border bg-sidebar p-0">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
               <Sidebar compact={false} onNavigate={() => setDrawer(false)} onSearch={openPalette} />
             </SheetContent>

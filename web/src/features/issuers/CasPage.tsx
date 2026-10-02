@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
+import { FilterField } from '@/components/FilterToolbar';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
@@ -20,15 +21,9 @@ import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import type { Tone } from '@/lib/status';
 import { relTime } from '@/lib/time';
-import { cn } from '@/lib/utils';
 import { CaDetailSheet } from './CaDetailSheet';
 import { CaSheet } from './CaSheet';
 import { IssuersHeader } from './IssuersLayout';
-
-// Fix round 1 (#3/#4): first column stays put while the row scrolls
-// horizontally, so a name never leaves view; matches the row's own bg so
-// scrolled-under cells don't show through.
-const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 const EXPIRY_ICON: Partial<Record<Tone, LucideIcon>> = { valid: CircleCheck, expiring: Clock, expired: CircleX };
 
@@ -90,14 +85,17 @@ export function CasPage() {
           ) : undefined
         }
         activeFilters={type ? 1 : 0}
+        onClearFilters={() => setFilter('all')}
         filters={
           showList ? (
-            <SegmentedControl<CaType | 'all'>
-              aria-label="Type"
-              value={type ?? 'all'}
-              onChange={setFilter}
-              options={FILTERS.map((f) => ({ value: f, label: f === 'all' ? 'All' : KIND_LABEL[f] }))}
-            />
+            <FilterField label="Type">
+              <SegmentedControl<CaType | 'all'>
+                aria-label="Type"
+                value={type ?? 'all'}
+                onChange={setFilter}
+                options={FILTERS.map((f) => ({ value: f, label: f === 'all' ? 'All' : KIND_LABEL[f] }))}
+              />
+            </FilterField>
           ) : undefined
         }
       />
@@ -128,7 +126,7 @@ export function CasPage() {
               <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className={stickyCol}>Name</TableHead>
+                    <TableHead>Name</TableHead>
                     <TableHead className="w-28">Expires</TableHead>
                     <TableHead className="w-20">
                       <span className="sr-only">Actions</span>
@@ -140,7 +138,7 @@ export function CasPage() {
                     const tone = c.notAfter ? caTone(c.notAfter) : 'neutral';
                     return (
                       <TableRow key={c.id} className="cursor-pointer" onClick={() => (isPrivate(c) ? openView(c.id) : openSheet(c.id))}>
-                        <TableCell className={cn('py-1.5', stickyCol)}>
+                        <TableCell className="py-1.5">
                           <PrimaryCell primary={c.name} meta={[KIND_LABEL[kindOf(c)], endpointOf(c), c.hasEab ? 'EAB stored' : '']} />
                         </TableCell>
                         <TableCell className="py-1">

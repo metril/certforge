@@ -11,6 +11,7 @@ import { Combobox } from '@/components/Combobox';
 import { DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { FilterField } from '@/components/FilterToolbar';
 import { FilterChips } from '@/components/FilterChips';
 import { PageHeader } from '@/components/PageHeader';
 import { SavedViews } from '@/components/SavedViews';
@@ -166,6 +167,49 @@ export function AuditPage() {
     <>
       <PageHeader
         title="Audit log"
+        activeFilters={chips.length}
+        onClearFilters={clear}
+        filterChips={<FilterChips chips={chips} onRemove={(k) => set({ [k]: undefined })} onClear={clear} />}
+        filtersTrailing={
+          <SavedViews
+            list="audit"
+            current={{ from: search.from, to: search.to, actor: search.actor, action: search.action, resourceType: search.resourceType, resourceId: search.resourceId, q: search.q }}
+            onApply={(s) => void navigate({ search: auditSearch.parse(s) })}
+          />
+        }
+        filters={
+          <>
+            <FilterField label="Search">
+              <div className="relative w-64">
+                <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
+                <Input aria-label="Search audit log" className="pl-8" placeholder="certificate.renew" value={text} onChange={(e) => setText(e.target.value)} />
+              </div>
+            </FilterField>
+            <FilterField label="Action">
+              <div className="w-48">
+                <Combobox aria-label="Action" value={search.action} onChange={(v) => set({ action: v })} options={actionOptions()} placeholder="Any action" emptyText="No action matches." mono />
+              </div>
+            </FilterField>
+            <FilterField label="Resource">
+              <div className="w-48">
+                <Combobox aria-label="Resource type" value={search.resourceType} onChange={(v) => set({ resourceType: v })} options={AUDIT_RESOURCE_TYPES.map((t) => ({ value: t, label: t }))} placeholder="Any resource" emptyText="No type matches." mono />
+              </div>
+            </FilterField>
+            {users.data && (
+              <FilterField label="Actor">
+                <div className="w-48">
+                  <Combobox aria-label="Actor" value={search.actor} onChange={(v) => set({ actor: v })} options={users.data.map((u) => ({ value: u.id, label: u.displayName, hint: u.email ?? undefined }))} placeholder="Any actor" emptyText="No user matches." />
+                </div>
+              </FilterField>
+            )}
+            <FilterField label="From">
+              <Input aria-label="From date" className="w-40" type="date" value={search.from ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} />
+            </FilterField>
+            <FilterField label="To">
+              <Input aria-label="To date" className="w-40" type="date" value={search.to ?? ''} onChange={(e) => set({ to: e.target.value || undefined })} />
+            </FilterField>
+          </>
+        }
         actions={
           <div className="flex flex-wrap items-center gap-3">
             {canVerifyChain && <ChainStatus />}
@@ -183,33 +227,6 @@ export function AuditPage() {
       {exportNotice && (
         <ToneChip className="mb-3" tone="pending" icon={TriangleAlert} label="The export hit the 100,000-row cap" help="audit.exportTruncated" />
       )}
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <div className="relative w-64">
-          <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
-          <Input aria-label="Search audit log" className="pl-8" placeholder="certificate.renew" value={text} onChange={(e) => setText(e.target.value)} />
-        </div>
-        <div className="w-48">
-          <Combobox aria-label="Action" value={search.action} onChange={(v) => set({ action: v })} options={actionOptions()} placeholder="Any action" emptyText="No action matches." mono />
-        </div>
-        <div className="w-48">
-          <Combobox aria-label="Resource type" value={search.resourceType} onChange={(v) => set({ resourceType: v })} options={AUDIT_RESOURCE_TYPES.map((t) => ({ value: t, label: t }))} placeholder="Any resource" emptyText="No type matches." mono />
-        </div>
-        {users.data && (
-          <div className="w-48">
-            <Combobox aria-label="Actor" value={search.actor} onChange={(v) => set({ actor: v })} options={users.data.map((u) => ({ value: u.id, label: u.displayName, hint: u.email ?? undefined }))} placeholder="Any actor" emptyText="No user matches." />
-          </div>
-        )}
-        {/* M3: same fixed width as the comboboxes above, so From/To sit on
-            the first row at 1440 px instead of wrapping under it. */}
-        <Input aria-label="From date" className="w-48" type="date" value={search.from ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} />
-        <Input aria-label="To date" className="w-48" type="date" value={search.to ?? ''} onChange={(e) => set({ to: e.target.value || undefined })} />
-        <SavedViews
-          list="audit"
-          current={{ from: search.from, to: search.to, actor: search.actor, action: search.action, resourceType: search.resourceType, resourceId: search.resourceId, q: search.q }}
-          onApply={(s) => void navigate({ search: auditSearch.parse(s) })}
-        />
-      </div>
-      <FilterChips className="mb-3" chips={chips} onRemove={(k) => set({ [k]: undefined })} onClear={clear} />
       {list.isError ? (
         <ErrorState message={`Couldn't load the audit log. ${errorMessage(list.error)}`} onRetry={() => void list.refetch()} />
       ) : !list.isPending && rows.length === 0 ? (

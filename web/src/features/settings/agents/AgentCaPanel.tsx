@@ -1,3 +1,4 @@
+import { Card, CardBody, CardHeader } from '@/components/Card';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Ban, Clock, RefreshCw, ShieldCheck, type LucideIcon } from 'lucide-react';
@@ -47,10 +48,15 @@ export function AgentCaPanel() {
 
   return (
     <>
-      <section aria-label="Listener certificate" className="grid max-w-[720px] gap-3">
-        <h3 className="flex items-center gap-1.5 text-base font-semibold">
-          Listener certificate <HelpTip id="agents.listener" />
-        </h3>
+      <Card role="region" aria-label="Listener certificate" className="max-w-[720px]">
+        <CardHeader
+          title={
+            <span className="flex items-center gap-1.5">
+              Listener certificate <HelpTip id="agents.listener" />
+            </span>
+          }
+        />
+        <CardBody>
         {listener.notAfter ? (
           <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-[120px_minmax(0,1fr)] sm:items-center">
             <dt className="text-ink-muted">Names</dt>
@@ -74,19 +80,25 @@ export function AgentCaPanel() {
             <HelpTip id="agents.listenerNotRunning" />
           </p>
         )}
-      </section>
-      <section aria-label="Agent certificate authorities" className="grid gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="flex items-center gap-1.5 text-base font-semibold">
-            Agent CAs <HelpTip id="agents.ca" />
-          </h3>
+        </CardBody>
+      </Card>
+      <Card role="region" aria-label="Agent certificate authorities">
+        <CardHeader
+          title={
+            <span className="flex items-center gap-1.5">
+              Agent CAs <HelpTip id="agents.ca" />
+            </span>
+          }
+          actions={
           <PermissionTip allowed={canWrite} action="settings:write">
             <Button variant="outline" disabled={!canWrite || rotate.isPending} onClick={() => setRotateOpen(true)}>
               <RefreshCw className="size-4" aria-hidden />
               Rotate
             </Button>
           </PermissionTip>
-        </div>
+          }
+        />
+        <CardBody>
         <ul aria-label="Agent CAs" className="grid">
           {items.map((ca) => {
             const s = STATUS[ca.status];
@@ -131,7 +143,8 @@ export function AgentCaPanel() {
             );
           })}
         </ul>
-      </section>
+        </CardBody>
+      </Card>
       <ConfirmDestructive
         open={rotateOpen}
         onOpenChange={setRotateOpen}

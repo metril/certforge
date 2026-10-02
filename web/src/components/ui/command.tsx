@@ -20,7 +20,7 @@ const Command = React.forwardRef<
       ref={ref}
       data-slot="command"
       className={cn(
-        "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
+        "flex h-full w-full flex-col overflow-hidden rounded-md bg-raised text-popover-foreground",
         className
       )}
       {...props}

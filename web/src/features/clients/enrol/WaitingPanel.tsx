@@ -50,7 +50,7 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
     <section
       aria-label="Agent connection"
       aria-live="polite"
-      className={cn('grid gap-3 rounded-md border p-4', online ? 'border-valid' : expired ? 'border-failed' : 'border-dashed border-pending')}
+      className={cn('grid gap-3 rounded-md border bg-panel p-4', online ? 'border-valid' : expired ? 'border-failed' : 'border-dashed border-pending')}
     >
       {online ? (
         <>

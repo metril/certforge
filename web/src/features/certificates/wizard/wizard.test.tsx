@@ -179,9 +179,9 @@ it("a field with source 'default' never claims a Global value the section's stor
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
   await user.click(screen.getByRole('button', { name: 'Next' }));
   const keyType = screen.getByRole('group', { name: 'Key type' });
-  expect(within(keyType).getByRole('button', { name: 'Built-in' })).toBeInTheDocument();
-  await user.click(within(keyType).getByRole('button', { name: 'Built-in' }));
-  await waitFor(() => expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Global: not set'));
+  expect(within(keyType).getByRole('button', { name: 'Global' })).toBeInTheDocument();
+  await user.click(within(keyType).getByRole('button', { name: 'Global' }));
+  await waitFor(() => expect(document.querySelector('[data-slot="popover-content"]')).not.toHaveTextContent('Built-in'));
 });
 
 it('disables Next on the Names step until a valid name and common name exist', async () => {

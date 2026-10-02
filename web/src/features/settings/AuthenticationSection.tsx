@@ -1,3 +1,4 @@
+import { Card, CardBody } from '@/components/Card';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, CircleCheck } from 'lucide-react';
@@ -49,9 +50,13 @@ export function AuthenticationSection() {
   return (
     <div className="grid max-w-[720px] gap-8">
       {methods.data && (
-        <Field id="auth-redirect" label="Redirect URI" help="auth.redirectUri">
-          <CopyField value={methods.data.oidcCallbackUrl} label="redirect URI" />
-        </Field>
+        <Card>
+          <CardBody>
+            <Field id="auth-redirect" label="Redirect URI" help="auth.redirectUri">
+              <CopyField value={methods.data.oidcCallbackUrl} label="redirect URI" />
+            </Field>
+          </CardBody>
+        </Card>
       )}
       <SchemaSection
         section="authentication"

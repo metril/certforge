@@ -53,7 +53,7 @@ export function VersionsTab({
   }
   return (
     <>
-      <Table aria-label="Versions" className="mt-4">
+      <Table aria-label="Versions">
         <TableHeader>
           <TableRow>
             <TableHead className={STICKY_SERIAL}>Serial</TableHead>

@@ -1,3 +1,4 @@
+import { Card, CardBody, CardHeader } from '@/components/Card';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -28,19 +29,25 @@ export function OrgsList() {
   const [sitesOf, setSitesOf] = useState<Org | null>(null);
   const canWrite = can(me, 'orgs:write');
   return (
-    <section aria-labelledby="orgs-title" className="mt-8 max-w-[720px]">
-      <div className="mb-2 flex items-center gap-2">
-        <h3 id="orgs-title" className="flex items-center gap-1.5 text-sm font-semibold">
-          Organizations
-          <HelpTip id="settings.orgs" />
-        </h3>
-        {canWrite && (
-          <Button size="sm" variant="outline" className="ml-auto" onClick={() => setEditing('new')}>
-            <Plus className="size-4" aria-hidden />
-            New organization
-          </Button>
-        )}
-      </div>
+    <Card role="region" aria-labelledby="orgs-title" className="mt-8 max-w-[720px]">
+      <CardHeader
+        titleId="orgs-title"
+        title={
+          <span className="flex items-center gap-1.5">
+            Organizations
+            <HelpTip id="settings.orgs" />
+          </span>
+        }
+        actions={
+          canWrite && (
+            <Button size="sm" variant="outline" onClick={() => setEditing('new')}>
+              <Plus className="size-4" aria-hidden />
+              New organization
+            </Button>
+          )
+        }
+      />
+      <CardBody>
       {q.isPending && <p className="text-sm text-ink-muted">Loading…</p>}
       {q.isError && (
         <p role="alert" className="text-xs">
@@ -74,6 +81,7 @@ export function OrgsList() {
           </li>
         ))}
       </ul>
+      </CardBody>
       <OrgSheet org={editing} onClose={() => setEditing(null)} onSaved={refreshMe} />
       <SitesSheet org={sitesOf} onClose={() => setSitesOf(null)} />
       <ConfirmDestructive
@@ -100,6 +108,6 @@ export function OrgsList() {
           if (wasActive) void navigate({ to: '/' });
         }}
       />
-    </section>
+    </Card>
   );
 }

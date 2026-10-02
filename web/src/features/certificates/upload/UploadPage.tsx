@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
@@ -69,7 +70,7 @@ export function UploadPage() {
         </Link>
       </nav>
       <PageHeader title="Upload certificate" />
-      <div className="grid gap-5">
+      <Card className="grid gap-5 p-4">
         <Field id="upload-name" label="Name" error={nameError}>
           <Input
             id="upload-name"
@@ -101,7 +102,7 @@ export function UploadPage() {
             </Button>
           </PermissionTip>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { Card, CardBody } from '@/components/Card';
 import { useEffect, useMemo, useReducer, useState, type Dispatch, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -191,10 +192,14 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
               {submitError}
             </p>
           )}
+          <Card>
+            <CardBody className="grid gap-6">
           {step === 0 && <NamesStep state={state} dispatch={dispatch} />}
           {step === 1 && <VerificationStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} privateCa={privateCa} />}
           {step === 2 && <OptionsStep orgId={org.id} state={state} dispatch={dispatch} />}
           {step === 3 && <ReviewStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} />}
+            </CardBody>
+          </Card>
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">
             {step > 0 && (
               <Button variant="outline" onClick={() => goToStep(step - 1)}>

@@ -1,3 +1,4 @@
+import { Card, CardBody, CardHeader } from '@/components/Card';
 import { useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -98,26 +99,34 @@ export function SchemaSection({
   const canWrite = can(me, 'settings:write');
 
   const heading = title && (
-    <div className="flex items-center gap-1.5 border-t pt-4">
-      <h3 className="text-sm font-medium">{title}</h3>
-      {help && <HelpTip id={help} />}
-    </div>
+    <CardHeader
+      title={
+        <span className="flex items-center gap-1.5">
+          {title}
+          {help && <HelpTip id={help} />}
+        </span>
+      }
+    />
   );
 
   if (q.isPending) {
     return (
-      <div className="grid max-w-[720px] gap-6">
+      <Card className="max-w-[720px]">
         {heading}
-        <p className="text-ink-muted">Loading…</p>
-      </div>
+        <CardBody>
+          <p className="text-ink-muted">Loading…</p>
+        </CardBody>
+      </Card>
     );
   }
   if (q.isError) {
     return (
-      <div className="grid max-w-[720px] gap-6">
+      <Card className="max-w-[720px]">
         {heading}
-        <p role="alert">{errorMessage(q.error)}</p>
-      </div>
+        <CardBody>
+          <p role="alert">{errorMessage(q.error)}</p>
+        </CardBody>
+      </Card>
     );
   }
   const schema = q.data.schema as RJSFSchema;
@@ -132,8 +141,9 @@ export function SchemaSection({
   const hasWritableField = Object.values(schema.properties ?? {}).some((p) => typeof p === 'object' && !p.readOnly);
 
   return (
-    <div className="grid max-w-[720px] gap-6">
+    <Card className="max-w-[720px]">
       {heading}
+      <CardBody className="grid gap-6">
       <SchemaForm
         ref={formRef}
         schema={schema}
@@ -201,6 +211,7 @@ export function SchemaSection({
           {actions?.(value, { dirty })}
         </div>
       )}
-    </div>
+      </CardBody>
+    </Card>
   );
 }

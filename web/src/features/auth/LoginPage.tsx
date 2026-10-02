@@ -1,3 +1,4 @@
+import { Card, CardBody } from '@/components/Card';
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
@@ -70,6 +71,8 @@ export function LoginPage({ redirectTo, error: oidcError }: { redirectTo: string
     <main className="grid min-h-dvh place-items-center bg-surface px-4">
       <div className="grid w-full max-w-sm gap-6">
         <Wordmark />
+        <Card>
+          <CardBody className="grid gap-6">
         <h1 className="text-lg font-semibold">Sign in</h1>
         {oidcError && <Alert>{oidcErrorMessage(oidcError)}</Alert>}
         {sso ? (
@@ -95,6 +98,8 @@ export function LoginPage({ redirectTo, error: oidcError }: { redirectTo: string
         ) : (
           form
         )}
+          </CardBody>
+        </Card>
       </div>
     </main>
   );

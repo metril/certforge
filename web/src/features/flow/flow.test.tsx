@@ -46,7 +46,7 @@ function useFlow(f: () => Flow | Response) {
 
 function setWidth(wide: boolean) {
   window.matchMedia = ((query: string) => ({
-    matches: wide && query.includes('1024px'),
+    matches: wide && (query.includes('1024px') || query.includes('768px')),
     media: query,
     onchange: null,
     addEventListener: () => {},
@@ -146,4 +146,113 @@ it('narrow screens filter every lane to the selected path and offer a Clear butt
   expect(screen.getByRole('button', { name: /Client web-1/ })).toBeInTheDocument();
   await user.click(within(panel).getByRole('button', { name: 'Clear' }));
   expect(await screen.findByRole('button', { name: /Certificate api/ })).toBeInTheDocument();
+});
+
+it('the toolbar controls write the URL and the lanes follow', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router, container } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.type(screen.getByRole('textbox', { name: 'Filter by name' }), 'web-1');
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'web-1' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: /Client web-2/ })).toBeNull());
+  expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
+  expect(within(screen.getByRole('region', { name: 'Clients' })).getByText('1/2')).toBeInTheDocument();
+  await waitFor(() => expect(container.querySelectorAll('[data-flow-connectors] path').length).toBe(3));
+  await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('q'));
+  expect(await screen.findByRole('button', { name: /Client web-2/ })).toBeInTheDocument();
+});
+
+it('Problems keeps the unhealthy flow, and an empty result offers Clear filters', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.click(screen.getByRole('radio', { name: 'Problems' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ status: 'problems' }));
+  expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
+  await user.type(screen.getByRole('textbox', { name: 'Filter by name' }), 'nothing-like-this');
+  expect(await screen.findByText('No flows match these filters.')).toBeInTheDocument();
+  await user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+  expect(await screen.findByRole('button', { name: /Certificate api/ })).toBeInTheDocument();
+});
+
+it('clears the focus when the filters hide the focused node', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { router } = renderRoute('/o/acme/flow?focus=certificate:api&q=www');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('focus'));
+});
+
+it('collapsing a lane shows one proxy row with the count and keeps the connectors', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router, container } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  const certs = screen.getByRole('region', { name: 'Certificates' });
+  const head = within(certs).getByRole('button', { name: /Certificates/ });
+  expect(head).toHaveAttribute('aria-expanded', 'true');
+  expect(head).toHaveTextContent('1 problem');
+  await user.click(head);
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ collapsed: ['certificates'] }));
+  expect(head).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: /Certificate www/ })).toBeNull();
+  const proxy = within(certs).getByRole('button', { name: 'Expand Certificates, 2 items, Expiring' });
+  expect(proxy).toHaveTextContent('2');
+  // Both certificates merge into the proxy: proxy-ca, proxy-layout and the two layout-client edges.
+  await waitFor(() => expect(container.querySelectorAll('[data-flow-connectors] path').length).toBe(4));
+  await user.click(proxy);
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('collapsed'));
+  expect(await screen.findByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+});
+
+it('collapses a sub-group in place and Collapse all / Expand all toggle every lane', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...base, lanes: { ...base.lanes, issuers: lane([node('ca', 'letsencrypt'), node('account', 'acct')]) } }));
+  const { user, router } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.click(screen.getByRole('button', { name: /^ACME accounts/ }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ collapsed: ['issuers.accounts'] }));
+  expect(screen.getByRole('button', { name: /CA letsencrypt/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Expand ACME accounts, 1 item, Healthy' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Collapse all' }));
+  await waitFor(() => expect(router.state.location.search.collapsed).toHaveLength(5));
+  for (const l of lanes) expect(within(screen.getByRole('region', { name: l })).getAllByRole('button', { name: new RegExp(`^${l}`) })[0]).toHaveAttribute('aria-expanded', 'false');
+  await user.click(screen.getByRole('button', { name: 'Expand all' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('collapsed'));
+  expect(await screen.findByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+});
+
+it('moves focus to the group heading after expanding a proxy, and arrows reach proxies', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...base, lanes: { ...base.lanes, issuers: lane([node('ca', 'letsencrypt'), node('account', 'acct')]) } }));
+  const { user } = renderRoute('/o/acme/flow?collapsed=%5B%22issuers.accounts%22%5D');
+  const ca = await screen.findByRole('button', { name: /CA letsencrypt/ });
+  ca.focus();
+  await user.keyboard('{ArrowDown}');
+  const proxy = screen.getByRole('button', { name: /^Expand ACME accounts/ });
+  expect(proxy).toHaveFocus();
+  await user.keyboard('{Enter}');
+  const head = await screen.findByRole('button', { name: /^ACME accounts/ });
+  await waitFor(() => expect(head).toHaveFocus());
+});
+
+it('opens the collapsed group of a focused node', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { router } = renderRoute('/o/acme/flow?focus=certificate:www&collapsed=%5B%22certificates%22,%22alerts%22%5D');
+  expect(await screen.findByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ collapsed: ['alerts'] }));
+});
+
+it('does not count a pending channel as a problem', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...base, lanes: { ...base.lanes, alerts: lane([node('channel', 'ops', { status: 'pending' })]) } }));
+  renderRoute('/o/acme/flow');
+  const head = within(await screen.findByRole('region', { name: 'Alerts' })).getByRole('button', { name: /Alerts/ });
+  expect(head).not.toHaveTextContent('problem');
 });

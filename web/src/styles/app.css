@@ -33,7 +33,9 @@
   --color-foreground: var(--cf-ink);
   --color-card: var(--cf-panel);
   --color-card-foreground: var(--cf-ink);
-  --color-popover: var(--cf-panel);
+  --color-popover: var(--cf-raised);
+  --color-sidebar: var(--cf-sidebar);
+  --color-raised: var(--cf-raised);
   --color-popover-foreground: var(--cf-ink);
   --color-primary: var(--cf-primary);
   --color-primary-foreground: var(--cf-on-primary);

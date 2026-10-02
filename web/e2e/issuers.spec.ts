@@ -27,6 +27,8 @@ test('CA kind switching', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
   await page.goto(`/o/${E2E.orgSlug}/issuers/cas`);
+  await expect(page.getByRole('button', { name: 'Add CA' }).first()).toBeVisible();
+  await snap(page, 'cas');
   await page.getByRole('button', { name: 'Add CA' }).click();
   const sheet = page.getByRole('dialog', { name: 'Add certificate authority' });
   await expect(sheet).toBeVisible();
@@ -198,12 +200,44 @@ test('issuers, delivery and vault settings screens do not scroll sideways at 375
   await noScroll();
   await page.keyboard.press('Escape');
 
+  for (const path of ['/issuers/accounts', '/issuers/dns']) {
+    await page.goto(`/o/${E2E.orgSlug}${path}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Issuers' })).toBeVisible();
+    await noScroll();
+  }
+
   await page.goto('/settings/integrations');
   await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
   await noScroll();
 
   await page.goto('/settings/backup');
   await noScroll();
+});
+
+test('ACME accounts table does not scroll sideways with a long registration URI', async ({ page }) => {
+  const registrationUri = `https://acme.example.test/acme/acct/${'a'.repeat(84)}`; // 120 chars
+  expect(registrationUri).toHaveLength(120);
+  await page.route('**/api/v1/orgs/*/acme-accounts', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: [{ id: '00000000-0000-4000-8000-000000000001', caId: '00000000-0000-4000-8000-000000000002', email: 'long-uri@example.com', status: 'valid', registrationUri, createdAt: '2026-01-01T00:00:00Z' }],
+        })
+      : route.continue(),
+  );
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+
+  for (const width of [375, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/o/${E2E.orgSlug}/issuers/accounts`);
+    await expect(page.getByText('long-uri@example.com')).toBeVisible();
+    const fits = await page.evaluate(() => {
+      const fit = (el: Element | null) => (el ? el.scrollWidth <= el.clientWidth : false);
+      return { table: fit(document.querySelector('[data-slot=table-container]')), page: fit(document.scrollingElement) };
+    });
+    expect(fits, `width ${width}`).toEqual({ table: true, page: true });
+  }
 });
 
 test('DNS credential auth methods', async ({ page }) => {
@@ -213,6 +247,8 @@ test('DNS credential auth methods', async ({ page }) => {
 
   try {
     await page.goto(`/o/${E2E.orgSlug}/issuers/dns`);
+    await expect(page.getByRole('button', { name: 'Add credential' }).first()).toBeVisible();
+    await snap(page, 'dns-credentials');
     await page.getByRole('button', { name: 'Add credential' }).first().click();
     await page.getByRole('combobox').fill('cloudfl');
     await page.getByRole('option', { name: /Cloudflare/ }).click();

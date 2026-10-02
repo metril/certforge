@@ -2,15 +2,20 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { useInCard } from "@/components/Card"
 
 const Table = React.forwardRef<
   React.ComponentRef<"table">,
   React.ComponentProps<"table">
 >(function Table({ className, ...props }, ref) {
+  const inCard = useInCard()
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className={cn(
+        "relative w-full overflow-x-auto",
+        !inCard && "rounded-md border border-border bg-panel"
+      )}
     >
       <table
         ref={ref}
@@ -31,7 +36,7 @@ const TableHeader = React.forwardRef<
     <thead
       ref={ref}
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn("bg-subtle [&_tr]:border-b", className)}
       {...props}
     />
   )
@@ -80,7 +85,7 @@ const TableRow = React.forwardRef<
       ref={ref}
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        "group/row border-b transition-colors hover:bg-subtle/60 has-aria-expanded:bg-subtle/60 data-[state=selected]:bg-muted",
         className
       )}
       {...props}
@@ -98,7 +103,7 @@ const TableHead = React.forwardRef<
       ref={ref}
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "h-10 px-2 [&.sticky]:bg-subtle text-left align-middle text-xs font-medium whitespace-nowrap text-ink-muted [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       {...props}
@@ -116,7 +121,7 @@ const TableCell = React.forwardRef<
       ref={ref}
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "p-2 align-middle whitespace-nowrap group-hover/row:[&.sticky]:bg-[color-mix(in_srgb,var(--cf-subtle)_60%,var(--cf-panel))] [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       {...props}

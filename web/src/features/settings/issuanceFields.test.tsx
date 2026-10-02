@@ -1,12 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { useState } from 'react';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { DnsCredential, IssuanceDefaults } from '@/api/types';
 import { account, ca, caLocal, makeClient } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
-import { builtinStateOf, chainFor, fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, IssuanceDefaultsForm, ISSUANCE_FIELDS, rulesSummary, type FieldCtx, type FormProps } from './issuanceFields';
+import { EffectiveConfigList } from '@/features/certificates/detail/shared';
+import { builtinStateOf, chainFor, effectiveText, fieldFromTitle, fromBuiltin, fromDefault, fromEffective, fullPayload, IssuanceDefaultsForm, ISSUANCE_FIELDS, rulesSummary, type FieldCtx, type FormProps } from './issuanceFields';
 
 const ctx: FieldCtx = { cas: [], accounts: [], credentials: [], clients: [] };
 const renewPolicy = ISSUANCE_FIELDS.find((f) => f.key === 'renewPolicy')!;
@@ -244,30 +245,22 @@ describe('IssuanceDefaultsForm sections', () => {
 });
 
 // While the server's built-in defaults are unknown nothing built-in is shown:
-// no "not set" wording, no Built-in popover value.
-describe('unknown built-in defaults', () => {
-  const unset = 'none — issuance fails until one is set';
+// no "not set" wording.
+describe('unknown shipped defaults', () => {
+  const unset = 'Not set';
   const Form = ({ state }: { state?: 'loading' | 'error' }) => (
     <IssuanceDefaultsForm value={{}} onChange={() => {}} inherited={fromBuiltin(undefined)} chain={chainFor(undefined, {}, undefined, ctx)} builtinState={state} level="global" ctx={ctx} />
   );
   it('loading shows a skeleton, never the unset wording', () => {
     renderUI(<Form state="loading" />);
-    expect(screen.getAllByRole('status', { name: 'Loading built-in value' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('status', { name: 'Loading default' }).length).toBeGreaterThan(0);
     expect(screen.queryByText(unset)).toBeNull();
     expect(screen.queryByText('not set')).toBeNull();
   });
   it('an error says the value is unavailable', () => {
     renderUI(<Form state="error" />);
-    expect(screen.getAllByText('Built-in value unavailable').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Default unavailable').length).toBeGreaterThan(0);
     expect(screen.queryByText(unset)).toBeNull();
-  });
-  it('the popover leaves the Built-in value out', async () => {
-    const { user } = renderUI(<Form state="loading" />);
-    const group = screen.getByRole('group', { name: 'Certificate authority' });
-    await user.click(within(group).getByRole('button', { name: 'Built-in' }));
-    const pop = await screen.findByRole('dialog');
-    expect(pop).toHaveTextContent('Global');
-    expect(pop).not.toHaveTextContent('Built-in:');
   });
   it('a served null built-in still shows the unset wording', () => {
     renderUI(<IssuanceDefaultsForm value={{}} onChange={() => {}} inherited={fromBuiltin({})} chain={chainFor({}, {}, undefined, ctx)} level="global" ctx={ctx} />);
@@ -278,5 +271,73 @@ describe('unknown built-in defaults', () => {
     expect(builtinStateOf({ data: undefined, isError: true })).toBe('error');
     expect(builtinStateOf({ data: {} })).toBe('error');
     expect(builtinStateOf({ data: { builtin: {} } })).toBeUndefined();
+  });
+});
+
+describe('propagation wait with nothing set (API reports 0, source default)', () => {
+  const unsetEff = { propagationSeconds: { value: 0, source: 'default' } } as never;
+  const setEff = { propagationSeconds: { value: 0, source: 'org' } } as never;
+  const prop = ISSUANCE_FIELDS.find((f) => f.key === 'propagationSeconds')!;
+  const OrgForm = ({ eff }: { eff: never }) => (
+    <IssuanceDefaultsForm value={{}} onChange={() => {}} inherited={fromEffective(eff)} level="org" ctx={ctx} />
+  );
+  it('org scope reads as Provider default, not 0 s', () => {
+    renderUI(<OrgForm eff={unsetEff} />);
+    expect(screen.getByText("Provider default")).toBeInTheDocument();
+    expect(screen.queryByText('0 s')).toBeNull();
+  });
+  it('org scope shows an explicit 0 as 0 s', () => {
+    renderUI(<OrgForm eff={setEff} />);
+    expect(screen.getByText('0 s')).toBeInTheDocument();
+  });
+  it('certificate detail effective configuration follows the same rule', () => {
+    const { unmount } = renderUI(<EffectiveConfigList eff={unsetEff} ctx={ctx} />);
+    expect(screen.getByText("Provider default")).toBeInTheDocument();
+    unmount();
+    renderUI(<EffectiveConfigList eff={setEff} ctx={ctx} />);
+    expect(screen.getByText('0 s')).toBeInTheDocument();
+  });
+  it('wizard summary/review text (effectiveText) follows the same rule', () => {
+    expect(effectiveText(prop, { value: 0, source: 'default' }, ctx)).toMatchObject({ props: { unset: { label: 'Provider default' } } });
+    expect(effectiveText(prop, { value: 0, source: 'cert' }, ctx)).toBe('0 s');
+    expect(effectiveText(prop, { value: 90, source: 'global' }, ctx)).toBe('90 s');
+  });
+});
+
+describe('unset defaults: short state plus tooltip', () => {
+  const unsetEff = {
+    caId: { value: null, source: 'default' },
+    accountId: { value: null, source: 'default' },
+    propagationSeconds: { value: 0, source: 'default' },
+  } as never;
+  const tips = [
+    ['Not set', 'Issuance fails until a certificate authority is set.'],
+    ['Not set', 'ACME CAs need an account. Private CAs do not.'],
+    ['Provider default', "Uses the DNS provider's own timeout."],
+  ];
+  it('certificate detail: all three show their label, a focusable tooltip and no source badge', async () => {
+    renderUI(<EffectiveConfigList eff={unsetEff} ctx={ctx} />);
+    expect(screen.getAllByText('Not set')).toHaveLength(2);
+    expect(screen.getByText('Provider default')).toBeInTheDocument();
+    expect(within(screen.getByText('Provider default').closest('dd') as HTMLElement).queryByRole('button')).toBeNull();
+    const triggers = [...screen.getAllByText('Not set'), screen.getByText('Provider default')].map((el) => el.closest('[tabindex]') as HTMLElement);
+    for (const [i, [, tip]] of tips.entries()) {
+      expect(triggers[i]).toHaveAttribute('tabindex', '0');
+      act(() => triggers[i]!.focus());
+      expect((await screen.findAllByText(tip as string)).length).toBeGreaterThan(0);
+    }
+  });
+  it('organization scope: "Using Global:" then the state, with tooltips', async () => {
+    const { user } = renderUI(<IssuanceDefaultsForm value={{}} onChange={() => {}} inherited={fromEffective(unsetEff)} level="org" ctx={ctx} />);
+    expect(screen.getAllByText('Using Global:').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Not set').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Provider default')).toBeInTheDocument();
+    await user.hover(screen.getByText('Provider default'));
+    expect((await screen.findAllByText("Uses the DNS provider's own timeout.")).length).toBeGreaterThan(0);
+  });
+  it('a set CA shows no chip', () => {
+    const eff = { ...(unsetEff as object), caId: { value: ctx.cas[0]?.id ?? 'x', source: 'global' } } as never;
+    renderUI(<EffectiveConfigList eff={eff} ctx={ctx} />);
+    expect(screen.getAllByText('Not set')).toHaveLength(1);
   });
 });

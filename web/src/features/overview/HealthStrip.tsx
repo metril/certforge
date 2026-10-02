@@ -32,7 +32,7 @@ export function HealthStrip({ readiness, listener }: { readiness?: Readiness; li
     <div
       role="alert"
       aria-label={failing.length ? 'Server not ready' : 'Server health'}
-      className={cn('flex flex-wrap items-center gap-3 rounded-md border px-4 py-2 text-sm', failing.length ? 'border-failed' : 'border-expiring')}
+      className={cn('flex flex-wrap items-center gap-3 rounded-md border bg-panel px-4 py-2 text-sm', failing.length ? 'border-failed' : 'border-expiring')}
     >
       {failing.length > 0 && (
         <>

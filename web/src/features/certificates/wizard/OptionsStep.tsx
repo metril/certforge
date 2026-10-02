@@ -4,10 +4,12 @@ import { effectiveDefaultsQuery, orgDefaultsQuery } from '@/api/queries/defaults
 import { settingsQuery } from '@/api/queries/settings';
 import type { IssuanceDefaults } from '@/api/types';
 import { builtinStateOf, chainFor, fromEffective, IssuanceDefaultsForm, useFieldCtx } from '@/features/settings/issuanceFields';
+import { useOrgSlugOf } from '@/lib/org';
 import type { WizardAction, WizardState } from './state';
 
 export function OptionsStep({ orgId, state, dispatch }: { orgId: string; state: WizardState; dispatch: Dispatch<WizardAction> }) {
   const ctx = useFieldCtx(orgId);
+  const slug = useOrgSlugOf()(orgId);
   const effQ = useQuery(effectiveDefaultsQuery(orgId));
   const effData = effQ.data;
   const eff = effData ?? {};
@@ -26,7 +28,7 @@ export function OptionsStep({ orgId, state, dispatch }: { orgId: string; state: 
       chain={chainFor(effData?.builtin as IssuanceDefaults | undefined, global, org, ctx)}
       builtinState={builtinStateOf(effQ)}
       level="cert"
-      links={{ global: '/settings/issuance-defaults?scope=global', org: '/settings/issuance-defaults?scope=org' }}
+      links={{ global: '/settings/issuance-defaults?scope=global', org: `/settings/issuance-defaults?scope=org&org=${encodeURIComponent(slug)}` }}
       ctx={ctx}
       exclude={['verificationRules']}
     />

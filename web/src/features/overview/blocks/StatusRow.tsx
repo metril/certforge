@@ -34,7 +34,7 @@ export function StatusRow({
             params={{ org: orgSlug }}
             search={{ status: t.status }}
             aria-label={`${counts[t.status]} ${t.label}`}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm hover:bg-subtle"
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-panel px-3 text-sm hover:bg-subtle"
           >
             <t.icon className={`size-4 ${t.cls}`} aria-hidden />
             <span className="font-semibold tabular-nums">{counts[t.status]}</span>

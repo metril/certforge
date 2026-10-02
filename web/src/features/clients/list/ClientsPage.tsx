@@ -11,6 +11,7 @@ import { ConnectionDot } from '@/components/ConnectionDot';
 import { DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { FilterField } from '@/components/FilterToolbar';
 import { FilterChips } from '@/components/FilterChips';
 import { PageHeader } from '@/components/PageHeader';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -141,36 +142,48 @@ export function ClientsPage() {
         help="client.connection"
         actions={emptyUnfiltered || allOrgs ? undefined : enrol}
         activeFilters={chips.length}
+        onClearFilters={clearAll}
+        filterChips={<FilterChips chips={chips} onRemove={(k) => setSearch({ [k]: undefined })} onClear={clearAll} />}
+        filtersTrailing={
+          emptyUnfiltered ? undefined : (
+            <SavedViews
+              list="clients"
+              current={{ status: search.status, site: allOrgs ? undefined : search.site, q: search.q, sort: search.sort }}
+              onApply={(s) => void navigate({ search: clientListSearch.parse(s) })}
+            />
+          )
+        }
         filters={
           emptyUnfiltered ? undefined : (
             <>
-              <SegmentedControl<StatusFilter>
-                aria-label="Status"
-                value={search.status ?? 'all'}
-                onChange={(v) => setSearch({ status: v === 'all' ? undefined : v })}
-                options={STATUS_OPTIONS}
-              />
+              <FilterField label="Status">
+                <SegmentedControl<StatusFilter>
+                  aria-label="Status"
+                  value={search.status ?? 'all'}
+                  onChange={(v) => setSearch({ status: v === 'all' ? undefined : v })}
+                  options={STATUS_OPTIONS}
+                />
+              </FilterField>
               {!allOrgs && sites.length > 0 && (
-                <div className="w-full md:w-40">
-                  <Combobox
-                    aria-label="Site"
-                    value={search.site}
-                    onChange={(v) => setSearch({ site: v })}
-                    options={sites.map((s) => ({ value: s.id, label: s.name }))}
-                    placeholder="All sites"
-                    emptyText="No site matches."
-                  />
-                </div>
+                <FilterField label="Site">
+                  <div className="w-full md:w-40">
+                    <Combobox
+                      aria-label="Site"
+                      value={search.site}
+                      onChange={(v) => setSearch({ site: v })}
+                      options={sites.map((s) => ({ value: s.id, label: s.name }))}
+                      placeholder="All sites"
+                      emptyText="No site matches."
+                    />
+                  </div>
+                </FilterField>
               )}
-              <div className="relative w-full md:w-52">
-                <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
-                <Input aria-label="Search clients" className="pl-8 font-mono text-xs" placeholder="web-1" maxLength={200} value={text} onChange={(e) => setText(e.target.value)} />
-              </div>
-              <SavedViews
-                list="clients"
-                current={{ status: search.status, site: allOrgs ? undefined : search.site, q: search.q, sort: search.sort }}
-                onApply={(s) => void navigate({ search: clientListSearch.parse(s) })}
-              />
+              <FilterField label="Search">
+                <div className="relative w-full md:w-52">
+                  <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
+                  <Input aria-label="Search clients" className="pl-8 font-mono text-xs" placeholder="web-1" maxLength={200} value={text} onChange={(e) => setText(e.target.value)} />
+                </div>
+              </FilterField>
             </>
           )
         }
@@ -179,7 +192,6 @@ export function ClientsPage() {
         <EmptyState message="No clients yet.">{!allOrgs && enrol}</EmptyState>
       ) : (
         <>
-          <FilterChips className="mb-3" chips={chips} onRemove={(k) => setSearch({ [k]: undefined })} onClear={clearAll} />
           {cursorNotice && <p className="mb-3 text-xs text-ink-muted">The list changed since it was loaded; showing the first page again.</p>}
           {list.isError && rows.length === 0 ? (
             <ErrorState message={`Couldn't load clients. ${errorMessage(list.error)}`} onRetry={() => void list.refetch()} />

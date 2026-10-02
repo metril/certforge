@@ -36,5 +36,7 @@ export const settingsSearch = z.object({
   state: z.enum(['active', 'expired', 'revoked']).optional().catch(undefined),
   // scope: which Issuance defaults tab is open (the chain links in each field target it).
   scope: z.enum(['global', 'org']).optional().catch(undefined),
+  // org: the organization (slug) whose defaults the org scope shows.
+  org: z.string().optional().catch(undefined),
 });
 export type SettingsSearch = z.infer<typeof settingsSearch>;

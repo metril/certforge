@@ -72,7 +72,7 @@ it('syncs the status filter to the URL and the request, with a removable chip', 
   await waitFor(() => expect(router.state.location.search).toEqual({ status: 'failed' }));
   await waitFor(() => expect(lastQuery.get('status')).toBe('failed'));
   expect(await screen.findByRole('link', { name: 'api' })).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Remove filter Status: Failed' }));
+  await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   await waitFor(() => expect(router.state.location.search).toEqual({}));
 });
 
@@ -189,7 +189,7 @@ it('keeps an externally applied q (saved view) synced to the input, and survives
   await user.click(screen.getByRole('button', { name: 'Save view' }));
   await user.type(screen.getByRole('textbox', { name: 'View name' }), 'API only');
   await user.click(screen.getByRole('button', { name: 'Save' }));
-  await user.click(screen.getByRole('button', { name: 'Remove filter Search: api' }));
+  await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   await waitFor(() => expect(router.state.location.search).toEqual({}));
 
   // Apply the saved view: the URL and the input should both show q=api

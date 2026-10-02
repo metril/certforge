@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, meWith, org, url } from '@/test/fixtures';
+import { authHandlers, me, meWith, org, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 // Task 9: the global-only `issuance` settings section (CAA check + local
@@ -33,9 +33,8 @@ beforeEach(() => {
 });
 
 async function openGlobalTab() {
-  const { user, ...rest } = renderRoute('/settings/issuance-defaults?scope=org');
-  await user.click(await screen.findByRole('tab', { name: 'Global' }));
-  await screen.findByText('Checks and limits');
+  const { user, ...rest } = renderRoute('/settings/issuance-defaults?scope=global');
+  await screen.findByRole('switch', { name: 'Check CAA records' });
   return { user, ...rest };
 }
 
@@ -121,8 +120,7 @@ it('the org tab has no checks-and-limits block', async () => {
 // loading too.
 it('the Checks and limits heading shows while the section is still loading', async () => {
   server.use(http.get(url('/settings/issuance'), () => new Promise(() => {})));
-  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
-  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  renderRoute('/settings/issuance-defaults?scope=global');
   expect(await screen.findByText('Checks and limits')).toBeInTheDocument();
   expect(screen.getByText('Loading…')).toBeInTheDocument();
 });
@@ -136,4 +134,80 @@ it('the Rate limits heading is a plain heading, not a dangling label, and skips 
   const heading = screen.getByText('Rate limits');
   expect(heading.tagName).not.toBe('LABEL');
   expect(within(heading.parentElement as HTMLElement).queryByText('Optional')).not.toBeInTheDocument();
+});
+
+// T9: the scope selector scales: a segmented control plus an organization
+// combobox (URL-synced as ?scope=org&org=<slug>), not one tab per org.
+const manyOrgs = Array.from({ length: 50 }, (_, i) => ({ id: `org-${i + 1}`, slug: `team-${i + 1}`, name: `Team ${String(i + 1).padStart(2, '0')}` }));
+
+function mockOrgDefaults() {
+  server.use(
+    http.get(url('/orgs'), () => HttpResponse.json({ items: manyOrgs })),
+    http.get(url('/orgs/:orgId/cas'), () => HttpResponse.json([])),
+    http.get(url('/orgs/:orgId/acme-accounts'), () => HttpResponse.json([])),
+    http.get(url('/orgs/:orgId/dns-credentials'), () => HttpResponse.json([])),
+    http.get(url('/orgs/:orgId/issuance-defaults'), ({ params }) => HttpResponse.json(params.orgId === 'org-7' ? { keyType: 'rsa4096' } : {})),
+    http.get(url('/orgs/:orgId/issuance-defaults/effective'), ({ params }) =>
+      HttpResponse.json({
+        keyType: params.orgId === 'org-7' ? { value: 'rsa4096', source: 'org' } : { value: 'ec256', source: 'default' },
+        builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] },
+      }),
+    ),
+    http.get(url('/auth/me'), () => HttpResponse.json({ ...me, orgs: manyOrgs.slice(0, 3) })),
+  );
+}
+
+it('switches scope and organization, updating the URL and loading that org defaults', async () => {
+  mockOrgDefaults();
+  const { router, user } = renderRoute('/settings/issuance-defaults');
+  await screen.findByRole('group', { name: 'Key type' });
+  expect(screen.queryByRole('combobox', { name: 'Organization' })).toBeNull();
+  await user.click(screen.getByRole('radio', { name: 'Organization' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org' }));
+  await user.click(await screen.findByRole('combobox', { name: 'Organization' }));
+  await user.type(screen.getByPlaceholderText('Search'), 'Team 07');
+  await user.click(await screen.findByRole('option', { name: /Team 07/ }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org', org: 'team-7' }));
+  const keyType = within(await screen.findByRole('group', { name: 'Key type' }));
+  await waitFor(() => expect(keyType.getByText('RSA 4096')).toBeInTheDocument());
+  await user.click(screen.getByRole('radio', { name: 'Global' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
+  expect(screen.queryByRole('combobox', { name: 'Organization' })).toBeNull();
+});
+
+it('deep link ?scope=org&org=<slug> opens that organization', async () => {
+  mockOrgDefaults();
+  renderRoute('/settings/issuance-defaults?scope=org&org=team-7');
+  expect(await screen.findByRole('combobox', { name: 'Organization' })).toHaveTextContent('Team 07');
+  const keyType = within(await screen.findByRole('group', { name: 'Key type' }));
+  await waitFor(() => expect(keyType.getByText('RSA 4096')).toBeInTheDocument());
+});
+
+it('a 50-organization list is searchable', async () => {
+  mockOrgDefaults();
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  await user.click(await screen.findByRole('combobox', { name: 'Organization' }));
+  expect(await screen.findAllByRole('option')).toHaveLength(50);
+  await user.type(screen.getByPlaceholderText('Search'), 'Team 42');
+  await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1));
+  expect(screen.getByRole('option', { name: /Team 42/ })).toBeInTheDocument();
+});
+
+it('a non-admin only sees their own organizations', async () => {
+  mockOrgDefaults();
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }, { role: 'viewer', orgId: 'org-2' }], manyOrgs.slice(0, 2)))));
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  await user.click(await screen.findByRole('combobox', { name: 'Organization' }));
+  expect(await screen.findAllByRole('option')).toHaveLength(2);
+});
+
+it('switching scope drops unsaved edits instead of carrying them to another organization', async () => {
+  mockOrgDefaults();
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
+  expect(screen.getByRole('button', { name: 'Discard changes' })).toBeInTheDocument();
+  await user.click(screen.getByRole('radio', { name: 'Global' }));
+  await user.click(screen.getByRole('radio', { name: 'Organization' }));
+  expect(await screen.findByRole('switch', { name: 'Override Must-Staple' })).not.toBeChecked();
+  expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull();
 });

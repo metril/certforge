@@ -84,7 +84,7 @@ it('sends URL filters and sort, and filters by status and site', async () => {
   await user.click(await screen.findByRole('option', { name: 'Rack A' }));
   await waitFor(() => expect(lastQuery?.get('site')).toBe('s-1'));
   expect(router.state.location.search).toMatchObject({ status: 'pending', site: 's-1', sort: '-lastSeen' });
-  await user.click(screen.getByRole('button', { name: 'Remove filter Site: Rack A' }));
+  await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   await waitFor(() => expect(lastQuery?.get('site')).toBeNull());
 });
 

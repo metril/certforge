@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -49,7 +50,7 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, c
   const account = accounts.find((a) => a.id === eff?.accountId?.value)?.email;
 
   return (
-    <header className="grid gap-4">
+    <Card className="grid gap-4 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid min-w-0 gap-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -194,6 +195,6 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, c
           await navigate({ to: '/o/$org/certificates', params: { org: orgSlug } });
         }}
       />
-    </header>
+    </Card>
   );
 }

@@ -1,3 +1,4 @@
+import { Card, CardBody, CardHeader } from '@/components/Card';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Pencil } from 'lucide-react';
@@ -30,7 +31,7 @@ export function SettingsTab({ cert, orgId, orgSlug }: Props) {
   const names = [...new Set([cert.commonName, ...cert.sans])];
   const eff = (cert.effective ?? {}) as EffectiveMap;
   return (
-    <div className="grid gap-8 pt-4">
+    <div className="grid gap-4 pt-4">
       <div className="flex justify-end">
         {!cert.managed ? (
           <Tooltip>
@@ -60,36 +61,36 @@ export function SettingsTab({ cert, orgId, orgSlug }: Props) {
           </PermissionTip>
         )}
       </div>
-      <section aria-labelledby="st-names" className="grid gap-2">
-        <h2 id="st-names" className="text-base font-semibold">
-          Names
-        </h2>
-        <ul className="flex flex-wrap gap-1.5">
-          {names.map((n) => (
-            <NameChipStatic key={n} value={n} isCn={n === cert.commonName} />
-          ))}
-        </ul>
-      </section>
+      <Card role="region" aria-labelledby="st-names">
+        <CardHeader title="Names" titleId="st-names" />
+        <CardBody>
+          <ul className="flex flex-wrap gap-1.5">
+            {names.map((n) => (
+              <NameChipStatic key={n} value={n} isCn={n === cert.commonName} />
+            ))}
+          </ul>
+        </CardBody>
+      </Card>
       {/* Fix wave (Important): an unmanaged certificate's verificationRules
           is empty (uploaded (unmanaged) certificates never run the
           wizard) — the summary and Coverage would both describe
           verification for a certificate CertForge was never asked to
           verify, down to a false "No matching rule" for every name. */}
       {cert.managed && (
-        <section aria-labelledby="st-verification" className="grid gap-3">
-          <h2 id="st-verification" className="text-base font-semibold">
-            Verification
-          </h2>
-          <p className="text-sm">{rulesSummary(cert.verificationRules, ctx.credentials, ctx.clients)}</p>
-          <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
-        </section>
+        <Card role="region" aria-labelledby="st-verification">
+          <CardHeader title="Verification" titleId="st-verification" />
+          <CardBody className="grid gap-3">
+            <p className="text-sm">{rulesSummary(cert.verificationRules, ctx.credentials, ctx.clients)}</p>
+            <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
+          </CardBody>
+        </Card>
       )}
-      <section aria-labelledby="st-options" className="grid gap-2">
-        <h2 id="st-options" className="text-base font-semibold">
-          Options
-        </h2>
-        <EffectiveConfigList eff={eff} ctx={ctx} />
-      </section>
+      <Card role="region" aria-labelledby="st-options">
+        <CardHeader title="Options" titleId="st-options" />
+        <CardBody>
+          <EffectiveConfigList eff={eff} ctx={ctx} />
+        </CardBody>
+      </Card>
     </div>
   );
 }

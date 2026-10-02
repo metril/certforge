@@ -1,3 +1,4 @@
+import { Card } from '@/components/Card';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -119,7 +120,7 @@ export function ImportPage() {
         </Link>
       </nav>
       <PageHeader title="Import certificates" />
-      <div className="grid max-w-[720px] gap-5">
+      <Card className="grid max-w-[720px] gap-5 p-4">
         <Field id="import-archive" label="Archive" help="import.archive" error={effectiveArchiveError}>
           <Dropzone
             id="import-archive"
@@ -150,7 +151,7 @@ export function ImportPage() {
             </Button>
           </PermissionTip>
         </div>
-      </div>
+      </Card>
       {formError ? (
         <ErrorState message={formError} onRetry={() => void run(lastDryRun)} />
       ) : result && result.items.length === 0 ? (

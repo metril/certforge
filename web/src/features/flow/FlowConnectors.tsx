@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { edgeKey, laneIndex, pairStatus, type Flow, type FlowEdgeData, type FlowNodeData, type FlowPath, type FlowStatus } from './flowGraph';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { collapseEdges, isProxyId, laneIndex, pairStatus, proxyLaneIndex, type Flow, type FlowNodeData, type FlowPath, type FlowStatus } from './flowGraph';
 
 const STROKE: Record<FlowStatus, string> = {
   valid: 'stroke-valid',
@@ -12,51 +12,47 @@ const STROKE: Record<FlowStatus, string> = {
 };
 
 type Line = { key: string; d: string; cls: string; width: number; opacity: number; dashed: boolean };
-type Pair = { a: string; b: string; status: FlowStatus | null };
-
 type Props = {
   containerRef: RefObject<HTMLElement | null>;
   getEl: (id: string) => HTMLElement | undefined;
   flow: Flow;
   path: FlowPath;
   selected: boolean;
+  /** Collapsed group ids; their members are drawn as one proxy row. */
+  collapsed: Set<string>;
 };
 
 /** One SVG overlay behind the nodes: cubic curves from the right edge of the
  * left node to the left edge of the right node, measured from the live DOM. */
-export function FlowConnectors({ containerRef, getEl, flow, path, selected }: Props) {
+export function FlowConnectors({ containerRef, getEl, flow, path, selected, collapsed }: Props) {
   const [lines, setLines] = useState<Line[]>([]);
   const raf = useRef(0);
+
+  const kinds = useMemo(() => {
+    const m = new Map<string, FlowNodeData['kind']>();
+    for (const l of Object.values(flow.lanes)) for (const n of l.nodes) m.set(n.id, n.kind);
+    return m;
+  }, [flow]);
+  const merged = useMemo(() => collapseEdges(flow, collapsed, path.synthetic), [flow, collapsed, path.synthetic]);
 
   const measure = useCallback(() => {
     const box = containerRef.current;
     if (!box) return;
     const origin = box.getBoundingClientRect();
-    const kinds = new Map<string, FlowNodeData['kind']>();
-    for (const l of Object.values(flow.lanes)) for (const n of l.nodes) kinds.set(n.id, n.kind);
-
-    const groups = new Map<string, FlowEdgeData[]>();
-    for (const e of flow.edges) {
-      const k = edgeKey(e.from, e.to);
-      const g = groups.get(k);
-      if (g) g.push(e);
-      else groups.set(k, [e]);
-    }
-    const pairs = new Map<string, Pair>();
-    for (const [k, g] of groups) pairs.set(k, { a: g[0]!.from, b: g[0]!.to, status: pairStatus(g, selected ? path.nodes : null) });
-    for (const k of path.synthetic) {
-      const [a, b] = k.split('|');
-      pairs.set(`s:${k}`, { a, b, status: null });
-    }
+    const lane = (id: string): number | undefined => {
+      if (isProxyId(id)) return proxyLaneIndex(id);
+      const k = kinds.get(id);
+      return k ? laneIndex(k) : undefined;
+    };
 
     const out: Line[] = [];
-    for (const [key, p] of pairs) {
-      const ka = kinds.get(p.a);
-      const kb = kinds.get(p.b);
-      const ea = getEl(p.a);
-      const eb = getEl(p.b);
-      if (!ka || !kb || !ea || !eb) continue;
-      const [left, right] = laneIndex(ka) <= laneIndex(kb) ? [ea, eb] : [eb, ea];
+    for (const m of merged) {
+      const la = lane(m.a);
+      const lb = lane(m.b);
+      const ea = getEl(m.a);
+      const eb = getEl(m.b);
+      if (la === undefined || lb === undefined || !ea || !eb) continue;
+      const [left, right] = la <= lb ? [ea, eb] : [eb, ea];
       const lr = left.getBoundingClientRect();
       const rr = right.getBoundingClientRect();
       const x1 = lr.right - origin.left;
@@ -65,21 +61,20 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected }: Pr
       const y2 = rr.top + rr.height / 2 - origin.top;
       const dx = Math.max(24, (x2 - x1) / 2);
       const d = `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
-      const synthetic = p.status === null;
-      const on = synthetic || path.edges.has(key);
+      const on = m.synthetic || m.keys.some((k) => path.edges.has(k));
       out.push({
-        key,
+        key: m.key,
         d,
         // Nothing selected: one neutral control-border stroke. A selected path
         // is thicker and status-coloured; every other line is dimmed.
-        cls: !selected || !on ? 'stroke-input' : synthetic ? 'stroke-ink-muted' : STROKE[p.status ?? 'idle'],
+        cls: !selected || !on ? 'stroke-input' : m.synthetic ? 'stroke-ink-muted' : STROKE[pairStatus(m.edges, path.nodes)],
         width: !selected ? 1.5 : on ? 2.5 : 1,
         opacity: !selected ? 1 : on ? 1 : 0.2,
-        dashed: synthetic,
+        dashed: m.synthetic,
       });
     }
     setLines(out);
-  }, [containerRef, getEl, flow, path, selected]);
+  }, [containerRef, getEl, kinds, merged, path, selected]);
 
   const schedule = useCallback(() => {
     cancelAnimationFrame(raf.current);

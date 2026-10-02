@@ -170,8 +170,10 @@ test('event log', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
   await page.goto(`/o/${E2E.orgSlug}/alerts/events`);
-  await page.getByRole('toolbar', { name: 'Event groups' }).getByRole('button', { name: 'Test' }).click();
-  const list = page.getByRole('list', { name: 'Events' });
+  await page.getByRole('combobox', { name: 'Kind' }).click();
+  await page.getByRole('option', { name: 'Test', exact: true }).click();
+  await page.keyboard.press('Escape');
+  const list = page.getByRole('table', { name: 'Events' });
   await expect(list.getByText('Test', { exact: true }).first()).toBeVisible();
   // "e2e-event-log" also names the row's own resource link (a channel
   // event's resource is the channel itself) and appears inside the event

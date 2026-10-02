@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
+import { snap } from './screens';
 
-const SURFACE = { light: 'rgb(246, 247, 249)', dark: 'rgb(22, 27, 36)' } as const;
+const SURFACE = { light: 'rgb(242, 244, 247)', dark: 'rgb(13, 16, 21)' } as const;
 
 for (const theme of ['light', 'dark'] as const) {
   test(`log in, see the certificate, open it, download PEM (${theme})`, async ({ page }) => {
@@ -26,6 +27,7 @@ for (const theme of ['light', 'dark'] as const) {
     expect(themes.length).toBeGreaterThan(0);
     expect(new Set(themes)).toEqual(new Set([theme]));
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(SURFACE[theme]);
+    if (theme === 'light') await snap(page, 'login');
 
     await signInLocal(page);
     await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));

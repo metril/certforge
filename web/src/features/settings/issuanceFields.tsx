@@ -13,6 +13,7 @@ import { SegmentedControl, type SegmentOption } from '@/components/SegmentedCont
 import { SwitchField } from '@/components/SwitchField';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { UnsetValue, type Unset } from '@/forms/UnsetValue';
 import { InheritableField, type ChainEntry, type LevelLinks } from '@/forms/InheritableField';
 import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
 import { isPrivate, KIND_LABEL } from '@/lib/caKinds';
@@ -41,7 +42,7 @@ export type IssuanceField = {
   /** When set, Override cannot be turned on for this field (e.g. an empty CA list has nothing to pick) — an already-overridden field can still be reset. */
   disabledReason?: (c: FieldCtx) => string | undefined;
   /** What an unset-everywhere field does, when the built-in is not a value. */
-  unsetText?: string;
+  unset?: Unset;
 };
 
 export function def<K extends FieldKey>(d: {
@@ -52,7 +53,7 @@ export function def<K extends FieldKey>(d: {
   display: (v: V<K>, c: FieldCtx) => ReactNode;
   editor: (v: V<K>, set: (v: V<K> | null) => void, c: FieldCtx, id: string) => ReactNode;
   disabledReason?: (c: FieldCtx) => string | undefined;
-  unsetText?: string;
+  unset?: Unset;
 }): IssuanceField {
   return d as unknown as IssuanceField;
 }
@@ -83,7 +84,7 @@ function boolEditor(label: string, on: string, off: string) {
 export const ISSUANCE_FIELDS: IssuanceField[] = [
   def({
     key: 'caId',
-    unsetText: 'none — issuance fails until one is set',
+    unset: { label: 'Not set', tone: 'expiring', tip: 'Issuance fails until a certificate authority is set.' },
     label: 'Certificate authority',
     help: 'defaults.caId',
     initial: (c) => c.cas[0]?.id ?? '',
@@ -108,7 +109,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
   }),
   def({
     key: 'accountId',
-    unsetText: 'none — ACME CAs need one, private CAs do not',
+    unset: { label: 'Not set', tone: 'neutral', tip: 'ACME CAs need an account. Private CAs do not.' },
     label: 'ACME account',
     help: 'defaults.accountId',
     initial: (c) => c.accounts[0]?.id ?? '',
@@ -196,7 +197,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
   }),
   def({
     key: 'propagationSeconds',
-    unsetText: "the DNS provider's own timeout",
+    unset: { label: 'Provider default', tip: "Uses the DNS provider's own timeout." },
     label: 'Propagation wait',
     help: 'defaults.propagationSeconds',
     initial: () => 120,
@@ -268,7 +269,26 @@ export function fromBuiltin(builtin: IssuanceDefaults | undefined) {
 // built-in and names the level, so this is a plain lookup, never a
 // raw-value comparison.
 export function fromEffective(eff: EffectiveMap) {
-  return (k: FieldKey): EffectiveValue => (eff[k] as EffectiveValue | undefined) ?? fromDefault();
+  return (k: FieldKey): EffectiveValue => unsetIfShipped(k, (eff[k] as EffectiveValue | undefined) ?? fromDefault());
+}
+
+/** The API flattens a field with no shipped value (propagationSeconds) to 0 with source 'default'; a real 0 always carries the level that set it. So a default-sourced value of a field with an unset is "not set", never a number. */
+function unsetIfShipped(k: FieldKey, e: EffectiveValue): EffectiveValue {
+  const f = ISSUANCE_FIELDS.find((x) => x.key === k);
+  return f?.unset && e.source === 'default' && e.value != null ? ({ ...e, value: null } as EffectiveValue) : e;
+}
+
+/** Whether an effective value is unset at every level (no source badge is shown for it). */
+export function isUnset(f: IssuanceField, e: EffectiveValue): boolean {
+  const v = unsetIfShipped(f.key, e).value;
+  return !!f.unset && (v === null || v === undefined);
+}
+
+/** One effective value as text, for the certificate detail and the wizard's summary and review. */
+export function effectiveText(f: IssuanceField, e: EffectiveValue, ctx: FieldCtx): ReactNode {
+  const v = unsetIfShipped(f.key, e).value;
+  if (v === null || v === undefined) return f.unset ? <UnsetValue unset={f.unset} /> : 'Global';
+  return f.display(v, ctx);
 }
 
 /** Whether the server's built-in defaults are known: 'loading' while the effective query has no data yet, 'error' when it failed or the response carries no `builtin` (an older cached response). Undefined once known. */
@@ -278,15 +298,16 @@ export function builtinStateOf(q: { data?: { builtin?: unknown } | undefined; is
 }
 
 // `builtin` is the server's BuiltinDefaults (effective endpoint's `builtin`);
-// fields absent from it have no value (see each field's unsetText). While it
-// is unknown (undefined) the Built-in row is left out rather than guessed.
+// fields absent from it have no value (see each field's unset). While it
+// is unknown (undefined) a Global row with nothing stored is left out rather than guessed.
 export function chainFor(builtin: IssuanceDefaults | undefined, global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
   return (k: FieldKey): ChainEntry[] => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k);
     const show = (v: unknown, none: ReactNode = 'not set'): ReactNode => (v == null ? none : f ? f.display(v, ctx) : String(v));
     const out: ChainEntry[] = [];
-    if (builtin) out.push({ level: 'default', value: show(builtin[k], f?.unsetText) });
-    out.push({ level: 'global', value: show(global[k]) });
+    // The shipped value is Global's own until an admin changes it.
+    if (global[k] != null) out.push({ level: 'global', value: show(global[k]) });
+    else if (builtin) out.push({ level: 'global', value: show(builtin[k], f?.unset?.label) });
     if (org) out.push({ level: 'org', value: show(org[k]) });
     return out;
   };
@@ -305,6 +326,15 @@ export function chainFor(builtin: IssuanceDefaults | undefined, global: Issuance
 // same holds for anything added later) passes through untouched instead of
 // being dropped — a "replace the whole object" PUT would otherwise delete
 // it on any unrelated save, Global or Org.
+/** The Global save body: only keys with a value (stored ones plus what the user changed), so opening and saving never pins the shipped values. */
+export function globalPayload(value: IssuanceDefaults, stored?: IssuanceDefaults | null, shipped?: IssuanceDefaults): IssuanceDefaults {
+  // A key the user touched and set back to the shipped value was never stored: drop it rather than pin it.
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  return Object.fromEntries(
+    Object.entries(value).filter(([k, v]) => v != null && !(shipped && stored?.[k as FieldKey] == null && shipped[k as FieldKey] != null && same(v, shipped[k as FieldKey]))),
+  ) as IssuanceDefaults;
+}
+
 export function fullPayload(value: IssuanceDefaults): IssuanceDefaults {
   return { ...value, ...Object.fromEntries(ISSUANCE_FIELDS.map((f) => [f.key, value[f.key] ?? null])) } as IssuanceDefaults;
 }
@@ -322,7 +352,7 @@ export type FormProps = {
   onChange: (v: IssuanceDefaults) => void;
   inherited: (k: FieldKey) => EffectiveValue;
   chain?: (k: FieldKey) => ChainEntry[];
-  /** Set while the server's built-in defaults are not known; a field falling back to the built-in then shows no value. */
+  /** Set while the shipped defaults are not known; a field falling back to them then shows no value. */
   builtinState?: 'loading' | 'error';
   /** The level this form edits, and where the other levels are edited. */
   level?: 'global' | 'org' | 'cert';
@@ -393,7 +423,7 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
           inherited={inherited(f.key) as { value: unknown; source: Source }}
           chain={chain?.(f.key)}
           builtinState={builtinState}
-          unsetText={f.unsetText}
+          unset={f.unset}
           level={level}
           links={links}
           initial={f.initial(ctx)}
@@ -423,7 +453,7 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
       {SECTIONS.map((sec) => {
         const fields = sec.keys.filter((k) => !exclude.includes(k)).map((k) => ISSUANCE_FIELDS.find((f) => f.key === k)!);
         if (fields.length === 0) return null;
-        const overridden = fields.filter((f) => value[f.key] != null);
+        const overridden = level === 'global' ? [] : fields.filter((f) => value[f.key] != null);
         return (
           <FormSection
             key={sec.title}

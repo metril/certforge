@@ -16,15 +16,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ProviderPicker } from '@/forms/ProviderPicker';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { cn } from '@/lib/utils';
 import { IssuersHeader } from './IssuersLayout';
 import { CredentialSheet } from './CredentialSheet';
 import { TestCredentialDialog } from './TestCredentialDialog';
-
-// Fix round 1 (#3/#4) elsewhere: first column stays put while the row
-// scrolls horizontally; matches the row's own bg so scrolled-under cells
-// don't show through. Same convention as CasPage/AccountsPage.
-const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 type SheetState = { provider: ProviderSchema; credential?: DnsCredential } | null;
 
@@ -32,7 +26,7 @@ function Header() {
   return (
     <TableHeader>
       <TableRow>
-        <TableHead className={stickyCol}>Name</TableHead>
+        <TableHead>Name</TableHead>
         <TableHead className="w-28">
           <HintLabel id="dns.usedBy">Used by</HintLabel>
         </TableHead>
@@ -114,7 +108,7 @@ export function CredentialsPage() {
                   const editReason = metaPending ? 'Provider data is loading.' : `Unknown provider "${c.providerCode}".`;
                   return (
                     <TableRow key={c.id}>
-                      <TableCell className={cn('py-1.5', stickyCol)}>
+                      <TableCell className="py-1.5">
                         <PrimaryCell primary={c.name} meta={[provider?.name ?? c.providerCode]} />
                       </TableCell>
                       <TableCell className="py-1">{`Used by ${usedBy}`}</TableCell>

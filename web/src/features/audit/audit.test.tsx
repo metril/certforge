@@ -63,7 +63,7 @@ it('sends URL filters to the API and shows them as chips', async () => {
   expect(last().get('action')).toBe('session.');
   expect(last().get('resourceType')).toBe('user');
   expect(last().get('orgId')).toBe(org.id);
-  await user.click(screen.getByRole('button', { name: 'Remove filter Action: session.*' }));
+  await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   await waitFor(() => expect(last().has('action')).toBe(false));
 });
 
@@ -80,8 +80,8 @@ it('survives a bad URL', async () => {
 it('keeps an inverted date range visible and sends it', async () => {
   const seen = capture();
   renderRoute('/o/acme/audit?from=2030-01-01&to=2020-01-01');
-  expect(await screen.findByText('From 2030-01-01')).toBeInTheDocument();
-  expect(screen.getByText('To 2020-01-01')).toBeInTheDocument();
+  expect(await screen.findByLabelText('From date')).toHaveValue('2030-01-01');
+  expect(screen.getByLabelText('To date')).toHaveValue('2020-01-01');
   expect(seen[seen.length - 1]!.has('from')).toBe(true);
 });
 
@@ -208,7 +208,7 @@ it('keeps an externally applied q (saved view) synced to the input, without the 
   await user.click(screen.getByRole('button', { name: 'Save view' }));
   await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Berlin only');
   await user.click(screen.getByRole('button', { name: 'Save' }));
-  await user.click(screen.getByRole('button', { name: 'Remove filter Search: berlin' }));
+  await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   await waitFor(() => expect(router.state.location.search).toEqual({}));
 
   await user.click(screen.getByRole('button', { name: 'Berlin only' }));
