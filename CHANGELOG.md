@@ -2,6 +2,24 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.6.0](https://github.com/metril/certforge/compare/v0.5.0...v0.6.0) (2026-10-02)
+
+
+### Features
+
+* run backups without the key copy confirmation and show key status only when needed ([47d9348](https://github.com/metril/certforge/commit/47d934809d73cf1698bc586b7ff5d1b942315f43))
+
+
+### Bug Fixes
+
+* **web:** do not suggest removing the old key before re-encryption has finished ([ad2e977](https://github.com/metril/certforge/commit/ad2e97746442d20bed1fd814a035734709067d02))
+* **web:** events table overflow, shorter labels, and plain encryption key wording ([99566a4](https://github.com/metril/certforge/commit/99566a444c3af158bb803e02accb00854381a3df))
+* **web:** keep backup actions inside the status card ([7facc90](https://github.com/metril/certforge/commit/7facc90c3ba633c522dc462abe7e272d7521c8d2))
+* **web:** keep the events table within its container with long channel names ([86784d5](https://github.com/metril/certforge/commit/86784d5f7a665f3e717a7ebdec53b58a6134249a))
+* **web:** rename the Backup and keys settings section to Backups ([4f967a4](https://github.com/metril/certforge/commit/4f967a46cb45119d2a3196b53031d1cc71e2b69f))
+* **web:** say encryption key and re-encrypt instead of KEK and rewrap ([2c7b3b3](https://github.com/metril/certforge/commit/2c7b3b342eb728a60b6acab7f9eb1b5de6cbcaf9))
+* **web:** shorten the events severity filter to All, Warning+ and Critical ([055514c](https://github.com/metril/certforge/commit/055514c9b6915f59f36b3cd6caabc4aa9f12f6f0))
+
 ## [0.5.0](https://github.com/metril/certforge/compare/v0.4.0...v0.5.0) (2026-10-02)
 
 
