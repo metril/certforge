@@ -36,12 +36,12 @@ export function RecentActivity({ orgId }: { orgId?: string }) {
 
   return (
     <section aria-label="Recent activity" className="grid content-start gap-2">
-      <h2 className="flex items-center gap-1.5 text-base font-semibold">
-        Recent activity <HelpTip id="overview.activity" />
-        <Link to="/o/$org/audit" params={{ org: slug }} className="ml-auto text-sm font-normal text-primary underline-offset-2 hover:underline">
+      <div className="flex items-center gap-1.5">
+        <HelpTip id="overview.activity" />
+        <Link to="/o/$org/audit" params={{ org: slug }} className="ml-auto text-sm text-primary underline-offset-2 hover:underline">
           Audit log
         </Link>
-      </h2>
+      </div>
       {q.isError ? (
         <ErrorState message={`Couldn't load recent activity. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
       ) : q.data?.length === 0 ? (

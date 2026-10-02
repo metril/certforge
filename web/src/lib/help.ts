@@ -230,6 +230,7 @@ export const help = {
     text: 'One tick per certificate at its expiry, coloured by state. Drag across the strip to list a range.',
     learnMore: 'web-ui.md#overview',
   },
+  'overview.page': { text: 'Certificate health at a glance: status counts, what needs attention, upcoming expiries and recent activity.', learnMore: 'web-ui.md#overview' },
   'overview.attention': { text: 'Expired, waiting on you, failing, overdue, not deployed or offline, most urgent first.', learnMore: 'web-ui.md#overview' },
   'attention.monitor': { text: 'An external monitor sees the wrong certificate or cannot connect.', learnMore: 'monitoring.md#states' },
   'cert.grants': { text: 'Clients this certificate is granted to.' },

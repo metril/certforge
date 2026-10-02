@@ -7,6 +7,12 @@ import { renderRoute } from '@/test/render';
 
 afterEach(() => vi.useRealTimers());
 
+// Recent activity is the second tab of the Overview's insights card.
+async function openActivity(user: ReturnType<typeof renderRoute>['user']) {
+  await user.click(await screen.findByRole('tab', { name: 'Recent activity' }));
+  return screen.findByRole('region', { name: 'Recent activity' });
+}
+
 it('shows the last 20 events for the org', async () => {
   let query: URLSearchParams | undefined;
   server.use(
@@ -17,8 +23,8 @@ it('shows the last 20 events for the org', async () => {
       return HttpResponse.json({ items: [makeAuditEvent({ id: 3, action: 'certificate.renew' }), makeAuditEvent({ id: 2, action: 'ca.create', actorName: 'Ann' })], nextCursor: null });
     }),
   );
-  renderRoute('/o/acme/overview');
-  const region = await screen.findByRole('region', { name: 'Recent activity' });
+  const { user } = renderRoute('/o/acme/overview');
+  const region = await openActivity(user);
   expect(await within(region).findByRole('link', { name: 'certificate.renew' })).toHaveAttribute('href', '/o/acme/audit?event=3');
   expect(within(region).getByText('Ann')).toBeInTheDocument();
   expect(query?.get('orgId')).toBe(org.id);
@@ -33,6 +39,7 @@ it('is hidden without audit:read', async () => {
   );
   renderRoute('/o/acme/overview');
   await screen.findByRole('region', { name: 'Upcoming renewals' });
+  expect(screen.queryByRole('tab', { name: 'Recent activity' })).not.toBeInTheDocument();
   expect(screen.queryByRole('region', { name: 'Recent activity' })).not.toBeInTheDocument();
 });
 
@@ -50,8 +57,8 @@ it('falls back to actorName for a caller without users:read, and never fetches /
       throw new Error('an auditor without users:read must never fetch /users');
     }),
   );
-  renderRoute('/o/acme/overview');
-  const region = await screen.findByRole('region', { name: 'Recent activity' });
+  const { user } = renderRoute('/o/acme/overview');
+  const region = await openActivity(user);
   expect(await within(region).findByText('Someone')).toBeInTheDocument();
   expect(within(region).queryByText('u-9')).not.toBeInTheDocument();
 });
@@ -68,8 +75,8 @@ it('falls back to actorType when actorName is blank too', async () => {
       HttpResponse.json({ items: [makeAuditEvent({ id: 4, actorId: 'u-9', actorName: '', actorType: 'system' })], nextCursor: null }),
     ),
   );
-  renderRoute('/o/acme/overview');
-  const region = await screen.findByRole('region', { name: 'Recent activity' });
+  const { user } = renderRoute('/o/acme/overview');
+  const region = await openActivity(user);
   expect(await within(region).findByText('system')).toBeInTheDocument();
   expect(within(region).queryByText('u-9')).not.toBeInTheDocument();
 });
@@ -83,8 +90,8 @@ it('shows and links into /o/all/audit under All orgs', async () => {
     http.get(url('/certificates'), () => HttpResponse.json({ items: [makeCert({ orgId: org.id })], nextCursor: null })),
     http.get(url('/audit'), () => HttpResponse.json({ items: [makeAuditEvent({ id: 5, action: 'org.create' })], nextCursor: null })),
   );
-  renderRoute('/o/all/overview');
-  const region = await screen.findByRole('region', { name: 'Recent activity' });
+  const { user } = renderRoute('/o/all/overview');
+  const region = await openActivity(user);
   expect(await within(region).findByRole('link', { name: 'org.create' })).toHaveAttribute('href', '/o/all/audit?event=5');
 });
 
@@ -103,8 +110,8 @@ it('refreshes relative times on each poll, not just on new data', async () => {
     http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
     http.get(url('/audit'), () => HttpResponse.json({ items: [makeAuditEvent({ id: 1, ts: iso(0) })], nextCursor: null })),
   );
-  const { queryClient } = renderRoute('/o/acme/overview');
-  const region = await screen.findByRole('region', { name: 'Recent activity' });
+  const { queryClient, user } = renderRoute('/o/acme/overview');
+  const region = await openActivity(user);
   expect(await within(region).findByText('just now')).toBeInTheDocument();
 
   vi.setSystemTime(NOW + 60_100);
