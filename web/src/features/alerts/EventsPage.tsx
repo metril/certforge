@@ -13,6 +13,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { FilterChips } from '@/components/FilterChips';
 import { FilterField } from '@/components/FilterToolbar';
 import { MultiCombobox } from '@/components/MultiCombobox';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -27,7 +28,8 @@ import { EventRow, ResourceLink } from './EventRow';
 type Range = '24h' | '7d' | '30d';
 const RANGE_DAYS: Record<Range, number> = { '24h': 1, '7d': 7, '30d': 30 };
 const RANGE_LABEL: Record<Range | 'all', string> = { all: 'All time', '24h': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days' };
-const SEVERITY_LABEL = { any: 'Any', warning: 'Warning and above', critical: 'Critical' } as const;
+const SEVERITY_LABEL = { any: 'All', warning: 'Warning+', critical: 'Critical' } as const;
+const SEVERITY_HINT = { any: 'Every event', warning: 'Warnings and criticals', critical: 'Critical only' } as const;
 
 const KIND_OPTIONS = KIND_GROUPS.flatMap((g) => g.kinds.map((k) => ({ value: k, label: KIND_LABEL[k], group: g.label })));
 const ALL_KINDS = KIND_OPTIONS.map((o) => o.value as EventKind);
@@ -151,17 +153,13 @@ export function EventsPage() {
             </div>
           </FilterField>
           <FilterField label="Severity" help="event.severity">
-            <div className="w-44">
-              <Combobox
-                aria-label="Severity"
-                clearable={false}
-                value={severity ?? 'any'}
-                onChange={(v) => set({ severity: v === 'warning' || v === 'critical' ? v : undefined })}
-                options={(Object.keys(SEVERITY_LABEL) as (keyof typeof SEVERITY_LABEL)[]).map((v) => ({ value: v, label: SEVERITY_LABEL[v] }))}
-                placeholder="Any"
-                emptyText="No match."
-              />
-            </div>
+            <SegmentedControl
+              size="sm"
+              aria-label="Severity"
+              value={severity ?? 'any'}
+              onChange={(v) => set({ severity: v === 'warning' || v === 'critical' ? v : undefined })}
+              options={(Object.keys(SEVERITY_LABEL) as (keyof typeof SEVERITY_LABEL)[]).map((v) => ({ value: v, label: SEVERITY_LABEL[v], hint: SEVERITY_HINT[v] }))}
+            />
           </FilterField>
           <FilterField label="Time">
             <div className="w-44">

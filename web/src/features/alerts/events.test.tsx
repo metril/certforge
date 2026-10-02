@@ -79,15 +79,16 @@ it('a deep-linked kind shows as selected', async () => {
   expect(await screen.findByRole('combobox', { name: 'Kind' })).toHaveTextContent('2 kinds');
 });
 
-it('severity combobox sets the minimum', async () => {
+it('severity segmented control sets the minimum', async () => {
   const seen = captureQuery();
   const { user } = renderRoute('/o/acme/alerts/events');
-  const trigger = await screen.findByRole('combobox', { name: 'Severity' });
-  expect(trigger).toHaveTextContent('Any');
-  await user.click(trigger);
-  await user.click(await screen.findByRole('option', { name: 'Warning and above' }));
+  const group = await screen.findByRole('group', { name: 'Severity' });
+  expect(within(group).getByRole('radio', { name: 'All' })).toBeChecked();
+  await user.click(within(group).getByRole('radio', { name: 'Warning+' }));
   await waitFor(() => expect(seen.severity).toBe('warning'));
-  expect(screen.getByRole('combobox', { name: 'Severity' })).toHaveTextContent('Warning and above');
+  expect(within(screen.getByRole('group', { name: 'Severity' })).getByRole('radio', { name: 'Warning+' })).toBeChecked();
+  await user.click(within(group).getByRole('radio', { name: 'All' }));
+  await waitFor(() => expect(seen.severity).toBeNull());
 });
 
 it('time combobox sends since and defaults to all time', async () => {
@@ -252,8 +253,7 @@ it('empty and filtered empty states', async () => {
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Add channel' })).toHaveAttribute('href', '/o/acme/alerts/channels?edit=new');
 
-  await user.click(screen.getByRole('combobox', { name: 'Severity' }));
-  await user.click(await screen.findByRole('option', { name: 'Critical' }));
+  await user.click(within(screen.getByRole('group', { name: 'Severity' })).getByRole('radio', { name: 'Critical' }));
   expect(await screen.findByText('No events match these filters.')).toBeInTheDocument();
   await user.click(within(screen.getByRole('search', { name: 'Filters' })).getByRole('button', { name: 'Clear filters' }));
   expect(await screen.findByText('No events yet.')).toBeInTheDocument();
