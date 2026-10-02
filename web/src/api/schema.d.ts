@@ -1894,6 +1894,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/flow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * System map of how certificates connect to issuers, delivery, clients and alerts
+         * @description Needs certs:read. Returns five lanes of nodes (issuers, certificates, delivery, clients, alerts) and the edges between them. A lane whose resource the caller cannot read (cas, accounts or dnscreds:read for issuers, delivery:read, clients:read, alerts:read) comes back hidden with no nodes, and edges touching it are dropped. Alert edges are inferred from each channel's filters, not recorded, and carry inferred true. At most 500 nodes; truncated is true when more existed.
+         */
+        get: operations["getFlow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/channels": {
         parameters: {
             query?: never;
@@ -4209,6 +4232,66 @@ export interface components {
             at: string;
             /** @description Why it failed; absent on success. Redacted of every secret value. */
             error?: string;
+        };
+        /**
+         * @description Health of a node or edge.
+         * @enum {string}
+         */
+        FlowStatus: "valid" | "expiring" | "expired" | "failed" | "drift" | "pending" | "idle";
+        /** @description One box on the system map. */
+        FlowNode: {
+            /** @description Stable node id, kind:uuid. */
+            id: string;
+            /**
+             * @description What the node is.
+             * @enum {string}
+             */
+            kind: "ca" | "account" | "dnsCredential" | "certificate" | "layout" | "target" | "hook" | "client" | "channel";
+            /** @description Display name. */
+            name: string;
+            status: components["schemas"]["FlowStatus"];
+            /** @description Short reason for the status; absent when there is nothing to add. */
+            statusDetail?: string;
+            /** @description Web UI path to the resource. */
+            href: string;
+        };
+        /** @description One column of the map. */
+        FlowLane: {
+            /** @description True when the caller lacks read permission for this lane; nodes is then empty. */
+            hidden: boolean;
+            /** @description Nodes in the lane. */
+            nodes: components["schemas"]["FlowNode"][];
+        };
+        /** @description A connection between two nodes. */
+        FlowEdge: {
+            /** @description Source node id. */
+            from: string;
+            /** @description Target node id. */
+            to: string;
+            status: components["schemas"]["FlowStatus"];
+            /** @description True when the link is derived from channel filters rather than recorded configuration. */
+            inferred: boolean;
+        };
+        /** @description The five lanes, left to right. */
+        FlowLanes: {
+            issuers: components["schemas"]["FlowLane"];
+            certificates: components["schemas"]["FlowLane"];
+            delivery: components["schemas"]["FlowLane"];
+            clients: components["schemas"]["FlowLane"];
+            alerts: components["schemas"]["FlowLane"];
+        };
+        /** @description The system map of an org. */
+        Flow: {
+            lanes: components["schemas"]["FlowLanes"];
+            /** @description Connections between nodes. */
+            edges: components["schemas"]["FlowEdge"][];
+            /** @description True when the node or edge cap cut the map short. */
+            truncated: boolean;
+            /**
+             * Format: date-time
+             * @description When the map was built.
+             */
+            generatedAt: string;
         };
         /** @description A configured notification channel (Shared contracts, Channel schema). */
         Channel: {
@@ -8166,6 +8249,33 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getFlow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The system map. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Flow"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };

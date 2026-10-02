@@ -2433,6 +2433,29 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/flow:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: getFlow
+      tags: [orgs]
+      summary: System map of how certificates connect to issuers, delivery, clients and alerts
+      description: >-
+        Needs certs:read. Returns five lanes of nodes (issuers, certificates, delivery, clients,
+        alerts) and the edges between them. A lane whose resource the caller cannot read
+        (cas, accounts or dnscreds:read for issuers, delivery:read, clients:read, alerts:read)
+        comes back hidden with no nodes, and edges touching it are dropped. Alert edges are
+        inferred from each channel's filters, not recorded, and carry inferred true. At most 500
+        nodes; truncated is true when more existed.
+      responses:
+        "200":
+          description: The system map.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Flow"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/channels:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -4408,6 +4431,65 @@ components:
         status: {$ref: "#/components/schemas/DeliveryStatus"}
         at: {type: string, format: date-time, description: When the attempt finished.}
         error: {type: string, maxLength: 1000, description: Why it failed; absent on success. Redacted of every secret value.}
+    FlowStatus:
+      type: string
+      description: Health of a node or edge.
+      enum: [valid, expiring, expired, failed, drift, pending, idle]
+    FlowNode:
+      type: object
+      description: One box on the system map.
+      required: [id, kind, name, status, href]
+      properties:
+        id: {type: string, description: "Stable node id, kind:uuid."}
+        kind:
+          type: string
+          description: What the node is.
+          enum: [ca, account, dnsCredential, certificate, layout, target, hook, client, channel]
+        name: {type: string, description: Display name.}
+        status: {$ref: "#/components/schemas/FlowStatus"}
+        statusDetail: {type: string, description: Short reason for the status; absent when there is nothing to add.}
+        href: {type: string, description: Web UI path to the resource.}
+    FlowLane:
+      type: object
+      description: One column of the map.
+      required: [hidden, nodes]
+      properties:
+        hidden: {type: boolean, description: True when the caller lacks read permission for this lane; nodes is then empty.}
+        nodes:
+          type: array
+          description: Nodes in the lane.
+          items: {$ref: "#/components/schemas/FlowNode"}
+    FlowEdge:
+      type: object
+      description: A connection between two nodes.
+      required: [from, to, status, inferred]
+      properties:
+        from: {type: string, description: Source node id.}
+        to: {type: string, description: Target node id.}
+        status: {$ref: "#/components/schemas/FlowStatus"}
+        inferred: {type: boolean, description: True when the link is derived from channel filters rather than recorded configuration.}
+    FlowLanes:
+      type: object
+      description: The five lanes, left to right.
+      required: [issuers, certificates, delivery, clients, alerts]
+      properties:
+        issuers: {$ref: "#/components/schemas/FlowLane"}
+        certificates: {$ref: "#/components/schemas/FlowLane"}
+        delivery: {$ref: "#/components/schemas/FlowLane"}
+        clients: {$ref: "#/components/schemas/FlowLane"}
+        alerts: {$ref: "#/components/schemas/FlowLane"}
+    Flow:
+      type: object
+      description: The system map of an org.
+      required: [lanes, edges, truncated, generatedAt]
+      properties:
+        lanes: {$ref: "#/components/schemas/FlowLanes"}
+        edges:
+          type: array
+          description: Connections between nodes.
+          items: {$ref: "#/components/schemas/FlowEdge"}
+        truncated: {type: boolean, description: True when the node or edge cap cut the map short.}
+        generatedAt: {type: string, format: date-time, description: When the map was built.}
     Channel:
       type: object
       description: A configured notification channel (Shared contracts, Channel schema).
