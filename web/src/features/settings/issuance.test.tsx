@@ -24,7 +24,7 @@ beforeEach(() => {
     http.get(url('/orgs/org-1/dns-credentials'), () => HttpResponse.json([])),
     http.get(url('/settings/issuance_defaults'), () => HttpResponse.json({ schema: {}, value: {}, stored: null })),
     http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json({})),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({})),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ builtin: {} })),
     http.put(url('/settings/issuance'), async ({ request }) => {
       issuancePut = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({});
@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 async function openGlobalTab() {
-  const { user, ...rest } = renderRoute('/settings/issuance-defaults');
+  const { user, ...rest } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('tab', { name: 'Global' }));
   await screen.findByText('Checks and limits');
   return { user, ...rest };
@@ -110,7 +110,7 @@ it('an org admin (no global settings:write) sees the fields disabled and Save di
 // first, so a real regression (the block leaking onto the org tab) would
 // actually fail this.
 it('the org tab has no checks-and-limits block', async () => {
-  renderRoute('/settings/issuance-defaults');
+  renderRoute('/settings/issuance-defaults?scope=org');
   await screen.findByRole('group', { name: 'Key type' });
   expect(screen.queryByText('Checks and limits')).not.toBeInTheDocument();
   expect(screen.queryByRole('switch', { name: 'Check CAA records' })).not.toBeInTheDocument();
@@ -121,7 +121,7 @@ it('the org tab has no checks-and-limits block', async () => {
 // loading too.
 it('the Checks and limits heading shows while the section is still loading', async () => {
   server.use(http.get(url('/settings/issuance'), () => new Promise(() => {})));
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('tab', { name: 'Global' }));
   expect(await screen.findByText('Checks and limits')).toBeInTheDocument();
   expect(screen.getByText('Loading…')).toBeInTheDocument();

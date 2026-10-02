@@ -15,6 +15,7 @@ type Props<T extends string> = {
 };
 
 export function SegmentedControl<T extends string>({ value, onChange, options, id, size = 'md', ...rest }: Props<T>) {
+  const itemH = size === 'sm' ? 'h-6' : 'h-8';
   return (
     <ToggleGroup.Root
       id={id}
@@ -24,7 +25,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, i
         if (v) onChange(v as T);
       }}
       aria-label={rest['aria-label']}
-      className={cn('inline-flex w-fit items-center gap-0.5 rounded-md border border-border bg-subtle p-0.5', size === 'sm' ? 'h-7' : 'h-9')}
+      className={cn('inline-flex w-fit max-w-full flex-wrap items-center gap-0.5 rounded-md border border-border bg-subtle p-0.5', size === 'sm' ? 'min-h-7' : 'min-h-9')}
     >
       {options.map((o) => {
         const item = (
@@ -33,9 +34,10 @@ export function SegmentedControl<T extends string>({ value, onChange, options, i
             value={o.value}
             disabled={o.disabled}
             className={cn(
-              'inline-flex h-full items-center gap-1.5 rounded-sm px-3 text-sm text-ink-muted transition-colors',
+              'inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm px-3 text-sm text-ink-muted transition-colors [&_svg]:shrink-0',
+              itemH,
               'hover:text-ink disabled:cursor-not-allowed disabled:opacity-50',
-              'data-[state=on]:bg-panel data-[state=on]:font-semibold data-[state=on]:text-ink data-[state=on]:ring-1 data-[state=on]:ring-border',
+              'data-[state=on]:bg-selected data-[state=on]:font-semibold data-[state=on]:text-primary data-[state=on]:ring-1 data-[state=on]:ring-border',
             )}
           >
             {o.label}
@@ -45,7 +47,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, i
         return (
           <Tooltip key={o.value}>
             <TooltipTrigger asChild>
-              <span tabIndex={o.disabled ? 0 : -1} className="h-full">
+              <span tabIndex={o.disabled ? 0 : -1} className={cn('inline-flex', itemH)}>
                 {item}
               </span>
             </TooltipTrigger>

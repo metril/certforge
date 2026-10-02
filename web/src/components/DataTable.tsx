@@ -5,12 +5,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import type { HelpKey } from '@/lib/help';
 import { cn } from '@/lib/utils';
 import { HelpTip } from './HelpTip';
+import { HintLabel } from './HintLabel';
 
 declare module '@tanstack/react-table' {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface ColumnMeta<TData extends RowData, TValue> {
     sortKey?: string;
     help?: HelpKey;
+    /** Help copy shown as a tooltip on the header label (no icon). */
+    hint?: HelpKey;
     className?: string;
   }
 }
@@ -49,9 +52,11 @@ export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort,
                   <span className="inline-flex items-center gap-1">
                     {key && onSort ? (
                       <button type="button" className="inline-flex items-center gap-1 hover:text-ink" onClick={() => onSort(dir === 'ascending' ? `-${key}` : key)}>
-                        {label}
+                        {meta?.hint ? <HintLabel id={meta.hint} focusable={false}>{label}</HintLabel> : label}
                         {dir === 'ascending' ? <ArrowUp className="size-3.5" aria-hidden /> : dir === 'descending' ? <ArrowDown className="size-3.5" aria-hidden /> : <ArrowUpDown className="size-3.5 opacity-40" aria-hidden />}
                       </button>
+                    ) : meta?.hint ? (
+                      <HintLabel id={meta.hint}>{label}</HintLabel>
                     ) : (
                       label
                     )}

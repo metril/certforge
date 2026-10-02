@@ -16,7 +16,7 @@ beforeEach(() => {
     http.get(url('/orgs/org-1/dns-credentials'), () => HttpResponse.json([{ id: 'd-1', name: 'Cloudflare prod', providerCode: 'cloudflare', config: {} }])),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: providers, deployTargets: [], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: 'ca-1', source: 'org' } })),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: 'ca-1', source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
     http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json({ caId: 'ca-1' })),
     http.get(url('/settings/issuance_defaults'), () => HttpResponse.json({ schema: {}, value: {} })),
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca])),
@@ -158,8 +158,8 @@ it('reviews effective options with their source before issuing', async () => {
   await user.click(screen.getByRole('button', { name: 'Review' }));
   const options = screen.getByRole('region', { name: 'Options' });
   expect(within(options).getByText('RSA 2048')).toBeInTheDocument();
-  expect(within(options).getAllByRole('button', { name: 'Cert' })).toHaveLength(1);
-  expect(within(options).getAllByRole('button', { name: 'Org' }).length).toBeGreaterThan(0);
+  expect(within(options).getAllByRole('button', { name: 'Certificate' })).toHaveLength(1);
+  expect(within(options).getAllByRole('button', { name: 'Organization' }).length).toBeGreaterThan(0);
 });
 
 // I3 (Important, Task 10 ruling): OptionsStep must build the Global level of
@@ -179,11 +179,9 @@ it("a field with source 'default' never claims a Global value the section's stor
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
   await user.click(screen.getByRole('button', { name: 'Next' }));
   const keyType = screen.getByRole('group', { name: 'Key type' });
-  expect(within(keyType).getByRole('button', { name: 'Default' })).toBeInTheDocument();
-  await user.hover(within(keyType).getByRole('button', { name: 'Default' }));
-  const tooltip = await screen.findByRole('tooltip');
-  expect(tooltip).toHaveTextContent('Global: server default');
-  expect(tooltip).not.toHaveTextContent('EC P-256');
+  expect(within(keyType).getByRole('button', { name: 'Built-in' })).toBeInTheDocument();
+  await user.click(within(keyType).getByRole('button', { name: 'Built-in' }));
+  await waitFor(() => expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Global: not set'));
 });
 
 it('disables Next on the Names step until a valid name and common name exist', async () => {
@@ -309,7 +307,7 @@ it('edit mode: changing a rule credential (names unchanged) remembers it and sti
 it('private inherited CA enables next with no coverage', async () => {
   server.use(
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
   );
   const { user } = renderRoute('/o/acme/certificates/new');
   await user.click(await screen.findByLabelText('Names'));
@@ -349,7 +347,7 @@ it('choosing private CA in options updates step label', async () => {
 it('create body for localca: sends empty verificationRules for the private effective CA', async () => {
   server.use(
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
   );
   const { user } = renderRoute('/o/acme/certificates/new');
   await user.click(await screen.findByLabelText('Names'));
@@ -368,7 +366,7 @@ it('create body for localca: sends empty verificationRules for the private effec
 it('edit mode: a stale account override on an already-private inherited CA is cleared before save', async () => {
   server.use(
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' } })),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
     http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ overrides: { accountId: 'acc-1' } }))),
     http.put(url('/orgs/org-1/certificates/c-1'), async ({ request }) => {
       updated = await request.json();

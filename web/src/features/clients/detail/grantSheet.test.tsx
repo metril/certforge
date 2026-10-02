@@ -78,6 +78,7 @@ it('grants several certificates with one layout and closes', async () => {
   const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
   await pickMany(user, [/^api/, /^mail/], /^www/);
   await pick(user, 'Layout', /^nginx/);
+  await user.click(within(sheet).getByRole('button', { name: 'Advanced' }));
   await user.click(within(sheet).getByRole('button', { name: 'reload nginx' }));
   await user.click(within(sheet).getByRole('switch', { name: 'Auto-remediate' }));
   await user.click(within(sheet).getByRole('button', { name: 'Grant' }));
@@ -163,6 +164,7 @@ it('shows hooks in run order and saves the reordered list', async () => {
   );
   const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
   const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  await user.click(await within(sheet).findByRole('button', { name: /^Advanced/ }));
   await within(sheet).findByRole('list', { name: 'Hook run order' });
   const order = () => within(within(sheet).getByRole('list', { name: 'Hook run order' })).getAllByRole('listitem').map((li) => li.textContent);
   expect(order()).toEqual([expect.stringMatching(/^1\.reload nginx/), expect.stringMatching(/^2\.notify/)]);

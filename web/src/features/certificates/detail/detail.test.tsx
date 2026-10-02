@@ -30,7 +30,7 @@ function base(user: Me = me) {
     http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([])),
     http.get(url('/orgs/org-1/dns-credentials'), () => HttpResponse.json([{ id: 'd-1', name: 'Cloudflare prod', providerCode: 'cloudflare', config: {} }])),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: providers, deployTargets: [], notifiers: [], signers: [] })),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({})),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ builtin: {} })),
     http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json({})),
     http.get(url('/settings/issuance_defaults'), () => HttpResponse.json({ schema: {}, value: {} })),
   ];

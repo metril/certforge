@@ -25,8 +25,8 @@ const (
 
 // Defines values for AcmeAccountStatus.
 const (
-	Deactivated AcmeAccountStatus = "deactivated"
-	Valid       AcmeAccountStatus = "valid"
+	AcmeAccountStatusDeactivated AcmeAccountStatus = "deactivated"
+	AcmeAccountStatusValid       AcmeAccountStatus = "valid"
 )
 
 // Defines values for AgentCAStatus.
@@ -179,6 +179,30 @@ const (
 const (
 	ExportFormatJks ExportFormat = "jks"
 	ExportFormatP12 ExportFormat = "p12"
+)
+
+// Defines values for FlowNodeKind.
+const (
+	FlowNodeKindAccount       FlowNodeKind = "account"
+	FlowNodeKindCa            FlowNodeKind = "ca"
+	FlowNodeKindCertificate   FlowNodeKind = "certificate"
+	FlowNodeKindChannel       FlowNodeKind = "channel"
+	FlowNodeKindClient        FlowNodeKind = "client"
+	FlowNodeKindDnsCredential FlowNodeKind = "dnsCredential"
+	FlowNodeKindHook          FlowNodeKind = "hook"
+	FlowNodeKindLayout        FlowNodeKind = "layout"
+	FlowNodeKindTarget        FlowNodeKind = "target"
+)
+
+// Defines values for FlowStatus.
+const (
+	FlowStatusDrift    FlowStatus = "drift"
+	FlowStatusExpired  FlowStatus = "expired"
+	FlowStatusExpiring FlowStatus = "expiring"
+	FlowStatusFailed   FlowStatus = "failed"
+	FlowStatusIdle     FlowStatus = "idle"
+	FlowStatusPending  FlowStatus = "pending"
+	FlowStatusValid    FlowStatus = "valid"
 )
 
 // Defines values for GrantDelivery.
@@ -1628,6 +1652,93 @@ type FileDigest struct {
 	Sha256 string `json:"sha256"`
 }
 
+// Flow The system map of an org.
+type Flow struct {
+	// Edges Connections between nodes.
+	Edges []FlowEdge `json:"edges"`
+
+	// GeneratedAt When the map was built.
+	GeneratedAt time.Time `json:"generatedAt"`
+
+	// Lanes The five lanes, left to right.
+	Lanes FlowLanes `json:"lanes"`
+
+	// Truncated True when the node or edge cap cut the map short.
+	Truncated bool `json:"truncated"`
+}
+
+// FlowEdge A connection between two nodes.
+type FlowEdge struct {
+	// CertificateId Set on delivery to client edges: the certificate this link carries, so one certificate's path does not light up another's clients. Absent when a certificate is already an endpoint.
+	CertificateId *openapi_types.UUID `json:"certificateId,omitempty"`
+
+	// From Source node id.
+	From string `json:"from"`
+
+	// Status Health of a node or edge.
+	Status FlowStatus `json:"status"`
+
+	// To Target node id.
+	To string `json:"to"`
+}
+
+// FlowLane One column of the map.
+type FlowLane struct {
+	// Hidden True when the caller lacks read permission for this lane; nodes is then empty.
+	Hidden bool `json:"hidden"`
+
+	// Nodes Nodes in the lane.
+	Nodes []FlowNode `json:"nodes"`
+}
+
+// FlowLanes The five lanes, left to right.
+type FlowLanes struct {
+	// Alerts One column of the map.
+	Alerts FlowLane `json:"alerts"`
+
+	// Certificates One column of the map.
+	Certificates FlowLane `json:"certificates"`
+
+	// Clients One column of the map.
+	Clients FlowLane `json:"clients"`
+
+	// Delivery One column of the map.
+	Delivery FlowLane `json:"delivery"`
+
+	// Issuers One column of the map.
+	Issuers FlowLane `json:"issuers"`
+}
+
+// FlowNode One box on the system map.
+type FlowNode struct {
+	// CoversCertificates Channel nodes only: true when the channel is enabled and its event kinds and minimum severity would deliver this org's certificate events.
+	CoversCertificates *bool `json:"coversCertificates,omitempty"`
+
+	// Href Web UI path to the resource.
+	Href string `json:"href"`
+
+	// Id Stable node id, kind:uuid.
+	Id string `json:"id"`
+
+	// Kind What the node is.
+	Kind FlowNodeKind `json:"kind"`
+
+	// Name Display name.
+	Name string `json:"name"`
+
+	// Status Health of a node or edge.
+	Status FlowStatus `json:"status"`
+
+	// StatusDetail Short reason for the status; absent when there is nothing to add.
+	StatusDetail *string `json:"statusDetail,omitempty"`
+}
+
+// FlowNodeKind What the node is.
+type FlowNodeKind string
+
+// FlowStatus Health of a node or edge.
+type FlowStatus string
+
 // Grant A certificate granted to a client (runsOn agent) or a server-side deploy target (runsOn server), with how it is delivered.
 type Grant struct {
 	// AutoRemediate On drift
@@ -2229,6 +2340,42 @@ type Org struct {
 
 	// Slug URL-safe identifier, lowercase letters, digits, and hyphens.
 	Slug string `json:"slug"`
+}
+
+// OrgEffectiveIssuanceDefaults defines model for OrgEffectiveIssuanceDefaults.
+type OrgEffectiveIssuanceDefaults struct {
+	// AccountId Resolved ACME account and its source.
+	AccountId *EffectiveUuid `json:"accountId,omitempty"`
+
+	// Builtin The built-in defaults (what each field resolves to, source "default"). Fields with no built-in value (CA, ACME account, propagation seconds) are absent.
+	Builtin IssuanceDefaults `json:"builtin"`
+
+	// CaId Resolved CA and its source.
+	CaId *EffectiveUuid `json:"caId,omitempty"`
+
+	// KeyType Resolved key algorithm and its source.
+	KeyType *EffectiveString `json:"keyType,omitempty"`
+
+	// MustStaple Resolved must-staple flag and its source.
+	MustStaple *EffectiveBool `json:"mustStaple,omitempty"`
+
+	// PreferredChain Resolved preferred chain and its source.
+	PreferredChain *EffectiveString `json:"preferredChain,omitempty"`
+
+	// PropagationSeconds Resolved propagation timeout and its source.
+	PropagationSeconds *EffectiveInt `json:"propagationSeconds,omitempty"`
+
+	// RenewPolicy Resolved renewal policy and its source.
+	RenewPolicy *EffectiveRenewPolicy `json:"renewPolicy,omitempty"`
+
+	// Resolvers Resolved resolvers and their source.
+	Resolvers *EffectiveStrings `json:"resolvers,omitempty"`
+
+	// ReuseKey Resolved reuse-key flag and its source.
+	ReuseKey *EffectiveBool `json:"reuseKey,omitempty"`
+
+	// VerificationRules Resolved catch-all rules and their source.
+	VerificationRules *EffectiveRules `json:"verificationRules,omitempty"`
 }
 
 // OrgInput A new organization.
@@ -3643,6 +3790,9 @@ type ClientInterface interface {
 
 	// ListEvents request
 	ListEvents(ctx context.Context, orgId OrgId, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetFlow request
+	GetFlow(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteGrant request
 	DeleteGrant(ctx context.Context, orgId OrgId, id Id, params *DeleteGrantParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5121,6 +5271,18 @@ func (c *APIClient) TestDNSCredential(ctx context.Context, orgId OrgId, id Id, b
 
 func (c *APIClient) ListEvents(ctx context.Context, orgId OrgId, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListEventsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) GetFlow(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFlowRequest(c.Server, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -10145,6 +10307,40 @@ func NewListEventsRequest(server string, orgId OrgId, params *ListEventsParams) 
 	return req, nil
 }
 
+// NewGetFlowRequest generates requests for GetFlow
+func NewGetFlowRequest(server string, orgId OrgId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/flow", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteGrantRequest generates requests for DeleteGrant
 func NewDeleteGrantRequest(server string, orgId OrgId, id Id, params *DeleteGrantParams) (*http.Request, error) {
 	var err error
@@ -12212,6 +12408,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListEventsWithResponse request
 	ListEventsWithResponse(ctx context.Context, orgId OrgId, params *ListEventsParams, reqEditors ...RequestEditorFn) (*ListEventsResponse, error)
+
+	// GetFlowWithResponse request
+	GetFlowWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*GetFlowResponse, error)
 
 	// DeleteGrantWithResponse request
 	DeleteGrantWithResponse(ctx context.Context, orgId OrgId, id Id, params *DeleteGrantParams, reqEditors ...RequestEditorFn) (*DeleteGrantResponse, error)
@@ -14718,6 +14917,32 @@ func (r ListEventsResponse) StatusCode() int {
 	return 0
 }
 
+type GetFlowResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *Flow
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFlowResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFlowResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteGrantResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -15000,7 +15225,7 @@ func (r PutOrgIssuanceDefaultsResponse) StatusCode() int {
 type GetEffectiveIssuanceDefaultsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
-	JSON200                   *EffectiveIssuanceDefaults
+	JSON200                   *OrgEffectiveIssuanceDefaults
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
 	ApplicationproblemJSON404 *NotFound
@@ -16798,6 +17023,15 @@ func (c *ClientWithResponses) ListEventsWithResponse(ctx context.Context, orgId 
 		return nil, err
 	}
 	return ParseListEventsResponse(rsp)
+}
+
+// GetFlowWithResponse request returning *GetFlowResponse
+func (c *ClientWithResponses) GetFlowWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*GetFlowResponse, error) {
+	rsp, err := c.GetFlow(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFlowResponse(rsp)
 }
 
 // DeleteGrantWithResponse request returning *DeleteGrantResponse
@@ -22738,6 +22972,60 @@ func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
 	return response, nil
 }
 
+// ParseGetFlowResponse parses an HTTP response from a GetFlowWithResponse call
+func ParseGetFlowResponse(rsp *http.Response) (*GetFlowResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFlowResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Flow
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteGrantResponse parses an HTTP response from a DeleteGrantWithResponse call
 func ParseDeleteGrantResponse(rsp *http.Response) (*DeleteGrantResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -23426,7 +23714,7 @@ func ParseGetEffectiveIssuanceDefaultsResponse(rsp *http.Response) (*GetEffectiv
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest EffectiveIssuanceDefaults
+		var dest OrgEffectiveIssuanceDefaults
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

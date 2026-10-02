@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useState, type ReactNode } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert } from 'lucide-react';
@@ -10,13 +11,14 @@ import { useCreateGrants, useUpdateGrant, type GrantBatchResult } from '@/api/qu
 import type { Client, Grant, GrantDelivery } from '@/api/types';
 import { ChipSet } from '@/components/ChipSet';
 import { Combobox } from '@/components/Combobox';
+import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
 import { MultiCombobox } from '@/components/MultiCombobox';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 import { help } from '@/lib/help';
 
@@ -41,6 +43,7 @@ function QueryField({ label, q, children }: { label: string; q: UseQueryResult<u
 }
 
 export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const certs = useQuery(allCertificatesQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const targetsQ = useQuery(deployTargetsQuery(orgId));
@@ -60,6 +63,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
   const [errors, setErrors] = useState<{ certs?: string; where?: string }>({});
   const [failures, setFailures] = useState<GrantBatchResult['failed']>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const dirty = useDirty({ certIds, delivery, layoutId, targetId, hookIds, autoRemediate });
   const busy = create.isPending || update.isPending;
 
   const granted = new Set(grants.map((g) => g.certificateId));
@@ -88,7 +92,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
     if (editing) {
       try {
         await update.mutateAsync({ id: editing.id, body: rest });
-        onOpenChange(false);
+        guard.close();
       } catch (e) {
         setFormError(errorMessage(e));
       }
@@ -97,7 +101,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
     const r = await create.mutateAsync({ certificateIds: certIds, rest });
     if (r.created.length > 0) toast.success(`Granted ${plural(r.created.length, 'certificate')}`);
     if (r.failed.length === 0) {
-      onOpenChange(false);
+      guard.close();
       return;
     }
     setCertIds(r.failed.map((f) => f.certificateId));
@@ -105,7 +109,7 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
   };
 
   return (
-    <Sheet open onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{editing ? `Edit ${editing.certificateName}` : 'Grant certificate'}</SheetTitle>
@@ -186,60 +190,62 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
               />
             </QueryField>
           </Field>
-          <Field id="grant-hooks" label="Hooks" help="grant.hooks" optional>
-            <QueryField label="hooks" q={hooksQ}>
-              {hooks.length ? (
-                <div className="grid gap-2">
-                  <ChipSet
-                    id="grant-hooks"
-                    aria-label="Hooks"
-                    value={hookIds}
-                    onChange={setHookIds}
-                    options={hooks.map((h) => ({ value: h.id, label: h.name, hint: PHASE_LABEL[h.phase] }))}
-                  />
-                  {hookIds.length > 0 && (
-                    <ol aria-label="Hook run order" className="grid gap-1">
-                      {hookIds.map((hid, i) => {
-                        const h = hooks.find((x) => x.id === hid);
-                        const name = h?.name ?? hid;
-                        return (
-                          <li key={hid} className="flex min-h-9 items-center gap-2 rounded-md border border-border px-2 text-sm">
-                            <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
-                            <span className="min-w-0 flex-1 truncate">{name}</span>
-                            {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
-                            <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
-                              <ArrowUp className="size-3.5" aria-hidden />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="size-7"
-                              aria-label={`Move ${name} down`}
-                              disabled={i === hookIds.length - 1}
-                              onClick={() => moveHook(i, 1)}
-                            >
-                              <ArrowDown className="size-3.5" aria-hidden />
-                            </Button>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-ink-muted">No hooks in this org.</p>
-              )}
-            </QueryField>
-          </Field>
-          <SwitchField
-            id="grant-auto"
-            label="Auto-remediate"
-            help="grant.autoRemediate"
-            checked={autoRemediate}
-            onCheckedChange={setAutoRemediate}
-            onText="Reinstall on drift"
-            offText="Report only"
-          />
+          <FormSection title="Advanced" collapsible count={(hookIds.length > 0 ? 1 : 0) + (autoRemediate ? 1 : 0)}>
+            <Field id="grant-hooks" label="Hooks" help="grant.hooks" optional>
+              <QueryField label="hooks" q={hooksQ}>
+                {hooks.length ? (
+                  <div className="grid gap-2">
+                    <ChipSet
+                      id="grant-hooks"
+                      aria-label="Hooks"
+                      value={hookIds}
+                      onChange={setHookIds}
+                      options={hooks.map((h) => ({ value: h.id, label: h.name, hint: PHASE_LABEL[h.phase] }))}
+                    />
+                    {hookIds.length > 0 && (
+                      <ol aria-label="Hook run order" className="grid gap-1">
+                        {hookIds.map((hid, i) => {
+                          const h = hooks.find((x) => x.id === hid);
+                          const name = h?.name ?? hid;
+                          return (
+                            <li key={hid} className="flex min-h-9 items-center gap-2 rounded-md border border-border px-2 text-sm">
+                              <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
+                              <span className="min-w-0 flex-1 truncate">{name}</span>
+                              {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
+                              <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
+                                <ArrowUp className="size-3.5" aria-hidden />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="size-7"
+                                aria-label={`Move ${name} down`}
+                                disabled={i === hookIds.length - 1}
+                                onClick={() => moveHook(i, 1)}
+                              >
+                                <ArrowDown className="size-3.5" aria-hidden />
+                              </Button>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-muted">No hooks in this org.</p>
+                )}
+              </QueryField>
+            </Field>
+            <SwitchField
+              id="grant-auto"
+              label="Auto-remediate"
+              help="grant.autoRemediate"
+              checked={autoRemediate}
+              onCheckedChange={setAutoRemediate}
+              onText="Reinstall on drift"
+              offText="Report only"
+            />
+          </FormSection>
           {failures.length > 0 && (
             <ul role="alert" aria-label="Not granted" className="grid gap-1 rounded-md border border-failed p-3 text-sm">
               {failures.map((f) => (
@@ -255,9 +261,9 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
           )}
         </div>
         <SheetFooter className="flex-row justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+          <SheetClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </SheetClose>
           <Button disabled={busy} onClick={() => void submit()}>
             {editing ? 'Save' : 'Grant'}
           </Button>

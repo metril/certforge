@@ -3,12 +3,15 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/issuance"
 )
 
 func TestCaPresetsListed(t *testing.T) {
@@ -167,4 +170,37 @@ func TestEffectiveDefaultsShowSources(t *testing.T) {
 	bad := gen.KeyType("dsa")
 	_, err = f.srv.PutOrgIssuanceDefaults(f.as("operator"), gen.PutOrgIssuanceDefaultsRequestObject{OrgId: f.org, Body: &gen.IssuanceDefaults{KeyType: &bad}})
 	wantStatus(t, err, http.StatusUnprocessableEntity)
+}
+
+// The built-ins served beside the effective values are issuance.BuiltinDefaults,
+// so the web client carries no copy of them.
+func TestEffectiveDefaultsServeBuiltins(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.GetEffectiveIssuanceDefaults(f.as("viewer"), gen.GetEffectiveIssuanceDefaultsRequestObject{OrgId: f.org})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compare as JSON objects, dropping nulls: the generated type writes an
+	// unset nullable field as null where BuiltinDefaults omits it.
+	norm := func(v any) map[string]any {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := map[string]any{}
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		for k, x := range m {
+			if x == nil {
+				delete(m, k)
+			}
+		}
+		return m
+	}
+	got := norm(res.(gen.GetEffectiveIssuanceDefaults200JSONResponse).Builtin)
+	want := norm(issuance.BuiltinDefaults())
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("builtin = %v, want %v", got, want)
+	}
 }

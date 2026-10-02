@@ -50,14 +50,14 @@ beforeEach(() => {
 // of type vault-kv, whose display name is also "Vault KV" now that
 // RunsOnChip — not a name suffix — carries where it runs); the first
 // match is always the Name cell.
-const rowOf = (name: string) => screen.getAllByText((_, node) => node?.tagName === 'TD' && node.textContent?.trim() === name)[0]!.closest('tr')!;
+const rowOf = (name: string) => screen.getAllByText(name)[0]!.closest('tr')!;
 
 it('opens from the nav and lists targets with type, location and use', async () => {
   const { router } = renderRoute('/o/acme/delivery');
   await screen.findByRole('table', { name: 'Deploy targets' });
   expect(router.state.location.pathname).toBe('/o/acme/delivery/targets');
   const row = rowOf('edge traefik');
-  for (const text of ['Traefik (file provider)', 'Agent', '/etc/traefik/dynamic', '2 grants']) expect(within(row).getByText(text)).toBeInTheDocument();
+  for (const text of [/Traefik \(file provider\) · \/etc\/traefik\/dynamic/, 'Agent', '2 grants']) expect(within(row).getByText(text)).toBeInTheDocument();
   expect(within(rowOf('spare')).getByText('–')).toBeInTheDocument();
 });
 
@@ -267,22 +267,21 @@ it('location column is generic', async () => {
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv, targetTestSecret] })),
   );
   renderRoute('/o/acme/delivery/targets');
-  const table = await screen.findByRole('table', { name: 'Deploy targets' });
-  expect(within(table).getByText('Location')).toBeInTheDocument();
-  expect(within(rowOf('edge traefik')).getByText('/etc/traefik/dynamic')).toBeInTheDocument();
-  expect(within(rowOf(targetVaultKv.name)).getByText('certforge/acme/www')).toBeInTheDocument();
-  expect(within(rowOf(targetTestSecret.name)).getByText('https://sink.test')).toBeInTheDocument();
+  await screen.findByRole('table', { name: 'Deploy targets' });
+  expect(within(rowOf('edge traefik')).getByText(/\/etc\/traefik\/dynamic/)).toBeInTheDocument();
+  expect(within(rowOf(targetVaultKv.name)).getByText(/certforge\/acme\/www/)).toBeInTheDocument();
+  expect(within(rowOf(targetTestSecret.name)).getByText(/https:\/\/sink\.test/)).toBeInTheDocument();
 });
 
-it('lock icon for stored secrets', async () => {
+it('notes stored secrets in the meta line', async () => {
   server.use(
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, testSecretSchema], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetTestSecret] })),
   );
   renderRoute('/o/acme/delivery/targets');
   await screen.findByRole('table', { name: 'Deploy targets' });
-  expect(within(rowOf(targetTestSecret.name)).getByLabelText('Stored secrets')).toBeInTheDocument();
-  expect(within(rowOf('edge traefik')).queryByLabelText('Stored secrets')).not.toBeInTheDocument();
+  expect(within(rowOf(targetTestSecret.name)).getByText(/secrets stored/)).toBeInTheDocument();
+  expect(within(rowOf('edge traefik')).queryByText(/secrets stored/)).not.toBeInTheDocument();
 });
 
 it('stacks as cards below md', async () => {

@@ -226,22 +226,18 @@ it('type chip and endpoint per kind', async () => {
   renderRoute('/o/acme/issuers/cas');
   await screen.findByText(ca.name);
   const rows = screen.getAllByRole('row').slice(1); // drop the header row
-  expect(within(rows[0]!).getByText('ACME')).toBeInTheDocument();
-  expect(within(rows[0]!).getByText(ca.directoryUrl)).toBeInTheDocument();
-  expect(within(rows[1]!).getByText('Built-in CA')).toBeInTheDocument();
-  // caLocal's name and its endpoint (subject common name) are both "Internal CA".
-  expect(within(rows[1]!).getAllByText('Internal CA')).toHaveLength(2);
-  // caVaultPki's name is also literally "Vault PKI" (fixture), same as the kind label.
-  expect(within(rows[2]!).getAllByText('Vault PKI')).toHaveLength(2);
-  expect(within(rows[2]!).getByText('pki/certforge')).toBeInTheDocument();
+  expect(within(rows[0]!).getByText(/^ACME · /)).toBeInTheDocument();
+  expect(within(rows[0]!).getByText(new RegExp(ca.directoryUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument();
+  expect(within(rows[1]!).getByText(/^Built-in CA · Internal CA/)).toBeInTheDocument();
+  expect(within(rows[1]!).getByText('Internal CA')).toBeInTheDocument();
+  expect(within(rows[2]!).getByText(/^Vault PKI · pki\/certforge/)).toBeInTheDocument();
 });
 
 it('filter by type', async () => {
   cas = [ca, caLocal, caVaultPki];
   renderRoute('/o/acme/issuers/cas?type=localca');
   const table = await screen.findByRole('table');
-  // caLocal's name and its endpoint (subject common name) are both "Internal CA".
-  expect(within(table).getAllByText('Internal CA')).toHaveLength(2);
+  expect(within(table).getByText('Internal CA')).toBeInTheDocument();
   expect(within(table).queryByText(ca.name)).not.toBeInTheDocument();
   expect(within(table).queryByText('Vault PKI')).not.toBeInTheDocument();
   expect(within(table).getAllByRole('row')).toHaveLength(2); // header + Internal CA

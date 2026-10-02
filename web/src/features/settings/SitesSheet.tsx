@@ -24,6 +24,7 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState<Site | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const dirty = name.trim() !== '' || renaming !== null;
   const newSiteRef = useRef<HTMLInputElement>(null);
 
   // A different org opening in the same mounted sheet (or the sheet
@@ -55,7 +56,7 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
   };
 
   return (
-    <Sheet open={org !== null} onOpenChange={(o) => !o && onClose()}>
+    <Sheet open={org !== null} form dirty={dirty} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="grid content-start gap-4 sm:max-w-md">
         <SheetHeader>
           <SheetTitle>Sites of {org?.name}</SheetTitle>

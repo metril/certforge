@@ -28,6 +28,7 @@
      carry ONE elevation shadow, from the token, not ad hoc values. */
   --shadow-md: var(--shadow-overlay);
   --shadow-lg: var(--shadow-overlay);
+  --shadow-ctl: var(--shadow-control);
   --color-background: var(--cf-surface);
   --color-foreground: var(--cf-ink);
   --color-card: var(--cf-panel);
@@ -44,7 +45,9 @@
   --color-accent-foreground: var(--cf-ink);
   --color-destructive: var(--cf-failed);
   --color-border: var(--cf-border);
-  --color-input: var(--cf-border);
+  --color-input: var(--cf-control-border);
+  --color-field: var(--cf-field);
+  --color-selected: var(--cf-selected);
   --color-ring: var(--cf-primary);
   --color-ink: var(--cf-ink);
   --color-ink-muted: var(--cf-ink-muted);

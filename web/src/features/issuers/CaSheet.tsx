@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema } from '@rjsf/utils';
@@ -11,7 +12,7 @@ import { PermissionTip } from '@/components/PermissionTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import type { SchemaFormHandle } from '@/forms/SchemaForm';
 import { KIND_LABEL } from '@/lib/caKinds';
 import { help } from '@/lib/help';
@@ -48,6 +49,7 @@ const KIND_OPTIONS: CaType[] = ['acme', 'localca', 'vaultpki'];
 type Props = { orgId: string; open: boolean; ca?: CA; initialKind?: CaType; onOpenChange: (open: boolean) => void };
 
 export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
   // cas:write is global-only (internal/authz/authz.go): a control the
@@ -66,6 +68,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
   const [serverError, setServerError] = useState<{ field: ServerField; message: string } | null>(null);
   const [configError, setConfigError] = useState<ErrorSchema | undefined>(undefined);
   const [bannerError, setBannerError] = useState<string | null>(null);
+  const dirty = useDirty(draft);
 
   const preset = presets.find((p) => p.preset === draft.acme.preset);
   const nameOk = draft.name.trim() !== '';
@@ -95,7 +98,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
     setSaving(true);
     try {
       await saveCa(qc, orgId, toCaInput(draft, { presets, ca }), ca?.id);
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       // Fix round 2 (carried): a plain network failure (offline, timeout —
       // not an ApiError) must still surface, not just stop the button
@@ -114,7 +117,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{ca ? `Edit ${ca.name}` : 'Add certificate authority'}</SheetTitle>
@@ -173,9 +176,9 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
             </p>
           )}
           <SheetFooter className="flex-row justify-end gap-2 px-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
+            <SheetClose asChild>
+              <Button type="button" variant="outline">Cancel</Button>
+            </SheetClose>
             <PermissionTip allowed={canWrite} action="cas:write">
               <Button type="submit" disabled={!canWrite || saving}>
                 Save CA

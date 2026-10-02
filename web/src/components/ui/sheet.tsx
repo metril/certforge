@@ -4,9 +4,179 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
+import { useBlocker, useRouter } from "@tanstack/react-router"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+const SheetFormContext = React.createContext(false)
+
+type SheetProps = React.ComponentProps<typeof SheetPrimitive.Root> & {
+  /** Form sheet: outside clicks never close it. */
+  form?: boolean
+  /** With `form`: closing asks "Discard changes?" first. */
+  dirty?: boolean
+  /** From `useSheetGuard`: lets a save/delete close skip the navigation block. */
+  guard?: SheetGuard
+}
+
+type SheetGuard = { ref: React.MutableRefObject<boolean>; close: () => void }
+
+/** Call `guard.close()` instead of `onOpenChange(false)` once a save or delete
+ * has succeeded: the close navigates (drops the URL param) while `dirty` may
+ * still be true, which the navigation block must let through. */
+function useSheetGuard(onOpenChange: (open: boolean) => void): SheetGuard {
+  const ref = React.useRef(false)
+  const latest = React.useRef(onOpenChange)
+  latest.current = onOpenChange
+  return React.useMemo(
+    () => ({
+      ref,
+      close: () => {
+        ref.current = true
+        latest.current(false)
+      },
+    }),
+    []
+  )
+}
+
+// Search keys that open a side panel from the URL. Navigation that keeps them
+// unchanged (same route) leaves the sheet open, so it is never blocked.
+const SHEET_KEYS = ['edit', 'view'] as const
+
+type Loc = { routeId: string; params: unknown; search: Record<string, unknown> }
+
+function keepsSheetOpen(cur: Loc, next: Loc) {
+  return (
+    cur.routeId === next.routeId &&
+    JSON.stringify(cur.params) === JSON.stringify(next.params) &&
+    SHEET_KEYS.every((k) => cur.search[k] === next.search[k])
+  )
+}
+
+function DiscardDialog({
+  open,
+  onCancel,
+  onDiscard,
+}: {
+  open: boolean
+  onCancel: () => void
+  onDiscard: () => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Discard changes?</DialogTitle>
+          <DialogDescription>Your unsaved changes will be lost.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={onDiscard}>
+            Discard
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Blocks router navigation (Back/Forward, links, navigate()) and tab
+ * reload/close while a dirty form sheet is open, and owns the single
+ * "Discard changes?" dialog shared with the Escape/X/Cancel guard. A
+ * sheet's own save/delete close (`useSheetGuard().close`) and the guard's
+ * confirmed discard lift the block through `bypass`. */
+function NavGuard({
+  active,
+  confirming,
+  setConfirming,
+  bypass,
+  onDiscard,
+}: {
+  active: boolean
+  confirming: boolean
+  setConfirming: (c: boolean) => void
+  bypass: React.MutableRefObject<boolean>
+  onDiscard: () => void
+}) {
+  const resolver = useBlocker({
+    shouldBlockFn: ({ current, next }) =>
+      !bypass.current && !keepsSheetOpen(current as Loc, next as Loc),
+    withResolver: true,
+    disabled: !active,
+    enableBeforeUnload: active,
+  })
+  const blocked = resolver.status === 'blocked'
+  const cancel = () => {
+    if (blocked) resolver.reset()
+    setConfirming(false)
+  }
+  return (
+    <DiscardDialog
+      open={active && (blocked || confirming)}
+      onCancel={cancel}
+      onDiscard={() => {
+        bypass.current = true
+        setConfirming(false)
+        if (blocked) resolver.proceed()
+        else onDiscard()
+      }}
+    />
+  )
+}
+
+function Sheet({ form = false, dirty = false, guard, onOpenChange, ...props }: SheetProps) {
+  const [confirming, setConfirming] = React.useState(false)
+  const ownBypass = React.useRef(false)
+  const bypass = guard?.ref ?? ownBypass
+  const router = useRouter({ warn: false })
+  const guarded = form && dirty
+  const open = props.open !== false
+  React.useEffect(() => {
+    if (!open || !guarded) bypass.current = false
+  }, [open, guarded, bypass])
+  const discard = () => onOpenChange?.(false)
+  return (
+    <SheetFormContext.Provider value={form}>
+      <SheetPrimitive.Root
+        data-slot="sheet"
+        {...props}
+        onOpenChange={(o) => {
+          if (!o && guarded) setConfirming(true)
+          else onOpenChange?.(o)
+        }}
+      />
+      {router && form ? (
+        <NavGuard
+          active={guarded && open}
+          confirming={confirming}
+          setConfirming={setConfirming}
+          bypass={bypass}
+          onDiscard={discard}
+        />
+      ) : (
+        guarded && (
+          <DiscardDialog
+            open={confirming}
+            onCancel={() => setConfirming(false)}
+            onDiscard={() => {
+              setConfirming(false)
+              discard()
+            }}
+          />
+        )
+      )}
+    </SheetFormContext.Provider>
+  )
 }
 
 const SheetTrigger = React.forwardRef<
@@ -59,9 +229,10 @@ const SheetContent = React.forwardRef<
     showCloseButton?: boolean
   }
 >(function SheetContent(
-  { className, children, side = "right", showCloseButton = true, ...props },
+  { className, children, side = "right", showCloseButton = true, onInteractOutside, ...props },
   ref
 ) {
+  const form = React.useContext(SheetFormContext)
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -69,7 +240,7 @@ const SheetContent = React.forwardRef<
         ref={ref}
         data-slot="sheet-content"
         className={cn(
-          "fixed z-50 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
+          "fixed z-50 flex flex-col gap-4 bg-panel shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
           side === "right" &&
             "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
           side === "left" &&
@@ -80,6 +251,10 @@ const SheetContent = React.forwardRef<
             "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           className
         )}
+        onInteractOutside={(e) => {
+          if (form) e.preventDefault()
+          onInteractOutside?.(e)
+        }}
         {...props}
       >
         {children}
@@ -157,6 +332,7 @@ SheetDescription.displayName = "SheetDescription"
 
 export {
   Sheet,
+  useSheetGuard,
   SheetTrigger,
   SheetClose,
   SheetContent,

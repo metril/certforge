@@ -30,7 +30,7 @@ export function EffectiveConfigList({ eff, ctx }: { eff: EffectiveMap; ctx: Fiel
           <Fragment key={f.key}>
             <dt className="text-ink-muted">{f.label}</dt>
             <dd className="flex flex-wrap items-center gap-2">
-              {e.value === null || e.value === undefined ? 'Server default' : f.display(e.value, ctx)}
+              {e.value === null || e.value === undefined ? 'Built-in' : f.display(e.value, ctx)}
               <SourceBadge source={e.source} />
             </dd>
           </Fragment>

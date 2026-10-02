@@ -61,7 +61,7 @@ DNS provider schemas may carry `x-auth-methods` (the alternative credential sets
 | `GET, POST /orgs/{orgId}/acme-accounts` | list, register accounts |
 | `GET, DELETE /orgs/{orgId}/acme-accounts/{id}` | read, delete an account |
 | `GET, PUT /orgs/{orgId}/issuance-defaults` | org defaults (null inherits global) |
-| `GET /orgs/{orgId}/issuance-defaults/effective` | resolved defaults with sources |
+| `GET /orgs/{orgId}/issuance-defaults/effective` | resolved defaults with sources, plus `builtin`: the built-in values (`BuiltinDefaults()`) the web UI shows for "Built-in"; CA, ACME account and propagation seconds have none and are null |
 | `GET, PUT /settings/issuance_defaults` | global defaults (settings section) |
 | `GET, PUT /settings/vault` | global Vault connection settings (settings section) |
 | `POST /settings/vault/test` | test Vault connectivity with the given settings |
@@ -115,6 +115,7 @@ DNS provider schemas may carry `x-auth-methods` (the alternative credential sets
 | `GET /agents/ca` | list agent CAs and the listener certificate |
 | `POST /agents/ca/rotate` | rotate the agent CA |
 | `POST /agents/ca/{id}/retire` | retire an agent CA |
+| `GET /orgs/{orgId}/flow` | system map: `{lanes, edges, truncated, generatedAt}` with five lanes (issuers, certificates, delivery, clients, alerts) of nodes `{id, kind, name, status, statusDetail?, href, coversCertificates?}`. Needs `certs:read`; a lane the caller cannot read (`cas`/`accounts`/`dnscreds:read`, `delivery:read`, `clients:read`, `alerts:read`) returns `hidden: true` with no nodes, and edges touching it are dropped. Edges are `{from, to, status, certificateId?}`; `certificateId` is set on delivery-to-client edges so one certificate's path stays separate from another's. Channel nodes carry `coversCertificates: true` when they would receive this org's certificate events (there are no per-certificate alert edges). Capped at 500 nodes (`truncated`). Issuer nodes (CA, account, DNS credential) are `valid` when a certificate in the org resolves to them and `idle` when unused (`statusDetail` says "Used by N certificates" / "Not used by any certificate"; use is counted over all the org's certificates, not only the capped nodes); a private CA's own certificate under 14 days is `expiring`, past expiry `expired`, and an ACME account whose registration status is not `valid` is `failed`. Channel nodes are `idle` when disabled or never delivered, `pending` ("Delivery pending") while the last delivery is queued or retrying, `failed` after a failed last delivery and `valid` after a successful one |
 | `GET, POST /orgs/{orgId}/channels` | list, add notification channels |
 | `GET, PATCH, DELETE /orgs/{orgId}/channels/{id}` | read, update, delete a channel |
 | `POST /orgs/{orgId}/channels/{id}/test` | send a test notification |

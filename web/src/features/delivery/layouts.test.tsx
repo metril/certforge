@@ -130,9 +130,7 @@ it('lists layouts with files and use', async () => {
   renderRoute('/o/acme/delivery/layouts');
   const table = await screen.findByRole('table', { name: 'File layouts' });
   const row = within(table).getByText('nginx').closest('tr')!;
-  expect(within(row).getByText('www.pem')).toBeInTheDocument();
-  expect(within(row).getByText('+2 extra')).toBeInTheDocument();
-  expect(within(row).getByText('Password set')).toBeInTheDocument();
+  expect(within(row).getByText(/www\.pem · \+2 extra · password set/)).toBeInTheDocument();
   expect(within(row).getByText('1 grant')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Delete nginx' })).toBeDisabled();
   expect(screen.getByRole('link', { name: 'File layouts' })).toHaveAttribute('aria-current', 'page');
@@ -146,6 +144,7 @@ it('builds a two-file layout with ordered parts and moves a file up', async () =
   const first = within(sheet).getByRole('listitem', { name: 'File 1' });
   await user.type(within(first).getByLabelText('Path'), '/etc/haproxy/certs/www.pem');
   await user.click(within(first).getByRole('button', { name: 'key' }));
+  await user.click(within(first).getByRole('button', { name: 'Advanced' }));
   await user.clear(within(first).getByLabelText('Mode'));
   await user.type(within(first).getByLabelText('Mode'), '0600');
   await user.click(within(sheet).getByRole('button', { name: 'Add file' }));
@@ -174,6 +173,7 @@ it('shows row errors and sends nothing; warns about a world-readable key', async
   const first = within(sheet).getByRole('listitem', { name: 'File 1' });
   await user.type(within(first).getByLabelText('Path'), 'relative.pem');
   await user.click(within(first).getByRole('button', { name: 'key' }));
+  await user.click(within(first).getByRole('button', { name: 'Advanced' }));
   await user.clear(within(first).getByLabelText('Mode'));
   await user.type(within(first).getByLabelText('Mode'), '0644');
   expect(within(first).getByText('Key readable by every user')).toBeInTheDocument();
@@ -315,6 +315,7 @@ it('layout password write-only: edit sends __unchanged__ unless replaced, and ne
   await user.click(within(sheet2).getByRole('button', { name: 'Replace Password' }));
   await user.type(within(sheet2).getByLabelText('Password'), 'temporary-value');
   await user.click(within(sheet2).getByRole('button', { name: 'Cancel' }));
+  await user.click(await screen.findByRole('button', { name: 'Discard' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
   await user.click(screen.getByRole('button', { name: 'Edit nginx' }));

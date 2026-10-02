@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
@@ -10,6 +11,7 @@ import type { Monitor, MonitorInput } from '@/api/types';
 import { Combobox, type ComboOption } from '@/components/Combobox';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { CopyField } from '@/components/CopyField';
+import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -17,7 +19,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { INTERVALS, fmtInterval } from '@/lib/monitors';
 import { useMe } from '@/lib/org';
@@ -83,6 +85,7 @@ function targetChanged(monitor: Monitor, d: Draft): boolean {
 type Props = { orgId: string; open: boolean; monitor?: Monitor; onOpenChange: (open: boolean) => void };
 
 export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
   const { data: allCerts = [] } = useQuery(allCertificatesQuery(orgId));
@@ -91,6 +94,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const dirty = useDirty(draft);
   const create = useCreateMonitor(orgId);
   const update = useUpdateMonitor(orgId, monitor?.id ?? '');
   const check = useCheckMonitor(orgId);
@@ -120,7 +124,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
         await create.mutateAsync(input);
       }
       await qc.invalidateQueries({ queryKey: ['monitors', orgId] });
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       const message = errorMessage(e);
       if (e instanceof ApiError && e.status === 422) {
@@ -136,7 +140,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader className="flex-row items-start justify-between gap-2">
           <div>
@@ -232,15 +236,6 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 />
               </Field>
             </div>
-            <Field id="monitor-sni" label="SNI" help="monitor.sni" optional error={serverErrors.sni}>
-              <Input
-                id="monitor-sni"
-                className="font-mono text-xs"
-                value={draft.sni}
-                placeholder={draft.host || 'host'}
-                onChange={(e) => setDraft((d) => ({ ...d, sni: e.target.value }))}
-              />
-            </Field>
             <Field id="monitor-interval" label="Check interval" help="monitor.interval" error={serverErrors.intervalSeconds}>
               <div className="grid gap-1">
                 <SegmentedControl
@@ -253,6 +248,27 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 {!presetSelected && <span className="text-xs text-ink-muted">Currently {fmtInterval(draft.intervalSeconds)}</span>}
               </div>
             </Field>
+            <SwitchField
+              id="monitor-enabled"
+              label="Enabled"
+              checked={draft.enabled}
+              onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
+            />
+            <FormSection
+              title="Advanced"
+              collapsible
+              count={(draft.sni.trim() !== '' ? 1 : 0) + (draft.expectedCertificateId ? 1 : 0)}
+              forceOpen={!!(serverErrors.sni || serverErrors.expectedCertificateId)}
+            >
+            <Field id="monitor-sni" label="SNI" help="monitor.sni" optional error={serverErrors.sni}>
+              <Input
+                id="monitor-sni"
+                className="font-mono text-xs"
+                value={draft.sni}
+                placeholder={draft.host || 'host'}
+                onChange={(e) => setDraft((d) => ({ ...d, sni: e.target.value }))}
+              />
+            </Field>
             <Field id="monitor-expected" label="Expected certificate" help="monitor.expected" error={serverErrors.expectedCertificateId}>
               <Combobox
                 id="monitor-expected"
@@ -264,12 +280,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 emptyText="No certificate matches."
               />
             </Field>
-            <SwitchField
-              id="monitor-enabled"
-              label="Enabled"
-              checked={draft.enabled}
-              onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-            />
+            </FormSection>
             <SheetFooter className="flex-row justify-between gap-2 px-0">
               {monitor ? (
                 <PermissionTip allowed={canWrite} action="alerts:write">
@@ -281,9 +292,9 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 <span />
               )}
               <span className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                  Cancel
-                </Button>
+                <SheetClose asChild>
+                  <Button type="button" variant="outline">Cancel</Button>
+                </SheetClose>
                 <PermissionTip allowed={canWrite} action="alerts:write">
                   <Button type="submit" disabled={!canWrite || saving}>
                     Save
@@ -305,7 +316,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
           onConfirm={async () => {
             // useDeleteMonitor's own onSuccess already invalidates ['monitors', orgId].
             await del.mutateAsync(monitor.id);
-            onOpenChange(false);
+            guard.close();
           }}
         />
       )}

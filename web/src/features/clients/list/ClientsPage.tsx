@@ -3,14 +3,12 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus, Search } from 'lucide-react';
 import { ApiError, errorMessage } from '@/api/errors';
-import { plural } from '@/api/queries/certificates';
 import { allOrgsClientsInfinite, clientListKey, clientsInfinite } from '@/api/queries/clients';
 import { sitesQuery } from '@/api/queries/sites';
 import type { Client, ClientStatus } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { DataTable } from '@/components/DataTable';
-import { DeploymentCounts } from '@/components/DeploymentChip';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { FilterChips } from '@/components/FilterChips';
@@ -25,7 +23,7 @@ import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useUrlText } from '@/lib/useUrlText';
-import { clientColumns } from './columns';
+import { clientColumns, clientMeta } from './columns';
 import { CLIENT_STATUS_LABEL, clientListSearch, type ClientListSearch } from './search';
 
 type StatusFilter = 'all' | ClientStatus;
@@ -43,13 +41,8 @@ function ClientCard({ client, org, context }: { client: Client; org: string; con
         <span className="truncate font-semibold">{client.name}</span>
         <ConnectionDot client={client} />
       </div>
-      <span className="truncate font-mono text-xs text-ink-muted">{client.hostname || '–'}</span>
-      {context && <span className="truncate text-xs text-ink-muted">{context}</span>}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
-        <span>{plural(client.grantCount, 'grant')}</span>
-        <DeploymentCounts client={client} />
-        <span>{client.lastSeen ? `Seen ${relTime(client.lastSeen)}` : 'Never seen'}</span>
-      </div>
+      <span className="truncate text-xs text-ink-muted">{[context, ...clientMeta(client)].filter(Boolean).join(' · ')}</span>
+      <span className="text-xs text-ink-muted">{client.lastSeen ? `Seen ${relTime(client.lastSeen)}` : 'Never seen'}</span>
     </Link>
   );
 }
@@ -143,47 +136,49 @@ export function ClientsPage() {
 
   return (
     <>
-      <PageHeader title="Clients" actions={emptyUnfiltered || allOrgs ? undefined : enrol} />
+      <PageHeader
+        title="Clients"
+        help="client.connection"
+        actions={emptyUnfiltered || allOrgs ? undefined : enrol}
+        activeFilters={chips.length}
+        filters={
+          emptyUnfiltered ? undefined : (
+            <>
+              <SegmentedControl<StatusFilter>
+                aria-label="Status"
+                value={search.status ?? 'all'}
+                onChange={(v) => setSearch({ status: v === 'all' ? undefined : v })}
+                options={STATUS_OPTIONS}
+              />
+              {!allOrgs && sites.length > 0 && (
+                <div className="w-full md:w-40">
+                  <Combobox
+                    aria-label="Site"
+                    value={search.site}
+                    onChange={(v) => setSearch({ site: v })}
+                    options={sites.map((s) => ({ value: s.id, label: s.name }))}
+                    placeholder="All sites"
+                    emptyText="No site matches."
+                  />
+                </div>
+              )}
+              <div className="relative w-full md:w-52">
+                <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
+                <Input aria-label="Search clients" className="pl-8 font-mono text-xs" placeholder="web-1" maxLength={200} value={text} onChange={(e) => setText(e.target.value)} />
+              </div>
+              <SavedViews
+                list="clients"
+                current={{ status: search.status, site: allOrgs ? undefined : search.site, q: search.q, sort: search.sort }}
+                onApply={(s) => void navigate({ search: clientListSearch.parse(s) })}
+              />
+            </>
+          )
+        }
+      />
       {emptyUnfiltered ? (
         <EmptyState message="No clients yet.">{!allOrgs && enrol}</EmptyState>
       ) : (
         <>
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <SegmentedControl<StatusFilter>
-              aria-label="Status"
-              value={search.status ?? 'all'}
-              onChange={(v) => setSearch({ status: v === 'all' ? undefined : v })}
-              options={STATUS_OPTIONS}
-            />
-            {!allOrgs && sites.length > 0 && (
-              <div className="w-full sm:w-48">
-                <Combobox
-                  aria-label="Site"
-                  value={search.site}
-                  onChange={(v) => setSearch({ site: v })}
-                  options={sites.map((s) => ({ value: s.id, label: s.name }))}
-                  placeholder="All sites"
-                  emptyText="No site matches."
-                />
-              </div>
-            )}
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
-              <Input
-                aria-label="Search clients"
-                className="pl-8 font-mono text-xs"
-                placeholder="web-1"
-                maxLength={200}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-              />
-            </div>
-            <SavedViews
-              list="clients"
-              current={{ status: search.status, site: allOrgs ? undefined : search.site, q: search.q, sort: search.sort }}
-              onApply={(s) => void navigate({ search: clientListSearch.parse(s) })}
-            />
-          </div>
           <FilterChips className="mb-3" chips={chips} onRemove={(k) => setSearch({ [k]: undefined })} onClear={clearAll} />
           {cursorNotice && <p className="mb-3 text-xs text-ink-muted">The list changed since it was loaded; showing the first page again.</p>}
           {list.isError && rows.length === 0 ? (

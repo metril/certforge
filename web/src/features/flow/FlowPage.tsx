@@ -1,0 +1,136 @@
+import { useCallback, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Link2, TriangleAlert } from 'lucide-react';
+import { errorMessage } from '@/api/errors';
+import { flowQuery } from '@/api/queries/flow';
+import { ErrorState } from '@/components/ErrorState';
+import { PageHeader } from '@/components/PageHeader';
+import { ToneChip } from '@/components/StatusChip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useOrg } from '@/lib/org';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import { LANE_KEYS, tracePath, type Flow, type FlowNodeData } from './flowGraph';
+import { FlowConnectors } from './FlowConnectors';
+import { FlowLane } from './FlowLane';
+import { FlowPathPanel } from './FlowPathPanel';
+
+function Skeleton() {
+  return (
+    <div role="status" aria-label="Loading flow" className="grid gap-4 md:grid-cols-5">
+      {LANE_KEYS.map((k) => (
+        <div key={k} className="grid content-start gap-2">
+          <div className="h-5 animate-pulse rounded-sm bg-subtle" />
+          <div className="h-16 animate-pulse rounded-md bg-subtle" />
+          <div className="h-16 animate-pulse rounded-md bg-subtle" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function FlowPage() {
+  const org = useOrg();
+  const search = useSearch({ from: '/_app/o/$org/flow' });
+  const navigate = useNavigate({ from: '/o/$org/flow' });
+  const wide = useMediaQuery('(min-width: 1024px)');
+  const q = useQuery(flowQuery(org.id));
+  const flow: Flow | undefined = q.data;
+
+  const els = useRef(new Map<string, HTMLElement>());
+  const register = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) els.current.set(id, el);
+    else els.current.delete(id);
+  }, []);
+  const getEl = useCallback((id: string) => els.current.get(id), []);
+  const box = useRef<HTMLDivElement>(null);
+
+  const all = useMemo(() => (flow ? LANE_KEYS.flatMap((k) => flow.lanes[k].nodes) : []), [flow]);
+  const focus = search.focus && all.some((n) => n.id === search.focus) ? search.focus : undefined;
+  const selected: FlowNodeData | undefined = all.find((n) => n.id === focus);
+  const path = useMemo(() => (flow ? tracePath(flow, focus) : null), [flow, focus]);
+
+  const setFocus = useCallback(
+    (id: string | undefined) => void navigate({ search: (s) => ({ ...s, focus: id }), replace: true }),
+    [navigate],
+  );
+  const select = useCallback((id: string) => setFocus(id === focus ? undefined : id), [focus, setFocus]);
+
+  const header = (
+    <PageHeader
+      title="Flow"
+      help="flow.map"
+      actions={
+        <>
+          {path && path.synthetic.size > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToneChip tone="neutral" icon={Link2} label="Dashed links" tabIndex={0} />
+              </TooltipTrigger>
+              <TooltipContent>Channels match events by type and severity, not by certificate. Dashed links show which channels would hear about the selected certificates.</TooltipContent>
+            </Tooltip>
+          )}
+          {flow?.truncated && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToneChip tone="expiring" icon={TriangleAlert} label="Truncated" tabIndex={0} />
+              </TooltipTrigger>
+              <TooltipContent>The map hit its size limit, so some items are not shown.</TooltipContent>
+            </Tooltip>
+          )}
+        </>
+      }
+    />
+  );
+
+  if (q.isPending) {
+    return (
+      <>
+        {header}
+        <Skeleton />
+      </>
+    );
+  }
+  if (q.isError || !flow || !path) {
+    return (
+      <>
+        {header}
+        <ErrorState message={`Could not load the flow map: ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
+      </>
+    );
+  }
+
+  const filtering = !wide && !!selected;
+  return (
+    <div
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && focus) setFocus(undefined);
+      }}
+    >
+      {header}
+      {selected && <FlowPathPanel selected={selected} nodes={all} path={path} slug={org.slug} compact={!wide} onClear={() => setFocus(undefined)} />}
+      <div ref={box} className={wide ? 'relative grid grid-cols-5 gap-x-12' : 'grid gap-6'}>
+        {LANE_KEYS.map((k) => {
+          const lane = flow.lanes[k];
+          const nodes = filtering ? lane.nodes.filter((n) => path.nodes.has(n.id)) : lane.nodes;
+          if (filtering && nodes.length === 0) return null;
+          return (
+            <FlowLane
+              key={k}
+              laneKey={k}
+              org={org.slug}
+              hidden={lane.hidden}
+              nodes={nodes}
+              total={lane.nodes.length}
+              selectedId={focus}
+              onPath={selected && !filtering ? path.nodes : undefined}
+              onSelect={select}
+              register={register}
+            />
+          );
+        })}
+        {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} selected={!!selected} />}
+      </div>
+    </div>
+  );
+}

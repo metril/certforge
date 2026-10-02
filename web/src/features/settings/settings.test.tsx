@@ -77,6 +77,7 @@ beforeEach(() => {
         accountId: { value: null, source: 'default' },
         keyType: { value: 'ec256', source: 'default' },
         renewPolicy: { value: { mode: 'percent', value: 33, useAri: false }, source: 'default' },
+        builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] },
       }),
     ),
     http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca])),
@@ -128,27 +129,27 @@ it('shows the encryption key card and saves the escrow switch', async () => {
 });
 
 it('shows each Org-tab field badge from the effective endpoint, not a raw-value comparison', async () => {
-  renderRoute('/settings/issuance-defaults');
+  renderRoute('/settings/issuance-defaults?scope=org');
   const caField = within(await screen.findByRole('group', { name: 'Certificate authority' }));
   expect(await caField.findByRole('button', { name: 'Global' })).toBeInTheDocument();
   expect(caField.getByText(ca.name)).toBeInTheDocument();
 
   const keyTypeField = within(screen.getByRole('group', { name: 'Key type' }));
-  expect(keyTypeField.getByRole('button', { name: 'Default' })).toBeInTheDocument();
+  expect(keyTypeField.getByRole('button', { name: 'Built-in' })).toBeInTheDocument();
 });
 
 it("the Org tab's chain tooltip reflects the raw stored global value, not the built-in-filled one", async () => {
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   const keyTypeField = within(await screen.findByRole('group', { name: 'Key type' }));
-  await user.hover(keyTypeField.getByRole('button', { name: 'Default' }));
+  await user.click(keyTypeField.getByRole('button', { name: 'Built-in' }));
   // stored is null (never saved): the Global entry says "server default",
   // not the built-in "EC P-256" the Default badge's own effective value
   // shows — otherwise the badge and its own tooltip would disagree.
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Global: server default');
+  await waitFor(() => expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Global: not set'));
 });
 
 it('overrides one org default and sends the rest as explicit null', async () => {
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('switch', { name: 'Override Key type' }));
   await user.click(screen.getByRole('radio', { name: 'RSA 2048' }));
   await user.click(screen.getByRole('button', { name: 'Save org defaults' }));
@@ -161,7 +162,7 @@ it('shows a 422 reference error next to its field', async () => {
       HttpResponse.json({ type: 'about:blank', title: 'Invalid caId', status: 422, detail: 'no such CA in this org' }, { status: 422, headers: { 'Content-Type': 'application/problem+json' } }),
     ),
   );
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   const caField = within(await screen.findByRole('group', { name: 'Certificate authority' }));
   await user.click(caField.getByRole('switch', { name: 'Override Certificate authority' }));
   await user.click(screen.getByRole('button', { name: 'Save org defaults' }));
@@ -177,7 +178,7 @@ it('falls back to the banner for a mapped 422 on a field that is not overridden'
       ),
     ),
   );
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   // Override a different field so Save is enabled; Key type itself stays
   // inherited, so InheritableField renders no editor row to put the error
   // next to — it must still reach the banner, not vanish (review fix round 1, #5).
@@ -187,7 +188,7 @@ it('falls back to the banner for a mapped 422 on a field that is not overridden'
 });
 
 it('clearing an overridden lookup field resets to inherited, not an empty string', async () => {
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   const caField = within(await screen.findByRole('group', { name: 'Certificate authority' }));
   await user.click(await caField.findByRole('switch', { name: 'Override Certificate authority' }));
   await user.click(await caField.findByRole('button', { name: 'Clear Certificate authority' }));
@@ -199,7 +200,7 @@ it('clearing an overridden lookup field resets to inherited, not an empty string
 // VerificationRulesEditor, wired into ISSUANCE_FIELDS) renders under
 // Override and its rules round-trip through a save like any other field.
 it('renders and saves the Verification rules field', async () => {
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   const rulesField = within(await screen.findByRole('group', { name: 'Verification rules' }));
   await user.click(rulesField.getByRole('switch', { name: 'Override Verification rules' }));
   expect(await rulesField.findByLabelText('Rule 1 match')).toHaveValue('*');
@@ -209,7 +210,7 @@ it('renders and saves the Verification rules field', async () => {
 
 it('disables Override for a lookup field with nothing to choose', async () => {
   server.use(http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([])), http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([])));
-  renderRoute('/settings/issuance-defaults');
+  renderRoute('/settings/issuance-defaults?scope=org');
   const caField = within(await screen.findByRole('group', { name: 'Certificate authority' }));
   expect(await caField.findByRole('switch', { name: 'Override Certificate authority' })).toBeDisabled();
   expect(caField.getByText('No CAs yet')).toBeInTheDocument();
@@ -227,6 +228,7 @@ it('resets an org override: PUT sends null and keeps its sibling, badge settles 
     mustStaple: { value: true, source: 'org' },
     propagationSeconds: { value: 120, source: 'default' },
     resolvers: { value: [], source: 'default' },
+    builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] },
   };
   server.use(
     http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json(orgBody)),
@@ -239,11 +241,11 @@ it('resets an org override: PUT sends null and keeps its sibling, badge settles 
       return HttpResponse.json(orgBody);
     }),
   );
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   const mustStapleField = within(await screen.findByRole('group', { name: 'Must-Staple' }));
   expect(await mustStapleField.findByRole('switch', { name: 'Override Must-Staple' })).toBeChecked();
 
-  await user.click(mustStapleField.getByRole('button', { name: 'Reset to inherited' }));
+  await user.click(mustStapleField.getByRole('button', { name: 'Use Global value' }));
   // Before the save lands, `effective` still says 'org' with the old value
   // — showing that here (instead of "Inherited after save"/"Pending") would
   // be stale (review fix round 1, #3).
@@ -252,26 +254,26 @@ it('resets an org override: PUT sends null and keeps its sibling, badge settles 
 
   await user.click(screen.getByRole('button', { name: 'Save org defaults' }));
   await waitFor(() => expect(puts.org).toEqual({ ...allNull, mustStaple: null, reuseKey: true }));
-  await waitFor(() => expect(mustStapleField.getByRole('button', { name: 'Default' })).toBeInTheDocument());
+  await waitFor(() => expect(mustStapleField.getByRole('button', { name: 'Built-in' })).toBeInTheDocument());
 });
 
 it('Global tab: unsaved fields show Default (not already Overridden), with the one-sentence copy and built-in effective value', async () => {
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('tab', { name: 'Global' }));
   // M2: the "Fields left as Default..." copy is a help tooltip now, not an
   // inline paragraph — hover its info icon (scoped past the many other
   // per-field Help buttons on this tab) to read it.
   const globalHeader = screen.getByText('Built-in defaults').closest('div')!;
   await user.hover(within(globalHeader).getByRole('button', { name: 'Help' }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent("Fields left as Default follow the server's built-in values.");
+  expect(await screen.findByRole('tooltip')).toHaveTextContent("Most specific wins: Certificate > Organization > Global > Built-in (shipped with CertForge). Fields left unset here use the built-in value.");
   const keyTypeField = within(screen.getByRole('group', { name: 'Key type' }));
-  expect(keyTypeField.getByRole('button', { name: 'Default' })).toBeInTheDocument();
+  expect(keyTypeField.getByRole('button', { name: 'Built-in' })).toBeInTheDocument();
   expect(keyTypeField.getByRole('switch', { name: 'Override Key type' })).not.toBeChecked();
   expect(keyTypeField.getByText('EC P-256')).toBeInTheDocument();
 });
 
 it('Global tab save: an untouched field is sent as explicit null, not the built-in display value', async () => {
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('tab', { name: 'Global' }));
   await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
   await user.click(screen.getByRole('button', { name: 'Save global defaults' }));
@@ -294,7 +296,7 @@ it('Global tab save: preserves verificationRules, a field this page does not ren
       }),
     ),
   );
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('tab', { name: 'Global' }));
   await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
   await user.click(screen.getByRole('button', { name: 'Save global defaults' }));
@@ -307,14 +309,14 @@ it('Global tab save: preserves verificationRules, a field this page does not ren
 it('Org tab save: preserves verificationRules, a field this page does not render (review fix round 2)', async () => {
   const verificationRules = [{ match: '*.example.com', method: 'dns-01', dnsCredentialId: 'd-1' }];
   server.use(http.get(url('/orgs/org-1/issuance-defaults'), () => HttpResponse.json({ verificationRules })));
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
   await user.click(screen.getByRole('button', { name: 'Save org defaults' }));
   await waitFor(() => expect((puts.org as Record<string, unknown>).verificationRules).toEqual(verificationRules));
 });
 
 it('keeps the tab header wrapping at phone width', async () => {
-  renderRoute('/settings/issuance-defaults');
+  renderRoute('/settings/issuance-defaults?scope=org');
   const tablist = await screen.findByRole('tablist');
   expect(tablist.parentElement?.className).toContain('flex-wrap');
 });
@@ -324,10 +326,46 @@ it('keeps the tab header wrapping at phone width', async () => {
 // so both Save buttons stay disabled even once dirty.
 it('disables Save global/org defaults for a viewer, even once dirty', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
-  const { user } = renderRoute('/settings/issuance-defaults');
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   await user.click(await screen.findByRole('switch', { name: 'Override Key type' }));
   expect(screen.getByRole('button', { name: 'Save org defaults' })).toBeDisabled();
   await user.click(await screen.findByRole('tab', { name: 'Global' }));
   await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
   expect(screen.getByRole('button', { name: 'Save global defaults' })).toBeDisabled();
+});
+
+it('Issuance defaults opens on Global, ?scope=org selects the Organization tab, and the chain links to the other level', async () => {
+  const { router, user } = renderRoute('/settings/issuance-defaults');
+  expect(await screen.findByRole('tab', { name: 'Global', selected: true })).toBeInTheDocument();
+  const keyType = within(screen.getByRole('group', { name: 'Key type' }));
+  await user.click(keyType.getByRole('button', { name: 'Built-in' }));
+  const pop = await waitFor(() => {
+    const el = document.querySelector('[data-slot="popover-content"]') as HTMLElement;
+    expect(el).not.toBeNull();
+    return within(el);
+  });
+  expect(pop.getByRole('link', { name: 'Organization' })).toHaveAttribute('href', '/settings/issuance-defaults?scope=org');
+  expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Built-in: EC P-256');
+  await user.keyboard('{Escape}');
+  const strip = within(screen.getByLabelText('Defaults precedence'));
+  await user.click(strip.getByRole('button', { name: 'Organization' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org' }));
+  await user.click(within(screen.getByLabelText('Defaults precedence')).getByRole('button', { name: 'Global' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
+  await user.click(screen.getAllByRole('tab')[1]!);
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org' }));
+});
+
+it('Global tab: the Built-in row and the unset fields show the server-served built-ins, not a client copy', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () =>
+      HttpResponse.json({ builtin: { keyType: 'ec384', renewPolicy: { mode: 'days', value: 21, useAri: false }, preferredChain: '', reuseKey: true, mustStaple: false, resolvers: [], verificationRules: [] } }),
+    ),
+  );
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org');
+  await user.click(await screen.findByRole('tab', { name: 'Global' }));
+  const keyType = within(screen.getByRole('group', { name: 'Key type' }));
+  await waitFor(() => expect(keyType.getByText('EC P-384')).toBeInTheDocument());
+  await user.click(keyType.getByRole('button', { name: 'Built-in' }));
+  expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Built-in: EC P-384');
 });

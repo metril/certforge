@@ -28,7 +28,7 @@ export function SummaryRail({ orgId, state, inherited, privateCa }: { orgId: str
   const show = (k: keyof IssuanceDefaults) => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k)!;
     const e = effectiveOf(state.overrides, eff, k);
-    return e.value === null || e.value === undefined ? 'Server default' : f.display(e.value, ctx);
+    return e.value === null || e.value === undefined ? 'Built-in' : f.display(e.value, ctx);
   };
   const rows: [string, ReactNode][] = [
     ['Names', `${state.names.length} in ${zones} ${zones === 1 ? 'zone' : 'zones'}`],

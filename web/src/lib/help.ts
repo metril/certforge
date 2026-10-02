@@ -31,6 +31,7 @@ export const help = {
     learnMore: 'configuration.md#first-run-setup-wizard',
   },
   'setup.orgSlug': { text: 'Short name used in URLs. Lowercase letters, digits, and hyphens.' },
+  'flow.map': { text: 'Follows each certificate from its issuers through delivery to the clients that hold it. Select a node to trace its path.' },
   'status.pending': { text: 'Waiting for its first certificate, or for a manual DNS step.' },
   'status.active': { text: 'Holds a valid certificate and renews on schedule.' },
   'status.failed': { text: 'The last attempt failed. CertForge retries with backoff.' },
@@ -38,7 +39,7 @@ export const help = {
   'status.revoked': { text: 'The certificate was revoked and will not renew.' },
   'cert.validity': { text: 'Bar spans issue to expiry. Hatching marks the renewal window; the notch is now.' },
   'ca.type': {
-    text: 'ACME proves control of names to a CA. Built-in CA and Vault PKI sign directly, for internal names.',
+    text: 'ACME proves control to a CA; Built-in CA and Vault PKI sign directly. EAB stored: the CA requires an external account binding.',
     learnMore: 'private-ca.md#model',
   },
   'ca.typeLocked': { text: 'The type cannot change after creation.' },
@@ -69,8 +70,8 @@ export const help = {
   'ca.rotate': { text: 'Issues a new intermediate from the held root. Existing certificates stay valid.', learnMore: 'private-ca.md#rotation' },
   'ca.rotateImported': { text: 'Imported CAs have no root key here, so they cannot rotate.', learnMore: 'private-ca.md#import' },
   'account.email': { text: 'The CA sends expiry and policy notices here.' },
-  'account.status': { text: 'Status reported by the CA. Only valid accounts can order certificates.' },
-  'dns.provider': { text: 'The DNS host that serves your zone. CertForge writes TXT records there.' },
+  'account.status': { text: 'Status is reported by the CA; only valid accounts can order certificates. The CA sends expiry and policy notices to the account email.' },
+  'dns.provider': { text: 'The DNS host serving your zone; TXT records are written there. Used by counts certificates and defaults using it.' },
   'dns.authMethod': { text: 'Some providers accept more than one kind of credential. Pick the one you have; only its fields are shown.' },
   'dns.usedBy': { text: 'Certificates and issuance defaults whose verification rules use this credential.' },
   'dns.test': { text: 'Creates and removes a test TXT record in the zone.' },
@@ -138,11 +139,11 @@ export const help = {
   'defaults.propagationSeconds': { text: 'How long to wait for TXT records to reach every nameserver.' },
   'defaults.resolvers': { text: 'DNS servers used to check propagation. Empty means system resolvers.' },
   'defaults.inherit': {
-    text: 'Unset fields inherit from the level above. Changes apply at each certificate’s next renewal.',
+    text: 'Most specific wins: Certificate > Organization > Global > Built-in (shipped with CertForge). Changes apply at each certificate’s next renewal.',
     learnMore: 'configuration.md#issuance-defaults',
   },
   'defaults.globalBuiltin': {
-    text: "Fields left as Default follow the server's built-in values.",
+    text: 'Most specific wins: Certificate > Organization > Global > Built-in (shipped with CertForge). Fields left unset here use the built-in value.',
     learnMore: 'configuration.md#issuance-defaults',
   },
   'cert.names': {
@@ -161,7 +162,6 @@ export const help = {
   // Fix round 1 (review): the list column needs its own key — `cert.names`
   // is wizard copy about pasting names into the create-certificate step
   // (Task 12), not what a read-only SANs column means.
-  'cert.namesColumn': { text: 'Subject alternative names besides the common name shown under Name.', learnMore: 'certificates.md#names' },
   'cert.nextRenew': { text: 'When CertForge next tries to renew. ARI can move it earlier.' },
   'cert.managed': {
     text: 'Renewed outside CertForge. Upload each new version yourself.',
@@ -173,7 +173,9 @@ export const help = {
     text: "The CA's suggested renewal window. CertForge renews inside it when that is earlier.",
     learnMore: 'certificates.md#ari',
   },
-  'status.column': { text: 'State of the certificate itself, not of its last attempt.' },
+  'status.column': {
+    text: 'Status is the certificate\'s own state. Under each name: common name, CA, grants and other names.',
+  },
   'rules.method': { text: 'How each rule proves control of its names. One certificate can mix methods.', learnMore: 'certificates.md#mixing-methods' },
   'rules.match': { text: 'Name pattern. The first matching rule wins; * matches everything.' },
   'rules.credential': { text: 'DNS credential that writes the _acme-challenge TXT record.' },
@@ -230,9 +232,9 @@ export const help = {
     text: 'One tick per certificate at its expiry, coloured by state. Drag across the strip to list a range.',
     learnMore: 'web-ui.md#overview',
   },
+  'overview.page': { text: 'Certificate health at a glance: status counts, what needs attention, upcoming expiries and recent activity.', learnMore: 'web-ui.md#overview' },
   'overview.attention': { text: 'Expired, waiting on you, failing, overdue, not deployed or offline, most urgent first.', learnMore: 'web-ui.md#overview' },
   'attention.monitor': { text: 'An external monitor sees the wrong certificate or cannot connect.', learnMore: 'monitoring.md#states' },
-  'cert.grants': { text: 'Clients this certificate is granted to.' },
   'cert.deployments': { text: 'One row per client holding this certificate, with what its agent installed.', learnMore: 'agent.md#grants-and-reconcile' },
   'overview.activity': { text: 'The last 20 audit events here. Open one to see what changed.', learnMore: 'web-ui.md#audit-log' },
   'user.source': { text: 'The identity provider that signed the user in, or Local for the break-glass admin.' },
@@ -275,7 +277,6 @@ export const help = {
   'client.name': { text: 'Unique in this org. Shown in lists and audit events.' },
   'client.site': { text: 'Sites group clients for filtering. They never limit access.' },
   'client.agentVersion': { text: 'certforge-agent version the host reported when it last connected.' },
-  'client.grants': { text: 'Certificates granted to this client.' },
   'client.drift': { text: 'Grants whose files on the host no longer match, and grants whose last deploy failed.', learnMore: 'agent.md#drift' },
   'client.lastSeen': { text: 'Last connection, heartbeat or report from the agent.' },
   'client.token': { text: 'Single use and shown only now. Start the agent with it before it expires.', learnMore: 'agent.md#enrolment' },
@@ -380,7 +381,7 @@ export const help = {
   'import.hasKey': { text: "Without a key the certificate can't be deployed with key files until its first renewal." },
   // Task 2 (Phase 6B): the Alerts area — tabs, channels table.
   'alerts.channels': {
-    text: 'Where CertForge sends events: webhooks, email, chat and push services.',
+    text: 'Where events go: webhooks, email, chat, push. Last delivery includes tests; All orgs channels get events from every org.',
     learnMore: 'notifications.md#channels',
   },
   'channel.allOrgs': {
@@ -393,7 +394,7 @@ export const help = {
   },
   'channel.limit': { text: 'An organization can have at most 50 channels.' },
   'alerts.monitors': {
-    text: 'Checks which certificate a TLS endpoint serves and alerts when it changes.',
+    text: 'Checks which certificate a TLS endpoint serves and alerts on change. The state comes from the last check.',
     learnMore: 'monitoring.md#external-monitors',
   },
   'alerts.events': {
@@ -478,10 +479,6 @@ export const help = {
   'backup.restore': {
     text: 'Restore runs offline with certforge restore while the server is stopped.',
     learnMore: 'operations.md#restore',
-  },
-  'settings.backup': {
-    text: 'Scheduled backups go to a directory on the server, keeping the newest files.',
-    learnMore: 'configuration.md#backup-section',
   },
 } satisfies Record<string, Help>;
 

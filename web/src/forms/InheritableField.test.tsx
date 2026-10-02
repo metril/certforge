@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { renderUI } from '@/test/render';
 import { InheritableField } from './InheritableField';
@@ -13,7 +13,11 @@ function H() {
         label="Key type"
         value={v}
         inherited={{ value: 'ec256', source: 'global' }}
-        chain={[{ level: 'Global', value: 'EC P-256' }]}
+        chain={[
+          { level: 'default', value: 'EC P-256' },
+          { level: 'global', value: 'EC P-256' },
+        ]}
+        links={{ global: '/settings/issuance-defaults?scope=global', org: '/settings/issuance-defaults?scope=org' }}
         initial="rsa2048"
         display={(x) => <span>{x}</span>}
         editor={(x, set) => <input aria-label="editor" value={x} onChange={(e) => set(e.target.value)} />}
@@ -27,12 +31,13 @@ function H() {
 it('shows the inherited value with its source, overrides, and resets to null', async () => {
   const { user } = renderUI(<H />);
   expect(screen.getByText('ec256')).toBeInTheDocument();
-  await user.hover(screen.getByRole('button', { name: 'Global' }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Global: EC P-256');
+  await user.click(screen.getByRole('button', { name: 'Global' }));
+  await waitFor(() => expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Global: EC P-256'));
+  await user.keyboard('{Escape}');
   await user.click(screen.getByRole('switch', { name: 'Override Key type' }));
   expect(screen.getByLabelText('editor')).toHaveValue('ec256');
   expect(screen.getByTestId('v')).toHaveTextContent('ec256');
-  await user.click(screen.getByRole('button', { name: 'Reset to inherited' }));
+  await user.click(screen.getByRole('button', { name: 'Use Global value' }));
   expect(screen.getByTestId('v')).toHaveTextContent('null');
   expect(screen.getByRole('button', { name: 'Global' })).toBeInTheDocument();
 });
@@ -78,7 +83,7 @@ it('disables Override with a reason, but still allows resetting an already-overr
   const { user } = renderUI(<WithDisabled />);
   expect(screen.getByRole('switch', { name: 'Override Key type' })).not.toBeDisabled();
   expect(screen.getByLabelText('editor')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Reset to inherited' }));
+  await user.click(screen.getByRole('button', { name: 'Use Built-in value' }));
   expect(screen.getByRole('switch', { name: 'Override Key type' })).toBeDisabled();
   expect(screen.getByText('No CAs yet')).toBeInTheDocument();
 });
@@ -100,5 +105,40 @@ it('shows a pending state instead of the stale inherited value after a reset tha
   expect(screen.getByText('Pending')).toBeInTheDocument();
   expect(screen.getByText('Inherited after save')).toBeInTheDocument();
   expect(screen.queryByText('ec256')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Org' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Organization' })).toBeNull();
+});
+
+it('shows one source badge whose popover lists each level with the one in effect emphasised and linked editors, plus Using/Set here state text', async () => {
+  const { user } = renderUI(<H />);
+  expect(screen.queryByLabelText('Defaults chain')).toBeNull();
+  expect(screen.getAllByRole('button', { name: 'Global' })).toHaveLength(1);
+  await user.click(screen.getByRole('button', { name: 'Global' }));
+  const pop = within(document.querySelector('[data-slot="popover-content"]') as HTMLElement);
+  const el = document.querySelector('[data-slot="popover-content"]');
+  expect(el).toHaveTextContent('Built-in: EC P-256');
+  expect(el).toHaveTextContent('Organization: set per organization');
+  expect(el?.querySelector('[aria-current="true"]')).toHaveTextContent('Global: EC P-256');
+  expect(pop.getByRole('link', { name: 'Organization' })).toHaveAttribute('href', '/settings/issuance-defaults?scope=org');
+  await user.keyboard('{Escape}');
+  expect(screen.getByText('Using Global:')).toBeInTheDocument();
+  await user.click(screen.getByRole('switch', { name: 'Override Key type' }));
+  expect(screen.getByText('Set here')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Use Global value' })).toBeInTheDocument();
+});
+
+it('says what an unset-everywhere field does instead of "shipped default"', () => {
+  renderUI(
+    <InheritableField<string>
+      id="c"
+      label="Certificate authority"
+      value={null}
+      inherited={{ value: null, source: 'default' }}
+      unsetText="none — issuance fails until one is set"
+      initial="x"
+      display={(x) => <span>{x}</span>}
+      editor={() => null}
+      onChange={() => {}}
+    />,
+  );
+  expect(screen.getByText('none — issuance fails until one is set')).toBeInTheDocument();
 });

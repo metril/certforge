@@ -21,6 +21,7 @@ import { Route as AppOOrgIndexRouteImport } from './routes/_app/o/$org/index'
 import { Route as AppOOrgAlertsRouteRouteImport } from './routes/_app/o/$org/alerts/route'
 import { Route as AppOOrgAuditRouteImport } from './routes/_app/o/$org/audit'
 import { Route as AppOOrgDeliveryRouteRouteImport } from './routes/_app/o/$org/delivery/route'
+import { Route as AppOOrgFlowRouteImport } from './routes/_app/o/$org/flow'
 import { Route as AppOOrgIssuersRouteRouteImport } from './routes/_app/o/$org/issuers/route'
 import { Route as AppOOrgOverviewRouteImport } from './routes/_app/o/$org/overview'
 import { Route as AppOOrgAlertsIndexRouteImport } from './routes/_app/o/$org/alerts/index'
@@ -104,6 +105,11 @@ const AppOOrgAuditRoute = AppOOrgAuditRouteImport.update({
 const AppOOrgDeliveryRouteRoute = AppOOrgDeliveryRouteRouteImport.update({
   id: '/delivery',
   path: '/delivery',
+  getParentRoute: () => AppOOrgRouteRoute,
+} as any)
+const AppOOrgFlowRoute = AppOOrgFlowRouteImport.update({
+  id: '/flow',
+  path: '/flow',
   getParentRoute: () => AppOOrgRouteRoute,
 } as any)
 const AppOOrgIssuersRouteRoute = AppOOrgIssuersRouteRouteImport.update({
@@ -250,6 +256,7 @@ export interface FileRoutesByFullPath {
   '/o/$org/delivery': typeof AppOOrgDeliveryRouteRouteWithChildren
   '/o/$org/issuers': typeof AppOOrgIssuersRouteRouteWithChildren
   '/o/$org/audit': typeof AppOOrgAuditRoute
+  '/o/$org/flow': typeof AppOOrgFlowRoute
   '/o/$org/overview': typeof AppOOrgOverviewRoute
   '/o/$org/': typeof AppOOrgIndexRoute
   '/o/$org/alerts/channels': typeof AppOOrgAlertsChannelsRoute
@@ -284,6 +291,7 @@ export interface FileRoutesByTo {
   '/settings/$section': typeof AppSettingsSectionRoute
   '/settings': typeof AppSettingsIndexRoute
   '/o/$org/audit': typeof AppOOrgAuditRoute
+  '/o/$org/flow': typeof AppOOrgFlowRoute
   '/o/$org/overview': typeof AppOOrgOverviewRoute
   '/o/$org': typeof AppOOrgIndexRoute
   '/o/$org/alerts/channels': typeof AppOOrgAlertsChannelsRoute
@@ -324,6 +332,7 @@ export interface FileRoutesById {
   '/_app/o/$org/delivery': typeof AppOOrgDeliveryRouteRouteWithChildren
   '/_app/o/$org/issuers': typeof AppOOrgIssuersRouteRouteWithChildren
   '/_app/o/$org/audit': typeof AppOOrgAuditRoute
+  '/_app/o/$org/flow': typeof AppOOrgFlowRoute
   '/_app/o/$org/overview': typeof AppOOrgOverviewRoute
   '/_app/o/$org/': typeof AppOOrgIndexRoute
   '/_app/o/$org/alerts/channels': typeof AppOOrgAlertsChannelsRoute
@@ -364,6 +373,7 @@ export interface FileRouteTypes {
     | '/o/$org/delivery'
     | '/o/$org/issuers'
     | '/o/$org/audit'
+    | '/o/$org/flow'
     | '/o/$org/overview'
     | '/o/$org/'
     | '/o/$org/alerts/channels'
@@ -398,6 +408,7 @@ export interface FileRouteTypes {
     | '/settings/$section'
     | '/settings'
     | '/o/$org/audit'
+    | '/o/$org/flow'
     | '/o/$org/overview'
     | '/o/$org'
     | '/o/$org/alerts/channels'
@@ -437,6 +448,7 @@ export interface FileRouteTypes {
     | '/_app/o/$org/delivery'
     | '/_app/o/$org/issuers'
     | '/_app/o/$org/audit'
+    | '/_app/o/$org/flow'
     | '/_app/o/$org/overview'
     | '/_app/o/$org/'
     | '/_app/o/$org/alerts/channels'
@@ -554,6 +566,13 @@ declare module '@tanstack/react-router' {
       path: '/delivery'
       fullPath: '/o/$org/delivery'
       preLoaderRoute: typeof AppOOrgDeliveryRouteRouteImport
+      parentRoute: typeof AppOOrgRouteRoute
+    }
+    '/_app/o/$org/flow': {
+      id: '/_app/o/$org/flow'
+      path: '/flow'
+      fullPath: '/o/$org/flow'
+      preLoaderRoute: typeof AppOOrgFlowRouteImport
       parentRoute: typeof AppOOrgRouteRoute
     }
     '/_app/o/$org/issuers': {
@@ -790,6 +809,7 @@ interface AppOOrgRouteRouteChildren {
   AppOOrgDeliveryRouteRoute: typeof AppOOrgDeliveryRouteRouteWithChildren
   AppOOrgIssuersRouteRoute: typeof AppOOrgIssuersRouteRouteWithChildren
   AppOOrgAuditRoute: typeof AppOOrgAuditRoute
+  AppOOrgFlowRoute: typeof AppOOrgFlowRoute
   AppOOrgOverviewRoute: typeof AppOOrgOverviewRoute
   AppOOrgIndexRoute: typeof AppOOrgIndexRoute
   AppOOrgCertificatesImportRoute: typeof AppOOrgCertificatesImportRoute
@@ -810,6 +830,7 @@ const AppOOrgRouteRouteChildren: AppOOrgRouteRouteChildren = {
   AppOOrgDeliveryRouteRoute: AppOOrgDeliveryRouteRouteWithChildren,
   AppOOrgIssuersRouteRoute: AppOOrgIssuersRouteRouteWithChildren,
   AppOOrgAuditRoute: AppOOrgAuditRoute,
+  AppOOrgFlowRoute: AppOOrgFlowRoute,
   AppOOrgOverviewRoute: AppOOrgOverviewRoute,
   AppOOrgIndexRoute: AppOOrgIndexRoute,
   AppOOrgCertificatesImportRoute: AppOOrgCertificatesImportRoute,

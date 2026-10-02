@@ -5,13 +5,15 @@ import { casQuery } from '@/api/queries/cas';
 import { allClientsQuery } from '@/api/queries/clients';
 import { dnsCredentialsQuery } from '@/api/queries/dns';
 import type { AcmeAccount, CA, Client, DnsCredential, EffectiveMap, EffectiveValue, IssuanceDefaults, KeyType, Source, VerificationRule } from '@/api/types';
+import { Button } from '@/components/ui/button';
+import { FormSection } from '@/components/FormSection';
 import { Combobox } from '@/components/Combobox';
 import { ListInput } from '@/components/ListInput';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { InheritableField, type ChainEntry } from '@/forms/InheritableField';
+import { InheritableField, type ChainEntry, type LevelLinks } from '@/forms/InheritableField';
 import { VerificationRulesEditor } from '@/forms/VerificationRulesEditor';
 import { isPrivate, KIND_LABEL } from '@/lib/caKinds';
 import type { HelpKey } from '@/lib/help';
@@ -38,6 +40,8 @@ export type IssuanceField = {
   editor: (v: unknown, set: (v: unknown | null) => void, c: FieldCtx, id: string) => ReactNode;
   /** When set, Override cannot be turned on for this field (e.g. an empty CA list has nothing to pick) — an already-overridden field can still be reset. */
   disabledReason?: (c: FieldCtx) => string | undefined;
+  /** What an unset-everywhere field does, when the built-in is not a value. */
+  unsetText?: string;
 };
 
 export function def<K extends FieldKey>(d: {
@@ -48,6 +52,7 @@ export function def<K extends FieldKey>(d: {
   display: (v: V<K>, c: FieldCtx) => ReactNode;
   editor: (v: V<K>, set: (v: V<K> | null) => void, c: FieldCtx, id: string) => ReactNode;
   disabledReason?: (c: FieldCtx) => string | undefined;
+  unsetText?: string;
 }): IssuanceField {
   return d as unknown as IssuanceField;
 }
@@ -78,6 +83,7 @@ function boolEditor(label: string, on: string, off: string) {
 export const ISSUANCE_FIELDS: IssuanceField[] = [
   def({
     key: 'caId',
+    unsetText: 'none — issuance fails until one is set',
     label: 'Certificate authority',
     help: 'defaults.caId',
     initial: (c) => c.cas[0]?.id ?? '',
@@ -102,6 +108,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
   }),
   def({
     key: 'accountId',
+    unsetText: 'none — ACME CAs need one, private CAs do not',
     label: 'ACME account',
     help: 'defaults.accountId',
     initial: (c) => c.accounts[0]?.id ?? '',
@@ -189,6 +196,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
   }),
   def({
     key: 'propagationSeconds',
+    unsetText: "the DNS provider's own timeout",
     label: 'Propagation wait',
     help: 'defaults.propagationSeconds',
     initial: () => 120,
@@ -247,12 +255,12 @@ export const fromDefault = (): EffectiveValue => ({ value: null, source: 'defaul
 
 // Review fix round 1 (#1): the Global tab's "not overridden" fields always
 // show source 'default' (Global has no level above it to ask) but with the
-// server's built-in value for display, not a bare null — `builtin` is
-// `GET /settings/issuance_defaults`'s `value` (default-filled), never
-// `stored` (the raw saved object, which is what decides whether a field
-// counts as overridden at all — see IssuanceDefaultsSection).
-export function fromBuiltin(builtin: IssuanceDefaults) {
-  return (k: FieldKey): EffectiveValue => ({ value: builtin[k] ?? null, source: 'default' }) as EffectiveValue;
+// server's built-in value for display, not a bare null — `builtin` is the
+// effective endpoint's `builtin` (issuance.BuiltinDefaults), never the
+// settings `stored` (the raw saved object, which is what decides whether a
+// field counts as overridden at all — see IssuanceDefaultsSection).
+export function fromBuiltin(builtin: IssuanceDefaults | undefined) {
+  return (k: FieldKey): EffectiveValue => ({ value: builtin?.[k] ?? null, source: 'default' }) as EffectiveValue;
 }
 
 // Adaptation (preflight A8): the source of truth for the Org tab's badge —
@@ -263,12 +271,23 @@ export function fromEffective(eff: EffectiveMap) {
   return (k: FieldKey): EffectiveValue => (eff[k] as EffectiveValue | undefined) ?? fromDefault();
 }
 
-export function chainFor(global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
+/** Whether the server's built-in defaults are known: 'loading' while the effective query has no data yet, 'error' when it failed or the response carries no `builtin` (an older cached response). Undefined once known. */
+export function builtinStateOf(q: { data?: { builtin?: unknown } | undefined; isError?: boolean }): 'loading' | 'error' | undefined {
+  if (q.data?.builtin) return undefined;
+  return q.isError || q.data ? 'error' : 'loading';
+}
+
+// `builtin` is the server's BuiltinDefaults (effective endpoint's `builtin`);
+// fields absent from it have no value (see each field's unsetText). While it
+// is unknown (undefined) the Built-in row is left out rather than guessed.
+export function chainFor(builtin: IssuanceDefaults | undefined, global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
   return (k: FieldKey): ChainEntry[] => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k);
-    const show = (v: unknown): ReactNode => (v == null ? 'server default' : f ? f.display(v, ctx) : String(v));
-    const out: ChainEntry[] = [{ level: 'Global', value: show(global[k]) }];
-    if (org) out.push({ level: 'Org', value: org[k] == null ? 'inherits' : show(org[k]) });
+    const show = (v: unknown, none: ReactNode = 'not set'): ReactNode => (v == null ? none : f ? f.display(v, ctx) : String(v));
+    const out: ChainEntry[] = [];
+    if (builtin) out.push({ level: 'default', value: show(builtin[k], f?.unsetText) });
+    out.push({ level: 'global', value: show(global[k]) });
+    if (org) out.push({ level: 'org', value: show(org[k]) });
     return out;
   };
 }
@@ -303,11 +322,18 @@ export type FormProps = {
   onChange: (v: IssuanceDefaults) => void;
   inherited: (k: FieldKey) => EffectiveValue;
   chain?: (k: FieldKey) => ChainEntry[];
+  /** Set while the server's built-in defaults are not known; a field falling back to the built-in then shows no value. */
+  builtinState?: 'loading' | 'error';
+  /** The level this form edits, and where the other levels are edited. */
+  level?: 'global' | 'org' | 'cert';
+  links?: LevelLinks;
   ctx: FieldCtx;
   exclude?: FieldKey[];
   error?: (k: FieldKey) => string | null | undefined;
   /** True while a field was reset to inherited this session but the save hasn't landed (review fix round 1, #3). */
   pending?: (k: FieldKey) => boolean;
+  /** Hides "Reset section" (the per-field controls are the caller's to disable). */
+  readOnly?: boolean;
 };
 
 // Task 4 (R12 deviation): the effective CA (this form's own `caId` override,
@@ -321,7 +347,15 @@ function effectiveCa(value: IssuanceDefaults, inherited: FormProps['inherited'],
   return cas.find((c) => c.id === id);
 }
 
-export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, exclude = [], error, pending }: FormProps) {
+// Fields grouped under titled sections; a section's "Reset section" returns its
+// overridden fields to the inherited value in one step.
+const SECTIONS: { title: string; keys: FieldKey[] }[] = [
+  { title: 'Issuer', keys: ['caId', 'accountId', 'preferredChain'] },
+  { title: 'Keys and renewal', keys: ['keyType', 'renewPolicy', 'reuseKey', 'mustStaple'] },
+  { title: 'Verification', keys: ['propagationSeconds', 'resolvers', 'verificationRules'] },
+];
+
+export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builtinState, level, links, ctx, exclude = [], error, pending, readOnly = false }: FormProps) {
   const eca = effectiveCa(value, inherited, ctx.cas);
   const privateCa = !!eca && isPrivate(eca);
   // Batch 2 review (Minor): the onChange interception above only fires when
@@ -340,46 +374,81 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, ctx, e
     // null, which flips the condition straight back to false).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [privateCa, value.accountId]);
+  const renderField = (f: IssuanceField) => {
+      const id = `f-${f.key}`;
+      const accountPrivate = f.key === 'accountId' && privateCa;
+      return (
+        <InheritableField<unknown>
+          key={f.key}
+          id={id}
+          label={f.label}
+          help={accountPrivate ? 'defaults.accountPrivate' : f.help}
+          value={value[f.key] as unknown}
+          // EffectiveValue is a union across each field's own Effective*
+          // shape (EffectiveUuid | EffectiveString | ...); TS widens their
+          // merged 'value' key to optional, but every variant always
+          // carries it (see api/openapi.yaml's Effective* schemas, all
+          // `required: [value, source]`) — this cast only relaxes that,
+          // it doesn't change what's passed.
+          inherited={inherited(f.key) as { value: unknown; source: Source }}
+          chain={chain?.(f.key)}
+          builtinState={builtinState}
+          unsetText={f.unsetText}
+          level={level}
+          links={links}
+          initial={f.initial(ctx)}
+          display={(v) => f.display(v, ctx)}
+          editor={(v, set) => f.editor(v, set, ctx, id)}
+          onChange={(v) => {
+            const next = { ...value, [f.key]: v } as IssuanceDefaults;
+            // Choosing a private CA (or resetting the override back to an
+            // inherited private one) makes an accountId override
+            // meaningless — ACME accounts never apply to a private CA,
+            // and the API 422s a cert-level account override once its
+            // effective CA is private — so clear it in the same update.
+            if (f.key === 'caId') {
+              const nextCa = effectiveCa(next, inherited, ctx.cas);
+              if (nextCa && isPrivate(nextCa) && next.accountId != null) next.accountId = null;
+            }
+            onChange(next);
+          }}
+          error={error?.(f.key)}
+          overrideDisabled={accountPrivate ? 'Not used by private CAs' : f.disabledReason?.(ctx)}
+          pending={pending?.(f.key)}
+        />
+      );
+  };
   return (
-    <div className="grid">
-      {ISSUANCE_FIELDS.filter((f) => !exclude.includes(f.key)).map((f) => {
-        const id = `f-${f.key}`;
-        const accountPrivate = f.key === 'accountId' && privateCa;
+    <div className="grid gap-4">
+      {SECTIONS.map((sec) => {
+        const fields = sec.keys.filter((k) => !exclude.includes(k)).map((k) => ISSUANCE_FIELDS.find((f) => f.key === k)!);
+        if (fields.length === 0) return null;
+        const overridden = fields.filter((f) => value[f.key] != null);
         return (
-          <InheritableField<unknown>
-            key={f.key}
-            id={id}
-            label={f.label}
-            help={accountPrivate ? 'defaults.accountPrivate' : f.help}
-            value={value[f.key] as unknown}
-            // EffectiveValue is a union across each field's own Effective*
-            // shape (EffectiveUuid | EffectiveString | ...); TS widens their
-            // merged 'value' key to optional, but every variant always
-            // carries it (see api/openapi.yaml's Effective* schemas, all
-            // `required: [value, source]`) — this cast only relaxes that,
-            // it doesn't change what's passed.
-            inherited={inherited(f.key) as { value: unknown; source: Source }}
-            chain={chain?.(f.key)}
-            initial={f.initial(ctx)}
-            display={(v) => f.display(v, ctx)}
-            editor={(v, set) => f.editor(v, set, ctx, id)}
-            onChange={(v) => {
-              const next = { ...value, [f.key]: v } as IssuanceDefaults;
-              // Choosing a private CA (or resetting the override back to an
-              // inherited private one) makes an accountId override
-              // meaningless — ACME accounts never apply to a private CA,
-              // and the API 422s a cert-level account override once its
-              // effective CA is private — so clear it in the same update.
-              if (f.key === 'caId') {
-                const nextCa = effectiveCa(next, inherited, ctx.cas);
-                if (nextCa && isPrivate(nextCa) && next.accountId != null) next.accountId = null;
-              }
-              onChange(next);
-            }}
-            error={error?.(f.key)}
-            overrideDisabled={accountPrivate ? 'Not used by private CAs' : f.disabledReason?.(ctx)}
-            pending={pending?.(f.key)}
-          />
+          <FormSection
+            key={sec.title}
+            title={sec.title}
+            summary={
+              overridden.length > 0 ? (
+                <span className="flex items-center gap-2">
+                  {overridden.length} overridden
+                  {!readOnly && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Reset section ${sec.title}`}
+                      onClick={() => onChange({ ...value, ...Object.fromEntries(overridden.map((f) => [f.key, null])) } as IssuanceDefaults)}
+                    >
+                      Reset section
+                    </Button>
+                  )}
+                </span>
+              ) : undefined
+            }
+          >
+            <div className="grid">{fields.map(renderField)}</div>
+          </FormSection>
         );
       })}
     </div>

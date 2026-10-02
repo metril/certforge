@@ -60,10 +60,8 @@ it('lists monitors with state and fingerprint', async () => {
   renderRoute('/o/acme/alerts/monitors');
   const table = await screen.findByRole('table', { name: 'Monitors' });
   expect(within(table).getByText('edge')).toBeInTheDocument();
-  expect(within(table).getByText('edge.example.com:443')).toBeInTheDocument();
-  expect(within(table).getByText('1 h')).toBeInTheDocument();
+  expect(within(table).getByText(new RegExp(`edge\\.example\\.com:443 · 1 h · ${'ab'.repeat(8)}…`))).toBeInTheDocument();
   expect(within(table).getByText('OK')).toBeInTheDocument();
-  expect(within(table).getByText(`${'ab'.repeat(8)}…`)).toBeInTheDocument();
 });
 
 it('paused chip when disabled', async () => {
@@ -100,6 +98,7 @@ it('expected certificate sends id or null', async () => {
   server.use(http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert({ id: 'c-1', name: 'www' })], nextCursor: null })));
   const { user, router } = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
   const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  await user.click(within(sheet).getByRole('button', { name: /^Advanced/ }));
   const combo = await within(sheet).findByRole('combobox', { name: 'Expected certificate' });
   await user.click(combo);
   await user.click(await screen.findByText('www'));
@@ -109,6 +108,7 @@ it('expected certificate sends id or null', async () => {
 
   await router.navigate({ to: '/o/$org/alerts/monitors', params: { org: 'acme' }, search: { edit: 'mon-1' } });
   const sheet2 = await screen.findByRole('dialog', { name: 'edge' });
+  await user.click(within(sheet2).getByRole('button', { name: /^Advanced/ }));
   await user.click(within(sheet2).getByRole('combobox', { name: 'Expected certificate' }));
   await user.click(await screen.findByText('Any CertForge certificate'));
   await user.click(within(sheet2).getByRole('button', { name: 'Save' }));
@@ -235,4 +235,12 @@ it('card: copy fingerprint works by keyboard without opening the sheet', async (
   await user.keyboard(' ');
   expect(await screen.findByText('Copied')).toBeInTheDocument();
   expect(router.state.location.search).toEqual({});
+});
+
+it('shows Enabled outside the collapsed Advanced section', async () => {
+  monitors = [makeMonitor()];
+  renderRoute('/o/acme/alerts/monitors?edit=mon-1');
+  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeVisible();
+  expect(within(sheet).getByRole('button', { name: /^Advanced/ })).toHaveAttribute('aria-expanded', 'false');
 });

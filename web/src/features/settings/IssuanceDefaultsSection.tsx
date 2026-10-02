@@ -1,5 +1,8 @@
 import { useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { LevelLinks } from '@/forms/InheritableField';
 import { orgDefaultsQuery, useSaveOrgDefaults, effectiveDefaultsQuery } from '@/api/queries/defaults';
 import { settingsQuery, useSaveSettings } from '@/api/queries/settings';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -11,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NO_ORG } from '@/lib/nav';
 import { useMe } from '@/lib/org';
 import { can, type Action } from '@/lib/permissions';
-import { chainFor, fieldFromTitle, fromBuiltin, fromEffective, fullPayload, IssuanceDefaultsForm, useFieldCtx, type FieldKey } from './issuanceFields';
+import { builtinStateOf, chainFor, fieldFromTitle, fromBuiltin, fromEffective, fullPayload, IssuanceDefaultsForm, useFieldCtx, type FieldKey } from './issuanceFields';
 import { SchemaSection } from './SchemaSection';
 
 // Task 9: placeholders for the four rate-limit inputs; the fields themselves
@@ -93,8 +96,14 @@ function bannerFor(error: ServerError, value: IssuanceDefaults): string | null {
   return value[error.field] == null ? error.message : null;
 }
 
+const GLOBAL_LINKS: LevelLinks = { global: '/settings/issuance-defaults?scope=global' };
+const ORG_LINKS: LevelLinks = { org: '/settings/issuance-defaults?scope=org' };
+
 export function IssuanceDefaultsSection() {
   const me = useMe();
+  const search = useSearch({ from: '/_app/settings/$section' });
+  const navigate = useNavigate({ from: '/settings/$section' });
+  const scope = search.scope ?? 'global';
   const org = me.orgs[0];
   const canWriteGlobal = can(me, 'settings:write', null);
   const canWriteOrg = can(me, 'certs:write', org?.id ?? null);
@@ -116,14 +125,14 @@ export function IssuanceDefaultsSection() {
   const [globalError, setGlobalError] = useState<ServerError>(null);
   const [orgError, setOrgError] = useState<ServerError>(null);
 
-  // globalValue is the built-in-filled display value (GET's `value`); it is
-  // never the edit buffer or the "is this overridden" source of truth.
+  // builtin comes from the server (effective endpoint) for display only.
   // globalStored (GET's `stored`, null until the section has ever been
-  // saved) is both, instead (controller ruling, review fix round 1, #1):
-  // before this fix, the filled-in globalValue was used for both, so every
-  // field looked already overridden and the first edit re-saved every
-  // built-in as an explicit 'global' value.
-  const globalValue = (globalQ.data?.value ?? {}) as IssuanceDefaults;
+  // saved) is the edit buffer and the "is this overridden" source of truth
+  // (controller ruling, review fix round 1, #1): using the built-in-filled
+  // `value` for those made every field look overridden and re-saved every
+  // built-in as an explicit 'global' value on the first edit.
+  const builtin = effectiveQ.data?.builtin as IssuanceDefaults | undefined;
+  const builtinState = builtinStateOf(effectiveQ);
   const globalStored = (globalQ.data?.stored ?? null) as IssuanceDefaults | null;
   const orgSaved = orgQ.data ?? {};
   const effective = effectiveQ.data ?? {};
@@ -132,7 +141,29 @@ export function IssuanceDefaultsSection() {
   if (!org) return <p className="text-sm text-ink-muted">{NO_ORG}</p>;
 
   return (
-    <Tabs defaultValue="org" className="max-w-[900px]">
+    <Tabs value={scope} onValueChange={(v) => void navigate({ search: (prev) => ({ ...prev, scope: v as 'global' | 'org' }), replace: true })} className="max-w-[900px]">
+      <div aria-label="Defaults precedence" className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="underline decoration-dotted underline-offset-2">
+              Most specific wins
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Certificate &gt; Organization &gt; Global &gt; Built-in (shipped with CertForge). Each field's badge shows which level it uses.</TooltipContent>
+        </Tooltip>
+        <span aria-hidden>:</span>
+        <span>Built-in</span>
+        <span aria-hidden>→</span>
+        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => void navigate({ search: (prev) => ({ ...prev, scope: 'global' }), replace: true })}>
+          Global
+        </button>
+        <span aria-hidden>→</span>
+        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => void navigate({ search: (prev) => ({ ...prev, scope: 'org' }), replace: true })}>
+          Organization
+        </button>
+        <span aria-hidden>→</span>
+        <span>Certificate</span>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <TabsList>
           <TabsTrigger value="global">Global</TabsTrigger>
@@ -148,7 +179,11 @@ export function IssuanceDefaultsSection() {
         <IssuanceDefaultsForm
           value={globalDraft ?? globalStored ?? {}}
           onChange={setGlobalDraft}
-          inherited={fromBuiltin(globalValue)}
+          level="global"
+          links={ORG_LINKS}
+          chain={chainFor(builtin, globalStored ?? {}, undefined, globalCtx)}
+          inherited={fromBuiltin(builtin)}
+          builtinState={builtinState}
           ctx={globalCtx}
           error={(k) => (globalError?.field === k ? globalError.message : null)}
         />
@@ -179,12 +214,15 @@ export function IssuanceDefaultsSection() {
         <IssuanceDefaultsForm
           value={orgValue}
           onChange={setOrgDraft}
+          level="org"
+          links={GLOBAL_LINKS}
           inherited={fromEffective(effective)}
+          builtinState={builtinState}
           // The hover chain's Global entry comes from the raw stored value
-          // (review fix round 1, #2), not globalValue's built-in-filled
+          // (review fix round 1, #2), not the built-in-filled
           // display — otherwise a field the badge calls 'Default' would
           // still show a concrete "Global: …" line in its own tooltip.
-          chain={chainFor(globalStored ?? {}, orgValue, ctx)}
+          chain={chainFor(builtin, globalStored ?? {}, orgValue, ctx)}
           ctx={ctx}
           error={(k) => (orgError?.field === k ? orgError.message : null)}
           // A field just reset to inherited (orgDraft explicitly null) whose

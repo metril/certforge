@@ -8,6 +8,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.goto('/login');
     await signInLocal(page);
     await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+    await page.getByRole('tab', { name: 'Recent activity' }).click();
     await expect(page.getByRole('region', { name: 'Recent activity' })).toBeVisible();
 
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Audit log' }).click();

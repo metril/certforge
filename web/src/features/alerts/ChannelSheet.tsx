@@ -7,6 +7,7 @@ import { createChannel, deleteChannel, updateChannel } from '@/api/queries/chann
 import { metaSchemasQuery } from '@/api/queries/dns';
 import { type Channel, type ChannelInput, type ChannelType, type EventKind, type Severity } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
+import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -14,7 +15,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { canWriteChannel, TYPE_META } from '@/lib/channels';
@@ -103,6 +104,7 @@ function toInput(d: Draft, schema: RJSFSchema, storedSecrets: string[]): Channel
 type Props = { orgId: string; open: boolean; channel?: Channel; onOpenChange: (open: boolean) => void };
 
 export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
   const isSmUp = useMediaQuery('(min-width: 640px)');
@@ -113,6 +115,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [configError, setConfigError] = useState<ErrorSchema | undefined>(undefined);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const initialDraftRef = useRef<Draft>(draft);
 
   // Stripped so RJSF shows a secret's schema default only as a placeholder,
   // never fills it into formData — otherwise withStoredSentinels never adds
@@ -129,6 +132,9 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   // unsaved drafts") — a brand-new, unsaved channel has no saved config at
   // all, so it's always dirty regardless of the draft.
   const dirty = !channel || snapshot(schema, storedSecrets, { ...draft, config: draft.configs[draft.type] }) !== snapshot(schema, storedSecrets, { ...channel, config: channel.config as Record<string, unknown> });
+  // Discard guard: an existing channel reuses the saved-config comparison; a
+  // new one compares against its initial draft.
+  const formDirty = channel ? dirty : snapshot(schema, [], { ...draft, config: draft.configs[draft.type] }) !== snapshot(schema, [], { ...initialDraftRef.current, config: initialDraftRef.current.configs[initialDraftRef.current.type] });
   // A channel targets its own org, never the route org (a global admin can
   // edit another org's allOrgs channel) — a new channel always belongs to
   // the current route org.
@@ -151,7 +157,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
       if (channel) await updateChannel(channel, input);
       else await createChannel(orgId, input);
       await qc.invalidateQueries({ queryKey: ['channels', orgId] });
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       const message = errorMessage(e);
       if (e instanceof ApiError && e.status === 422) {
@@ -172,7 +178,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={formDirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{channel ? channel.name : 'New channel'}</SheetTitle>
@@ -192,7 +198,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
             <Input id="channel-name" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="ops-webhook" />
           </Field>
           <Field id="channel-type" label="Type" help="channel.type">
-            <span className="inline-flex items-center gap-1.5">
+            <span className="flex items-start gap-1.5">
               <SegmentedControl<ChannelType>
                 id="channel-type"
                 aria-label="Type"
@@ -218,7 +224,9 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
                   };
                 })}
               />
-              <HelpTip id={`notifier.${draft.type}` as HelpKey} />
+              <span className="flex h-9 shrink-0 items-center">
+                <HelpTip id={`notifier.${draft.type}` as HelpKey} />
+              </span>
             </span>
           </Field>
           <SchemaForm
@@ -230,26 +238,6 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
             extraErrors={configError}
           />
           <EventKindPicker value={draft.events} onChange={(events) => setDraft((d) => ({ ...d, events }))} />
-          <Field id="channel-severity" label="Minimum severity" help="channel.minSeverity">
-            <SegmentedControl<Severity>
-              id="channel-severity"
-              aria-label="Minimum severity"
-              value={draft.minSeverity}
-              onChange={(minSeverity) => setDraft((d) => ({ ...d, minSeverity }))}
-              options={SEVERITY_ORDER.map((s) => ({ value: s, label: SEVERITY_META[s].label }))}
-            />
-          </Field>
-          <PermissionTip allowed={isGlobalAdmin(me)} action="alerts:write" reason="Needs a global admin">
-            <SwitchField
-              id="channel-allOrgs"
-              label="All orgs"
-              onText="Every org's events"
-              offText="This org only"
-              checked={draft.allOrgs}
-              disabled={!isGlobalAdmin(me)}
-              onCheckedChange={(allOrgs) => setDraft((d) => ({ ...d, allOrgs }))}
-            />
-          </PermissionTip>
           <SwitchField
             id="channel-enabled"
             label="Enabled"
@@ -257,6 +245,28 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
             checked={draft.enabled}
             onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
           />
+          <FormSection title="Advanced" collapsible count={(draft.minSeverity !== 'info' ? 1 : 0) + (draft.allOrgs ? 1 : 0)}>
+            <Field id="channel-severity" label="Minimum severity" help="channel.minSeverity">
+              <SegmentedControl<Severity>
+                id="channel-severity"
+                aria-label="Minimum severity"
+                value={draft.minSeverity}
+                onChange={(minSeverity) => setDraft((d) => ({ ...d, minSeverity }))}
+                options={SEVERITY_ORDER.map((s) => ({ value: s, label: SEVERITY_META[s].label }))}
+              />
+            </Field>
+            <PermissionTip allowed={isGlobalAdmin(me)} action="alerts:write" reason="Needs a global admin">
+              <SwitchField
+                id="channel-allOrgs"
+                label="All orgs"
+                onText="Every org's events"
+                offText="This org only"
+                checked={draft.allOrgs}
+                disabled={!isGlobalAdmin(me)}
+                onCheckedChange={(allOrgs) => setDraft((d) => ({ ...d, allOrgs }))}
+              />
+            </PermissionTip>
+          </FormSection>
           <SheetFooter className="flex-row justify-between gap-2 px-0">
             {channel ? (
               <PermissionTip allowed={canWrite} action="alerts:write" reason={writeReason}>
@@ -268,9 +278,9 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
               <span />
             )}
             <span className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
+              <SheetClose asChild>
+                <Button type="button" variant="outline">Cancel</Button>
+              </SheetClose>
               <PermissionTip allowed={canWrite} action="alerts:write" reason={writeReason}>
                 <Button type="submit" disabled={!canWrite || saving}>
                   Save
@@ -291,7 +301,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
           onConfirm={async () => {
             await deleteChannel(channel);
             await qc.invalidateQueries({ queryKey: ['channels', orgId] });
-            onOpenChange(false);
+            guard.close();
           }}
         />
       )}

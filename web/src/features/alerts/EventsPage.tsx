@@ -12,6 +12,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { KIND_GROUPS, KIND_LABEL } from '@/lib/events';
 import { useOrg } from '@/lib/org';
+import { AlertsHeader } from './AlertsLayout';
 import { EventRow } from './EventRow';
 
 type SeverityFilter = 'all' | 'warning' | 'critical';
@@ -76,7 +77,14 @@ export function EventsPage() {
   const chips = [
     ...groups.map((g) => ({ key: `group:${g}`, label: g })),
     ...leftoverKinds.map((k) => ({ key: `kind:${k}`, label: KIND_LABEL[k] })),
-    ...(severityValue !== 'all' ? [{ key: 'severity', label: severityValue === 'critical' ? 'Critical' : 'Warning+' }] : []),
+    ...(severityValue !== 'all'
+      ? [
+          {
+            key: 'severity',
+            label: severityValue === 'critical' ? 'Critical' : 'Warning+',
+          },
+        ]
+      : []),
   ];
   const removeChip = (key: string) => {
     if (key === 'severity') {
@@ -92,66 +100,90 @@ export function EventsPage() {
     onGroupsChange(groups.filter((g) => `group:${g}` !== key));
   };
 
-  if (list.isError) {
-    return <ErrorState message={`Couldn't load events. ${errorMessage(list.error)}`} onRetry={() => void list.refetch()} />;
-  }
-
   // Batch 2 review: derived from the URL directly, not from `chips.length`,
   // so a partial-group deep link is never mistaken for "no filter active".
   const filtered = (kind?.length ?? 0) > 0 || severityValue !== 'all';
   const empty = !list.isPending && events.length === 0;
+  const header = (
+    <AlertsHeader
+      help="alerts.events"
+      activeFilters={chips.length}
+      filters={
+        <>
+          <ChipSet
+            aria-label="Event groups"
+            value={groups}
+            onChange={onGroupsChange}
+            options={KIND_GROUPS.map((g) => ({
+              value: g.label,
+              label: g.label,
+            }))}
+          />
+          <div className="grid gap-1.5">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted">
+              Severity
+              <HelpTip id="event.severity" />
+            </span>
+            <SegmentedControl
+              aria-label="Severity"
+              size="sm"
+              value={severityValue}
+              onChange={onSeverityChange}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'warning', label: 'Warning+' },
+                { value: 'critical', label: 'Critical' },
+              ]}
+            />
+          </div>
+        </>
+      }
+    />
+  );
+
+  if (list.isError) {
+    return (
+      <>
+        {header}
+        <ErrorState message={`Couldn't load events. ${errorMessage(list.error)}`} onRetry={() => void list.refetch()} />
+      </>
+    );
+  }
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-end gap-6">
-        <ChipSet aria-label="Event groups" value={groups} onChange={onGroupsChange} options={KIND_GROUPS.map((g) => ({ value: g.label, label: g.label }))} />
-        <div className="grid gap-1.5">
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted">
-            Severity
-            <HelpTip id="event.severity" />
-          </span>
-          <SegmentedControl
-            aria-label="Severity"
-            size="sm"
-            value={severityValue}
-            onChange={onSeverityChange}
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'warning', label: 'Warning+' },
-              { value: 'critical', label: 'Critical' },
-            ]}
-          />
-        </div>
-      </div>
-      <FilterChips chips={chips} onRemove={removeChip} onClear={clear} />
-      {empty ? (
-        filtered ? (
-          <EmptyState message="No events match these filters.">
-            <Button variant="outline" onClick={clear}>
-              Clear filters
-            </Button>
-          </EmptyState>
+    <>
+      {header}
+      <div className="grid gap-4">
+        <FilterChips chips={chips} onRemove={removeChip} onClear={clear} />
+        {empty ? (
+          filtered ? (
+            <EmptyState message="No events match these filters.">
+              <Button variant="outline" onClick={clear}>
+                Clear filters
+              </Button>
+            </EmptyState>
+          ) : (
+            <EmptyState message="No events yet.">
+              <Button asChild>
+                <Link to="/o/$org/alerts/channels" params={{ org: org.slug }} search={{ edit: 'new' }}>
+                  Add channel
+                </Link>
+              </Button>
+            </EmptyState>
+          )
         ) : (
-          <EmptyState message="No events yet.">
-            <Button asChild>
-              <Link to="/o/$org/alerts/channels" params={{ org: org.slug }} search={{ edit: 'new' }}>
-                Add channel
-              </Link>
-            </Button>
-          </EmptyState>
-        )
-      ) : (
-        <div role="list" aria-label="Events">
-          {list.isPending
-            ? [0, 1, 2].map((i) => <div key={i} aria-hidden className="h-16 animate-pulse border-b border-border bg-subtle/40" />)
-            : events.map((e) => <EventRow key={e.id} event={e} org={org.slug} />)}
-        </div>
-      )}
-      {list.hasNextPage && (
-        <Button variant="outline" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
-          Load more
-        </Button>
-      )}
-    </div>
+          <div role="list" aria-label="Events">
+            {list.isPending
+              ? [0, 1, 2].map((i) => <div key={i} aria-hidden className="h-16 animate-pulse border-b border-border bg-subtle/40" />)
+              : events.map((e) => <EventRow key={e.id} event={e} org={org.slug} />)}
+          </div>
+        )}
+        {list.hasNextPage && (
+          <Button variant="outline" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+            Load more
+          </Button>
+        )}
+      </div>
+    </>
   );
 }

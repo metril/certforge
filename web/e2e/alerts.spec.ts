@@ -62,8 +62,18 @@ test('channel CRUD with webhook test', async ({ page }) => {
     const wantSig = `sha256=${createHmac('sha256', SIGNING_SECRET).update(delivery.body).digest('hex')}`;
     expect(String(delivery.headers['x-certforge-signature'])).toBe(wantSig);
 
-    // Rename and save.
+    // Browser Back with an unsaved edit asks first; Cancel keeps the draft.
     await edit.getByLabel('Name', { exact: true }).fill('e2e-webhook-renamed');
+    await page.goBack();
+    const discard = page.getByRole('dialog', { name: 'Discard changes?' });
+    await expect(discard).toBeVisible();
+    await discard.getByRole('button', { name: 'Cancel' }).click();
+    await expect(discard).toBeHidden();
+    await expect(edit).toBeVisible();
+    await expect(edit.getByLabel('Name', { exact: true })).toHaveValue('e2e-webhook-renamed');
+    await expect(page).toHaveURL(/edit=/);
+
+    // Rename and save.
     await edit.getByRole('button', { name: 'Save' }).click();
     await expect(edit).toBeHidden();
 

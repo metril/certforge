@@ -55,11 +55,11 @@ it('lists clients with status, connection, site, agent, grants, drift and last s
   const web = rowOf(table, 'web-1');
   expect(within(web).getByText('Active')).toBeInTheDocument();
   expect(within(web).getByText('Online')).toBeInTheDocument();
-  expect(within(web).getByText('Rack A')).toBeInTheDocument();
-  expect(within(web).getByText('0.3.0')).toBeInTheDocument();
-  expect(within(web).getByText('2 drift')).toBeInTheDocument();
+  expect(within(web).getByText(/Rack A/)).toBeInTheDocument();
+  expect(within(web).getByText(/agent 0.3.0/)).toBeInTheDocument();
+  expect(within(web).getByText(/2 drift/)).toBeInTheDocument();
   expect(within(rowOf(table, 'db-1')).getByText('Offline')).toBeInTheDocument();
-  expect(within(rowOf(table, 'db-1')).getByText('1 failed')).toBeInTheDocument();
+  expect(within(rowOf(table, 'db-1')).getByText(/1 failed/)).toBeInTheDocument();
   const pending = rowOf(table, 'new-host');
   expect(within(pending).getByText('Pending')).toBeInTheDocument();
   expect(within(pending).getByText('Never connected')).toBeInTheDocument();

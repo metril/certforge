@@ -28,6 +28,7 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
   await layout.getByLabel('Name', { exact: true }).fill('pw-files');
   const file = layout.getByRole('listitem', { name: 'File 1' });
   await file.getByLabel('Path', { exact: true }).fill(`/etc/ssl/certforge/${PEM}`);
+  await file.getByRole('button', { name: /^Advanced/ }).click();
   await file.getByLabel('Mode', { exact: true }).fill('0644');
   await snap(page, 'layout-sheet');
   await layout.getByRole('button', { name: 'Save' }).click();

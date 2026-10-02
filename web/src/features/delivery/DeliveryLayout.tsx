@@ -15,14 +15,16 @@ export function DeliveryLayout({ children }: { children: ReactNode }) {
   const { slug: org } = useOrg();
   return (
     <>
-      <PageHeader title="Delivery" />
-      <nav aria-label="Delivery" className="mb-6 flex gap-6 overflow-x-auto border-b border-border">
-        {DELIVERY_TABS.map((t) => (
+      <PageHeader
+        title="Delivery"
+        help="target.runsOn"
+        tabsLabel="Delivery"
+        tabs={DELIVERY_TABS.map((t) => (
           <Link key={t.to} to={t.to} params={{ org }} className={TAB_LINK} activeProps={TAB_ACTIVE} aria-label={t.full}>
             <TabLabel full={t.full} short={t.short} />
           </Link>
         ))}
-      </nav>
+      />
       {children}
     </>
   );

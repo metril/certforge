@@ -29,7 +29,7 @@ it('lists certificates across orgs, read-only', async () => {
   as([{ role: 'admin', orgId: null }]);
   renderRoute('/o/all/certificates');
   const table = await screen.findByRole('table', { name: 'Certificates' });
-  expect(within(table).getByText('Lab')).toBeInTheDocument();
+  expect(within(table).getByText(/Lab/)).toBeInTheDocument();
   expect(within(table).getByRole('link', { name: 'db' })).toHaveAttribute('href', '/o/lab/certificates/c-2/overview');
   expect(screen.getByRole('status', { name: 'Read-only view' })).toHaveTextContent('All orgs');
   expect(screen.queryByRole('link', { name: 'New certificate' })).not.toBeInTheDocument();
@@ -86,6 +86,6 @@ it('shows the org name on card rows below md', async () => {
   }));
   as([{ role: 'admin', orgId: null }]);
   renderRoute('/o/all/certificates');
-  const link = await screen.findByRole('link', { name: /db/ });
-  expect(within(link).getByText('Lab')).toBeInTheDocument();
+  const link = await screen.findByRole('link', { name: /^db/ });
+  expect(within(link).getByText(/Lab/)).toBeInTheDocument();
 });

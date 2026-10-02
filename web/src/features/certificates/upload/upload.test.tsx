@@ -21,7 +21,7 @@ beforeEach(() => {
     http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([])),
     http.get(url('/orgs/org-1/dns-credentials'), () => HttpResponse.json([])),
     http.get(url('/orgs/org-1/clients'), () => HttpResponse.json({ items: [], nextCursor: null })),
-    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({})),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ builtin: {} })),
   );
 });
 

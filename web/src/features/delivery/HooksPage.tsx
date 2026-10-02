@@ -10,6 +10,7 @@ import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
+import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -69,18 +70,12 @@ export function HooksPage() {
           <Table aria-label="Hooks" className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className={cn('w-44', stickyCol)}>Name</TableHead>
-                <TableHead className="w-28">
-                  <span className="inline-flex items-center gap-1">
-                    Phase <HelpTip id="hook.phase" />
-                  </span>
-                </TableHead>
+                <TableHead className={cn('w-56', stickyCol)}>Name</TableHead>
                 <TableHead>
                   <span className="inline-flex items-center gap-1">
                     Command <HelpTip id="hook.allowlist" warning />
                   </span>
                 </TableHead>
-                <TableHead className="w-24">Timeout</TableHead>
                 <TableHead className="w-28">Used by</TableHead>
                 <TableHead className="w-20">
                   <span className="sr-only">Actions</span>
@@ -91,9 +86,10 @@ export function HooksPage() {
               {hooks.map((h) => {
                 const command = h.argv.join(' ');
                 return (
-                  <TableRow key={h.id} className="h-9">
-                    <TableCell className={cn('truncate py-1 font-semibold', stickyCol)}>{h.name}</TableCell>
-                    <TableCell className="py-1">{PHASE_LABEL[h.phase]}</TableCell>
+                  <TableRow key={h.id}>
+                    <TableCell className={cn('py-1.5', stickyCol)}>
+                      <PrimaryCell primary={h.name} meta={[PHASE_LABEL[h.phase], `${h.timeoutSeconds} s`]} />
+                    </TableCell>
                     <TableCell className="py-1">
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -106,7 +102,6 @@ export function HooksPage() {
                         </TooltipContent>
                       </Tooltip>
                     </TableCell>
-                    <TableCell className="py-1 tabular-nums">{h.timeoutSeconds} s</TableCell>
                     <TableCell className="py-1">
                       <UsedBy count={h.grantCount} />
                     </TableCell>

@@ -11,6 +11,7 @@ import { CopyField } from '@/components/CopyField';
 import { DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -21,6 +22,7 @@ import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { AlertsHeader } from './AlertsLayout';
 import { MonitorSheet } from './MonitorSheet';
 import { MonitorStateChip } from './MonitorStateChip';
 
@@ -41,7 +43,9 @@ function CheckNowButton({ monitor, orgId }: { monitor: Monitor; orgId: string })
         disabled={!allowed || check.isPending}
         onClick={(e) => {
           e.stopPropagation();
-          check.mutate(monitor.id, { onError: (err) => toast.error(errorMessage(err)) });
+          check.mutate(monitor.id, {
+            onError: (err) => toast.error(errorMessage(err)),
+          });
         }}
       >
         <RefreshCw className={check.isPending ? 'size-4 animate-spin' : 'size-4'} aria-hidden />
@@ -75,32 +79,32 @@ function NextCheckCell({ monitor }: { monitor: Monitor }) {
   );
 }
 
+function monitorMeta(m: Monitor): string[] {
+  return [`${m.host}:${m.port}`, m.sni, fmtInterval(m.intervalSeconds), m.lastFingerprint ? shortFp(m.lastFingerprint) : ''].filter((x): x is string => !!x);
+}
+
 function monitorColumns(orgId: string) {
   return [
-    col.accessor('name', { header: 'Name', meta: { className: 'w-40' }, cell: ({ getValue }) => <span className="truncate font-semibold">{getValue()}</span> }),
-    col.display({ id: 'target', header: 'Target', meta: { className: 'w-48' }, cell: ({ row }) => <TargetCell monitor={row.original} /> }),
-    col.accessor('intervalSeconds', { header: 'Interval', meta: { className: 'w-20' }, cell: ({ getValue }) => <span className="text-xs">{fmtInterval(getValue())}</span> }),
+    col.accessor('name', {
+      header: 'Name',
+      cell: ({ row }) => <PrimaryCell primary={row.original.name} meta={monitorMeta(row.original)} />,
+    }),
     col.display({
       id: 'state',
       header: 'State',
-      meta: { className: 'w-32', help: 'monitor.state' },
+      meta: { className: 'w-32' },
       cell: ({ row }) => <MonitorStateChip state={row.original.state} enabled={row.original.enabled} lastError={row.original.lastError} />,
     }),
     col.display({
-      id: 'fingerprint',
-      header: 'Fingerprint',
-      meta: { className: 'w-40' },
-      cell: ({ row }) => {
-        const fp = row.original.lastFingerprint;
-        if (!fp) return <span className="text-xs text-ink-muted">—</span>;
-        return <CopyField value={fp} label="fingerprint" display={shortFp(fp)} />;
-      },
+      id: 'nextCheck',
+      header: 'Next check',
+      meta: { className: 'w-28' },
+      cell: ({ row }) => <NextCheckCell monitor={row.original} />,
     }),
-    col.display({ id: 'nextCheck', header: 'Next check', meta: { className: 'w-28' }, cell: ({ row }) => <NextCheckCell monitor={row.original} /> }),
     col.display({
       id: 'check',
-      header: 'Check',
-      meta: { className: 'w-16', help: 'monitor.check' },
+      header: () => <span className="sr-only">Check now</span>,
+      meta: { className: 'w-16' },
       cell: ({ row }) => <CheckNowButton monitor={row.original} orgId={orgId} />,
     }),
   ];
@@ -152,7 +156,11 @@ export function MonitorsPage() {
   const canWrite = can(me, 'alerts:write', org.id);
   const atLimit = monitors.length >= MONITOR_LIMIT;
   const addAllowed = canWrite && !atLimit;
-  const openSheet = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, edit: id }), replace: id === undefined });
+  const openSheet = (id: string | undefined) =>
+    void navigate({
+      search: (prev) => ({ ...prev, edit: id }),
+      replace: id === undefined,
+    });
   const columns = useMemo(() => monitorColumns(org.id), [org.id]);
   const editing = monitors.find((m) => m.id === edit);
   const editNotFound = !q.isPending && !q.isError && !!edit && edit !== 'new' && !editing;
@@ -167,43 +175,45 @@ export function MonitorsPage() {
   );
 
   return (
-    <div className="grid gap-4">
-      {q.isPending ? (
-        <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-      ) : q.isError ? (
-        <ErrorState message={`Couldn't load monitors. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
-      ) : monitors.length === 0 ? (
-        <EmptyState message="No monitors yet.">{add}</EmptyState>
-      ) : (
-        <>
-          <div className="flex justify-end">{add}</div>
-          {isMdUp ? (
-            <DataTable ariaLabel="Monitors" data={monitors} columns={columns} getRowId={(m) => m.id} onRowClick={(id) => openSheet(id)} />
-          ) : (
-            <div className="grid gap-2">
-              {monitors.map((m) => (
-                <MonitorCard key={m.id} monitor={m} orgId={org.id} onOpen={() => openSheet(m.id)} />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-      {(edit === 'new' || editing) && (
-        <MonitorSheet key={edit} orgId={org.id} open monitor={editing} onOpenChange={(o) => !o && openSheet(undefined)} />
-      )}
-      {editNotFound && (
-        <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
-          <SheetContent side="right" className="w-full sm:max-w-lg">
-            <SheetHeader>
-              <SheetTitle>Monitor not found</SheetTitle>
-              <SheetDescription>It may have been deleted.</SheetDescription>
-            </SheetHeader>
-            <div className="px-4">
-              <Button onClick={() => openSheet(undefined)}>Back to monitors</Button>
-            </div>
-          </SheetContent>
-        </Sheet>
-      )}
-    </div>
+    <>
+      <AlertsHeader help="alerts.monitors" actions={q.isPending || q.isError || monitors.length === 0 ? undefined : add} />
+      <div className="grid gap-4">
+        {q.isPending ? (
+          <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
+        ) : q.isError ? (
+          <ErrorState message={`Couldn't load monitors. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
+        ) : monitors.length === 0 ? (
+          <EmptyState message="No monitors yet.">{add}</EmptyState>
+        ) : (
+          <>
+            {isMdUp ? (
+              <DataTable ariaLabel="Monitors" data={monitors} columns={columns} getRowId={(m) => m.id} onRowClick={(id) => openSheet(id)} />
+            ) : (
+              <div className="grid gap-2">
+                {monitors.map((m) => (
+                  <MonitorCard key={m.id} monitor={m} orgId={org.id} onOpen={() => openSheet(m.id)} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {(edit === 'new' || editing) && (
+          <MonitorSheet key={edit} orgId={org.id} open monitor={editing} onOpenChange={(o) => !o && openSheet(undefined)} />
+        )}
+        {editNotFound && (
+          <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
+            <SheetContent side="right" className="w-full sm:max-w-lg">
+              <SheetHeader>
+                <SheetTitle>Monitor not found</SheetTitle>
+                <SheetDescription>It may have been deleted.</SheetDescription>
+              </SheetHeader>
+              <div className="px-4">
+                <Button onClick={() => openSheet(undefined)}>Back to monitors</Button>
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
+      </div>
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { useDirty } from '@/lib/useDirty';
 import { useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
@@ -15,19 +16,20 @@ import { RunsOnChip } from '@/components/RunsOnChip';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { stripSecretDefaults, storedSecretsFor } from '@/lib/secretForm';
+import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
 import { RUNS_ON_META, defaultRunsOn, forcedRunsOn, keyGateBlocks, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 type Props = { orgId: string; target?: DeployTarget; types: ProviderSchema[]; readOnly: boolean; onOpenChange: (open: boolean) => void };
 
 export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Props) {
+  const guard = useSheetGuard(onOpenChange);
   const me = useMe();
   const qc = useQueryClient();
   const isSmUp = useMediaQuery('(min-width: 640px)');
@@ -41,9 +43,10 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const [formError, setFormError] = useState<string | null>(null);
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
   const [saving, setSaving] = useState(false);
-
   const meta = useMemo(() => typeMeta(types, type) ?? types[0]!, [types, type]);
   const schema = useMemo(() => stripSecretDefaults(meta.schema as RJSFSchema), [meta]);
+  // Settled so the form's mount-time onChange (defaults, secret sentinels) is not an edit.
+  const dirty = useDirty({ name, type, runsOn, config: settledConfig(schema, config, storedSecretsFor(target, type)) });
   const canExportKeys = can(me, 'keys:export', orgId);
   // Locked once the target exists (R3: runsOn/type are immutable after
   // create) or for a viewer opening it read-only.
@@ -92,7 +95,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
       else await createDeployTarget(orgId, body);
       toast.success('Deploy target saved');
       await Promise.all([qc.invalidateQueries({ queryKey: ['deploy-targets', orgId] }), invalidateGrants(qc, orgId)]);
-      onOpenChange(false);
+      guard.close();
     } catch (e) {
       const msg = errorMessage(e);
       const field = fieldErrorFromMessage(schema, msg);
@@ -110,7 +113,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   };
 
   return (
-    <Sheet open onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
@@ -206,9 +209,9 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
             </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
+              <SheetClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </SheetClose>
               <PermissionTip allowed={!blocked} action="keys:export">
                 <Button disabled={blocked || saving} onClick={() => void submit()}>
                   Save

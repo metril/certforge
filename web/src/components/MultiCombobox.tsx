@@ -35,7 +35,7 @@ export function MultiCombobox({ id, value, onChange, options, placeholder, empty
             aria-expanded={open}
             aria-label={rest['aria-label']}
             disabled={disabled}
-            className="h-9 min-w-0 justify-between font-normal"
+            className="h-9 min-w-0 justify-between bg-field font-normal hover:border-ink-muted hover:bg-field focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <span className={cn('truncate', value.length === 0 && 'text-ink-muted')}>{value.length ? `${value.length} selected` : placeholder}</span>
             <ChevronsUpDown className="size-4 shrink-0 text-ink-muted" aria-hidden />

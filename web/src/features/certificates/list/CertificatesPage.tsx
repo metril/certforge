@@ -37,7 +37,7 @@ import { can } from '@/lib/permissions';
 import { useRowSelection } from '@/lib/selection';
 import { STATUS_META } from '@/lib/status';
 import { relDays } from '@/lib/time';
-import { certColumns } from './columns';
+import { certColumns, certMeta } from './columns';
 import { ImportMenu } from './ImportMenu';
 import { certListSearch, type CertListSearch } from './search';
 
@@ -67,7 +67,7 @@ function bulkFailureMessage(ids: string[], nameOf: (id: string) => string): stri
 // Card rows below `md` (controller ruling / preflight D9: the spec calls for
 // "card lists" under 768 px; a fixed-width table would scroll horizontally
 // on a phone instead).
-function CertCard({ cert, org, orgName }: { cert: Certificate; org: string; orgName?: string }) {
+function CertCard({ cert, org, orgName, ca }: { cert: Certificate; org: string; orgName?: string; ca?: string }) {
   return (
     <Link
       to="/o/$org/certificates/$id/$tab"
@@ -78,7 +78,7 @@ function CertCard({ cert, org, orgName }: { cert: Certificate; org: string; orgN
         <span className="truncate font-semibold">{cert.name}</span>
         <StatusChip status={cert.status} />
       </div>
-      {orgName && <span className="truncate text-xs text-ink-muted">{orgName}</span>}
+      <span className="truncate text-xs text-ink-muted">{[orgName, ...certMeta(cert, ca)].filter(Boolean).join(' · ')}</span>
       <CertValidity cert={cert} />
       <div className="flex items-center justify-between text-xs text-ink-muted">
         <span>Next renewal</span>
@@ -252,24 +252,33 @@ export function CertificatesPage() {
 
   return (
     <>
-      <PageHeader title="Certificates" actions={headerActions} />
+      <PageHeader
+        title="Certificates"
+        help="status.column"
+        actions={headerActions}
+        activeFilters={chips.length}
+        filters={
+          emptyUnfiltered ? undefined : (
+            <>
+              <SegmentedControl<StatusFilter>
+                aria-label="Status"
+                value={search.status ?? 'all'}
+                onChange={(v) => setSearch({ status: v === 'all' ? undefined : v })}
+                options={STATUS_OPTIONS}
+              />
+              <div className="relative w-full md:w-60">
+                <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
+                <Input aria-label="Search certificates" className="pl-8 font-mono text-xs" placeholder="example.com" value={text} onChange={(e) => setText(e.target.value)} />
+              </div>
+              <SavedViews list="certificates" current={{ status: search.status, q: search.q, sort: search.sort }} onApply={(s) => void navigate({ search: certListSearch.parse(s) })} />
+            </>
+          )
+        }
+      />
       {emptyUnfiltered ? (
         <EmptyState message="No certificates yet.">{!allOrgs && newLink}</EmptyState>
       ) : (
         <>
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <SegmentedControl<StatusFilter>
-              aria-label="Status"
-              value={search.status ?? 'all'}
-              onChange={(v) => setSearch({ status: v === 'all' ? undefined : v })}
-              options={STATUS_OPTIONS}
-            />
-            <div className="relative w-72">
-              <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
-              <Input aria-label="Search certificates" className="pl-8 font-mono text-xs" placeholder="example.com" value={text} onChange={(e) => setText(e.target.value)} />
-            </div>
-            <SavedViews list="certificates" current={{ status: search.status, q: search.q, sort: search.sort }} onApply={(s) => void navigate({ search: certListSearch.parse(s) })} />
-          </div>
           <FilterChips className="mb-3" chips={chips} onRemove={(k) => setSearch({ [k]: undefined })} onClear={clearAll} />
           {cursorNotice && <p className="mb-3 text-xs text-ink-muted">The list changed since it was loaded; showing the first page again.</p>}
           {list.isError && rows.length === 0 ? (
@@ -309,7 +318,7 @@ export function CertificatesPage() {
           ) : (
             <div className="grid gap-2">
               {rows.map((c) => (
-                <CertCard key={c.id} cert={c} org={allOrgs ? slugOf(c.orgId) : org.slug} orgName={allOrgs ? orgNameOf(c) : undefined} />
+                <CertCard key={c.id} cert={c} ca={cas.find((x) => x.id === c.effective?.caId?.value)?.name} org={allOrgs ? slugOf(c.orgId) : org.slug} orgName={allOrgs ? orgNameOf(c) : undefined} />
               ))}
             </div>
           )}

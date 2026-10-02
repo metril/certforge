@@ -1,7 +1,7 @@
 import { useMemo, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { Check, ChevronDown, TriangleAlert } from 'lucide-react';
+import { Check, TriangleAlert } from 'lucide-react';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { settingsQuery } from '@/api/queries/settings';
 import type { CA, CAPreset, ProviderSchema } from '@/api/types';
@@ -10,7 +10,7 @@ import { HelpTip } from '@/components/HelpTip';
 import { ListInput } from '@/components/ListInput';
 import { SecretInput } from '@/components/SecretInput';
 import { SwitchField } from '@/components/SwitchField';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { FormSection } from '@/components/FormSection';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
@@ -188,17 +188,11 @@ function AcmeBody({
               </Field>
             </fieldset>
           )}
-          <Collapsible>
-            <CollapsibleTrigger className="flex items-center gap-1 text-sm font-semibold">
-              <ChevronDown className="size-4" aria-hidden />
-              Advanced
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-3">
-              <Field id="ca-resolvers" label="Resolvers" help="ca.resolvers" optional>
-                <ListInput id="ca-resolvers" value={form.resolvers} onChange={(v) => set('resolvers', v)} placeholder="1.1.1.1:53" validate={hostPort} />
-              </Field>
-            </CollapsibleContent>
-          </Collapsible>
+          <FormSection title="Advanced" collapsible count={form.resolvers.length > 0 ? 1 : 0} forceOpen={submitted && form.resolvers.some((r) => !!hostPort(r))}>
+            <Field id="ca-resolvers" label="Resolvers" help="ca.resolvers" optional>
+              <ListInput id="ca-resolvers" value={form.resolvers} onChange={(v) => set('resolvers', v)} placeholder="1.1.1.1:53" validate={hostPort} />
+            </Field>
+          </FormSection>
         </>
       )}
       {serverError && (!serverError.field || (serverError.field === 'eab' && !showEab)) && (

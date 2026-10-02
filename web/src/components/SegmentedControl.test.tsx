@@ -28,3 +28,23 @@ it('selects an option and never deselects to empty', async () => {
   expect(onChange).toHaveBeenCalledWith('percent');
   expect(screen.getByRole('radio', { name: 'Later' })).toBeDisabled();
 });
+
+it('wraps onto more rows without wrapping a label or shrinking its icon', () => {
+  render(
+    <TooltipProvider>
+      <SegmentedControl
+        aria-label="Type"
+        value="a"
+        onChange={() => {}}
+        options={[
+          { value: 'a', label: 'Webhook' },
+          { value: 'b', label: 'Home Assistant' },
+        ]}
+      />
+    </TooltipProvider>,
+  );
+  const group = screen.getByRole('radiogroup', { name: 'Type' });
+  expect(group).toHaveClass('flex-wrap', 'max-w-full');
+  const item = screen.getByRole('radio', { name: 'Home Assistant' });
+  expect(item).toHaveClass('whitespace-nowrap', 'h-8', '[&_svg]:shrink-0');
+});

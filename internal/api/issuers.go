@@ -282,6 +282,13 @@ func (s *Server) GetEffectiveIssuanceDefaults(ctx context.Context, r gen.GetEffe
 	if err != nil {
 		return nil, err
 	}
-	out, err := convert[gen.EffectiveIssuanceDefaults](e)
-	return gen.GetEffectiveIssuanceDefaults200JSONResponse(out), err
+	out, err := convert[gen.OrgEffectiveIssuanceDefaults](e)
+	if err != nil {
+		return nil, err
+	}
+	// The built-ins ride along so the client never keeps its own copy.
+	if out.Builtin, err = convert[gen.IssuanceDefaults](issuance.BuiltinDefaults()); err != nil {
+		return nil, err
+	}
+	return gen.GetEffectiveIssuanceDefaults200JSONResponse(out), nil
 }

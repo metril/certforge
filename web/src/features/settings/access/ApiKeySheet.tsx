@@ -9,7 +9,7 @@ import { Field } from '@/components/Field';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
 import { GLOBAL } from '@/lib/apiKeys';
 import { useMe } from '@/lib/org';
 import { API_KEY_SCOPES, can, canGrantScope } from '@/lib/permissions';
@@ -31,6 +31,7 @@ function endOfDayLocalISO(date: string): string | null {
 }
 
 export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; onCreated: (c: ApiKeyCreated) => void }) {
+  const guard = useSheetGuard(onOpenChange);
   const me = useMe();
   const create = useCreateApiKey();
   const scopes = useMemo(
@@ -47,6 +48,7 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
   const [expiry, setExpiry] = useState<Expiry>('90d');
   const [customDate, setCustomDate] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const dirty = name !== '' || scope !== initialScope || expiry !== '90d' || customDate !== '' || JSON.stringify(picked) !== JSON.stringify(['certs:read']);
   const orgId = scope === GLOBAL ? null : (scope ?? null);
   const grantable = (s: ApiKeyScope) => canGrantScope(me, s, orgId);
   const customExpiresAt = expiry === 'custom' ? endOfDayLocalISO(customDate) : undefined;
@@ -83,7 +85,7 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
       });
       // Detach the observer so the gcTime-0 mutation (and its token) leaves the cache.
       create.reset();
-      onOpenChange(false);
+      guard.close();
       onCreated(created);
     } catch (e) {
       setError(errorMessage(e));
@@ -91,7 +93,7 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet guard={guard} open={open} form dirty={open && dirty} onOpenChange={onOpenChange}>
       <SheetContent className="grid content-start gap-6 overflow-y-auto sm:max-w-md">
         <SheetHeader>
           <SheetTitle>New API key</SheetTitle>
