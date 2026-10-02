@@ -60,6 +60,16 @@ export function FlowPage() {
   const selected: FlowNodeData | undefined = all.find((n) => n.id === focus);
   const path = useMemo(() => (flow ? tracePath(flow, focus) : null), [flow, focus]);
 
+  const collapsed = useMemo(() => new Set(search.collapsed ?? []), [search.collapsed]);
+  const setCollapsed = useCallback(
+    (next: string[]) => void navigate({ search: (s) => ({ ...s, collapsed: next.length > 0 ? next : undefined }), replace: true }),
+    [navigate],
+  );
+  const toggleGroup = useCallback(
+    (id: string) => setCollapsed(collapsed.has(id) ? [...collapsed].filter((g) => g !== id) : [...collapsed, id]),
+    [collapsed, setCollapsed],
+  );
+  const allCollapsed = LANE_KEYS.every((k) => collapsed.has(k));
   const clearFilters = useCallback(() => void navigate({ search: (s) => ({ ...s, q: undefined, status: undefined }), replace: true }), [navigate]);
   const setFocus = useCallback(
     (id: string | undefined) => void navigate({ search: (s) => ({ ...s, focus: id }), replace: true }),
@@ -104,6 +114,11 @@ export function FlowPage() {
             />
           </FilterField>
         </>
+      }
+      filtersTrailing={
+        <Button variant="ghost" size="sm" onClick={() => setCollapsed(allCollapsed ? [] : [...LANE_KEYS])}>
+          {allCollapsed ? 'Expand all' : 'Collapse all'}
+        </Button>
       }
       actions={
         <>
@@ -179,10 +194,12 @@ export function FlowPage() {
               onPath={selected && !filtering ? path.nodes : undefined}
               onSelect={select}
               register={register}
+              collapsed={collapsed}
+              onToggle={toggleGroup}
             />
           );
         })}
-        {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} selected={!!selected} />}
+        {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} selected={!!selected} collapsed={collapsed} />}
       </div>
       )}
     </div>

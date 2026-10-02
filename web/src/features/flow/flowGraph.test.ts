@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { edgeKey, filterFlow, pairStatus, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { collapseEdges, edgeKey, filterFlow, pairStatus, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 
 const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
   id: `${kind}:${id}`,
@@ -176,5 +176,53 @@ describe('visibleNodeIds', () => {
   it('combines name and problems, and is empty when nothing matches', () => {
     expect(visibleNodeIds(flow, 'A', 'problems')!.size).toBe(0);
     expect(visibleNodeIds(flow, 'zzz', undefined)!.size).toBe(0);
+  });
+});
+
+describe('collapseEdges', () => {
+  const keyOf = (m: { a: string; b: string }) => `${m.a}>${m.b}`;
+
+  it('returns one edge per node pair when nothing is collapsed', () => {
+    const m = collapseEdges(flow, new Set());
+    expect(m).toHaveLength(10);
+    expect(m.find((x) => x.key === edgeKey('certificate:A', 'ca:ca1'))!.keys).toEqual([edgeKey('certificate:A', 'ca:ca1')]);
+  });
+
+  it('retargets a collapsed lane to its proxy and merges duplicates', () => {
+    const m = collapseEdges(flow, new Set(['issuers']));
+    const toIssuers = m.filter((x) => x.b === 'group:issuers' || x.a === 'group:issuers');
+    // A and B each reach the issuers lane once, however many issuers they use.
+    expect(toIssuers.map(keyOf).sort()).toEqual(['certificate:A>group:issuers', 'certificate:B>group:issuers']);
+    const b = toIssuers.find((x) => x.a === 'certificate:B')!;
+    expect(b.edges).toHaveLength(2);
+    expect(b.keys.sort()).toEqual([edgeKey('certificate:B', 'ca:ca1'), edgeKey('certificate:B', 'ca:ca2')]);
+  });
+
+  it('carries the worst status of the merged edges', () => {
+    const f: Flow = { ...flow, edges: flow.edges.map((x) => (x.to === 'ca:ca2' ? { ...x, status: 'expiring' as const } : x.to === 'ca:ca1' && x.from === 'certificate:B' ? { ...x, status: 'failed' as const } : x)) };
+    expect(collapseEdges(f, new Set(['issuers.cas'])).find((x) => x.b === 'group:issuers.cas' && x.a === 'certificate:B')!.status).toBe('failed');
+    const g: Flow = { ...flow, edges: flow.edges.map((x) => (x.to === 'ca:ca2' ? { ...x, status: 'expiring' as const } : x)) };
+    expect(collapseEdges(g, new Set(['issuers'])).find((x) => x.a === 'certificate:B' && x.b === 'group:issuers')!.status).toBe('expiring');
+  });
+
+  it('drops edges whose two ends share a collapsed group, and collapses sub-groups on their own', () => {
+    const f: Flow = { ...flow, edges: [...flow.edges, e('layout:L1', 'hook:H1')] };
+    const m = collapseEdges(f, new Set(['delivery']));
+    expect(m.some((x) => x.a === 'group:delivery' && x.b === 'group:delivery')).toBe(false);
+    expect(m).toHaveLength(collapseEdges(flow, new Set(['delivery'])).length);
+    const sub = collapseEdges(flow, new Set(['issuers.cas']));
+    expect(sub.some((x) => x.b === 'dnsCredential:dns1' || x.a === 'dnsCredential:dns1')).toBe(true);
+    expect(sub.some((x) => x.b === 'group:issuers.cas')).toBe(true);
+  });
+
+  it('retargets and dedupes the synthetic channel links', () => {
+    const syn = [edgeKey('certificate:A', 'channel:ch1'), edgeKey('certificate:B', 'channel:ch1')];
+    const m = collapseEdges(flow, new Set(['certificates', 'alerts']), syn);
+    expect(m.filter((x) => x.synthetic).map((x) => x.key)).toEqual([`s:${edgeKey('group:certificates', 'group:alerts')}`]);
+    const one = collapseEdges(flow, new Set(['alerts']), syn).filter((x) => x.synthetic);
+    expect(one.map((x) => x.key).sort()).toEqual([`s:${edgeKey('certificate:A', 'group:alerts')}`, `s:${edgeKey('certificate:B', 'group:alerts')}`]);
+    const both = collapseEdges(flow, new Set(['certificates']), syn).filter((x) => x.synthetic);
+    expect(both).toHaveLength(1);
+    expect(both[0]!.keys).toHaveLength(2);
   });
 });

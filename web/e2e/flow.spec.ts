@@ -54,3 +54,17 @@ test('flow: filtering by the seeded certificate name keeps it visible', async ({
   await expect(page.getByRole('button', { name: new RegExp(`^Certificate ${E2E.certName},`) })).toBeVisible();
   await snap(page, 'flow-filtered');
 });
+
+test('flow: collapsing the Certificates lane leaves one proxy row and the connectors', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+  await page.goto(`/o/${E2E.orgSlug}/flow`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Flow' })).toBeVisible();
+  await page.getByRole('region', { name: 'Certificates' }).getByRole('button', { name: /^Certificates/ }).click();
+  await expect(page).toHaveURL(/collapsed=/);
+  await expect(page.getByRole('button', { name: /^Expand Certificates,/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: new RegExp(`^Certificate ${E2E.certName},`) })).toHaveCount(0);
+  await expect.poll(() => page.locator('[data-flow-connectors] path').count()).toBeGreaterThan(0);
+  await snap(page, 'flow-collapsed');
+});

@@ -187,3 +187,42 @@ it('clears the focus when the filters hide the focused node', async () => {
   await screen.findByRole('button', { name: /Certificate www/ });
   await waitFor(() => expect(router.state.location.search).not.toHaveProperty('focus'));
 });
+
+it('collapsing a lane shows one proxy row with the count and keeps the connectors', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router, container } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  const certs = screen.getByRole('region', { name: 'Certificates' });
+  const head = within(certs).getByRole('button', { name: /Certificates/ });
+  expect(head).toHaveAttribute('aria-expanded', 'true');
+  expect(head).toHaveTextContent('1 problem');
+  await user.click(head);
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ collapsed: ['certificates'] }));
+  expect(head).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: /Certificate www/ })).toBeNull();
+  const proxy = within(certs).getByRole('button', { name: 'Expand Certificates, 2 items, Expiring' });
+  expect(proxy).toHaveTextContent('2');
+  // Both certificates merge into the proxy: proxy-ca, proxy-layout and the two layout-client edges.
+  await waitFor(() => expect(container.querySelectorAll('[data-flow-connectors] path').length).toBe(4));
+  await user.click(proxy);
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('collapsed'));
+  expect(await screen.findByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+});
+
+it('collapses a sub-group in place and Collapse all / Expand all toggle every lane', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...base, lanes: { ...base.lanes, issuers: lane([node('ca', 'letsencrypt'), node('account', 'acct')]) } }));
+  const { user, router } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.click(screen.getByRole('button', { name: /^ACME accounts/ }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ collapsed: ['issuers.accounts'] }));
+  expect(screen.getByRole('button', { name: /CA letsencrypt/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Expand ACME accounts, 1 item, Healthy' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Collapse all' }));
+  await waitFor(() => expect(router.state.location.search.collapsed).toHaveLength(5));
+  for (const l of lanes) expect(within(screen.getByRole('region', { name: l })).getAllByRole('button', { name: new RegExp(`^${l}`) })[0]).toHaveAttribute('aria-expanded', 'false');
+  await user.click(screen.getByRole('button', { name: 'Expand all' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('collapsed'));
+  expect(await screen.findByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+});

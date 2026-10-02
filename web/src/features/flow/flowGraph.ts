@@ -192,3 +192,93 @@ export function filterFlow(flow: Flow, visible: Set<string> | null): Flow {
   for (const k of LANE_KEYS) lanes[k] = { ...flow.lanes[k], nodes: flow.lanes[k].nodes.filter((n) => visible.has(n.id)) };
   return { ...flow, lanes, edges: flow.edges.filter((e) => visible.has(e.from) && visible.has(e.to)) };
 }
+
+export type SubGroup = { id: string; title: string; kinds: FlowNodeData['kind'][] };
+
+/** Lanes that split into headed sub-groups; each id is `<lane>.<name>`. */
+export const SUBGROUPS: Partial<Record<LaneKey, SubGroup[]>> = {
+  issuers: [
+    { id: 'issuers.cas', title: 'CAs', kinds: ['ca'] },
+    { id: 'issuers.accounts', title: 'ACME accounts', kinds: ['account'] },
+    { id: 'issuers.dns', title: 'DNS credentials', kinds: ['dnsCredential'] },
+  ],
+  delivery: [
+    { id: 'delivery.layouts', title: 'Layouts', kinds: ['layout'] },
+    { id: 'delivery.targets', title: 'Targets', kinds: ['target'] },
+    { id: 'delivery.hooks', title: 'Hooks', kinds: ['hook'] },
+  ],
+};
+
+/** Element id of the proxy row standing in for a collapsed group. */
+export const proxyId = (groupId: string): string => `group:${groupId}`;
+export const isProxyId = (id: string): boolean => id.startsWith('group:');
+/** Lane index of a node id or proxy id the connectors draw to. */
+export const proxyLaneIndex = (id: string): number => LANE_KEYS.indexOf(id.slice('group:'.length).split('.')[0] as LaneKey);
+
+/** The outermost collapsed group holding a node of this kind, if any. */
+export function collapsedGroupOf(kind: FlowNodeData['kind'], collapsed: Set<string>): string | undefined {
+  const lane = laneOf(kind);
+  if (collapsed.has(lane)) return lane;
+  const sub = SUBGROUPS[lane]?.find((g) => g.kinds.includes(kind));
+  return sub && collapsed.has(sub.id) ? sub.id : undefined;
+}
+
+/** The worst of several statuses (failed > expired > drift > expiring > pending > valid > idle). */
+export function worstStatus(statuses: FlowStatus[]): FlowStatus {
+  return statuses.reduce<FlowStatus>((w, s) => (SEVERITY.indexOf(s) < SEVERITY.indexOf(w) ? s : w), 'idle');
+}
+
+export type MergedEdge = {
+  key: string;
+  a: string;
+  b: string;
+  /** A client-drawn certificate to channel link. */
+  synthetic: boolean;
+  /** Worst status among the merged edges; null when synthetic. */
+  status: FlowStatus | null;
+  /** The real edges merged into this one. */
+  edges: FlowEdgeData[];
+  /** edgeKey()s of the original (pre-retarget) node pairs and links. */
+  keys: string[];
+};
+
+/** Rewrites the graph for rendering with some groups collapsed: an edge end
+ * inside a collapsed group moves to that group's proxy, edges that then run
+ * between the same two ends merge (worst status wins), and edges inside one
+ * collapsed group disappear. Synthetic channel links get the same treatment. */
+export function collapseEdges(flow: Flow, collapsed: Set<string>, synthetic: Iterable<string> = []): MergedEdge[] {
+  const kinds = new Map<string, FlowNodeData['kind']>();
+  for (const k of LANE_KEYS) for (const n of flow.lanes[k].nodes) kinds.set(n.id, n.kind);
+  const target = (id: string): string => {
+    const kind = kinds.get(id);
+    const g = kind && collapsedGroupOf(kind, collapsed);
+    return g ? proxyId(g) : id;
+  };
+  const out = new Map<string, MergedEdge>();
+  const put = (a: string, b: string, key: string, orig: string, isSynthetic: boolean, edge?: FlowEdgeData) => {
+    if (a === b) return;
+    let m = out.get(key);
+    if (!m) {
+      m = { key, a, b, synthetic: isSynthetic, status: null, edges: [], keys: [] };
+      out.set(key, m);
+    }
+    if (!m.keys.includes(orig)) m.keys.push(orig);
+    if (edge) {
+      m.edges.push(edge);
+      m.status = worstStatus(m.edges.map((x) => x.status));
+    }
+  };
+  for (const e of flow.edges) {
+    const a = target(e.from);
+    const b = target(e.to);
+    put(a, b, edgeKey(a, b), edgeKey(e.from, e.to), false, e);
+  }
+  for (const k of synthetic) {
+    const [x, y] = k.split('|');
+    if (!x || !y) continue;
+    const a = target(x);
+    const b = target(y);
+    put(a, b, `s:${edgeKey(a, b)}`, k, true);
+  }
+  return [...out.values()];
+}
