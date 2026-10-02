@@ -2,6 +2,32 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.5.0](https://github.com/metril/certforge/compare/v0.4.0...v0.5.0) (2026-10-02)
+
+
+### Features
+
+* **web:** collapse flow lanes and groups ([c5316ac](https://github.com/metril/certforge/commit/c5316ac533c2ec5e8c35708244c76c786c77d630))
+* **web:** darken the dark theme and add sidebar and raised surfaces ([407f8d9](https://github.com/metril/certforge/commit/407f8d95a2d0c5e64b00a1750be921a012eda817))
+* **web:** darker theme, contained sections, and reworked Events, Flow and defaults ([559f339](https://github.com/metril/certforge/commit/559f3391fa08e77c92de6cefaba3f0a931966646))
+* **web:** filter the flow map by name and problems ([ad3a07c](https://github.com/metril/certforge/commit/ad3a07cb9e569e88cb2646e9bc5d802cc72d1aec))
+* **web:** frame sections in cards on a darker canvas ([89e0e0c](https://github.com/metril/certforge/commit/89e0e0c54c67af4c9e01745701690aa17162ed0e))
+* **web:** make Global the base layer of issuance defaults ([592434a](https://github.com/metril/certforge/commit/592434a822e978ea9d7d807291e1cf028b796596))
+* **web:** move list filters into a labelled toolbar under the tabs ([0df1ba7](https://github.com/metril/certforge/commit/0df1ba7034b7c21558f1338e177b96bb1b5b08a5))
+* **web:** pick the defaults scope with a segmented control and an organization picker ([e6912e1](https://github.com/metril/certforge/commit/e6912e110ac8e2f671aadfc34c589887d94a1a7b))
+* **web:** rebuild the events page as a filterable table ([74762de](https://github.com/metril/certforge/commit/74762de1820571702517bf64b0b5e72304ffe8b7))
+
+
+### Bug Fixes
+
+* **web:** associate filter labels with their controls and allow clearing on mobile ([5f30b25](https://github.com/metril/certforge/commit/5f30b2564366838aea4664e3e6b687d64c837de9))
+* **web:** keep flow filtering fast and collapsed groups keyboard reachable ([61db069](https://github.com/metril/certforge/commit/61db06984259ce4ae5a189fe58f2933b1cf9cc58))
+* **web:** keep the events table from scrolling sideways at medium widths ([abd8dc3](https://github.com/metril/certforge/commit/abd8dc3a8368c6d451555389b1dae15c80e3aa03))
+* **web:** never pin shipped defaults on save and correct unknown organization links ([d25b331](https://github.com/metril/certforge/commit/d25b331c59e0f93c42427ff443973721ac47847d))
+* **web:** show an unset propagation wait as the DNS provider's own timeout ([9020189](https://github.com/metril/certforge/commit/9020189335e5df3152a80995124e71510a5b4168))
+* **web:** show unset defaults as a short state with a tooltip ([19f0223](https://github.com/metril/certforge/commit/19f02232476dac98eb967a96e2cf5e4a6c299a6b))
+* **web:** stop the ACME accounts table scrolling sideways ([6bfb393](https://github.com/metril/certforge/commit/6bfb3932efa4bea0cf66ec02e6c9d6d689a43456))
+
 ## [0.4.0](https://github.com/metril/certforge/compare/v0.3.1...v0.4.0) (2026-10-02)
 
 
