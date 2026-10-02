@@ -1,7 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { Link } from '@tanstack/react-router';
 import { ChevronRight, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { SUBGROUPS, proxyId, worstStatus, type FlowNodeData, type FlowStatus, type LaneKey } from './flowGraph';
+import { SUBGROUPS, isProblem, proxyId, worstStatus, type FlowNodeData, type LaneKey } from './flowGraph';
 import { FlowGroupProxy } from './FlowGroupProxy';
 import { FlowNode } from './FlowNode';
 
@@ -30,16 +31,15 @@ type Props = {
   onToggle: (groupId: string) => void;
 };
 
-const isProblem = (s: FlowStatus) => s !== 'valid' && s !== 'idle';
-
-type HeadProps = { title: string; count: string; total: number; problems: number; open: boolean; onToggle: () => void; sub?: boolean };
+type HeadProps = { id: string; title: string; count: string; total: number; problems: number; open: boolean; onToggle: () => void; sub?: boolean };
 
 /** Heading button of a lane or sub-group: chevron, title, count and problems. */
-function GroupHead({ title, count, total, problems, open, onToggle, sub }: HeadProps) {
+function GroupHead({ id, title, count, total, problems, open, onToggle, sub }: HeadProps) {
   return (
     <button
       type="button"
       aria-expanded={open}
+      data-group-head={id}
       onClick={onToggle}
       className={cn('flex w-full min-w-0 items-center gap-1.5 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none', sub ? 'text-xs text-ink-muted' : 'items-baseline pb-0 text-sm font-semibold')}
     >
@@ -55,6 +55,15 @@ function GroupHead({ title, count, total, problems, open, onToggle, sub }: HeadP
 
 export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPath, onSelect, register, collapsed, onToggle }: Props) {
   const meta = LANE_META[laneKey];
+  const section = useRef<HTMLElement>(null);
+  // Expanding a proxy unmounts it, so keyboard focus moves to that group's heading.
+  const refocus = useRef<string | null>(null);
+  useEffect(() => {
+    const id = refocus.current;
+    if (!id || collapsed.has(id)) return;
+    refocus.current = null;
+    section.current?.querySelector<HTMLElement>(`[data-group-head="${id}"]`)?.focus();
+  }, [collapsed]);
   const item = (n: FlowNodeData) => (
     <li key={n.id} className="min-w-0">
       <FlowNode node={n} selected={n.id === selectedId} dimmed={!!onPath && !onPath.has(n.id)} onSelect={onSelect} register={register} />
@@ -70,7 +79,10 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
           count={ns.length}
           worst={worstStatus(ns.map((n) => n.status))}
           dimmed={!!onPath && !ns.some((n) => onPath.has(n.id))}
-          onExpand={() => onToggle(gid)}
+          onExpand={() => {
+            refocus.current = gid;
+            onToggle(gid);
+          }}
           register={register}
         />
       </li>
@@ -80,10 +92,10 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
   const countText = nodes.length === total ? String(total) : `${nodes.length}/${total}`;
   const interactive = !hidden && total > 0;
   return (
-    <section aria-label={meta.title} data-flow-lane={laneKey} className="relative z-10 grid min-w-0 content-start gap-2">
+    <section ref={section} aria-label={meta.title} data-flow-lane={laneKey} className="relative z-10 grid min-w-0 content-start gap-2">
       <h2 className="border-b border-border pb-1 text-sm font-semibold">
         {interactive ? (
-          <GroupHead title={meta.title} count={countText} total={total} problems={nodes.filter((n) => isProblem(n.status)).length} open={laneOpen} onToggle={() => onToggle(laneKey)} />
+          <GroupHead id={laneKey} title={meta.title} count={countText} total={total} problems={nodes.filter((n) => isProblem(n.status)).length} open={laneOpen} onToggle={() => onToggle(laneKey)} />
         ) : (
           <span className="flex items-baseline justify-between gap-2">
             {meta.title}
@@ -118,7 +130,7 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
             return (
               <div key={g.id} className="grid gap-1.5">
                 <h3>
-                  <GroupHead sub title={g.title} count={String(ns.length)} total={ns.length} problems={ns.filter((n) => isProblem(n.status)).length} open={open} onToggle={() => onToggle(g.id)} />
+                  <GroupHead sub id={g.id} title={g.title} count={String(ns.length)} total={ns.length} problems={ns.filter((n) => isProblem(n.status)).length} open={open} onToggle={() => onToggle(g.id)} />
                 </h3>
                 {open ? <ul className="grid gap-2">{ns.map(item)}</ul> : proxy(g.id, g.title, ns)}
               </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collapseEdges, edgeKey, filterFlow, pairStatus, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { collapseEdges, edgeKey, expandFor, filterFlow, isProblem, pairStatus, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 
 const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
   id: `${kind}:${id}`,
@@ -224,5 +224,19 @@ describe('collapseEdges', () => {
     const both = collapseEdges(flow, new Set(['certificates']), syn).filter((x) => x.synthetic);
     expect(both).toHaveLength(1);
     expect(both[0]!.keys).toHaveLength(2);
+  });
+});
+
+describe('problems and expandFor', () => {
+  it('counts failed, expired, drift and expiring as problems, not pending', () => {
+    expect((['failed', 'expired', 'drift', 'expiring'] as const).every(isProblem)).toBe(true);
+    expect((['pending', 'valid', 'idle'] as const).some(isProblem)).toBe(false);
+    const f: Flow = { ...flow, lanes: { ...flow.lanes, certificates: lane([node('certificate', 'A', { status: 'pending' }), node('certificate', 'B'), node('certificate', 'C')]) } };
+    expect(visibleNodeIds(f, undefined, 'problems')!.size).toBe(0);
+  });
+
+  it('removes the lane and sub-group of a kind from the collapsed list', () => {
+    expect(expandFor('ca', ['issuers', 'issuers.cas', 'issuers.dns', 'delivery'])).toEqual(['issuers.dns', 'delivery']);
+    expect(expandFor('certificate', ['certificates', 'alerts'])).toEqual(['alerts']);
   });
 });

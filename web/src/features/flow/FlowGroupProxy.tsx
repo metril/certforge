@@ -3,7 +3,7 @@ import { ToneChip } from '@/components/StatusChip';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { FlowStatus } from './flowGraph';
-import { FLOW_STATUS } from './FlowNode';
+import { FLOW_STATUS, laneArrowKeys } from './FlowNode';
 
 type Props = {
   /** Element id the connectors measure (proxyId of the group). */
@@ -29,6 +29,7 @@ export function FlowGroupProxy({ id, title, count, worst, dimmed, onExpand, regi
           ref={(el) => register(id, el)}
           aria-label={`Expand ${title}, ${count} ${count === 1 ? 'item' : 'items'}, ${m.label}`}
           onClick={onExpand}
+          onKeyDown={laneArrowKeys}
           className={cn(
             'relative z-10 grid w-full min-w-0 gap-1.5 rounded-md border border-border bg-panel px-2.5 py-2 text-left text-sm transition-opacity hover:border-ink-muted focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none',
             dimmed && 'opacity-40',

@@ -226,3 +226,33 @@ it('collapses a sub-group in place and Collapse all / Expand all toggle every la
   await waitFor(() => expect(router.state.location.search).not.toHaveProperty('collapsed'));
   expect(await screen.findByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
 });
+
+it('moves focus to the group heading after expanding a proxy, and arrows reach proxies', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...base, lanes: { ...base.lanes, issuers: lane([node('ca', 'letsencrypt'), node('account', 'acct')]) } }));
+  const { user } = renderRoute('/o/acme/flow?collapsed=%5B%22issuers.accounts%22%5D');
+  const ca = await screen.findByRole('button', { name: /CA letsencrypt/ });
+  ca.focus();
+  await user.keyboard('{ArrowDown}');
+  const proxy = screen.getByRole('button', { name: /^Expand ACME accounts/ });
+  expect(proxy).toHaveFocus();
+  await user.keyboard('{Enter}');
+  const head = await screen.findByRole('button', { name: /^ACME accounts/ });
+  await waitFor(() => expect(head).toHaveFocus());
+});
+
+it('opens the collapsed group of a focused node', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { router } = renderRoute('/o/acme/flow?focus=certificate:www&collapsed=%5B%22certificates%22,%22alerts%22%5D');
+  expect(await screen.findByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ collapsed: ['alerts'] }));
+});
+
+it('does not count a pending channel as a problem', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...base, lanes: { ...base.lanes, alerts: lane([node('channel', 'ops', { status: 'pending' })]) } }));
+  renderRoute('/o/acme/flow');
+  const head = within(await screen.findByRole('region', { name: 'Alerts' })).getByRole('button', { name: /Alerts/ });
+  expect(head).not.toHaveTextContent('problem');
+});

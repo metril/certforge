@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Link2, Search, TriangleAlert } from 'lucide-react';
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { LANE_KEYS, filterFlow, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { LANE_KEYS, expandFor, filterFlow, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 import { FlowConnectors } from './FlowConnectors';
 import { FlowLane } from './FlowLane';
 import { FlowPathPanel } from './FlowPathPanel';
@@ -43,7 +43,8 @@ export function FlowPage() {
   const full: Flow | undefined = q.data;
   const text = search.q ?? '';
   const status = search.status;
-  const visible = useMemo(() => (full ? visibleNodeIds(full, text, status) : null), [full, text, status]);
+  const deferredText = useDeferredValue(text);
+  const visible = useMemo(() => (full ? visibleNodeIds(full, deferredText, status) : null), [full, deferredText, status]);
   const flow = useMemo(() => (full ? filterFlow(full, visible) : undefined), [full, visible]);
   const activeFilters = (text.trim() ? 1 : 0) + (status ? 1 : 0);
 
@@ -75,6 +76,21 @@ export function FlowPage() {
     (id: string | undefined) => void navigate({ search: (s) => ({ ...s, focus: id }), replace: true }),
     [navigate],
   );
+  // A focused node inside a collapsed group is opened so it is drawn (once per focus value).
+  const opened = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!search.focus) {
+      opened.current = undefined;
+      return;
+    }
+    if (!full || opened.current === search.focus) return;
+    opened.current = search.focus;
+    const n = LANE_KEYS.flatMap((k) => full.lanes[k].nodes).find((x) => x.id === search.focus);
+    const cur = search.collapsed ?? [];
+    if (!n) return;
+    const next = expandFor(n.kind, cur);
+    if (next.length !== cur.length) setCollapsed(next);
+  }, [full, search.focus, search.collapsed, setCollapsed]);
   // A focused node the filters hide is deselected.
   const focusHidden = !!search.focus && !!full && !focus;
   useEffect(() => {

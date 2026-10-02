@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { collapseEdges, isProxyId, laneIndex, pairStatus, proxyLaneIndex, type Flow, type FlowNodeData, type FlowPath, type FlowStatus } from './flowGraph';
 
 const STROKE: Record<FlowStatus, string> = {
@@ -28,12 +28,17 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected, coll
   const [lines, setLines] = useState<Line[]>([]);
   const raf = useRef(0);
 
+  const kinds = useMemo(() => {
+    const m = new Map<string, FlowNodeData['kind']>();
+    for (const l of Object.values(flow.lanes)) for (const n of l.nodes) m.set(n.id, n.kind);
+    return m;
+  }, [flow]);
+  const merged = useMemo(() => collapseEdges(flow, collapsed, path.synthetic), [flow, collapsed, path.synthetic]);
+
   const measure = useCallback(() => {
     const box = containerRef.current;
     if (!box) return;
     const origin = box.getBoundingClientRect();
-    const kinds = new Map<string, FlowNodeData['kind']>();
-    for (const l of Object.values(flow.lanes)) for (const n of l.nodes) kinds.set(n.id, n.kind);
     const lane = (id: string): number | undefined => {
       if (isProxyId(id)) return proxyLaneIndex(id);
       const k = kinds.get(id);
@@ -41,7 +46,7 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected, coll
     };
 
     const out: Line[] = [];
-    for (const m of collapseEdges(flow, collapsed, path.synthetic)) {
+    for (const m of merged) {
       const la = lane(m.a);
       const lb = lane(m.b);
       const ea = getEl(m.a);
@@ -69,7 +74,7 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected, coll
       });
     }
     setLines(out);
-  }, [containerRef, getEl, flow, path, selected, collapsed]);
+  }, [containerRef, getEl, kinds, merged, path, selected]);
 
   const schedule = useCallback(() => {
     cancelAnimationFrame(raf.current);
