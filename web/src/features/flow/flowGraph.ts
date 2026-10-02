@@ -156,3 +156,39 @@ export function pairStatus(edges: FlowEdgeData[], pathNodes?: Set<string> | null
   const pool = onPath.length > 0 ? onPath : edges;
   return pool.reduce((w, e) => (SEVERITY.indexOf(e.status) < SEVERITY.indexOf(w) ? e.status : w), pool[0]!.status);
 }
+
+const isProblem = (s: FlowStatus): boolean => s !== 'valid' && s !== 'idle';
+
+/** Ids of the nodes to draw under the `q` / `problems` filters, or null when
+ * no filter is active. A node is kept when it matches or lies on the path of
+ * a matching node, so every surviving flow stays whole end to end. */
+export function visibleNodeIds(flow: Flow, q: string | undefined, status: 'problems' | undefined): Set<string> | null {
+  const needle = (q ?? '').trim().toLowerCase();
+  if (!needle && !status) return null;
+  const touched = new Set<string>();
+  if (status) {
+    for (const e of flow.edges) {
+      if (!isProblem(e.status)) continue;
+      touched.add(e.from);
+      touched.add(e.to);
+    }
+  }
+  const keep = new Set<string>();
+  for (const k of LANE_KEYS) {
+    for (const n of flow.lanes[k].nodes) {
+      if (needle && !n.name.toLowerCase().includes(needle)) continue;
+      if (status && !isProblem(n.status) && !touched.has(n.id)) continue;
+      keep.add(n.id);
+      for (const id of tracePath(flow, n.id).nodes) keep.add(id);
+    }
+  }
+  return keep;
+}
+
+/** The flow restricted to `visible` nodes; edges with a hidden end are dropped. */
+export function filterFlow(flow: Flow, visible: Set<string> | null): Flow {
+  if (!visible) return flow;
+  const lanes = { ...flow.lanes };
+  for (const k of LANE_KEYS) lanes[k] = { ...flow.lanes[k], nodes: flow.lanes[k].nodes.filter((n) => visible.has(n.id)) };
+  return { ...flow, lanes, edges: flow.edges.filter((e) => visible.has(e.from) && visible.has(e.to)) };
+}

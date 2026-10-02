@@ -46,7 +46,7 @@ function useFlow(f: () => Flow | Response) {
 
 function setWidth(wide: boolean) {
   window.matchMedia = ((query: string) => ({
-    matches: wide && query.includes('1024px'),
+    matches: wide && (query.includes('1024px') || query.includes('768px')),
     media: query,
     onchange: null,
     addEventListener: () => {},
@@ -146,4 +146,44 @@ it('narrow screens filter every lane to the selected path and offer a Clear butt
   expect(screen.getByRole('button', { name: /Client web-1/ })).toBeInTheDocument();
   await user.click(within(panel).getByRole('button', { name: 'Clear' }));
   expect(await screen.findByRole('button', { name: /Certificate api/ })).toBeInTheDocument();
+});
+
+it('the toolbar controls write the URL and the lanes follow', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router, container } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.type(screen.getByRole('textbox', { name: 'Filter by name' }), 'web-1');
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'web-1' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: /Client web-2/ })).toBeNull());
+  expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
+  expect(within(screen.getByRole('region', { name: 'Clients' })).getByText('1/2')).toBeInTheDocument();
+  await waitFor(() => expect(container.querySelectorAll('[data-flow-connectors] path').length).toBe(3));
+  await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('q'));
+  expect(await screen.findByRole('button', { name: /Client web-2/ })).toBeInTheDocument();
+});
+
+it('Problems keeps the unhealthy flow, and an empty result offers Clear filters', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.click(screen.getByRole('radio', { name: 'Problems' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ status: 'problems' }));
+  expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
+  await user.type(screen.getByRole('textbox', { name: 'Filter by name' }), 'nothing-like-this');
+  expect(await screen.findByText('No flows match these filters.')).toBeInTheDocument();
+  await user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+  expect(await screen.findByRole('button', { name: /Certificate api/ })).toBeInTheDocument();
+});
+
+it('clears the focus when the filters hide the focused node', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { router } = renderRoute('/o/acme/flow?focus=certificate:api&q=www');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('focus'));
 });

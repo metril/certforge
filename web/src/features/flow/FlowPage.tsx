@@ -1,16 +1,21 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Link2, TriangleAlert } from 'lucide-react';
+import { Link2, Search, TriangleAlert } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { flowQuery } from '@/api/queries/flow';
+import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { FilterField } from '@/components/FilterToolbar';
 import { PageHeader } from '@/components/PageHeader';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { LANE_KEYS, tracePath, type Flow, type FlowNodeData } from './flowGraph';
+import { LANE_KEYS, filterFlow, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 import { FlowConnectors } from './FlowConnectors';
 import { FlowLane } from './FlowLane';
 import { FlowPathPanel } from './FlowPathPanel';
@@ -35,7 +40,12 @@ export function FlowPage() {
   const navigate = useNavigate({ from: '/o/$org/flow' });
   const wide = useMediaQuery('(min-width: 1024px)');
   const q = useQuery(flowQuery(org.id));
-  const flow: Flow | undefined = q.data;
+  const full: Flow | undefined = q.data;
+  const text = search.q ?? '';
+  const status = search.status;
+  const visible = useMemo(() => (full ? visibleNodeIds(full, text, status) : null), [full, text, status]);
+  const flow = useMemo(() => (full ? filterFlow(full, visible) : undefined), [full, visible]);
+  const activeFilters = (text.trim() ? 1 : 0) + (status ? 1 : 0);
 
   const els = useRef(new Map<string, HTMLElement>());
   const register = useCallback((id: string, el: HTMLElement | null) => {
@@ -50,16 +60,51 @@ export function FlowPage() {
   const selected: FlowNodeData | undefined = all.find((n) => n.id === focus);
   const path = useMemo(() => (flow ? tracePath(flow, focus) : null), [flow, focus]);
 
+  const clearFilters = useCallback(() => void navigate({ search: (s) => ({ ...s, q: undefined, status: undefined }), replace: true }), [navigate]);
   const setFocus = useCallback(
     (id: string | undefined) => void navigate({ search: (s) => ({ ...s, focus: id }), replace: true }),
     [navigate],
   );
+  // A focused node the filters hide is deselected.
+  const focusHidden = !!search.focus && !!full && !focus;
+  useEffect(() => {
+    if (focusHidden && visible) setFocus(undefined);
+  }, [focusHidden, visible, setFocus]);
   const select = useCallback((id: string) => setFocus(id === focus ? undefined : id), [focus, setFocus]);
 
   const header = (
     <PageHeader
       title="Flow"
       help="flow.map"
+      activeFilters={activeFilters}
+      onClearFilters={clearFilters}
+      filters={
+        <>
+          <FilterField label="Search">
+            <div className="relative w-full md:w-60">
+              <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
+              <Input
+                aria-label="Filter by name"
+                className="pl-8 text-sm"
+                placeholder="Filter by name"
+                value={text}
+                onChange={(e) => void navigate({ search: (s) => ({ ...s, q: e.target.value || undefined }), replace: true })}
+              />
+            </div>
+          </FilterField>
+          <FilterField label="Show">
+            <SegmentedControl
+              aria-label="Show"
+              value={status ?? 'all'}
+              onChange={(v) => void navigate({ search: (s) => ({ ...s, status: v === 'problems' ? 'problems' : undefined }), replace: true })}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'problems', label: 'Problems' },
+              ]}
+            />
+          </FilterField>
+        </>
+      }
       actions={
         <>
           {path && path.synthetic.size > 0 && (
@@ -100,6 +145,7 @@ export function FlowPage() {
     );
   }
 
+  const empty = visible !== null && visible.size === 0;
   const filtering = !wide && !!selected;
   return (
     <div
@@ -109,6 +155,13 @@ export function FlowPage() {
     >
       {header}
       {selected && <FlowPathPanel selected={selected} nodes={all} path={path} slug={org.slug} compact={!wide} onClear={() => setFocus(undefined)} />}
+      {empty ? (
+        <EmptyState message="No flows match these filters.">
+          <Button variant="outline" onClick={clearFilters}>
+            Clear filters
+          </Button>
+        </EmptyState>
+      ) : (
       <div ref={box} className={wide ? 'relative grid grid-cols-5 gap-x-12' : 'grid gap-6'}>
         {LANE_KEYS.map((k) => {
           const lane = flow.lanes[k];
@@ -121,7 +174,7 @@ export function FlowPage() {
               org={org.slug}
               hidden={lane.hidden}
               nodes={nodes}
-              total={lane.nodes.length}
+              total={full!.lanes[k].nodes.length}
               selectedId={focus}
               onPath={selected && !filtering ? path.nodes : undefined}
               onSelect={select}
@@ -131,6 +184,7 @@ export function FlowPage() {
         })}
         {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} selected={!!selected} />}
       </div>
+      )}
     </div>
   );
 }

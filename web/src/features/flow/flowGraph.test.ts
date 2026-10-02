@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { edgeKey, pairStatus, tracePath, type Flow, type FlowNodeData } from './flowGraph';
+import { edgeKey, filterFlow, pairStatus, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 
 const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
   id: `${kind}:${id}`,
@@ -141,5 +141,40 @@ describe('pairStatus', () => {
   });
   it('falls back to the worst status when no duplicate is on the path', () => {
     expect(pairStatus(dup, new Set(['certificate:Z']))).toBe('failed');
+  });
+});
+
+describe('visibleNodeIds', () => {
+  it('shows everything without filters', () => {
+    expect(visibleNodeIds(flow, '  ', undefined)).toBeNull();
+    expect(filterFlow(flow, null)).toBe(flow);
+  });
+
+  it('matches names case-insensitively and keeps the whole path of each match', () => {
+    const v = visibleNodeIds(flow, 'k1', undefined)!;
+    expect(ids(v)).toEqual(['ca:ca1', 'certificate:A', 'channel:ch1', 'client:K1', 'dnsCredential:dns1', 'layout:L1']);
+  });
+
+  it('problems keeps unhealthy nodes, nodes on a failing edge, and their paths', () => {
+    const f: Flow = {
+      ...flow,
+      lanes: { ...flow.lanes, certificates: lane([node('certificate', 'A'), node('certificate', 'B'), node('certificate', 'C', { status: 'failed' })]) },
+      edges: flow.edges.map((x) => (x.from === 'certificate:B' && x.to === 'ca:ca2' ? { ...x, status: 'failed' as const } : x)),
+    };
+    const v = visibleNodeIds(f, undefined, 'problems')!;
+    expect(v.has('certificate:C')).toBe(true);
+    expect(v.has('client:K2')).toBe(true);
+    expect(v.has('ca:ca2')).toBe(true);
+    expect(v.has('certificate:B')).toBe(true);
+    expect(v.has('client:K1')).toBe(false);
+    expect(v.has('certificate:A')).toBe(false);
+    const g = filterFlow(f, v);
+    expect(g.edges.every((x) => v.has(x.from) && v.has(x.to))).toBe(true);
+    expect(g.lanes.clients.nodes.map((n) => n.name)).toEqual(['K2', 'K3']);
+  });
+
+  it('combines name and problems, and is empty when nothing matches', () => {
+    expect(visibleNodeIds(flow, 'A', 'problems')!.size).toBe(0);
+    expect(visibleNodeIds(flow, 'zzz', undefined)!.size).toBe(0);
   });
 });

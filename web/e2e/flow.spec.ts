@@ -42,3 +42,15 @@ test('flow does not scroll sideways at 375 px', async ({ page }) => {
   await snap(page, 'flow-mobile');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
+
+test('flow: filtering by the seeded certificate name keeps it visible', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+  await page.goto(`/o/${E2E.orgSlug}/flow`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Flow' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Filter by name' }).fill(E2E.certName);
+  await expect(page).toHaveURL(/q=/);
+  await expect(page.getByRole('button', { name: new RegExp(`^Certificate ${E2E.certName},`) })).toBeVisible();
+  await snap(page, 'flow-filtered');
+});
