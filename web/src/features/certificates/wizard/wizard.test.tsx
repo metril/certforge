@@ -180,10 +180,8 @@ it("a field with source 'default' never claims a Global value the section's stor
   await user.click(screen.getByRole('button', { name: 'Next' }));
   const keyType = screen.getByRole('group', { name: 'Key type' });
   expect(within(keyType).getByRole('button', { name: 'Built-in' })).toBeInTheDocument();
-  await user.hover(within(keyType).getByRole('button', { name: 'Built-in' }));
-  const tooltip = await screen.findByRole('tooltip');
-  expect(tooltip).toHaveTextContent('Global: not set');
-  expect(tooltip).not.toHaveTextContent('EC P-256');
+  await user.click(within(keyType).getByRole('button', { name: 'Built-in' }));
+  await waitFor(() => expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Global: not set'));
 });
 
 it('disables Next on the Names step until a valid name and common name exist', async () => {

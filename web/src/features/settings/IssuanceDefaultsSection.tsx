@@ -142,15 +142,27 @@ export function IssuanceDefaultsSection() {
 
   return (
     <Tabs value={scope} onValueChange={(v) => void navigate({ search: (prev) => ({ ...prev, scope: v as 'global' | 'org' }), replace: true })} className="max-w-[900px]">
-      <div className="mb-2 flex items-center gap-1.5 text-xs text-ink-muted">
+      <div aria-label="Defaults precedence" className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted">
         <Tooltip>
           <TooltipTrigger asChild>
             <button type="button" className="underline decoration-dotted underline-offset-2">
-              Built-in → Global → Organization → Certificate
+              Most specific wins
             </button>
           </TooltipTrigger>
-          <TooltipContent>Most specific wins: Certificate &gt; Organization &gt; Global &gt; Built-in (shipped with CertForge).</TooltipContent>
+          <TooltipContent>Certificate &gt; Organization &gt; Global &gt; Built-in (shipped with CertForge). Each field's badge shows which level it uses.</TooltipContent>
         </Tooltip>
+        <span aria-hidden>:</span>
+        <span>Built-in</span>
+        <span aria-hidden>→</span>
+        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => void navigate({ search: (prev) => ({ ...prev, scope: 'global' }), replace: true })}>
+          Global
+        </button>
+        <span aria-hidden>→</span>
+        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => void navigate({ search: (prev) => ({ ...prev, scope: 'org' }), replace: true })}>
+          Organization
+        </button>
+        <span aria-hidden>→</span>
+        <span>Certificate</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <TabsList>
@@ -169,6 +181,7 @@ export function IssuanceDefaultsSection() {
           onChange={setGlobalDraft}
           level="global"
           links={ORG_LINKS}
+          chain={chainFor(globalStored ?? {}, undefined, globalCtx)}
           inherited={fromBuiltin(globalValue)}
           ctx={globalCtx}
           error={(k) => (globalError?.field === k ? globalError.message : null)}

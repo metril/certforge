@@ -140,11 +140,11 @@ it('shows each Org-tab field badge from the effective endpoint, not a raw-value 
 it("the Org tab's chain tooltip reflects the raw stored global value, not the built-in-filled one", async () => {
   const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   const keyTypeField = within(await screen.findByRole('group', { name: 'Key type' }));
-  await user.hover(keyTypeField.getByRole('button', { name: 'Built-in' }));
+  await user.click(keyTypeField.getByRole('button', { name: 'Built-in' }));
   // stored is null (never saved): the Global entry says "server default",
   // not the built-in "EC P-256" the Default badge's own effective value
   // shows — otherwise the badge and its own tooltip would disagree.
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Global: not set');
+  await waitFor(() => expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Global: not set'));
 });
 
 it('overrides one org default and sends the rest as explicit null', async () => {
@@ -336,7 +336,20 @@ it('Issuance defaults opens on Global, ?scope=org selects the Organization tab, 
   const { router, user } = renderRoute('/settings/issuance-defaults');
   expect(await screen.findByRole('tab', { name: 'Global', selected: true })).toBeInTheDocument();
   const keyType = within(screen.getByRole('group', { name: 'Key type' }));
-  expect(keyType.getByRole('link', { name: 'Organization' })).toHaveAttribute('href', '/settings/issuance-defaults?scope=org');
+  await user.click(keyType.getByRole('button', { name: 'Built-in' }));
+  const pop = await waitFor(() => {
+    const el = document.querySelector('[data-slot="popover-content"]') as HTMLElement;
+    expect(el).not.toBeNull();
+    return within(el);
+  });
+  expect(pop.getByRole('link', { name: 'Organization' })).toHaveAttribute('href', '/settings/issuance-defaults?scope=org');
+  expect(document.querySelector('[data-slot="popover-content"]')).toHaveTextContent('Built-in: EC P-256');
+  await user.keyboard('{Escape}');
+  const strip = within(screen.getByLabelText('Defaults precedence'));
+  await user.click(strip.getByRole('button', { name: 'Organization' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org' }));
+  await user.click(within(screen.getByLabelText('Defaults precedence')).getByRole('button', { name: 'Global' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
   await user.click(screen.getAllByRole('tab')[1]!);
   await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'org' }));
 });

@@ -1,15 +1,17 @@
-import { Fragment, type MouseEvent, type ReactNode } from 'react';
+import { type MouseEvent, type ReactNode } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { CircleAlert } from 'lucide-react';
 import type { Source } from '@/api/types';
 import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { HelpKey } from '@/lib/help';
 
-export type ChainEntry = { level: string; value: ReactNode };
+/** One level's value for a field, shown in the source badge's popover. */
+export type ChainEntry = { level: Source; value: ReactNode };
 const SOURCE_LABEL: Record<Source, string> = { default: 'Built-in', global: 'Global', org: 'Organization', cert: 'Certificate' };
 const LEVELS: Source[] = ['default', 'global', 'org', 'cert'];
 /** Where each editable level's value is edited, when it is not the current form. */
@@ -21,7 +23,10 @@ type Props<T> = {
   help?: HelpKey;
   value: T | null | undefined;
   inherited: { value: T | null | undefined; source: Source };
+  /** What each other level holds for this field (the edited level's own value is filled in here). */
   chain?: ChainEntry[];
+  /** What "nothing set anywhere" does for this field, when the built-in is not a value. */
+  unsetText?: string;
   /** The level this form edits; it is "here", so it gets no link. */
   level?: 'global' | 'org' | 'cert';
   links?: LevelLinks;
@@ -53,7 +58,7 @@ export function SourceBadge({ source, chain }: { source: Source; chain?: ChainEn
         {chain?.length ? (
           chain.map((c) => (
             <div key={c.level}>
-              {c.level}: {c.value}
+              {SOURCE_LABEL[c.level]}: {c.value}
             </div>
           ))
         ) : source === 'default' ? (
@@ -80,33 +85,41 @@ function LevelLink({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-/** One line: Built-in → Global → Organization → Certificate, the level in effect emphasised. */
-export function LevelChain({ effective, level, links }: { effective: Source; level?: 'global' | 'org' | 'cert'; links?: LevelLinks }) {
+const ABSENT: Partial<Record<Source, string>> = { org: 'set per organization', cert: 'set per certificate' };
+
+/** The one source badge: focusable, opens this field's chain with each level's value, the one in effect emphasised and each other editable level linked. */
+function FieldSourceBadge({ effective, level, links, entries }: { effective: Source; level?: 'global' | 'org' | 'cert'; links?: LevelLinks; entries: Map<Source, ReactNode> }) {
   return (
-    <span aria-label="Defaults chain" className="inline-flex flex-wrap items-center gap-x-1 text-xs text-ink-muted">
-      {LEVELS.map((l, i) => {
-        const href = l !== 'default' && l !== level ? links?.[l] : undefined;
-        const label = SOURCE_LABEL[l];
-        return (
-          <Fragment key={l}>
-            {i > 0 && <span aria-hidden>→</span>}
-            <span className={l === effective ? 'font-semibold text-foreground' : undefined} aria-current={l === effective ? 'true' : undefined}>
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="inline-flex h-5 items-center rounded-sm border border-border bg-subtle px-1.5 text-xs hover:bg-selected">
+          {SOURCE_LABEL[effective]}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="grid w-auto max-w-80 gap-1 p-3 text-xs">
+        {LEVELS.map((l) => {
+          const href = l !== 'default' && l !== level ? links?.[l] : undefined;
+          const label = SOURCE_LABEL[l];
+          const v = entries.get(l) ?? ABSENT[l];
+          return (
+            <div key={l} aria-current={l === effective ? 'true' : undefined} className={l === effective ? 'font-semibold text-foreground' : 'text-ink-muted'}>
               {href ? <LevelLink href={href}>{label}</LevelLink> : label}
-            </span>
-          </Fragment>
-        );
-      })}
-    </span>
+              {v != null && <>: {v}</>}
+            </div>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
   );
 }
 
-export function InheritableField<T>({ id, label, help, value, inherited, chain, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
+export function InheritableField<T>({ id, label, help, value, inherited, chain, unsetText, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
   const overridden = value !== null && value !== undefined;
   const switchDisabled = !overridden && !!overrideDisabled;
   const inheritedView = pending ? (
     <span className="text-ink-muted">Inherited after save</span>
   ) : inherited.value === null || inherited.value === undefined ? (
-    <span className="text-ink-muted">shipped default</span>
+    <span className="text-ink-muted">{unsetText ?? 'not set'}</span>
   ) : (
     display(inherited.value)
   );
@@ -115,6 +128,8 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
   const levelIdx = level ? LEVELS.indexOf(level) : -1;
   const next: Source = levelIdx < 0 || LEVELS.indexOf(inherited.source) < levelIdx ? inherited.source : (LEVELS[Math.max(levelIdx - 1, 0)] as Source);
   const effective: Source = overridden ? (level ?? 'cert') : inherited.source;
+  const entries = new Map<Source, ReactNode>((chain ?? []).map((c) => [c.level, c.value]));
+  if (level) entries.set(level, overridden ? display(value as T) : 'not set');
   return (
     <div role="group" aria-labelledby={`${id}-label`} className="grid gap-2 border-b border-border py-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -122,13 +137,11 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
           {label}
         </span>
         {help && <HelpTip id={help} />}
-        <LevelChain effective={effective} level={level} links={links} />
-        {!overridden &&
-          (pending ? (
-            <span className="inline-flex h-5 items-center rounded-sm border border-dashed border-border px-1.5 text-xs text-ink-muted">Pending</span>
-          ) : (
-            <SourceBadge source={inherited.source} chain={chain} />
-          ))}
+        {pending ? (
+          <span className="inline-flex h-5 items-center rounded-sm border border-dashed border-border px-1.5 text-xs text-ink-muted">Pending</span>
+        ) : (
+          <FieldSourceBadge effective={effective} level={level} links={links} entries={entries} />
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Label htmlFor={`${id}-override`} className="text-ink-muted">
             Override

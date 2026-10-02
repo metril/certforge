@@ -40,6 +40,8 @@ export type IssuanceField = {
   editor: (v: unknown, set: (v: unknown | null) => void, c: FieldCtx, id: string) => ReactNode;
   /** When set, Override cannot be turned on for this field (e.g. an empty CA list has nothing to pick) — an already-overridden field can still be reset. */
   disabledReason?: (c: FieldCtx) => string | undefined;
+  /** What an unset-everywhere field does, when the built-in is not a value. */
+  unsetText?: string;
 };
 
 export function def<K extends FieldKey>(d: {
@@ -50,6 +52,7 @@ export function def<K extends FieldKey>(d: {
   display: (v: V<K>, c: FieldCtx) => ReactNode;
   editor: (v: V<K>, set: (v: V<K> | null) => void, c: FieldCtx, id: string) => ReactNode;
   disabledReason?: (c: FieldCtx) => string | undefined;
+  unsetText?: string;
 }): IssuanceField {
   return d as unknown as IssuanceField;
 }
@@ -80,6 +83,7 @@ function boolEditor(label: string, on: string, off: string) {
 export const ISSUANCE_FIELDS: IssuanceField[] = [
   def({
     key: 'caId',
+    unsetText: 'none — issuance fails until one is set',
     label: 'Certificate authority',
     help: 'defaults.caId',
     initial: (c) => c.cas[0]?.id ?? '',
@@ -104,6 +108,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
   }),
   def({
     key: 'accountId',
+    unsetText: 'none — ACME CAs need one, private CAs do not',
     label: 'ACME account',
     help: 'defaults.accountId',
     initial: (c) => c.accounts[0]?.id ?? '',
@@ -191,6 +196,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
   }),
   def({
     key: 'propagationSeconds',
+    unsetText: "the DNS provider's own timeout",
     label: 'Propagation wait',
     help: 'defaults.propagationSeconds',
     initial: () => 120,
@@ -265,12 +271,28 @@ export function fromEffective(eff: EffectiveMap) {
   return (k: FieldKey): EffectiveValue => (eff[k] as EffectiveValue | undefined) ?? fromDefault();
 }
 
+// What CertForge itself uses when no level sets a field (BuiltinDefaults in
+// internal/issuance/defaults.go). Fields absent here have no value (see each
+// field's unsetText).
+const BUILTIN: IssuanceDefaults = {
+  keyType: 'ec256',
+  renewPolicy: { mode: 'percent', value: 33, useAri: false },
+  preferredChain: '',
+  reuseKey: false,
+  mustStaple: false,
+  resolvers: [],
+  verificationRules: [],
+} as IssuanceDefaults;
+
 export function chainFor(global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
   return (k: FieldKey): ChainEntry[] => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k);
-    const show = (v: unknown): ReactNode => (v == null ? 'not set' : f ? f.display(v, ctx) : String(v));
-    const out: ChainEntry[] = [{ level: 'Global', value: show(global[k]) }];
-    if (org) out.push({ level: 'Organization', value: org[k] == null ? 'inherits' : show(org[k]) });
+    const show = (v: unknown, none: ReactNode = 'not set'): ReactNode => (v == null ? none : f ? f.display(v, ctx) : String(v));
+    const out: ChainEntry[] = [
+      { level: 'default', value: show(BUILTIN[k], f?.unsetText) },
+      { level: 'global', value: show(global[k]) },
+    ];
+    if (org) out.push({ level: 'org', value: show(org[k]) });
     return out;
   };
 }
@@ -373,6 +395,7 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, level,
           // it doesn't change what's passed.
           inherited={inherited(f.key) as { value: unknown; source: Source }}
           chain={chain?.(f.key)}
+          unsetText={f.unsetText}
           level={level}
           links={links}
           initial={f.initial(ctx)}

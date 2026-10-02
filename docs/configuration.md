@@ -93,7 +93,7 @@ Rendered from the server's settings schema: base URL and other server-wide value
 
 ### Issuance defaults
 
-Two tabs: **Global** (opened first; `?scope=global` or `?scope=org` picks the tab) and your organization. Most specific wins: Certificate > Organization > Global > Built-in (shipped with CertForge). Each field shows that chain on one line with the level in effect in bold and a link to where each other level is edited, plus "Using {level}: {value}". Turn on **Override** to set a value at this level (it then reads "Set here"); **Use {level} value** clears it. A reference that no longer exists (a deleted CA or account) shows its error next to the field.
+Two tabs: **Global** (opened first; `?scope=global` or `?scope=org` picks the tab) and your organization. Most specific wins: Certificate > Organization > Global > Built-in (shipped with CertForge). Each field shows one source badge; selecting it lists the level in effect and each level's value, with a link to where each other level is edited, then "Using {level}: {value}". A field no level sets uses the built-in: EC P-256, renew at 33% of lifetime remaining, no preferred chain, no key reuse, no Must-Staple, system resolvers and no rules; the CA and ACME account have no built-in (issuance fails until a CA is set, and ACME CAs need an account), and the propagation wait is the DNS provider's own timeout. Turn on **Override** to set a value at this level (it then reads "Set here"); **Use {level} value** clears it. A reference that no longer exists (a deleted CA or account) shows its error next to the field.
 
 | Field | Meaning |
 |---|---|
