@@ -175,9 +175,15 @@ type Input struct {
 	Channels []Channel
 	// CertsMore is true when the certificate list itself was cut short.
 	CertsMore bool
-	// UsageMore is true when Certs itself omits some of the org's
-	// certificates, so issuer use counts are lower bounds.
-	UsageMore bool
+	// Uses is the issuer references of every certificate in the org, for
+	// counting issuer use. Nil means Certs is the whole org.
+	Uses []Use
+}
+
+// Use is the issuer entities one certificate resolves to.
+type Use struct {
+	CAID, AccountID *uuid.UUID
+	DNSCredIDs      []uuid.UUID
 }
 
 // certEventKinds are the event kinds a certificate emits, with severities.
@@ -247,19 +253,7 @@ func GrantStatus(state string) Status {
 }
 
 // usage is the status of an issuer entity that has no health of its own.
-// UsageNotCounted is the detail of an issuer with no counted use when the
-// certificate list was cut short.
-const UsageNotCounted = "Usage not counted: map truncated"
-
-// usage words an issuer's use count. partial means the count came from an
-// incomplete certificate list, so it is a lower bound and zero proves nothing.
-func usage(n int, partial bool) (Status, string) {
-	if partial {
-		if n == 0 {
-			return StatusIdle, UsageNotCounted
-		}
-		return StatusValid, fmt.Sprintf("Used by at least %d certificates", n)
-	}
+func usage(n int) (Status, string) {
 	switch n {
 	case 0:
 		return StatusIdle, "Not used by any certificate"
@@ -302,15 +296,21 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	g := Graph{GeneratedAt: now}
 
 	// Issuer usage: how many certificates resolve to each issuer entity.
+	uses := in.Uses
+	if uses == nil {
+		for _, c := range in.Certs {
+			uses = append(uses, Use{CAID: c.CAID, AccountID: c.AccountID, DNSCredIDs: c.DNSCredIDs})
+		}
+	}
 	used := map[string]int{}
-	for _, c := range in.Certs {
-		if c.CAID != nil {
-			used[nid(KindCA, *c.CAID)]++
+	for _, u := range uses {
+		if u.CAID != nil {
+			used[nid(KindCA, *u.CAID)]++
 		}
-		if c.AccountID != nil {
-			used[nid(KindAccount, *c.AccountID)]++
+		if u.AccountID != nil {
+			used[nid(KindAccount, *u.AccountID)]++
 		}
-		for _, d := range c.DNSCredIDs {
+		for _, d := range u.DNSCredIDs {
 			used[nid(KindDNSCredential, d)]++
 		}
 	}
@@ -323,7 +323,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 			if c.Detail == "localca" || c.Detail == "vaultpki" {
 				q = "?view="
 			}
-			st, d := usage(used[nid(KindCA, c.ID)], in.UsageMore)
+			st, d := usage(used[nid(KindCA, c.ID)])
 			if c.NotAfter != nil {
 				if left := c.NotAfter.Sub(now); left <= 0 {
 					st, d = StatusExpired, "CA certificate expired"
@@ -336,7 +336,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	}
 	if perms.Accounts {
 		for _, a := range in.Accounts {
-			st, d := usage(used[nid(KindAccount, a.ID)], in.UsageMore)
+			st, d := usage(used[nid(KindAccount, a.ID)])
 			if a.Health != "" && a.Health != "valid" {
 				st, d = StatusFailed, "Registration status: "+a.Health
 			}
@@ -345,7 +345,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	}
 	if perms.DNSCreds {
 		for _, d := range in.DNSCreds {
-			st, det := usage(used[nid(KindDNSCredential, d.ID)], in.UsageMore)
+			st, det := usage(used[nid(KindDNSCredential, d.ID)])
 			issuers = append(issuers, Node{ID: nid(KindDNSCredential, d.ID), Kind: KindDNSCredential, Name: d.Name, Status: st, StatusDetail: det, Href: b.href("/issuers/dns")})
 		}
 	}

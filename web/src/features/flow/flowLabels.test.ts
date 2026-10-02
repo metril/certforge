@@ -9,8 +9,7 @@ describe('flowStatusLabel', () => {
     expect(flowStatusLabel('ca', 'expiring')).toBe('Expiring');
     expect(flowStatusLabel('account', 'failed')).toBe('Failed');
   });
-  it('does not call an uncounted issuer unused', () => {
-    expect(flowStatusLabel('ca', 'idle', 'Usage not counted: map truncated')).toBe('Usage unknown');
+  it('calls an issuer no certificate resolves to unused', () => {
     expect(flowStatusLabel('ca', 'idle', 'Not used by any certificate')).toBe('Unused');
   });
   it('words channels by delivery', () => {

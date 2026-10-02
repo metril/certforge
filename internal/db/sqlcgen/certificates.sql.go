@@ -532,6 +532,40 @@ func (q *Queries) ListARIDue(ctx context.Context, arg ListARIDueParams) ([]Certi
 	return items, nil
 }
 
+const listCertificateIssuerRefs = `-- name: ListCertificateIssuerRefs :many
+SELECT c.id, c.verification_rules, c.overrides FROM certificates c
+WHERE c.org_id = $1::uuid
+`
+
+type ListCertificateIssuerRefsRow struct {
+	ID                uuid.UUID `json:"id"`
+	VerificationRules []byte    `json:"verification_rules"`
+	Overrides         []byte    `json:"overrides"`
+}
+
+// Everything needed to resolve which CA, account and DNS credentials each
+// certificate in one org uses. No LIMIT: the system map counts issuer use
+// over every certificate. Same org filter as the certificate list.
+func (q *Queries) ListCertificateIssuerRefs(ctx context.Context, orgID uuid.UUID) ([]ListCertificateIssuerRefsRow, error) {
+	rows, err := q.db.Query(ctx, listCertificateIssuerRefs, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCertificateIssuerRefsRow{}
+	for rows.Next() {
+		var i ListCertificateIssuerRefsRow
+		if err := rows.Scan(&i.ID, &i.VerificationRules, &i.Overrides); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCertificateVersions = `-- name: ListCertificateVersions :many
 SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 FROM certificate_versions WHERE cert_id = $1 ORDER BY created_at DESC

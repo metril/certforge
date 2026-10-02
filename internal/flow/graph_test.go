@@ -307,8 +307,8 @@ func TestIssuerAndChannelStatuses(t *testing.T) {
 }
 
 // Issuer use is counted over every certificate handed in, so an issuer whose
-// only user sits past the node cap is still in use; when the list itself is
-// incomplete, counts are lower bounds and zero is never reported as unused.
+// only user sits past the node cap is still in use; when the builder supplies
+// Uses (every certificate in the org), counts come from there.
 func TestIssuerUsageBeyondCap(t *testing.T) {
 	caLate, caNone := id(), id()
 	var certs []Cert
@@ -334,19 +334,19 @@ func TestIssuerUsageBeyondCap(t *testing.T) {
 	if n := got["ca:"+caNone.String()]; n.Status != StatusIdle || n.StatusDetail != "Not used by any certificate" {
 		t.Errorf("unused CA = %s %q", n.Status, n.StatusDetail)
 	}
-	// Truncated list: lower bound, and zero is "not counted".
-	in.Certs, in.UsageMore, in.CertsMore = certs[:10], true, true
-	in.Certs[0].CAID = &caLate
-	in.Certs[1].CAID = &caLate
+	// The builder hands the shown certificates in Certs and every
+	// certificate's issuer references in Uses: counts come from Uses.
+	in.Certs, in.CertsMore = certs[:10], true
+	in.Uses = []Use{{CAID: &caLate}, {CAID: &caLate}, {}}
 	g = Assemble(in, allPerms(), now)
 	got = map[string]Node{}
 	for _, n := range g.Issuers.Nodes {
 		got[n.ID] = n
 	}
-	if n := got["ca:"+caLate.String()]; n.Status != StatusValid || n.StatusDetail != "Used by at least 2 certificates" {
+	if n := got["ca:"+caLate.String()]; n.Status != StatusValid || n.StatusDetail != "Used by 2 certificates" {
 		t.Errorf("late CA = %s %q", n.Status, n.StatusDetail)
 	}
-	if n := got["ca:"+caNone.String()]; n.Status != StatusIdle || n.StatusDetail != UsageNotCounted {
-		t.Errorf("zero-count CA = %s %q", n.Status, n.StatusDetail)
+	if n := got["ca:"+caNone.String()]; n.Status != StatusIdle || n.StatusDetail != "Not used by any certificate" {
+		t.Errorf("unused CA = %s %q", n.Status, n.StatusDetail)
 	}
 }

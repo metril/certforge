@@ -338,3 +338,10 @@ RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, sourc
 -- query per certificate.
 SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 FROM certificate_versions WHERE id = ANY($1::uuid[]);
+
+-- name: ListCertificateIssuerRefs :many
+-- Everything needed to resolve which CA, account and DNS credentials each
+-- certificate in one org uses. No LIMIT: the system map counts issuer use
+-- over every certificate. Same org filter as the certificate list.
+SELECT c.id, c.verification_rules, c.overrides FROM certificates c
+WHERE c.org_id = sqlc.arg(org_id)::uuid;

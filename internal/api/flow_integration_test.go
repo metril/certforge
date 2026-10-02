@@ -129,6 +129,55 @@ func TestGetFlowTruncates(t *testing.T) {
 	}
 }
 
+// Issuer use is counted over every certificate in the org, not only the ones
+// the capped map draws, and never over another org's certificates.
+func TestGetFlowUsageCountsWholeOrgOnly(t *testing.T) {
+	f := newAgentFixture(t)
+	ctx := context.Background()
+	newCA := func(name string) uuid.UUID {
+		var id uuid.UUID
+		if err := f.pool.QueryRow(ctx, `INSERT INTO cas (org_id, name, preset, directory_url) VALUES ($1, $2, 'letsencrypt', 'https://acme.example.test/directory') RETURNING id`,
+			f.org, name).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	late, none := newCA("late"), newCA("none")
+	if _, err := f.pool.Exec(ctx,
+		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 520) g`, f.org); err != nil {
+		t.Fatal(err)
+	}
+	// Only the last two certificates by name, past the node cap, use "late".
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET overrides = jsonb_build_object('caId', $2::text) WHERE org_id = $1 AND name IN ('c0519', 'c0520')`, f.org, late); err != nil {
+		t.Fatal(err)
+	}
+	// Another org's certificate pointing at "none" must not count here.
+	other := dbtest.Org(t, f.pool)
+	if _, err := f.pool.Exec(ctx, `INSERT INTO certificates (org_id, name, common_name, status, overrides) VALUES ($1, 'x', 'x.example.test', 'pending', jsonb_build_object('caId', $2::text))`, other, none); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.srv.GetFlow(f.as("operator"), gen.GetFlowRequestObject{OrgId: f.org})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fl := gen.Flow(res.(gen.GetFlow200JSONResponse))
+	if !fl.Truncated {
+		t.Fatal("not truncated")
+	}
+	detail := map[string]string{}
+	for _, n := range fl.Lanes.Issuers.Nodes {
+		if n.StatusDetail != nil {
+			detail[n.Id] = string(n.Status) + " " + *n.StatusDetail
+		}
+	}
+	if got := detail["ca:"+late.String()]; got != "valid Used by 2 certificates" {
+		t.Errorf("late CA = %q", got)
+	}
+	if got := detail["ca:"+none.String()]; got != "idle Not used by any certificate" {
+		t.Errorf("none CA = %q", got)
+	}
+}
+
 // Another org's id is refused exactly as every other org-scoped endpoint
 // refuses it (no binding there: 403, no leak of whether it exists).
 func TestGetFlowOtherOrgRefused(t *testing.T) {

@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -91,30 +92,17 @@ func (b *Builder) Build(ctx context.Context, orgID uuid.UUID, perms Perms) (Grap
 	return Assemble(in, perms, now), nil
 }
 
-// usageScanLimit bounds the certificate rows read to count issuer use. The
-// list is one query and resolution is in memory, so counting over every
-// certificate is cheap; past this many the counts become lower bounds.
-const usageScanLimit = 20000
-
-// loadCerts reads the org's certificates (by name) and resolves each one's
-// effective CA, account and DNS credentials, so issuer use counts cover the
-// whole org and not just the nodes the map shows. Only the first MaxNodes
-// need their versions loaded. Global and org defaults are read once, as the
-// certificate list does.
+// loadCerts reads the certificates the map shows (by name, up to the node
+// cap) and, separately, the issuer references of every certificate in the
+// org, so issuer use counts are exact whatever the org's size. Global and org
+// defaults are read once, as the certificate list does.
 func (b *Builder) loadCerts(ctx context.Context, orgID uuid.UUID, in *Input) error {
-	pg, err := b.Issuance.ListCertificatesPage(ctx, []uuid.UUID{orgID}, issuance.ListQuery{Sort: issuance.SortName, Limit: usageScanLimit})
+	pg, err := b.Issuance.ListCertificatesPage(ctx, []uuid.UUID{orgID}, issuance.ListQuery{Sort: issuance.SortName, Limit: MaxNodes})
 	if err != nil {
 		return err
 	}
 	certs := pg.Certificates
-	if len(certs) > usageScanLimit {
-		certs = certs[:usageScanLimit]
-		in.UsageMore = true
-	}
-	if pg.NextCursor != nil {
-		in.UsageMore = true
-	}
-	in.CertsMore = in.UsageMore
+	in.CertsMore = pg.NextCursor != nil
 	global, err := b.Issuance.GlobalDefaults(ctx)
 	if err != nil {
 		return err
@@ -124,7 +112,7 @@ func (b *Builder) loadCerts(ctx context.Context, orgID uuid.UUID, in *Input) err
 		return err
 	}
 	var vids []uuid.UUID
-	for _, c := range certs[:min(len(certs), MaxNodes)] {
+	for _, c := range certs {
 		if c.CurrentVersionID != nil {
 			vids = append(vids, *c.CurrentVersionID)
 		}
@@ -137,26 +125,48 @@ func (b *Builder) loadCerts(ctx context.Context, orgID uuid.UUID, in *Input) err
 	for _, c := range in.CAs {
 		caType[c.ID] = c.Detail
 	}
-	for _, c := range certs {
-		eff := issuance.Resolve(global, org, c.Overrides)
+	// resolve is one certificate's effective CA, account and DNS credentials.
+	resolve := func(overrides issuance.Defaults, rules []challenge.RuleSpec) Use {
+		eff := issuance.Resolve(global, org, overrides)
 		if id := eff.CAID.Value; id != nil {
 			eff = issuance.DropAccountForPrivateCA(eff, issuance.CA{Type: caType[*id]})
 		}
-		fc := Cert{ID: c.ID, Name: c.Name, Status: c.Status, LastError: c.LastError, CAID: eff.CAID.Value, AccountID: eff.AccountID.Value}
+		u := Use{CAID: eff.CAID.Value, AccountID: eff.AccountID.Value}
+		seen := map[uuid.UUID]bool{}
+		for _, r := range append(append([]challenge.RuleSpec{}, rules...), eff.VerificationRules.Value...) {
+			if r.DNSCredentialID != nil && !seen[*r.DNSCredentialID] {
+				seen[*r.DNSCredentialID] = true
+				u.DNSCredIDs = append(u.DNSCredIDs, *r.DNSCredentialID)
+			}
+		}
+		return u
+	}
+	for _, c := range certs {
+		u := resolve(c.Overrides, c.Rules)
+		fc := Cert{ID: c.ID, Name: c.Name, Status: c.Status, LastError: c.LastError, CAID: u.CAID, AccountID: u.AccountID, DNSCredIDs: u.DNSCredIDs}
 		if c.CurrentVersionID != nil {
 			if v, ok := versions[*c.CurrentVersionID]; ok {
 				na := v.NotAfter
 				fc.NotAfter = &na
 			}
 		}
-		seen := map[uuid.UUID]bool{}
-		for _, r := range append(append([]challenge.RuleSpec{}, c.Rules...), eff.VerificationRules.Value...) {
-			if r.DNSCredentialID != nil && !seen[*r.DNSCredentialID] {
-				seen[*r.DNSCredentialID] = true
-				fc.DNSCredIDs = append(fc.DNSCredIDs, *r.DNSCredentialID)
-			}
-		}
 		in.Certs = append(in.Certs, fc)
+	}
+	refs, err := b.Q.ListCertificateIssuerRefs(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	in.Uses = make([]Use, 0, len(refs))
+	for _, r := range refs {
+		var rules []challenge.RuleSpec
+		var overrides issuance.Defaults
+		if err := json.Unmarshal(r.VerificationRules, &rules); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(r.Overrides, &overrides); err != nil {
+			return err
+		}
+		in.Uses = append(in.Uses, resolve(overrides, rules))
 	}
 	return nil
 }
