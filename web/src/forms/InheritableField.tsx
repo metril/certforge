@@ -25,6 +25,8 @@ type Props<T> = {
   inherited: { value: T | null | undefined; source: Source };
   /** What each other level holds for this field (the edited level's own value is filled in here). */
   chain?: ChainEntry[];
+  /** The built-in defaults are not known (loading, or unavailable): a value falling back to the built-in is shown as such, never as "not set". */
+  builtinState?: 'loading' | 'error';
   /** What "nothing set anywhere" does for this field, when the built-in is not a value. */
   unsetText?: string;
   /** The level this form edits; it is "here", so it gets no link. */
@@ -113,11 +115,15 @@ function FieldSourceBadge({ effective, level, links, entries }: { effective: Sou
   );
 }
 
-export function InheritableField<T>({ id, label, help, value, inherited, chain, unsetText, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
+export function InheritableField<T>({ id, label, help, value, inherited, chain, builtinState, unsetText, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
   const overridden = value !== null && value !== undefined;
   const switchDisabled = !overridden && !!overrideDisabled;
   const inheritedView = pending ? (
     <span className="text-ink-muted">Inherited after save</span>
+  ) : (inherited.value === null || inherited.value === undefined) && inherited.source === 'default' && builtinState === 'loading' ? (
+    <span role="status" aria-label="Loading built-in value" className="inline-block h-3 w-24 animate-pulse rounded-sm bg-subtle align-middle" />
+  ) : (inherited.value === null || inherited.value === undefined) && inherited.source === 'default' && builtinState === 'error' ? (
+    <span className="text-ink-muted">Built-in value unavailable</span>
   ) : inherited.value === null || inherited.value === undefined ? (
     <span className="text-ink-muted">{unsetText ?? 'not set'}</span>
   ) : (

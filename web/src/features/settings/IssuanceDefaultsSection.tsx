@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NO_ORG } from '@/lib/nav';
 import { useMe } from '@/lib/org';
 import { can, type Action } from '@/lib/permissions';
-import { chainFor, fieldFromTitle, fromBuiltin, fromEffective, fullPayload, IssuanceDefaultsForm, useFieldCtx, type FieldKey } from './issuanceFields';
+import { builtinStateOf, chainFor, fieldFromTitle, fromBuiltin, fromEffective, fullPayload, IssuanceDefaultsForm, useFieldCtx, type FieldKey } from './issuanceFields';
 import { SchemaSection } from './SchemaSection';
 
 // Task 9: placeholders for the four rate-limit inputs; the fields themselves
@@ -131,7 +131,8 @@ export function IssuanceDefaultsSection() {
   // (controller ruling, review fix round 1, #1): using the built-in-filled
   // `value` for those made every field look overridden and re-saved every
   // built-in as an explicit 'global' value on the first edit.
-  const builtin = (effectiveQ.data?.builtin ?? {}) as IssuanceDefaults;
+  const builtin = effectiveQ.data?.builtin as IssuanceDefaults | undefined;
+  const builtinState = builtinStateOf(effectiveQ);
   const globalStored = (globalQ.data?.stored ?? null) as IssuanceDefaults | null;
   const orgSaved = orgQ.data ?? {};
   const effective = effectiveQ.data ?? {};
@@ -182,6 +183,7 @@ export function IssuanceDefaultsSection() {
           links={ORG_LINKS}
           chain={chainFor(builtin, globalStored ?? {}, undefined, globalCtx)}
           inherited={fromBuiltin(builtin)}
+          builtinState={builtinState}
           ctx={globalCtx}
           error={(k) => (globalError?.field === k ? globalError.message : null)}
         />
@@ -215,6 +217,7 @@ export function IssuanceDefaultsSection() {
           level="org"
           links={GLOBAL_LINKS}
           inherited={fromEffective(effective)}
+          builtinState={builtinState}
           // The hover chain's Global entry comes from the raw stored value
           // (review fix round 1, #2), not the built-in-filled
           // display — otherwise a field the badge calls 'Default' would

@@ -259,8 +259,8 @@ export const fromDefault = (): EffectiveValue => ({ value: null, source: 'defaul
 // effective endpoint's `builtin` (issuance.BuiltinDefaults), never the
 // settings `stored` (the raw saved object, which is what decides whether a
 // field counts as overridden at all — see IssuanceDefaultsSection).
-export function fromBuiltin(builtin: IssuanceDefaults) {
-  return (k: FieldKey): EffectiveValue => ({ value: builtin[k] ?? null, source: 'default' }) as EffectiveValue;
+export function fromBuiltin(builtin: IssuanceDefaults | undefined) {
+  return (k: FieldKey): EffectiveValue => ({ value: builtin?.[k] ?? null, source: 'default' }) as EffectiveValue;
 }
 
 // Adaptation (preflight A8): the source of truth for the Org tab's badge —
@@ -271,16 +271,22 @@ export function fromEffective(eff: EffectiveMap) {
   return (k: FieldKey): EffectiveValue => (eff[k] as EffectiveValue | undefined) ?? fromDefault();
 }
 
+/** Whether the server's built-in defaults are known: 'loading' while the effective query has no data yet, 'error' when it failed or the response carries no `builtin` (an older cached response). Undefined once known. */
+export function builtinStateOf(q: { data?: { builtin?: unknown } | undefined; isError?: boolean }): 'loading' | 'error' | undefined {
+  if (q.data?.builtin) return undefined;
+  return q.isError || q.data ? 'error' : 'loading';
+}
+
 // `builtin` is the server's BuiltinDefaults (effective endpoint's `builtin`);
-// fields absent from it have no value (see each field's unsetText).
-export function chainFor(builtin: IssuanceDefaults, global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
+// fields absent from it have no value (see each field's unsetText). While it
+// is unknown (undefined) the Built-in row is left out rather than guessed.
+export function chainFor(builtin: IssuanceDefaults | undefined, global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
   return (k: FieldKey): ChainEntry[] => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k);
     const show = (v: unknown, none: ReactNode = 'not set'): ReactNode => (v == null ? none : f ? f.display(v, ctx) : String(v));
-    const out: ChainEntry[] = [
-      { level: 'default', value: show(builtin[k], f?.unsetText) },
-      { level: 'global', value: show(global[k]) },
-    ];
+    const out: ChainEntry[] = [];
+    if (builtin) out.push({ level: 'default', value: show(builtin[k], f?.unsetText) });
+    out.push({ level: 'global', value: show(global[k]) });
     if (org) out.push({ level: 'org', value: show(org[k]) });
     return out;
   };
@@ -316,6 +322,8 @@ export type FormProps = {
   onChange: (v: IssuanceDefaults) => void;
   inherited: (k: FieldKey) => EffectiveValue;
   chain?: (k: FieldKey) => ChainEntry[];
+  /** Set while the server's built-in defaults are not known; a field falling back to the built-in then shows no value. */
+  builtinState?: 'loading' | 'error';
   /** The level this form edits, and where the other levels are edited. */
   level?: 'global' | 'org' | 'cert';
   links?: LevelLinks;
@@ -347,7 +355,7 @@ const SECTIONS: { title: string; keys: FieldKey[] }[] = [
   { title: 'Verification', keys: ['propagationSeconds', 'resolvers', 'verificationRules'] },
 ];
 
-export function IssuanceDefaultsForm({ value, onChange, inherited, chain, level, links, ctx, exclude = [], error, pending, readOnly = false }: FormProps) {
+export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builtinState, level, links, ctx, exclude = [], error, pending, readOnly = false }: FormProps) {
   const eca = effectiveCa(value, inherited, ctx.cas);
   const privateCa = !!eca && isPrivate(eca);
   // Batch 2 review (Minor): the onChange interception above only fires when
@@ -384,6 +392,7 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, level,
           // it doesn't change what's passed.
           inherited={inherited(f.key) as { value: unknown; source: Source }}
           chain={chain?.(f.key)}
+          builtinState={builtinState}
           unsetText={f.unsetText}
           level={level}
           links={links}
