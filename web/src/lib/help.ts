@@ -139,11 +139,7 @@ export const help = {
   'defaults.propagationSeconds': { text: 'How long to wait for TXT records to reach every nameserver.' },
   'defaults.resolvers': { text: 'DNS servers used to check propagation. Empty means system resolvers.' },
   'defaults.inherit': {
-    text: 'Most specific wins: Certificate > Organization > Global > Built-in (shipped with CertForge). Changes apply at each certificate’s next renewal.',
-    learnMore: 'configuration.md#issuance-defaults',
-  },
-  'defaults.globalBuiltin': {
-    text: 'Most specific wins: Certificate > Organization > Global > Built-in (shipped with CertForge). Fields left unset here use the built-in value.',
+    text: 'Most specific wins: Certificate > Organization > Global. Changes apply at each certificate’s next renewal.',
     learnMore: 'configuration.md#issuance-defaults',
   },
   'cert.names': {

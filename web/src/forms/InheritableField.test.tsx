@@ -14,7 +14,6 @@ function H() {
         value={v}
         inherited={{ value: 'ec256', source: 'global' }}
         chain={[
-          { level: 'default', value: 'EC P-256' },
           { level: 'global', value: 'EC P-256' },
         ]}
         links={{ global: '/settings/issuance-defaults?scope=global', org: '/settings/issuance-defaults?scope=org' }}
@@ -83,7 +82,7 @@ it('disables Override with a reason, but still allows resetting an already-overr
   const { user } = renderUI(<WithDisabled />);
   expect(screen.getByRole('switch', { name: 'Override Key type' })).not.toBeDisabled();
   expect(screen.getByLabelText('editor')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Use Built-in value' }));
+  await user.click(screen.getByRole('button', { name: 'Use Global value' }));
   expect(screen.getByRole('switch', { name: 'Override Key type' })).toBeDisabled();
   expect(screen.getByText('No CAs yet')).toBeInTheDocument();
 });
@@ -115,7 +114,6 @@ it('shows one source badge whose popover lists each level with the one in effect
   await user.click(screen.getByRole('button', { name: 'Global' }));
   const pop = within(document.querySelector('[data-slot="popover-content"]') as HTMLElement);
   const el = document.querySelector('[data-slot="popover-content"]');
-  expect(el).toHaveTextContent('Built-in: EC P-256');
   expect(el).toHaveTextContent('Organization: set per organization');
   expect(el?.querySelector('[aria-current="true"]')).toHaveTextContent('Global: EC P-256');
   expect(pop.getByRole('link', { name: 'Organization' })).toHaveAttribute('href', '/settings/issuance-defaults?scope=org');
@@ -141,4 +139,36 @@ it('says what an unset-everywhere field does instead of "shipped default"', () =
     />,
   );
   expect(screen.getByText('none — issuance fails until one is set')).toBeInTheDocument();
+});
+
+it('Global scope has no Override switch: it edits the shipped value in place and Reset appears only once it differs', async () => {
+  function G() {
+    const [v, setV] = useState<string | null>(null);
+    return (
+      <>
+        <InheritableField<string>
+          id="kt"
+          label="Key type"
+          level="global"
+          value={v}
+          inherited={{ value: 'ec256', source: 'default' }}
+          initial="rsa2048"
+          display={(x) => <span>{x}</span>}
+          editor={(x, set) => <input aria-label="editor" value={x} onChange={(e) => set(e.target.value)} />}
+          onChange={setV}
+        />
+        <output data-testid="v">{String(v)}</output>
+      </>
+    );
+  }
+  const { user } = renderUI(<G />);
+  expect(screen.queryByRole('switch')).toBeNull();
+  expect(screen.queryByText(/Built-in/)).toBeNull();
+  expect(screen.getByLabelText('editor')).toHaveValue('ec256');
+  expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
+  await user.type(screen.getByLabelText('editor'), 'x');
+  expect(screen.getByTestId('v')).toHaveTextContent('ec256x');
+  await user.click(screen.getByRole('button', { name: 'Reset' }));
+  expect(screen.getByTestId('v')).toHaveTextContent('null');
+  expect(screen.getByLabelText('editor')).toHaveValue('ec256');
 });

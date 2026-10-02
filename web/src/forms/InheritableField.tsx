@@ -12,8 +12,10 @@ import type { HelpKey } from '@/lib/help';
 
 /** One level's value for a field, shown in the source badge's popover. */
 export type ChainEntry = { level: Source; value: ReactNode };
-const SOURCE_LABEL: Record<Source, string> = { default: 'Built-in', global: 'Global', org: 'Organization', cert: 'Certificate' };
-const LEVELS: Source[] = ['default', 'global', 'org', 'cert'];
+const SOURCE_LABEL: Record<Source, string> = { default: 'Global', global: 'Global', org: 'Organization', cert: 'Certificate' };
+const LEVELS: Source[] = ['global', 'org', 'cert'];
+/** The shipped value is Global's own until an admin changes it, so a default-sourced value belongs to the Global level. */
+const norm = (s: Source): Source => (s === 'default' ? 'global' : s);
 /** Where each editable level's value is edited, when it is not the current form. */
 export type LevelLinks = Partial<Record<'global' | 'org' | 'cert', string>>;
 
@@ -25,7 +27,7 @@ type Props<T> = {
   inherited: { value: T | null | undefined; source: Source };
   /** What each other level holds for this field (the edited level's own value is filled in here). */
   chain?: ChainEntry[];
-  /** The built-in defaults are not known (loading, or unavailable): a value falling back to the built-in is shown as such, never as "not set". */
+  /** The shipped defaults are not known (loading, or unavailable): a value falling back to them is shown as such, never as "not set". */
   builtinState?: 'loading' | 'error';
   /** What "nothing set anywhere" does for this field, when the built-in is not a value. */
   unsetText?: string;
@@ -64,7 +66,7 @@ export function SourceBadge({ source, chain }: { source: Source; chain?: ChainEn
             </div>
           ))
         ) : source === 'default' ? (
-          'Built-in (shipped with CertForge)'
+          'Global (shipped with CertForge)'
         ) : (
           `Inherited from ${SOURCE_LABEL[source]}`
         )}
@@ -100,11 +102,11 @@ function FieldSourceBadge({ effective, level, links, entries }: { effective: Sou
       </PopoverTrigger>
       <PopoverContent align="start" className="grid w-auto max-w-80 gap-1 p-3 text-xs">
         {LEVELS.map((l) => {
-          const href = l !== 'default' && l !== level ? links?.[l] : undefined;
+          const href = l !== level && l !== 'default' ? links?.[l] : undefined;
           const label = SOURCE_LABEL[l];
           const v = entries.get(l) ?? ABSENT[l];
           return (
-            <div key={l} aria-current={l === effective ? 'true' : undefined} className={l === effective ? 'font-semibold text-foreground' : 'text-ink-muted'}>
+            <div key={l} aria-current={l === norm(effective) ? 'true' : undefined} className={l === norm(effective) ? 'font-semibold text-foreground' : 'text-ink-muted'}>
               {href ? <LevelLink href={href}>{label}</LevelLink> : label}
               {v != null && <>: {v}</>}
             </div>
@@ -117,13 +119,22 @@ function FieldSourceBadge({ effective, level, links, entries }: { effective: Sou
 
 export function InheritableField<T>({ id, label, help, value, inherited, chain, builtinState, unsetText, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
   const overridden = value !== null && value !== undefined;
+  const unknownShipped = (inherited.value === null || inherited.value === undefined) && inherited.source === 'default';
+  if (level === 'global') {
+    return (
+      <BaseField
+        {...{ id, label, help, value, inherited, builtinState, unsetText, initial, display, editor, onChange, error, overrideDisabled }}
+        unknownShipped={unknownShipped}
+      />
+    );
+  }
   const switchDisabled = !overridden && !!overrideDisabled;
   const inheritedView = pending ? (
     <span className="text-ink-muted">Inherited after save</span>
   ) : (inherited.value === null || inherited.value === undefined) && inherited.source === 'default' && builtinState === 'loading' ? (
-    <span role="status" aria-label="Loading built-in value" className="inline-block h-3 w-24 animate-pulse rounded-sm bg-subtle align-middle" />
+    <span role="status" aria-label="Loading default" className="inline-block h-3 w-24 animate-pulse rounded-sm bg-subtle align-middle" />
   ) : (inherited.value === null || inherited.value === undefined) && inherited.source === 'default' && builtinState === 'error' ? (
-    <span className="text-ink-muted">Built-in value unavailable</span>
+    <span className="text-ink-muted">Default unavailable</span>
   ) : inherited.value === null || inherited.value === undefined ? (
     <span className="text-ink-muted">{unsetText ?? 'not set'}</span>
   ) : (
@@ -132,9 +143,9 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
   // After a reset the value falls to the next level down: the effective source
   // when it is below this form's level, else the level just below it.
   const levelIdx = level ? LEVELS.indexOf(level) : -1;
-  const next: Source = levelIdx < 0 || LEVELS.indexOf(inherited.source) < levelIdx ? inherited.source : (LEVELS[Math.max(levelIdx - 1, 0)] as Source);
+  const next: Source = levelIdx < 0 || LEVELS.indexOf(norm(inherited.source)) < levelIdx ? norm(inherited.source) : (LEVELS[Math.max(levelIdx - 1, 0)] as Source);
   const effective: Source = overridden ? (level ?? 'cert') : inherited.source;
-  const entries = new Map<Source, ReactNode>((chain ?? []).map((c) => [c.level, c.value]));
+  const entries = new Map<Source, ReactNode>((chain ?? []).map((c) => [norm(c.level), c.value]));
   if (level) entries.set(level, overridden ? display(value as T) : 'not set');
   return (
     <div role="group" aria-labelledby={`${id}-label`} className="grid gap-2 border-b border-border py-3">
@@ -185,6 +196,69 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
           {inheritedView}
         </div>
       )}
+    </div>
+  );
+}
+
+type BaseProps<T> = Pick<Props<T>, 'id' | 'label' | 'help' | 'value' | 'inherited' | 'builtinState' | 'unsetText' | 'initial' | 'display' | 'editor' | 'onChange' | 'error' | 'overrideDisabled'> & { unknownShipped: boolean };
+
+/** A Global field: Global is the base layer, so there is no Override switch. The control shows the stored value, else the value CertForge ships with; Reset removes the stored key. */
+function BaseField<T>({ id, label, help, value, inherited, builtinState, unsetText, initial, display, editor, onChange, error, overrideDisabled, unknownShipped }: BaseProps<T>) {
+  const stored = value !== null && value !== undefined;
+  const shipped = inherited.value as T | null | undefined;
+  const hasShipped = shipped !== null && shipped !== undefined;
+  const shown = stored ? (value as T) : hasShipped ? shipped : undefined;
+  const differs = stored && (!hasShipped || JSON.stringify(value) !== JSON.stringify(shipped));
+  void display;
+  let body: ReactNode;
+  if (shown !== undefined) {
+    body = editor(shown, (v) => onChange(v));
+  } else if (unknownShipped && builtinState === 'loading') {
+    body = <span role="status" aria-label="Loading default" className="inline-block h-3 w-24 animate-pulse rounded-sm bg-subtle align-middle" />;
+  } else if (unknownShipped && builtinState === 'error') {
+    body = <span className="text-ink-muted">Default unavailable</span>;
+  } else {
+    body = (
+      <>
+        <span className="text-sm text-ink-muted">{unsetText ?? 'not set'}</span>
+        {overrideDisabled && <span className="text-sm text-ink-muted">({overrideDisabled})</span>}
+        {!overrideDisabled && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(initial)}>
+            Set
+          </Button>
+        )}
+      </>
+    );
+  }
+  return (
+    <div role="group" aria-labelledby={`${id}-label`} className="grid gap-2 border-b border-border py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span id={`${id}-label`} className="text-sm font-semibold">
+          {label}
+        </span>
+        {help && <HelpTip id={help} />}
+      </div>
+      <div className="grid gap-1.5">
+        <div className="flex flex-wrap items-center gap-3">
+          {body}
+          {differs && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>
+                  Reset
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Back to the value CertForge ships with</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+        {error && (
+          <p role="alert" className="flex items-center gap-1 text-xs">
+            <CircleAlert className="size-3.5 text-failed" aria-hidden />
+            {error}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

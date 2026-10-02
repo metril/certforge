@@ -244,30 +244,22 @@ describe('IssuanceDefaultsForm sections', () => {
 });
 
 // While the server's built-in defaults are unknown nothing built-in is shown:
-// no "not set" wording, no Built-in popover value.
-describe('unknown built-in defaults', () => {
+// no "not set" wording.
+describe('unknown shipped defaults', () => {
   const unset = 'none — issuance fails until one is set';
   const Form = ({ state }: { state?: 'loading' | 'error' }) => (
     <IssuanceDefaultsForm value={{}} onChange={() => {}} inherited={fromBuiltin(undefined)} chain={chainFor(undefined, {}, undefined, ctx)} builtinState={state} level="global" ctx={ctx} />
   );
   it('loading shows a skeleton, never the unset wording', () => {
     renderUI(<Form state="loading" />);
-    expect(screen.getAllByRole('status', { name: 'Loading built-in value' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('status', { name: 'Loading default' }).length).toBeGreaterThan(0);
     expect(screen.queryByText(unset)).toBeNull();
     expect(screen.queryByText('not set')).toBeNull();
   });
   it('an error says the value is unavailable', () => {
     renderUI(<Form state="error" />);
-    expect(screen.getAllByText('Built-in value unavailable').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Default unavailable').length).toBeGreaterThan(0);
     expect(screen.queryByText(unset)).toBeNull();
-  });
-  it('the popover leaves the Built-in value out', async () => {
-    const { user } = renderUI(<Form state="loading" />);
-    const group = screen.getByRole('group', { name: 'Certificate authority' });
-    await user.click(within(group).getByRole('button', { name: 'Built-in' }));
-    const pop = await screen.findByRole('dialog');
-    expect(pop).toHaveTextContent('Global');
-    expect(pop).not.toHaveTextContent('Built-in:');
   });
   it('a served null built-in still shows the unset wording', () => {
     renderUI(<IssuanceDefaultsForm value={{}} onChange={() => {}} inherited={fromBuiltin({})} chain={chainFor({}, {}, undefined, ctx)} level="global" ctx={ctx} />);

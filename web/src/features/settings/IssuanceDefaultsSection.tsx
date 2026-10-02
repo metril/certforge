@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { LevelLinks } from '@/forms/InheritableField';
 import { orgDefaultsQuery, useSaveOrgDefaults, effectiveDefaultsQuery } from '@/api/queries/defaults';
 import { settingsQuery, useSaveSettings } from '@/api/queries/settings';
@@ -14,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NO_ORG } from '@/lib/nav';
 import { useMe } from '@/lib/org';
 import { can, type Action } from '@/lib/permissions';
-import { builtinStateOf, chainFor, fieldFromTitle, fromBuiltin, fromEffective, fullPayload, IssuanceDefaultsForm, useFieldCtx, type FieldKey } from './issuanceFields';
+import { builtinStateOf, chainFor, fieldFromTitle, fromBuiltin, fromEffective, fullPayload, globalPayload, IssuanceDefaultsForm, useFieldCtx, type FieldKey } from './issuanceFields';
 import { SchemaSection } from './SchemaSection';
 
 // Task 9: placeholders for the four rate-limit inputs; the fields themselves
@@ -53,7 +52,7 @@ function SaveRow({
   permAction: Action;
 }) {
   return (
-    <div className="grid gap-2 pt-4">
+    <div className="grid gap-2 py-4">
       {banner && (
         <p role="alert" className="text-xs">
           {banner}
@@ -142,28 +141,6 @@ export function IssuanceDefaultsSection() {
 
   return (
     <Tabs value={scope} onValueChange={(v) => void navigate({ search: (prev) => ({ ...prev, scope: v as 'global' | 'org' }), replace: true })} className="max-w-[900px]">
-      <div aria-label="Defaults precedence" className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" className="underline decoration-dotted underline-offset-2">
-              Most specific wins
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Certificate &gt; Organization &gt; Global &gt; Built-in (shipped with CertForge). Each field's badge shows which level it uses.</TooltipContent>
-        </Tooltip>
-        <span aria-hidden>:</span>
-        <span>Built-in</span>
-        <span aria-hidden>→</span>
-        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => void navigate({ search: (prev) => ({ ...prev, scope: 'global' }), replace: true })}>
-          Global
-        </button>
-        <span aria-hidden>→</span>
-        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => void navigate({ search: (prev) => ({ ...prev, scope: 'org' }), replace: true })}>
-          Organization
-        </button>
-        <span aria-hidden>→</span>
-        <span>Certificate</span>
-      </div>
       <div className="flex flex-wrap items-center gap-2">
         <TabsList>
           <TabsTrigger value="global">Global</TabsTrigger>
@@ -172,10 +149,7 @@ export function IssuanceDefaultsSection() {
         <HelpTip id="defaults.inherit" />
       </div>
       <TabsContent value="global">
-        <div className="mb-3 flex items-center gap-1.5">
-          <span className="text-sm font-medium">Built-in defaults</span>
-          <HelpTip id="defaults.globalBuiltin" />
-        </div>
+        <div className="mt-3" />
         <IssuanceDefaultsForm
           value={globalDraft ?? globalStored ?? {}}
           onChange={setGlobalDraft}
@@ -197,7 +171,7 @@ export function IssuanceDefaultsSection() {
           onSave={async () => {
             setGlobalError(null);
             try {
-              await saveGlobal.mutateAsync(fullPayload(globalDraft ?? globalStored ?? {}) as Record<string, unknown>);
+              await saveGlobal.mutateAsync(globalPayload(globalDraft ?? globalStored ?? {}) as Record<string, unknown>);
               setGlobalDraft(null);
             } catch (e) {
               setGlobalError(mapError(e));

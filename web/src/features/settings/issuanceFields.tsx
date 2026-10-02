@@ -279,14 +279,15 @@ export function builtinStateOf(q: { data?: { builtin?: unknown } | undefined; is
 
 // `builtin` is the server's BuiltinDefaults (effective endpoint's `builtin`);
 // fields absent from it have no value (see each field's unsetText). While it
-// is unknown (undefined) the Built-in row is left out rather than guessed.
+// is unknown (undefined) a Global row with nothing stored is left out rather than guessed.
 export function chainFor(builtin: IssuanceDefaults | undefined, global: IssuanceDefaults, org: IssuanceDefaults | undefined, ctx: FieldCtx) {
   return (k: FieldKey): ChainEntry[] => {
     const f = ISSUANCE_FIELDS.find((x) => x.key === k);
     const show = (v: unknown, none: ReactNode = 'not set'): ReactNode => (v == null ? none : f ? f.display(v, ctx) : String(v));
     const out: ChainEntry[] = [];
-    if (builtin) out.push({ level: 'default', value: show(builtin[k], f?.unsetText) });
-    out.push({ level: 'global', value: show(global[k]) });
+    // The shipped value is Global's own until an admin changes it.
+    if (global[k] != null) out.push({ level: 'global', value: show(global[k]) });
+    else if (builtin) out.push({ level: 'global', value: show(builtin[k], f?.unsetText) });
     if (org) out.push({ level: 'org', value: show(org[k]) });
     return out;
   };
@@ -305,6 +306,11 @@ export function chainFor(builtin: IssuanceDefaults | undefined, global: Issuance
 // same holds for anything added later) passes through untouched instead of
 // being dropped — a "replace the whole object" PUT would otherwise delete
 // it on any unrelated save, Global or Org.
+/** The Global save body: only keys with a value (stored ones plus what the user changed), so opening and saving never pins the shipped values. */
+export function globalPayload(value: IssuanceDefaults): IssuanceDefaults {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v != null)) as IssuanceDefaults;
+}
+
 export function fullPayload(value: IssuanceDefaults): IssuanceDefaults {
   return { ...value, ...Object.fromEntries(ISSUANCE_FIELDS.map((f) => [f.key, value[f.key] ?? null])) } as IssuanceDefaults;
 }
@@ -322,7 +328,7 @@ export type FormProps = {
   onChange: (v: IssuanceDefaults) => void;
   inherited: (k: FieldKey) => EffectiveValue;
   chain?: (k: FieldKey) => ChainEntry[];
-  /** Set while the server's built-in defaults are not known; a field falling back to the built-in then shows no value. */
+  /** Set while the shipped defaults are not known; a field falling back to them then shows no value. */
   builtinState?: 'loading' | 'error';
   /** The level this form edits, and where the other levels are edited. */
   level?: 'global' | 'org' | 'cert';
@@ -423,7 +429,7 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
       {SECTIONS.map((sec) => {
         const fields = sec.keys.filter((k) => !exclude.includes(k)).map((k) => ISSUANCE_FIELDS.find((f) => f.key === k)!);
         if (fields.length === 0) return null;
-        const overridden = fields.filter((f) => value[f.key] != null);
+        const overridden = level === 'global' ? [] : fields.filter((f) => value[f.key] != null);
         return (
           <FormSection
             key={sec.title}

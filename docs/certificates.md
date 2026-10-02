@@ -31,9 +31,9 @@ Issuers → ACME accounts → Register. CertForge generates a P-256 account key,
 
 ## Defaults and overrides
 
-Every issuance field exists at three levels: global (Settings → Issuance defaults), org, and certificate. A null value inherits from the level above; unset globals fall back to built-in values.
+Every issuance field exists at three levels: global (Settings → Issuance defaults), org, and certificate. A null value inherits from the level above; unset globals use the values CertForge ships with, which are simply Global's values until an admin changes them.
 
-| Field | Built-in | Notes |
+| Field | Shipped value | Notes |
 |---|---|---|
 | `caId`, `accountId` | none | Issuance fails with a clear error until `caId` is set somewhere. `accountId` must belong to the CA and is required unless the effective CA is private (see [Private CA issuance](#private-ca-issuance)). |
 | `keyType` | `ec256` | `rsa2048`, `rsa3072`, `rsa4096`, `ec256`, `ec384`. |
