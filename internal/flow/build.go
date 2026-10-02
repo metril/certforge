@@ -91,22 +91,30 @@ func (b *Builder) Build(ctx context.Context, orgID uuid.UUID, perms Perms) (Grap
 	return Assemble(in, perms, now), nil
 }
 
-// loadCerts reads the org's certificates (first MaxNodes+1 by name) and
-// resolves each one's effective CA, account and DNS credentials. Global and
-// org defaults are read once, as the certificate list does.
+// usageScanLimit bounds the certificate rows read to count issuer use. The
+// list is one query and resolution is in memory, so counting over every
+// certificate is cheap; past this many the counts become lower bounds.
+const usageScanLimit = 20000
+
+// loadCerts reads the org's certificates (by name) and resolves each one's
+// effective CA, account and DNS credentials, so issuer use counts cover the
+// whole org and not just the nodes the map shows. Only the first MaxNodes
+// need their versions loaded. Global and org defaults are read once, as the
+// certificate list does.
 func (b *Builder) loadCerts(ctx context.Context, orgID uuid.UUID, in *Input) error {
-	pg, err := b.Issuance.ListCertificatesPage(ctx, []uuid.UUID{orgID}, issuance.ListQuery{Sort: issuance.SortName, Limit: MaxNodes + 1})
+	pg, err := b.Issuance.ListCertificatesPage(ctx, []uuid.UUID{orgID}, issuance.ListQuery{Sort: issuance.SortName, Limit: usageScanLimit})
 	if err != nil {
 		return err
 	}
 	certs := pg.Certificates
-	if len(certs) > MaxNodes {
-		certs = certs[:MaxNodes]
-		in.CertsMore = true
+	if len(certs) > usageScanLimit {
+		certs = certs[:usageScanLimit]
+		in.UsageMore = true
 	}
 	if pg.NextCursor != nil {
-		in.CertsMore = true
+		in.UsageMore = true
 	}
+	in.CertsMore = in.UsageMore
 	global, err := b.Issuance.GlobalDefaults(ctx)
 	if err != nil {
 		return err
@@ -116,7 +124,7 @@ func (b *Builder) loadCerts(ctx context.Context, orgID uuid.UUID, in *Input) err
 		return err
 	}
 	var vids []uuid.UUID
-	for _, c := range certs {
+	for _, c := range certs[:min(len(certs), MaxNodes)] {
 		if c.CurrentVersionID != nil {
 			vids = append(vids, *c.CurrentVersionID)
 		}

@@ -9,9 +9,14 @@ describe('flowStatusLabel', () => {
     expect(flowStatusLabel('ca', 'expiring')).toBe('Expiring');
     expect(flowStatusLabel('account', 'failed')).toBe('Failed');
   });
+  it('does not call an uncounted issuer unused', () => {
+    expect(flowStatusLabel('ca', 'idle', 'Usage not counted: map truncated')).toBe('Usage unknown');
+    expect(flowStatusLabel('ca', 'idle', 'Not used by any certificate')).toBe('Unused');
+  });
   it('words channels by delivery', () => {
     expect(flowStatusLabel('channel', 'valid')).toBe('Delivering');
     expect(flowStatusLabel('channel', 'failed')).toBe('Failing');
+    expect(flowStatusLabel('channel', 'pending', 'Delivery pending')).toBe('Delivery pending');
     expect(flowStatusLabel('channel', 'idle', 'Disabled')).toBe('Disabled');
     expect(flowStatusLabel('channel', 'idle', 'No deliveries yet')).toBe('No deliveries yet');
     expect(flowStatusLabel('channel', 'idle')).toBe('No deliveries yet');

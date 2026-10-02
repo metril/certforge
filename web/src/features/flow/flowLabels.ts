@@ -19,11 +19,12 @@ const ISSUER_KINDS: ReadonlyArray<FlowNodeData['kind']> = ['ca', 'account', 'dns
 export function flowStatusLabel(kind: FlowNodeData['kind'], status: FlowStatus, detail?: string): string {
   if (ISSUER_KINDS.includes(kind)) {
     if (status === 'valid') return 'In use';
-    if (status === 'idle') return 'Unused';
+    if (status === 'idle') return detail?.startsWith('Usage not counted') ? 'Usage unknown' : 'Unused';
   }
   if (kind === 'channel') {
     if (status === 'valid') return 'Delivering';
     if (status === 'failed') return 'Failing';
+    if (status === 'pending') return 'Delivery pending';
     if (status === 'idle') return detail === 'Disabled' ? 'Disabled' : 'No deliveries yet';
   }
   return DEFAULT[status];

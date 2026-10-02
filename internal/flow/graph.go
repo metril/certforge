@@ -175,6 +175,9 @@ type Input struct {
 	Channels []Channel
 	// CertsMore is true when the certificate list itself was cut short.
 	CertsMore bool
+	// UsageMore is true when Certs itself omits some of the org's
+	// certificates, so issuer use counts are lower bounds.
+	UsageMore bool
 }
 
 // certEventKinds are the event kinds a certificate emits, with severities.
@@ -244,7 +247,19 @@ func GrantStatus(state string) Status {
 }
 
 // usage is the status of an issuer entity that has no health of its own.
-func usage(n int) (Status, string) {
+// UsageNotCounted is the detail of an issuer with no counted use when the
+// certificate list was cut short.
+const UsageNotCounted = "Usage not counted: map truncated"
+
+// usage words an issuer's use count. partial means the count came from an
+// incomplete certificate list, so it is a lower bound and zero proves nothing.
+func usage(n int, partial bool) (Status, string) {
+	if partial {
+		if n == 0 {
+			return StatusIdle, UsageNotCounted
+		}
+		return StatusValid, fmt.Sprintf("Used by at least %d certificates", n)
+	}
 	switch n {
 	case 0:
 		return StatusIdle, "Not used by any certificate"
@@ -308,7 +323,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 			if c.Detail == "localca" || c.Detail == "vaultpki" {
 				q = "?view="
 			}
-			st, d := usage(used[nid(KindCA, c.ID)])
+			st, d := usage(used[nid(KindCA, c.ID)], in.UsageMore)
 			if c.NotAfter != nil {
 				if left := c.NotAfter.Sub(now); left <= 0 {
 					st, d = StatusExpired, "CA certificate expired"
@@ -321,7 +336,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	}
 	if perms.Accounts {
 		for _, a := range in.Accounts {
-			st, d := usage(used[nid(KindAccount, a.ID)])
+			st, d := usage(used[nid(KindAccount, a.ID)], in.UsageMore)
 			if a.Health != "" && a.Health != "valid" {
 				st, d = StatusFailed, "Registration status: "+a.Health
 			}
@@ -330,7 +345,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	}
 	if perms.DNSCreds {
 		for _, d := range in.DNSCreds {
-			st, det := usage(used[nid(KindDNSCredential, d.ID)])
+			st, det := usage(used[nid(KindDNSCredential, d.ID)], in.UsageMore)
 			issuers = append(issuers, Node{ID: nid(KindDNSCredential, d.ID), Kind: KindDNSCredential, Name: d.Name, Status: st, StatusDetail: det, Href: b.href("/issuers/dns")})
 		}
 	}
@@ -373,8 +388,10 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 				if c.LastError != "" {
 					d += ": " + c.LastError
 				}
-			default:
+			case c.LastStatus == "":
 				d = "No deliveries yet"
+			default: // queued or retrying
+				st, d = StatusPending, "Delivery pending"
 			}
 			alerts = append(alerts, Node{ID: nid(KindChannel, c.ID), Kind: KindChannel, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/alerts/channels?edit=", c.ID.String()), CoversCertificates: ChannelCoversCerts(c)})
 		}

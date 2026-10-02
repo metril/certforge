@@ -266,7 +266,7 @@ func TestAssembleSharedLayoutAndHiddenDelivery(t *testing.T) {
 
 func TestIssuerAndChannelStatuses(t *testing.T) {
 	caUsed, caIdle, caSoon, caGone, acctOK, acctBad, dnsUsed, dnsIdle := id(), id(), id(), id(), id(), id(), id(), id()
-	chNew, chOK := id(), id()
+	chNew, chOK, chPend := id(), id(), id()
 	soon, gone, later := now.Add(3*24*time.Hour), now.Add(-time.Hour), now.Add(90*24*time.Hour)
 	in := Input{
 		OrgSlug: "acme",
@@ -278,7 +278,7 @@ func TestIssuerAndChannelStatuses(t *testing.T) {
 			{ID: id(), Name: "a", Status: "active", CAID: &caUsed, AccountID: &acctOK, DNSCredIDs: []uuid.UUID{dnsUsed}},
 			{ID: id(), Name: "b", Status: "active", CAID: &caUsed},
 		},
-		Channels: []Channel{{ID: chNew, Name: "n", Enabled: true}, {ID: chOK, Name: "o", Enabled: true, LastStatus: "delivered", LastAt: &gone}},
+		Channels: []Channel{{ID: chNew, Name: "n", Enabled: true}, {ID: chOK, Name: "o", Enabled: true, LastStatus: "delivered", LastAt: &gone}, {ID: chPend, Name: "p", Enabled: true, LastStatus: "pending"}},
 	}
 	g := Assemble(in, allPerms(), now)
 	byID := map[string]Node{}
@@ -302,5 +302,51 @@ func TestIssuerAndChannelStatuses(t *testing.T) {
 	chk("dnsCredential:"+dnsUsed.String(), StatusValid, "Used by 1 certificate")
 	chk("dnsCredential:"+dnsIdle.String(), StatusIdle, "Not used by any certificate")
 	chk("channel:"+chNew.String(), StatusIdle, "No deliveries yet")
+	chk("channel:"+chPend.String(), StatusPending, "Delivery pending")
 	chk("channel:"+chOK.String(), StatusValid, "Last delivered "+gone.UTC().Format("2006-01-02 15:04 UTC"))
+}
+
+// Issuer use is counted over every certificate handed in, so an issuer whose
+// only user sits past the node cap is still in use; when the list itself is
+// incomplete, counts are lower bounds and zero is never reported as unused.
+func TestIssuerUsageBeyondCap(t *testing.T) {
+	caLate, caNone := id(), id()
+	var certs []Cert
+	for i := 0; i < 600; i++ {
+		c := Cert{ID: id(), Name: fmt.Sprintf("c%03d", i), Status: "active"}
+		if i == 599 {
+			c.CAID = &caLate
+		}
+		certs = append(certs, c)
+	}
+	in := Input{OrgSlug: "a", CAs: []Item{{ID: caLate, Name: "late", Detail: "acme"}, {ID: caNone, Name: "none", Detail: "acme"}}, Certs: certs}
+	g := Assemble(in, allPerms(), now)
+	if !g.Truncated {
+		t.Fatal("not truncated")
+	}
+	got := map[string]Node{}
+	for _, n := range g.Issuers.Nodes {
+		got[n.ID] = n
+	}
+	if n := got["ca:"+caLate.String()]; n.Status != StatusValid || n.StatusDetail != "Used by 1 certificate" {
+		t.Errorf("late CA = %s %q", n.Status, n.StatusDetail)
+	}
+	if n := got["ca:"+caNone.String()]; n.Status != StatusIdle || n.StatusDetail != "Not used by any certificate" {
+		t.Errorf("unused CA = %s %q", n.Status, n.StatusDetail)
+	}
+	// Truncated list: lower bound, and zero is "not counted".
+	in.Certs, in.UsageMore, in.CertsMore = certs[:10], true, true
+	in.Certs[0].CAID = &caLate
+	in.Certs[1].CAID = &caLate
+	g = Assemble(in, allPerms(), now)
+	got = map[string]Node{}
+	for _, n := range g.Issuers.Nodes {
+		got[n.ID] = n
+	}
+	if n := got["ca:"+caLate.String()]; n.Status != StatusValid || n.StatusDetail != "Used by at least 2 certificates" {
+		t.Errorf("late CA = %s %q", n.Status, n.StatusDetail)
+	}
+	if n := got["ca:"+caNone.String()]; n.Status != StatusIdle || n.StatusDetail != UsageNotCounted {
+		t.Errorf("zero-count CA = %s %q", n.Status, n.StatusDetail)
+	}
 }
