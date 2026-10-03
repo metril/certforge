@@ -467,3 +467,23 @@ it('clears an unknown ?edit= id and reports it', async () => {
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(await screen.findByText('File layout not found.')).toBeInTheDocument();
 });
+
+it('disables Save with a keys:export tooltip when an in-use layout gains a key file', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=l-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit nginx' });
+  expect(within(sheet).getByRole('button', { name: 'Save' })).toBeEnabled();
+  await user.click(within(sheet).getByRole('button', { name: 'key' }));
+  const save = within(sheet).getByRole('button', { name: 'Save' });
+  expect(save).toBeDisabled();
+  await user.hover(save.parentElement!);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the keys:export permission');
+});
+
+it('keeps Save enabled for an unused layout gaining a key file', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
+  const { user } = renderRoute('/o/acme/delivery/layouts?edit=l-2');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit spare' });
+  await user.click(within(sheet).getByRole('button', { name: 'key' }));
+  expect(within(sheet).getByRole('button', { name: 'Save' })).toBeEnabled();
+});

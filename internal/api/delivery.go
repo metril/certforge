@@ -462,6 +462,19 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	// left for the next Resync render to fail opaquely with
 	// render.ErrNoKey (mapAgentErr's 500).
 	if delivery.NeedsKey(li.files) {
+		// A key-bearing layout under a live grant (agent or server) hands the
+		// key to that grant's target, so it needs keys:export, same as the
+		// grant paths. Checked under LockLayout, which grant creation's
+		// FOR SHARE lock on the layout conflicts with.
+		agentGrants, err := q.LiveGrantIDsUsingLayout(ctx, &r.Id)
+		if err != nil {
+			return nil, err
+		}
+		if len(agentGrants) > 0 || len(serverGrants) > 0 {
+			if _, err := authorize(ctx, authz.ActionKeysExport, &r.OrgId); err != nil {
+				return nil, err
+			}
+		}
 		name, err := q.LayoutKeylessGrantCertificate(ctx, &r.Id)
 		if err == nil {
 			return nil, unprocessable("files", fmt.Sprintf("certificate %q has no stored private key; this layout would need one", name))

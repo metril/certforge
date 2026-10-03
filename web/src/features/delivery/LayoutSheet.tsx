@@ -15,11 +15,14 @@ import { HelpTip } from '@/components/HelpTip';
 import { MultiCombobox } from '@/components/MultiCombobox';
 import { SecretInput } from '@/components/SecretInput';
 import { SegmentedControl } from '@/components/SegmentedControl';
+import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { help } from '@/lib/help';
+import { useMe } from '@/lib/org';
 import { generatePassword } from '@/lib/password';
+import { can } from '@/lib/permissions';
 import { useCopy } from '@/lib/useCopy';
 import {
   emptyFile,
@@ -80,6 +83,11 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
   const title = layout ? (readOnly ? layout.name : `Edit ${layout.name}`) : 'New layout';
 
   const anyKeystoreFile = files.some((f) => f.format === 'p12' || f.format === 'jks');
+  // Mirrors the server: a key-bearing layout under a live grant hands the key
+  // to that grant's target, which needs keys:export.
+  const anyKeyFile = anyKeystoreFile || files.some((f) => f.parts.some((p) => p === 'key' || p === 'combined'));
+  const canExportKeys = can(useMe(), 'keys:export', orgId);
+  const keyBlocked = anyKeyFile && (layout?.grantCount ?? 0) > 0 && !canExportKeys;
   const showPassword = anyKeystoreFile || (layout?.passwordSet ?? false);
   const passwordValue = hasStoredPassword ? storedPassword : newPassword;
   const lErrors = layoutErrors({ files, password: passwordValue, passwordSet: layout?.passwordSet ?? false, extraCertificateIds });
@@ -411,9 +419,11 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
               <SheetClose asChild>
                 <Button variant="outline">Cancel</Button>
               </SheetClose>
-              <Button disabled={save.isPending} onClick={() => void submit()}>
-                Save
-              </Button>
+              <PermissionTip allowed={!keyBlocked} action="keys:export">
+                <Button disabled={save.isPending || keyBlocked} onClick={() => void submit()}>
+                  Save
+                </Button>
+              </PermissionTip>
             </>
           )}
         </SheetFooter>
