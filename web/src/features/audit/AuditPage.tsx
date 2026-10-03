@@ -238,7 +238,7 @@ export function AuditPage() {
           )}
         </EmptyState>
       ) : isMdUp ? (
-        <DataTable ariaLabel="Audit events" data={rows} columns={columns} getRowId={(e) => String(e.id)} onRowClick={(id) => set({ event: Number(id) })} skeletonRows={list.isPending ? 5 : undefined} />
+        <DataTable ariaLabel="Audit events" data={rows} columns={columns} getRowId={(e) => String(e.id)} onRowClick={(id) => set({ event: Number(id) })} onRowOpen={(id) => set({ event: Number(id) })} skeletonRows={list.isPending ? 5 : undefined} />
       ) : list.isPending ? (
         <div role="status" aria-label="Loading audit events" className="grid gap-2">
           <AuditCardSkeleton />

@@ -55,6 +55,17 @@ it('opens an event with its before and after diff', async () => {
   expect(router.state.location.search).toMatchObject({ event: 7 });
 });
 
+it('opens an event from the keyboard with Enter', async () => {
+  capture();
+  const { user, router } = renderRoute('/o/acme/audit');
+  const table = await screen.findByRole('table', { name: 'Audit events' });
+  const row = (await within(table).findByText('settings.update')).closest('tr')!;
+  row.focus();
+  await user.keyboard('{Enter}');
+  await screen.findByRole('dialog', { name: 'settings.update' });
+  expect(router.state.location.search).toMatchObject({ event: 7 });
+});
+
 it('sends URL filters to the API and shows them as chips', async () => {
   const seen = capture();
   const { user } = renderRoute('/o/acme/audit?action=session.&resourceType=user');
