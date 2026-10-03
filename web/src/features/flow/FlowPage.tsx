@@ -181,7 +181,11 @@ export function FlowPage() {
   return (
     <div
       onKeyDown={(e) => {
-        if (e.key === 'Escape' && focus) setFocus(undefined);
+        if (e.key !== 'Escape' || !focus || e.defaultPrevented) return;
+        // Escape inside a text field or an open popover/menu belongs to that control.
+        const t = e.target as HTMLElement;
+        if (t.closest('input, textarea, select, [role="dialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]')) return;
+        setFocus(undefined);
       }}
     >
       {header}

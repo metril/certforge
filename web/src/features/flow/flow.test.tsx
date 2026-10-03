@@ -98,6 +98,16 @@ it('selecting a node dims the rest, shows the path panel with Open links, and cl
   expect(screen.getByRole('button', { name: /Certificate api/ })).not.toHaveClass('opacity-40');
 });
 
+it('Escape inside the filter input does not clear the path selection', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user } = renderRoute('/o/acme/flow?focus=certificate:www');
+  await screen.findByRole('region', { name: 'Path' });
+  await user.click(screen.getByRole('textbox', { name: 'Filter by name' }));
+  await user.keyboard('{Escape}');
+  expect(screen.getByRole('region', { name: 'Path' })).toBeInTheDocument();
+});
+
 it('moves focus within a lane with the arrow keys and clears by clicking the selected node', async () => {
   setWidth(true);
   useFlow(() => base);
