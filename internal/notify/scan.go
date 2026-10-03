@@ -46,6 +46,14 @@ type ScanWorker struct {
 	S *Sources
 }
 
+// scanTimeout bounds one ScanWorker run: several sequential scans that may
+// each emit many events (each a DB write plus channel fan-out), past
+// river's 1-minute worker default.
+const scanTimeout = 15 * time.Minute
+
+// Timeout implements river.Worker (see scanTimeout).
+func (w *ScanWorker) Timeout(*river.Job[ScanArgs]) time.Duration { return scanTimeout }
+
 // Work implements river.Worker.
 func (w *ScanWorker) Work(ctx context.Context, _ *river.Job[ScanArgs]) error {
 	return w.S.Scan(ctx)

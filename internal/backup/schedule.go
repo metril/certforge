@@ -40,6 +40,10 @@ type ScheduleWorker struct {
 	S *Service
 }
 
+// Timeout implements river.Worker: a scheduled backup streams the whole
+// database, well past river's 1-minute worker default.
+func (w *ScheduleWorker) Timeout(*river.Job[ScheduleArgs]) time.Duration { return time.Hour }
+
 // Work implements river.Worker. RunScheduled never itself returns an error
 // for an ordinary backup failure (recorded via Status/audit/notify
 // instead), so this job is never retried by river on top of the job's own

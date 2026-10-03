@@ -105,6 +105,13 @@ type CheckWorker struct {
 	S *Service
 }
 
+// checkTimeout bounds one CheckWorker run: a 10 s dial (DialTimeout) plus a
+// few store queries and a possible state-change notification.
+const checkTimeout = 2 * time.Minute
+
+// Timeout implements river.Worker (see checkTimeout).
+func (w *CheckWorker) Timeout(*river.Job[CheckArgs]) time.Duration { return checkTimeout }
+
 // Work implements river.Worker.
 func (w *CheckWorker) Work(ctx context.Context, job *river.Job[CheckArgs]) error {
 	_, err := w.S.Check(ctx, job.Args.MonitorID)
