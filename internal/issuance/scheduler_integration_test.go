@@ -65,6 +65,40 @@ func TestEnqueueDueHousekeepingFailure(t *testing.T) {
 	}
 }
 
+// TestEnqueueDueHousekeepingTimeout: a prune step stuck on a lock times out
+// on its own budget; due certificates are enqueued anyway.
+func TestEnqueueDueHousekeepingTimeout(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	rules := []challenge.RuleSpec{{Match: "*", Method: challenge.MethodManualDNS}}
+	due := f.cert(t, []string{"a.example.test"}, rules)
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // best-effort test cleanup
+	if _, err := tx.Exec(ctx, `LOCK TABLE rate_ledger IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	old := housekeepingStepTimeout
+	housekeepingStepTimeout = 300 * time.Millisecond
+	defer func() { housekeepingStepTimeout = old }()
+	ins := &fakeInserter{seen: map[string]bool{}}
+	n, err := EnqueueDue(ctx, f.store, ins, 100)
+	if err == nil {
+		t.Fatal("want the timed-out step reported")
+	}
+	if n != 1 || len(ins.args) != 1 || ins.args[0].CertID != due.ID {
+		t.Fatalf("n=%d args=%v", n, ins.args)
+	}
+}
+
+func TestScheduleWorkerTimeout(t *testing.T) {
+	if got := (&ScheduleWorker{}).Timeout(nil); got != scheduleTimeout {
+		t.Fatalf("Timeout = %v, want %v", got, scheduleTimeout)
+	}
+}
+
 // TestSchedulerSkipsUnmanaged is R10: an unmanaged (uploaded/imported)
 // certificate never appears in ListDueCertificateIDs/EnqueueDue, whatever
 // it might otherwise look due for (the certificates_unmanaged_no_renewal

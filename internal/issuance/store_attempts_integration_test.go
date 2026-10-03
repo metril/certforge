@@ -189,7 +189,7 @@ func TestPruneIssuanceAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := f.store.PruneIssuanceAttempts(ctx, time.Now().Add(-90*24*time.Hour), 2)
+	n, err := f.store.PruneIssuanceAttempts(ctx, time.Now().Add(-90*24*time.Hour), 2, 5000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,11 +262,56 @@ func TestPruneHookRuns(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	n, err := f.store.PruneHookRuns(ctx, time.Now().Add(-90*24*time.Hour))
+	n, err := f.store.PruneHookRuns(ctx, time.Now().Add(-90*24*time.Hour), 5000)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n != 1 {
 		t.Fatalf("pruned %d, want 1", n)
+	}
+}
+
+// TestPruneIssuanceAttemptsBatchLimit: a run deletes at most the batch limit
+// of eligible rows; the rest go on the next run.
+func TestPruneIssuanceAttemptsBatchLimit(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	c, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "busy", CommonName: "busy.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10; i++ {
+		if _, err := f.pool.Exec(ctx, `INSERT INTO issuance_attempts (cert_id, started_at, outcome) VALUES ($1, now() - make_interval(days => $2), 'failed')`, c.ID, 100+i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := time.Now().Add(-90 * 24 * time.Hour)
+	if n, err := f.store.PruneIssuanceAttempts(ctx, before, 2, 3); err != nil || n != 3 {
+		t.Fatalf("first run pruned %d err=%v, want 3", n, err)
+	}
+	if n, err := f.store.PruneIssuanceAttempts(ctx, before, 2, 100); err != nil || n != 5 {
+		t.Fatalf("second run pruned %d err=%v, want 5", n, err)
+	}
+	var left int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM issuance_attempts WHERE cert_id = $1`, c.ID).Scan(&left); err != nil || left != 2 {
+		t.Fatalf("left %d err=%v, want the newest 2", left, err)
+	}
+}
+
+// TestPruneHookRunsBatchLimit: a run deletes at most the batch limit.
+func TestPruneHookRunsBatchLimit(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	var clientID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO clients (org_id, name) VALUES ($1, 'c') RETURNING id`, f.org).Scan(&clientID); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := f.pool.Exec(ctx, `INSERT INTO hook_runs (client_id, phase, exit_code, ran_at) VALUES ($1, 'post', 0, now() - make_interval(days => $2))`, clientID, 200+i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := f.store.PruneHookRuns(ctx, time.Now().Add(-90*24*time.Hour), 2); err != nil || n != 2 {
+		t.Fatalf("pruned %d err=%v, want 2", n, err)
 	}
 }

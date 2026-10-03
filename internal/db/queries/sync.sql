@@ -93,6 +93,8 @@ ORDER BY r.ran_at DESC, r.id DESC
 LIMIT sqlc.arg(page_limit)::int;
 
 -- name: PruneHookRuns :execrows
--- Deletes hook runs older than the retention cutoff; run by the 5-minute
--- certforge_schedule job.
-DELETE FROM hook_runs WHERE ran_at < $1;
+-- Deletes at most batch_limit hook runs older than the retention cutoff;
+-- run by the 5-minute certforge_schedule job.
+DELETE FROM hook_runs WHERE id IN (
+  SELECT h.id FROM hook_runs h WHERE h.ran_at < sqlc.arg(before) LIMIT sqlc.arg(batch_limit)::int
+);

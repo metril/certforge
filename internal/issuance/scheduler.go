@@ -32,6 +32,10 @@ type ScheduleWorker struct {
 	Inserter Inserter // nil = the river client running this job
 }
 
+// Timeout bounds one scan: the housekeeping steps each have their own
+// housekeepingStepTimeout, and enqueueing must always get to run.
+func (w *ScheduleWorker) Timeout(*river.Job[ScheduleArgs]) time.Duration { return scheduleTimeout }
+
 // Work implements river.Worker.
 func (w *ScheduleWorker) Work(ctx context.Context, _ *river.Job[ScheduleArgs]) error {
 	ins := w.Inserter
@@ -60,48 +64,74 @@ const (
 // output) is kept before EnqueueDue prunes it.
 const hookRunRetention = 90 * 24 * time.Hour
 
-// EnqueueDue marks expired certificates, closes stale attempts, prunes old
-// rate-ledger rows, issuance attempts and hook runs, and enqueues due
-// certificates. The housekeeping
-// calls are best-effort: a failure never stops due certificates from being
-// enqueued, and is returned (joined) alongside the count once enqueueing is
-// done. It returns how many new jobs were inserted (duplicates of queued or
-// running jobs are skipped by the unique options).
+// scheduleTimeout is the ScheduleWorker's job timeout (river's default is
+// one minute): comfortably above the sum of the steps run in EnqueueDue.
+const scheduleTimeout = 5 * time.Minute
+
+// housekeepingStepTimeout bounds each housekeeping step of EnqueueDue, so a
+// slow one cannot consume the job's budget. A variable only so tests can
+// shorten it.
+var housekeepingStepTimeout = 20 * time.Second
+
+// pruneBatchLimit caps the rows one prune deletes per run; a large backlog
+// drains over successive runs instead of one long statement.
+const pruneBatchLimit = 5000
+
+// EnqueueDue marks expired certificates, closes stale attempts, enqueues due
+// certificates, and then prunes old rate-ledger rows, issuance attempts,
+// hook runs and expired manual-dns records. Every housekeeping call runs
+// under its own timeout and is best-effort: a failure never stops due
+// certificates from being enqueued (the prunes run after enqueueing), and
+// is returned (joined) alongside the count. It returns how many new jobs
+// were inserted (duplicates of queued or running jobs are skipped by the
+// unique options).
 func EnqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, error) {
 	var housekeeping []error
-	if _, err := s.MarkExpired(ctx); err != nil {
-		housekeeping = append(housekeeping, fmt.Errorf("mark expired: %w", err))
+	step := func(name string, fn func(context.Context) error) {
+		sctx, cancel := context.WithTimeout(ctx, housekeepingStepTimeout)
+		defer cancel()
+		if err := fn(sctx); err != nil {
+			housekeeping = append(housekeeping, fmt.Errorf("%s: %w", name, err))
+		}
 	}
-	if _, err := s.FailStaleAttempts(ctx, 4*time.Hour); err != nil {
-		housekeeping = append(housekeeping, fmt.Errorf("fail stale attempts: %w", err))
+	step("mark expired", func(c context.Context) error { _, err := s.MarkExpired(c); return err })
+	step("fail stale attempts", func(c context.Context) error { _, err := s.FailStaleAttempts(c, 4*time.Hour); return err })
+	n, err := enqueueDue(ctx, s, ins, limit)
+	if err != nil {
+		housekeeping = append(housekeeping, err)
 	}
-	if _, err := s.PruneLedger(ctx, time.Now().Add(-ledgerRetention)); err != nil {
-		housekeeping = append(housekeeping, fmt.Errorf("prune ledger: %w", err))
-	}
-	if _, err := s.PruneIssuanceAttempts(ctx, time.Now().Add(-attemptRetention), attemptsKeptPerCert); err != nil {
-		housekeeping = append(housekeeping, fmt.Errorf("prune issuance attempts: %w", err))
-	}
-	if _, err := s.PruneHookRuns(ctx, time.Now().Add(-hookRunRetention)); err != nil {
-		housekeeping = append(housekeeping, fmt.Errorf("prune hook runs: %w", err))
-	}
-	if _, err := s.PruneExpiredManualPending(ctx); err != nil {
-		housekeeping = append(housekeeping, fmt.Errorf("prune expired manual dns: %w", err))
-	}
+	step("prune ledger", func(c context.Context) error {
+		_, err := s.PruneLedger(c, time.Now().Add(-ledgerRetention))
+		return err
+	})
+	step("prune issuance attempts", func(c context.Context) error {
+		_, err := s.PruneIssuanceAttempts(c, time.Now().Add(-attemptRetention), attemptsKeptPerCert, pruneBatchLimit)
+		return err
+	})
+	step("prune hook runs", func(c context.Context) error {
+		_, err := s.PruneHookRuns(c, time.Now().Add(-hookRunRetention), pruneBatchLimit)
+		return err
+	})
+	step("prune expired manual dns", func(c context.Context) error { _, err := s.PruneExpiredManualPending(c); return err })
+	return n, errors.Join(housekeeping...)
+}
+
+func enqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, error) {
 	ids, err := s.DueCertificateIDs(ctx, limit)
 	if err != nil {
-		return 0, errors.Join(append(housekeeping, err)...)
+		return 0, err
 	}
 	n := 0
 	for _, id := range ids {
 		res, err := ins.Insert(ctx, IssueArgs{CertID: id}, nil)
 		if err != nil {
-			return n, errors.Join(append(housekeeping, err)...)
+			return n, err
 		}
 		if !res.UniqueSkippedAsDuplicate {
 			n++
 		}
 	}
-	return n, errors.Join(housekeeping...)
+	return n, nil
 }
 
 // SchedulePeriod is how often due certificates are scanned.

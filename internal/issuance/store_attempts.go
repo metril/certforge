@@ -120,15 +120,16 @@ func (s *Store) FailStaleAttempts(ctx context.Context, olderThan time.Duration) 
 
 // PruneIssuanceAttempts deletes finished attempts started before the
 // cutoff, keeping each certificate's newest keepRecent attempts and any
-// still running, and returns how many were removed.
-func (s *Store) PruneIssuanceAttempts(ctx context.Context, before time.Time, keepRecent int) (int64, error) {
-	return s.q.PruneIssuanceAttempts(ctx, sqlcgen.PruneIssuanceAttemptsParams{Before: before, KeepRecent: int32(keepRecent)})
+// still running, and returns how many were removed. At most limit rows are
+// removed per call.
+func (s *Store) PruneIssuanceAttempts(ctx context.Context, before time.Time, keepRecent, limit int) (int64, error) {
+	return s.q.PruneIssuanceAttempts(ctx, sqlcgen.PruneIssuanceAttemptsParams{Before: before, KeepRecent: int32(keepRecent), BatchLimit: int32(limit)})
 }
 
 // PruneHookRuns deletes hook runs older than before, returning how many
-// were removed.
-func (s *Store) PruneHookRuns(ctx context.Context, before time.Time) (int64, error) {
-	return s.q.PruneHookRuns(ctx, before)
+// were removed. At most limit rows are removed per call.
+func (s *Store) PruneHookRuns(ctx context.Context, before time.Time, limit int) (int64, error) {
+	return s.q.PruneHookRuns(ctx, sqlcgen.PruneHookRunsParams{Before: before, BatchLimit: int32(limit)})
 }
 
 // PruneExpiredManualPending deletes unconfirmed manual-dns records whose

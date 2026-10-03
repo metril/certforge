@@ -286,22 +286,30 @@ func (q *Queries) PruneExpiredManualPending(ctx context.Context) (int64, error) 
 }
 
 const pruneIssuanceAttempts = `-- name: PruneIssuanceAttempts :execrows
-DELETE FROM issuance_attempts a
-WHERE a.outcome <> 'running' AND a.started_at < $1
-  AND (SELECT count(*) FROM issuance_attempts n
-       WHERE n.cert_id = a.cert_id AND n.started_at > a.started_at) >= $2::int
+DELETE FROM issuance_attempts
+WHERE id IN (
+  SELECT ranked.id FROM (
+    SELECT a.id, a.outcome, a.started_at,
+           row_number() OVER (PARTITION BY a.cert_id ORDER BY a.started_at DESC, a.id DESC) AS rn
+    FROM issuance_attempts a
+  ) AS ranked
+  WHERE ranked.outcome <> 'running' AND ranked.started_at < $1::timestamptz
+    AND ranked.rn > $2::int
+  LIMIT $3::int
+)
 `
 
 type PruneIssuanceAttemptsParams struct {
 	Before     time.Time `json:"before"`
 	KeepRecent int32     `json:"keep_recent"`
+	BatchLimit int32     `json:"batch_limit"`
 }
 
-// Deletes finished attempts started before the cutoff, always sparing a
-// certificate's newest keep_recent attempts (however old) and any attempt
-// still running.
+// Deletes at most batch_limit finished attempts started before the cutoff,
+// always sparing a certificate's newest keep_recent attempts (however old)
+// and any attempt still running.
 func (q *Queries) PruneIssuanceAttempts(ctx context.Context, arg PruneIssuanceAttemptsParams) (int64, error) {
-	result, err := q.db.Exec(ctx, pruneIssuanceAttempts, arg.Before, arg.KeepRecent)
+	result, err := q.db.Exec(ctx, pruneIssuanceAttempts, arg.Before, arg.KeepRecent, arg.BatchLimit)
 	if err != nil {
 		return 0, err
 	}

@@ -352,13 +352,20 @@ func (q *Queries) ListHookRuns(ctx context.Context, arg ListHookRunsParams) ([]L
 }
 
 const pruneHookRuns = `-- name: PruneHookRuns :execrows
-DELETE FROM hook_runs WHERE ran_at < $1
+DELETE FROM hook_runs WHERE id IN (
+  SELECT h.id FROM hook_runs h WHERE h.ran_at < $1 LIMIT $2::int
+)
 `
 
-// Deletes hook runs older than the retention cutoff; run by the 5-minute
-// certforge_schedule job.
-func (q *Queries) PruneHookRuns(ctx context.Context, ranAt time.Time) (int64, error) {
-	result, err := q.db.Exec(ctx, pruneHookRuns, ranAt)
+type PruneHookRunsParams struct {
+	Before     time.Time `json:"before"`
+	BatchLimit int32     `json:"batch_limit"`
+}
+
+// Deletes at most batch_limit hook runs older than the retention cutoff;
+// run by the 5-minute certforge_schedule job.
+func (q *Queries) PruneHookRuns(ctx context.Context, arg PruneHookRunsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneHookRuns, arg.Before, arg.BatchLimit)
 	if err != nil {
 		return 0, err
 	}
