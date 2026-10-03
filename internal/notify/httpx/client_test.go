@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/notify/httpx"
 )
@@ -206,5 +207,37 @@ func TestCheckURLRejectedBeforeAnyRequest(t *testing.T) {
 	}
 	if _, err := c.Do(context.Background(), http.MethodGet, "http://127.0.0.1/", nil, nil); err == nil {
 		t.Fatal("Do reached a blocked host")
+	}
+}
+
+func TestRetryAfterHonouredOn429(t *testing.T) {
+	var n int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&n, 1) == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	start := time.Now()
+	if _, err := newClient(t).Do(context.Background(), http.MethodPost, srv.URL, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if el := time.Since(start); el < time.Second {
+		t.Errorf("retried after %v, want >= 1s (Retry-After)", el)
+	}
+
+	// The context deadline still bounds the wait.
+	atomic.StoreInt32(&n, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start = time.Now()
+	if _, err := newClient(t).Do(ctx, http.MethodPost, srv.URL, nil, nil); err == nil {
+		t.Fatal("want deadline error")
+	}
+	if el := time.Since(start); el > 900*time.Millisecond {
+		t.Errorf("waited %v past the context deadline", el)
 	}
 }

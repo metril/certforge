@@ -17,6 +17,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -127,13 +129,19 @@ func (c *Client) Do(ctx context.Context, method, rawURL string, h http.Header, b
 	}
 	var lastStatus int
 	var lastErr error
+	var retryAfter time.Duration
 	for attempt := 1; attempt <= Attempts; attempt++ {
 		if attempt > 1 {
-			if err := sleepCtx(ctx, backoff(attempt-1)); err != nil {
+			wait := backoff(attempt - 1)
+			if lastStatus == http.StatusTooManyRequests && retryAfter > wait {
+				wait = retryAfter
+			}
+			if err := sleepCtx(ctx, wait); err != nil {
 				return lastStatus, err
 			}
 		}
-		status, respBody, err := c.attempt(ctx, method, rawURL, host, h, body)
+		retryAfter = 0
+		status, respBody, err := c.attempt(ctx, method, rawURL, host, h, body, &retryAfter)
 		if err != nil {
 			lastStatus, lastErr = 0, err
 			continue
@@ -151,7 +159,7 @@ func (c *Client) Do(ctx context.Context, method, rawURL string, h http.Header, b
 	return lastStatus, lastErr
 }
 
-func (c *Client) attempt(ctx context.Context, method, rawURL, host string, h http.Header, body []byte) (int, []byte, error) {
+func (c *Client) attempt(ctx context.Context, method, rawURL, host string, h http.Header, body []byte, retryAfter *time.Duration) (int, []byte, error) {
 	var rdr io.Reader
 	if body != nil {
 		rdr = bytes.NewReader(body)
@@ -181,11 +189,41 @@ func (c *Client) attempt(ctx context.Context, method, rawURL, host string, h htt
 		return 0, nil, fmt.Errorf("httpx: %s %s: %w", method, host, cause)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusTooManyRequests {
+		*retryAfter = parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
+	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxBody))
 	if err != nil {
 		return 0, nil, fmt.Errorf("httpx: read response: %w", err)
 	}
 	return resp.StatusCode, data, nil
+}
+
+// maxRetryAfter caps how long a Retry-After header can delay the next
+// attempt; sleepCtx still ends the wait at the context deadline.
+const maxRetryAfter = 30 * time.Second
+
+// parseRetryAfter reads a Retry-After value in either delta-seconds or
+// HTTP-date form, returning 0 for an absent, malformed or past value and
+// never more than maxRetryAfter.
+func parseRetryAfter(v string, now time.Time) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	var d time.Duration
+	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+		if secs > int64(maxRetryAfter/time.Second) {
+			return maxRetryAfter
+		}
+		d = time.Duration(secs) * time.Second
+	} else if t, err := http.ParseTime(v); err == nil {
+		d = t.Sub(now)
+	}
+	if d < 0 {
+		return 0
+	}
+	return min(d, maxRetryAfter)
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {

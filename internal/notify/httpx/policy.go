@@ -79,7 +79,7 @@ func CheckHost(host string, allowLoopback bool) error {
 // checked before anything else and are never admitted, even when
 // allowLoopback would otherwise re-admit their /16 or their prefix.
 func classify(addr netip.Addr, allowLoopback bool) bool {
-	addr = addr.Unmap()
+	addr = embeddedIPv4(addr.Unmap())
 	for _, blocked := range blockedMetadata {
 		if addr == blocked {
 			return false
@@ -92,6 +92,28 @@ func classify(addr netip.Addr, allowLoopback bool) bool {
 		return allowLoopback
 	}
 	return true
+}
+
+var (
+	nat64Prefix = netip.MustParsePrefix("64:ff9b::/96")
+	sixToFour   = netip.MustParsePrefix("2002::/16")
+)
+
+// embeddedIPv4 returns the IPv4 address a NAT64 (64:ff9b::/96) or 6to4
+// (2002::/16) IPv6 address encodes, so a blocked IPv4 target cannot be
+// reached through its IPv6 translation; any other address is returned as is.
+func embeddedIPv4(addr netip.Addr) netip.Addr {
+	if !addr.Is6() {
+		return addr
+	}
+	b := addr.As16()
+	switch {
+	case nat64Prefix.Contains(addr):
+		return netip.AddrFrom4([4]byte(b[12:16]))
+	case sixToFour.Contains(addr):
+		return netip.AddrFrom4([4]byte(b[2:6]))
+	}
+	return addr
 }
 
 // DialControl returns a net.Dialer.Control function that re-applies the
