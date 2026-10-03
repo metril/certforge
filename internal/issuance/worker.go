@@ -764,6 +764,9 @@ func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid
 	if cert.CurrentVersionID != nil && cert.Status == StatusActive {
 		status = StatusActive // a valid version is still deployed
 	}
+	if cert.Status == StatusExpired {
+		status = StatusExpired // stay expired; failed would flap against MarkExpired
+	}
 	if err := w.Store.MarkFailed(ctx, cert.ID, status, failures, cause.Error(), next); err != nil {
 		return err
 	}
