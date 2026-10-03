@@ -210,7 +210,7 @@ func TestLayoutPasswordWriteOnly(t *testing.T) {
 	// be compared across an __unchanged__ update.
 	c := f.activeClient(t, "web-p12")
 	certID, _ := f.realCurrentCert(t, "web-p12-cert", true)
-	gRes, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+	gRes, err := f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
 		Body: &gen.GrantInput{CertificateId: certID, Delivery: gen.GrantDelivery("pull"), LayoutId: &l.Id}})
 	if err != nil {
 		t.Fatal(err)

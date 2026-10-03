@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, makeCert, makeClient, makeGrant, makeHook, makeLayout, makeTarget, problem, targetVaultKv, traefikSchema, url } from '@/test/fixtures';
+import { authHandlers, makeCert, makeClient, makeGrant, makeHook, makeLayout, makeTarget, meWith, org, problem, targetVaultKv, traefikSchema, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: { certificateId: string }[];
@@ -188,4 +188,24 @@ it('shows a server-run target disabled in the deploy target picker', async () =>
   expect(await screen.findByRole('tooltip')).toHaveTextContent(help['grant.serverTarget'].text);
   await user.click(opt);
   expect(screen.getByRole('combobox', { name: 'Deploy target' })).toBeInTheDocument();
+});
+
+it('disables Grant with a keys:export tooltip when the pick hands the agent a key', async () => {
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  await pick(user, 'Layout', /^nginx/);
+  expect(within(sheet).getByRole('button', { name: 'Grant' })).toBeEnabled();
+  await pick(user, 'Deploy target', /^edge traefik/);
+  const grant = within(sheet).getByRole('button', { name: 'Grant' });
+  expect(grant).toBeDisabled();
+  await user.hover(grant.parentElement!);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the keys:export permission');
+});
+
+it('lets an admin grant a deploy target', async () => {
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  await pick(user, 'Deploy target', /^edge traefik/);
+  expect(within(sheet).getByRole('button', { name: 'Grant' })).toBeEnabled();
 });

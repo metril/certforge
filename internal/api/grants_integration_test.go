@@ -281,7 +281,7 @@ func TestGrantRejectsOverlappingPaths(t *testing.T) {
 	}
 	create := func(cert uuid.UUID, in gen.GrantInput) (uuid.UUID, error) {
 		in.CertificateId, in.Delivery = cert, push()
-		res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &in})
+		res, err := f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &in})
 		if err != nil {
 			return uuid.Nil, err
 		}
@@ -637,12 +637,12 @@ func TestConcurrentLayoutUpdateVsGrantCreateSameLayoutNeverStale(t *testing.T) {
 // deployment from being updated by the same OnVersion/SweepDeployments run.
 func TestOnVersionIsolatesPerClientRenderFailure(t *testing.T) {
 	f := newAgentFixture(t)
-	op, ctx := f.as("operator"), context.Background()
+	ctx := context.Background()
 	good := f.activeClient(t, "web-good")
 	bad := f.activeClient(t, "web-bad")
 	certID, vid := f.currentCert(t, "web")
 	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
-	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: good.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}}); err != nil {
+	if _, err := f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: good.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}}); err != nil {
 		t.Fatal(err)
 	}
 	tg, err := f.q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: f.org, Name: "traefik", Type: "traefik", RunsOn: "agent",
@@ -650,7 +650,7 @@ func TestOnVersionIsolatesPerClientRenderFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: bad.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), DeployTargetId: &tg.ID}}); err != nil {
+	if _, err := f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: bad.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), DeployTargetId: &tg.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	// Corrupt the bad client's target config directly so ParseTarget fails
@@ -738,10 +738,10 @@ func TestCertificateRenameResyncsGrantsAndBlocksOverlap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: apiCert, Delivery: push(), DeployTargetId: &tg.ID}}); err != nil {
+	if _, err := f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: apiCert, Delivery: push(), DeployTargetId: &tg.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	webGrant, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: webCert, Delivery: push(), DeployTargetId: &tg.ID}})
+	webGrant, err := f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: webCert, Delivery: push(), DeployTargetId: &tg.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,7 +967,7 @@ func TestGrantKeylessCert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+	_, err = f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
 		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &keyLayout.ID}})
 	wantStatus(t, err, 422)
 
@@ -977,7 +977,7 @@ func TestGrantKeylessCert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+	_, err = f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
 		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), DeployTargetId: &tg.ID}})
 	wantStatus(t, err, 422)
 
@@ -1063,7 +1063,7 @@ func TestUpdateGrantKeylessCert422(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: gid, Body: &gen.GrantUpdate{
+	_, err = f.srv.UpdateGrant(f.as("admin"), gen.UpdateGrantRequestObject{OrgId: f.org, Id: gid, Body: &gen.GrantUpdate{
 		Delivery: gen.GrantDelivery("push"), LayoutId: &keyLayout.ID, HookIds: []uuid.UUID{}, AutoRemediate: false}})
 	wantStatus(t, err, 422)
 }
@@ -1198,5 +1198,51 @@ func TestCATypeMapped(t *testing.T) {
 	}
 	if g.ClientId == nil || *g.ClientId != c.ID || g.ClientName == nil || *g.ClientName != "web-1" || g.Deployment == nil {
 		t.Fatalf("grant client/deployment = %+v", g)
+	}
+}
+
+// A grant that hands a private key to an agent (a key-bearing layout, or any
+// agent deploy target) needs keys:export on create and on update, exactly as
+// a server grant does; a cert-only grant still needs clients:write alone.
+func TestAgentGrantKeyNeedsKeysExport(t *testing.T) {
+	f := newAgentFixture(t)
+	op, admin := f.as("operator"), f.as("admin")
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	plain := f.layout(t, "plain", "/etc/ssl/plain.pem")
+	keyed := f.pemKeyLayout(t, "keyed", "/etc/ssl/plain.key")
+	target := f.agentTarget(t, "traefik")
+	in := func(layout, tgt *uuid.UUID) *gen.GrantInput {
+		return &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: layout, DeployTargetId: tgt}
+	}
+
+	_, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: in(&keyed, nil)})
+	wantStatus(t, err, 403)
+	_, err = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: in(nil, &target)})
+	wantStatus(t, err, 403)
+
+	res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: in(&plain, nil)})
+	if err != nil {
+		t.Fatalf("operator cert-only grant: %v", err)
+	}
+	gid := res.(gen.CreateGrant201JSONResponse).Id
+
+	upd := func(layout *uuid.UUID) *gen.GrantUpdate {
+		return &gen.GrantUpdate{Delivery: push(), LayoutId: layout}
+	}
+	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: gid, Body: upd(&keyed)})
+	wantStatus(t, err, 403)
+	if _, err := f.srv.UpdateGrant(admin, gen.UpdateGrantRequestObject{OrgId: f.org, Id: gid, Body: upd(&keyed)}); err != nil {
+		t.Fatalf("admin update to key layout: %v", err)
+	}
+	// The grant already carries a key layout; an operator may not touch it
+	// but a cert-only edit back is allowed.
+	if _, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: gid, Body: upd(&plain)}); err != nil {
+		t.Fatalf("operator update to cert-only layout: %v", err)
+	}
+
+	c2 := f.activeClient(t, "web-2")
+	if _, err := f.srv.CreateGrant(admin, gen.CreateGrantRequestObject{OrgId: f.org, Id: c2.ID, Body: in(&keyed, &target)}); err != nil {
+		t.Fatalf("admin key-bearing grant: %v", err)
 	}
 }

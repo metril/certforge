@@ -17,10 +17,13 @@ import { MultiCombobox } from '@/components/MultiCombobox';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { SwitchField } from '@/components/SwitchField';
+import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 import { help } from '@/lib/help';
+import { useMe } from '@/lib/org';
+import { can } from '@/lib/permissions';
 
 type Props = { orgId: string; client: Client; grants: Grant[]; editing?: Grant; onOpenChange: (open: boolean) => void };
 
@@ -41,6 +44,9 @@ function QueryField({ label, q, children }: { label: string; q: UseQueryResult<u
     );
   return <>{children}</>;
 }
+
+const fileHasKey = (f: { format: string; parts?: string[] }) =>
+  f.format === 'p12' || f.format === 'jks' || !!f.parts?.some((p) => p === 'key' || p === 'combined');
 
 export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Props) {
   const guard = useSheetGuard(onOpenChange);
@@ -65,6 +71,12 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
   const [formError, setFormError] = useState<string | null>(null);
   const dirty = useDirty({ certIds, delivery, layoutId, targetId, hookIds, autoRemediate });
   const busy = create.isPending || update.isPending;
+  // Mirrors the server's agent-grant rule: any deploy target, or a layout with
+  // a key-bearing file, hands the agent a private key and needs keys:export.
+  const layoutKeyed = layouts.find((l) => l.id === layoutId)?.files.some(fileHasKey) ?? false;
+  const keyed = !!targetId || layoutKeyed;
+  const canExportKeys = can(useMe(), 'keys:export', orgId);
+  const keyBlocked = keyed && !canExportKeys;
 
   const granted = new Set(grants.map((g) => g.certificateId));
   const certOptions = (certs.data ?? [])
@@ -264,9 +276,11 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
           <SheetClose asChild>
             <Button variant="outline">Cancel</Button>
           </SheetClose>
-          <Button disabled={busy} onClick={() => void submit()}>
-            {editing ? 'Save' : 'Grant'}
-          </Button>
+          <PermissionTip allowed={!keyBlocked} action="keys:export">
+            <Button disabled={busy || keyBlocked} onClick={() => void submit()}>
+              {editing ? 'Save' : 'Grant'}
+            </Button>
+          </PermissionTip>
         </SheetFooter>
       </SheetContent>
     </Sheet>

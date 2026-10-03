@@ -27,6 +27,10 @@ type GrantInput struct {
 	TargetID      *uuid.UUID
 	HookIDs       []uuid.UUID
 	AutoRemediate bool
+	// RequireKey, when set, is called once the grant is known to hand a
+	// private key to the agent (a key-bearing layout or any agent target);
+	// its error refuses the write. The API layer wires keys:export here.
+	RequireKey func(ctx context.Context) error
 }
 
 // RefKind names the delivery object whose change triggers Resync.
@@ -173,6 +177,11 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	// grant is created ahead of the certificate's first version the same
 	// way it already can be for a brand-new managed certificate.
 	if needsKey {
+		if in.RequireKey != nil {
+			if err := in.RequireKey(ctx); err != nil {
+				return err
+			}
+		}
 		st, err := q.CertificateCurrentHasKey(ctx, in.CertID)
 		if err != nil {
 			return err
