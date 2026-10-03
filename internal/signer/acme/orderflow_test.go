@@ -439,6 +439,9 @@ func TestObtainRequest(t *testing.T) {
 	if err != nil || or.PrivateKey == nil {
 		t.Fatalf("obtainRequest() with ReuseKeyPKCS8 = %+v, err = %v", or, err)
 	}
+	if !bytes.Equal(der, make([]byte, len(der))) {
+		t.Fatal("obtainRequest() left the reused key's PKCS#8 bytes un-zeroed")
+	}
 
 	if _, err := obtainRequest(signer.IssueRequest{Names: []string{"a.example.test"}, ReuseKeyPKCS8: []byte("not a key")}); err == nil {
 		t.Fatal("want an error for a malformed reused key")

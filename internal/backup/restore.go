@@ -91,7 +91,9 @@ func Restore(ctx context.Context, pool *pgxpool.Pool, r io.Reader, opts RestoreO
 	}
 
 	baseKey := crypto.DeriveKey(rootPT, "certforge-backup")
+	defer clear(baseKey)
 	streamKey := crypto.DeriveKey(baseKey, hex.EncodeToString(header.Salt))
+	defer clear(streamKey)
 
 	if err := restoreLoad(ctx, pool, r, header, headerHash, streamKey, opts); err != nil {
 		return Header{}, err
