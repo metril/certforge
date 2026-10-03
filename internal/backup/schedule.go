@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -130,6 +131,9 @@ func (s *Service) runOnce(ctx context.Context, set Settings, now time.Time) erro
 		return s.recordFailure(ctx, now, fmt.Errorf("open temp file: %w", err))
 	}
 	summary, werr := s.Stream(ctx, f)
+	if werr == nil {
+		werr = f.Sync()
+	}
 	if cerr := f.Close(); werr == nil {
 		werr = cerr
 	}
@@ -140,6 +144,11 @@ func (s *Service) runOnce(ctx context.Context, set Settings, now time.Time) erro
 	if err := os.Rename(tmp, dest); err != nil {
 		_ = os.Remove(tmp)
 		return s.recordFailure(ctx, now, fmt.Errorf("rename archive: %w", err))
+	}
+	if err := syncDir(set.Directory); err != nil {
+		// The archive is in place; a failed directory sync only weakens
+		// durability across a crash, so log it rather than fail the run.
+		s.log().Warn("backup: sync directory", "dir", set.Directory, "err", err)
 	}
 
 	if err := prune(set.Directory, set.RetainCount); err != nil {
@@ -176,6 +185,27 @@ func (s *Service) recordFailure(ctx context.Context, now time.Time, cause error)
 	return cause
 }
 
+// syncDir fsyncs dir so a rename into it survives a crash. Directories
+// cannot be synced on Windows, where it is a no-op.
+func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	if err := d.Sync(); err != nil {
+		_ = d.Close()
+		return err
+	}
+	return d.Close()
+}
+
+// staleTmpAfter is how old a certforge-*.cfbak.tmp must be before prune
+// treats it as an orphan of a crashed run rather than one in progress.
+const staleTmpAfter = time.Hour
+
 // prune deletes the oldest certforge-*.cfbak files in dir beyond retain,
 // keeping the most recent retain files. File names sort lexically in
 // chronological order (certforge-<yyyymmddThhmmssZ>.cfbak), so no parsing
@@ -191,6 +221,12 @@ func prune(dir string, retain int) error {
 			continue
 		}
 		name := e.Name()
+		if strings.HasPrefix(name, "certforge-") && strings.HasSuffix(name, ".cfbak.tmp") {
+			if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > staleTmpAfter {
+				_ = os.Remove(filepath.Join(dir, name))
+			}
+			continue
+		}
 		if strings.HasPrefix(name, "certforge-") && strings.HasSuffix(name, ".cfbak") {
 			files = append(files, name)
 		}
