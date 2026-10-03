@@ -927,6 +927,18 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	if err != nil {
 		return nil, err
 	}
+	// Server grants on this target never go through agents.Resync (below),
+	// so a target edit gets its own redeploy: mark pending and enqueue
+	// certforge_server_deploy directly, in the same transaction.
+	serverGrants, err := q.ServerGrantsUsingTarget(ctx, r.Id)
+	if err != nil {
+		return nil, err
+	}
+	for _, sg := range serverGrants {
+		if err := s.d.Dispatcher.EnqueueTx(ctx, tx, q, sg.ID, sg.CurrentVersionID); err != nil {
+			return nil, err
+		}
+	}
 	nudge, err := s.d.Agents.Resync(ctx, q, agents.RefTarget, t.ID)
 	if err != nil {
 		return nil, mapAgentErr(err)

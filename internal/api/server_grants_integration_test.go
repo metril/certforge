@@ -820,6 +820,44 @@ func TestUpdateDeployTargetIncludeKeyNeedsLiveGrantKeys(t *testing.T) {
 	wantStatus(t, err, 422)
 }
 
+// TestUpdateDeployTargetRedeploysServerGrants: editing a server deploy
+// target's config enqueues a redeploy of every live server grant on it, in
+// the same transaction as the target write (UpdateLayout's convention).
+func TestUpdateDeployTargetRedeploysServerGrants(t *testing.T) {
+	f := newAgentFixture(t)
+	ctx := context.Background()
+	op := f.as("operator")
+	targetID, fake := f.serverTarget(t, "vault-redeploy", nil)
+	certID, v1 := f.currentCert(t, "web")
+
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateServerGrant201JSONResponse)
+	if err := f.srv.d.Dispatcher.Deploy(ctx, g.Id, v1); err != nil {
+		t.Fatal(err)
+	}
+	if status, _, _ := f.serverDeployment(t, g.Id); status != "deployed" {
+		t.Fatalf("deployment before the target update = %s, want deployed", status)
+	}
+
+	if _, err := f.srv.UpdateDeployTarget(op, gen.UpdateDeployTargetRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.DeployTargetInput{Name: "vault-redeploy", Type: gen.DeployTargetType("vault-kv"), Config: map[string]interface{}{"mount": "other"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if status, vid, _ := f.serverDeployment(t, g.Id); status != "pending" || vid == nil || *vid != v1 {
+		t.Fatalf("deployment after a target update = %s %v, want pending %s", status, vid, v1)
+	}
+	if err := f.srv.d.Dispatcher.Deploy(ctx, g.Id, v1); err != nil {
+		t.Fatal(err)
+	}
+	if fake.count() != 2 {
+		t.Fatalf("fake KV writes after the target update's redeploy = %d, want 2", fake.count())
+	}
+}
+
 // TestServerGrantDependentsListed covers final review finding 2:
 // LayoutDependents/DeployTargetDependents used to INNER JOIN clients,
 // which excludes a server grant (client_id IS NULL) entirely — deleting a
