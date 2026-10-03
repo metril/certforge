@@ -106,13 +106,24 @@ func TokenHashHex(token string) string { return hex.EncodeToString(agentproto.To
 // writeAtomic writes p through a temp file in the same directory: write,
 // chmod, optional chown, fsync, rename, then fsync the directory.
 func writeAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) error) error {
+	tmp, err := stageAtomic(p, data, mode, chown)
+	if err != nil {
+		return err
+	}
+	return commitStaged(tmp, p)
+}
+
+// stageAtomic writes data to a temp sibling of p (fsynced, chmod, chown) and
+// returns its path, leaving p itself untouched; commitStaged or os.Remove
+// finishes it. The temp is removed on error.
+func stageAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) error) (string, error) {
 	dir := filepath.Dir(p)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+		return "", err
 	}
 	f, err := os.CreateTemp(dir, "."+filepath.Base(p)+".tmp-*")
 	if err != nil {
-		return err
+		return "", err
 	}
 	tmp, done := f.Name(), false
 	defer func() {
@@ -122,27 +133,34 @@ func writeAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) e
 		}
 	}()
 	if _, err := f.Write(data); err != nil {
-		return err
+		return "", err
 	}
 	if err := f.Chmod(mode); err != nil {
-		return err
+		return "", err
 	}
 	if chown != nil {
 		if err := chown(f); err != nil {
-			return err
+			return "", err
 		}
 	}
 	if err := f.Sync(); err != nil {
-		return err
+		return "", err
 	}
 	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, p); err != nil {
-		return err
+		return "", err
 	}
 	done = true
-	d, err := os.Open(dir)
+	return tmp, nil
+}
+
+// commitStaged renames tmp over p and syncs the directory; tmp is removed
+// when the rename fails.
+func commitStaged(tmp, p string) error {
+	if err := os.Rename(tmp, p); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	d, err := os.Open(filepath.Dir(p))
 	if err != nil {
 		return err
 	}

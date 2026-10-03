@@ -118,24 +118,73 @@ func parseMode(s string) (os.FileMode, error) {
 	return m, nil
 }
 
-// writeFile parses f's mode, confines its path (re-resolved right here, not
+// stagedFile is a file staged by stageFile: its final real path, the temp
+// sibling holding the new content, and the spec to record once committed.
+type stagedFile struct {
+	real, tmp string
+	spec      agentproto.FileSpec
+}
+
+// stageFile parses f's mode, confines its path (re-resolved right here, not
 // a first pass's cached path: a pre_deploy hook runs arbitrary code and
 // could have swapped a symlink into the path since any earlier check), and
-// writes it atomically, returning the FileSpec Report/Installed and
-// state.json record. Shared by Deploy's per-file loop and DeployTargetOnly.
-func (d *Deployer) writeFile(f delivery.File) (agentproto.FileSpec, error) {
+// writes the content to a temp sibling without touching the destination.
+func (d *Deployer) stageFile(f delivery.File) (stagedFile, error) {
 	mode, err := parseMode(f.Mode)
 	if err != nil {
-		return agentproto.FileSpec{}, fmt.Errorf("%s: %w", f.Path, err)
+		return stagedFile{}, fmt.Errorf("%s: %w", f.Path, err)
 	}
 	real, err := confine(d.WriteAllow, f.Path)
 	if err != nil {
-		return agentproto.FileSpec{}, err
+		return stagedFile{}, err
 	}
-	if err := d.Files.Write(real, f.Data, mode, f.Owner, f.Group); err != nil {
-		return agentproto.FileSpec{}, fmt.Errorf("write %s: %w", f.Path, err)
+	tmp, err := d.Files.Stage(real, f.Data, mode, f.Owner, f.Group)
+	if err != nil {
+		return stagedFile{}, fmt.Errorf("write %s: %w", f.Path, err)
 	}
-	return agentproto.FileSpec{Path: f.Path, Owner: f.Owner, Group: f.Group, Mode: f.Mode, SHA256: delivery.Digest(f.Data)}, nil
+	return stagedFile{real: real, tmp: tmp,
+		spec: agentproto.FileSpec{Path: f.Path, Owner: f.Owner, Group: f.Group, Mode: f.Mode, SHA256: delivery.Digest(f.Data)}}, nil
+}
+
+// writeFiles installs files in two phases: every file is staged to a temp
+// sibling first, and only when all succeeded are they renamed into place, so
+// a failure while staging leaves every previous file untouched and no temp
+// behind. It returns the FileSpecs Report/Installed and state.json record
+// for the files committed, in order (a rename failing midway leaves the
+// earlier ones in place). Shared by Deploy and DeployTargetOnly.
+func (d *Deployer) writeFiles(files []delivery.File) ([]agentproto.FileSpec, error) {
+	staged := make([]stagedFile, 0, len(files))
+	discard := func() {
+		for _, s := range staged {
+			d.Files.Discard(s.tmp)
+		}
+	}
+	for _, f := range files {
+		s, err := d.stageFile(f)
+		if err != nil {
+			discard()
+			return nil, err
+		}
+		staged = append(staged, s)
+	}
+	specs := make([]agentproto.FileSpec, 0, len(staged))
+	for _, s := range staged {
+		if err := d.Files.Commit(s.tmp, s.real); err != nil {
+			discard() // the committed ones are gone already; Discard of a renamed temp is a no-op
+			return specs, fmt.Errorf("write %s: %w", s.spec.Path, err)
+		}
+		specs = append(specs, s.spec)
+	}
+	return specs, nil
+}
+
+// hookName is h's program for a failure message; a hook without an argv
+// has none (Hooks.Run fails it with exit -1) and must not panic the message.
+func hookName(h agentproto.HookSpec) string {
+	if len(h.Argv) == 0 {
+		return "(no command)"
+	}
+	return h.Argv[0]
 }
 
 // Deploy returns the result to report, the files written in write order,
@@ -223,16 +272,16 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		run := d.Hooks.Run(ctx, h, env)
 		res.HookRuns = append(res.HookRuns, run)
 		if run.ExitCode != 0 {
-			return fail("pre_deploy hook %s exited %d; files were not written", h.Argv[0], run.ExitCode)
+			return fail("pre_deploy hook %s exited %d; files were not written", hookName(h), run.ExitCode)
 		}
 	}
-	for _, f := range files {
-		spec, err := d.writeFile(f)
-		if err != nil {
-			return fail("%v", err)
-		}
-		written = append(written, spec)
+	specs, err := d.writeFiles(files)
+	written = specs
+	for _, spec := range specs {
 		res.Installed = append(res.Installed, agentproto.FileDigest{Path: spec.Path, SHA256: spec.SHA256})
+	}
+	if err != nil {
+		return fail("%v", err)
 	}
 	// A target whose files need a service reloaded (targets.Reloader) is
 	// reloaded once, after every file is written and before post_deploy
@@ -256,7 +305,7 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		run := d.Hooks.Run(ctx, h, env)
 		res.HookRuns = append(res.HookRuns, run)
 		if run.ExitCode != 0 && res.State == agentproto.StateOK {
-			res.State, res.Error = agentproto.StateFailed, fmt.Sprintf("post_deploy hook %s exited %d; the files are installed", h.Argv[0], run.ExitCode)
+			res.State, res.Error = agentproto.StateFailed, fmt.Sprintf("post_deploy hook %s exited %d; the files are installed", hookName(h), run.ExitCode)
 		}
 	}
 	return res, written, certsDir
@@ -298,12 +347,14 @@ func (d *Deployer) DeployTargetOnly(a agentproto.Assignment) (agentproto.GrantRe
 		if err := delivery.CleanPath("path", f.Path); err != nil {
 			return fail("refusing to write %q: %v", f.Path, err)
 		}
-		spec, err := d.writeFile(f)
-		if err != nil {
-			return fail("%v", err)
-		}
-		written = append(written, spec)
+	}
+	specs, err := d.writeFiles(tfiles)
+	written = specs
+	for _, spec := range specs {
 		res.Installed = append(res.Installed, agentproto.FileDigest{Path: spec.Path, SHA256: spec.SHA256})
+	}
+	if err != nil {
+		return fail("%v", err)
 	}
 	return res, written, ""
 }

@@ -28,22 +28,50 @@ func NewFileWriter(log *slog.Logger) *FileWriter {
 	return &FileWriter{Log: log, EUID: os.Geteuid(), Lookup: lookupIDs}
 }
 
-// Write installs data at p (temp file, fsync, chmod, chown, rename).
-func (w *FileWriter) Write(p string, data []byte, mode fs.FileMode, owner, group string) error {
-	var chown func(*os.File) error
-	if owner != "" || group != "" {
-		if w.EUID == 0 {
-			uid, gid, err := w.Lookup(owner, group)
-			if err != nil {
-				return fmt.Errorf("owner %q group %q: %w", owner, group, err)
-			}
-			chown = func(f *os.File) error { return f.Chown(uid, gid) }
-		} else if w.warned.CompareAndSwap(false, true) {
+// chownFor returns the chown step for owner and group: nil when neither is
+// set, or (with a one-time warning) when not root.
+func (w *FileWriter) chownFor(owner, group string) (func(*os.File) error, error) {
+	if owner == "" && group == "" {
+		return nil, nil
+	}
+	if w.EUID != 0 {
+		if w.warned.CompareAndSwap(false, true) {
 			w.Log.Warn("not running as root: layout owner and group are ignored, only modes are applied")
 		}
+		return nil, nil
+	}
+	uid, gid, err := w.Lookup(owner, group)
+	if err != nil {
+		return nil, fmt.Errorf("owner %q group %q: %w", owner, group, err)
+	}
+	return func(f *os.File) error { return f.Chown(uid, gid) }, nil
+}
+
+// Write installs data at p (temp file, fsync, chmod, chown, rename).
+func (w *FileWriter) Write(p string, data []byte, mode fs.FileMode, owner, group string) error {
+	chown, err := w.chownFor(owner, group)
+	if err != nil {
+		return err
 	}
 	return writeAtomic(p, data, mode, chown)
 }
+
+// Stage is the first half of Write: it prepares a temp sibling of p with
+// the final content, mode and ownership and returns its path, leaving p
+// untouched. Commit it with Commit or drop it with Discard.
+func (w *FileWriter) Stage(p string, data []byte, mode fs.FileMode, owner, group string) (string, error) {
+	chown, err := w.chownFor(owner, group)
+	if err != nil {
+		return "", err
+	}
+	return stageAtomic(p, data, mode, chown)
+}
+
+// Commit renames a staged temp over p.
+func (w *FileWriter) Commit(tmp, p string) error { return commitStaged(tmp, p) }
+
+// Discard removes a staged temp.
+func (w *FileWriter) Discard(tmp string) { _ = os.Remove(tmp) }
 
 // Remove deletes p; a missing file is not an error.
 func (w *FileWriter) Remove(p string) error {
