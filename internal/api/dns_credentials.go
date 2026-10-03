@@ -72,6 +72,9 @@ func (s *Server) CreateDNSCredential(ctx context.Context, r gen.CreateDNSCredent
 	if _, err := authorize(ctx, authz.ActionDNSCredsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
+	if err := s.checkDNSCredURLs(ctx, r.Body.ProviderCode, r.Body.Config); err != nil {
+		return nil, err
+	}
 	c, err := s.d.Issuance.Store.CreateDNSCredential(ctx, r.OrgId, r.Body.Name, r.Body.ProviderCode, r.Body.Config)
 	if err != nil {
 		return nil, mapErr(err)
@@ -79,6 +82,21 @@ func (s *Server) CreateDNSCredential(ctx context.Context, r gen.CreateDNSCredent
 	s.audit(ctx, audit.Event{Action: "dns_credential.create", ResourceType: "dns_credential", ResourceID: c.ID.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"name": c.Name, "providerCode": c.ProviderCode}})
 	return gen.CreateDNSCredential201JSONResponse(dnsCredOut(c)), nil
+}
+
+// checkDNSCredURLs applies the notifier SSRF policy to a credential's
+// URL-typed fields (422 naming the field). The "notifications" section's
+// allowLoopbackUrls is the opt-out for loopback hosts; the cloud-metadata
+// addresses stay blocked. Stored credentials are never re-checked.
+func (s *Server) checkDNSCredURLs(ctx context.Context, code string, cfg map[string]string) error {
+	allowLoopback, err := s.monitorAllowLoopback(ctx)
+	if err != nil {
+		return err
+	}
+	if err := challenge.CheckURLFields(code, cfg, allowLoopback); err != nil {
+		return unprocessable("config", err.Error())
+	}
+	return nil
 }
 
 // GetDNSCredential returns one credential of the org, without secrets.
@@ -134,6 +152,13 @@ func (s *Server) RevealDNSCredentialSecret(ctx context.Context, r gen.RevealDNSC
 // connection setting.
 func (s *Server) UpdateDNSCredential(ctx context.Context, r gen.UpdateDNSCredentialRequestObject) (gen.UpdateDNSCredentialResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionDNSCredsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	existing, err := s.d.Issuance.Store.GetDNSCredential(ctx, r.OrgId, r.Id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := s.checkDNSCredURLs(ctx, existing.ProviderCode, r.Body.Config); err != nil {
 		return nil, err
 	}
 	c, changedPublic, err := s.d.Issuance.Store.UpdateDNSCredential(ctx, r.OrgId, r.Id, r.Body.Name, r.Body.Config)

@@ -593,3 +593,49 @@ func TestRevealDNSCredentialSecretAuditFailureIs500(t *testing.T) {
 		t.Fatalf("secret must not be released when auditing fails: %v %v", res, err)
 	}
 }
+
+// C20: URL-typed credential fields go through the notifier SSRF policy on
+// create and update (422); the notifications allowLoopbackUrls setting lifts
+// loopback but never the metadata address; RFC 1918 hosts are accepted.
+func TestDNSCredentialURLFieldsFollowSSRFPolicy(t *testing.T) {
+	f := newAPIFixture(t)
+	create := func(endpoint string) error {
+		_, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+			Body: &gen.DNSCredentialInput{Name: "hr-" + uuid.NewString()[:8], ProviderCode: "httpreq",
+				Config: map[string]string{"HTTPREQ_ENDPOINT": endpoint, "HTTPREQ_PASSWORD": "s"}}})
+		return err
+	}
+	for _, u := range []string{"http://127.0.0.1:8080", "http://localhost/x", "http://169.254.169.254/latest", "http://[::1]/"} {
+		err := create(u)
+		wantStatus(t, err, http.StatusUnprocessableEntity)
+		if !strings.Contains(err.Error(), "HTTPREQ_ENDPOINT") {
+			t.Fatalf("%s: error does not name the field: %v", u, err)
+		}
+	}
+	for _, u := range []string{"https://dns.example.test", "http://10.1.2.3:9000"} {
+		if err := create(u); err != nil {
+			t.Fatalf("%s: %v", u, err)
+		}
+	}
+	// Update path.
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "upd", ProviderCode: "httpreq",
+			Config: map[string]string{"HTTPREQ_ENDPOINT": "https://dns.example.test", "HTTPREQ_PASSWORD": "s"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.srv.UpdateDNSCredential(f.as("operator"), gen.UpdateDNSCredentialRequestObject{OrgId: f.org,
+		Id: res.(gen.CreateDNSCredential201JSONResponse).Id,
+		Body: &gen.DNSCredentialUpdate{Name: "upd", Config: map[string]string{
+			"HTTPREQ_ENDPOINT": "http://127.0.0.1/", "HTTPREQ_PASSWORD": "s"}}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	// Opt-out: allowLoopbackUrls admits loopback, never metadata.
+	if err := f.settingsStore.Set(context.Background(), "section.notifications", map[string]any{"allowLoopbackUrls": true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := create("http://127.0.0.1:8080"); err != nil {
+		t.Fatalf("loopback with opt-out: %v", err)
+	}
+	wantStatus(t, create("http://169.254.169.254/"), http.StatusUnprocessableEntity)
+}

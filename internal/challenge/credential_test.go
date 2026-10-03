@@ -148,3 +148,26 @@ func TestMergeUpdateLegacyAliasKeyedStored(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestCheckURLFields(t *testing.T) {
+	cases := []struct {
+		name  string
+		cfg   map[string]string
+		allow bool
+		bad   string
+	}{
+		{"loopback", map[string]string{"HTTPREQ_ENDPOINT": "http://127.0.0.1/"}, false, "HTTPREQ_ENDPOINT"},
+		{"loopback allowed", map[string]string{"HTTPREQ_ENDPOINT": "http://127.0.0.1/"}, true, ""},
+		{"metadata always", map[string]string{"HTTPREQ_ENDPOINT": "http://169.254.169.254/"}, true, "HTTPREQ_ENDPOINT"},
+		{"public", map[string]string{"HTTPREQ_ENDPOINT": "https://dns.example.test"}, false, ""},
+		{"rfc1918", map[string]string{"HTTPREQ_ENDPOINT": "http://10.0.0.5"}, false, ""},
+		{"unchanged skipped", map[string]string{"HTTPREQ_ENDPOINT": Unchanged}, false, ""},
+		{"non-url field skipped", map[string]string{"HTTPREQ_PASSWORD": "http://127.0.0.1"}, false, ""},
+	}
+	for _, c := range cases {
+		err := CheckURLFields("httpreq", c.cfg, c.allow)
+		if c.bad == "" && err != nil || c.bad != "" && (err == nil || !strings.Contains(err.Error(), c.bad)) {
+			t.Errorf("%s: err = %v, want field %q", c.name, err, c.bad)
+		}
+	}
+}

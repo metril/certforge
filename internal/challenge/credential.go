@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/metril/certforge/internal/notify/httpx"
 )
 
 // Unchanged is the write-only sentinel: on update, a secret field with this
@@ -230,4 +232,45 @@ func SecretKeys(secret map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// isURLField reports whether a schema property names a URL or endpoint. The
+// provider schemas carry no format marker, so this goes by the property
+// name: a _URL or _ENDPOINT suffix, or _BASE_URL / _API_BASE in the name.
+func isURLField(name string) bool {
+	return strings.HasSuffix(name, "_URL") || strings.HasSuffix(name, "_ENDPOINT") ||
+		strings.Contains(name, "_BASE_URL") || strings.HasSuffix(name, "_API_BASE")
+}
+
+// CheckURLFields runs every URL-typed field of cfg through the notifier URL
+// policy (httpx.CheckURL) so a credential cannot point the server at a
+// loopback, link-local or cloud-metadata address. allowLoopback is the
+// notifications section's allowLoopbackUrls; the metadata addresses stay
+// blocked regardless. Empty values and the Unchanged sentinel are skipped, as
+// are unknown fields (SplitConfig rejects those). A value without a scheme is
+// checked as https://<value>, so non-URL endpoint names such as "ovh-eu"
+// pass. The error names the first offending field (sorted order).
+func CheckURLFields(code string, cfg map[string]string, allowLoopback bool) error {
+	e, ok := lookupEntry(code)
+	if !ok {
+		return nil
+	}
+	keys := make([]string, 0, len(cfg))
+	for k := range cfg {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := strings.TrimSpace(cfg[k])
+		if _, known := e.secret[k]; !known || !isURLField(k) || v == "" || v == Unchanged {
+			continue
+		}
+		if !strings.Contains(v, "://") {
+			v = "https://" + v
+		}
+		if err := httpx.CheckURL(v, allowLoopback); err != nil {
+			return fmt.Errorf("%s: %w", k, err)
+		}
+	}
+	return nil
 }
