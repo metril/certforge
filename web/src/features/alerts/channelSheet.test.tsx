@@ -165,6 +165,18 @@ it("remove stored secret sends '' and marks dirty", async () => {
   expect(put!.config).toEqual({ url: '' });
 });
 
+// W1: the webhook signingSecret has minLength 16; Remove's '' must not be
+// blocked by it.
+it("remove a stored secret that has minLength saves '' ", async () => {
+  channels = [makeChannel({ storedSecrets: ['url', 'signingSecret'] })];
+  const { user } = renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  await user.click(await within(sheet).findByRole('button', { name: 'Remove Signing secret' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(put).toBeDefined());
+  expect(put!.config).toMatchObject({ signingSecret: '' });
+});
+
 it('re-enter secret maps to token field', async () => {
   channels = [makeChannel({ id: 'ch-ntfy', name: 'push', type: 'ntfy', storedSecrets: ['token'], config: { server: 'https://ntfy.sh', topic: 'certforge' } })];
   server.use(http.patch(url('/orgs/:orgId/channels/:id'), () => problem(422, 'Invalid config: re-enter the secret')));

@@ -246,7 +246,7 @@ function relaxUnchangedSecrets<S>(schema: S, formData: unknown): S {
   let changed = false;
   const nextProps: Record<string, SecretProp> = { ...props };
   for (const [key, prop] of Object.entries(props)) {
-    if (prop && typeof prop === 'object' && prop.secret === true && data[key] === UNCHANGED) {
+    if (prop && typeof prop === 'object' && prop.secret === true && (data[key] === UNCHANGED || data[key] === '')) {
       const rest = { ...prop };
       delete rest.minLength;
       delete rest.maxLength;
