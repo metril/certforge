@@ -957,3 +957,47 @@ func TestCertificateARIWindowAPI(t *testing.T) {
 		t.Fatal("ariWindow.checkedAt is zero")
 	}
 }
+
+// TestListAttemptsOmitsLogUnlessAsked: the list leaves the (up to 64 KB) log
+// out by default, includeLog brings it back, and getIssuanceAttempt returns
+// one attempt's log.
+func TestListAttemptsOmitsLogUnlessAsked(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := f.as("viewer")
+	c, _ := f.issuedCert(t, "web")
+	id, err := f.store.CreateAttempt(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.SaveAttemptProgress(ctx, nil, id, nil, "line one\n"); err != nil {
+		t.Fatal(err)
+	}
+	list := func(include *bool) gen.IssuanceAttempt {
+		res, err := f.srv.ListIssuanceAttempts(ctx, gen.ListIssuanceAttemptsRequestObject{OrgId: f.org, Id: c.ID,
+			Params: gen.ListIssuanceAttemptsParams{IncludeLog: include}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := res.(gen.ListIssuanceAttempts200JSONResponse)
+		if len(out) != 1 {
+			t.Fatalf("attempts = %+v", out)
+		}
+		return out[0]
+	}
+	if a := list(nil); a.Log != nil {
+		t.Fatalf("default list carries a log: %q", *a.Log)
+	}
+	yes := true
+	if a := list(&yes); a.Log == nil || *a.Log != "line one\n" {
+		t.Fatalf("includeLog list log = %v", a.Log)
+	}
+	res, err := f.srv.GetIssuanceAttempt(ctx, gen.GetIssuanceAttemptRequestObject{OrgId: f.org, Id: c.ID, AttemptId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := gen.IssuanceAttempt(res.(gen.GetIssuanceAttempt200JSONResponse)); a.Log == nil || *a.Log != "line one\n" {
+		t.Fatalf("get log = %v", a.Log)
+	}
+	_, err = f.srv.GetIssuanceAttempt(ctx, gen.GetIssuanceAttemptRequestObject{OrgId: f.org, Id: c.ID, AttemptId: uuid.New()})
+	wantStatus(t, err, http.StatusNotFound)
+}

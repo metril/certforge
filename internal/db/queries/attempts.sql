@@ -18,7 +18,12 @@ WHERE id = $1 AND outcome = 'running';
 UPDATE issuance_attempts SET log = log || $2 WHERE id = $1;
 
 -- name: ListAttempts :many
-SELECT * FROM issuance_attempts WHERE cert_id = $1 ORDER BY started_at DESC LIMIT $2;
+SELECT id, cert_id, started_at, finished_at, outcome, acme_error_type, retry_after, steps,
+       CASE WHEN sqlc.arg(include_log)::bool THEN log ELSE '' END::text AS log
+FROM issuance_attempts WHERE cert_id = sqlc.arg(cert_id) ORDER BY started_at DESC LIMIT sqlc.arg(row_limit);
+
+-- name: GetAttempt :one
+SELECT * FROM issuance_attempts WHERE id = $1 AND cert_id = $2;
 
 -- name: FailStaleAttempts :execrows
 UPDATE issuance_attempts SET outcome = 'failed', finished_at = now(),

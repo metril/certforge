@@ -1,19 +1,27 @@
 import type { ReactElement } from 'react';
-import { screen } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { expect, it, vi } from 'vitest';
 import { Providers } from '@/app/Providers';
-import { iso, makeAttempt } from '@/test/fixtures';
+import { server } from '@/test/server';
+import { iso, makeAttempt, NOW, url } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { AttemptLogViewer } from './AttemptLogViewer';
 
+// The list omits logs; the viewer loads the one it shows, on demand.
+const attemptUrl = url('/orgs/org-1/certificates/c-1/attempts/a-1');
+const fullLog = () => http.get(attemptUrl, () => HttpResponse.json(makeAttempt()));
+const noLog = (a = {}) => makeAttempt({ log: undefined, ...a });
+
 it('opens with the failing step expanded, one-line explanation, and a collapsed raw log', async () => {
-  const { user } = renderUI(<AttemptLogViewer attempt={makeAttempt()} defaultOpen />);
+  server.use(fullLog());
+  const { user } = renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={noLog()} defaultOpen />);
   expect(screen.getByText('Failed')).toBeInTheDocument();
   expect(screen.getByText('A DNS lookup failed during validation.')).toBeInTheDocument();
   expect(screen.getByText('NXDOMAIN looking up TXT for _acme-challenge.www.example.com')).toBeInTheDocument();
   expect(screen.queryByText('requesting order')).toBeNull();
   await user.click(screen.getByRole('button', { name: 'Raw log' }));
-  expect(screen.getByText('requesting order')).toBeInTheDocument();
+  expect(await screen.findByText('requesting order')).toBeInTheDocument();
   await user.type(screen.getByLabelText('Search log'), 'nxdomain');
   expect(screen.queryByText('requesting order')).toBeNull();
   expect(screen.getByText('error: NXDOMAIN looking up TXT')).toBeInTheDocument();
@@ -36,7 +44,7 @@ it("shows a step's message once it turns from running to failed on a later rende
       { name: 'challenge www.example.com', status: 'running', startedAt: iso(-0.0098) },
     ],
   });
-  const { rerender, queryClient } = renderUI(<AttemptLogViewer attempt={running} defaultOpen />);
+  const { rerender, queryClient } = renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={running} defaultOpen />);
   const wrap = (ui: ReactElement) => <Providers queryClient={queryClient}>{ui}</Providers>;
   expect(screen.queryByText(/NXDOMAIN/)).toBeNull();
 
@@ -52,7 +60,7 @@ it("shows a step's message once it turns from running to failed on a later rende
       },
     ],
   });
-  rerender(wrap(<AttemptLogViewer attempt={failed} defaultOpen />));
+  rerender(wrap(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={failed} defaultOpen />));
   expect(screen.getByText('NXDOMAIN looking up TXT for _acme-challenge.www.example.com')).toBeInTheDocument();
 });
 
@@ -61,6 +69,8 @@ it("shows a step's message once it turns from running to failed on a later rende
 it('labels caa and rate limits', () => {
   renderUI(
     <AttemptLogViewer
+      orgId="org-1"
+      certId="c-1"
       attempt={makeAttempt({
         steps: [
           { name: 'caa', status: 'success', startedAt: iso(-0.01), finishedAt: iso(-0.0099) },
@@ -81,6 +91,8 @@ it('labels caa and rate limits', () => {
 it('skipped caa shows its reason inline, without a details toggle', () => {
   renderUI(
     <AttemptLogViewer
+      orgId="org-1"
+      certId="c-1"
       attempt={makeAttempt({
         outcome: 'success',
         acmeErrorType: undefined,
@@ -97,6 +109,8 @@ it('skipped caa shows its reason inline, without a details toggle', () => {
 it('failed caa stays expanded with its detail text', () => {
   renderUI(
     <AttemptLogViewer
+      orgId="org-1"
+      certId="c-1"
       attempt={makeAttempt({
         acmeErrorType: 'urn:ietf:params:acme:error:caa',
         steps: [
@@ -123,6 +137,8 @@ it('failed caa stays expanded with its detail text', () => {
 it('private CA skipped steps', () => {
   renderUI(
     <AttemptLogViewer
+      orgId="org-1"
+      certId="c-1"
       attempt={makeAttempt({
         outcome: 'success',
         acmeErrorType: undefined,
@@ -146,8 +162,9 @@ it('private CA skipped steps', () => {
 
 it('guards Copy log when the Clipboard API is unavailable', async () => {
   const original = navigator.clipboard;
+  server.use(fullLog());
   try {
-    const { user } = renderUI(<AttemptLogViewer attempt={makeAttempt()} defaultOpen />);
+    const { user } = renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={makeAttempt()} defaultOpen />);
     await user.click(screen.getByRole('button', { name: 'Raw log' }));
     // renderUI's userEvent.setup() installs its own navigator.clipboard stub,
     // so the override has to happen after render, not before (same pattern
@@ -158,4 +175,28 @@ it('guards Copy log when the Clipboard API is unavailable', async () => {
   } finally {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: original });
   }
+});
+
+it('fetches the log only once Raw log is opened', async () => {
+  let calls = 0;
+  server.use(http.get(attemptUrl, () => (calls++, HttpResponse.json(makeAttempt()))));
+  const { user } = renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={noLog()} defaultOpen />);
+  expect(calls).toBe(0);
+  await user.click(screen.getByRole('button', { name: 'Raw log' }));
+  expect(await screen.findByText('requesting order')).toBeInTheDocument();
+  expect(calls).toBe(1);
+});
+
+it('tails the log every 2 s while the attempt runs', async () => {
+  vi.useFakeTimers({ now: NOW, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+  let calls = 0;
+  server.use(http.get(attemptUrl, () => (calls++, HttpResponse.json(makeAttempt({ outcome: 'running', log: `line ${calls}` })))));
+  renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={noLog({ outcome: 'running', finishedAt: undefined })} defaultOpen />);
+  fireEvent.click(screen.getByRole('button', { name: 'Raw log' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+  const first = calls;
+  expect(first).toBeGreaterThan(0);
+  await act(async () => { await vi.advanceTimersByTimeAsync(2_050); });
+  expect(calls).toBe(first + 1);
+  expect(screen.getByText(`line ${first + 1}`)).toBeInTheDocument();
 });

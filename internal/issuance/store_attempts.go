@@ -131,12 +131,13 @@ func (s *Store) PruneHookRuns(ctx context.Context, before time.Time) (int64, err
 	return s.q.PruneHookRuns(ctx, before)
 }
 
-// ListAttempts returns the newest attempts of an org's certificate.
-func (s *Store) ListAttempts(ctx context.Context, orgID, certID uuid.UUID, limit int) ([]Attempt, error) {
+// ListAttempts returns the newest attempts of an org's certificate. The log
+// is left empty unless includeLog is set.
+func (s *Store) ListAttempts(ctx context.Context, orgID, certID uuid.UUID, limit int, includeLog bool) ([]Attempt, error) {
 	if _, err := s.GetCertificate(ctx, orgID, certID); err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListAttempts(ctx, sqlcgen.ListAttemptsParams{CertID: certID, Limit: int32(limit)})
+	rows, err := s.q.ListAttempts(ctx, sqlcgen.ListAttemptsParams{CertID: certID, RowLimit: int32(limit), IncludeLog: includeLog})
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +151,23 @@ func (s *Store) ListAttempts(ctx context.Context, orgID, certID uuid.UUID, limit
 		out = append(out, a)
 	}
 	return out, nil
+}
+
+// GetAttempt returns one attempt, with its log, of an org's certificate.
+func (s *Store) GetAttempt(ctx context.Context, orgID, certID, id uuid.UUID) (Attempt, error) {
+	if _, err := s.GetCertificate(ctx, orgID, certID); err != nil {
+		return Attempt{}, err
+	}
+	r, err := s.q.GetAttempt(ctx, sqlcgen.GetAttemptParams{ID: id, CertID: certID})
+	if err != nil {
+		return Attempt{}, notFound(err)
+	}
+	a := Attempt{ID: r.ID, CertID: r.CertID, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Outcome: r.Outcome,
+		ACMEErrorType: r.AcmeErrorType, RetryAfter: r.RetryAfter, Log: r.Log}
+	if a.Steps, err = unmarshalSteps(r.Steps); err != nil {
+		return Attempt{}, err
+	}
+	return a, nil
 }
 
 // ManualPending lists unconfirmed manual-dns records of an org's certificate.

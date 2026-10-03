@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronRight, Circle, CircleAlert, CircleCheck, CircleMinus, CircleX, Copy, Loader2, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { attemptQuery } from '@/api/queries/certificates';
 import type { Attempt, AttemptStep } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -79,10 +81,14 @@ function StepRow({ step, expanded, extra }: { step: AttemptStep; expanded: boole
 }
 
 export function AttemptLogViewer({
+  orgId,
+  certId,
   attempt,
   defaultOpen = false,
   renderStepExtra,
 }: {
+  orgId: string;
+  certId: string;
   attempt: Attempt;
   defaultOpen?: boolean;
   /** Extra content under a step row (e.g. the rate-ledger usage panel under
@@ -107,7 +113,10 @@ export function AttemptLogViewer({
   const duration = (attempt.finishedAt ? Date.parse(attempt.finishedAt) : Date.now()) - start;
   const err = attempt.outcome === 'failed' ? explainAcmeError(attempt.acmeErrorType) : null;
   const failing = attempt.steps.findIndex((s) => s.status === 'failed');
-  const lines = useMemo(() => attempt.log.split('\n').map((text, n) => ({ text, n })), [attempt.log]);
+  // The list leaves the log out; fetch it only once the raw log is opened.
+  const logQuery = useQuery({ ...attemptQuery(orgId, certId, attempt.id, attempt.outcome === 'running'), enabled: logOpen });
+  const log = logQuery.data?.log ?? attempt.log ?? '';
+  const lines = useMemo(() => log.split('\n').map((text, n) => ({ text, n })), [log]);
   const shown = filter ? lines.filter((l) => l.text.toLowerCase().includes(filter.toLowerCase())) : lines;
 
   return (
@@ -156,7 +165,7 @@ export function AttemptLogViewer({
                 onClick={async () => {
                   try {
                     if (!navigator.clipboard) throw new Error('Clipboard API unavailable');
-                    await navigator.clipboard.writeText(attempt.log);
+                    await navigator.clipboard.writeText(log);
                     setCopyLogStatus('copied');
                   } catch {
                     setCopyLogStatus('failed');
@@ -173,6 +182,8 @@ export function AttemptLogViewer({
                 {copyLogStatus === 'failed' && 'Copy failed'}
               </span>
             </div>
+            {logQuery.isError && <p className="text-sm text-failed">Couldn't load the log.</p>}
+            {logQuery.isPending && <p className="text-sm text-ink-muted">Loading…</p>}
             <pre className="max-h-96 overflow-auto rounded-md border border-border bg-subtle p-3 font-mono text-xs leading-relaxed">
               {shown.map((l) => (
                 <div key={l.n} className="flex gap-3">

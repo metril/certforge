@@ -118,6 +118,32 @@ func (q *Queries) FinishAttempt(ctx context.Context, arg FinishAttemptParams) (i
 	return result.RowsAffected(), nil
 }
 
+const getAttempt = `-- name: GetAttempt :one
+SELECT id, cert_id, started_at, finished_at, outcome, acme_error_type, retry_after, steps, log FROM issuance_attempts WHERE id = $1 AND cert_id = $2
+`
+
+type GetAttemptParams struct {
+	ID     uuid.UUID `json:"id"`
+	CertID uuid.UUID `json:"cert_id"`
+}
+
+func (q *Queries) GetAttempt(ctx context.Context, arg GetAttemptParams) (IssuanceAttempt, error) {
+	row := q.db.QueryRow(ctx, getAttempt, arg.ID, arg.CertID)
+	var i IssuanceAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.CertID,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Outcome,
+		&i.AcmeErrorType,
+		&i.RetryAfter,
+		&i.Steps,
+		&i.Log,
+	)
+	return i, err
+}
+
 const insertManualPending = `-- name: InsertManualPending :exec
 INSERT INTO manual_dns_pending (attempt_id, cert_id, domain, fqdn, value, ttl, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -147,23 +173,38 @@ func (q *Queries) InsertManualPending(ctx context.Context, arg InsertManualPendi
 }
 
 const listAttempts = `-- name: ListAttempts :many
-SELECT id, cert_id, started_at, finished_at, outcome, acme_error_type, retry_after, steps, log FROM issuance_attempts WHERE cert_id = $1 ORDER BY started_at DESC LIMIT $2
+SELECT id, cert_id, started_at, finished_at, outcome, acme_error_type, retry_after, steps,
+       CASE WHEN $1::bool THEN log ELSE '' END::text AS log
+FROM issuance_attempts WHERE cert_id = $2 ORDER BY started_at DESC LIMIT $3
 `
 
 type ListAttemptsParams struct {
-	CertID uuid.UUID `json:"cert_id"`
-	Limit  int32     `json:"limit"`
+	IncludeLog bool      `json:"include_log"`
+	CertID     uuid.UUID `json:"cert_id"`
+	RowLimit   int32     `json:"row_limit"`
 }
 
-func (q *Queries) ListAttempts(ctx context.Context, arg ListAttemptsParams) ([]IssuanceAttempt, error) {
-	rows, err := q.db.Query(ctx, listAttempts, arg.CertID, arg.Limit)
+type ListAttemptsRow struct {
+	ID            uuid.UUID  `json:"id"`
+	CertID        uuid.UUID  `json:"cert_id"`
+	StartedAt     time.Time  `json:"started_at"`
+	FinishedAt    *time.Time `json:"finished_at"`
+	Outcome       string     `json:"outcome"`
+	AcmeErrorType string     `json:"acme_error_type"`
+	RetryAfter    *time.Time `json:"retry_after"`
+	Steps         []byte     `json:"steps"`
+	Log           string     `json:"log"`
+}
+
+func (q *Queries) ListAttempts(ctx context.Context, arg ListAttemptsParams) ([]ListAttemptsRow, error) {
+	rows, err := q.db.Query(ctx, listAttempts, arg.IncludeLog, arg.CertID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []IssuanceAttempt{}
+	items := []ListAttemptsRow{}
 	for rows.Next() {
-		var i IssuanceAttempt
+		var i ListAttemptsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CertID,

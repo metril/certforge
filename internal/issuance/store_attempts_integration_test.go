@@ -37,7 +37,7 @@ func TestAttemptLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attempts, err := f.store.ListAttempts(ctx, f.org, c.ID, 10)
+	attempts, err := f.store.ListAttempts(ctx, f.org, c.ID, 10, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestListAttemptsOrgScoped(t *testing.T) {
 	}
 
 	otherOrg := dbtest.Org(t, f.pool)
-	if _, err := f.store.ListAttempts(ctx, otherOrg, c.ID, 10); !errors.Is(err, ErrNotFound) {
+	if _, err := f.store.ListAttempts(ctx, otherOrg, c.ID, 10, false); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-org ListAttempts: %v", err)
 	}
 }
@@ -90,7 +90,7 @@ func TestFailStaleAttempts(t *testing.T) {
 		t.Fatalf("failed %d attempts, want 1", n)
 	}
 
-	attempts, err := f.store.ListAttempts(ctx, f.org, c.ID, 10)
+	attempts, err := f.store.ListAttempts(ctx, f.org, c.ID, 10, true)
 	if err != nil {
 		t.Fatal(err)
 	}

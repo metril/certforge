@@ -1273,7 +1273,13 @@ paths:
       operationId: listIssuanceAttempts
       tags: [certificates]
       summary: List issuance attempts
-      description: The 50 newest attempts with step timeline and log. Needs certs:read.
+      description: The 50 newest attempts with step timeline. The log is omitted unless includeLog is true; getIssuanceAttempt returns one attempt's log. Needs certs:read.
+      parameters:
+        - name: includeLog
+          in: query
+          required: false
+          description: Include each attempt's full log (up to 64 KB each).
+          schema: {type: boolean, default: false}
       responses:
         "200":
           description: Attempts, newest first.
@@ -1283,6 +1289,26 @@ paths:
                 type: array
                 description: Attempts.
                 items: {$ref: "#/components/schemas/IssuanceAttempt"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/{id}/attempts/{attemptId}:
+    parameters:
+      - {$ref: "#/components/parameters/OrgId"}
+      - {$ref: "#/components/parameters/Id"}
+      - {$ref: "#/components/parameters/AttemptId"}
+    get:
+      operationId: getIssuanceAttempt
+      tags: [certificates]
+      summary: Get an issuance attempt
+      description: One attempt with step timeline and log. Needs certs:read.
+      responses:
+        "200":
+          description: The attempt.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IssuanceAttempt"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -2786,6 +2812,12 @@ components:
       required: true
       description: Resource id.
       schema: {type: string, format: uuid}
+    AttemptId:
+      name: attemptId
+      in: path
+      required: true
+      description: Issuance attempt id.
+      schema: {type: string, format: uuid}
     VersionId:
       name: vid
       in: path
@@ -3757,7 +3789,7 @@ components:
     IssuanceAttempt:
       type: object
       description: One issuance run.
-      required: [id, startedAt, outcome, steps, log]
+      required: [id, startedAt, outcome, steps]
       properties:
         id: {type: string, format: uuid, description: Attempt id.}
         startedAt: {type: string, format: date-time, description: Start time.}
@@ -3769,7 +3801,7 @@ components:
           type: array
           description: Step timeline.
           items: {$ref: "#/components/schemas/AttemptStep"}
-        log: {type: string, description: Attempt log.}
+        log: {type: string, description: Attempt log; omitted from the list unless includeLog is true.}
     ManualDNSRecord:
       type: object
       description: A TXT record the operator must add.

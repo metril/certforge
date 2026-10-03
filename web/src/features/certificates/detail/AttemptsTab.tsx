@@ -31,7 +31,7 @@ export function AttemptsTab({ orgId, certId, caId, onRenew }: { orgId: string; c
   return (
     <Card role="region" aria-label="Attempts" className="px-4">
       {attempts.map((a, i) => (
-        <AttemptLogViewer key={a.id} attempt={a} defaultOpen={i === 0} renderStepExtra={renderStepExtra} />
+        <AttemptLogViewer key={a.id} orgId={orgId} certId={certId} attempt={a} defaultOpen={i === 0} renderStepExtra={renderStepExtra} />
       ))}
     </Card>
   );

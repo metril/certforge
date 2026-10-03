@@ -441,30 +441,59 @@ func (s *Server) RevokeCertificateVersion(ctx context.Context, r gen.RevokeCerti
 	return gen.RevokeCertificateVersion200JSONResponse(versionOut(v)), nil
 }
 
+// attemptOut maps an attempt to its API shape; the log is set only when
+// non-empty so a list without includeLog omits it.
+func attemptOut(a issuance.Attempt) (gen.IssuanceAttempt, error) {
+	steps, err := convert[[]gen.AttemptStep](a.Steps)
+	if err != nil {
+		return gen.IssuanceAttempt{}, err
+	}
+	it := gen.IssuanceAttempt{Id: a.ID, StartedAt: a.StartedAt, FinishedAt: a.FinishedAt,
+		Outcome: gen.IssuanceAttemptOutcome(a.Outcome), RetryAfter: a.RetryAfter, Steps: steps}
+	if a.Log != "" {
+		it.Log = ptr(a.Log)
+	}
+	if a.ACMEErrorType != "" {
+		it.AcmeErrorType = ptr(a.ACMEErrorType)
+	}
+	return it, nil
+}
+
 // ListIssuanceAttempts returns a certificate's 50 newest attempts with their
-// step timeline and log.
+// step timeline, and the log only when includeLog is set.
 func (s *Server) ListIssuanceAttempts(ctx context.Context, r gen.ListIssuanceAttemptsRequestObject) (gen.ListIssuanceAttemptsResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
 		return nil, err
 	}
-	as, err := s.d.Issuance.Store.ListAttempts(ctx, r.OrgId, r.Id, 50)
+	as, err := s.d.Issuance.Store.ListAttempts(ctx, r.OrgId, r.Id, 50, r.Params.IncludeLog != nil && *r.Params.IncludeLog)
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	out := make(gen.ListIssuanceAttempts200JSONResponse, 0, len(as))
 	for _, a := range as {
-		steps, err := convert[[]gen.AttemptStep](a.Steps)
+		it, err := attemptOut(a)
 		if err != nil {
 			return nil, err
-		}
-		it := gen.IssuanceAttempt{Id: a.ID, StartedAt: a.StartedAt, FinishedAt: a.FinishedAt,
-			Outcome: gen.IssuanceAttemptOutcome(a.Outcome), RetryAfter: a.RetryAfter, Steps: steps, Log: a.Log}
-		if a.ACMEErrorType != "" {
-			it.AcmeErrorType = ptr(a.ACMEErrorType)
 		}
 		out = append(out, it)
 	}
 	return out, nil
+}
+
+// GetIssuanceAttempt returns one attempt with its log.
+func (s *Server) GetIssuanceAttempt(ctx context.Context, r gen.GetIssuanceAttemptRequestObject) (gen.GetIssuanceAttemptResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	a, err := s.d.Issuance.Store.GetAttempt(ctx, r.OrgId, r.Id, r.AttemptId)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	it, err := attemptOut(a)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetIssuanceAttempt200JSONResponse(it), nil
 }
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)

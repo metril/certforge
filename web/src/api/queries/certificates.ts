@@ -189,6 +189,16 @@ export const attemptsQuery = (orgId: string, id: string) =>
     staleTime: 0,
   });
 
+// One attempt with its log: the list omits logs, so the viewer loads the log
+// of the attempt it shows, tailing it at the live rate while that runs.
+export const attemptQuery = (orgId: string, id: string, attemptId: string, running: boolean) =>
+  queryOptions({
+    queryKey: ['attempts', orgId, id, attemptId],
+    queryFn: () => call(api.GET('/orgs/{orgId}/certificates/{id}/attempts/{attemptId}', { params: { path: { orgId, id, attemptId } } })),
+    refetchInterval: livePoll(running),
+    staleTime: 0,
+  });
+
 export const manualDnsQuery = (orgId: string, id: string) =>
   queryOptions({
     queryKey: ['manual-dns', orgId, id],

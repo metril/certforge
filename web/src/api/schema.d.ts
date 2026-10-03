@@ -974,9 +974,36 @@ export interface paths {
         };
         /**
          * List issuance attempts
-         * @description The 50 newest attempts with step timeline and log. Needs certs:read.
+         * @description The 50 newest attempts with step timeline. The log is omitted unless includeLog is true; getIssuanceAttempt returns one attempt's log. Needs certs:read.
          */
         get: operations["listIssuanceAttempts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/certificates/{id}/attempts/{attemptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+                /** @description Issuance attempt id. */
+                attemptId: components["parameters"]["AttemptId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get an issuance attempt
+         * @description One attempt with step timeline and log. Needs certs:read.
+         */
+        get: operations["getIssuanceAttempt"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3157,8 +3184,8 @@ export interface components {
             retryAfter?: string | null;
             /** @description Step timeline. */
             steps: components["schemas"]["AttemptStep"][];
-            /** @description Attempt log. */
-            log: string;
+            /** @description Attempt log; omitted from the list unless includeLog is true. */
+            log?: string;
         };
         /** @description A TXT record the operator must add. */
         ManualDNSRecord: {
@@ -4731,6 +4758,8 @@ export interface components {
         OrgId: string;
         /** @description Resource id. */
         Id: string;
+        /** @description Issuance attempt id. */
+        AttemptId: string;
         /** @description Certificate version id. */
         VersionId: string;
         /** @description Only certificates with this status. */
@@ -6531,7 +6560,10 @@ export interface operations {
     };
     listIssuanceAttempts: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Include each attempt's full log (up to 64 KB each). */
+                includeLog?: boolean;
+            };
             header?: never;
             path: {
                 /** @description Org id. */
@@ -6550,6 +6582,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IssuanceAttempt"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getIssuanceAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+                /** @description Issuance attempt id. */
+                attemptId: components["parameters"]["AttemptId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attempt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuanceAttempt"];
                 };
             };
             401: components["responses"]["Unauthorized"];
