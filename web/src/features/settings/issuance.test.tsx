@@ -201,13 +201,37 @@ it('a non-admin only sees their own organizations', async () => {
   expect(await screen.findAllByRole('option')).toHaveLength(2);
 });
 
-it('switching scope drops unsaved edits instead of carrying them to another organization', async () => {
+it('switching scope with an unsaved draft asks first; Cancel keeps the draft, Discard drops it', async () => {
   mockOrgDefaults();
-  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  const { user, router } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
   await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
   expect(screen.getByRole('button', { name: 'Discard changes' })).toBeInTheDocument();
   await user.click(screen.getByRole('radio', { name: 'Global' }));
+  expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+  expect(router.state.location.search).toMatchObject({ scope: 'org' });
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByRole('switch', { name: 'Override Must-Staple' })).toBeChecked();
+  await user.click(screen.getByRole('radio', { name: 'Global' }));
+  await user.click(await screen.findByRole('button', { name: 'Discard' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
   await user.click(screen.getByRole('radio', { name: 'Organization' }));
   expect(await screen.findByRole('switch', { name: 'Override Must-Staple' })).not.toBeChecked();
   expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull();
+});
+
+it('switching scope with no draft does not ask', async () => {
+  mockOrgDefaults();
+  const { user, router } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  await screen.findByRole('switch', { name: 'Override Must-Staple' });
+  await user.click(screen.getByRole('radio', { name: 'Global' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
+  expect(screen.queryByText('Discard changes?')).toBeNull();
+});
+
+it('a viewer gets the issuance defaults form read-only (no Reset section)', async () => {
+  mockOrgDefaults();
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-7' }], manyOrgs.slice(0, 8)))));
+  renderRoute('/settings/issuance-defaults?scope=org&org=team-7');
+  await screen.findByRole('group', { name: 'Key type' });
+  expect(screen.queryByRole('button', { name: /^Reset section/ })).toBeNull();
 });

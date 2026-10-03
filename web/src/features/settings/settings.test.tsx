@@ -324,6 +324,7 @@ it('disables Save global/org defaults for a viewer, even once dirty', async () =
   await user.click(await screen.findByRole('switch', { name: 'Override Key type' }));
   expect(screen.getByRole('button', { name: 'Save org defaults' })).toBeDisabled();
   await user.click(screen.getByRole('radio', { name: 'Global' }));
+  await user.click(await screen.findByRole('button', { name: 'Discard' }));
   await user.click(await screen.findByRole('switch', { name: 'Must-Staple' }));
   expect(screen.getByRole('button', { name: 'Save global defaults' })).toBeDisabled();
 });

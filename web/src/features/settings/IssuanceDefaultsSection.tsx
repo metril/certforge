@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { LevelLinks } from '@/forms/InheritableField';
@@ -9,6 +9,7 @@ import type { IssuanceDefaults, Org } from '@/api/types';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
+import { DiscardDialog } from '@/components/ui/sheet';
 import { Combobox } from '@/components/Combobox';
 import { FilterField } from '@/components/FilterToolbar';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
@@ -108,7 +109,7 @@ const SCOPES: SegmentOption<'global' | 'org'>[] = [
   { value: 'org', label: 'Organization' },
 ];
 
-function GlobalScope({ org, links }: { org: Org; links: LevelLinks }) {
+function GlobalScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onDirty: (dirty: boolean) => void }) {
   const me = useMe();
   const canWriteGlobal = can(me, 'settings:write', null);
   const ctx = useFieldCtx(org.id);
@@ -122,6 +123,7 @@ function GlobalScope({ org, links }: { org: Org; links: LevelLinks }) {
   const saveGlobal = useSaveSettings('issuance_defaults', { silent: true });
   const [globalDraft, setGlobalDraft] = useState<IssuanceDefaults | null>(null);
   const [globalError, setGlobalError] = useState<ServerError>(null);
+  useEffect(() => onDirty(!!globalDraft), [globalDraft, onDirty]);
   // The shipped values come from the server (effective endpoint's `builtin`);
   // `stored` (null until the section was ever saved) is the edit buffer.
   const builtin = effectiveQ.data?.builtin as IssuanceDefaults | undefined;
@@ -139,6 +141,7 @@ function GlobalScope({ org, links }: { org: Org; links: LevelLinks }) {
       builtinState={builtinState}
       ctx={globalCtx}
       error={(k) => (globalError?.field === k ? globalError.message : null)}
+      readOnly={!canWriteGlobal}
     />
     <SaveRow
       label="Save global defaults"
@@ -166,7 +169,7 @@ function GlobalScope({ org, links }: { org: Org; links: LevelLinks }) {
   );
 }
 
-function OrgScope({ org, links }: { org: Org; links: LevelLinks }) {
+function OrgScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onDirty: (dirty: boolean) => void }) {
   const me = useMe();
   const canWriteOrg = can(me, 'certs:write', org.id);
   const ctx = useFieldCtx(org.id);
@@ -176,6 +179,7 @@ function OrgScope({ org, links }: { org: Org; links: LevelLinks }) {
   const saveOrg = useSaveOrgDefaults(org.id);
   const [orgDraft, setOrgDraft] = useState<IssuanceDefaults | null>(null);
   const [orgError, setOrgError] = useState<ServerError>(null);
+  useEffect(() => onDirty(!!orgDraft), [orgDraft, onDirty]);
   const builtin = effectiveQ.data?.builtin as IssuanceDefaults | undefined;
   const builtinState = builtinStateOf(effectiveQ);
   const globalStored = (globalQ.data?.stored ?? null) as IssuanceDefaults | null;
@@ -198,6 +202,7 @@ function OrgScope({ org, links }: { org: Org; links: LevelLinks }) {
       chain={chainFor(builtin, globalStored ?? {}, orgValue, ctx)}
       ctx={ctx}
       error={(k) => (orgError?.field === k ? orgError.message : null)}
+      readOnly={!canWriteOrg}
       // A field just reset to inherited (orgDraft explicitly null) whose
       // last-saved org value was set is "inherited after save", not yet
       // reflected by `effective` (review fix round 1, #3).
@@ -234,6 +239,11 @@ export function IssuanceDefaultsSection() {
   const navigate = useNavigate({ from: '/settings/$section' });
   const activeSlug = useActiveOrgSlug();
   const scope = search.scope ?? 'global';
+  const dirty = useRef(false);
+  const [pending, setPending] = useState<{ scope?: 'global' | 'org'; org?: string } | null>(null);
+  const onDirty = useCallback((d: boolean) => {
+    dirty.current = d;
+  }, []);
   // A global admin may open any org; everyone else only their own.
   const orgsQ = useQuery({ ...orgsQuery, enabled: isGlobalAdmin(me) });
   const orgs: Org[] = (isGlobalAdmin(me) ? orgsQ.data : undefined) ?? me.orgs;
@@ -249,7 +259,12 @@ export function IssuanceDefaultsSection() {
   const org = wanted ?? orgs[0];
   if (!org) return <p className="text-sm text-ink-muted">{NO_ORG}</p>;
   const links = linksFor(org.slug);
-  const go = (patch: { scope?: 'global' | 'org'; org?: string }) => void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+  const apply = (patch: { scope?: 'global' | 'org'; org?: string }) => void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+  // An unsaved draft would be silently dropped by the scope/org remount: ask first.
+  const go = (patch: { scope?: 'global' | 'org'; org?: string }) => {
+    if (dirty.current) setPending(patch);
+    else apply(patch);
+  };
   return (
     <div className="grid max-w-[900px] gap-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -271,7 +286,15 @@ export function IssuanceDefaultsSection() {
         )}
         <HelpTip id="defaults.inherit" />
       </div>
-      {scope === 'org' ? <OrgScope key={org.id} org={org} links={links.org} /> : <GlobalScope key="global" org={org} links={links.global} />}
+      {scope === 'org' ? <OrgScope key={org.id} org={org} links={links.org} onDirty={onDirty} /> : <GlobalScope key="global" org={org} links={links.global} onDirty={onDirty} />}
+      <DiscardDialog
+        open={pending !== null}
+        onCancel={() => setPending(null)}
+        onDiscard={() => {
+          if (pending) apply(pending);
+          setPending(null);
+        }}
+      />
     </div>
   );
 }

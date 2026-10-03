@@ -332,6 +332,7 @@ SheetDescription.displayName = "SheetDescription"
 
 export {
   Sheet,
+  DiscardDialog,
   useSheetGuard,
   SheetTrigger,
   SheetClose,
