@@ -8,12 +8,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/crypto"
@@ -258,7 +260,7 @@ func loadTable(ctx context.Context, tx pgx.Tx, tr *tar.Reader, table string, loa
 		body := io.MultiReader(strings.NewReader(headerLine), br)
 		tag, err := tx.Conn().PgConn().CopyFrom(ctx, body, sql)
 		if err != nil {
-			return TableSum{}, fmt.Errorf("%w: load %s: %w", ErrTampered, table, err)
+			return TableSum{}, loadError(table, err)
 		}
 		rows = tag.RowsAffected()
 	} else if _, err := io.Copy(io.Discard, br); err != nil {
@@ -266,6 +268,26 @@ func loadTable(ctx context.Context, tx pgx.Tx, tr *tar.Reader, table string, loa
 	}
 
 	return TableSum{Name: table, Rows: rows, SHA256: hex.EncodeToString(hasher.Sum(nil))}, nil
+}
+
+// loadError classifies a COPY failure. Only failures attributable to the
+// archive's own content are ErrTampered: a chunk-level integrity error
+// surfaced while COPY read the stream, or a Postgres data (22xxx) or
+// constraint (23xxx) violation. A duplicate audit_events key is an
+// operator error (see ErrAuditConflict), and anything else (a dropped
+// connection, a cancelled context) is a plain load failure that says
+// nothing about the archive.
+func loadError(table string, err error) error {
+	var pgErr *pgconn.PgError
+	switch {
+	case errors.As(err, &pgErr) && pgErr.Code == "23505" && table == "audit_events":
+		return fmt.Errorf("%w: %w", ErrAuditConflict, err)
+	case errors.Is(err, ErrTampered):
+		return fmt.Errorf("backup: load %s: %w", table, err)
+	case errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23")):
+		return fmt.Errorf("%w: load %s: %w", ErrTampered, table, err)
+	}
+	return fmt.Errorf("backup: load %s: %w", table, err)
 }
 
 // verifyManifest checks that the archive covers exactly this binary's

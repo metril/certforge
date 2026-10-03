@@ -405,6 +405,30 @@ func TestRestoreRootMismatchRollsBack(t *testing.T) {
 	}
 }
 
+// TestRestoreIntoPopulatedDatabaseIsAuditConflict: restoring over a database
+// that already holds the archive's audit rows (audit_events is never
+// truncated) fails on the primary key. That is an operator mistake, not a
+// tampered archive, and must say so.
+func TestRestoreIntoPopulatedDatabaseIsAuditConflict(t *testing.T) {
+	ctx := context.Background()
+	srcPool, srcQ := dbtest.New(t)
+	seedAllTables(t, ctx, srcPool)
+	be := newBackupEnv(srcQ, testKey(8))
+
+	var archive bytes.Buffer
+	if _, err := backup.Write(ctx, srcPool, &archive, be.writeOpts(ctx, t)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := backup.Restore(ctx, srcPool, bytes.NewReader(archive.Bytes()), be.restoreOpts())
+	if !errors.Is(err, backup.ErrAuditConflict) {
+		t.Fatalf("err = %v, want ErrAuditConflict", err)
+	}
+	if errors.Is(err, backup.ErrTampered) {
+		t.Fatalf("err = %v, must not be reported as ErrTampered", err)
+	}
+}
+
 // TestRestoreCanaryFailureRollsBack covers a crafted archive whose canary
 // row does not decrypt to crypto.CanaryPlaintext under the caller's
 // envelope, even though the root itself matches: the whole restore must
