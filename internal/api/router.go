@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -218,6 +219,10 @@ const maxRequestBody = 1 << 20 // 1 MiB
 // body this API ever accepts.
 const maxImportBody = 32 << 20 // 32 MiB
 
+// importReadTimeout replaces the server-wide ReadTimeout for the import
+// route's body.
+const importReadTimeout = 5 * time.Minute
+
 // importCertificatesPath matches exactly POST /api/v1/orgs/{orgId}/certificates/import,
 // requireJSON's one exception: this route needs multipart/form-data, not
 // JSON, and a larger body cap. r.URL.Path is matched literally (as chi
@@ -237,6 +242,11 @@ func requireJSON(next http.Handler) http.Handler {
 		case http.MethodPost, http.MethodPut, http.MethodPatch:
 			if r.Method == http.MethodPost && importCertificatesPath.MatchString(r.URL.Path) {
 				r.Body = http.MaxBytesReader(w, r.Body, maxImportBody)
+				// A 32 MiB upload can outlast the server's ReadTimeout; give
+				// this route alone more time (the error is only
+				// http.ErrNotSupported for a writer that cannot, which keeps
+				// the server default).
+				_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(importReadTimeout))
 				mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 				if err != nil || mt != "multipart/form-data" {
 					Write(w, http.StatusUnsupportedMediaType, "Unsupported media type", "Send the import request as multipart/form-data.")
