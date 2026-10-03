@@ -5,6 +5,7 @@ package backup_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"testing"
 
@@ -426,6 +427,48 @@ func TestRestoreIntoPopulatedDatabaseIsAuditConflict(t *testing.T) {
 	}
 	if errors.Is(err, backup.ErrTampered) {
 		t.Fatalf("err = %v, must not be reported as ErrTampered", err)
+	}
+}
+
+// TestRestoreCorruptChunkDuringCopyIsTampered: a chunk that fails to
+// authenticate while a table's COPY is still reading it must surface as
+// ErrTampered (pgconn reports only the server's cancel error for a failed
+// COPY source, so the reader's own error has to be recovered separately).
+// audit_events is padded so its CSV spans several chunks and the second
+// chunk is read mid-COPY.
+func TestRestoreCorruptChunkDuringCopyIsTampered(t *testing.T) {
+	ctx := context.Background()
+	srcPool, srcQ := dbtest.New(t)
+	seedAllTables(t, ctx, srcPool)
+	if _, err := srcPool.Exec(ctx, `INSERT INTO audit_events (ts, actor_type, action, resource_type, details, prev_hash, hash)
+		SELECT now(), 'system', 'test.pad', 'org', jsonb_build_object('pad', repeat(md5(g::text), 4000)), decode(md5(g::text), 'hex'), E'\\x02'
+		FROM generate_series(1, 20) g`); err != nil {
+		t.Fatal(err)
+	}
+	be := newBackupEnv(srcQ, testKey(9))
+
+	var archive bytes.Buffer
+	if _, err := backup.Write(ctx, srcPool, &archive, be.writeOpts(ctx, t)); err != nil {
+		t.Fatal(err)
+	}
+	data := archive.Bytes()
+
+	// Locate the second chunk: skip the header, then the first chunk's
+	// uint32 length prefix and body.
+	r := bytes.NewReader(data)
+	if _, err := backup.ReadHeader(r); err != nil {
+		t.Fatal(err)
+	}
+	first := len(data) - r.Len()
+	second := first + 4 + int(binary.BigEndian.Uint32(data[first:first+4]))
+	if second+4+16 >= len(data) {
+		t.Fatal("archive has fewer than two chunks")
+	}
+	data[second+4+8] ^= 0xFF
+
+	dstPool := dbtest.Empty(t)
+	if _, err := backup.Restore(ctx, dstPool, bytes.NewReader(data), be.restoreOpts()); !errors.Is(err, backup.ErrTampered) {
+		t.Fatalf("err = %v, want ErrTampered", err)
 	}
 }
 
