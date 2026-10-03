@@ -93,18 +93,33 @@ func (s *Server) UpdateSite(ctx context.Context, req gen.UpdateSiteRequestObject
 	return gen.UpdateSite200JSONResponse(siteOut(site)), nil
 }
 
-// DeleteSite removes a site.
+// DeleteSite removes a site. Its clients are detached (site_id ON DELETE SET
+// NULL), not deleted; the audit detail records how many.
 func (s *Server) DeleteSite(ctx context.Context, req gen.DeleteSiteRequestObject) (gen.DeleteSiteResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionSitesWrite, &req.OrgId); err != nil {
 		return nil, err
 	}
-	n, err := s.d.Queries.DeleteSite(ctx, sqlcgen.DeleteSiteParams{ID: req.Id, OrgID: req.OrgId})
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
+	detached, err := q.CountSiteClients(ctx, sqlcgen.CountSiteClientsParams{SiteID: &req.Id, OrgID: req.OrgId})
+	if err != nil {
+		return nil, err
+	}
+	n, err := q.DeleteSite(ctx, sqlcgen.DeleteSiteParams{ID: req.Id, OrgID: req.OrgId})
 	if err != nil {
 		return nil, err
 	}
 	if n == 0 {
 		return nil, notFound("site %s", req.Id)
 	}
-	s.audit(ctx, audit.Event{Action: "site.delete", ResourceType: "site", ResourceID: req.Id.String(), OrgID: &req.OrgId})
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	s.audit(ctx, audit.Event{Action: "site.delete", ResourceType: "site", ResourceID: req.Id.String(), OrgID: &req.OrgId,
+		Details: map[string]any{"detachedClients": detached}})
 	return gen.DeleteSite204Response{}, nil
 }

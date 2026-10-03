@@ -68,7 +68,7 @@ Open **Settings** in the sidebar. Sections that arrive in later phases (Agents, 
 
 ### General
 
-Rendered from the server's settings schema: base URL and other server-wide values. **Save** applies immediately; no restart. Below it, **Organizations**: admins create, rename and delete orgs (the slug is permanent; "all" is reserved), and org admins manage each org's **Sites**. An org with certificates, credentials, accounts, CAs, sites, role bindings or active API keys cannot be deleted; the dialog lists them. Its issuance defaults and revoked API keys are removed with the org.
+Rendered from the server's settings schema: base URL and other server-wide values. **Save** applies immediately; no restart. Below it, **Organizations**: admins create, rename and delete orgs (the slug is permanent; "all" is reserved), and org admins manage each org's **Sites**. An org with certificates, credentials, accounts, CAs, sites, role bindings, active API keys, notification channels or monitors cannot be deleted; the dialog lists them. Its issuance defaults, revoked API keys and notification events are removed with the org.
 
 ### Authentication
 

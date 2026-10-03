@@ -12,3 +12,6 @@ UPDATE sites SET name = sqlc.arg(name) WHERE id = sqlc.arg(id) AND org_id = sqlc
 
 -- name: DeleteSite :execrows
 DELETE FROM sites WHERE id = $1 AND org_id = $2;
+
+-- name: CountSiteClients :one
+SELECT count(*) FROM clients WHERE site_id = $1 AND org_id = $2;

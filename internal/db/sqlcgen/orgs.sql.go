@@ -23,21 +23,25 @@ SELECT
   (SELECT count(*) FROM clients cl WHERE cl.org_id = $1) AS clients,
   (SELECT count(*) FROM output_specs o WHERE o.org_id = $1) AS layouts,
   (SELECT count(*) FROM deploy_targets dt WHERE dt.org_id = $1) AS deploy_targets,
-  (SELECT count(*) FROM hooks h WHERE h.org_id = $1) AS hooks
+  (SELECT count(*) FROM hooks h WHERE h.org_id = $1) AS hooks,
+  (SELECT count(*) FROM notification_channels nc WHERE nc.org_id = $1) AS notification_channels,
+  (SELECT count(*) FROM external_monitors em WHERE em.org_id = $1) AS monitors
 `
 
 type CountOrgDependentsRow struct {
-	Certificates   int64 `json:"certificates"`
-	DnsCredentials int64 `json:"dns_credentials"`
-	AcmeAccounts   int64 `json:"acme_accounts"`
-	Cas            int64 `json:"cas"`
-	Sites          int64 `json:"sites"`
-	RoleBindings   int64 `json:"role_bindings"`
-	ApiKeys        int64 `json:"api_keys"`
-	Clients        int64 `json:"clients"`
-	Layouts        int64 `json:"layouts"`
-	DeployTargets  int64 `json:"deploy_targets"`
-	Hooks          int64 `json:"hooks"`
+	Certificates         int64 `json:"certificates"`
+	DnsCredentials       int64 `json:"dns_credentials"`
+	AcmeAccounts         int64 `json:"acme_accounts"`
+	Cas                  int64 `json:"cas"`
+	Sites                int64 `json:"sites"`
+	RoleBindings         int64 `json:"role_bindings"`
+	ApiKeys              int64 `json:"api_keys"`
+	Clients              int64 `json:"clients"`
+	Layouts              int64 `json:"layouts"`
+	DeployTargets        int64 `json:"deploy_targets"`
+	Hooks                int64 `json:"hooks"`
+	NotificationChannels int64 `json:"notification_channels"`
+	Monitors             int64 `json:"monitors"`
 }
 
 func (q *Queries) CountOrgDependents(ctx context.Context, orgID uuid.UUID) (CountOrgDependentsRow, error) {
@@ -55,6 +59,8 @@ func (q *Queries) CountOrgDependents(ctx context.Context, orgID uuid.UUID) (Coun
 		&i.Layouts,
 		&i.DeployTargets,
 		&i.Hooks,
+		&i.NotificationChannels,
+		&i.Monitors,
 	)
 	return i, err
 }

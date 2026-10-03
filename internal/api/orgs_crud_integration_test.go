@@ -69,6 +69,22 @@ func TestOrgCRUD(t *testing.T) {
 		t.Fatalf("delete with site %d %s", resp.StatusCode, out)
 	}
 
+	// Notification channels and monitors cascade off the org row, but they
+	// are user-created, so they block the delete too.
+	withOps, err := e.deps.Queries.CreateOrg(ctx, sqlcgenOrg("with-ops"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.deps.Pool.Exec(ctx, `INSERT INTO notification_channels (org_id, name, type, config) VALUES ($1, 'ch', 'webhook', '{}')`, withOps.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.deps.Pool.Exec(ctx, `INSERT INTO external_monitors (org_id, name, host) VALUES ($1, 'mon', 'example.test')`, withOps.ID); err != nil {
+		t.Fatal(err)
+	}
+	if resp, out := e.do(http.MethodDelete, "/api/v1/orgs/"+withOps.ID.String(), nil, csrf); resp.StatusCode != http.StatusConflict || !strings.Contains(string(out), "1 notification channel") || !strings.Contains(string(out), "1 monitor") { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("delete with channel and monitor %d %s", resp.StatusCode, out)
+	}
+
 	// An org whose only rows are its own issuance defaults and a revoked API
 	// key deletes cleanly; both cascade off the org row.
 	cleanup, err := e.deps.Queries.CreateOrg(ctx, sqlcgenOrg("cleanup"))
@@ -133,8 +149,18 @@ func TestSites(t *testing.T) {
 	if resp, _ := e.do(http.MethodDelete, "/api/v1/orgs/"+lab.ID.String()+"/sites/"+site.ID, nil, csrf); resp.StatusCode != http.StatusNotFound { //nolint:bodyclose // testEnv.doRaw closes the body
 		t.Fatalf("delete through another org's path: %d", resp.StatusCode)
 	}
+	if _, err := e.deps.Pool.Exec(context.Background(), `INSERT INTO clients (org_id, site_id, name) VALUES ($1, $2, 'c1')`, home, site.ID); err != nil {
+		t.Fatal(err)
+	}
 	if resp, _ := e.doClient(oa, http.MethodDelete, base+"/"+site.ID, nil, h); resp.StatusCode != http.StatusNoContent { //nolint:bodyclose // doClient closes the body
 		t.Fatalf("delete %d", resp.StatusCode)
+	}
+	if e.auditCount(t, "site.delete") != 1 {
+		t.Fatal("site.delete not audited")
+	}
+	var details string
+	if err := e.deps.Pool.QueryRow(context.Background(), `SELECT details::text FROM audit_events WHERE action = 'site.delete'`).Scan(&details); err != nil || !strings.Contains(details, `"detachedClients": 1`) {
+		t.Fatalf("audit details %s err %v", details, err)
 	}
 
 	// olga is org-admin in home only; writing to lab's sites is forbidden.

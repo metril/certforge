@@ -122,7 +122,7 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
           open={deleting !== null}
           onOpenChange={(o) => !o && setDeleting(null)}
           title={`Delete ${deleting?.name ?? ''}`}
-          consequence="Role bindings scoped to this site are removed with it."
+          consequence="Role bindings scoped to this site are removed with it. Clients at this site are kept but detached from it."
           confirmText={deleting?.name ?? ''}
           actionLabel="Delete"
           onConfirm={() => del.mutateAsync(deleting!.id)}

@@ -28,7 +28,9 @@ SELECT
   (SELECT count(*) FROM clients cl WHERE cl.org_id = sqlc.arg(org_id)) AS clients,
   (SELECT count(*) FROM output_specs o WHERE o.org_id = sqlc.arg(org_id)) AS layouts,
   (SELECT count(*) FROM deploy_targets dt WHERE dt.org_id = sqlc.arg(org_id)) AS deploy_targets,
-  (SELECT count(*) FROM hooks h WHERE h.org_id = sqlc.arg(org_id)) AS hooks;
+  (SELECT count(*) FROM hooks h WHERE h.org_id = sqlc.arg(org_id)) AS hooks,
+  (SELECT count(*) FROM notification_channels nc WHERE nc.org_id = sqlc.arg(org_id)) AS notification_channels,
+  (SELECT count(*) FROM external_monitors em WHERE em.org_id = sqlc.arg(org_id)) AS monitors;
 
 -- name: DeleteOrg :exec
 DELETE FROM orgs WHERE id = $1;

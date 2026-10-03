@@ -11,6 +11,22 @@ import (
 	"github.com/google/uuid"
 )
 
+const countSiteClients = `-- name: CountSiteClients :one
+SELECT count(*) FROM clients WHERE site_id = $1 AND org_id = $2
+`
+
+type CountSiteClientsParams struct {
+	SiteID *uuid.UUID `json:"site_id"`
+	OrgID  uuid.UUID  `json:"org_id"`
+}
+
+func (q *Queries) CountSiteClients(ctx context.Context, arg CountSiteClientsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSiteClients, arg.SiteID, arg.OrgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createSite = `-- name: CreateSite :one
 INSERT INTO sites (org_id, name) VALUES ($1, $2) RETURNING id, org_id, name, created_at
 `
