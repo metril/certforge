@@ -7,7 +7,10 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -253,6 +256,50 @@ func TestWriteRestoreRoundTrip(t *testing.T) {
 // header is genuine, not edited after the fact (which would break the
 // chunk stream's AAD binding to the header's exact bytes; see the
 // format's tamper detection).
+// TestWriteSpoolRoundTripLeavesNoTempFiles: tables are spooled to a private
+// directory under SpoolDir; the archive still restores, nothing remains in
+// SpoolDir afterwards, and a stale spool directory from a crashed run is
+// cleaned at the start of a backup.
+func TestWriteSpoolRoundTripLeavesNoTempFiles(t *testing.T) {
+	ctx := context.Background()
+	srcPool, srcQ := dbtest.New(t)
+	seedAllTables(t, ctx, srcPool)
+	be := newBackupEnv(srcQ, testKey(1))
+	opts := be.writeOpts(ctx, t)
+
+	spoolDir := t.TempDir()
+	stale := filepath.Join(spoolDir, ".certforge-spool-crashed")
+	if err := os.Mkdir(stale, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "settings.csv"), []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	opts.SpoolDir = spoolDir
+
+	var archive bytes.Buffer
+	if _, err := backup.Write(ctx, srcPool, &archive, opts); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := os.ReadDir(spoolDir); err != nil || len(entries) != 0 {
+		t.Fatalf("spool dir not empty: %v %v", entries, err)
+	}
+
+	dstPool := dbtest.Empty(t)
+	if _, err := backup.Restore(ctx, dstPool, bytes.NewReader(archive.Bytes()), be.restoreOpts()); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	for _, tbl := range backup.Manifest {
+		if tableCounts(t, ctx, srcPool, []string{tbl})[tbl] != tableCounts(t, ctx, dstPool, []string{tbl})[tbl] {
+			t.Fatalf("table %s row count differs after restore", tbl)
+		}
+	}
+}
+
 func TestRestoreLoadsAtMaxVersion(t *testing.T) {
 	ctx := context.Background()
 	srcPool := dbtest.Empty(t)
