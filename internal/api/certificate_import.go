@@ -56,6 +56,9 @@ func (s *Server) ImportCertificates(ctx context.Context, r gen.ImportCertificate
 // problem as an "imported" extension member so the caller can tell.
 func importFailure(log *slog.Logger, err error, partial issuance.ImportResult) error {
 	mapped := mapErr(err)
+	if partial.DryRun {
+		return mapped // a preview stores nothing
+	}
 	var created []gen.ImportItem
 	for _, it := range importResultOut(partial).Items {
 		if it.Action == gen.Create {

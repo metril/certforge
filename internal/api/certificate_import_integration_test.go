@@ -305,3 +305,31 @@ func TestImportPartialFailureReportsCreated(t *testing.T) {
 		t.Fatal("want only the first certificate stored")
 	}
 }
+
+// TestImportDryRunFailureHasNoImported: a preview that fails partway stored
+// nothing, so its problem must not claim created certificates.
+func TestImportDryRunFailureHasNoImported(t *testing.T) {
+	f := newAPIFixture(t)
+	op := f.as("operator")
+	ca := f.seedImportCA(t, "dry-partial-ca")
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	addAcmeShDomain(t, zw, "a-first.example.test", 921)
+	addAcmeShDomain(t, zw, "b-second.example.test", 922)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	svc := *f.srv.d.Issuance
+	svc.Certs = certstore.New(f.pool, sealOnceBox{n: new(int)})
+	f.srv.d.Issuance = &svc
+
+	_, err := f.srv.ImportCertificates(op, gen.ImportCertificatesRequestObject{OrgId: f.org,
+		Body: importBody(t, buf.Bytes(), ca.ID.String(), "true")})
+	if err == nil {
+		t.Fatal("err = nil, want the seal failure")
+	}
+	var he *HTTPError
+	if errors.As(err, &he) && he.Extra["imported"] != nil {
+		t.Fatalf("dry run problem carries imported = %+v", he.Extra["imported"])
+	}
+}
