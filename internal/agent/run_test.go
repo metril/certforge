@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -210,6 +211,49 @@ func TestSessionAnswersChallengeDuringReconcile(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("timed out")
+	}
+}
+
+// TestSessionDropMidReconcileLetsReconcileFinish: a socket dropping while a
+// reconcile runs must not cancel it; the session waits, the reconcile
+// completes and state.json is saved.
+func TestSessionDropMidReconcileLetsReconcileFinish(t *testing.T) {
+	f := newFakeServer(t)
+	a := testAgent(t, f)
+	gate := make(chan struct{})
+	f.with(func() {
+		f.assignGate = gate
+		f.onWS = func(ctx context.Context, c *websocket.Conn) {
+			b, _ := agentproto.Marshal(agentproto.Sync{})
+			_ = c.Write(ctx, websocket.MessageText, b)
+			for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+				var hits int
+				f.with(func() { hits = f.assignHits })
+				if hits == 1 {
+					break
+				}
+			}
+			_ = c.CloseNow() // the socket drops while the reconcile is blocked
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ended := make(chan error, 1)
+	go func() { ended <- a.session(ctx, nil) }()
+	select {
+	case err := <-ended:
+		t.Fatalf("session returned (%v) before its reconcile finished", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(gate)
+	select {
+	case <-ended:
+	case <-ctx.Done():
+		t.Fatal("session did not return after the reconcile finished")
+	}
+	b, err := os.ReadFile(filepath.Join(a.ID.Dir, stateFile))
+	if err != nil || !strings.Contains(string(b), `"revision": 7`) {
+		t.Fatalf("state.json after a dropped session = %s (err %v), want revision 7", b, err)
 	}
 }
 

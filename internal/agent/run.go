@@ -258,10 +258,17 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 	}
 	defer conn.CloseNow() //nolint:errcheck // best-effort cleanup; the session's own error is what matters
 	ws := agentproto.WS{C: conn}
+	// parent outlives the session: the reconcile worker runs on it, so a
+	// dropped socket never cancels a deploy partway (hooks killed, state.json
+	// unsaved); only agent shutdown does.
+	parent := ctx
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	// Cancel and wait for the reconcile worker before the deferred
-	// conn.CloseNow above runs, so it never sends on a closed connection.
+	// Cancel the session and wait for the reconcile worker, which finishes
+	// any run in flight, before the deferred conn.CloseNow above runs, so it
+	// never sends on a closed connection. A result that cannot be sent is
+	// recovered by the next session, whose first reconcile reports every
+	// grant again.
 	defer func() { cancel(); workers.Wait() }()
 	// github.com/coder/websocket allows concurrent writers, so send needs
 	// no lock of its own.
@@ -322,7 +329,7 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 				return
 			case <-wake:
 			}
-			rep, err := a.reconcile(ctx, cl)
+			rep, err := a.reconcile(parent, cl)
 			if err != nil {
 				a.Log.Warn("reconcile failed", "err", err)
 				continue
