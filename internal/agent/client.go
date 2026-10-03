@@ -171,6 +171,6 @@ func (c *Client) Dial(ctx context.Context) (*websocket.Conn, error) {
 		}
 		return nil, err
 	}
-	conn.SetReadLimit(1 << 20)
+	conn.SetReadLimit(agentproto.MaxMessage)
 	return conn, nil
 }
