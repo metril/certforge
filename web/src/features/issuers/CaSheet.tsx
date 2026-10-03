@@ -25,11 +25,12 @@ import { CaKindBody, type ServerField } from './CaKindBody';
 // `detail`. This best-effort match places a 422's detail next to the field
 // it names (controller ruling); anything unmatched falls back to a banner.
 // acme-only — private-kind 422s are mapped by `configFieldError` below.
-function fieldFromDetail(detail: string): ServerField {
+export function fieldFromDetail(detail: string): ServerField {
   const d = detail.toLowerCase();
   if (d.includes('directory')) return 'directoryUrl';
   if (d.includes('eab') || d.includes('external account')) return 'eab';
-  if (d.includes('name')) return 'name';
+  // Whole word, and not a qualified name (hostname, DNS name, ...).
+  if (/(?<!\b(?:dns|host|common|server|domain|subject)\s)(?<![\w-])name\b/.test(d)) return 'name';
   return null;
 }
 
