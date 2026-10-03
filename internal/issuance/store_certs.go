@@ -253,6 +253,27 @@ func defaultsReference(g Defaults, id uuid.UUID) bool {
 	return false
 }
 
+// validateRuleShape is the write-time check of one rule set: at most
+// MaxRules rules, each valid, with well-formed resolvers (at most
+// MaxResolvers). Stored sets over the caps still load and run; only a write
+// is refused. It normalizes by index so the stored slice itself is cleared of
+// a stray via (see validateDefaultsShape's note).
+func validateRuleShape(rules []challenge.RuleSpec) error {
+	if len(rules) > MaxRules {
+		return &ValidationError{"verificationRules", fmt.Sprintf("at most %d rules", MaxRules)}
+	}
+	for i := range rules {
+		rules[i].Normalize()
+		if err := rules[i].Validate(); err != nil {
+			return &ValidationError{"verificationRules", err.Error()}
+		}
+		if err := validateResolvers("verificationRules", rules[i].Resolvers); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // validateDefaultsShape checks the fields of a Defaults value that do not
 // need a database lookup (used at every level: global, org and certificate
 // overrides).
@@ -279,17 +300,8 @@ func validateDefaultsShape(d Defaults) error {
 		}
 	}
 	if d.VerificationRules != nil {
-		rules := *d.VerificationRules
-		for i := range rules {
-			// Normalize before Validate, and by index (not range's copy),
-			// so a stray via on a non-http-01 rule (say a client that sent
-			// the OpenAPI schema's old "server" default alongside
-			// tls-alpn-01) is cleared in the stored slice itself, not just
-			// accepted.
-			rules[i].Normalize()
-			if err := rules[i].Validate(); err != nil {
-				return &ValidationError{"verificationRules", err.Error()}
-			}
+		if err := validateRuleShape(*d.VerificationRules); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -669,11 +681,8 @@ func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uui
 	if in.Rules == nil {
 		in.Rules = []challenge.RuleSpec{}
 	}
-	for i := range in.Rules {
-		in.Rules[i].Normalize()
-		if err := in.Rules[i].Validate(); err != nil {
-			return &ValidationError{"verificationRules", err.Error()}
-		}
+	if err := validateRuleShape(in.Rules); err != nil {
+		return err
 	}
 	// Lock every client either rule set (the certificate's own rules and
 	// its overrides' catch-all rules) references in one combined,

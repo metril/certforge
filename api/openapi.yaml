@@ -3412,7 +3412,7 @@ components:
         trustBundlePem: {type: string, description: Extra PEM roots; acme only.}
         eabKid: {type: string, description: "EAB key id; acme only, 422 on a private kind."}
         eabHmac: {type: string, nullable: true, writeOnly: true, description: "EAB HMAC key (base64url); acme only, 422 on a private kind. Write-only: on update null or __unchanged__ keeps it, empty string removes it."}
-        resolvers: {type: array, items: {type: string}, description: DNS resolvers for propagation checks; acme only.}
+        resolvers: {type: array, maxItems: 10, items: {type: string}, description: DNS resolvers for propagation checks; acme only.}
         config:
           type: object
           additionalProperties: true
@@ -3525,7 +3525,7 @@ components:
         method: {type: string, enum: [dns-01, manual-dns, http-01, tls-alpn-01], description: Verification method.}
         dnsCredentialId: {type: string, format: uuid, description: DNS credential; required for dns-01.}
         propagationSeconds: {type: integer, minimum: 0, maximum: 3600, description: Propagation timeout override.}
-        resolvers: {type: array, items: {type: string}, description: Resolvers for propagation checks.}
+        resolvers: {type: array, maxItems: 10, items: {type: string}, description: Resolvers for propagation checks.}
         cnameAliasZone: {type: string, description: Zone that _acme-challenge is CNAMEd into; checked before validation.}
         via: {allOf: [{$ref: "#/components/schemas/ChallengeVia"}], description: "http-01 only; default server. Ignored (cleared) for any other method."}
         clientId: {type: string, format: uuid, description: "Client that serves the challenge; required for tls-alpn-01, or for http-01 with via agent."}
@@ -3541,9 +3541,9 @@ components:
         preferredChain: {type: string, nullable: true, description: Issuer common name of the preferred alternate chain.}
         reuseKey: {type: boolean, nullable: true, description: Keep the private key across renewals.}
         mustStaple: {type: boolean, nullable: true, description: Request OCSP must-staple.}
-        verificationRules: {type: array, nullable: true, items: {$ref: "#/components/schemas/VerificationRule"}, description: Catch-all rules checked after a certificate's own rules.}
+        verificationRules: {type: array, nullable: true, maxItems: 50, items: {$ref: "#/components/schemas/VerificationRule"}, description: Catch-all rules checked after a certificate's own rules.}
         propagationSeconds: {type: integer, nullable: true, minimum: 0, maximum: 3600, description: Propagation timeout in seconds.}
-        resolvers: {type: array, nullable: true, items: {type: string}, description: Resolvers for propagation checks.}
+        resolvers: {type: array, nullable: true, maxItems: 10, items: {type: string}, description: Resolvers for propagation checks.}
     Source:
       type: string
       description: Level an effective value came from; default means the built-in value.
@@ -3728,6 +3728,7 @@ components:
         verificationRules:
           type: array
           description: Certificate rules, checked before the inherited catch-all rules.
+          maxItems: 50
           items: {$ref: "#/components/schemas/VerificationRule"}
         overrides:
           description: Per-certificate overrides of issuance settings.
@@ -3766,6 +3767,7 @@ components:
         verificationRules:
           type: array
           description: Ordered rules.
+          maxItems: 50
           items: {$ref: "#/components/schemas/VerificationRule"}
         overrides:
           description: Per-certificate overrides of issuance settings.

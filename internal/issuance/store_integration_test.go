@@ -665,3 +665,40 @@ func TestEffectiveOrgSources(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// TestRuleShapeCapsAndResolvers: per-rule resolvers are validated like the
+// CA's and the defaults' own, and rule and resolver counts are capped on write.
+func TestRuleShapeCapsAndResolvers(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	rule := func(res ...string) challenge.RuleSpec {
+		return challenge.RuleSpec{Match: "example.test", Method: challenge.MethodManualDNS, Resolvers: res}
+	}
+	var ve *ValidationError
+	if _, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "bad", CommonName: "example.test",
+		Rules: []challenge.RuleSpec{rule("bad resolver/x")}}); !errors.As(err, &ve) || ve.Field != "verificationRules" {
+		t.Fatalf("malformed resolver: %v", err)
+	}
+	many := make([]string, MaxResolvers+1)
+	for i := range many {
+		many[i] = "1.1.1.1"
+	}
+	if _, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "res", CommonName: "example.test",
+		Rules: []challenge.RuleSpec{rule(many...)}}); !errors.As(err, &ve) {
+		t.Fatalf("too many resolvers: %v", err)
+	}
+	rules := make([]challenge.RuleSpec, MaxRules+1)
+	for i := range rules {
+		rules[i] = rule()
+	}
+	if _, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "many", CommonName: "example.test", Rules: rules}); !errors.As(err, &ve) {
+		t.Fatalf("too many rules: %v", err)
+	}
+	if _, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "ok", CommonName: "example.test",
+		Rules: append(rules[:MaxRules-1:MaxRules-1], rule(many[:MaxResolvers]...))}); err != nil {
+		t.Fatalf("at the caps: %v", err)
+	}
+	if err := validateDefaultsShape(Defaults{VerificationRules: &rules}); !errors.As(err, &ve) {
+		t.Fatalf("defaults over the rule cap: %v", err)
+	}
+}

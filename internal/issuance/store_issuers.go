@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"regexp"
@@ -159,7 +160,16 @@ func (in *CAInput) normalize() (acmesigner.Preset, error) {
 	return p, nil
 }
 
+// Write-time caps on a rule set and on one resolver list.
+const (
+	MaxRules     = 50
+	MaxResolvers = 10
+)
+
 func validateResolvers(field string, rs []string) error {
+	if len(rs) > MaxResolvers {
+		return &ValidationError{field, fmt.Sprintf("at most %d resolvers", MaxResolvers)}
+	}
 	for _, r := range rs {
 		host := r
 		if h, _, err := net.SplitHostPort(r); err == nil {
