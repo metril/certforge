@@ -6,6 +6,7 @@ import type { Attempt, AttemptStep } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { explainAcmeError } from '@/lib/acmeErrors';
 import { docsHref, type HelpKey } from '@/lib/help';
 import type { Tone } from '@/lib/status';
@@ -13,6 +14,10 @@ import { fmtDateTime, fmtDuration } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HelpTip } from './HelpTip';
 import { ToneChip } from './StatusChip';
+
+// The raw log can run to 64 KB; render this many lines (the newest) unless
+// the reader asks for all of them.
+const LOG_LINE_CAP = 500;
 
 const OUTCOME: Record<Attempt['outcome'], { tone: Tone; icon: LucideIcon; label: string }> = {
   running: { tone: 'pending', icon: Loader2, label: 'Running' },
@@ -98,6 +103,7 @@ export function AttemptLogViewer({
   const [open, setOpen] = useState(defaultOpen);
   const [logOpen, setLogOpen] = useState(false);
   const [filter, setFilter] = useState('');
+  const [showAll, setShowAll] = useState(false);
   // Fix round 1 (review, Important): an unguarded navigator.clipboard.writeText
   // throws outright when the Clipboard API is missing (a plain-http LAN
   // deployment, or a browser that refuses it) and otherwise leaves a
@@ -117,7 +123,10 @@ export function AttemptLogViewer({
   const logQuery = useQuery({ ...attemptQuery(orgId, certId, attempt.id, attempt.outcome === 'running'), enabled: logOpen });
   const log = logQuery.data?.log ?? attempt.log ?? '';
   const lines = useMemo(() => log.split('\n').map((text, n) => ({ text, n })), [log]);
-  const shown = filter ? lines.filter((l) => l.text.toLowerCase().includes(filter.toLowerCase())) : lines;
+  // The search looks at every line; the cap applies to what it finds.
+  const matched = filter ? lines.filter((l) => l.text.toLowerCase().includes(filter.toLowerCase())) : lines;
+  const capped = !showAll && matched.length > LOG_LINE_CAP;
+  const shown = capped ? matched.slice(-LOG_LINE_CAP) : matched;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-b border-border last:border-b-0">
@@ -182,6 +191,21 @@ export function AttemptLogViewer({
                 {copyLogStatus === 'failed' && 'Copy failed'}
               </span>
             </div>
+            {(capped || (showAll && matched.length > LOG_LINE_CAP)) && (
+              <div className="flex items-center gap-2 text-xs text-ink-muted">
+                <span>
+                  {capped ? `Showing the last ${LOG_LINE_CAP} of ${matched.length.toLocaleString()} ${filter ? 'matching ' : ''}lines.` : `Showing all ${matched.length.toLocaleString()} lines.`}
+                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="sm" onClick={() => setShowAll(!showAll)}>
+                      {capped ? `Show all ${matched.length.toLocaleString()} lines` : `Show last ${LOG_LINE_CAP} lines`}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{capped ? 'Render every line of the log; long logs may be slow.' : 'Go back to the newest lines only.'}</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
             {logQuery.isError && <p className="text-sm text-failed">Couldn't load the log.</p>}
             {logQuery.isPending && <p className="text-sm text-ink-muted">Loading…</p>}
             <pre className="max-h-96 overflow-auto rounded-md border border-border bg-subtle p-3 font-mono text-xs leading-relaxed">

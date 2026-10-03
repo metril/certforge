@@ -220,3 +220,31 @@ it('fetches the final log once the fetched attempt finishes, then stops polling'
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(calls).toBe(3);
 });
+
+const bigLog = Array.from({ length: 1234 }, (_, i) => `entry ${i + 1}`).join('\n');
+const openBigLog = async () => {
+  server.use(http.get(attemptUrl, () => HttpResponse.json(makeAttempt({ log: bigLog }))));
+  const { user } = renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={noLog()} defaultOpen />);
+  await user.click(screen.getByRole('button', { name: 'Raw log' }));
+  await screen.findByText('entry 1234');
+  return user;
+};
+
+it('renders only the last 500 lines of a long log, then shows all and returns to the tail', async () => {
+  const user = await openBigLog();
+  expect(screen.queryByText('entry 734')).toBeNull();
+  expect(screen.getByText('entry 735')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Show all 1,234 lines' }));
+  expect(screen.getByText('entry 1')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Show last 500 lines' }));
+  expect(screen.queryByText('entry 1')).toBeNull();
+  expect(screen.getByText('entry 1234')).toBeInTheDocument();
+});
+
+it('the search covers lines outside the rendered tail', async () => {
+  const user = await openBigLog();
+  expect(screen.queryByText('entry 7')).toBeNull();
+  await user.type(screen.getByLabelText('Search log'), 'entry 7');
+  expect(screen.getByText('entry 7')).toBeInTheDocument();
+  expect(screen.queryByText('entry 1234')).toBeNull();
+});
