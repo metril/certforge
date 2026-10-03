@@ -1,7 +1,6 @@
-import { useDirty } from '@/lib/useDirty';
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ErrorSchema } from '@rjsf/utils';
+import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { presetsQuery, saveCa } from '@/api/queries/cas';
 import { metaSchemasQuery } from '@/api/queries/dns';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -16,6 +15,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import type { SchemaFormHandle } from '@/forms/SchemaForm';
 import { KIND_LABEL } from '@/lib/caKinds';
 import { help } from '@/lib/help';
+import { settledConfig } from '@/lib/secretForm';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { initialDraft, toCaInput, type CaDraft } from './caBody';
@@ -56,7 +56,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
   // caller cannot use is disabled behind PermissionTip, never hidden.
   const canWrite = can(me, 'cas:write', orgId);
   const { data: presets = [] } = useQuery(presetsQuery);
-  const { data: meta } = useQuery(metaSchemasQuery);
+  const { data: meta, isPending: metaPending } = useQuery(metaSchemasQuery);
   const signers = meta?.signers ?? [];
   const formRef = useRef<SchemaFormHandle>(null);
   const [draft, setDraft] = useState<CaDraft>(() => initialDraft(ca, initialKind));
@@ -68,7 +68,22 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
   const [serverError, setServerError] = useState<{ field: ServerField; message: string } | null>(null);
   const [configError, setConfigError] = useState<ErrorSchema | undefined>(undefined);
   const [bannerError, setBannerError] = useState<string | null>(null);
-  const dirty = useDirty(draft);
+  // rjsf fires onChange on mount once defaults fill, so the kinds' config is
+  // compared in its settled form (as TargetSheet does) and the baseline waits
+  // for the signer schemas to arrive.
+  const settleKind = (kind: 'localca' | 'vaultpki', config: Record<string, unknown>) => {
+    const schema = signers.find((x) => x.code === kind)?.schema as RJSFSchema | undefined;
+    return schema ? settledConfig(schema, config, ca?.storedSecrets ?? []) : config;
+  };
+  const settled = JSON.stringify({
+    ...draft,
+    // An importing draft's schema drops fields; the switch itself is already an edit.
+    localca: { ...draft.localca, config: draft.localca.importing ? draft.localca.config : settleKind('localca', draft.localca.config) },
+    vaultpki: { config: settleKind('vaultpki', draft.vaultpki.config) },
+  });
+  const baseline = useRef<string | null>(null);
+  if (baseline.current === null && !metaPending) baseline.current = settled;
+  const dirty = baseline.current !== null && settled !== baseline.current;
 
   const preset = presets.find((p) => p.preset === draft.acme.preset);
   const nameOk = draft.name.trim() !== '';
