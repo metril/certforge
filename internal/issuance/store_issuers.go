@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -105,7 +106,7 @@ func accountFromRow(r sqlcgen.AcmeAccount) Account {
 		RegistrationURI: r.RegistrationUri, CreatedAt: r.CreatedAt}
 }
 
-func (in *CAInput) normalize() (acmesigner.Preset, error) {
+func (in *CAInput) normalize(stored []string) (acmesigner.Preset, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return acmesigner.Preset{}, &ValidationError{"name", "required"}
@@ -154,7 +155,7 @@ func (in *CAInput) normalize() (acmesigner.Preset, error) {
 	if in.Resolvers == nil {
 		in.Resolvers = []string{}
 	}
-	if err := validateResolvers("resolvers", in.Resolvers); err != nil {
+	if err := validateResolversUpdate("resolvers", in.Resolvers, stored); err != nil {
 		return p, err
 	}
 	return p, nil
@@ -165,6 +166,16 @@ const (
 	MaxRules     = 50
 	MaxResolvers = 10
 )
+
+// validateResolversUpdate is validateResolvers for an update: a list equal to
+// the stored one (order-sensitive) is grandfathered, so a CA or defaults row
+// saved before the caps still saves with the list sent back unchanged.
+func validateResolversUpdate(field string, rs, stored []string) error {
+	if stored != nil && slices.Equal(rs, stored) {
+		return nil
+	}
+	return validateResolvers(field, rs)
+}
 
 func validateResolvers(field string, rs []string) error {
 	if len(rs) > MaxResolvers {
@@ -191,7 +202,7 @@ func (s *Store) sealOptional(ctx context.Context, v string) ([]byte, error) {
 
 // CreateCA validates and stores a CA.
 func (s *Store) CreateCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, error) {
-	p, err := in.normalize()
+	p, err := in.normalize(nil)
 	if err != nil {
 		return CA{}, err
 	}
@@ -239,7 +250,7 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	if err != nil {
 		return CA{}, notFound(err)
 	}
-	p, err := in.normalize()
+	p, err := in.normalize(cur.Resolvers)
 	if err != nil {
 		return CA{}, err
 	}

@@ -4,7 +4,9 @@ package issuance
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -698,7 +700,93 @@ func TestRuleShapeCapsAndResolvers(t *testing.T) {
 		Rules: append(rules[:MaxRules-1:MaxRules-1], rule(many[:MaxResolvers]...))}); err != nil {
 		t.Fatalf("at the caps: %v", err)
 	}
-	if err := validateDefaultsShape(Defaults{VerificationRules: &rules}); !errors.As(err, &ve) {
+	if err := validateDefaultsShape(Defaults{VerificationRules: &rules}, nil); !errors.As(err, &ve) {
 		t.Fatalf("defaults over the rule cap: %v", err)
 	}
+}
+
+// TestOverCapListsAreGrandfathered: a certificate, org defaults and CA stored
+// with lists the write-time caps would now refuse (seeded past validation)
+// still save when the list is sent back unchanged, but not when it changes;
+// a create over the cap is always refused.
+func TestOverCapListsAreGrandfathered(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	var ve *ValidationError
+	// A rule list over the cap, one rule with a resolver that was never checked.
+	rules := make([]challenge.RuleSpec, MaxRules+1)
+	for i := range rules {
+		rules[i] = challenge.RuleSpec{Match: "example.test", Method: challenge.MethodManualDNS}
+	}
+	rules[0].Resolvers = []string{"bad resolver/x"}
+	rj, _ := json.Marshal(rules)
+	resolvers := make([]string, MaxResolvers+1)
+	for i := range resolvers {
+		resolvers[i] = "1.1.1.1"
+	}
+
+	// Certificate.
+	c, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "web", CommonName: "example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET verification_rules = $2 WHERE id = $1`, c.ID, rj); err != nil {
+		t.Fatal(err)
+	}
+	in := CertInput{Name: "web2", CommonName: "example.test", Rules: rules}
+	if _, _, err := f.store.UpdateCertificate(ctx, f.org, c.ID, in, nil); err != nil {
+		t.Fatalf("unrelated edit with the list unchanged: %v", err)
+	}
+	in.Rules = append(append([]challenge.RuleSpec{}, rules...), rules[1])
+	if _, _, err := f.store.UpdateCertificate(ctx, f.org, c.ID, in, nil); !errors.As(err, &ve) {
+		t.Fatalf("changed list still over the cap: %v", err)
+	}
+	if _, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "new", CommonName: "new.example.test", Rules: rules}); !errors.As(err, &ve) {
+		t.Fatalf("create over the cap: %v", err)
+	}
+
+	// Org defaults.
+	if _, err := f.pool.Exec(ctx, `INSERT INTO issuance_defaults (org_id, config) VALUES ($1, $2)
+		ON CONFLICT (org_id) DO UPDATE SET config = EXCLUDED.config`, f.org,
+		fmt.Sprintf(`{"verificationRules": %s, "resolvers": %s}`, rj, mustJSON(t, resolvers))); err != nil {
+		t.Fatal(err)
+	}
+	d := Defaults{VerificationRules: &rules, Resolvers: &resolvers}
+	if err := f.store.PutOrgDefaults(ctx, f.org, d); err != nil {
+		t.Fatalf("org defaults unchanged lists: %v", err)
+	}
+	more := append(append([]string{}, resolvers...), "8.8.8.8")
+	d.Resolvers = &more
+	if err := f.store.PutOrgDefaults(ctx, f.org, d); !errors.As(err, &ve) {
+		t.Fatalf("org defaults changed resolvers over the cap: %v", err)
+	}
+
+	// CA.
+	ca, err := f.store.CreateCA(ctx, f.org, CAInput{Name: "Over", Preset: "custom", DirectoryURL: "https://over.test/dir", Resolvers: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE cas SET resolvers = $2 WHERE id = $1`, ca.ID, resolvers); err != nil {
+		t.Fatal(err)
+	}
+	cin := CAInput{Name: "Over renamed", Preset: "custom", DirectoryURL: "https://over.test/dir", Resolvers: resolvers}
+	if _, err := f.store.UpdateCA(ctx, f.org, ca.ID, cin); err != nil {
+		t.Fatalf("CA rename with resolvers unchanged: %v", err)
+	}
+	cin.Resolvers = more
+	if _, err := f.store.UpdateCA(ctx, f.org, ca.ID, cin); !errors.As(err, &ve) {
+		t.Fatalf("CA changed resolvers over the cap: %v", err)
+	}
+	if _, err := f.store.CreateCA(ctx, f.org, CAInput{Name: "Over2", Preset: "custom", DirectoryURL: "https://over2.test/dir", Resolvers: resolvers}); !errors.As(err, &ve) {
+		t.Fatalf("CA create over the cap: %v", err)
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
