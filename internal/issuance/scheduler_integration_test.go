@@ -45,6 +45,26 @@ func TestEnqueueDue(t *testing.T) {
 	}
 }
 
+// TestEnqueueDueHousekeepingFailure: a failing housekeeping call (here the
+// ledger prune, its table renamed away) is reported but never stops due
+// certificates from being enqueued.
+func TestEnqueueDueHousekeepingFailure(t *testing.T) {
+	f := newFixture(t)
+	rules := []challenge.RuleSpec{{Match: "*", Method: challenge.MethodManualDNS}}
+	due := f.cert(t, []string{"a.example.test"}, rules)
+	if _, err := f.pool.Exec(context.Background(), `ALTER TABLE rate_ledger RENAME TO rate_ledger_gone`); err != nil {
+		t.Fatal(err)
+	}
+	ins := &fakeInserter{seen: map[string]bool{}}
+	n, err := EnqueueDue(context.Background(), f.store, ins, 100)
+	if err == nil {
+		t.Fatal("want the housekeeping error returned")
+	}
+	if n != 1 || len(ins.args) != 1 || ins.args[0].CertID != due.ID {
+		t.Fatalf("n=%d args=%v", n, ins.args)
+	}
+}
+
 // TestSchedulerSkipsUnmanaged is R10: an unmanaged (uploaded/imported)
 // certificate never appears in ListDueCertificateIDs/EnqueueDue, whatever
 // it might otherwise look due for (the certificates_unmanaged_no_renewal

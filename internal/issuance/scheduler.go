@@ -2,6 +2,8 @@ package issuance
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -46,34 +48,37 @@ func (w *ScheduleWorker) Work(ctx context.Context, _ *river.Job[ScheduleArgs]) e
 const ledgerRetention = 30 * 24 * time.Hour
 
 // EnqueueDue marks expired certificates, closes stale attempts, prunes old
-// rate-ledger rows and enqueues due certificates. It returns how many new
-// jobs were inserted (duplicates of queued or running jobs are skipped by
-// the unique options).
+// rate-ledger rows and enqueues due certificates. The three housekeeping
+// calls are best-effort: a failure never stops due certificates from being
+// enqueued, and is returned (joined) alongside the count once enqueueing is
+// done. It returns how many new jobs were inserted (duplicates of queued or
+// running jobs are skipped by the unique options).
 func EnqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, error) {
+	var housekeeping []error
 	if _, err := s.MarkExpired(ctx); err != nil {
-		return 0, err
+		housekeeping = append(housekeeping, fmt.Errorf("mark expired: %w", err))
 	}
 	if _, err := s.FailStaleAttempts(ctx, 4*time.Hour); err != nil {
-		return 0, err
+		housekeeping = append(housekeeping, fmt.Errorf("fail stale attempts: %w", err))
 	}
 	if _, err := s.PruneLedger(ctx, time.Now().Add(-ledgerRetention)); err != nil {
-		return 0, err
+		housekeeping = append(housekeeping, fmt.Errorf("prune ledger: %w", err))
 	}
 	ids, err := s.DueCertificateIDs(ctx, limit)
 	if err != nil {
-		return 0, err
+		return 0, errors.Join(append(housekeeping, err)...)
 	}
 	n := 0
 	for _, id := range ids {
 		res, err := ins.Insert(ctx, IssueArgs{CertID: id}, nil)
 		if err != nil {
-			return n, err
+			return n, errors.Join(append(housekeeping, err)...)
 		}
 		if !res.UniqueSkippedAsDuplicate {
 			n++
 		}
 	}
-	return n, nil
+	return n, errors.Join(housekeeping...)
 }
 
 // SchedulePeriod is how often due certificates are scanned.
