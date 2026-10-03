@@ -2,9 +2,9 @@ package challenge
 
 import (
 	"context"
-	"net/netip"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"regexp"
 	"strings"
 	"testing"
