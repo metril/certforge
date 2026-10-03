@@ -136,6 +136,11 @@ func (c *Client) Do(ctx context.Context, method, rawURL string, h http.Header, b
 			if lastStatus == http.StatusTooManyRequests && retryAfter > wait {
 				wait = retryAfter
 			}
+			// A wait that outlasts the deadline would only surface as a
+			// deadline error; report the server's own answer instead.
+			if dl, ok := ctx.Deadline(); ok && wait >= time.Until(dl) {
+				return lastStatus, lastErr
+			}
 			if err := sleepCtx(ctx, wait); err != nil {
 				return lastStatus, err
 			}

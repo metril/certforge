@@ -308,7 +308,9 @@ if not hmac.compare_digest(expected, request.headers.get("X-CertForge-Signature-
 
 `X-CertForge-Signature` (V1) is still sent unchanged for compatibility with
 existing receivers; it carries no freshness guarantee, so migrate when you can.
-Each delivery is signed once; retries of the same delivery reuse the headers.
+Each delivery attempt by the job is signed afresh with a new timestamp. Only
+the short in-call HTTP retries (bounded by the 45 s delivery timeout) reuse the
+headers, so a 5-minute freshness window never rejects a legitimate retry.
 
 ## SMTP
 
