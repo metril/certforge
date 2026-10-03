@@ -42,3 +42,12 @@ FROM manual_dns_pending WHERE attempt_id = $1;
 
 -- name: DeleteManualPending :exec
 DELETE FROM manual_dns_pending WHERE attempt_id = $1;
+
+-- name: PruneIssuanceAttempts :execrows
+-- Deletes finished attempts started before the cutoff, always sparing a
+-- certificate's newest keep_recent attempts (however old) and any attempt
+-- still running.
+DELETE FROM issuance_attempts a
+WHERE a.outcome <> 'running' AND a.started_at < sqlc.arg(before)
+  AND (SELECT count(*) FROM issuance_attempts n
+       WHERE n.cert_id = a.cert_id AND n.started_at > a.started_at) >= sqlc.arg(keep_recent)::int;

@@ -91,3 +91,8 @@ WHERE r.client_id = sqlc.arg(client_id)
   AND (NOT sqlc.arg(has_cursor)::bool OR (r.ran_at, r.id) < (sqlc.arg(before_ts)::timestamptz, sqlc.arg(before_id)::uuid))
 ORDER BY r.ran_at DESC, r.id DESC
 LIMIT sqlc.arg(page_limit)::int;
+
+-- name: PruneHookRuns :execrows
+-- Deletes hook runs older than the retention cutoff; run by the 5-minute
+-- certforge_schedule job.
+DELETE FROM hook_runs WHERE ran_at < $1;

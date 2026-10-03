@@ -118,6 +118,19 @@ func (s *Store) FailStaleAttempts(ctx context.Context, olderThan time.Duration) 
 	return s.q.FailStaleAttempts(ctx, time.Now().Add(-olderThan))
 }
 
+// PruneIssuanceAttempts deletes finished attempts started before the
+// cutoff, keeping each certificate's newest keepRecent attempts and any
+// still running, and returns how many were removed.
+func (s *Store) PruneIssuanceAttempts(ctx context.Context, before time.Time, keepRecent int) (int64, error) {
+	return s.q.PruneIssuanceAttempts(ctx, sqlcgen.PruneIssuanceAttemptsParams{Before: before, KeepRecent: int32(keepRecent)})
+}
+
+// PruneHookRuns deletes hook runs older than before, returning how many
+// were removed.
+func (s *Store) PruneHookRuns(ctx context.Context, before time.Time) (int64, error) {
+	return s.q.PruneHookRuns(ctx, before)
+}
+
 // ListAttempts returns the newest attempts of an org's certificate.
 func (s *Store) ListAttempts(ctx context.Context, orgID, certID uuid.UUID, limit int) ([]Attempt, error) {
 	if _, err := s.GetCertificate(ctx, orgID, certID); err != nil {

@@ -232,6 +232,29 @@ func (q *Queries) ManualAllConfirmed(ctx context.Context, attemptID uuid.UUID) (
 	return confirmed, err
 }
 
+const pruneIssuanceAttempts = `-- name: PruneIssuanceAttempts :execrows
+DELETE FROM issuance_attempts a
+WHERE a.outcome <> 'running' AND a.started_at < $1
+  AND (SELECT count(*) FROM issuance_attempts n
+       WHERE n.cert_id = a.cert_id AND n.started_at > a.started_at) >= $2::int
+`
+
+type PruneIssuanceAttemptsParams struct {
+	Before     time.Time `json:"before"`
+	KeepRecent int32     `json:"keep_recent"`
+}
+
+// Deletes finished attempts started before the cutoff, always sparing a
+// certificate's newest keep_recent attempts (however old) and any attempt
+// still running.
+func (q *Queries) PruneIssuanceAttempts(ctx context.Context, arg PruneIssuanceAttemptsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneIssuanceAttempts, arg.Before, arg.KeepRecent)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const saveAttemptProgress = `-- name: SaveAttemptProgress :exec
 UPDATE issuance_attempts SET steps = $2, log = $3 WHERE id = $1
 `

@@ -47,8 +47,22 @@ func (w *ScheduleWorker) Work(ctx context.Context, _ *river.Job[ScheduleArgs]) e
 // widest is 7 days) so a still-relevant row is never pruned mid-window.
 const ledgerRetention = 30 * 24 * time.Hour
 
+// attemptRetention is how long a finished issuance attempt is kept before
+// EnqueueDue prunes it, except that each certificate's newest
+// attemptsKeptPerCert attempts are always kept however old, so a
+// long-stable certificate still shows its last issuance history.
+const (
+	attemptRetention    = 90 * 24 * time.Hour
+	attemptsKeptPerCert = 20
+)
+
+// hookRunRetention is how long an agent hook run (with its captured
+// output) is kept before EnqueueDue prunes it.
+const hookRunRetention = 90 * 24 * time.Hour
+
 // EnqueueDue marks expired certificates, closes stale attempts, prunes old
-// rate-ledger rows and enqueues due certificates. The three housekeeping
+// rate-ledger rows, issuance attempts and hook runs, and enqueues due
+// certificates. The housekeeping
 // calls are best-effort: a failure never stops due certificates from being
 // enqueued, and is returned (joined) alongside the count once enqueueing is
 // done. It returns how many new jobs were inserted (duplicates of queued or
@@ -63,6 +77,12 @@ func EnqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, er
 	}
 	if _, err := s.PruneLedger(ctx, time.Now().Add(-ledgerRetention)); err != nil {
 		housekeeping = append(housekeeping, fmt.Errorf("prune ledger: %w", err))
+	}
+	if _, err := s.PruneIssuanceAttempts(ctx, time.Now().Add(-attemptRetention), attemptsKeptPerCert); err != nil {
+		housekeeping = append(housekeeping, fmt.Errorf("prune issuance attempts: %w", err))
+	}
+	if _, err := s.PruneHookRuns(ctx, time.Now().Add(-hookRunRetention)); err != nil {
+		housekeeping = append(housekeeping, fmt.Errorf("prune hook runs: %w", err))
 	}
 	ids, err := s.DueCertificateIDs(ctx, limit)
 	if err != nil {
