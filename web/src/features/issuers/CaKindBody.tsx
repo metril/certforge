@@ -28,7 +28,15 @@ const isHttps = (v: string) => {
     return false;
   }
 };
-const hostPort = (v: string) => (/^[\w.:[\]-]+(:\d{1,5})?$/.test(v) ? null : `${v} is not host or host:port`);
+// `[v6]:port`, `[v6]`, a bare IPv6 address, or `host[:port]`; the port, when
+// given, must be 1-65535.
+export const hostPort = (v: string) => {
+  const bad = `${v} is not host or host:port`;
+  if (/^[0-9a-fA-F:.]+$/.test(v) && /[0-9a-fA-F]/.test(v) && !v.includes(":::") && (v.match(/:/g) ?? []).length >= 2) return null;
+  const m = /^\[[0-9a-fA-F:.]+\](?::(\d{1,5}))?$/.exec(v) ?? /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?(?::(\d{1,5}))?$/.exec(v);
+  if (!m) return bad;
+  return m[1] === undefined || (Number(m[1]) >= 1 && Number(m[1]) <= 65535) ? null : bad;
+};
 
 export type ServerField = 'name' | 'directoryUrl' | 'eab' | null;
 
