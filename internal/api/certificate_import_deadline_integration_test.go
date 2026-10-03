@@ -4,6 +4,7 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -71,7 +72,7 @@ func TestImportExtendsReadDeadline(t *testing.T) {
 	}
 	post := func(c *http.Client, ct, body string) {
 		t.Helper()
-		req, err := http.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, path, strings.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}

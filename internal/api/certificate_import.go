@@ -8,9 +8,9 @@ import (
 	"io/fs"
 	"mime/multipart"
 	"net/http"
-	"time"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -36,7 +36,8 @@ func (s *Server) ImportCertificates(ctx context.Context, r gen.ImportCertificate
 	// longer (the error is http.ErrNotSupported for a writer that cannot,
 	// which keeps the server default).
 	if w, _ := httpFrom(ctx); w != nil {
-		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(importReadTimeout))
+		rc := http.NewResponseController(w) //nolint:bodyclose // false positive: a ResponseController holds no response body
+		_ = rc.SetReadDeadline(time.Now().Add(importReadTimeout))
 	}
 	fsys, caID, dryRun, err := parseImportMultipart(r.Body)
 	if err != nil {
