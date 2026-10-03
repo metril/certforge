@@ -3306,6 +3306,11 @@ export interface components {
             /** @description One entry per certificate found in the archive. */
             items: components["schemas"]["ImportItem"][];
         };
+        /** @description A problem response from importCertificates; a failure partway through a real import adds the certificates created before it. */
+        ImportProblem: components["schemas"]["Problem"] & {
+            /** @description Certificates created (action create) before the failure; absent when none were. */
+            imported?: components["schemas"]["ImportItem"][];
+        };
         /**
          * @description Which of the CA's rate limits this is.
          * @enum {string}
@@ -6362,7 +6367,15 @@ export interface operations {
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["UnprocessableEntity"];
-            500: components["responses"]["InternalError"];
+            /** @description Unexpected server error; details are in the server log. When it struck partway through a real import, imported lists the certificates already created (they stay stored). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ImportProblem"];
+                };
+            };
         };
     };
     getCertificate: {

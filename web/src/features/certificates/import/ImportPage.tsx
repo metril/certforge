@@ -46,6 +46,8 @@ export function ImportPage() {
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [caError, setCaError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // Certificates created before a real import failed; they stay stored.
+  const [partial, setPartial] = useState<ImportResult['items']>([]);
   const [lastDryRun, setLastDryRun] = useState(true);
   const [previewing, setPreviewing] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -75,6 +77,7 @@ export function ImportPage() {
     setArchiveError(null);
     setCaError(null);
     setFormError(null);
+    setPartial([]);
     if (dryRun) setPreviewing(true);
     else setImporting(true);
     try {
@@ -105,6 +108,7 @@ export function ImportPage() {
           return;
         }
       }
+      if (e instanceof ApiError && Array.isArray(e.problem.imported)) setPartial(e.problem.imported as ImportResult['items']);
       setFormError(errorMessage(e));
     } finally {
       if (dryRun) setPreviewing(false);
@@ -153,7 +157,17 @@ export function ImportPage() {
         </div>
       </Card>
       {formError ? (
-        <ErrorState message={formError} onRetry={() => void run(lastDryRun)} />
+        <div className="grid gap-4">
+          <ErrorState message={formError} onRetry={() => void run(lastDryRun)} />
+          {partial.length > 0 && (
+            <section aria-label="Imported before the failure" className="grid gap-4">
+              <p className="text-sm text-ink-muted">
+                Import failed after creating {partial.length} certificate{partial.length === 1 ? '' : 's'}. They are stored; Retry skips them.
+              </p>
+              <ImportPreview items={partial} orgSlug={org.slug} isMdUp={isMdUp} />
+            </section>
+          )}
+        </div>
       ) : result && result.items.length === 0 ? (
         <EmptyState message="No acme.sh or certbot certificates in this archive.">
           <Button variant="outline" onClick={() => onArchiveChange(null)}>

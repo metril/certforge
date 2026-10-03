@@ -34,5 +34,9 @@ export function useImportCertificates(orgId: string) {
     onSuccess: (_data, vars) => {
       if (!vars.dryRun) qc.invalidateQueries({ queryKey: ['certs', orgId] });
     },
+    // A real import that fails partway has still created certificates.
+    onError: (_e, vars) => {
+      if (!vars.dryRun) qc.invalidateQueries({ queryKey: ['certs', orgId] });
+    },
   });
 }

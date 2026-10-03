@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -45,9 +46,34 @@ func (s *Server) ImportCertificates(ctx context.Context, r gen.ImportCertificate
 	}
 	result, err := s.d.Issuance.ImportCertificates(ctx, r.OrgId, caID, fsys, dryRun)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, importFailure(s.d.Log, err, result)
 	}
 	return gen.ImportCertificates200JSONResponse(importResultOut(result)), nil
+}
+
+// importFailure maps err like every other handler, and when certificates
+// were already created before it hit (they stay committed) adds them to the
+// problem as an "imported" extension member so the caller can tell.
+func importFailure(log *slog.Logger, err error, partial issuance.ImportResult) error {
+	mapped := mapErr(err)
+	var created []gen.ImportItem
+	for _, it := range importResultOut(partial).Items {
+		if it.Action == gen.Create {
+			created = append(created, it)
+		}
+	}
+	if len(created) == 0 {
+		return mapped
+	}
+	var he *HTTPError
+	if errors.As(mapped, &he) {
+		out := *he
+		out.Extra = map[string]any{"imported": created}
+		return &out
+	}
+	log.Error("certificate import failed partway", "err", err)
+	return &HTTPError{Status: http.StatusInternalServerError, Title: "Internal server error",
+		Extra: map[string]any{"imported": created}}
 }
 
 // parseImportMultipart reads every part of body: archive (extracted with

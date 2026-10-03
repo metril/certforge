@@ -1964,6 +1964,24 @@ type ImportItem struct {
 	Source ImportSource `json:"source"`
 }
 
+// ImportProblem defines model for ImportProblem.
+type ImportProblem struct {
+	// Detail Explanation specific to this occurrence.
+	Detail *string `json:"detail,omitempty"`
+
+	// Imported Certificates created (action create) before the failure; absent when none were.
+	Imported *[]ImportItem `json:"imported,omitempty"`
+
+	// Status HTTP status code.
+	Status int `json:"status"`
+
+	// Title Short, human-readable summary.
+	Title string `json:"title"`
+
+	// Type Problem type URI; about:blank for generic HTTP errors.
+	Type string `json:"type"`
+}
+
 // ImportResult Result of importCertificates, or a preview when dryRun is true.
 type ImportResult struct {
 	// DryRun True when nothing was stored; items shows what would happen.
@@ -13730,7 +13748,7 @@ type ImportCertificatesResponse struct {
 	ApplicationproblemJSON413 *PayloadTooLarge
 	ApplicationproblemJSON415 *UnsupportedMediaType
 	ApplicationproblemJSON422 *UnprocessableEntity
-	ApplicationproblemJSON500 *InternalError
+	ApplicationproblemJSON500 *ImportProblem
 }
 
 // Status returns HTTPResponse.Status
@@ -20016,7 +20034,7 @@ func ParseImportCertificatesResponse(rsp *http.Response) (*ImportCertificatesRes
 		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalError
+		var dest ImportProblem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

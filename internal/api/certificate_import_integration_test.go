@@ -12,12 +12,15 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"mime/multipart"
 	"testing"
 	"time"
 
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/crypto/cryptotest"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/signer"
 )
@@ -26,6 +29,18 @@ import (
 // directory (fullchain.cer, <domain>.key), the layout Task 14's importer
 // package parses directly, at the archive's root.
 func acmeShZip(t *testing.T, domain string, serial int64) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	addAcmeShDomain(t, zw, domain, serial)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// addAcmeShDomain writes one acme.sh certificate directory into zw.
+func addAcmeShDomain(t *testing.T, zw *zip.Writer, domain string, serial int64) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -45,14 +60,8 @@ func acmeShZip(t *testing.T, domain string, serial int64) []byte {
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
 
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
 	writeZipFile(t, zw, domain+"/fullchain.cer", leafPEM)
 	writeZipFile(t, zw, domain+"/"+domain+".key", keyPEM)
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
 }
 
 func writeZipFile(t *testing.T, zw *zip.Writer, name string, data []byte) {
@@ -245,4 +254,54 @@ func TestImportNoAccount(t *testing.T) {
 	_, err = f.srv.ImportCertificates(op, gen.ImportCertificatesRequestObject{OrgId: f.org,
 		Body: importBody(t, archive, ca.ID.String(), "true")})
 	wantStatus(t, err, 422)
+}
+
+// sealOnceBox seals the first plaintext and refuses every later one, a
+// stand-in for a database failure partway through an import.
+type sealOnceBox struct {
+	cryptotest.PrefixBox
+	n *int
+}
+
+func (b sealOnceBox) Seal(ctx context.Context, p []byte) ([]byte, error) {
+	*b.n++
+	if *b.n > 1 {
+		return nil, errors.New("seal failed")
+	}
+	return b.PrefixBox.Seal(ctx, p)
+}
+
+// TestImportPartialFailureReportsCreated: a failure after the first entry
+// committed keeps the 500 but carries the already-created certificates in
+// the problem's imported extension member.
+func TestImportPartialFailureReportsCreated(t *testing.T) {
+	f := newAPIFixture(t)
+	op := f.as("operator")
+	ca := f.seedImportCA(t, "partial-ca")
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	addAcmeShDomain(t, zw, "a-first.example.test", 911)
+	addAcmeShDomain(t, zw, "b-second.example.test", 912)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	svc := *f.srv.d.Issuance
+	svc.Certs = certstore.New(f.pool, sealOnceBox{n: new(int)})
+	f.srv.d.Issuance = &svc
+
+	_, err := f.srv.ImportCertificates(op, gen.ImportCertificatesRequestObject{OrgId: f.org,
+		Body: importBody(t, buf.Bytes(), ca.ID.String(), "false")})
+	wantStatus(t, err, 500)
+	var he *HTTPError
+	if !errors.As(err, &he) {
+		t.Fatalf("err = %v, want *HTTPError", err)
+	}
+	imported, ok := he.Extra["imported"].([]gen.ImportItem)
+	if !ok || len(imported) != 1 || imported[0].Name != "a-first.example.test" || imported[0].Action != gen.Create ||
+		imported[0].CertificateId == nil {
+		t.Fatalf("imported = %+v, want the first certificate created", he.Extra["imported"])
+	}
+	if f.certCount(t, "a-first.example.test") != 1 || f.certCount(t, "b-second.example.test") != 0 {
+		t.Fatal("want only the first certificate stored")
+	}
 }
