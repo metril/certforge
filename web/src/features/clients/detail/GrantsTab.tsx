@@ -15,6 +15,7 @@ import { ServerDeploymentChip } from '@/components/ServerDeploymentChip';
 import { ToneChip } from '@/components/StatusChip';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DELIVERY_LABEL } from '@/lib/clientStatus';
 import type { HelpKey } from '@/lib/help';
@@ -62,8 +63,18 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   const [removing, setRemoving] = useState<Grant | null>(null);
   const [force, setForce] = useState(false);
   const writable = canWrite && client.status !== 'revoked';
-  const layoutName = (id: string | null) => (id ? (layouts.find((l) => l.id === id)?.name ?? '…') : '–');
-  const targetName = (id: string | null) => (id ? (targets.find((t) => t.id === id)?.name ?? '…') : '–');
+  // Without delivery:read the lookups never run, so a named layout/target
+  // can't be resolved: say so instead of showing the loading placeholder.
+  const noDelivery = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0}>—</span>
+      </TooltipTrigger>
+      <TooltipContent>Needs the delivery:read permission</TooltipContent>
+    </Tooltip>
+  );
+  const layoutName = (id: string | null): ReactNode => (id ? (canDelivery ? (layouts.find((l) => l.id === id)?.name ?? '…') : noDelivery) : '–');
+  const targetName = (id: string | null): ReactNode => (id ? (canDelivery ? (targets.find((t) => t.id === id)?.name ?? '…') : noDelivery) : '–');
   // Task 8: Grant.clientId/clientName/deployment are nullable for a
   // runsOn:'server' grant (5a-facts.md); this endpoint is client-scoped and
   // never actually returns one, but the table must render one safely rather

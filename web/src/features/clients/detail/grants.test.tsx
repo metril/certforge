@@ -254,3 +254,14 @@ it('either target saved as agent is pickable', async () => {
   await user.click(opt);
   expect(within(sheet).getByRole('combobox', { name: 'Deploy target' })).toHaveTextContent(targetEitherAgent.name);
 });
+
+it('shows a dash with a permission tooltip for layout and target without delivery:read', async () => {
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'none' as never, orgId: org.id }]))),
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () => HttpResponse.json({ items: [makeGrant({ layoutId: 'l-1', deployTargetId: 't-1' })] })),
+  );
+  renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  expect(screen.queryByText('…')).not.toBeInTheDocument();
+  expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+});
