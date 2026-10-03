@@ -300,6 +300,31 @@ func TestWriteSpoolRoundTripLeavesNoTempFiles(t *testing.T) {
 	}
 }
 
+// TestWriteUnusableSpoolFallsBackToMemory: a spool dir that cannot be used
+// does not fail the backup; it buffers in memory and still round-trips.
+func TestWriteUnusableSpoolFallsBackToMemory(t *testing.T) {
+	ctx := context.Background()
+	srcPool, srcQ := dbtest.New(t)
+	seedAllTables(t, ctx, srcPool)
+	be := newBackupEnv(srcQ, testKey(1))
+	opts := be.writeOpts(ctx, t)
+	opts.SpoolDir = filepath.Join(t.TempDir(), "missing")
+
+	var archive bytes.Buffer
+	if _, err := backup.Write(ctx, srcPool, &archive, opts); err != nil {
+		t.Fatal(err)
+	}
+	dstPool := dbtest.Empty(t)
+	if _, err := backup.Restore(ctx, dstPool, bytes.NewReader(archive.Bytes()), be.restoreOpts()); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	for _, tbl := range backup.Manifest {
+		if tableCounts(t, ctx, srcPool, []string{tbl})[tbl] != tableCounts(t, ctx, dstPool, []string{tbl})[tbl] {
+			t.Fatalf("table %s row count differs after restore", tbl)
+		}
+	}
+}
+
 func TestRestoreLoadsAtMaxVersion(t *testing.T) {
 	ctx := context.Background()
 	srcPool := dbtest.Empty(t)

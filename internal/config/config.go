@@ -76,16 +76,20 @@ type Config struct {
 	// authentication settings section accept a plain http:// OIDC issuer on a
 	// non-loopback host. Off by default; for dev and test stacks only.
 	AllowInsecureOIDCIssuer bool
+	// BackupSpoolDir (CF_BACKUP_SPOOL_DIR) is where backups stage each
+	// table's plaintext CSV. Empty means the OS temp dir.
+	BackupSpoolDir string
 }
 
 // Load reads and validates the CF_* environment variables.
 func Load() (Config, error) {
 	c := Config{
-		DatabaseURL: strings.TrimSpace(os.Getenv("CF_DATABASE_URL")),
-		ListenHTTP:  envOr("CF_LISTEN_HTTP", ":8080"),
-		ListenAgent: envOr("CF_LISTEN_AGENT", ":8443"),
-		BaseURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("CF_BASE_URL")), "/"),
-		LogLevel:    strings.ToLower(envOr("CF_LOG_LEVEL", "info")),
+		DatabaseURL:    strings.TrimSpace(os.Getenv("CF_DATABASE_URL")),
+		ListenHTTP:     envOr("CF_LISTEN_HTTP", ":8080"),
+		ListenAgent:    envOr("CF_LISTEN_AGENT", ":8443"),
+		BaseURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("CF_BASE_URL")), "/"),
+		LogLevel:       strings.ToLower(envOr("CF_LOG_LEVEL", "info")),
+		BackupSpoolDir: strings.TrimSpace(os.Getenv("CF_BACKUP_SPOOL_DIR")),
 	}
 	var errs []error
 	if v := envOr("CF_OIDC_ALLOW_INSECURE_ISSUER", ""); v != "" {

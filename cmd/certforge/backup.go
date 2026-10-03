@@ -60,6 +60,7 @@ func runBackup(ctx context.Context, args []string, stdout io.Writer) error {
 		KEKID:          active.ID(),
 		PreviousKEKIDs: prevIDs,
 		AppVersion:     version,
+		SpoolDir:       cfg.BackupSpoolDir,
 	}
 
 	if *out == "-" {

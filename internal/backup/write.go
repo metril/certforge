@@ -2,6 +2,7 @@ package backup
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -10,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,9 +40,10 @@ type WriteOpts struct {
 	AppVersion string
 	// SpoolDir is where each table's plaintext CSV is staged (a private
 	// 0700 subdirectory is created inside it) while its size and hash are
-	// computed. Empty, or unusable, falls back to the OS temp dir. The
-	// scheduled job points it at the backup directory so the spool shares
-	// the archive's filesystem.
+	// computed. Empty means the OS temp dir. If no spool can be created
+	// there, Write logs a warning and buffers each table in memory instead,
+	// so a backup never fails because of the spool. Never default this to
+	// the backup directory: the spool is unencrypted.
 	SpoolDir string
 }
 
@@ -50,8 +53,11 @@ const spoolPrefix = ".certforge-spool-"
 
 // spoolStaleAfter is how old an untouched spool directory must be before a
 // new backup treats it as abandoned (a live backup touches its directory
-// at every table).
+// at every table); a held lock protects it regardless of age.
 const spoolStaleAfter = time.Hour
+
+// spoolLockName is the lock file inside each spool directory.
+const spoolLockName = ".lock"
 
 // Summary is what Write produced.
 type Summary struct {
@@ -161,9 +167,11 @@ func writeTx(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSe
 
 	spool, err := newSpool(opts.SpoolDir)
 	if err != nil {
-		return Summary{}, err
+		slog.Warn("backup: spool directory unusable, buffering tables in memory", "err", err)
+		spool = nil
+	} else {
+		defer spool.close()
 	}
-	defer spool.close()
 
 	sums := make([]TableSum, 0, len(Manifest))
 	for _, table := range Manifest {
@@ -205,40 +213,67 @@ func snapshotVersion(ctx context.Context, tx pgx.Tx) (int64, error) {
 }
 
 // spool is a private 0700 directory holding one table's plaintext CSV at a
-// time.
-type spool struct{ dir string }
+// time. It holds an exclusive lock on its ".lock" file for its life so a
+// concurrent backup's stale sweep never removes a live spool.
+type spool struct {
+	dir  string
+	lock *os.File
+}
 
 // newSpool removes stale spool directories left by an interrupted backup,
-// then creates a fresh private one under base (the OS temp dir when base is
-// empty or unusable).
+// then creates a fresh private one under base (the OS temp dir when empty).
 func newSpool(base string) (*spool, error) {
-	if base != "" {
-		if dir, err := mkSpool(base); err == nil {
-			return &spool{dir: dir}, nil
-		}
+	if base == "" {
+		base = os.TempDir()
 	}
-	dir, err := mkSpool(os.TempDir())
+	sweepSpools(base)
+	dir, err := os.MkdirTemp(base, spoolPrefix+"*")
 	if err != nil {
-		return nil, fmt.Errorf("backup: create spool dir: %w", err)
+		return nil, err
 	}
-	return &spool{dir: dir}, nil
+	lock, err := os.OpenFile(filepath.Join(dir, spoolLockName), os.O_RDWR|os.O_CREATE, 0o600)
+	if err == nil {
+		err = lockFile(lock)
+	}
+	if err != nil {
+		if lock != nil {
+			_ = lock.Close()
+		}
+		_ = os.RemoveAll(dir)
+		return nil, err
+	}
+	return &spool{dir: dir, lock: lock}, nil
 }
 
-func mkSpool(base string) (string, error) {
-	if entries, err := os.ReadDir(base); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() || !strings.HasPrefix(e.Name(), spoolPrefix) {
-				continue
-			}
-			if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > spoolStaleAfter {
-				_ = os.RemoveAll(filepath.Join(base, e.Name()))
+// sweepSpools removes spool directories in base that are older than
+// spoolStaleAfter and whose lock is not held by a live backup.
+func sweepSpools(base string) {
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), spoolPrefix) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) <= spoolStaleAfter {
+			continue
+		}
+		dir := filepath.Join(base, e.Name())
+		if held, f := lockHeld(filepath.Join(dir, spoolLockName)); !held {
+			_ = os.RemoveAll(dir)
+			if f != nil {
+				_ = f.Close()
 			}
 		}
 	}
-	return os.MkdirTemp(base, spoolPrefix+"*")
 }
 
-func (s *spool) close() { _ = os.RemoveAll(s.dir) }
+func (s *spool) close() {
+	_ = os.RemoveAll(s.dir)
+	_ = s.lock.Close()
+}
 
 // dumpTable copies table's non-generated columns to CSV (with a header
 // row) into a spool file, hashing the exact bytes produced, then streams
@@ -258,6 +293,9 @@ func dumpTable(ctx context.Context, tx pgx.Tx, tw *tar.Writer, sp *spool, table 
 	sql := fmt.Sprintf(`COPY (SELECT %s FROM %s) TO STDOUT (FORMAT csv, HEADER)`,
 		strings.Join(selectList, ", "), pgx.Identifier{table}.Sanitize())
 
+	if sp == nil {
+		return dumpTableMem(ctx, tx, tw, table, sql)
+	}
 	f, err := os.OpenFile(filepath.Join(sp.dir, table+".csv"), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return TableSum{}, fmt.Errorf("backup: spool %s: %w", table, err)
@@ -285,6 +323,21 @@ func dumpTable(ctx context.Context, tx pgx.Tx, tw *tar.Writer, sp *spool, table 
 		return TableSum{}, fmt.Errorf("backup: tar write %s: %w", name, err)
 	}
 	return TableSum{Name: table, Rows: tag.RowsAffected(), SHA256: hex.EncodeToString(h.Sum(nil))}, nil
+}
+
+// dumpTableMem is dumpTable's fallback when no spool directory is usable:
+// the whole CSV is buffered in memory.
+func dumpTableMem(ctx context.Context, tx pgx.Tx, tw *tar.Writer, table, sql string) (TableSum, error) {
+	var buf bytes.Buffer
+	tag, err := tx.Conn().PgConn().CopyTo(ctx, &buf, sql)
+	if err != nil {
+		return TableSum{}, fmt.Errorf("backup: dump %s: %w", table, err)
+	}
+	sum := sha256.Sum256(buf.Bytes())
+	if err := writeTarEntry(tw, table+".csv", buf.Bytes()); err != nil {
+		return TableSum{}, err
+	}
+	return TableSum{Name: table, Rows: tag.RowsAffected(), SHA256: hex.EncodeToString(sum[:])}, nil
 }
 
 // tableColumns lists table's columns in ordinal order, excluding any

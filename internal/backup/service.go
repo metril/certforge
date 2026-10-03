@@ -43,6 +43,9 @@ type Service struct {
 	// wires notify.Service — a nil Emitter simply emits nothing.
 	Emitter *notify.Emitter
 	Log     *slog.Logger
+	// SpoolDir is CF_BACKUP_SPOOL_DIR: where Write stages plaintext table
+	// CSVs. Empty means the OS temp dir.
+	SpoolDir string
 
 	// BaseKey, KEKID, PreviousKEKIDs and AppVersion feed WriteOpts directly
 	// (serve.go derives BaseKey once at boot, before clear(root):
@@ -91,14 +94,8 @@ func (s *Service) Stream(ctx context.Context, w io.Writer) (Summary, error) {
 	if s.StreamFunc != nil {
 		return s.StreamFunc(ctx, w)
 	}
-	// Spool next to the scheduled target when a directory is configured;
-	// newSpool falls back to the OS temp dir if it is unusable.
-	var spoolDir string
-	if set, err := s.settings(ctx); err == nil {
-		spoolDir = set.Directory
-	}
 	return Write(ctx, s.Pool, w, WriteOpts{
-		SpoolDir:       spoolDir,
+		SpoolDir:       s.SpoolDir,
 		BaseKey:        s.BaseKey,
 		KEKID:          s.KEKID,
 		PreviousKEKIDs: s.PreviousKEKIDs,

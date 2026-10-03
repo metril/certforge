@@ -255,7 +255,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	backupSvc := &backup.Service{
 		Pool: pool, Settings: store, Audit: aud, Log: log, Emitter: notifyEmitter,
 		BaseKey: backupBaseKey, KEKID: env.KEKID(),
-		PreviousKEKIDs: previousKEKIDs, AppVersion: version,
+		PreviousKEKIDs: previousKEKIDs, AppVersion: version, SpoolDir: cfg.BackupSpoolDir,
 	}
 	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log,
 		agentListener.RegisterRiver, agentSvc.RegisterRiver, keysSvc.RegisterRiver, dispatcher.RegisterRiver,

@@ -417,3 +417,16 @@ func TestLoadAllowInsecureOIDCIssuer(t *testing.T) {
 		t.Fatal("bad value accepted")
 	}
 }
+
+func TestBackupSpoolDir(t *testing.T) {
+	t.Setenv("CF_DATABASE_URL", "postgres://x")
+	t.Setenv("CF_KEK", "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+	t.Setenv("CF_BACKUP_SPOOL_DIR", " /var/spool/cf ")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BackupSpoolDir != "/var/spool/cf" {
+		t.Fatalf("BackupSpoolDir = %q", c.BackupSpoolDir)
+	}
+}

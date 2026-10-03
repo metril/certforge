@@ -36,6 +36,7 @@ CertForge is configured from the web UI. The environment only carries what the s
 | `CF_BASE_URL` | no | – | Public URL. The setup wizard stores its own value in Settings → General, which takes precedence |
 | `CF_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` |
 | `CF_OIDC_ALLOW_INSECURE_ISSUER` | no | `false` | `true` lets Settings → Authentication accept a plain `http://` OIDC issuer on a non-loopback host. Without it, `http://` is accepted only for `localhost`, `127.0.0.0/8` and `::1`. For dev and test stacks only. |
+| `CF_BACKUP_SPOOL_DIR` | no | OS temp dir | Directory where a backup stages each table's unencrypted CSV (in a private `0700` subdirectory, deleted when the backup ends) while hashing it. Defaults to the OS temp dir, never the backup directory. If `/tmp` is a tmpfs the staged data sits in memory; point this at a disk path for that case. If no spool can be created, the backup buffers tables in memory and logs a warning. |
 
 <a id="the-kek"></a>
 ## The encryption key
