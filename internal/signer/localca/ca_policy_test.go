@@ -151,3 +151,53 @@ func TestParsePrivateKeyPEMSkipsECParameters(t *testing.T) {
 		t.Fatal("wrong key parsed")
 	}
 }
+
+func TestImportChainSelfSignedPlacement(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	rootKey := ecKey(t)
+	root := policyCert(t, "Root", rootKey.Public(), rootKey, nil, nil, 0, now)
+	midKey := ecKey(t)
+	mid := policyCert(t, "Mid", midKey.Public(), midKey, root, rootKey, 0, now)
+	issKey := ecKey(t)
+	iss := policyCert(t, "Issuing", issKey.Public(), issKey, mid, midKey, 0, now)
+	pems := func(cs ...*x509.Certificate) string {
+		out := ""
+		for _, c := range cs {
+			out += encodeCertPEM(t, c.Raw)
+		}
+		return out
+	}
+
+	selfIss := policyCert(t, "Self Issuing", issKey.Public(), issKey, nil, nil, 0, now)
+	otherKey := ecKey(t)
+	other := policyCert(t, "Other Root", otherKey.Public(), otherKey, nil, nil, 0, now)
+
+	t.Run("self-signed issuing plus unrelated root refused", func(t *testing.T) {
+		if _, err := Import(pems(selfIss, other), keyPEMOf(t, issKey), false, now); err == nil {
+			t.Fatal("want error")
+		}
+	})
+	t.Run("self-signed cert mid-bundle refused", func(t *testing.T) {
+		midSelf := policyCert(t, "Mid Self", midKey.Public(), midKey, nil, nil, 0, now)
+		if _, err := Import(pems(iss, midSelf, root), keyPEMOf(t, issKey), false, now); err == nil {
+			t.Fatal("want error")
+		}
+	})
+	t.Run("SHA-1 self-signed cert not at the top refused", func(t *testing.T) {
+		sha1Self := policyCert(t, "SHA1 Self", issKey.Public(), issKey, nil, nil, x509.ECDSAWithSHA1, now)
+		if _, err := Import(pems(sha1Self, root), keyPEMOf(t, issKey), false, now); err == nil {
+			t.Fatal("want error")
+		}
+	})
+	t.Run("valid shapes pass", func(t *testing.T) {
+		if _, err := Import(pems(mid, root), keyPEMOf(t, midKey), false, now); err != nil {
+			t.Fatalf("issuing under root: %v", err)
+		}
+		if _, err := Import(pems(iss, mid, root), keyPEMOf(t, issKey), false, now); err != nil {
+			t.Fatalf("issuing+mid+root: %v", err)
+		}
+		if _, err := Import(pems(selfIss), keyPEMOf(t, issKey), false, now); err != nil {
+			t.Fatalf("single self-signed: %v", err)
+		}
+	})
+}

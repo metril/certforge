@@ -268,7 +268,7 @@ func Import(certPEM, keyPEM string, crl bool, now time.Time) (Material, error) {
 
 // checkImportChain enforces the import policy on certs (issuing first):
 // every certificate's key is RSA >= 2048 or ECDSA P-256/P-384/P-521, no
-// certificate is signed with MD5 or SHA-1 (a self-signed top is exempt:
+// certificate is signed with MD5 or SHA-1 (a self-signed top of the bundle is exempt:
 // its self-signature protects nothing), and each certificate was signed by
 // the next one up (which must itself be a CA).
 func checkImportChain(certs []*x509.Certificate) error {
@@ -287,7 +287,10 @@ func checkImportChain(certs []*x509.Certificate) error {
 		default:
 			return fmt.Errorf("localca: %s uses an unsupported key type", certLabel(i, c))
 		}
-		selfSigned := bytes.Equal(c.RawIssuer, c.RawSubject) && c.CheckSignatureFrom(c) == nil
+		// Only the top of the bundle may be self-signed; a self-signed
+		// certificate with anything after it has no link to that rest.
+		top := i == len(certs)-1
+		selfSigned := top && bytes.Equal(c.RawIssuer, c.RawSubject) && c.CheckSignatureFrom(c) == nil
 		switch c.SignatureAlgorithm {
 		case x509.MD2WithRSA, x509.MD5WithRSA, x509.SHA1WithRSA, x509.DSAWithSHA1, x509.ECDSAWithSHA1:
 			if !selfSigned {
