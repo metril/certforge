@@ -1,6 +1,6 @@
 import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { filenameFrom, saveBlob } from '@/lib/download';
-import { livePoll, POLL } from '@/lib/polling';
+import { firstPagePoll, livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
 import { ApiError } from '../errors';
 import type { Certificate, CertificateInput, CertificateUpload, CertificateVersionUpload, CertStatus, ExportRequest, RevocationReason } from '../types';
@@ -76,7 +76,7 @@ export const certificatesInfinite = (orgId: string, s: CertListQuery) =>
       call(api.GET('/orgs/{orgId}/certificates', { params: { path: { orgId }, query: { status: s.status, q: s.q, sort: s.sort, limit: 100, cursor: pageParam } } })),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchInterval: POLL.list,
+    refetchInterval: firstPagePoll,
   });
 
 /** All orgs (lib/org.ts's ALL_ORGS_SLUG) view: pages through every
@@ -113,7 +113,7 @@ export const allOrgsCertificatesInfinite = (s: CertListQuery) =>
       call(api.GET('/certificates', { params: { query: { status: s.status, q: s.q, sort: s.sort, limit: 100, cursor: pageParam } } })),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchInterval: POLL.list,
+    refetchInterval: firstPagePoll,
   });
 
 export function plural(n: number, word: string): string {
