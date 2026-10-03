@@ -3,6 +3,7 @@ package vault
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -420,4 +421,49 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(2 * time.Millisecond)
 	}
 	t.Fatal("condition not met within timeout")
+}
+
+// syncBuf is a goroutine-safe log sink: the renewal loop writes from its
+// own goroutine while the test reads.
+type syncBuf struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// TestRenewLoopLogsLoginFailure: a failed login in the renewal loop is
+// logged at warn level, and the log never carries the secret id.
+func TestRenewLoopLogsLoginFailure(t *testing.T) {
+	fv := newFakeVault()
+	defer fv.Close()
+	fv.handleSeq(http.MethodPost, "/v1/auth/approle/login",
+		fakeResponse{status: 500, body: map[string]any{"errors": []string{"boom"}}},
+		fakeResponse{status: 500, body: map[string]any{"errors": []string{"boom"}}},
+		fakeResponse{status: 500, body: map[string]any{"errors": []string{"boom"}}},
+	)
+	buf := &syncBuf{}
+	c, err := New(Config{Addr: fv.URL(), Auth: AppRoleAuth{RoleID: "r", SecretID: "s3cret-id"}, Timeout: 2 * time.Second,
+		Log: slog.New(slog.NewTextHandler(buf, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.clock = &fakeClock{ch: make(chan time.Time)}
+	c.Start(context.Background())
+	defer c.Close()
+
+	waitFor(t, func() bool { return strings.Contains(buf.String(), "vault login failed") })
+	if out := buf.String(); !strings.Contains(out, "level=WARN") || strings.Contains(out, "s3cret-id") {
+		t.Fatalf("log = %q, want a WARN line without the secret id", out)
+	}
 }

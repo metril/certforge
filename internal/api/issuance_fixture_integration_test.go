@@ -139,7 +139,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	if err := vault.RegisterSettings(sections); err != nil {
 		t.Fatal(err)
 	}
-	vaultProvider := vault.NewProvider(settingsStore, sections)
+	vaultProvider := vault.NewProvider(settingsStore, sections, nil)
 	targetsReg := targets.NewRegistry()
 	targets.RegisterBuiltins(targetsReg)
 	targetsReg.Register(deploy.VaultKV{Vault: vaultProvider})

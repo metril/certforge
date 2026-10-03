@@ -130,7 +130,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	vaultpki.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
-	vaultProvider := vault.NewProvider(store, sections)
+	vaultProvider := vault.NewProvider(store, sections, log)
 	targetsReg := newTargetsRegistry(vaultProvider)
 	targets.AddToMeta(targetsReg, metaReg)
 	// notifySettings reads the live "notifications" section on every Send
