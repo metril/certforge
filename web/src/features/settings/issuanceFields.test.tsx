@@ -175,8 +175,8 @@ describe('IssuanceDefaultsForm disables the account field for a private effectiv
     expect(accountSwitch).toBeDisabled();
     expect(screen.getByText('Not used by private CAs')).toBeInTheDocument();
     const group = screen.getByRole('group', { name: 'ACME account' });
-    await user.hover(within(group).getByRole('button', { name: /^Help/ }));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('ACME accounts do not apply to private CAs.');
+    await user.click(within(group).getByRole('button', { name: /^Help/ }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('ACME accounts do not apply to private CAs.');
   });
 
   it('an acme effective CA leaves the account field enabled', () => {
