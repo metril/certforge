@@ -413,7 +413,7 @@ func TestIssuanceAgainstPebble(t *testing.T) {
 
 	// 6. Broken credential: failure recorded, with a bounded backoff
 	// strictly earlier than the healthy renewal's own schedule.
-	const brokenURL = "http://127.0.0.1:1"
+	const brokenURL = "http://challtestsrv:1" // unreachable port; loopback is refused at save time
 	c.call(ctx, t, http.MethodPut, "/api/v1/orgs/"+orgID+"/dns-credentials/"+cred.ID, map[string]any{
 		"name": "challtestsrv", "config": map[string]string{"CHALLTESTSRV_URL": brokenURL},
 	}, nil)

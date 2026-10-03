@@ -5,7 +5,10 @@ package api
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
+	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -158,7 +161,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	dispatcher := &deploy.Dispatcher{Pool: pool, Q: q, Reg: targetsReg, Certs: certs, Box: box,
 		HTTP:  func(context.Context) targets.HTTPFactory { return targets.HTTPFactory{AllowLoopback: true} },
 		River: deployJobs, Log: slog.Default()}
-	srv := &Server{d: Deps{Log: slog.Default(), Pool: pool, Queries: q, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
+	srv := &Server{d: Deps{HostResolver: stubHostResolver{}, Log: slog.Default(), Pool: pool, Queries: q, Auditor: aud, Issuance: svc, Certs: certs, Box: box,
 		Settings: settingsStore, Sections: sections, Vault: vaultProvider, Targets: targetsReg, Dispatcher: dispatcher}}
 	return &apiFixture{srv: srv, pool: pool, store: store, certs: certs, box: box, org: dbtest.Org(t, pool),
 		settingsStore: settingsStore, sections: sections, deployJobs: deployJobs}
@@ -254,4 +257,18 @@ func (f *apiFixture) lastAuditDetails(t *testing.T, action, resourceID string) s
 		t.Fatal(err)
 	}
 	return details
+}
+
+// stubHostResolver resolves *.example.test to a public address and the
+// nip.io / metadata names the SSRF tests use, so no test touches real DNS.
+type stubHostResolver struct{}
+
+func (stubHostResolver) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, error) {
+	switch {
+	case host == "127.0.0.1.nip.io":
+		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+	case strings.HasSuffix(host, ".example.test"):
+		return []netip.Addr{netip.MustParseAddr("203.0.113.9")}, nil
+	}
+	return nil, errors.New("no such host")
 }

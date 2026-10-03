@@ -605,7 +605,8 @@ func TestDNSCredentialURLFieldsFollowSSRFPolicy(t *testing.T) {
 				Config: map[string]string{"HTTPREQ_ENDPOINT": endpoint, "HTTPREQ_PASSWORD": "s"}}})
 		return err
 	}
-	for _, u := range []string{"http://127.0.0.1:8080", "http://localhost/x", "http://169.254.169.254/latest", "http://[::1]/"} {
+	for _, u := range []string{"http://127.0.0.1:8080", "http://localhost/x", "http://169.254.169.254/latest", "http://[::1]/",
+		"http://127.0.0.1.nip.io/", "http://metadata.google.internal/", "https://nxdomain.example.invalid/"} {
 		err := create(u)
 		wantStatus(t, err, http.StatusUnprocessableEntity)
 		if !strings.Contains(err.Error(), "HTTPREQ_ENDPOINT") {

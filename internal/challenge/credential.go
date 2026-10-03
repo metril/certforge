@@ -1,11 +1,16 @@
 package challenge
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/metril/certforge/internal/notify/httpx"
 )
@@ -252,18 +257,42 @@ func isURLField(name string) bool {
 // ...) that an _ENDPOINT field accepts instead of a URL.
 var regionAlias = regexp.MustCompile(`^(ovh|kimsufi|soyoustart|runabove)-[a-z]{2}$`)
 
-// CheckURLFields runs every URL-typed field of cfg through the notifier URL
-// policy (httpx.CheckURL) so a credential cannot point the server at a
-// loopback, link-local or cloud-metadata address. allowLoopback is the
-// notifications section's allowLoopbackUrls; the metadata addresses stay
-// blocked regardless. Empty values and the Unchanged sentinel are skipped, as
-// are unknown fields (SplitConfig rejects those). A value without a scheme is
+// HostResolver resolves a hostname to its addresses; *net.Resolver
+// satisfies it. Injectable so tests need no real DNS.
+type HostResolver interface {
+	LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error)
+}
+
+// resolveTimeout bounds the save-time lookup of one credential field.
+const resolveTimeout = 3 * time.Second
+
+// metadataNames are well-known cloud-metadata hostnames, refused by name
+// whatever they resolve to.
+var metadataNames = map[string]bool{
+	"metadata.google.internal": true, "metadata": true, "instance-data": true,
+	"instance-data.ec2.internal": true, "metadata.azure.internal": true, "metadata.tencentyun.com": true,
+}
+
+// CheckURLFields runs every URL- or host-typed field of cfg through the
+// notifier URL policy (httpx.CheckURL) and then resolves its hostname and
+// classifies every resolved address the same way, so a credential cannot
+// point the server at a loopback, link-local or cloud-metadata address, by
+// literal or by name (lego providers dial with their own HTTP clients, so
+// the dial-time check httpx applies is not available). allowLoopback is the
+// notifications section's allowLoopbackUrls; the metadata addresses and
+// names stay blocked regardless. A hostname that does not resolve is
+// refused. Empty values and the Unchanged sentinel are skipped, as are
+// unknown fields (SplitConfig rejects those). A value without a scheme is
 // checked as the host of https://<value>; the symbolic OVH region names
-// ("ovh-eu") are skipped. The error names the first offending field (sorted order).
-func CheckURLFields(code string, cfg map[string]string, allowLoopback bool) error {
+// ("ovh-eu") are skipped. r nil uses net.DefaultResolver. The error names the
+// first offending field (sorted order). The check runs at save time only.
+func CheckURLFields(ctx context.Context, code string, cfg map[string]string, allowLoopback bool, r HostResolver) error {
 	e, ok := lookupEntry(code)
 	if !ok {
 		return nil
+	}
+	if r == nil {
+		r = net.DefaultResolver
 	}
 	keys := make([]string, 0, len(cfg))
 	for k := range cfg {
@@ -284,6 +313,34 @@ func CheckURLFields(code string, cfg map[string]string, allowLoopback bool) erro
 		}
 		if err := httpx.CheckURL(v, allowLoopback); err != nil {
 			return fmt.Errorf("%s: %w", k, err)
+		}
+		u, _ := url.Parse(v) // CheckURL parsed it
+		if err := checkResolved(ctx, u.Hostname(), allowLoopback, r); err != nil {
+			return fmt.Errorf("%s: %w", k, err)
+		}
+	}
+	return nil
+}
+
+// checkResolved refuses a metadata name, an unresolvable name, and a name
+// with any resolved address the policy blocks. A literal IP was already
+// classified by CheckURL.
+func checkResolved(ctx context.Context, host string, allowLoopback bool, r HostResolver) error {
+	if _, err := netip.ParseAddr(host); err == nil {
+		return nil
+	}
+	if metadataNames[strings.ToLower(strings.TrimSuffix(host, "."))] {
+		return fmt.Errorf("host %q is a cloud-metadata name and is not allowed", host)
+	}
+	ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
+	defer cancel()
+	addrs, err := r.LookupNetIP(ctx, "ip", host)
+	if err != nil || len(addrs) == 0 {
+		return fmt.Errorf("host %q could not be resolved; the address must resolve when the credential is saved", host)
+	}
+	for _, a := range addrs {
+		if err := httpx.CheckHost(a.String(), allowLoopback); err != nil {
+			return fmt.Errorf("host %q resolves to %s, which is not allowed", host, a)
 		}
 	}
 	return nil

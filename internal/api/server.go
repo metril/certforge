@@ -40,13 +40,16 @@ import (
 
 // Deps are the services handlers use.
 type Deps struct {
-	Config        config.Config
-	Log           *slog.Logger
-	Pool          *pgxpool.Pool
-	Queries       *sqlcgen.Queries
-	Settings      *settings.Store
-	Sections      *settings.Registry
-	Meta          *meta.Registry
+	Config   config.Config
+	Log      *slog.Logger
+	Pool     *pgxpool.Pool
+	Queries  *sqlcgen.Queries
+	Settings *settings.Store
+	Sections *settings.Registry
+	Meta     *meta.Registry
+	// HostResolver resolves hostnames in DNS credential URL fields at save
+	// time; nil uses the system resolver. Tests inject a stub.
+	HostResolver  challenge.HostResolver
 	Sessions      *authn.Sessions
 	Auditor       *audit.Auditor
 	AuthSettings  *authn.SettingsSource // authentication section; nil falls back to RemoteAddr

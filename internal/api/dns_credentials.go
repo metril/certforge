@@ -87,13 +87,14 @@ func (s *Server) CreateDNSCredential(ctx context.Context, r gen.CreateDNSCredent
 // checkDNSCredURLs applies the notifier SSRF policy to a credential's
 // URL-typed fields (422 naming the field). The "notifications" section's
 // allowLoopbackUrls is the opt-out for loopback hosts; the cloud-metadata
-// addresses stay blocked. Stored credentials are never re-checked.
+// addresses stay blocked. Hostnames are resolved and every address checked
+// (Deps.HostResolver, nil = system DNS). Stored credentials are never re-checked.
 func (s *Server) checkDNSCredURLs(ctx context.Context, code string, cfg map[string]string) error {
 	allowLoopback, err := s.monitorAllowLoopback(ctx)
 	if err != nil {
 		return err
 	}
-	if err := challenge.CheckURLFields(code, cfg, allowLoopback); err != nil {
+	if err := challenge.CheckURLFields(ctx, code, cfg, allowLoopback, s.d.HostResolver); err != nil {
 		return unprocessable("config", err.Error())
 	}
 	return nil
