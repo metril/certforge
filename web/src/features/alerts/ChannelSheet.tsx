@@ -222,8 +222,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
                       </>
                     ),
                     disabled: !!channel || !canWrite,
-                    hint: !canWrite && !channel ? (writeReason ?? 'Needs the alerts:write permission') : undefined,
-                    hint: !isSmUp ? TYPE_META[t].label : undefined,
+                    hint: !canWrite && !channel ? (writeReason ?? 'Needs the alerts:write permission') : !isSmUp ? TYPE_META[t].label : undefined,
                   };
                 })}
               />
