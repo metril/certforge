@@ -29,7 +29,8 @@ const smtpTestMaxTimeoutSeconds = 10
 
 // GetSettingsSection returns a section's schema and value.
 func (s *Server) GetSettingsSection(ctx context.Context, req gen.GetSettingsSectionRequestObject) (gen.GetSettingsSectionResponseObject, error) {
-	if _, err := authorize(ctx, authz.ActionSettingsRead, nil); err != nil {
+	p, err := authorize(ctx, authz.ActionSettingsRead, nil)
+	if err != nil {
 		return nil, err
 	}
 	sec, ok := s.d.Sections.Section(req.Section)
@@ -39,6 +40,15 @@ func (s *Server) GetSettingsSection(ctx context.Context, req gen.GetSettingsSect
 	out, err := s.sectionResponse(ctx, sec)
 	if err != nil {
 		return nil, err
+	}
+	// The Vault address is infrastructure detail (usually the KEK's Vault
+	// too): blank it for a principal without global settings:write, matching
+	// GetKeysStatus.
+	if sec.Name == "vault" && !authz.Can(p, authz.ActionSettingsWrite, nil) {
+		delete(out.Value, "address")
+		if out.Stored != nil {
+			delete(*out.Stored, "address")
+		}
 	}
 	return gen.GetSettingsSection200JSONResponse(out), nil
 }

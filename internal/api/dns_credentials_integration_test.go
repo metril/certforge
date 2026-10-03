@@ -640,3 +640,34 @@ func TestDNSCredentialURLFieldsFollowSSRFPolicy(t *testing.T) {
 	}
 	wantStatus(t, create("http://169.254.169.254/"), http.StatusUnprocessableEntity)
 }
+
+// A3 follow-up: the vault settings section's address is shown only to a
+// principal holding global settings:write, so it is not a way around the
+// keys-status redaction; a writer's view and save are unaffected.
+func TestVaultSettingsAddressHiddenFromReaders(t *testing.T) {
+	f := newAPIFixture(t)
+	const addr = "https://vault.example.test:8200"
+	if _, err := f.srv.PutSettingsSection(f.as("admin"), gen.PutSettingsSectionRequestObject{Section: "vault",
+		Body: &gen.SettingsValue{"address": addr}}); err != nil {
+		t.Fatal(err)
+	}
+	read := func(ctx context.Context) gen.SettingsSection {
+		res, err := f.srv.GetSettingsSection(ctx, gen.GetSettingsSectionRequestObject{Section: "vault"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return gen.SettingsSection(res.(gen.GetSettingsSection200JSONResponse))
+	}
+	if got := read(f.as("admin")); got.Value["address"] != addr {
+		t.Fatalf("admin value = %v", got.Value)
+	}
+	v := read(f.as("viewer"))
+	if a, _ := v.Value["address"].(string); a != "" {
+		t.Fatalf("viewer saw address %q", a)
+	}
+	if v.Stored != nil {
+		if a, _ := (*v.Stored)["address"].(string); a != "" {
+			t.Fatalf("viewer saw stored address %q", a)
+		}
+	}
+}
