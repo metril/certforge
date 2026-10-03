@@ -129,7 +129,7 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={!canCheck || checkMonitor.isPending}
+                            disabled={!canCheck || (checkMonitor.isPending && checkMonitor.variables === m.id)}
                             onClick={() => checkMonitor.mutate(m.id, { onError: (e) => toast.error(errorMessage(e)) })}
                           >
                             Check now
@@ -150,7 +150,7 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
                     </Link>
                     <span className="truncate text-ink-muted">{i.cause}</span>
                     {!allOrgs && can(me, 'certs:issue', org.id) && (
-                      <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate([i.cert.id], renewToastHandlers(i.cert.name))}>
+                      <Button size="sm" variant="outline" disabled={renew.isPending && renew.variables?.[0] === i.cert.id} onClick={() => renew.mutate([i.cert.id], renewToastHandlers(i.cert.name))}>
                         Renew now
                       </Button>
                     )}

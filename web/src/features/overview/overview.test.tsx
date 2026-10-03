@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
@@ -282,3 +282,49 @@ it('no monitor query in all orgs', async () => {
   expect(requested).toBe(false);
 });
 
+
+it('keeps the page and shows a stale notice when a later poll fails', async () => {
+  const { queryClient } = renderRoute('/o/acme/overview');
+  await screen.findByRole('region', { name: 'Needs attention' });
+  await screen.findByText('api');
+  server.use(http.get(url('/orgs/org-1/certificates'), () => problem(500, 'boom')));
+  await queryClient.refetchQueries({ queryKey: ['certs'] });
+  expect(await screen.findByRole('status')).toHaveTextContent(/showing the last loaded data/);
+  expect(screen.getByText('api')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+});
+
+it('only disables Renew now on the row being renewed', async () => {
+  server.use(http.post(url('/orgs/org-1/certificates/:id/renew'), async () => (await delay(300), new HttpResponse(null, { status: 202 }))));
+  const { user } = renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  const rows = (await within(queue).findAllByRole('button', { name: 'Renew now' })).length;
+  expect(rows).toBeGreaterThan(0);
+  const first = within(queue).getAllByRole('button', { name: 'Renew now' })[0]!;
+  await user.click(first);
+  await waitFor(() => expect(first).toBeDisabled());
+  for (const b of within(queue).getAllByRole('button', { name: 'Renew now' }).slice(1)) expect(b).toBeEnabled();
+});
+
+it('range presets are keyboard buttons that stay in sync with the brush', async () => {
+  const rect = { left: 0, top: 0, right: 1000, bottom: 56, width: 1000, height: 56, x: 0, y: 0, toJSON: () => undefined } as DOMRect;
+  const { router, user } = renderRoute('/o/acme/overview');
+  const svg = await screen.findByRole('img', { name: /certificates expire in the next 90 days/ });
+  const p30 = screen.getByRole('button', { name: '30 d' });
+  p30.focus();
+  await user.keyboard('{Enter}');
+  await waitFor(() => expect(router.state.location.search).toEqual({ range: [0, 30] }));
+  expect(p30).toHaveAttribute('aria-pressed', 'true');
+  const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(rect);
+  try {
+    fireEvent.pointerDown(svg, { clientX: 100 });
+    fireEvent.pointerMove(svg, { clientX: 500 });
+    fireEvent.pointerUp(svg, { clientX: 500 });
+  } finally {
+    spy.mockRestore();
+  }
+  await waitFor(() => expect(router.state.location.search).toEqual({ range: [9, 45] }));
+  expect(screen.getByRole('button', { name: '30 d' })).toHaveAttribute('aria-pressed', 'false');
+  await user.click(screen.getByRole('button', { name: '7 d' }));
+  await waitFor(() => expect(router.state.location.search).toEqual({ range: [0, 7] }));
+});

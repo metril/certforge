@@ -21,12 +21,13 @@ export function OverviewPage() {
   const org = useOrg();
   const allOrgs = useAllOrgs();
   const me = useMe();
-  const { data: certs = [], isPending, isError, error, refetch } = useQuery(allOrgs ? allOrgsCertificatesQuery : allCertificatesQuery(org.id));
+  const { data, isPending, isError, error, refetch } = useQuery(allOrgs ? allOrgsCertificatesQuery : allCertificatesQuery(org.id));
+  const certs = data ?? [];
   const readiness = useQuery(readinessQuery);
   const agentCAs = useQuery({ ...agentCAsQuery, enabled: can(me, 'settings:read') });
   const now = Date.now();
 
-  if (isError) {
+  if (isError && !data) {
     return (
       <>
         <PageHeader title="Overview" help="overview.page" />
@@ -66,6 +67,11 @@ export function OverviewPage() {
     <>
       <PageHeader title="Overview" help="overview.page" />
       <div className="grid gap-6">
+        {isError && (
+          <p role="status" className="text-sm text-expiring">
+            Couldn't refresh certificates, showing the last loaded data. {errorMessage(error)}
+          </p>
+        )}
         <StatusRow counts={counts} orgSlug={org.slug} readiness={readiness.data} listener={agentCAs.data?.listener} />
         <AttentionBlock certs={certs} now={now} />
         <InsightsCard certs={certs} now={now} />

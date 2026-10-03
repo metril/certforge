@@ -18,3 +18,8 @@ it('places ticks on a 90-day axis and counts later expiries', () => {
 it('converts a brushed span to whole days in either direction', () => {
   expect(rangeToDays(1000, 333.4)).toEqual([30, 90]);
 });
+
+it('skips revoked certificates', () => {
+  const certs = [makeCert({ id: 'r', status: 'revoked', currentVersion: { ...makeCert().currentVersion!, notAfter: iso(10) } })];
+  expect(horizonTicks(certs, NOW)).toEqual({ ticks: [], beyond: 0 });
+});

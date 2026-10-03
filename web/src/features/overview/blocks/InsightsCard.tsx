@@ -24,7 +24,7 @@ export function InsightsCard({ certs, now }: { certs: Certificate[]; now: number
   const showActivity = allOrgs ? canAnywhere(me, 'audit:read') : can(me, 'audit:read', org.id);
   const inRange = range
     ? certs.filter((c) => {
-        if (!c.currentVersion) return false;
+        if (!c.currentVersion || c.status === 'revoked') return false;
         const d = (Date.parse(c.currentVersion.notAfter) - now) / DAY;
         // Review fix: a range starting at 0 ("from now") also catches an
         // already-expired certificate (d < 0), not just d === 0 exactly.
