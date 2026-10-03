@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -258,7 +259,12 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 	defer conn.CloseNow() //nolint:errcheck // best-effort cleanup; the session's own error is what matters
 	ws := agentproto.WS{C: conn}
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	var workers sync.WaitGroup
+	// Cancel and wait for the reconcile worker before the deferred
+	// conn.CloseNow above runs, so it never sends on a closed connection.
+	defer func() { cancel(); workers.Wait() }()
+	// github.com/coder/websocket allows concurrent writers, so send needs
+	// no lock of its own.
 	send := func(m agentproto.Message) error {
 		b, err := agentproto.Marshal(m)
 		if err != nil {
@@ -296,16 +302,36 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 	defer heartbeat.Stop()
 	renew := time.NewTicker(time.Hour)
 	defer renew.Stop()
+	// Reconciles (file writes and hooks, up to minutes) run on one worker
+	// so the loop below keeps answering challenges meanwhile. wake has room
+	// for one pending request: it is the dirty flag, so requests arriving
+	// during a run coalesce into exactly one follow-up and are never dropped.
+	wake := make(chan struct{}, 1)
 	reconcileAndReport := func() {
-		rep, err := a.reconcile(ctx, cl)
-		if err != nil {
-			a.Log.Warn("reconcile failed", "err", err)
-			return
-		}
-		if err := send(agentproto.DeployResult{Report: rep}); err != nil {
-			a.Log.Warn("deploy result not sent", "err", err)
+		select {
+		case wake <- struct{}{}:
+		default:
 		}
 	}
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-wake:
+			}
+			rep, err := a.reconcile(ctx, cl)
+			if err != nil {
+				a.Log.Warn("reconcile failed", "err", err)
+				continue
+			}
+			if err := send(agentproto.DeployResult{Report: rep}); err != nil {
+				a.Log.Warn("deploy result not sent", "err", err)
+			}
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():

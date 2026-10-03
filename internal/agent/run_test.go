@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+
 	"github.com/metril/certforge/internal/agentca"
 	"github.com/metril/certforge/internal/agentproto"
 )
@@ -132,6 +134,83 @@ func TestSessionTrustBundleUpdateRenewsAndReconnects(t *testing.T) {
 			t.Fatalf("connections %d", f.wsConns)
 		}
 	})
+}
+
+// TestSessionAnswersChallengeDuringReconcile: a reconcile stuck on the
+// server must not delay challenge_ready, and Syncs arriving meanwhile
+// collapse into exactly one follow-up run.
+func TestSessionAnswersChallengeDuringReconcile(t *testing.T) {
+	f := newFakeServer(t)
+	a := testAgent(t, f)
+	gate := make(chan struct{})
+	f.with(func() { f.assignGate = gate })
+	type outcome struct {
+		ready   bool
+		results int
+		hits    int
+	}
+	done := make(chan outcome, 1)
+	f.with(func() {
+		f.onWS = func(ctx context.Context, c *websocket.Conn) {
+			var out outcome
+			defer func() { done <- out }()
+			send := func(m agentproto.Message) {
+				b, _ := agentproto.Marshal(m)
+				_ = c.Write(ctx, websocket.MessageText, b)
+			}
+			send(agentproto.Sync{})
+			for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+				var hits int
+				f.with(func() { hits = f.assignHits })
+				if hits == 1 {
+					break
+				}
+			}
+			send(agentproto.Sync{})
+			send(agentproto.Sync{})
+			send(agentproto.ChallengePresent{Token: "tok", Method: "dns-01"})
+			rctx, rcancel := context.WithTimeout(ctx, 3*time.Second)
+			defer rcancel()
+			for !out.ready {
+				_, b, err := c.Read(rctx)
+				if err != nil {
+					return
+				}
+				if m, err := agentproto.Unmarshal(b); err == nil {
+					_, out.ready = m.(agentproto.ChallengeReady)
+				}
+			}
+			close(gate)
+			qctx, qcancel := context.WithTimeout(ctx, 2*time.Second)
+			defer qcancel()
+			for {
+				_, b, err := c.Read(qctx)
+				if err != nil {
+					break
+				}
+				if m, err := agentproto.Unmarshal(b); err == nil {
+					if _, ok := m.(agentproto.DeployResult); ok {
+						out.results++
+					}
+				}
+			}
+			f.with(func() { out.hits = f.assignHits })
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	go func() { _ = a.session(ctx, nil) }()
+	select {
+	case out := <-done:
+		if !out.ready {
+			t.Fatal("challenge_ready was not sent while a reconcile was running")
+		}
+		if out.hits != 2 || out.results != 2 {
+			t.Fatalf("assignment fetches %d, deploy results %d, want 2 and 2 (one run plus one follow-up)", out.hits, out.results)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out")
+	}
 }
 
 func TestSessionRenewsWhenDue(t *testing.T) {
