@@ -268,3 +268,15 @@ func TestCheckURLFieldsResolvesHostnames(t *testing.T) {
 		t.Errorf("RFC 1918 resolution refused: %v", err)
 	}
 }
+
+// An Unchanged sentinel under an alias key keeps the stored (canonical) secret.
+func TestMergeUpdateUnchangedUnderAliasKey(t *testing.T) {
+	_, sec, _, reused, err := MergeUpdate("cloudflare", nil, map[string]string{"CF_DNS_API_TOKEN": "old-token"},
+		map[string]string{"CLOUDFLARE_DNS_API_TOKEN": Unchanged})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sec["CF_DNS_API_TOKEN"] != "old-token" || len(sec) != 1 || !reused {
+		t.Fatalf("sec=%v reused=%v", sec, reused)
+	}
+}

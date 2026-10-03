@@ -189,7 +189,12 @@ func MergeUpdate(code string, oldPublic, oldSecret, in map[string]string) (publi
 			if e.secret[k] {
 				reusedSecret = true
 			}
-			if old, ok := oldSecret[k]; ok {
+			// oldSecret is canonical; an alias key must look up its canonical name.
+			ck := k
+			if c, isAlias := e.aliasOf[k]; isAlias {
+				ck = c
+			}
+			if old, ok := oldSecret[ck]; ok {
 				resolved[k] = old
 			}
 			continue
@@ -293,6 +298,10 @@ func CheckURLFields(ctx context.Context, code string, cfg map[string]string, all
 	}
 	if r == nil {
 		r = net.DefaultResolver
+	}
+	// An alias key is checked under its canonical name (isURLField goes by name).
+	if c, err := canonicalize(e, cfg); err == nil {
+		cfg = c
 	}
 	keys := make([]string, 0, len(cfg))
 	for k := range cfg {

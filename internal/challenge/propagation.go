@@ -19,12 +19,16 @@ func CheckTXT(ctx context.Context, resolvers []string, fqdn, value string) (bool
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(fqdn), dns.TypeTXT)
 	m.RecursionDesired = true
+	m.SetEdns0(4096, false)
 	for _, r := range resolvers {
 		addr := r
 		if _, _, err := net.SplitHostPort(r); err != nil {
 			addr = net.JoinHostPort(r, "53")
 		}
 		in, _, err := c.ExchangeContext(ctx, m, addr)
+		if err == nil && in.Truncated {
+			in, _, err = (&dns.Client{Net: "tcp", Timeout: 5 * time.Second}).ExchangeContext(ctx, m, addr)
+		}
 		if err != nil {
 			return false, fmt.Errorf("query %s at %s: %w", fqdn, addr, err)
 		}
