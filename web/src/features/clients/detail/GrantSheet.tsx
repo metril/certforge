@@ -283,7 +283,7 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
           <SheetClose asChild>
             <Button variant="outline">Cancel</Button>
           </SheetClose>
-          <PermissionTip allowed={!keyBlocked} action="keys:export">
+          <PermissionTip allowed={!keyBlocked && !removed} action="keys:export" reason={removed ? 'This grant was removed' : undefined}>
             <Button disabled={busy || keyBlocked || removed} onClick={() => void submit()}>
               {editing ? 'Save' : 'Grant'}
             </Button>

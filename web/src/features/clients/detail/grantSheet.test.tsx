@@ -218,6 +218,8 @@ it('keeps the sheet open with a removed notice when the grant disappears', async
   const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
   expect(await within(sheet).findByText(/This grant was removed/)).toBeInTheDocument();
   expect(within(sheet).getByRole('button', { name: 'Save' })).toBeDisabled();
+  await user.hover(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('This grant was removed');
   await user.click(within(sheet).getByRole('button', { name: 'Cancel' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 });
