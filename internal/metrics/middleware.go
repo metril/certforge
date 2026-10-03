@@ -48,6 +48,10 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap lets http.ResponseController reach the underlying writer (read
+// deadlines, hijacking) through this wrapper.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 // Flush passes through to the underlying ResponseWriter when it supports
 // streaming (a backup download, Phase 6A Task 12), so wrapping it here
 // never buffers a response that expects to be flushed incrementally.

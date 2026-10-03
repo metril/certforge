@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"mime/multipart"
 	"net/http"
+	"time"
 	"strconv"
 	"strings"
 
@@ -29,6 +30,13 @@ import (
 func (s *Server) ImportCertificates(ctx context.Context, r gen.ImportCertificatesRequestObject) (gen.ImportCertificatesResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
+	}
+	// A 32 MiB upload can outlast the server's ReadTimeout; only a caller
+	// who passed authn, requireJSON's multipart check and authorize gets
+	// longer (the error is http.ErrNotSupported for a writer that cannot,
+	// which keeps the server default).
+	if w, _ := httpFrom(ctx); w != nil {
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(importReadTimeout))
 	}
 	fsys, caID, dryRun, err := parseImportMultipart(r.Body)
 	if err != nil {

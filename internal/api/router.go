@@ -220,7 +220,7 @@ const maxRequestBody = 1 << 20 // 1 MiB
 const maxImportBody = 32 << 20 // 32 MiB
 
 // importReadTimeout replaces the server-wide ReadTimeout for the import
-// route's body.
+// route's body, once the handler has authenticated and authorized the caller.
 const importReadTimeout = 5 * time.Minute
 
 // importCertificatesPath matches exactly POST /api/v1/orgs/{orgId}/certificates/import,
@@ -242,11 +242,6 @@ func requireJSON(next http.Handler) http.Handler {
 		case http.MethodPost, http.MethodPut, http.MethodPatch:
 			if r.Method == http.MethodPost && importCertificatesPath.MatchString(r.URL.Path) {
 				r.Body = http.MaxBytesReader(w, r.Body, maxImportBody)
-				// A 32 MiB upload can outlast the server's ReadTimeout; give
-				// this route alone more time (the error is only
-				// http.ErrNotSupported for a writer that cannot, which keeps
-				// the server default).
-				_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(importReadTimeout))
 				mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 				if err != nil || mt != "multipart/form-data" {
 					Write(w, http.StatusUnsupportedMediaType, "Unsupported media type", "Send the import request as multipart/form-data.")
