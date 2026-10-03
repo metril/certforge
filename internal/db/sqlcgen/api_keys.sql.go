@@ -103,6 +103,7 @@ func (q *Queries) GetAPIKeyByPrefix(ctx context.Context, prefix string) (ApiKey,
 const listAPIKeys = `-- name: ListAPIKeys :many
 SELECT k.id, k.name, k.prefix, k.secret_hash, k.scopes, k.org_id, k.created_by, k.expires_at, k.last_used_at, k.revoked_at, k.created_at, u.display_name AS created_by_name
 FROM api_keys k JOIN users u ON u.id = k.created_by
+WHERE $1::uuid IS NULL OR k.org_id = $1
 ORDER BY k.created_at DESC, k.id
 `
 
@@ -121,8 +122,8 @@ type ListAPIKeysRow struct {
 	CreatedByName string     `json:"created_by_name"`
 }
 
-func (q *Queries) ListAPIKeys(ctx context.Context) ([]ListAPIKeysRow, error) {
-	rows, err := q.db.Query(ctx, listAPIKeys)
+func (q *Queries) ListAPIKeys(ctx context.Context, orgID *uuid.UUID) ([]ListAPIKeysRow, error) {
+	rows, err := q.db.Query(ctx, listAPIKeys, orgID)
 	if err != nil {
 		return nil, err
 	}

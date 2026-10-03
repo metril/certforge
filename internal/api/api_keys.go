@@ -35,15 +35,12 @@ func (s *Server) ListApiKeys(ctx context.Context, req gen.ListApiKeysRequestObje
 	if req.Params.OrgId != nil && !authz.Can(p, authz.ActionAPIKeysRead, req.Params.OrgId) {
 		return nil, &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "missing permission apikeys:read"}
 	}
-	rows, err := s.d.Queries.ListAPIKeys(ctx)
+	rows, err := s.d.Queries.ListAPIKeys(ctx, req.Params.OrgId)
 	if err != nil {
 		return nil, err
 	}
 	out := []gen.ApiKey{}
 	for _, r := range rows {
-		if req.Params.OrgId != nil && (r.OrgID == nil || *r.OrgID != *req.Params.OrgId) {
-			continue
-		}
 		if !authz.Can(p, authz.ActionAPIKeysRead, r.OrgID) {
 			continue
 		}

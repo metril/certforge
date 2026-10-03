@@ -11,6 +11,7 @@ SELECT * FROM api_keys WHERE prefix = $1;
 -- name: ListAPIKeys :many
 SELECT k.*, u.display_name AS created_by_name
 FROM api_keys k JOIN users u ON u.id = k.created_by
+WHERE sqlc.narg(org_id)::uuid IS NULL OR k.org_id = sqlc.narg(org_id)
 ORDER BY k.created_at DESC, k.id;
 
 -- name: RevokeAPIKey :execrows

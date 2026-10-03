@@ -694,7 +694,7 @@ func (q *Queries) LiveGrantIDsForCertAny(ctx context.Context, certID uuid.UUID) 
 const liveGrantIDsForExtraCert = `-- name: LiveGrantIDsForExtraCert :many
 SELECT g.id FROM client_cert_grants g
 JOIN output_specs o ON o.id = g.output_spec_id
-WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND $1::uuid = ANY(o.extra_cert_ids)
+WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND o.extra_cert_ids @> ARRAY[$1::uuid]
 `
 
 // Live grants whose layout bundles cert_id as an extra certificate: a new
@@ -722,7 +722,7 @@ func (q *Queries) LiveGrantIDsForExtraCert(ctx context.Context, certID uuid.UUID
 }
 
 const liveGrantIDsUsingHook = `-- name: LiveGrantIDsUsingHook :many
-SELECT id FROM client_cert_grants WHERE $1::uuid = ANY(hook_ids) AND removed_at IS NULL AND client_id IS NOT NULL
+SELECT id FROM client_cert_grants WHERE hook_ids @> ARRAY[$1::uuid] AND removed_at IS NULL AND client_id IS NOT NULL
 `
 
 // client_id IS NOT NULL: see LiveGrantIDsForCert (a server grant never has
@@ -1270,9 +1270,14 @@ LEFT JOIN output_specs o ON o.id = g.output_spec_id
 WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND ce.current_version_id IS NOT NULL
   AND (d.version_id IS DISTINCT FROM ce.current_version_id
        OR d.extra_version_ids IS DISTINCT FROM (
-            SELECT COALESCE(array_agg(ec.current_version_id ORDER BY x.ord), '{}'::uuid[])
-            FROM unnest(COALESCE(o.extra_cert_ids, '{}'::uuid[])) WITH ORDINALITY AS x(id, ord)
-            JOIN certificates ec ON ec.id = x.id
+            -- The correlated subquery runs only for grants whose layout has
+            -- extras; every other grant (including one with no layout) takes
+            -- the cheap branch, whose value is what the subquery would give.
+            CASE WHEN cardinality(o.extra_cert_ids) > 0 THEN (
+              SELECT COALESCE(array_agg(ec.current_version_id ORDER BY x.ord), '{}'::uuid[])
+              FROM unnest(o.extra_cert_ids) WITH ORDINALITY AS x(id, ord)
+              JOIN certificates ec ON ec.id = x.id
+            ) ELSE '{}'::uuid[] END
           ))
 `
 

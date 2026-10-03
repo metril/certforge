@@ -186,14 +186,15 @@ type Deployment struct {
 }
 
 type DnsProviderCredential struct {
-	ID           uuid.UUID `json:"id"`
-	OrgID        uuid.UUID `json:"org_id"`
-	Name         string    `json:"name"`
-	ProviderCode string    `json:"provider_code"`
-	PublicCfg    []byte    `json:"public_cfg"`
-	SecretCfg    []byte    `json:"secret_cfg"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID               uuid.UUID `json:"id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	Name             string    `json:"name"`
+	ProviderCode     string    `json:"provider_code"`
+	PublicCfg        []byte    `json:"public_cfg"`
+	SecretCfg        []byte    `json:"secret_cfg"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	StoredSecretKeys []string  `json:"stored_secret_keys"`
 }
 
 type EnrollmentToken struct {

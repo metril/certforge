@@ -359,7 +359,7 @@ func (q *Queries) GetLayout(ctx context.Context, arg GetLayoutParams) (OutputSpe
 const hookDependents = `-- name: HookDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE $1::uuid = ANY(g.hook_ids)
+WHERE g.hook_ids @> ARRAY[$1::uuid]
   AND EXISTS (SELECT 1 FROM hooks h WHERE h.id = $1::uuid AND h.org_id = $2)
 ORDER BY c.name, ce.name LIMIT 6
 `
@@ -397,7 +397,7 @@ func (q *Queries) HookDependents(ctx context.Context, arg HookDependentsParams) 
 
 const hookGrantCounts = `-- name: HookGrantCounts :many
 SELECT h.id, count(g.id)::bigint AS grants
-FROM hooks h LEFT JOIN client_cert_grants g ON h.id = ANY(g.hook_ids) AND g.removed_at IS NULL
+FROM hooks h LEFT JOIN client_cert_grants g ON g.hook_ids @> ARRAY[h.id] AND g.removed_at IS NULL
 WHERE h.id = ANY($1::uuid[]) GROUP BY h.id
 `
 
@@ -528,7 +528,7 @@ func (q *Queries) LayoutKeylessGrantCertificate(ctx context.Context, id *uuid.UU
 
 const layoutsListingExtraCert = `-- name: LayoutsListingExtraCert :many
 SELECT name FROM output_specs
-WHERE org_id = $1 AND $2::uuid = ANY(extra_cert_ids)
+WHERE org_id = $1 AND extra_cert_ids @> ARRAY[$2::uuid]
 ORDER BY lower(name) LIMIT 6
 `
 

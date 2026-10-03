@@ -29,18 +29,71 @@ func (q *Queries) CountDNSCredentialUsers(ctx context.Context, id uuid.UUID) (in
 	return users, err
 }
 
+const countDNSCredentialUsersByOrg = `-- name: CountDNSCredentialUsersByOrg :many
+WITH refs AS (
+    SELECT c.id AS referrer, r->>'dnsCredentialId' AS cred
+    FROM certificates c
+    CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(c.verification_rules) = 'array' THEN c.verification_rules ELSE '[]'::jsonb END
+        || CASE WHEN jsonb_typeof(c.overrides->'verificationRules') = 'array' THEN c.overrides->'verificationRules' ELSE '[]'::jsonb END
+    ) AS r
+    WHERE c.org_id = $1
+    UNION
+    SELECT d.org_id, r->>'dnsCredentialId'
+    FROM issuance_defaults d
+    CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(d.config->'verificationRules') = 'array' THEN d.config->'verificationRules' ELSE '[]'::jsonb END
+    ) AS r
+    WHERE d.org_id = $1
+)
+SELECT dc.id, count(refs.referrer)::bigint AS users
+FROM dns_provider_credentials dc
+LEFT JOIN refs ON refs.cred = dc.id::text
+WHERE dc.org_id = $1
+GROUP BY dc.id
+`
+
+type CountDNSCredentialUsersByOrgRow struct {
+	ID    uuid.UUID `json:"id"`
+	Users int64     `json:"users"`
+}
+
+// CountDNSCredentialUsers for every credential of the org in one pass over
+// that org's certificates and its issuance defaults (a (referrer, credential)
+// pair counts once, as the OR in the single-credential query does).
+func (q *Queries) CountDNSCredentialUsersByOrg(ctx context.Context, orgID uuid.UUID) ([]CountDNSCredentialUsersByOrgRow, error) {
+	rows, err := q.db.Query(ctx, countDNSCredentialUsersByOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountDNSCredentialUsersByOrgRow{}
+	for rows.Next() {
+		var i CountDNSCredentialUsersByOrgRow
+		if err := rows.Scan(&i.ID, &i.Users); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createDNSCredential = `-- name: CreateDNSCredential :one
-INSERT INTO dns_provider_credentials (org_id, name, provider_code, public_cfg, secret_cfg)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at
+INSERT INTO dns_provider_credentials (org_id, name, provider_code, public_cfg, secret_cfg, stored_secret_keys)
+VALUES ($1, $2, $3, $4, $5, COALESCE($6::text[], '{}'))
+RETURNING id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at, stored_secret_keys
 `
 
 type CreateDNSCredentialParams struct {
-	OrgID        uuid.UUID `json:"org_id"`
-	Name         string    `json:"name"`
-	ProviderCode string    `json:"provider_code"`
-	PublicCfg    []byte    `json:"public_cfg"`
-	SecretCfg    []byte    `json:"secret_cfg"`
+	OrgID            uuid.UUID `json:"org_id"`
+	Name             string    `json:"name"`
+	ProviderCode     string    `json:"provider_code"`
+	PublicCfg        []byte    `json:"public_cfg"`
+	SecretCfg        []byte    `json:"secret_cfg"`
+	StoredSecretKeys []string  `json:"stored_secret_keys"`
 }
 
 func (q *Queries) CreateDNSCredential(ctx context.Context, arg CreateDNSCredentialParams) (DnsProviderCredential, error) {
@@ -50,6 +103,7 @@ func (q *Queries) CreateDNSCredential(ctx context.Context, arg CreateDNSCredenti
 		arg.ProviderCode,
 		arg.PublicCfg,
 		arg.SecretCfg,
+		arg.StoredSecretKeys,
 	)
 	var i DnsProviderCredential
 	err := row.Scan(
@@ -61,6 +115,7 @@ func (q *Queries) CreateDNSCredential(ctx context.Context, arg CreateDNSCredenti
 		&i.SecretCfg,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
@@ -96,7 +151,7 @@ func (q *Queries) DeleteDNSCredential(ctx context.Context, arg DeleteDNSCredenti
 }
 
 const getDNSCredential = `-- name: GetDNSCredential :one
-SELECT id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at FROM dns_provider_credentials WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at, stored_secret_keys FROM dns_provider_credentials WHERE id = $1 AND org_id = $2
 `
 
 type GetDNSCredentialParams struct {
@@ -116,12 +171,13 @@ func (q *Queries) GetDNSCredential(ctx context.Context, arg GetDNSCredentialPara
 		&i.SecretCfg,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
 
 const listDNSCredentials = `-- name: ListDNSCredentials :many
-SELECT id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at FROM dns_provider_credentials WHERE org_id = $1 ORDER BY name
+SELECT id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at, stored_secret_keys FROM dns_provider_credentials WHERE org_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]DnsProviderCredential, error) {
@@ -142,6 +198,7 @@ func (q *Queries) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]Dn
 			&i.SecretCfg,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.StoredSecretKeys,
 		); err != nil {
 			return nil, err
 		}
@@ -154,7 +211,7 @@ func (q *Queries) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]Dn
 }
 
 const lockDNSCredential = `-- name: LockDNSCredential :one
-SELECT id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at FROM dns_provider_credentials WHERE id = $1 AND org_id = $2 FOR UPDATE
+SELECT id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at, stored_secret_keys FROM dns_provider_credentials WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
 
 type LockDNSCredentialParams struct {
@@ -175,6 +232,7 @@ func (q *Queries) LockDNSCredential(ctx context.Context, arg LockDNSCredentialPa
 		&i.SecretCfg,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
@@ -193,17 +251,18 @@ func (q *Queries) LockDNSCredentialKeyShare(ctx context.Context, id uuid.UUID) (
 }
 
 const updateDNSCredential = `-- name: UpdateDNSCredential :one
-UPDATE dns_provider_credentials SET name = $3, public_cfg = $4, secret_cfg = $5, updated_at = now()
+UPDATE dns_provider_credentials SET name = $3, public_cfg = $4, secret_cfg = $5, stored_secret_keys = COALESCE($6::text[], '{}'), updated_at = now()
 WHERE id = $1 AND org_id = $2
-RETURNING id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at
+RETURNING id, org_id, name, provider_code, public_cfg, secret_cfg, created_at, updated_at, stored_secret_keys
 `
 
 type UpdateDNSCredentialParams struct {
-	ID        uuid.UUID `json:"id"`
-	OrgID     uuid.UUID `json:"org_id"`
-	Name      string    `json:"name"`
-	PublicCfg []byte    `json:"public_cfg"`
-	SecretCfg []byte    `json:"secret_cfg"`
+	ID               uuid.UUID `json:"id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	Name             string    `json:"name"`
+	PublicCfg        []byte    `json:"public_cfg"`
+	SecretCfg        []byte    `json:"secret_cfg"`
+	StoredSecretKeys []string  `json:"stored_secret_keys"`
 }
 
 func (q *Queries) UpdateDNSCredential(ctx context.Context, arg UpdateDNSCredentialParams) (DnsProviderCredential, error) {
@@ -213,6 +272,7 @@ func (q *Queries) UpdateDNSCredential(ctx context.Context, arg UpdateDNSCredenti
 		arg.Name,
 		arg.PublicCfg,
 		arg.SecretCfg,
+		arg.StoredSecretKeys,
 	)
 	var i DnsProviderCredential
 	err := row.Scan(
@@ -224,6 +284,7 @@ func (q *Queries) UpdateDNSCredential(ctx context.Context, arg UpdateDNSCredenti
 		&i.SecretCfg,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
