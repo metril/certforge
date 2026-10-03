@@ -1,7 +1,9 @@
 package challenge
 
 import (
+	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -168,6 +170,49 @@ func TestCheckURLFields(t *testing.T) {
 		err := CheckURLFields("httpreq", c.cfg, c.allow)
 		if c.bad == "" && err != nil || c.bad != "" && (err == nil || !strings.Contains(err.Error(), c.bad)) {
 			t.Errorf("%s: err = %v, want field %q", c.name, err, c.bad)
+		}
+	}
+}
+
+func TestCheckURLFieldsHostFields(t *testing.T) {
+	for _, c := range []struct{ code, field string }{
+		{"bindman", "BINDMAN_MANAGER_ADDRESS"}, {"vinyldns", "VINYLDNS_HOST"}, {"infoblox", "INFOBLOX_HOST"},
+		{"rfc2136", "RFC2136_NAMESERVER"}, {"efficientip", "EFFICIENTIP_HOSTNAME"}, {"edgedns", "AKAMAI_HOST"},
+	} {
+		for _, v := range []string{"127.0.0.1", "127.0.0.1:8080", "localhost:53", "169.254.169.254"} {
+			if err := CheckURLFields(c.code, map[string]string{c.field: v}, false); err == nil {
+				t.Errorf("%s=%q accepted", c.field, v)
+			}
+		}
+		if err := CheckURLFields(c.code, map[string]string{c.field: "dns.example.test:8443"}, false); err != nil {
+			t.Errorf("%s: public host refused: %v", c.field, err)
+		}
+	}
+	if err := CheckURLFields("ovh", map[string]string{"OVH_ENDPOINT": "ovh-eu"}, false); err != nil {
+		t.Errorf("ovh region alias refused: %v", err)
+	}
+}
+
+// Every schema field whose name or description says URL/URI/endpoint/host/
+// address must be covered by isURLField, so a schema regeneration cannot add
+// an unchecked network field. notNetwork lists matches that are not hosts.
+func TestEveryNetworkFieldIsChecked(t *testing.T) {
+	word := regexp.MustCompile(`(?i)\b(urls?|uri|endpoints?|hosts?|hostname|address|nameserver)\b`)
+	notNetwork := map[string]bool{"PDNS_SERVER_NAME": true} // a PowerDNS server id, not a host
+	for _, m := range Providers() {
+		var s struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(m.Schema, &s); err != nil {
+			t.Fatal(err)
+		}
+		for name, p := range s.Properties {
+			hit := word.MatchString(strings.ReplaceAll(name, "_", " ")) || word.MatchString(p.Description)
+			if hit && !isURLField(name) && !notNetwork[name] {
+				t.Errorf("%s.%s (%q) looks like a network field but is not checked", m.Code, name, p.Description)
+			}
 		}
 	}
 }

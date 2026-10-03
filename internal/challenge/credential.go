@@ -3,6 +3,7 @@ package challenge
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -234,13 +235,22 @@ func SecretKeys(secret map[string]string) []string {
 	return out
 }
 
-// isURLField reports whether a schema property names a URL or endpoint. The
-// provider schemas carry no format marker, so this goes by the property
-// name: a _URL or _ENDPOINT suffix, or _BASE_URL / _API_BASE in the name.
+// isURLField reports whether a schema property names a URL, endpoint or
+// network host. The provider schemas carry no format marker, so this goes by
+// the property name: a _URL, _ENDPOINT, _HOST, _HOSTNAME, _ADDRESS or
+// _NAMESERVER suffix, or _BASE_URL / _API_BASE in the name.
 func isURLField(name string) bool {
-	return strings.HasSuffix(name, "_URL") || strings.HasSuffix(name, "_ENDPOINT") ||
-		strings.Contains(name, "_BASE_URL") || strings.HasSuffix(name, "_API_BASE")
+	for _, suf := range []string{"_URL", "_ENDPOINT", "_HOST", "_HOSTNAME", "_ADDRESS", "_NAMESERVER", "_API_BASE"} {
+		if strings.HasSuffix(name, suf) {
+			return true
+		}
+	}
+	return strings.Contains(name, "_BASE_URL")
 }
+
+// regionAlias matches the symbolic OVH endpoint names (ovh-eu, kimsufi-ca,
+// ...) that an _ENDPOINT field accepts instead of a URL.
+var regionAlias = regexp.MustCompile(`^(ovh|kimsufi|soyoustart|runabove)-[a-z]{2}$`)
 
 // CheckURLFields runs every URL-typed field of cfg through the notifier URL
 // policy (httpx.CheckURL) so a credential cannot point the server at a
@@ -248,8 +258,8 @@ func isURLField(name string) bool {
 // notifications section's allowLoopbackUrls; the metadata addresses stay
 // blocked regardless. Empty values and the Unchanged sentinel are skipped, as
 // are unknown fields (SplitConfig rejects those). A value without a scheme is
-// checked as https://<value>, so non-URL endpoint names such as "ovh-eu"
-// pass. The error names the first offending field (sorted order).
+// checked as the host of https://<value>; the symbolic OVH region names
+// ("ovh-eu") are skipped. The error names the first offending field (sorted order).
 func CheckURLFields(code string, cfg map[string]string, allowLoopback bool) error {
 	e, ok := lookupEntry(code)
 	if !ok {
@@ -265,7 +275,11 @@ func CheckURLFields(code string, cfg map[string]string, allowLoopback bool) erro
 		if _, known := e.secret[k]; !known || !isURLField(k) || v == "" || v == Unchanged {
 			continue
 		}
+		if regionAlias.MatchString(v) {
+			continue
+		}
 		if !strings.Contains(v, "://") {
+			// A bare host or host:port is checked as the host of an https URL.
 			v = "https://" + v
 		}
 		if err := httpx.CheckURL(v, allowLoopback); err != nil {
