@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/pavlo-v-chernykh/keystore-go/v4"
@@ -58,15 +59,26 @@ func (JKS) Render(m Material, opts OutputOpts) ([]File, error) {
 		return nil, err
 	}
 
+	// JKS aliases are case-insensitive: a generated trust alias must never
+	// land on the key alias or an earlier trust alias, or it would overwrite
+	// that entry.
+	used := map[string]bool{strings.ToLower(alias): true}
+	trustAlias := func(a string) string {
+		for n := 2; used[strings.ToLower(a)]; n++ {
+			a = fmt.Sprintf("%s~%d", a, n)
+		}
+		used[strings.ToLower(a)] = true
+		return a
+	}
 	for i, ex := range opts.Extras {
-		if err := ks.SetTrustedCertificateEntry(fmt.Sprintf("extra-%d", i+1), keystore.TrustedCertificateEntry{
+		if err := ks.SetTrustedCertificateEntry(trustAlias(fmt.Sprintf("extra-%d", i+1)), keystore.TrustedCertificateEntry{
 			CreationTime: leaf.NotBefore,
 			Certificate:  keystore.Certificate{Type: "X509", Content: ex.LeafDER},
 		}); err != nil {
 			return nil, err
 		}
 		for j, c := range ex.ChainDER {
-			if err := ks.SetTrustedCertificateEntry(fmt.Sprintf("extra-%d-%d", i+1, j+1), keystore.TrustedCertificateEntry{
+			if err := ks.SetTrustedCertificateEntry(trustAlias(fmt.Sprintf("extra-%d-%d", i+1, j+1)), keystore.TrustedCertificateEntry{
 				CreationTime: leaf.NotBefore,
 				Certificate:  keystore.Certificate{Type: "X509", Content: c},
 			}); err != nil {

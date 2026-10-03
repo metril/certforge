@@ -173,3 +173,25 @@ func TestKeystoresDeterministicWithDetRand(t *testing.T) {
 		t.Fatal("jks: different seeds produced identical bytes")
 	}
 }
+
+// A key alias that case-folds to a generated extra-N alias must not be
+// overwritten by the trust entry.
+func TestJKSTrustAliasNeverOverwritesKeyEntry(t *testing.T) {
+	m := realMaterial(t, "jks.example.test", 30)
+	extra := realMaterial(t, "extra.example.test", 40)
+
+	files, err := (JKS{}).Render(m, OutputOpts{Password: "hunter2", BaseName: "bundle", Alias: "Extra-1", Extras: []Material{extra}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ks := keystore.New()
+	if err := ks.Load(bytes.NewReader(files[0].Data), []byte("hunter2")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ks.GetPrivateKeyEntry("Extra-1", []byte("hunter2")); err != nil {
+		t.Fatalf("key entry lost: %v", err)
+	}
+	if n := len(ks.Aliases()); n != 3 {
+		t.Fatalf("aliases = %v, want the key, the extra and its chain certificate", ks.Aliases())
+	}
+}

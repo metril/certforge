@@ -65,6 +65,9 @@ var (
 	modeRe  = regexp.MustCompile(`^0?[0-7]{3}$`)
 	ownerRe = regexp.MustCompile(`^([a-z_][a-z0-9_.-]{0,31}|[0-9]{1,10})?$`)
 	aliasRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+	// reservedAliasRe matches the aliases the jks renderer generates for
+	// extra certificates; a key alias there would collide with one.
+	reservedAliasRe = regexp.MustCompile(`(?i)^extra-\d+$`)
 )
 
 // CleanPath accepts only absolute, already-clean paths below / with no NUL.
@@ -163,6 +166,9 @@ func ValidateFiles(files []OutputFile) error {
 			}
 			if !aliasRe.MatchString(f.Alias) {
 				return &FieldError{field + ".alias", `alias must match ^[A-Za-z0-9._-]{1,64}$`}
+			}
+			if reservedAliasRe.MatchString(f.Alias) {
+				return &FieldError{field + ".alias", `alias extra-<n> is reserved for extra certificates`}
 			}
 		}
 		if err := validateMode(field+".mode", f.Mode); err != nil {
