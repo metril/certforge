@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -334,5 +335,65 @@ func TestSectionSecretsFiltersRemovedSchemaKeys(t *testing.T) {
 	}
 	if keys, err := st.StoredSecretKeys(ctx, narrowSec); err != nil || !slices.Equal(keys, []string{"clientSecret"}) {
 		t.Fatalf("StoredSecretKeys after schema narrowed: %v %v", keys, err)
+	}
+}
+
+// TestPutSectionTxLocksRow: a second PUT blocks on the row lock until the
+// first commits, then reads the first's value as its "before" and merges
+// __unchanged__ against the secret the first stored.
+func TestPutSectionTxLocksRow(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+	st := settings.NewStore(q, envelope(1))
+	sec := secretSection(t)
+	if _, err := putTx(ctx, t, pool, st, sec, `{"issuer":"a","clientSecret":"one"}`); err != nil {
+		t.Fatal(err)
+	}
+	tx1, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx1.Rollback(ctx) }()
+	if _, err := st.GetSectionTx(ctx, tx1, sec); err != nil {
+		t.Fatal(err)
+	}
+	type res struct {
+		before json.RawMessage
+		err    error
+	}
+	done := make(chan res, 1)
+	go func() {
+		tx2, err := pool.Begin(ctx)
+		if err != nil {
+			done <- res{err: err}
+			return
+		}
+		defer func() { _ = tx2.Rollback(ctx) }()
+		before, err := st.GetSectionTx(ctx, tx2, sec)
+		if err == nil {
+			_, err = st.PutSectionTx(ctx, tx2, sec, json.RawMessage(`{"issuer":"c","clientSecret":"__unchanged__"}`))
+		}
+		if err == nil {
+			err = tx2.Commit(ctx)
+		}
+		done <- res{before, err}
+	}()
+	select {
+	case <-done:
+		t.Fatal("second PUT did not wait for the row lock")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if _, err := st.PutSectionTx(ctx, tx1, sec, json.RawMessage(`{"issuer":"b","clientSecret":"two"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r := <-done
+	if r.err != nil || !strings.Contains(string(r.before), `"b"`) {
+		t.Fatalf("second PUT before = %s err %v", r.before, r.err)
+	}
+	if m, _ := st.SectionSecrets(ctx, sec); m["clientSecret"] != "two" {
+		t.Fatalf("unchanged merged against a stale row: %v", m)
 	}
 }

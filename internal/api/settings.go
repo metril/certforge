@@ -74,15 +74,12 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	if err := sec.Validate(raw); err != nil {
 		return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
 	}
-	before, _, err := s.d.Settings.GetSection(ctx, sec)
-	if err != nil {
-		return nil, err
-	}
+	var before json.RawMessage
 	var secretsChanged []string
 	if sec.Name == issuance.SettingsKey {
-		secretsChanged, err = s.putGlobalIssuanceDefaults(ctx, sec, raw)
+		before, secretsChanged, err = s.putGlobalIssuanceDefaults(ctx, sec, raw)
 	} else {
-		secretsChanged, err = s.putSection(ctx, sec, raw)
+		before, secretsChanged, err = s.putSection(ctx, sec, raw)
 	}
 	if err != nil {
 		return nil, err
@@ -120,23 +117,27 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 
 // putSection stores a section value and its secrets in one transaction and
 // returns the secret keys PutSectionTx actually changed.
-func (s *Server) putSection(ctx context.Context, sec *settings.Section, raw json.RawMessage) ([]string, error) {
+func (s *Server) putSection(ctx context.Context, sec *settings.Section, raw json.RawMessage) (json.RawMessage, []string, error) {
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	before, err := s.d.Settings.GetSectionTx(ctx, tx, sec)
+	if err != nil {
+		return nil, nil, err
+	}
 	changed, err := s.d.Settings.PutSectionTx(ctx, tx, sec, raw)
 	if err != nil {
 		if errors.Is(err, settings.ErrInvalid) || errors.Is(err, settings.ErrUnchangedWithoutStored) {
-			return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
+			return nil, nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return changed, nil
+	return before, changed, nil
 }
 
 // putGlobalIssuanceDefaults validates and stores the issuance_defaults
@@ -146,7 +147,7 @@ func (s *Server) putSection(ctx context.Context, sec *settings.Section, raw json
 // the same row) blocks until this transaction commits or rolls back — the
 // two writers can no longer interleave into a dangling reference. The
 // section is written through the same transaction via PutSectionTx.
-func (s *Server) putGlobalIssuanceDefaults(ctx context.Context, sec *settings.Section, raw json.RawMessage) ([]string, error) {
+func (s *Server) putGlobalIssuanceDefaults(ctx context.Context, sec *settings.Section, raw json.RawMessage) (json.RawMessage, []string, error) {
 	var d issuance.Defaults
 	if err := json.Unmarshal(raw, &d); err != nil {
 		// raw already passed JSON-Schema validation above; the schema's
@@ -155,24 +156,28 @@ func (s *Server) putGlobalIssuanceDefaults(ctx context.Context, sec *settings.Se
 		// still invalid input, so 422 like every other validation failure
 		// on this section, not 400 (which would suggest the request body
 		// itself was unparseable JSON).
-		return nil, unprocessable("issuance_defaults", err.Error())
+		return nil, nil, unprocessable("issuance_defaults", err.Error())
 	}
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	before, err := s.d.Settings.GetSectionTx(ctx, tx, sec)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := s.d.Issuance.Store.ValidateGlobalDefaultsTx(ctx, tx, d); err != nil {
-		return nil, mapErr(err)
+		return nil, nil, mapErr(err)
 	}
 	changed, err := s.d.Settings.PutSectionTx(ctx, tx, sec, raw)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return changed, nil
+	return before, changed, nil
 }
 
 func (s *Server) sectionResponse(ctx context.Context, sec *settings.Section) (gen.SettingsSection, error) {

@@ -205,6 +205,33 @@ func (s *Store) GetSection(ctx context.Context, sec *Section) (value, stored jso
 	return raw, raw, nil
 }
 
+// getForUpdate reads key's value under a row lock, held until tx ends. A
+// missing row is ErrNotFound (there is nothing to lock; concurrent first
+// writers then serialize on the upsert).
+func (s *Store) getForUpdate(ctx context.Context, tx pgx.Tx, key string) (json.RawMessage, error) {
+	row, err := s.q.WithTx(tx).GetSettingForUpdate(ctx, key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("settings: get %s: %w", key, err)
+	}
+	return row.Value, nil
+}
+
+// GetSectionTx is GetSection inside tx, taking the row lock so the value
+// returned (an audit "before") is the one a following PutSectionTx replaces.
+func (s *Store) GetSectionTx(ctx context.Context, tx pgx.Tx, sec *Section) (json.RawMessage, error) {
+	raw, err := s.getForUpdate(ctx, tx, sec.Key())
+	if errors.Is(err, ErrNotFound) {
+		return sec.Default, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return sec.stripIgnored(raw), nil
+}
+
 // PutSection validates raw and stores it. Sections with secret properties
 // must use PutSectionTx, which updates value and secret together.
 func (s *Store) PutSection(ctx context.Context, sec *Section, raw json.RawMessage) error {
@@ -222,14 +249,16 @@ func (s *Store) PutSection(ctx context.Context, sec *Section, raw json.RawMessag
 // "" clears it, anything else replaces it. It returns the secret keys that
 // actually changed (set to a new value or cleared), sorted and never nil —
 // "" for a key that was never stored, or a value equal to the one already
-// stored, is not a change.
+// stored, is not a change. The row is read FOR UPDATE, so the stored value,
+// the secrets that Unchanged merges against, and the write all see one row
+// state.
 func (s *Store) PutSectionTx(ctx context.Context, tx pgx.Tx, sec *Section, raw json.RawMessage) ([]string, error) {
 	if err := sec.Validate(raw); err != nil {
 		return nil, err
 	}
 	q := s.q.WithTx(tx)
-	var stored json.RawMessage
-	if err := s.GetTx(ctx, tx, sec.Key(), &stored); err != nil && !errors.Is(err, ErrNotFound) {
+	stored, err := s.getForUpdate(ctx, tx, sec.Key())
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
 	if err := sec.ValidateUpdate(stored, raw); err != nil {
