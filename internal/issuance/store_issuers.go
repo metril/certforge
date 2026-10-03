@@ -854,6 +854,8 @@ func parseVaultPKIInput(raw map[string]any) (vaultPKIConfig, error) {
 	return cfg, nil
 }
 
+var vaultRoleRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
 var vaultMountRe = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$`)
 
 // validate checks cfg's shape (Shared contract VaultPkiConfig bounds).
@@ -861,8 +863,8 @@ func (cfg vaultPKIConfig) validate() error {
 	if !vaultMountRe.MatchString(cfg.Mount) {
 		return &ValidationError{"config.mount", "must match ^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$"}
 	}
-	if len(cfg.Role) < 1 || len(cfg.Role) > 128 {
-		return &ValidationError{"config.role", "required, 1-128 characters"}
+	if !vaultRoleRe.MatchString(cfg.Role) || strings.Contains(cfg.Role, "..") {
+		return &ValidationError{"config.role", "required, 1-128 characters from A-Z a-z 0-9 . _ - (no \"..\")"}
 	}
 	if cfg.TTL != "" {
 		d, err := time.ParseDuration(cfg.TTL)

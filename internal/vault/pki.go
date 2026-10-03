@@ -60,7 +60,7 @@ func (c *Client) PKISign(ctx context.Context, mount, role string, req SignReques
 	}
 
 	var resp pkiSignResponse
-	path := fmt.Sprintf("/v1/%s/sign/%s", mount, role)
+	path := fmt.Sprintf("/v1/%s/sign/%s", escapePath(mount), escapeSegment(role))
 	if err := c.doJSON(ctx, http.MethodPost, path, body, &resp, requestOpts{}); err != nil {
 		return SignResponse{}, c.Redact(err)
 	}
@@ -77,7 +77,7 @@ func (c *Client) PKISign(ctx context.Context, mount, role string, req SignReques
 // e.g. as returned by PKISign) — never reformatted.
 func (c *Client) PKIRevoke(ctx context.Context, mount, serial string) error {
 	body := map[string]string{"serial_number": serial}
-	path := fmt.Sprintf("/v1/%s/revoke", mount)
+	path := fmt.Sprintf("/v1/%s/revoke", escapePath(mount))
 	return c.Redact(c.doJSON(ctx, http.MethodPost, path, body, nil, requestOpts{}))
 }
 
@@ -88,7 +88,7 @@ func (c *Client) PKIReadCA(ctx context.Context, mount string) (string, error) {
 			Certificate string `json:"certificate"`
 		} `json:"data"`
 	}
-	path := fmt.Sprintf("/v1/%s/cert/ca", mount)
+	path := fmt.Sprintf("/v1/%s/cert/ca", escapePath(mount))
 	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp, requestOpts{}); err != nil {
 		return "", c.Redact(err)
 	}
