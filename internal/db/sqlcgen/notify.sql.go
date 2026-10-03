@@ -72,21 +72,22 @@ func (q *Queries) CountNotificationChannels(ctx context.Context, orgID uuid.UUID
 }
 
 const createNotificationChannel = `-- name: CreateNotificationChannel :one
-INSERT INTO notification_channels (org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at
+INSERT INTO notification_channels (org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, stored_secret_keys)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::text[], '{}'))
+RETURNING id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at, stored_secret_keys
 `
 
 type CreateNotificationChannelParams struct {
-	OrgID       uuid.UUID `json:"org_id"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Config      []byte    `json:"config"`
-	SecretCfg   []byte    `json:"secret_cfg"`
-	Events      []string  `json:"events"`
-	MinSeverity string    `json:"min_severity"`
-	AllOrgs     bool      `json:"all_orgs"`
-	Enabled     bool      `json:"enabled"`
+	OrgID            uuid.UUID `json:"org_id"`
+	Name             string    `json:"name"`
+	Type             string    `json:"type"`
+	Config           []byte    `json:"config"`
+	SecretCfg        []byte    `json:"secret_cfg"`
+	Events           []string  `json:"events"`
+	MinSeverity      string    `json:"min_severity"`
+	AllOrgs          bool      `json:"all_orgs"`
+	Enabled          bool      `json:"enabled"`
+	StoredSecretKeys []string  `json:"stored_secret_keys"`
 }
 
 func (q *Queries) CreateNotificationChannel(ctx context.Context, arg CreateNotificationChannelParams) (NotificationChannel, error) {
@@ -100,6 +101,7 @@ func (q *Queries) CreateNotificationChannel(ctx context.Context, arg CreateNotif
 		arg.MinSeverity,
 		arg.AllOrgs,
 		arg.Enabled,
+		arg.StoredSecretKeys,
 	)
 	var i NotificationChannel
 	err := row.Scan(
@@ -115,6 +117,7 @@ func (q *Queries) CreateNotificationChannel(ctx context.Context, arg CreateNotif
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
@@ -230,7 +233,7 @@ func (q *Queries) GetEventCertificateVersion(ctx context.Context, versionID uuid
 }
 
 const getNotificationChannel = `-- name: GetNotificationChannel :one
-SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels WHERE id = $1
+SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at, stored_secret_keys FROM notification_channels WHERE id = $1
 `
 
 func (q *Queries) GetNotificationChannel(ctx context.Context, id uuid.UUID) (NotificationChannel, error) {
@@ -249,6 +252,7 @@ func (q *Queries) GetNotificationChannel(ctx context.Context, id uuid.UUID) (Not
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
@@ -301,7 +305,7 @@ func (q *Queries) GetNotificationEvent(ctx context.Context, id uuid.UUID) (Notif
 }
 
 const getOrgNotificationChannel = `-- name: GetOrgNotificationChannel :one
-SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at, stored_secret_keys FROM notification_channels WHERE id = $1 AND org_id = $2
 `
 
 type GetOrgNotificationChannelParams struct {
@@ -325,6 +329,7 @@ func (q *Queries) GetOrgNotificationChannel(ctx context.Context, arg GetOrgNotif
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
@@ -461,7 +466,7 @@ func (q *Queries) ListOrgEvents(ctx context.Context, arg ListOrgEventsParams) ([
 }
 
 const listOrgNotificationChannels = `-- name: ListOrgNotificationChannels :many
-SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels
+SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at, stored_secret_keys FROM notification_channels
 WHERE org_id = $1
    OR ($2::bool AND all_orgs AND org_id != $1)
 ORDER BY lower(name), id
@@ -499,6 +504,7 @@ func (q *Queries) ListOrgNotificationChannels(ctx context.Context, arg ListOrgNo
 			&i.Enabled,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.StoredSecretKeys,
 		); err != nil {
 			return nil, err
 		}
@@ -511,7 +517,7 @@ func (q *Queries) ListOrgNotificationChannels(ctx context.Context, arg ListOrgNo
 }
 
 const lockOrgNotificationChannel = `-- name: LockOrgNotificationChannel :one
-SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at FROM notification_channels WHERE id = $1 AND org_id = $2 FOR UPDATE
+SELECT id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at, stored_secret_keys FROM notification_channels WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
 
 type LockOrgNotificationChannelParams struct {
@@ -539,6 +545,7 @@ func (q *Queries) LockOrgNotificationChannel(ctx context.Context, arg LockOrgNot
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
@@ -1015,21 +1022,23 @@ func (q *Queries) ScanOfflineClients(ctx context.Context, arg ScanOfflineClients
 
 const updateNotificationChannel = `-- name: UpdateNotificationChannel :one
 UPDATE notification_channels SET name = $1, config = $2, secret_cfg = $3,
-       events = $4, min_severity = $5, all_orgs = $6,
-       enabled = $7, updated_at = now()
-WHERE id = $8 AND org_id = $9 RETURNING id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at
+       stored_secret_keys = COALESCE($4::text[], '{}'),
+       events = $5, min_severity = $6, all_orgs = $7,
+       enabled = $8, updated_at = now()
+WHERE id = $9 AND org_id = $10 RETURNING id, org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, created_at, updated_at, stored_secret_keys
 `
 
 type UpdateNotificationChannelParams struct {
-	Name        string    `json:"name"`
-	Config      []byte    `json:"config"`
-	SecretCfg   []byte    `json:"secret_cfg"`
-	Events      []string  `json:"events"`
-	MinSeverity string    `json:"min_severity"`
-	AllOrgs     bool      `json:"all_orgs"`
-	Enabled     bool      `json:"enabled"`
-	ID          uuid.UUID `json:"id"`
-	OrgID       uuid.UUID `json:"org_id"`
+	Name             string    `json:"name"`
+	Config           []byte    `json:"config"`
+	SecretCfg        []byte    `json:"secret_cfg"`
+	StoredSecretKeys []string  `json:"stored_secret_keys"`
+	Events           []string  `json:"events"`
+	MinSeverity      string    `json:"min_severity"`
+	AllOrgs          bool      `json:"all_orgs"`
+	Enabled          bool      `json:"enabled"`
+	ID               uuid.UUID `json:"id"`
+	OrgID            uuid.UUID `json:"org_id"`
 }
 
 func (q *Queries) UpdateNotificationChannel(ctx context.Context, arg UpdateNotificationChannelParams) (NotificationChannel, error) {
@@ -1037,6 +1046,7 @@ func (q *Queries) UpdateNotificationChannel(ctx context.Context, arg UpdateNotif
 		arg.Name,
 		arg.Config,
 		arg.SecretCfg,
+		arg.StoredSecretKeys,
 		arg.Events,
 		arg.MinSeverity,
 		arg.AllOrgs,
@@ -1058,6 +1068,7 @@ func (q *Queries) UpdateNotificationChannel(ctx context.Context, arg UpdateNotif
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }

@@ -580,12 +580,20 @@ func (s *Server) targetOut(ctx context.Context, t sqlcgen.DeployTarget, grants i
 	if err := json.Unmarshal(t.Config, &cfg); err != nil {
 		return gen.DeployTarget{}, err
 	}
-	secrets, err := s.targetSecrets(ctx, &t)
-	if err != nil {
-		return gen.DeployTarget{}, err
+	names := t.StoredSecretKeys
+	if len(names) == 0 && len(t.SecretCfg) > 0 {
+		// A row from before stored_secret_keys existed: open it once.
+		secrets, err := s.targetSecrets(ctx, &t)
+		if err != nil {
+			return gen.DeployTarget{}, err
+		}
+		names = storedSecretKeys(secrets)
+	}
+	if names == nil {
+		names = []string{}
 	}
 	return gen.DeployTarget{Id: t.ID, OrgId: t.OrgID, Name: t.Name, Type: gen.DeployTargetType(t.Type), RunsOn: gen.RunsOn(t.RunsOn),
-		Config: cfg, StoredSecrets: storedSecretKeys(secrets), GrantCount: grants, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
+		Config: cfg, StoredSecrets: names, GrantCount: grants, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
 }
 
 func (s *Server) targetsOut(ctx context.Context, rows []sqlcgen.DeployTarget) ([]gen.DeployTarget, error) {
@@ -683,11 +691,12 @@ func sameURLSet(a, b []string) bool {
 
 // validatedTarget is validTarget's resolved shape, ready to store.
 type validatedTarget struct {
-	name      string
-	side      targets.Mode
-	public    []byte
-	secretCfg []byte // sealed; nil when the config has no secrets
-	needsKey  bool
+	name       string
+	side       targets.Mode
+	public     []byte
+	secretCfg  []byte   // sealed; nil when the config has no secrets
+	secretKeys []string // names of the sealed fields, stored in plaintext
+	needsKey   bool
 }
 
 // validTarget validates and canonicalizes a deploy target input against
@@ -783,7 +792,7 @@ func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old
 			return validatedTarget{}, err
 		}
 	}
-	return validatedTarget{name: name, side: side, public: cfg.Public, secretCfg: secretCfg, needsKey: cfg.NeedsKey}, nil
+	return validatedTarget{name: name, side: side, public: cfg.Public, secretCfg: secretCfg, secretKeys: storedSecretKeys(cfg.Secrets), needsKey: cfg.NeedsKey}, nil
 }
 
 // requireKeysExport requires keys:export when a server-run target's
@@ -850,7 +859,7 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 		return nil, err
 	}
 	t, err := s.queries().CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: r.OrgId, Name: vt.name, Type: string(r.Body.Type),
-		RunsOn: string(vt.side), Config: vt.public, SecretCfg: vt.secretCfg})
+		RunsOn: string(vt.side), Config: vt.public, SecretCfg: vt.secretCfg, StoredSecretKeys: vt.secretKeys})
 	switch pgCode(err) {
 	case pgUniqueViolation:
 		return nil, conflict("A deploy target named %q exists in this org.", vt.name)
@@ -920,7 +929,7 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 			return nil, err
 		}
 	}
-	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: vt.name, Config: vt.public, SecretCfg: vt.secretCfg, ID: r.Id, OrgID: r.OrgId})
+	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: vt.name, Config: vt.public, SecretCfg: vt.secretCfg, StoredSecretKeys: vt.secretKeys, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("A deploy target named %q exists in this org.", vt.name)
 	}

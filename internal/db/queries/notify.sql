@@ -78,12 +78,13 @@ SELECT * FROM notification_channels WHERE id = $1 AND org_id = $2;
 SELECT * FROM notification_channels WHERE id = $1 AND org_id = $2 FOR UPDATE;
 
 -- name: CreateNotificationChannel :one
-INSERT INTO notification_channels (org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO notification_channels (org_id, name, type, config, secret_cfg, events, min_severity, all_orgs, enabled, stored_secret_keys)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE(sqlc.arg(stored_secret_keys)::text[], '{}'))
 RETURNING *;
 
 -- name: UpdateNotificationChannel :one
 UPDATE notification_channels SET name = sqlc.arg(name), config = sqlc.arg(config), secret_cfg = sqlc.arg(secret_cfg),
+       stored_secret_keys = COALESCE(sqlc.arg(stored_secret_keys)::text[], '{}'),
        events = sqlc.arg(events), min_severity = sqlc.arg(min_severity), all_orgs = sqlc.arg(all_orgs),
        enabled = sqlc.arg(enabled), updated_at = now()
 WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) RETURNING *;

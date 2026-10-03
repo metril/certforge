@@ -1,12 +1,28 @@
 package notify
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/riverqueue/river"
+
+	"github.com/metril/certforge/internal/crypto/cryptotest"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 )
+
+// openCountBox counts Open calls so a test can see whether a row's secrets
+// were decrypted.
+type openCountBox struct {
+	cryptotest.PrefixBox
+	opens int
+}
+
+func (b *openCountBox) Open(ctx context.Context, s []byte) ([]byte, error) {
+	b.opens++
+	return b.PrefixBox.Open(ctx, s)
+}
 
 func TestChannelSummaryPerType(t *testing.T) {
 	cases := []struct {
@@ -357,5 +373,35 @@ func TestServiceRegisterRiverAddsDeliverWorker(t *testing.T) {
 	// proving RegisterRiver already registered one.
 	if err := river.AddWorkerSafely(workers, &DeliverWorker{}); err == nil {
 		t.Fatal("RegisterRiver did not add a DeliverWorker: a duplicate registration was accepted")
+	}
+}
+
+// A11: the stored secret names come from the plaintext column, so a listed
+// row is not decrypted; a row from before the column (empty names, sealed
+// secrets) falls back to opening the sealed value. A webhook's summary reads
+// its sealed URL, so it still opens it.
+func TestChannelFromRowStoredSecretNames(t *testing.T) {
+	ctx := context.Background()
+	box := &openCountBox{}
+	sealed, _ := box.Seal(ctx, []byte(`{"token":"x"}`))
+	row := sqlcgen.NotificationChannel{Type: TypeNtfy, Config: []byte(`{"topic":"t"}`), SecretCfg: sealed, StoredSecretKeys: []string{"token"}}
+	ch, err := channelFromRow(ctx, box, row)
+	if err != nil || box.opens != 0 || len(ch.StoredSecrets) != 1 || ch.StoredSecrets[0] != "token" {
+		t.Fatalf("with column: err=%v opens=%d secrets=%v", err, box.opens, ch.StoredSecrets)
+	}
+	row.StoredSecretKeys = nil
+	ch, err = channelFromRow(ctx, box, row)
+	if err != nil || box.opens != 1 || len(ch.StoredSecrets) != 1 || ch.StoredSecrets[0] != "token" {
+		t.Fatalf("legacy row: err=%v opens=%d secrets=%v", err, box.opens, ch.StoredSecrets)
+	}
+	box.opens = 0
+	hook, _ := box.Seal(ctx, []byte(`{"url":"https://hooks.example.test/abc"}`))
+	ch, err = channelFromRow(ctx, box, sqlcgen.NotificationChannel{Type: TypeWebhook, SecretCfg: hook, StoredSecretKeys: []string{"url"}})
+	if err != nil || ch.Summary != "hooks.example.test" || len(ch.StoredSecrets) != 1 {
+		t.Fatalf("webhook: err=%v summary=%q secrets=%v", err, ch.Summary, ch.StoredSecrets)
+	}
+	empty, err := channelFromRow(ctx, box, sqlcgen.NotificationChannel{Type: TypeNtfy})
+	if err != nil || empty.StoredSecrets == nil || len(empty.StoredSecrets) != 0 {
+		t.Fatalf("no secrets: err=%v secrets=%#v", err, empty.StoredSecrets)
 	}
 }

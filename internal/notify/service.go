@@ -276,7 +276,7 @@ func (s *Service) CreateChannel(ctx context.Context, orgID uuid.UUID, in Channel
 		return Channel{}, err
 	}
 	row, err := s.Store.Q.CreateNotificationChannel(ctx, sqlcgen.CreateNotificationChannelParams{
-		OrgID: orgID, Name: resolved.name, Type: in.Type, Config: publicJSON, SecretCfg: sealed,
+		OrgID: orgID, Name: resolved.name, Type: in.Type, Config: publicJSON, SecretCfg: sealed, StoredSecretKeys: storedSecretKeys(secret),
 		Events: resolved.events, MinSeverity: resolved.minSeverity, AllOrgs: in.AllOrgs, Enabled: in.Enabled})
 	if pgCode(err) == pgUniqueViolation {
 		return Channel{}, &ConflictError{Msg: fmt.Sprintf("a channel named %q exists in this org", resolved.name)}
@@ -342,7 +342,7 @@ func (s *Service) UpdateChannel(ctx context.Context, orgID, id uuid.UUID, in Cha
 		return Channel{}, err
 	}
 	row, err := s.Store.Q.UpdateNotificationChannel(ctx, sqlcgen.UpdateNotificationChannelParams{
-		ID: id, OrgID: orgID, Name: resolved.name, Config: publicJSON, SecretCfg: sealed,
+		ID: id, OrgID: orgID, Name: resolved.name, Config: publicJSON, SecretCfg: sealed, StoredSecretKeys: storedSecretKeys(secret),
 		Events: resolved.events, MinSeverity: resolved.minSeverity, AllOrgs: in.AllOrgs, Enabled: in.Enabled})
 	if pgCode(err) == pgUniqueViolation {
 		return Channel{}, &ConflictError{Msg: fmt.Sprintf("a channel named %q exists in this org", resolved.name)}

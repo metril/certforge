@@ -415,9 +415,22 @@ func channelFromRow(ctx context.Context, box crypto.Box, row sqlcgen.Notificatio
 	if cfg == nil {
 		cfg = map[string]any{}
 	}
-	secrets, err := resolveChannelSecrets(ctx, box, row.SecretCfg)
-	if err != nil {
-		return Channel{}, err
+	// The stored names come from the plaintext column; the sealed value is
+	// opened only when Summary reads a secret (webhook's URL host) or for a
+	// row written before the column existed (sealed value, no names).
+	names := row.StoredSecretKeys
+	var secrets map[string]string
+	if len(row.SecretCfg) > 0 && (row.Type == TypeWebhook || len(names) == 0) {
+		var err error
+		if secrets, err = resolveChannelSecrets(ctx, box, row.SecretCfg); err != nil {
+			return Channel{}, err
+		}
+		if len(names) == 0 {
+			names = storedSecretKeys(secrets)
+		}
+	}
+	if names == nil {
+		names = []string{}
 	}
 	events := row.Events
 	if events == nil {
@@ -425,7 +438,7 @@ func channelFromRow(ctx context.Context, box crypto.Box, row sqlcgen.Notificatio
 	}
 	return Channel{
 		ID: row.ID, OrgID: row.OrgID, Name: row.Name, Type: row.Type, Config: cfg,
-		StoredSecrets: storedSecretKeys(secrets), Summary: Summary(row.Type, cfg, secrets),
+		StoredSecrets: names, Summary: Summary(row.Type, cfg, secrets),
 		Events: events, MinSeverity: row.MinSeverity, AllOrgs: row.AllOrgs, Enabled: row.Enabled,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}, nil
