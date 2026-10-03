@@ -15,7 +15,7 @@ export default defineConfig({
   server: {
     proxy: { '/api': backend, '/readyz': backend, '/healthz': backend },
   },
-  build: { outDir: 'dist', sourcemap: true, emptyOutDir: true },
+  build: { outDir: 'dist', sourcemap: 'hidden', emptyOutDir: true },
   test: {
     environment: 'jsdom',
     environmentOptions: { jsdom: { url: 'http://localhost:3000/' } },

@@ -30,6 +30,7 @@ image-agent:
 build-embed:
 	rm -rf internal/webui/dist
 	cp -r web/dist internal/webui/dist
+	find internal/webui/dist -name "*.map" -delete
 	CGO_ENABLED=0 $(GO) build -trimpath -tags embedweb -ldflags "-X main.version=$(VERSION)" -o bin/certforge ./cmd/certforge
 
 test:
