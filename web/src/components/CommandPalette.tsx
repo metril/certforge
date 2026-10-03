@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { FileText, FolderInput, Plus, RotateCw, Server, ShieldCheck, Upload } from 'lucide-react';
@@ -69,6 +69,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const { data: clientsData } = useQuery({ ...allClientsQuery(allOrgs ? 'all' : (org?.id ?? '')), enabled: open && (allOrgs || !!org) && canReadClients });
   const clients = clientsData?.items ?? [];
   const [search, setSearch] = useState('');
+  // Escape and an overlay click close the palette without going through run().
+  useEffect(() => {
+    if (!open) setSearch('');
+  }, [open]);
 
   const run = (fn: () => void) => {
     onOpenChange(false);

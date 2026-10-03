@@ -7,7 +7,7 @@ An external monitor polls a TLS endpoint on a schedule — independent of whethe
 Fields (`MonitorInput`):
 
 - `name` (1–100 characters, unique in the org).
-- `host` (hostname or literal IP, ≤ 253 characters) and `port` (default `443`). `host` follows the same loopback/link-local policy as a notification channel's URL (Settings → Notifications → "Allow loopback/private URLs"; see [notifications.md#url-policy](notifications.md#url-policy)) — an internal address is refused unless that setting is on.
+- `host` (hostname or literal IP, ≤ 253 characters) and `port` (default `443`). `host` follows the same loopback/link-local policy as a notification channel's URL (Settings → Notifications → "Allow loopback/private URLs"; see [notifications.md#url-policy](notifications.md#url-policy)) — a loopback or link-local address is refused unless that setting is on (cloud-metadata addresses are always refused), while RFC 1918 private-network addresses are allowed (see [security.md](security.md)).
 - `sni` (optional; defaults to `host`) — the TLS server name to send, for a host that serves more than one certificate by SNI.
 - `intervalSeconds` (300–86400, default `3600`) — how often the scheduled scan checks this monitor.
 - `expectedCertificateId` (optional) — a certificate already managed by this org. The mismatch check always runs: with `expectedCertificateId` set, the presented leaf's fingerprint must match that certificate's *current version*; omitted or null does not skip the check — instead the leaf must match the current version of *some* certificate in the org, so a monitor pointed at a host CertForge does not manage anything for will read as `mismatch` unless `expectedCertificateId` is set to name it.

@@ -1,5 +1,5 @@
-import { http, HttpResponse } from 'msw';
-import { screen, within } from '@testing-library/react';
+import { delay, http, HttpResponse } from 'msw';
+import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
 import { authHandlers, me, meWith, org, problem, url } from '@/test/fixtures';
@@ -120,6 +120,20 @@ it('manages sites', async () => {
   await user.clear(input);
   await user.type(input, 'Berlin HQ{Enter}');
   expect(calls).toEqual(['POST {"name":"Paris"}', 'PATCH s-1 {"name":"Berlin HQ"}']);
+});
+
+it('disables the rename Save button while the rename is pending', async () => {
+  server.use(...authHandlers({ authed: true }), ...base,
+    http.patch(url('/orgs/:orgId/sites/:id'), async () => { await delay(300); return HttpResponse.json({ id: 's-1', orgId: org.id, name: 'Berlin HQ', createdAt: '2026-09-01T00:00:00Z' }); }));
+  const { user } = renderRoute('/settings/general');
+  await user.click(await screen.findByRole('button', { name: 'Sites of Acme' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Sites of Acme' });
+  await user.click(await within(sheet).findByRole('button', { name: 'Rename Berlin' }));
+  const input = within(sheet).getByLabelText('Name of Berlin');
+  await user.type(input, ' HQ');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(within(sheet).getByRole('button', { name: 'Save' })).toBeDisabled();
+  await waitFor(() => expect(within(sheet).queryByLabelText('Name of Berlin')).not.toBeInTheDocument());
 });
 
 it('hides org writes from non-admins', async () => {

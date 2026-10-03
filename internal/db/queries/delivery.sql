@@ -94,10 +94,12 @@ SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2;
 SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR UPDATE;
 
 -- name: CreateDeployTarget :one
-INSERT INTO deploy_targets (org_id, name, type, runs_on, config, secret_cfg) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;
+INSERT INTO deploy_targets (org_id, name, type, runs_on, config, secret_cfg, stored_secret_keys)
+VALUES ($1, $2, $3, $4, $5, $6, COALESCE(sqlc.arg(stored_secret_keys)::text[], '{}')) RETURNING *;
 
 -- name: UpdateDeployTarget :one
-UPDATE deploy_targets SET name = sqlc.arg(name), config = sqlc.arg(config), secret_cfg = sqlc.arg(secret_cfg), updated_at = now()
+UPDATE deploy_targets SET name = sqlc.arg(name), config = sqlc.arg(config), secret_cfg = sqlc.arg(secret_cfg),
+       stored_secret_keys = COALESCE(sqlc.arg(stored_secret_keys)::text[], '{}'), updated_at = now()
 WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) RETURNING *;
 
 -- name: DeleteDeployTarget :execrows

@@ -8,14 +8,19 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 // Handler serves the embedded UI.
 func Handler() http.Handler { return newHandler(assets()) }
 
+// Client routes never end in a dotted segment (org slugs, UUID ids and tab
+// names have no dots), so a missing path that does is a missing static file.
+
 func newHandler(fsys fs.FS) http.Handler {
 	files := http.FileServer(http.FS(fsys))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return middleware.Compress(5)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
 			return
@@ -30,8 +35,12 @@ func newHandler(fsys fs.FS) http.Handler {
 				return
 			}
 		}
+		if name != "index.html" && (strings.HasPrefix(name, "assets/") || path.Ext(name) != "") {
+			http.NotFound(w, r)
+			return
+		}
 		serveIndex(w, fsys)
-	})
+	}))
 }
 
 func serveIndex(w http.ResponseWriter, fsys fs.FS) {

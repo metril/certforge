@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { errorMessage } from '@/api/errors';
 import { attemptsQuery, certificateQuery, useRenewCertificates } from '@/api/queries/certificates';
@@ -54,6 +54,15 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
       return livePoll(live);
     },
   });
+  // A renewal landing moves the certificate to a new current version, so the
+  // versions list (and the CA counts built from it) is stale.
+  const qc = useQueryClient();
+  const seen = useRef<{ id?: string } | null>(null);
+  useEffect(() => {
+    if (!cert) return;
+    if (seen.current && seen.current.id !== cert.currentVersion?.id) void qc.invalidateQueries({ queryKey: ['versions', org.id, id] });
+    seen.current = { id: cert.currentVersion?.id };
+  }, [cert, qc, org.id, id]);
   const [download, setDownload] = useState<{ open: boolean; versionId?: string }>({ open: false });
   const [uploadVersionOpen, setUploadVersionOpen] = useState(false);
 

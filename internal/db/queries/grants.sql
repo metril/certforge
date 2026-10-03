@@ -134,6 +134,15 @@ FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.output_spec_id = sqlc.arg(layout_id)::uuid AND g.removed_at IS NULL AND g.client_id IS NULL;
 
+-- name: ServerGrantsUsingTarget :many
+-- UpdateDeployTarget's own version of LiveGrantIDsUsingTarget: every live
+-- server grant on target_id, with its certificate's current version, so a
+-- target edit can redeploy each of them in the same transaction.
+SELECT g.id, ce.current_version_id
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+WHERE g.deploy_target_id = sqlc.arg(target_id)::uuid AND g.removed_at IS NULL AND g.client_id IS NULL;
+
 -- name: LiveGrantIDsUsingHook :many
 -- client_id IS NOT NULL: see LiveGrantIDsForCert (a server grant never has
 -- hooks today, but this keeps the invariant explicit).

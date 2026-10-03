@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -43,6 +44,7 @@ type TestResult struct {
 type Provider struct {
 	store settingsSource
 	sec   *settings.Section
+	log   *slog.Logger
 
 	mu     sync.Mutex
 	hash   string
@@ -51,12 +53,12 @@ type Provider struct {
 
 // NewProvider returns a Provider backed by store, using sections' "vault"
 // section (RegisterSettings must have already added it).
-func NewProvider(store *settings.Store, sections *settings.Registry) *Provider {
+func NewProvider(store *settings.Store, sections *settings.Registry, log *slog.Logger) *Provider {
 	sec, ok := sections.Section(SectionName)
 	if !ok {
 		panic("vault: settings section not registered; call vault.RegisterSettings first")
 	}
-	return &Provider{store: store, sec: sec}
+	return &Provider{store: store, sec: sec, log: log}
 }
 
 // resolved reads the section's current effective Settings (public value
@@ -117,7 +119,7 @@ func (p *Provider) Client(ctx context.Context) (*Client, error) {
 		return p.client, nil
 	}
 
-	c, err := clientFromSettings(s)
+	c, err := clientFromSettings(s, p.log)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +161,7 @@ func (p *Provider) Test(ctx context.Context, raw json.RawMessage) TestResult {
 		s.SecretID = secrets["secretId"]
 	}
 
-	c, err := clientFromSettings(s)
+	c, err := clientFromSettings(s, p.log)
 	if err != nil {
 		return TestResult{OK: false, Error: scrubSecrets(err.Error(), raw, s.Token, s.SecretID)}
 	}
@@ -179,7 +181,7 @@ func (p *Provider) Test(ctx context.Context, raw json.RawMessage) TestResult {
 
 // clientFromSettings builds (but does not log in) a *Client from a
 // resolved Settings value.
-func clientFromSettings(s Settings) (*Client, error) {
+func clientFromSettings(s Settings, log *slog.Logger) (*Client, error) {
 	var auth Auth
 	method := s.AuthMethod
 	if method == "" {
@@ -191,7 +193,7 @@ func clientFromSettings(s Settings) (*Client, error) {
 	default:
 		auth = TokenAuth{Token: s.Token}
 	}
-	cfg := Config{Addr: s.Address, Namespace: s.Namespace, CAPEM: s.CAPem, Auth: auth}
+	cfg := Config{Addr: s.Address, Namespace: s.Namespace, CAPEM: s.CAPem, Auth: auth, Log: log}
 	if s.TimeoutSeconds > 0 {
 		cfg.Timeout = time.Duration(s.TimeoutSeconds) * time.Second
 	}

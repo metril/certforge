@@ -118,6 +118,32 @@ func (q *Queries) FinishAttempt(ctx context.Context, arg FinishAttemptParams) (i
 	return result.RowsAffected(), nil
 }
 
+const getAttempt = `-- name: GetAttempt :one
+SELECT id, cert_id, started_at, finished_at, outcome, acme_error_type, retry_after, steps, log FROM issuance_attempts WHERE id = $1 AND cert_id = $2
+`
+
+type GetAttemptParams struct {
+	ID     uuid.UUID `json:"id"`
+	CertID uuid.UUID `json:"cert_id"`
+}
+
+func (q *Queries) GetAttempt(ctx context.Context, arg GetAttemptParams) (IssuanceAttempt, error) {
+	row := q.db.QueryRow(ctx, getAttempt, arg.ID, arg.CertID)
+	var i IssuanceAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.CertID,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Outcome,
+		&i.AcmeErrorType,
+		&i.RetryAfter,
+		&i.Steps,
+		&i.Log,
+	)
+	return i, err
+}
+
 const insertManualPending = `-- name: InsertManualPending :exec
 INSERT INTO manual_dns_pending (attempt_id, cert_id, domain, fqdn, value, ttl, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -147,23 +173,38 @@ func (q *Queries) InsertManualPending(ctx context.Context, arg InsertManualPendi
 }
 
 const listAttempts = `-- name: ListAttempts :many
-SELECT id, cert_id, started_at, finished_at, outcome, acme_error_type, retry_after, steps, log FROM issuance_attempts WHERE cert_id = $1 ORDER BY started_at DESC LIMIT $2
+SELECT id, cert_id, started_at, finished_at, outcome, acme_error_type, retry_after, steps,
+       CASE WHEN $1::bool THEN log ELSE '' END::text AS log
+FROM issuance_attempts WHERE cert_id = $2 ORDER BY started_at DESC LIMIT $3
 `
 
 type ListAttemptsParams struct {
-	CertID uuid.UUID `json:"cert_id"`
-	Limit  int32     `json:"limit"`
+	IncludeLog bool      `json:"include_log"`
+	CertID     uuid.UUID `json:"cert_id"`
+	RowLimit   int32     `json:"row_limit"`
 }
 
-func (q *Queries) ListAttempts(ctx context.Context, arg ListAttemptsParams) ([]IssuanceAttempt, error) {
-	rows, err := q.db.Query(ctx, listAttempts, arg.CertID, arg.Limit)
+type ListAttemptsRow struct {
+	ID            uuid.UUID  `json:"id"`
+	CertID        uuid.UUID  `json:"cert_id"`
+	StartedAt     time.Time  `json:"started_at"`
+	FinishedAt    *time.Time `json:"finished_at"`
+	Outcome       string     `json:"outcome"`
+	AcmeErrorType string     `json:"acme_error_type"`
+	RetryAfter    *time.Time `json:"retry_after"`
+	Steps         []byte     `json:"steps"`
+	Log           string     `json:"log"`
+}
+
+func (q *Queries) ListAttempts(ctx context.Context, arg ListAttemptsParams) ([]ListAttemptsRow, error) {
+	rows, err := q.db.Query(ctx, listAttempts, arg.IncludeLog, arg.CertID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []IssuanceAttempt{}
+	items := []ListAttemptsRow{}
 	for rows.Next() {
-		var i IssuanceAttempt
+		var i ListAttemptsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CertID,
@@ -186,7 +227,7 @@ func (q *Queries) ListAttempts(ctx context.Context, arg ListAttemptsParams) ([]I
 }
 
 const listManualPending = `-- name: ListManualPending :many
-SELECT id, attempt_id, cert_id, domain, fqdn, value, ttl, expires_at, confirmed_at, created_at FROM manual_dns_pending WHERE cert_id = $1 AND confirmed_at IS NULL ORDER BY fqdn, value
+SELECT id, attempt_id, cert_id, domain, fqdn, value, ttl, expires_at, confirmed_at, created_at FROM manual_dns_pending WHERE cert_id = $1 AND confirmed_at IS NULL AND expires_at > now() ORDER BY fqdn, value
 `
 
 func (q *Queries) ListManualPending(ctx context.Context, certID uuid.UUID) ([]ManualDnsPending, error) {
@@ -230,6 +271,49 @@ func (q *Queries) ManualAllConfirmed(ctx context.Context, attemptID uuid.UUID) (
 	var confirmed bool
 	err := row.Scan(&confirmed)
 	return confirmed, err
+}
+
+const pruneExpiredManualPending = `-- name: PruneExpiredManualPending :execrows
+DELETE FROM manual_dns_pending WHERE confirmed_at IS NULL AND expires_at < now()
+`
+
+func (q *Queries) PruneExpiredManualPending(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneExpiredManualPending)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const pruneIssuanceAttempts = `-- name: PruneIssuanceAttempts :execrows
+DELETE FROM issuance_attempts
+WHERE id IN (
+  SELECT ranked.id FROM (
+    SELECT a.id, a.outcome, a.started_at,
+           row_number() OVER (PARTITION BY a.cert_id ORDER BY a.started_at DESC, a.id DESC) AS rn
+    FROM issuance_attempts a
+  ) AS ranked
+  WHERE ranked.outcome <> 'running' AND ranked.started_at < $1::timestamptz
+    AND ranked.rn > $2::int
+  LIMIT $3::int
+)
+`
+
+type PruneIssuanceAttemptsParams struct {
+	Before     time.Time `json:"before"`
+	KeepRecent int32     `json:"keep_recent"`
+	BatchLimit int32     `json:"batch_limit"`
+}
+
+// Deletes at most batch_limit finished attempts started before the cutoff,
+// always sparing a certificate's newest keep_recent attempts (however old)
+// and any attempt still running.
+func (q *Queries) PruneIssuanceAttempts(ctx context.Context, arg PruneIssuanceAttemptsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneIssuanceAttempts, arg.Before, arg.KeepRecent, arg.BatchLimit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const saveAttemptProgress = `-- name: SaveAttemptProgress :exec

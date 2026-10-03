@@ -33,6 +33,9 @@ func TestParseRetryAfter(t *testing.T) {
 		{"", 0, false},
 		{"soon", 0, false},
 		{"-5", 0, false},
+		{"999999999999", maxRetryAfter, true},
+		{"9223372036854775807", maxRetryAfter, true},
+		{"Wed, 21 Oct 2099 07:28:00 GMT", maxRetryAfter, true},
 	}
 	for _, c := range cases {
 		got, ok := parseRetryAfter(c.in, now)

@@ -89,6 +89,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 			hooks[h.ID] = agentproto.HookSpec{ID: h.ID, Phase: h.Phase, Argv: h.Argv, TimeoutSeconds: int(h.TimeoutSeconds)}
 		}
 	}
+	openSecrets := s.memoSecretOpener()
 	out := agentproto.Assignments{Revision: cur.DesiredRevision, Grants: []agentproto.Assignment{}, Removed: []agentproto.Removal{}}
 	for _, r := range rows {
 		specs, err := specsOf(r.Expected)
@@ -97,7 +98,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 		}
 		var target *agentproto.Target
 		if r.TargetType != nil {
-			secrets, err := s.openTargetSecrets(ctx, r.TargetSecretCfg)
+			secrets, err := openSecrets(ctx, r.TargetSecretCfg)
 			if err != nil {
 				return agentproto.Assignments{}, err
 			}

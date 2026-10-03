@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -213,6 +214,14 @@ type DeployWorker struct {
 	river.WorkerDefaults[DeployArgs]
 	D *Dispatcher
 }
+
+// deployTimeout bounds one DeployWorker run: decrypting target secrets,
+// rendering material and one write to a remote target, past river's
+// 1-minute worker default.
+const deployTimeout = 10 * time.Minute
+
+// Timeout implements river.Worker (see deployTimeout).
+func (w *DeployWorker) Timeout(*river.Job[DeployArgs]) time.Duration { return deployTimeout }
 
 // Work implements river.Worker.
 func (w *DeployWorker) Work(ctx context.Context, job *river.Job[DeployArgs]) error {

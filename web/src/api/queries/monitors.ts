@@ -1,4 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { POLL } from '@/lib/polling';
 import { api, call } from '../client';
 import type { Monitor, MonitorInput } from '../types';
 
@@ -6,6 +7,7 @@ export const monitorsQuery = (orgId: string) =>
   queryOptions({
     queryKey: ['monitors', orgId],
     queryFn: () => call(api.GET('/orgs/{orgId}/monitors', { params: { path: { orgId } } })),
+    refetchInterval: POLL.list,
   });
 
 export function useCreateMonitor(orgId: string) {

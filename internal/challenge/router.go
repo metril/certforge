@@ -499,16 +499,18 @@ func (r *Router) preCheck(name string, rule *Rule, fqdn, value string, check fun
 // already true, so Timeout keeps returning the short values.
 func (r *Router) markFailed(name string, cause error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.anyFailed = true
 	if r.failedStep == nil {
 		r.failedStep = map[string]bool{}
 	}
-	if r.failedStep[name] {
-		return
-	}
+	first := !r.failedStep[name]
 	r.failedStep[name] = true
-	r.sink.Step("challenge "+name, StepFailed, failCause(cause))
+	r.mu.Unlock()
+	// Reported after unlock: the sink may block or call back into the router.
+	// failedStep was set under the lock, so only the first caller reports.
+	if first {
+		r.sink.Step("challenge "+name, StepFailed, failCause(cause))
+	}
 }
 
 // failCause names the cause of a PreCheck failure for the timeline: a

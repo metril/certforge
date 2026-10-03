@@ -998,7 +998,7 @@ func (q *Queries) LockServerGrant(ctx context.Context, arg LockServerGrantParams
 
 const lockServerTarget = `-- name: LockServerTarget :one
 
-SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
 `
 
 type LockServerTargetParams struct {
@@ -1026,6 +1026,7 @@ func (q *Queries) LockServerTarget(ctx context.Context, arg LockServerTargetPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SecretCfg,
+		&i.StoredSecretKeys,
 	)
 	return i, err
 }
@@ -1215,6 +1216,41 @@ func (q *Queries) ServerGrantsUsingLayout(ctx context.Context, layoutID uuid.UUI
 	items := []ServerGrantsUsingLayoutRow{}
 	for rows.Next() {
 		var i ServerGrantsUsingLayoutRow
+		if err := rows.Scan(&i.ID, &i.CurrentVersionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const serverGrantsUsingTarget = `-- name: ServerGrantsUsingTarget :many
+SELECT g.id, ce.current_version_id
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+WHERE g.deploy_target_id = $1::uuid AND g.removed_at IS NULL AND g.client_id IS NULL
+`
+
+type ServerGrantsUsingTargetRow struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+}
+
+// UpdateDeployTarget's own version of LiveGrantIDsUsingTarget: every live
+// server grant on target_id, with its certificate's current version, so a
+// target edit can redeploy each of them in the same transaction.
+func (q *Queries) ServerGrantsUsingTarget(ctx context.Context, targetID uuid.UUID) ([]ServerGrantsUsingTargetRow, error) {
+	rows, err := q.db.Query(ctx, serverGrantsUsingTarget, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ServerGrantsUsingTargetRow{}
+	for rows.Next() {
+		var i ServerGrantsUsingTargetRow
 		if err := rows.Scan(&i.ID, &i.CurrentVersionID); err != nil {
 			return nil, err
 		}

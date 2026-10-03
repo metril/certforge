@@ -1,5 +1,5 @@
 import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { livePoll, POLL } from '@/lib/polling';
+import { firstPagePoll, livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
 import type { Client, ClientInput, ClientStatus, ClientUpdate } from '../types';
 
@@ -19,7 +19,7 @@ export const clientsInfinite = (orgId: string, s: ClientListQuery) =>
       ),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchInterval: POLL.list,
+    refetchInterval: firstPagePoll,
   });
 
 export const allOrgsClientsInfinite = (s: ClientListQuery) =>
@@ -28,7 +28,7 @@ export const allOrgsClientsInfinite = (s: ClientListQuery) =>
     queryFn: ({ pageParam }) => call(api.GET('/clients', { params: { query: { status: s.status, q: s.q, sort: s.sort, limit: 100, cursor: pageParam } } })),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchInterval: POLL.list,
+    refetchInterval: firstPagePoll,
   });
 
 const PAGE = 200;
@@ -149,5 +149,5 @@ export const hookRunsInfinite = (orgId: string, clientId: string) =>
       call(api.GET('/orgs/{orgId}/clients/{id}/hook-runs', { params: { path: { orgId, id: clientId }, query: { limit: 50, cursor: pageParam } } })),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchInterval: POLL.list,
+    refetchInterval: firstPagePoll,
   });

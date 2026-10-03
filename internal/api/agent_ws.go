@@ -22,7 +22,7 @@ func (a *agentAPI) ws(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return // Accept has written the error response
 	}
-	conn.SetReadLimit(1 << 20)
+	conn.SetReadLimit(agentproto.MaxMessage)
 	// A revoke or re-enrolment that committed between requireAgent's own
 	// check and the hub registering this connection must not leave it
 	// open: re-run the same check the hub is now holding a slot for.

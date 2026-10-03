@@ -92,6 +92,16 @@ func (s *Server) ListClientGrants(ctx context.Context, r gen.ListClientGrantsReq
 	return gen.ListClientGrants200JSONResponse(gen.GrantList{Items: items}), nil
 }
 
+// requireKeysExport is the agent-grant counterpart of requireKeyIfNeeded's
+// authorize: a client grant that delivers a private key needs keys:export,
+// same as a server grant.
+func requireKeysExport(orgID uuid.UUID) func(context.Context) error {
+	return func(ctx context.Context) error {
+		_, err := authorize(ctx, authz.ActionKeysExport, &orgID)
+		return err
+	}
+}
+
 // CreateGrant grants a certificate to a client.
 func (s *Server) CreateGrant(ctx context.Context, r gen.CreateGrantRequestObject) (gen.CreateGrantResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionClientsWrite, &r.OrgId); err != nil {
@@ -100,7 +110,8 @@ func (s *Server) CreateGrant(ctx context.Context, r gen.CreateGrantRequestObject
 	if r.Body == nil {
 		return nil, badRequest("missing body")
 	}
-	in := agents.GrantInput{CertID: r.Body.CertificateId, Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId}
+	in := agents.GrantInput{CertID: r.Body.CertificateId, Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
+		RequireKey: requireKeysExport(r.OrgId)}
 	if r.Body.HookIds != nil {
 		in.HookIDs = *r.Body.HookIds
 	}
@@ -136,7 +147,7 @@ func (s *Server) UpdateGrant(ctx context.Context, r gen.UpdateGrantRequestObject
 		return s.updateServerGrant(ctx, r)
 	}
 	in := agents.GrantInput{Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
-		HookIDs: r.Body.HookIds, AutoRemediate: r.Body.AutoRemediate}
+		HookIDs: r.Body.HookIds, AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
 	if err := s.d.Agents.UpdateGrant(ctx, r.OrgId, r.Id, in); err != nil {
 		return nil, mapAgentErr(err)
 	}

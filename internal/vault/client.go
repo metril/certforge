@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -54,6 +55,9 @@ type Config struct {
 	Timeout time.Duration
 	// Auth selects how the client logs in to Vault.
 	Auth Auth
+	// Log receives renewal-loop warnings (never a token or secret). Nil
+	// discards them.
+	Log *slog.Logger
 }
 
 // Client talks to Vault's (or OpenBao's) HTTP API for Transit, KV v2, PKI
@@ -68,6 +72,7 @@ type Client struct {
 
 	httpClient *http.Client
 	clock      clock
+	log        *slog.Logger
 
 	mu           sync.Mutex
 	token        string
@@ -120,6 +125,7 @@ func New(cfg Config) (*Client, error) {
 		auth:       cfg.Auth,
 		httpClient: &http.Client{Transport: base},
 		clock:      realClock{},
+		log:        cfg.Log,
 	}
 	if t, ok := cfg.Auth.(TokenAuth); ok {
 		c.token = t.Token
@@ -172,9 +178,9 @@ func (c *Client) renewLoop(ctx context.Context) {
 	// lease is known yet) and tries again, rather than exiting the renewal
 	// loop for good and leaving a renewable token to expire unrenewed.
 	if c.getToken() == "" {
-		_ = c.Login(ctx)
+		c.warn("vault login failed", c.Login(ctx))
 	} else {
-		_ = c.refreshLease(ctx)
+		c.warn("vault token lookup failed", c.refreshLease(ctx))
 	}
 
 	for {
@@ -190,17 +196,28 @@ func (c *Client) renewLoop(ctx context.Context) {
 
 		switch {
 		case renewable:
-			if err := c.RenewSelf(ctx); err == nil {
-				_ = c.refreshLease(ctx)
+			if err := c.RenewSelf(ctx); err != nil {
+				c.warn("vault token renewal failed", err)
+			} else {
+				c.warn("vault token lookup failed", c.refreshLease(ctx))
 			}
 		default:
 			if _, ok := c.auth.(AppRoleAuth); ok {
-				_ = c.Login(ctx)
+				c.warn("vault login failed", c.Login(ctx))
 			} else {
-				_ = c.refreshLease(ctx)
+				c.warn("vault token lookup failed", c.refreshLease(ctx))
 			}
 		}
 	}
+}
+
+// warn logs a renewal-loop failure (err is already redacted by the client's
+// exported methods); a nil err, a nil logger, or a cancelled loop is silent.
+func (c *Client) warn(msg string, err error) {
+	if err == nil || c.log == nil || errors.Is(err, context.Canceled) {
+		return
+	}
+	c.log.Warn(msg, "addr", c.Addr, "err", err)
 }
 
 func (c *Client) refreshLease(ctx context.Context) error {

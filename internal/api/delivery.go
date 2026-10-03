@@ -462,6 +462,19 @@ func (s *Server) UpdateLayout(ctx context.Context, r gen.UpdateLayoutRequestObje
 	// left for the next Resync render to fail opaquely with
 	// render.ErrNoKey (mapAgentErr's 500).
 	if delivery.NeedsKey(li.files) {
+		// A key-bearing layout under a live grant (agent or server) hands the
+		// key to that grant's target, so it needs keys:export, same as the
+		// grant paths. Checked under LockLayout, which grant creation's
+		// FOR SHARE lock on the layout conflicts with.
+		agentGrants, err := q.LiveGrantIDsUsingLayout(ctx, &r.Id)
+		if err != nil {
+			return nil, err
+		}
+		if len(agentGrants) > 0 || len(serverGrants) > 0 {
+			if _, err := authorize(ctx, authz.ActionKeysExport, &r.OrgId); err != nil {
+				return nil, err
+			}
+		}
 		name, err := q.LayoutKeylessGrantCertificate(ctx, &r.Id)
 		if err == nil {
 			return nil, unprocessable("files", fmt.Sprintf("certificate %q has no stored private key; this layout would need one", name))
@@ -580,12 +593,20 @@ func (s *Server) targetOut(ctx context.Context, t sqlcgen.DeployTarget, grants i
 	if err := json.Unmarshal(t.Config, &cfg); err != nil {
 		return gen.DeployTarget{}, err
 	}
-	secrets, err := s.targetSecrets(ctx, &t)
-	if err != nil {
-		return gen.DeployTarget{}, err
+	names := t.StoredSecretKeys
+	if len(names) == 0 && len(t.SecretCfg) > 0 {
+		// A row from before stored_secret_keys existed: open it once.
+		secrets, err := s.targetSecrets(ctx, &t)
+		if err != nil {
+			return gen.DeployTarget{}, err
+		}
+		names = storedSecretKeys(secrets)
+	}
+	if names == nil {
+		names = []string{}
 	}
 	return gen.DeployTarget{Id: t.ID, OrgId: t.OrgID, Name: t.Name, Type: gen.DeployTargetType(t.Type), RunsOn: gen.RunsOn(t.RunsOn),
-		Config: cfg, StoredSecrets: storedSecretKeys(secrets), GrantCount: grants, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
+		Config: cfg, StoredSecrets: names, GrantCount: grants, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
 }
 
 func (s *Server) targetsOut(ctx context.Context, rows []sqlcgen.DeployTarget) ([]gen.DeployTarget, error) {
@@ -683,11 +704,12 @@ func sameURLSet(a, b []string) bool {
 
 // validatedTarget is validTarget's resolved shape, ready to store.
 type validatedTarget struct {
-	name      string
-	side      targets.Mode
-	public    []byte
-	secretCfg []byte // sealed; nil when the config has no secrets
-	needsKey  bool
+	name       string
+	side       targets.Mode
+	public     []byte
+	secretCfg  []byte   // sealed; nil when the config has no secrets
+	secretKeys []string // names of the sealed fields, stored in plaintext
+	needsKey   bool
 }
 
 // validTarget validates and canonicalizes a deploy target input against
@@ -783,7 +805,7 @@ func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old
 			return validatedTarget{}, err
 		}
 	}
-	return validatedTarget{name: name, side: side, public: cfg.Public, secretCfg: secretCfg, needsKey: cfg.NeedsKey}, nil
+	return validatedTarget{name: name, side: side, public: cfg.Public, secretCfg: secretCfg, secretKeys: storedSecretKeys(cfg.Secrets), needsKey: cfg.NeedsKey}, nil
 }
 
 // requireKeysExport requires keys:export when a server-run target's
@@ -850,7 +872,7 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 		return nil, err
 	}
 	t, err := s.queries().CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: r.OrgId, Name: vt.name, Type: string(r.Body.Type),
-		RunsOn: string(vt.side), Config: vt.public, SecretCfg: vt.secretCfg})
+		RunsOn: string(vt.side), Config: vt.public, SecretCfg: vt.secretCfg, StoredSecretKeys: vt.secretKeys})
 	switch pgCode(err) {
 	case pgUniqueViolation:
 		return nil, conflict("A deploy target named %q exists in this org.", vt.name)
@@ -920,12 +942,24 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 			return nil, err
 		}
 	}
-	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: vt.name, Config: vt.public, SecretCfg: vt.secretCfg, ID: r.Id, OrgID: r.OrgId})
+	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: vt.name, Config: vt.public, SecretCfg: vt.secretCfg, StoredSecretKeys: vt.secretKeys, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("A deploy target named %q exists in this org.", vt.name)
 	}
 	if err != nil {
 		return nil, err
+	}
+	// Server grants on this target never go through agents.Resync (below),
+	// so a target edit gets its own redeploy: mark pending and enqueue
+	// certforge_server_deploy directly, in the same transaction.
+	serverGrants, err := q.ServerGrantsUsingTarget(ctx, r.Id)
+	if err != nil {
+		return nil, err
+	}
+	for _, sg := range serverGrants {
+		if err := s.d.Dispatcher.EnqueueTx(ctx, tx, q, sg.ID, sg.CurrentVersionID); err != nil {
+			return nil, err
+		}
 	}
 	nudge, err := s.d.Agents.Resync(ctx, q, agents.RefTarget, t.ID)
 	if err != nil {

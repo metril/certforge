@@ -1,6 +1,6 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { filenameFrom, saveBlob } from '@/lib/download';
-import { POLL } from '@/lib/polling';
+import { firstPagePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
 import { ApiError } from '../errors';
 
@@ -21,7 +21,7 @@ export const auditInfinite = (f: AuditFilter) =>
     queryFn: ({ pageParam }) => call(api.GET('/audit', { params: { query: { ...f, limit: 100, cursor: pageParam } } })),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchInterval: POLL.list,
+    refetchInterval: firstPagePoll,
   });
 
 export const recentActivityQuery = (orgId?: string) =>

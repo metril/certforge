@@ -123,7 +123,7 @@ func TestCollectorSeries(t *testing.T) {
 	}
 
 	reg := prometheus.NewRegistry()
-	reg.MustRegister(metrics.NewCollector(pool, newStore(q), "1.2.3-test"))
+	reg.MustRegister(metrics.NewCollector(pool, newStore(q), "1.2.3-test", nil))
 	mfs, err := reg.Gather()
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestCollectorCaches(t *testing.T) {
 	}
 
 	reg := prometheus.NewRegistry()
-	reg.MustRegister(metrics.NewCollector(pool, newStore(q), "test"))
+	reg.MustRegister(metrics.NewCollector(pool, newStore(q), "test", nil))
 
 	mfs, err := reg.Gather()
 	if err != nil {

@@ -43,6 +43,10 @@ var (
 	// migrated past what this archive (and this binary's own minimum,
 	// migration 13) declares, so Restore cannot safely reload it.
 	ErrNewerDatabase = errors.New("backup: database schema is newer than this backup supports")
+	// ErrAuditConflict means the target database already holds audit
+	// events the archive also carries. audit_events is append-only and is
+	// never truncated by a restore, so the archive's rows collide with it.
+	ErrAuditConflict = errors.New("backup: target database already has audit events from this backup; restore into a fresh database")
 )
 
 // Header is the archive's plaintext preamble: readable (ReadHeader) without

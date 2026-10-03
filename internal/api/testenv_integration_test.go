@@ -72,7 +72,7 @@ func newTestEnvOpts(t *testing.T, opts ...func(*api.Deps)) *testEnv {
 		AuthSettings: authSrc,
 		LoginLimiter: authn.NewLimiter(0, 0),
 		OIDC:         authn.NewOIDC(bytes.Repeat([]byte{9}, 32), nil),
-		Vault:        vault.NewProvider(store, sections),
+		Vault:        vault.NewProvider(store, sections, nil),
 	}
 	for _, o := range opts {
 		o(&d)

@@ -5,6 +5,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -461,3 +462,42 @@ func TestReconcileOrphanRemovalFailureIsReported(t *testing.T) {
 		t.Fatal("orphan dropped from state despite a failed removal")
 	}
 }
+
+// TestReconcileStateSafeAgainstHeartbeats: a heartbeat reads the installed
+// list (and a renewal writes State.ClientID) while a reconcile is writing
+// grant state; -race must stay quiet and the reconcile must still finish.
+func TestReconcileStateSafeAgainstHeartbeats(t *testing.T) {
+	dir := t.TempDir()
+	api := &fakeAPI{bundles: map[uuid.UUID]agentproto.Bundle{}}
+	for i := range 40 {
+		a, b := layoutGrant(dir, fmt.Sprintf("web%d", i))
+		api.as.Grants = append(api.as.Grants, a)
+		api.bundles[a.ID] = b
+	}
+	id := newTestIdentity(t)
+	r := &Reconciler{API: api, Deployer: testDeployer([]string{dir}), ID: id, Log: discard}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			_ = heartbeatInstalled(id)
+			id.mu.Lock()
+			id.State.ClientID = uuid.New()
+			id.mu.Unlock()
+		}
+	}()
+	rep, err := r.Reconcile(context.Background())
+	close(stop)
+	<-done
+	if err != nil || len(rep.Results) != 40 {
+		t.Fatalf("reconcile: %d results, err %v", len(rep.Results), err)
+	}
+}
+
+func heartbeatInstalled(id *Identity) []agentproto.InstalledFile { return id.Installed() }

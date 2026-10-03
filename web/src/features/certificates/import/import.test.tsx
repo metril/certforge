@@ -259,3 +259,25 @@ it('a generic error shows ErrorState with Retry', async () => {
   await screen.findByRole('table', { name: 'Import preview' });
   expect(calls).toBe(2);
 });
+
+it('a failure after some certificates were created says how many and lists them', async () => {
+  server.use(
+    http.post(url('/orgs/org-1/certificates/import'), () =>
+      HttpResponse.json(
+        {
+          type: 'about:blank',
+          title: 'Internal server error',
+          status: 500,
+          imported: [makeImportItem({ name: 'www', action: 'create', certificateId: 'c-new' })],
+        },
+        { status: 500, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/certificates/import');
+  await pickArchiveAndCa(user);
+  await user.click(screen.getByRole('button', { name: 'Preview' }));
+  expect(await screen.findByText(/Import failed after creating 1 certificate\./)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'www' })).toHaveAttribute('href', '/o/acme/certificates/c-new/overview');
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+});

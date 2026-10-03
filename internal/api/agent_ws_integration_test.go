@@ -281,3 +281,21 @@ func TestAgentChallengeOverWebSocket(t *testing.T) {
 		t.Fatalf("present: %v", err)
 	}
 }
+
+// TestWebSocketAcceptsLargeAgentMessage: an agent message above the old
+// 1 MiB read limit (a deploy report carrying captured hook output for many
+// grants) is read, not answered with a close.
+func TestWebSocketAcceptsLargeAgentMessage(t *testing.T) {
+	hub := agenthub.New(slog.Default())
+	t.Cleanup(hub.Shutdown)
+	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
+	e.svc.Hub = hub
+	cert, _, _ := e.enrolledWithGrant(t, "web-big", false)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ws := dialWS(ctx, t, e, cert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: strings.Repeat("v", 2<<20)})
+	if _, ok := recvWS(ctx, t, ws).(agentproto.HelloAck); !ok {
+		t.Fatal("expected hello_ack for a 2 MiB hello")
+	}
+}

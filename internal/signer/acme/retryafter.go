@@ -40,7 +40,12 @@ func (t *retryAfterTransport) RetryAfter() time.Duration {
 	return t.max
 }
 
+// maxRetryAfter caps a CA's requested delay. It mirrors issuance's
+// backoffCap, which acme cannot import (issuance imports this package).
+const maxRetryAfter = 24 * time.Hour
+
 // parseRetryAfter accepts delta-seconds or an HTTP-date (RFC 9110 10.2.3).
+// The result is clamped to maxRetryAfter.
 func parseRetryAfter(v string, now time.Time) (time.Duration, bool) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -49,6 +54,9 @@ func parseRetryAfter(v string, now time.Time) (time.Duration, bool) {
 	if secs, err := strconv.Atoi(v); err == nil {
 		if secs < 0 {
 			return 0, false
+		}
+		if secs > int(maxRetryAfter/time.Second) {
+			return maxRetryAfter, true
 		}
 		return time.Duration(secs) * time.Second, true
 	}
@@ -59,6 +67,9 @@ func parseRetryAfter(v string, now time.Time) (time.Duration, bool) {
 	d := at.Sub(now)
 	if d < 0 {
 		d = 0
+	}
+	if d > maxRetryAfter {
+		d = maxRetryAfter
 	}
 	return d, true
 }

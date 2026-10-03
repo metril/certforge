@@ -99,6 +99,10 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
   const create = useCreateCertificate(org.id);
   const update = useUpdateCertificate(org.id, edit?.id ?? '');
   const saving = edit ? update : create;
+  // Stays set from the click until a failure, covering the gap between the
+  // mutation resolving and the navigation completing.
+  const [submitted, setSubmitted] = useState(false);
+  const busy = saving.isPending || submitted;
 
   // Task 4 (R12 deviation): the CA is picked in Options, after Verification,
   // so "Not needed" follows the *effective* CA (the cert override, else the
@@ -155,7 +159,9 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
   }
 
   async function submit() {
+    if (busy) return;
     setSubmitError(null);
+    setSubmitted(true);
     try {
       const body = toCertificateInput(state, { privateCa });
       const cert = edit ? await update.mutateAsync(body) : await create.mutateAsync(body);
@@ -171,6 +177,7 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
       const tab = edit && !namesChanged ? 'overview' : 'attempts';
       await navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id: cert.id, tab } });
     } catch (e) {
+      setSubmitted(false);
       const field = e instanceof ApiError && e.status === 422 ? fieldOfTitle(e.problem.title) : null;
       goToStep(stepForField(field));
       setSubmitError(errorMessage(e));
@@ -212,8 +219,8 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
               </Button>
             )}
             {step >= 1 && (
-              <Button disabled={!verOk || saving.isPending} onClick={() => void submit()}>
-                {saving.isPending ? (edit ? 'Saving…' : 'Issuing…') : edit ? 'Save changes' : 'Issue certificate'}
+              <Button disabled={!verOk || busy} onClick={() => void submit()}>
+                {busy ? (edit ? 'Saving…' : 'Issuing…') : edit ? 'Save changes' : 'Issue certificate'}
               </Button>
             )}
           </div>

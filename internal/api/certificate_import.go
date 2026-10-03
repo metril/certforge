@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -30,15 +32,51 @@ func (s *Server) ImportCertificates(ctx context.Context, r gen.ImportCertificate
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
+	// A 32 MiB upload can outlast the server's ReadTimeout; only a caller
+	// who passed authn, requireJSON's multipart check and authorize gets
+	// longer (the error is http.ErrNotSupported for a writer that cannot,
+	// which keeps the server default).
+	if w, _ := httpFrom(ctx); w != nil {
+		rc := http.NewResponseController(w) //nolint:bodyclose // false positive: a ResponseController holds no response body
+		_ = rc.SetReadDeadline(time.Now().Add(importReadTimeout))
+	}
 	fsys, caID, dryRun, err := parseImportMultipart(r.Body)
 	if err != nil {
 		return nil, err
 	}
 	result, err := s.d.Issuance.ImportCertificates(ctx, r.OrgId, caID, fsys, dryRun)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, importFailure(s.d.Log, err, result)
 	}
 	return gen.ImportCertificates200JSONResponse(importResultOut(result)), nil
+}
+
+// importFailure maps err like every other handler, and when certificates
+// were already created before it hit (they stay committed) adds them to the
+// problem as an "imported" extension member so the caller can tell.
+func importFailure(log *slog.Logger, err error, partial issuance.ImportResult) error {
+	mapped := mapErr(err)
+	if partial.DryRun {
+		return mapped // a preview stores nothing
+	}
+	var created []gen.ImportItem
+	for _, it := range importResultOut(partial).Items {
+		if it.Action == gen.Create {
+			created = append(created, it)
+		}
+	}
+	if len(created) == 0 {
+		return mapped
+	}
+	var he *HTTPError
+	if errors.As(mapped, &he) {
+		out := *he
+		out.Extra = map[string]any{"imported": created}
+		return &out
+	}
+	log.Error("certificate import failed partway", "err", err)
+	return &HTTPError{Status: http.StatusInternalServerError, Title: "Internal server error",
+		Extra: map[string]any{"imported": created}}
 }
 
 // parseImportMultipart reads every part of body: archive (extracted with

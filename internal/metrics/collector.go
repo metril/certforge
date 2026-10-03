@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -72,6 +73,7 @@ type Collector struct {
 	pool    *pgxpool.Pool
 	store   *settings.Store
 	version string
+	log     *slog.Logger
 	now     func() time.Time
 
 	mu   sync.Mutex
@@ -103,8 +105,11 @@ type riverJobRow struct {
 // collector, prometheus/client_golang's own term for one whose Describe
 // sends nothing), since every series here has database-derived label
 // values unknown ahead of a Collect call.
-func NewCollector(pool *pgxpool.Pool, store *settings.Store, version string) prometheus.Collector {
-	return &Collector{q: sqlcgen.New(pool), pool: pool, store: store, version: version, now: time.Now}
+func NewCollector(pool *pgxpool.Pool, store *settings.Store, version string, log *slog.Logger) prometheus.Collector {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Collector{q: sqlcgen.New(pool), pool: pool, store: store, version: version, log: log, now: time.Now}
 }
 
 // Describe intentionally sends nothing; see NewCollector's doc comment.
@@ -155,7 +160,10 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 // snapshot returns the cached query results, refreshing them when older
 // than CacheTTL (or never fetched). A refresh error leaves the previous
 // snapshot in place (best-effort: Collect has no way to return an error,
-// and a scrape reusing stale data beats one returning nothing).
+// and a scrape reusing stale data beats one returning nothing) and is
+// logged; the attempt still counts as a refresh, so scrapes during an
+// outage serve the last snapshot for CacheTTL instead of each waiting on
+// the query timeout.
 func (c *Collector) snapshot() snapshot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -164,9 +172,13 @@ func (c *Collector) snapshot() snapshot {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if snap, err := c.query(ctx); err == nil {
-		c.snap, c.at = snap, c.now()
+	snap, err := c.query(ctx)
+	if err != nil {
+		c.log.Warn("metrics refresh failed; serving the previous snapshot", "err", err)
+	} else {
+		c.snap = snap
 	}
+	c.at = c.now()
 	return c.snap
 }
 

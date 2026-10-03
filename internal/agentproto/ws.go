@@ -7,6 +7,12 @@ import (
 	"github.com/coder/websocket"
 )
 
+// MaxMessage caps one WebSocket message in either direction (the library's
+// default is 1 MiB): a deploy report carries captured hook output for every
+// grant, and an assignment or trust bundle can be large too. Both ends pass
+// it to SetReadLimit.
+const MaxMessage = 8 << 20 // 8 MiB
+
 // WS adapts a coder/websocket connection to Conn. Only text messages are
 // part of the protocol; a binary message is an error.
 type WS struct{ C *websocket.Conn }

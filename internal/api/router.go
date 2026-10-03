@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -217,6 +218,10 @@ const maxRequestBody = 1 << 20 // 1 MiB
 // guard): an acme.sh or certbot tarball is bigger than any other request
 // body this API ever accepts.
 const maxImportBody = 32 << 20 // 32 MiB
+
+// importReadTimeout replaces the server-wide ReadTimeout for the import
+// route's body, once the handler has authenticated and authorized the caller.
+const importReadTimeout = 5 * time.Minute
 
 // importCertificatesPath matches exactly POST /api/v1/orgs/{orgId}/certificates/import,
 // requireJSON's one exception: this route needs multipart/form-data, not

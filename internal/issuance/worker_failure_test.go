@@ -4,6 +4,7 @@ package issuance
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -87,5 +88,29 @@ func TestOnFailureCalledEveryAttempt(t *testing.T) {
 	}
 	if rec.calls[0].Step != "caa" || rec.calls[0].Class != "caa" {
 		t.Fatalf("f = %+v", rec.calls[0])
+	}
+}
+
+// TestFailKeepsExpired: a failed renewal of an already expired certificate
+// leaves it expired instead of flipping it to failed, which
+// MarkExpiredCertificates would flip straight back on the next scan.
+func TestFailKeepsExpired(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	c := f.cert(t, []string{"example.test"}, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	if _, err := f.pool.Exec(context.Background(), `UPDATE certificates SET status = 'expired' WHERE id = $1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	w := newWorker(f, &fakeSigner{err: errors.New("ca down")})
+
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	got, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != StatusExpired || got.FailureCount != 1 {
+		t.Fatalf("cert = %+v", got)
 	}
 }

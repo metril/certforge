@@ -14,7 +14,7 @@ Browser sign-in: GET /auth/oidc/start (single sign-on) or POST /auth/login (loca
 | `certs:read` | defaults, certificates, versions, attempts, manual-dns records, PEM without key | all |
 | `certs:write` | org defaults, create, edit, delete certificates | admin, org-admin, operator |
 | `certs:issue` | renew now, confirm manual-dns | admin, org-admin, operator |
-| `keys:export` | download `key` or `combined` (audited) | global admin |
+| `keys:export` | download `key` or `combined` (audited); create or update a grant that delivers a key | global admin |
 | `dnscreds:reveal` | reveal one stored DNS credential secret field (audited) | global admin |
 | `clients:read` / `clients:write` | clients, grants, deployments, hook runs | all / admin, org-admin, operator |
 | `delivery:read` / `delivery:write` | layouts, deploy targets, hooks | viewer and up / admin, org-admin, operator |

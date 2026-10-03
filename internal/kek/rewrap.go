@@ -47,6 +47,12 @@ type RewrapWorker struct {
 	Service *Service
 }
 
+// Timeout implements river.Worker: -1 disables river's 1-minute default,
+// which would cancel a rewrap of a large database mid-run. A rescued or
+// retried run starts over from the first page; that is safe because rows
+// already on the active KEK are skipped and writes are compare-and-swap.
+func (w *RewrapWorker) Timeout(*river.Job[RewrapArgs]) time.Duration { return -1 }
+
 // Work implements river.Worker.
 func (w *RewrapWorker) Work(ctx context.Context, _ *river.Job[RewrapArgs]) error {
 	_, err := w.Service.run(ctx)

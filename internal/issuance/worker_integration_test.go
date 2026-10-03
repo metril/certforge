@@ -134,7 +134,7 @@ func (f *fixture) cert(t *testing.T, names []string, rules []challenge.RuleSpec)
 
 func lastAttempt(t *testing.T, f *fixture, certID uuid.UUID) Attempt {
 	t.Helper()
-	as, err := f.store.ListAttempts(context.Background(), f.org, certID, 1)
+	as, err := f.store.ListAttempts(context.Background(), f.org, certID, 1, true)
 	if err != nil || len(as) != 1 {
 		t.Fatalf("attempts = %v %v", as, err)
 	}

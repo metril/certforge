@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -9,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	"github.com/metril/certforge/internal/agentca"
 )
@@ -119,5 +122,34 @@ func TestVerifyPinnedRejectsWrongSigner(t *testing.T) {
 	err = verifyPinned([][]byte{leaf.Raw, realCert.Raw}, agentca.Fingerprint(realCert.Raw))
 	if err == nil || strings.Contains(err.Error(), "does not contain the CA pinned") {
 		t.Fatalf("expected a chain-verification failure, got %v", err)
+	}
+}
+
+// TestDialReadsMessageOverOneMiB: the agent's read limit matches the
+// server's, so a large assignment or bundle message (over the library's
+// 1 MiB default) is read instead of closing the socket with 1009.
+func TestDialReadsMessageOverOneMiB(t *testing.T) {
+	f := newFakeServer(t)
+	big := bytes.Repeat([]byte("x"), 2<<20)
+	f.with(func() {
+		f.onWS = func(ctx context.Context, c *websocket.Conn) { _ = c.Write(ctx, websocket.MessageText, big) }
+	})
+	id, err := Enroll(context.Background(), t.TempDir(), f.token(t), facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := NewClient(id).Dial(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()                                                        //nolint:errcheck // best-effort test cleanup
+	if err := conn.Write(ctx, websocket.MessageText, []byte("{}")); err != nil { // hello
+		t.Fatal(err)
+	}
+	_, got, err := conn.Read(ctx)
+	if err != nil || len(got) != len(big) {
+		t.Fatalf("read %d bytes, err %v", len(got), err)
 	}
 }

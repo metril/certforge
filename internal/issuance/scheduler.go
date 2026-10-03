@@ -2,6 +2,8 @@ package issuance
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -30,6 +32,10 @@ type ScheduleWorker struct {
 	Inserter Inserter // nil = the river client running this job
 }
 
+// Timeout bounds one scan: the housekeeping steps each have their own
+// housekeepingStepTimeout, and enqueueing must always get to run.
+func (w *ScheduleWorker) Timeout(*river.Job[ScheduleArgs]) time.Duration { return scheduleTimeout }
+
 // Work implements river.Worker.
 func (w *ScheduleWorker) Work(ctx context.Context, _ *river.Job[ScheduleArgs]) error {
 	ins := w.Inserter
@@ -45,20 +51,72 @@ func (w *ScheduleWorker) Work(ctx context.Context, _ *river.Job[ScheduleArgs]) e
 // widest is 7 days) so a still-relevant row is never pruned mid-window.
 const ledgerRetention = 30 * 24 * time.Hour
 
-// EnqueueDue marks expired certificates, closes stale attempts, prunes old
-// rate-ledger rows and enqueues due certificates. It returns how many new
-// jobs were inserted (duplicates of queued or running jobs are skipped by
-// the unique options).
+// attemptRetention is how long a finished issuance attempt is kept before
+// EnqueueDue prunes it, except that each certificate's newest
+// attemptsKeptPerCert attempts are always kept however old, so a
+// long-stable certificate still shows its last issuance history.
+const (
+	attemptRetention    = 90 * 24 * time.Hour
+	attemptsKeptPerCert = 20
+)
+
+// hookRunRetention is how long an agent hook run (with its captured
+// output) is kept before EnqueueDue prunes it.
+const hookRunRetention = 90 * 24 * time.Hour
+
+// scheduleTimeout is the ScheduleWorker's job timeout (river's default is
+// one minute): comfortably above the sum of the steps run in EnqueueDue.
+const scheduleTimeout = 5 * time.Minute
+
+// housekeepingStepTimeout bounds each housekeeping step of EnqueueDue, so a
+// slow one cannot consume the job's budget. A variable only so tests can
+// shorten it.
+var housekeepingStepTimeout = 20 * time.Second
+
+// pruneBatchLimit caps the rows one prune deletes per run; a large backlog
+// drains over successive runs instead of one long statement.
+const pruneBatchLimit = 5000
+
+// EnqueueDue marks expired certificates, closes stale attempts, enqueues due
+// certificates, and then prunes old rate-ledger rows, issuance attempts,
+// hook runs and expired manual-dns records. Every housekeeping call runs
+// under its own timeout and is best-effort: a failure never stops due
+// certificates from being enqueued (the prunes run after enqueueing), and
+// is returned (joined) alongside the count. It returns how many new jobs
+// were inserted (duplicates of queued or running jobs are skipped by the
+// unique options).
 func EnqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, error) {
-	if _, err := s.MarkExpired(ctx); err != nil {
-		return 0, err
+	var housekeeping []error
+	step := func(name string, fn func(context.Context) error) {
+		sctx, cancel := context.WithTimeout(ctx, housekeepingStepTimeout)
+		defer cancel()
+		if err := fn(sctx); err != nil {
+			housekeeping = append(housekeeping, fmt.Errorf("%s: %w", name, err))
+		}
 	}
-	if _, err := s.FailStaleAttempts(ctx, 4*time.Hour); err != nil {
-		return 0, err
+	step("mark expired", func(c context.Context) error { _, err := s.MarkExpired(c); return err })
+	step("fail stale attempts", func(c context.Context) error { _, err := s.FailStaleAttempts(c, 4*time.Hour); return err })
+	n, err := enqueueDue(ctx, s, ins, limit)
+	if err != nil {
+		housekeeping = append(housekeeping, err)
 	}
-	if _, err := s.PruneLedger(ctx, time.Now().Add(-ledgerRetention)); err != nil {
-		return 0, err
-	}
+	step("prune ledger", func(c context.Context) error {
+		_, err := s.PruneLedger(c, time.Now().Add(-ledgerRetention))
+		return err
+	})
+	step("prune issuance attempts", func(c context.Context) error {
+		_, err := s.PruneIssuanceAttempts(c, time.Now().Add(-attemptRetention), attemptsKeptPerCert, pruneBatchLimit)
+		return err
+	})
+	step("prune hook runs", func(c context.Context) error {
+		_, err := s.PruneHookRuns(c, time.Now().Add(-hookRunRetention), pruneBatchLimit)
+		return err
+	})
+	step("prune expired manual dns", func(c context.Context) error { _, err := s.PruneExpiredManualPending(c); return err })
+	return n, errors.Join(housekeeping...)
+}
+
+func enqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, error) {
 	ids, err := s.DueCertificateIDs(ctx, limit)
 	if err != nil {
 		return 0, err

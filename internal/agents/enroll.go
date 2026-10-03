@@ -68,16 +68,18 @@ func (s *Service) Enroll(ctx context.Context, req agentproto.EnrollRequest) (age
 	if err != nil {
 		return agentproto.EnrollResponse{}, unauthorized(badToken)
 	}
-	pin, err := s.CA.Oldest(ctx)
+	// The pin check reads certificates only; the active CA's key is
+	// decrypted below, after the token is consumed, so a bad token never
+	// reaches CA material.
+	trusted, err := s.CA.Trusted(ctx)
 	if err != nil {
 		return agentproto.EnrollResponse{}, err
 	}
-	if tok.CAFingerprint != agentca.Fingerprint(pin.Cert.Raw) {
+	if len(trusted) == 0 {
+		return agentproto.EnrollResponse{}, agentca.ErrNoActive
+	}
+	if tok.CAFingerprint != agentca.Fingerprint(trusted[0].Raw) {
 		return agentproto.EnrollResponse{}, conflict("This token pins an agent CA that no longer signs the listener certificate; re-enrol the client for a new token.")
-	}
-	ca, err := s.CA.Active(ctx)
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
 	}
 	csr, err := agentca.ParseCSR([]byte(req.CSR))
 	if err != nil {
@@ -104,6 +106,10 @@ func (s *Service) Enroll(ctx context.Context, req agentproto.EnrollRequest) (age
 	if cur.Status != "pending" {
 		return agentproto.EnrollResponse{}, conflict("This client is %s; re-enrol it for a new token.", cur.Status)
 	}
+	ca, err := s.CA.Active(ctx)
+	if err != nil {
+		return agentproto.EnrollResponse{}, err
+	}
 	cert, err := agentca.SignClient(ca, csr, clientID, st.AgentCertLifetime(), s.now())
 	if err != nil {
 		return agentproto.EnrollResponse{}, err
@@ -119,7 +125,7 @@ func (s *Service) Enroll(ctx context.Context, req agentproto.EnrollRequest) (age
 	if err != nil {
 		return agentproto.EnrollResponse{}, err
 	}
-	trusted, err := s.CA.Trusted(ctx)
+	trusted, err = s.CA.Trusted(ctx)
 	if err != nil {
 		return agentproto.EnrollResponse{}, err
 	}

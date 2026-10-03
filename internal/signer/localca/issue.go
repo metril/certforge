@@ -16,6 +16,15 @@ import (
 	"github.com/metril/certforge/internal/signer"
 )
 
+// ErrIssuerExpiring means the issuing certificate has expired or has less
+// than minIssuerRemaining of validity left, so a leaf signed under it would
+// be useless almost at once.
+var ErrIssuerExpiring = errors.New("localca: issuing certificate has expired or is about to")
+
+// minIssuerRemaining is the least validity the issuing certificate must have
+// left for Issue to sign a leaf under it.
+const minIssuerRemaining = 24 * time.Hour
+
 // Opts positions a Signer's leaf certificates in the API and CRL
 // namespace. BaseURL is the server's public base URL (general.baseUrl);
 // when empty, issued leaves carry no CRL distribution point. Now defaults
@@ -55,7 +64,7 @@ func (s *Signer) Kind() string { return "localca" }
 
 // Issue signs a leaf under Issuing: NewKeyAndCSR builds the key (honouring
 // req.ReuseKeyPKCS8 and req.KeyType), NotAfter is capped to the issuing
-// certificate's own NotAfter, and a CRL distribution point is added only
+// certificate's own NotAfter (Issue refuses when under 24 h of it remain), and a CRL distribution point is added only
 // when Opts.BaseURL is set.
 func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Issued, error) {
 	if err := ctx.Err(); err != nil {
@@ -78,6 +87,9 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 	serial, err := randomSerial()
 	if err != nil {
 		return nil, err
+	}
+	if remaining := s.mat.Issuing.NotAfter.Sub(now); remaining < minIssuerRemaining {
+		return nil, fmt.Errorf("%w (valid until %s)", ErrIssuerExpiring, s.mat.Issuing.NotAfter.UTC().Format(time.RFC3339))
 	}
 	notAfter := now.Add(time.Duration(s.cfg.MaxLeafDays) * 24 * time.Hour)
 	if notAfter.After(s.mat.Issuing.NotAfter) {

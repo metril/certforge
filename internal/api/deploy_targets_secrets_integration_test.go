@@ -3,11 +3,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/crypto/cryptotest"
 	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/meta"
 	"github.com/metril/certforge/internal/targets"
@@ -395,4 +398,56 @@ func TestMetaSchemasCarryRunsOn(t *testing.T) {
 	if !ok || tk.RunsOn == nil || string(*tk.RunsOn) != "agent" || tk.KeyPolicy == nil || string(*tk.KeyPolicy) != "always" {
 		t.Fatalf("traefik entry = %+v", tk)
 	}
+}
+
+// A11: the secret names live in a plaintext column written with the sealed
+// value, listing reads it without opening the box, and a row from before the
+// column (empty names) is still reported correctly.
+func TestTargetStoredSecretKeysColumn(t *testing.T) {
+	f := newAgentFixture(t)
+	f.registerTestSecret("test-secret", targets.Either, targets.Optional)
+	ctx := context.Background()
+
+	dt, err := createTestSecret(t, f, "sec", ptr(gen.RunsOn("server")),
+		map[string]interface{}{"url": "https://example.test", "token": "t1", "note": "n1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	if err := f.pool.QueryRow(ctx, `SELECT stored_secret_keys FROM deploy_targets WHERE id = $1`, dt.Id).Scan(&keys); err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 2 || keys[0] != "note" || keys[1] != "token" {
+		t.Fatalf("stored_secret_keys = %v, want [note token]", keys)
+	}
+
+	list := func() []gen.DeployTarget {
+		res, err := f.srv.ListDeployTargets(f.as("operator"), gen.ListDeployTargetsRequestObject{OrgId: f.org})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.(gen.ListDeployTargets200JSONResponse).Items
+	}
+	realBox := f.srv.d.Box
+	f.srv.d.Box = failingBox{}
+	items := list()
+	f.srv.d.Box = realBox
+	if len(items) != 1 || len(items[0].StoredSecrets) != 2 {
+		t.Fatalf("list with the box disabled = %+v", items)
+	}
+
+	// Pre-migration row: names empty, sealed value present.
+	if _, err := f.pool.Exec(ctx, `UPDATE deploy_targets SET stored_secret_keys = '{}' WHERE id = $1`, dt.Id); err != nil {
+		t.Fatal(err)
+	}
+	if items = list(); len(items[0].StoredSecrets) != 2 || items[0].StoredSecrets[0] != "note" {
+		t.Fatalf("legacy list = %+v", items[0].StoredSecrets)
+	}
+}
+
+// failingBox fails every Open: a read that must not decrypt would error.
+type failingBox struct{ cryptotest.PrefixBox }
+
+func (failingBox) Open(context.Context, []byte) ([]byte, error) {
+	return nil, errors.New("box opened")
 }

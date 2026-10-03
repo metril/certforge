@@ -34,6 +34,26 @@ func TestSPAFallback(t *testing.T) {
 	}
 }
 
+func TestMissingStaticIs404(t *testing.T) {
+	h := newHandler(fstest.MapFS{"index.html": {Data: []byte("<html>app</html>")}})
+	for _, p := range []string{"/assets/gone.js", "/assets/sub/gone", "/favicon.ico", "/o/home/gone.map"} {
+		if rec := get(h, p); rec.Code != 404 {
+			t.Fatalf("%s: %d", p, rec.Code)
+		}
+	}
+}
+
+func TestGzip(t *testing.T) {
+	h := newHandler(fstest.MapFS{"index.html": {Data: []byte(strings.Repeat("<html>app</html>", 200))}})
+	req := httptest.NewRequest(http.MethodGet, "/o/home/overview", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Header().Get("Content-Encoding") != "gzip" {
+		t.Fatalf("headers %v", rec.Header())
+	}
+}
+
 func TestPlaceholder(t *testing.T) {
 	rec := get(Handler(), "/o/home/overview")
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "CertForge") {

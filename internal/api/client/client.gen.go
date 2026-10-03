@@ -1964,6 +1964,24 @@ type ImportItem struct {
 	Source ImportSource `json:"source"`
 }
 
+// ImportProblem defines model for ImportProblem.
+type ImportProblem struct {
+	// Detail Explanation specific to this occurrence.
+	Detail *string `json:"detail,omitempty"`
+
+	// Imported Certificates created (action create) before the failure; absent when none were.
+	Imported *[]ImportItem `json:"imported,omitempty"`
+
+	// Status HTTP status code.
+	Status int `json:"status"`
+
+	// Title Short, human-readable summary.
+	Title string `json:"title"`
+
+	// Type Problem type URI; about:blank for generic HTTP errors.
+	Type string `json:"type"`
+}
+
 // ImportResult Result of importCertificates, or a preview when dryRun is true.
 type ImportResult struct {
 	// DryRun True when nothing was stored; items shows what would happen.
@@ -1987,8 +2005,8 @@ type IssuanceAttempt struct {
 	// Id Attempt id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Log Attempt log.
-	Log string `json:"log"`
+	// Log Attempt log; omitted from the list unless includeLog is true.
+	Log *string `json:"log,omitempty"`
 
 	// Outcome Result.
 	Outcome IssuanceAttemptOutcome `json:"outcome"`
@@ -2924,6 +2942,9 @@ type VerificationRule struct {
 // VerificationRuleMethod Verification method.
 type VerificationRuleMethod string
 
+// AttemptId defines model for AttemptId.
+type AttemptId = openapi_types.UUID
+
 // AuditAction defines model for AuditAction.
 type AuditAction = string
 
@@ -3195,6 +3216,12 @@ type ImportCertificatesMultipartBody struct {
 
 	// DryRun Preview only; nothing is stored when true.
 	DryRun *bool `json:"dryRun,omitempty"`
+}
+
+// ListIssuanceAttemptsParams defines parameters for ListIssuanceAttempts.
+type ListIssuanceAttemptsParams struct {
+	// IncludeLog Include each attempt's full log (up to 64 KB each).
+	IncludeLog *bool `form:"includeLog,omitempty" json:"includeLog,omitempty"`
 }
 
 // DownloadCertificateVersionParams defines parameters for DownloadCertificateVersion.
@@ -3636,7 +3663,10 @@ type ClientInterface interface {
 	UpdateCertificate(ctx context.Context, orgId OrgId, id Id, body UpdateCertificateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIssuanceAttempts request
-	ListIssuanceAttempts(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ListIssuanceAttempts(ctx context.Context, orgId OrgId, id Id, params *ListIssuanceAttemptsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIssuanceAttempt request
+	GetIssuanceAttempt(ctx context.Context, orgId OrgId, id Id, attemptId AttemptId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCertificateDeployments request
 	ListCertificateDeployments(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4606,8 +4636,20 @@ func (c *APIClient) UpdateCertificate(ctx context.Context, orgId OrgId, id Id, b
 	return c.Client.Do(req)
 }
 
-func (c *APIClient) ListIssuanceAttempts(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListIssuanceAttemptsRequest(c.Server, orgId, id)
+func (c *APIClient) ListIssuanceAttempts(ctx context.Context, orgId OrgId, id Id, params *ListIssuanceAttemptsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIssuanceAttemptsRequest(c.Server, orgId, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) GetIssuanceAttempt(ctx context.Context, orgId OrgId, id Id, attemptId AttemptId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIssuanceAttemptRequest(c.Server, orgId, id, attemptId)
 	if err != nil {
 		return nil, err
 	}
@@ -8227,7 +8269,7 @@ func NewUpdateCertificateRequestWithBody(server string, orgId OrgId, id Id, cont
 }
 
 // NewListIssuanceAttemptsRequest generates requests for ListIssuanceAttempts
-func NewListIssuanceAttemptsRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+func NewListIssuanceAttemptsRequest(server string, orgId OrgId, id Id, params *ListIssuanceAttemptsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -8250,6 +8292,76 @@ func NewListIssuanceAttemptsRequest(server string, orgId OrgId, id Id) (*http.Re
 	}
 
 	operationPath := fmt.Sprintf("/orgs/%s/certificates/%s/attempts", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.IncludeLog != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "includeLog", runtime.ParamLocationQuery, *params.IncludeLog); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIssuanceAttemptRequest generates requests for GetIssuanceAttempt
+func NewGetIssuanceAttemptRequest(server string, orgId OrgId, id Id, attemptId AttemptId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "attemptId", runtime.ParamLocationPath, attemptId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/certificates/%s/attempts/%s", pathParam0, pathParam1, pathParam2)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -12254,7 +12366,10 @@ type ClientWithResponsesInterface interface {
 	UpdateCertificateWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateCertificateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCertificateResponse, error)
 
 	// ListIssuanceAttemptsWithResponse request
-	ListIssuanceAttemptsWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*ListIssuanceAttemptsResponse, error)
+	ListIssuanceAttemptsWithResponse(ctx context.Context, orgId OrgId, id Id, params *ListIssuanceAttemptsParams, reqEditors ...RequestEditorFn) (*ListIssuanceAttemptsResponse, error)
+
+	// GetIssuanceAttemptWithResponse request
+	GetIssuanceAttemptWithResponse(ctx context.Context, orgId OrgId, id Id, attemptId AttemptId, reqEditors ...RequestEditorFn) (*GetIssuanceAttemptResponse, error)
 
 	// ListCertificateDeploymentsWithResponse request
 	ListCertificateDeploymentsWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*ListCertificateDeploymentsResponse, error)
@@ -13633,7 +13748,7 @@ type ImportCertificatesResponse struct {
 	ApplicationproblemJSON413 *PayloadTooLarge
 	ApplicationproblemJSON415 *UnsupportedMediaType
 	ApplicationproblemJSON422 *UnprocessableEntity
-	ApplicationproblemJSON500 *InternalError
+	ApplicationproblemJSON500 *ImportProblem
 }
 
 // Status returns HTTPResponse.Status
@@ -13770,6 +13885,7 @@ type ListIssuanceAttemptsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
 	JSON200                   *[]IssuanceAttempt
+	ApplicationproblemJSON400 *BadRequest
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
 	ApplicationproblemJSON404 *NotFound
@@ -13786,6 +13902,32 @@ func (r ListIssuanceAttemptsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListIssuanceAttemptsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetIssuanceAttemptResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *IssuanceAttempt
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIssuanceAttemptResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIssuanceAttemptResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -16533,12 +16675,21 @@ func (c *ClientWithResponses) UpdateCertificateWithResponse(ctx context.Context,
 }
 
 // ListIssuanceAttemptsWithResponse request returning *ListIssuanceAttemptsResponse
-func (c *ClientWithResponses) ListIssuanceAttemptsWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*ListIssuanceAttemptsResponse, error) {
-	rsp, err := c.ListIssuanceAttempts(ctx, orgId, id, reqEditors...)
+func (c *ClientWithResponses) ListIssuanceAttemptsWithResponse(ctx context.Context, orgId OrgId, id Id, params *ListIssuanceAttemptsParams, reqEditors ...RequestEditorFn) (*ListIssuanceAttemptsResponse, error) {
+	rsp, err := c.ListIssuanceAttempts(ctx, orgId, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseListIssuanceAttemptsResponse(rsp)
+}
+
+// GetIssuanceAttemptWithResponse request returning *GetIssuanceAttemptResponse
+func (c *ClientWithResponses) GetIssuanceAttemptWithResponse(ctx context.Context, orgId OrgId, id Id, attemptId AttemptId, reqEditors ...RequestEditorFn) (*GetIssuanceAttemptResponse, error) {
+	rsp, err := c.GetIssuanceAttempt(ctx, orgId, id, attemptId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIssuanceAttemptResponse(rsp)
 }
 
 // ListCertificateDeploymentsWithResponse request returning *ListCertificateDeploymentsResponse
@@ -19883,7 +20034,7 @@ func ParseImportCertificatesResponse(rsp *http.Response) (*ImportCertificatesRes
 		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalError
+		var dest ImportProblem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -20196,6 +20347,67 @@ func ParseListIssuanceAttemptsResponse(rsp *http.Response) (*ListIssuanceAttempt
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []IssuanceAttempt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIssuanceAttemptResponse parses an HTTP response from a GetIssuanceAttemptWithResponse call
+func ParseGetIssuanceAttemptResponse(rsp *http.Response) (*GetIssuanceAttemptResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIssuanceAttemptResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IssuanceAttempt
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

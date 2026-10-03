@@ -210,14 +210,14 @@ func TestLayoutPasswordWriteOnly(t *testing.T) {
 	// be compared across an __unchanged__ update.
 	c := f.activeClient(t, "web-p12")
 	certID, _ := f.realCurrentCert(t, "web-p12-cert", true)
-	gRes, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+	gRes, err := f.srv.CreateGrant(f.as("admin"), gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
 		Body: &gen.GrantInput{CertificateId: certID, Delivery: gen.GrantDelivery("pull"), LayoutId: &l.Id}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	digest := gRes.(gen.CreateGrant201JSONResponse).Deployment.Expected[0].Sha256
 
-	upRes, err := f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l.Id,
+	upRes, err := f.srv.UpdateLayout(f.as("admin"), gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l.Id,
 		Body: &gen.LayoutInput{Name: "p12", Files: p12LayoutInput(nil).Files, Password: strPtr(challenge.Unchanged)}})
 	if err != nil {
 		t.Fatal(err)
@@ -285,7 +285,7 @@ func TestUpdateLayoutKeylessGrant422(t *testing.T) {
 		{Path: "/etc/ssl/layout-keyless.pem", Format: gen.OutputFormat("pem"), Parts: []gen.OutputPart{gen.OutputPart("fullchain")}, Mode: "0644"},
 		{Path: "/etc/ssl/layout-keyless.key", Format: gen.OutputFormat("pem"), Parts: []gen.OutputPart{gen.OutputPart("key")}, Mode: "0600"},
 	}}
-	_, err = f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: certLayoutID, Body: keyUpdate})
+	_, err = f.srv.UpdateLayout(f.as("admin"), gen.UpdateLayoutRequestObject{OrgId: f.org, Id: certLayoutID, Body: keyUpdate})
 	wantStatus(t, err, 422)
 
 	// The stored layout is unchanged (still cert-only).
@@ -377,4 +377,41 @@ func TestLayoutJKSPasswordASCII(t *testing.T) {
 	// non-jks-validated write might not satisfy jks's rule).
 	_, err = f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: l.Id, Body: jksLayoutInput(strPtr("hüntér2"))})
 	wantStatus(t, err, 422)
+}
+
+// Making a layout key-bearing while a live grant uses it hands the key to
+// that grant's agent, so it needs keys:export; an unused layout does not.
+func TestUpdateLayoutKeyNeedsKeysExportWhenInUse(t *testing.T) {
+	f := newAgentFixture(t)
+	op, admin := f.as("operator"), f.as("admin")
+	c := f.activeClient(t, "web-layout-key")
+	certID, _ := f.currentCert(t, "web")
+	layoutID := f.layout(t, "in-use", "/etc/ssl/in-use.pem")
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layoutID}}); err != nil {
+		t.Fatal(err)
+	}
+	keyed := func(name, path string) *gen.LayoutInput {
+		return &gen.LayoutInput{Name: name, Files: []gen.OutputFile{
+			{Path: path, Format: gen.OutputFormat("pem"), Parts: []gen.OutputPart{gen.OutputPart("fullchain")}, Mode: "0644"},
+			{Path: path + ".key", Format: gen.OutputFormat("pem"), Parts: []gen.OutputPart{gen.OutputPart("key")}, Mode: "0600"},
+		}}
+	}
+	_, err := f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: layoutID, Body: keyed("in-use", "/etc/ssl/in-use.pem")})
+	wantStatus(t, err, 403)
+	got, err := f.srv.GetLayout(op, gen.GetLayoutRequestObject{OrgId: f.org, Id: layoutID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(got.(gen.GetLayout200JSONResponse).Files); n != 1 {
+		t.Fatalf("layout changed despite the 403: %d files", n)
+	}
+	if _, err := f.srv.UpdateLayout(admin, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: layoutID, Body: keyed("in-use", "/etc/ssl/in-use.pem")}); err != nil {
+		t.Fatalf("admin key-bearing update: %v", err)
+	}
+
+	unused := f.layout(t, "unused", "/etc/ssl/unused.pem")
+	if _, err := f.srv.UpdateLayout(op, gen.UpdateLayoutRequestObject{OrgId: f.org, Id: unused, Body: keyed("unused", "/etc/ssl/unused.pem")}); err != nil {
+		t.Fatalf("operator update of an unused layout: %v", err)
+	}
 }

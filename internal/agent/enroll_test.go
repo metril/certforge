@@ -46,6 +46,8 @@ type fakeServer struct {
 	wsConns    int
 	wsStatus   int                                          // non-zero: refuse the upgrade with this status
 	onWS       func(ctx context.Context, c *websocket.Conn) // runs after the agent's hello
+	assignGate chan struct{}                                // non-nil: GET assignments blocks until it is closed
+	assignHits int                                          // GET assignments requests served or blocked
 }
 
 // with runs fn under the server's lock.
@@ -150,6 +152,15 @@ func newFakeServer(t *testing.T) *fakeServer {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"title":"Unauthorized","detail":"no client certificate"}`))
 			return
+		}
+		var gate chan struct{}
+		f.with(func() { f.assignHits++; gate = f.assignGate })
+		if gate != nil {
+			select {
+			case <-gate:
+			case <-r.Context().Done():
+				return
+			}
 		}
 		_ = json.NewEncoder(w).Encode(agentproto.Assignments{Revision: 7})
 	})

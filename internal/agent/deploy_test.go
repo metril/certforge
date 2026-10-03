@@ -216,6 +216,51 @@ func TestDeployerWorldWritableModeFails(t *testing.T) {
 	}
 }
 
+// A grant's files land all together or not at all: a later file failing
+// leaves the earlier file's previous content in place and no temp behind.
+func TestDeployerFailedFileLeavesPreviousFilesUntouched(t *testing.T) {
+	dir := t.TempDir()
+	a, b := traefikGrant(dir)
+	first := b.Files[0].Path
+	if err := os.MkdirAll(filepath.Dir(first), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(first, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b.Files = append(b.Files, agentproto.BundleFile{Path: filepath.Join(dir, "ssl", "bad.pem"), Mode: "0646", Content: []byte("x")})
+	res, written, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
+	if res.State != agentproto.StateFailed || len(written) != 0 || len(res.Installed) != 0 {
+		t.Fatalf("res %+v written %d", res, len(written))
+	}
+	if got, _ := os.ReadFile(first); string(got) != "old" {
+		t.Fatalf("previous file replaced by a failed grant: %q", got)
+	}
+	var left []string
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && p != first {
+			left = append(left, p)
+		}
+		return nil
+	})
+	if len(left) != 0 {
+		t.Fatalf("files left behind by a failed grant: %v", left)
+	}
+}
+
+// An empty hook argv must fail the grant, not panic the failure message.
+func TestDeployerHookWithoutArgvFailsWithoutPanic(t *testing.T) {
+	for _, phase := range []string{"pre_deploy", "post_deploy"} {
+		dir := t.TempDir()
+		a, b := traefikGrant(dir)
+		a.Hooks = []agentproto.HookSpec{{ID: uuid.New(), Phase: phase, TimeoutSeconds: 5}}
+		res, _, _ := testDeployer([]string{dir}).Deploy(context.Background(), a, b)
+		if res.State != agentproto.StateFailed || !strings.Contains(res.Error, phase) {
+			t.Fatalf("%s: res %+v", phase, res)
+		}
+	}
+}
+
 // Review Focus: writes and removes are confined to CF_WRITE_ALLOW.
 func TestDeployerWriteAllowConfinement(t *testing.T) {
 	dir := t.TempDir()

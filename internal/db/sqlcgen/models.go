@@ -159,15 +159,16 @@ type ClientCertGrant struct {
 }
 
 type DeployTarget struct {
-	ID        uuid.UUID `json:"id"`
-	OrgID     uuid.UUID `json:"org_id"`
-	Name      string    `json:"name"`
-	Type      string    `json:"type"`
-	RunsOn    string    `json:"runs_on"`
-	Config    []byte    `json:"config"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	SecretCfg []byte    `json:"secret_cfg"`
+	ID               uuid.UUID `json:"id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	Name             string    `json:"name"`
+	Type             string    `json:"type"`
+	RunsOn           string    `json:"runs_on"`
+	Config           []byte    `json:"config"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	SecretCfg        []byte    `json:"secret_cfg"`
+	StoredSecretKeys []string  `json:"stored_secret_keys"`
 }
 
 type Deployment struct {
@@ -284,18 +285,19 @@ type ManualDnsPending struct {
 }
 
 type NotificationChannel struct {
-	ID          uuid.UUID `json:"id"`
-	OrgID       uuid.UUID `json:"org_id"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Config      []byte    `json:"config"`
-	SecretCfg   []byte    `json:"secret_cfg"`
-	Events      []string  `json:"events"`
-	MinSeverity string    `json:"min_severity"`
-	AllOrgs     bool      `json:"all_orgs"`
-	Enabled     bool      `json:"enabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID               uuid.UUID `json:"id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	Name             string    `json:"name"`
+	Type             string    `json:"type"`
+	Config           []byte    `json:"config"`
+	SecretCfg        []byte    `json:"secret_cfg"`
+	Events           []string  `json:"events"`
+	MinSeverity      string    `json:"min_severity"`
+	AllOrgs          bool      `json:"all_orgs"`
+	Enabled          bool      `json:"enabled"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	StoredSecretKeys []string  `json:"stored_secret_keys"`
 }
 
 type NotificationDelivery struct {

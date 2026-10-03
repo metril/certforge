@@ -241,6 +241,9 @@ func obtainRequest(req signer.IssueRequest) (certificate.ObtainRequest, error) {
 		PreferredChain: req.PreferredChain,
 	}
 	if len(req.ReuseKeyPKCS8) > 0 {
+		// The parsed key is the only copy needed from here on (same as
+		// signer.NewKeyAndCSR).
+		defer clear(req.ReuseKeyPKCS8)
 		pk, err := x509.ParsePKCS8PrivateKey(req.ReuseKeyPKCS8)
 		if err != nil {
 			return certificate.ObtainRequest{}, fmt.Errorf("parse reused key: %w", err)

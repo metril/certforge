@@ -27,6 +27,10 @@ type GrantInput struct {
 	TargetID      *uuid.UUID
 	HookIDs       []uuid.UUID
 	AutoRemediate bool
+	// RequireKey, when set, is called once the grant is known to hand a
+	// private key to the agent (a key-bearing layout or any agent target);
+	// its error refuses the write. The API layer wires keys:export here.
+	RequireKey func(ctx context.Context) error
 }
 
 // RefKind names the delivery object whose change triggers Resync.
@@ -173,6 +177,11 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	// grant is created ahead of the certificate's first version the same
 	// way it already can be for a brand-new managed certificate.
 	if needsKey {
+		if in.RequireKey != nil {
+			if err := in.RequireKey(ctx); err != nil {
+				return err
+			}
+		}
 		st, err := q.CertificateCurrentHasKey(ctx, in.CertID)
 		if err != nil {
 			return err
@@ -269,6 +278,26 @@ func (s *Service) openTargetSecrets(ctx context.Context, sealed []byte) (map[str
 		return nil, err
 	}
 	return m, nil
+}
+
+// memoSecretOpener returns an openTargetSecrets that opens each distinct
+// sealed value once. It lives for one call (render, Assignments) only: the
+// map is never shared across requests, so decrypted secrets are not cached.
+// Rows sharing a target carry byte-identical sealed values; callers must not
+// modify the returned map.
+func (s *Service) memoSecretOpener() func(ctx context.Context, sealed []byte) (map[string]string, error) {
+	opened := map[string]map[string]string{}
+	return func(ctx context.Context, sealed []byte) (map[string]string, error) {
+		if m, ok := opened[string(sealed)]; ok {
+			return m, nil
+		}
+		m, err := s.openTargetSecrets(ctx, sealed)
+		if err != nil {
+			return nil, err
+		}
+		opened[string(sealed)] = m
+		return m, nil
+	}
 }
 
 // targetOf builds the agentproto.Target for one grant's target row: typ
@@ -442,6 +471,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 	}
 
 	push := map[uuid.UUID]bool{}
+	openSecrets := s.memoSecretOpener()
 	// Keyed on (version id, withKey): the same version can be loaded twice
 	// in one batch, once as a grant's own certificate (withKey=true) and
 	// once as another grant's extra certificate (withKey=false) — rows come
@@ -476,7 +506,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 		}
 		var target *agentproto.Target
 		if r.TargetType != nil {
-			secrets, err := s.openTargetSecrets(ctx, r.TargetSecretCfg)
+			secrets, err := openSecrets(ctx, r.TargetSecretCfg)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -487,21 +517,24 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 		expected := []byte("[]")
 		extraVersionIDs := []uuid.UUID{}
 		if r.CurrentVersionID != nil {
-			m, err := loadMaterial(r.CertID, *r.CurrentVersionID, true)
-			if err != nil {
-				return nil, nil, err
-			}
 			var layout *delivery.Layout
+			var layoutFiles []delivery.OutputFile
 			if len(r.LayoutFiles) > 0 {
-				var files []delivery.OutputFile
-				if err := json.Unmarshal(r.LayoutFiles, &files); err != nil {
+				if err := json.Unmarshal(r.LayoutFiles, &layoutFiles); err != nil {
 					return nil, nil, err
 				}
+				files := layoutFiles
 				password, err := s.openPassword(ctx, r.LayoutPassword)
 				if err != nil {
 					return nil, nil, err
 				}
 				layout = &delivery.Layout{Files: files, ExtraCertIDs: r.LayoutExtraCertIds, Password: password}
+			}
+			// Same rule as checkRefs: a target or a key-bearing layout file
+			// consumes the private key; anything else renders without it.
+			m, err := loadMaterial(r.CertID, *r.CurrentVersionID, target != nil || delivery.NeedsKey(layoutFiles))
+			if err != nil {
+				return nil, nil, err
 			}
 			extras := map[uuid.UUID]render.Material{}
 			if layout != nil {

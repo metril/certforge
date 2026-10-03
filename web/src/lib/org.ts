@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { redirect, useParams, useRouteContext } from '@tanstack/react-router';
 import type { Me, Org } from '@/api/types';
 
@@ -37,5 +38,5 @@ export function denyAllOrgs(ctx: { allOrgs: boolean }): void {
  * mismatch instead of surfacing it (a 404 on the real, if unknown, slug). */
 export function useOrgSlugOf(): (orgId?: string) => string {
   const me = useMe();
-  return (orgId) => me.orgs.find((o) => o.id === orgId)?.slug ?? orgId ?? ALL_ORGS_SLUG;
+  return useCallback((orgId) => me.orgs.find((o) => o.id === orgId)?.slug ?? orgId ?? ALL_ORGS_SLUG, [me.orgs]);
 }

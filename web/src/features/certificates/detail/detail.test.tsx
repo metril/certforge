@@ -241,3 +241,29 @@ it(
   },
   10_000,
 );
+
+// A renewal landing moves the certificate to a new current version; the
+// versions list (and anything keyed under it) must refetch, not wait for a
+// manual reload.
+it(
+  'refetches the versions list when the current version changes',
+  async () => {
+    let certCalls = 0;
+    let versionCalls = 0;
+    const renewedCert = makeCert({ currentVersion: { ...cert.currentVersion!, id: 'v-new' } });
+    server.use(
+      http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(++certCalls === 1 ? cert : renewedCert)),
+      http.get(url('/orgs/org-1/certificates/c-1/versions'), () => ((versionCalls++), HttpResponse.json([cert.currentVersion, older]))),
+      http.get(url('/orgs/org-1/certificates/c-1/attempts'), () =>
+        HttpResponse.json([makeAttempt({ outcome: 'running', finishedAt: undefined, acmeErrorType: undefined, retryAfter: undefined })]),
+      ),
+      ...base(),
+    );
+    renderRoute('/o/acme/certificates/c-1/versions');
+    await screen.findByRole('heading', { level: 1, name: 'www' });
+    // One load when the tab mounts, a second once the renewal shows up.
+    await waitFor(() => expect(certCalls).toBeGreaterThan(1), { timeout: 4_000 });
+    await waitFor(() => expect(versionCalls).toBeGreaterThan(1), { timeout: 4_000 });
+  },
+  10_000,
+);

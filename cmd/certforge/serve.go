@@ -119,7 +119,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	// var) is otherwise only holding the Go/process collectors and the
 	// package-level counters/histogram, wired in internal/metrics/metrics.go's
 	// own init().
-	metrics.Registry.MustRegister(metrics.NewCollector(pool, store, version))
+	metrics.Registry.MustRegister(metrics.NewCollector(pool, store, version, log))
 	authSettings, err := authn.NewSettingsSource(store, sections)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	vaultpki.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
-	vaultProvider := vault.NewProvider(store, sections)
+	vaultProvider := vault.NewProvider(store, sections, log)
 	targetsReg := newTargetsRegistry(vaultProvider)
 	targets.AddToMeta(targetsReg, metaReg)
 	// notifySettings reads the live "notifications" section on every Send
