@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
@@ -402,4 +402,30 @@ it('edit mode: a name change reissues, PUTs, and lands on Attempts', async () =>
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/attempts'));
   // Task 16: let the certificate detail page itself settle before the test ends.
   await screen.findByRole('navigation', { name: 'Breadcrumb' });
+});
+
+// Between the mutation resolving and the navigation completing the button
+// used to re-enable, so a second click issued a duplicate certificate.
+it('does not submit twice while navigation to the new certificate is pending', async () => {
+  let posts = 0;
+  server.use(
+    http.post(url('/orgs/org-1/certificates'), () => {
+      posts++;
+      return HttpResponse.json(makeCert({ id: 'c-new', name: 'www.example.com', status: 'pending', currentVersion: undefined }), { status: 201 });
+    }),
+    http.get(url('/orgs/org-1/certificates/c-new'), async () => {
+      await delay(500);
+      return HttpResponse.json(makeCert({ id: 'c-new', name: 'www.example.com', status: 'pending', currentVersion: undefined }));
+    }),
+  );
+  const { router, user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.paste('www.example.com');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
+  await user.click(screen.getByRole('button', { name: 'Issue certificate' }));
+  await waitFor(() => expect(posts).toBe(1));
+  await user.click(screen.getByRole('button', { name: /Issu/ }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-new/attempts'));
+  expect(posts).toBe(1);
 });

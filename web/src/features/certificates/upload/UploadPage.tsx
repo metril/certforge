@@ -26,6 +26,10 @@ export function UploadPage() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<UploadFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  // Stays set from the click until a failure, covering the gap between the
+  // upload resolving and the navigation completing.
+  const [submitted, setSubmitted] = useState(false);
+  const busy = upload.isPending || submitted;
 
   // Fix round 1 (review, Important): `ready` used to ignore `name`, so
   // Upload stayed enabled with a blank Name and `submit`'s own guard
@@ -37,12 +41,14 @@ export function UploadPage() {
     setNameError(null);
     setFieldErrors({});
     setFormError(null);
-    if (!name.trim() || !ready) return;
+    if (!name.trim() || !ready || busy) return;
+    setSubmitted(true);
     try {
       const cert = await upload.mutateAsync({ name: name.trim(), ...(await toUploadBody(value)) });
       toast.success(`Uploaded ${cert.name}`);
       await navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id: cert.id, tab: 'overview' } });
     } catch (e) {
+      setSubmitted(false);
       const outcome = uploadErrorOutcome(e);
       if (outcome.kind === 'field') {
         if (outcome.field === 'name') {
@@ -97,8 +103,8 @@ export function UploadPage() {
             </Link>
           </Button>
           <PermissionTip allowed={canWrite} action="certs:write">
-            <Button disabled={!canWrite || !ready || upload.isPending} onClick={() => void submit()}>
-              {upload.isPending ? 'Uploading…' : 'Upload'}
+            <Button disabled={!canWrite || !ready || busy} onClick={() => void submit()}>
+              {busy ? 'Uploading…' : 'Upload'}
             </Button>
           </PermissionTip>
         </div>

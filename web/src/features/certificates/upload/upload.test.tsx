@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
@@ -154,4 +154,27 @@ it('viewer: fields and Upload are disabled', async () => {
   expect(screen.getByRole('radio', { name: 'PEM' })).toBeDisabled();
   expect(screen.getByRole('radio', { name: 'PKCS#12' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
+});
+
+it('does not upload twice while navigation to the new certificate is pending', async () => {
+  let posts = 0;
+  server.use(
+    http.post(url('/orgs/org-1/certificates/upload'), () => {
+      posts++;
+      return HttpResponse.json(makeCert({ id: 'c-new', name: 'legacy-api' }), { status: 201 });
+    }),
+    http.get(url('/orgs/org-1/certificates/c-new'), async () => {
+      await delay(500);
+      return HttpResponse.json(makeCert({ id: 'c-new', name: 'legacy-api' }));
+    }),
+  );
+  const { user, router } = renderRoute('/o/acme/certificates/upload');
+  await user.type(await screen.findByLabelText('Name'), 'legacy-api');
+  await user.type(screen.getByLabelText('Certificate'), 'CERT-DATA');
+  await user.click(screen.getByRole('button', { name: 'Upload' }));
+  await waitFor(() => expect(posts).toBe(1));
+  await user.click(screen.getByRole('button', { name: /Upload/ }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-new/overview'));
+  expect(posts).toBe(1);
+  await screen.findByRole('navigation', { name: 'Breadcrumb' });
 });

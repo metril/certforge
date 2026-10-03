@@ -82,7 +82,7 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
               {renaming?.id === s.id ? (
                 <form onSubmit={rename} className="flex flex-1 gap-2">
                   <Input aria-label={`Name of ${s.name}`} value={renaming.name} autoFocus onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} />
-                  <Button type="submit" size="sm" disabled={!renaming.name.trim()}>
+                  <Button type="submit" size="sm" disabled={!renaming.name.trim() || update.isPending}>
                     Save
                   </Button>
                 </form>
