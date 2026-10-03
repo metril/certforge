@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/metril/certforge/internal/issuance"
 )
@@ -45,6 +46,8 @@ type crlCacheEntry struct {
 type crlCache struct {
 	mu      sync.Mutex
 	entries map[string]crlCacheEntry
+	// builds collapses concurrent builds of the same key into one.
+	builds singleflight.Group
 }
 
 func newCRLCache() *crlCache { return &crlCache{entries: map[string]crlCacheEntry{}} }
@@ -62,7 +65,13 @@ func (c *crlCache) get(key string) ([]byte, bool) {
 func (c *crlCache) put(key string, der []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[key] = crlCacheEntry{der: der, builtAt: time.Now()}
+	now := time.Now()
+	for k, e := range c.entries {
+		if now.Sub(e.builtAt) > crlCacheTTL {
+			delete(c.entries, k)
+		}
+	}
+	c.entries[key] = crlCacheEntry{der: der, builtAt: now}
 }
 
 // crlHandler serves GET /crl/{caId}.crl and GET /crl/{caId}/{issuerSerial}.crl:
@@ -94,14 +103,25 @@ func crlHandler(store *issuance.Store, cache *crlCache) http.HandlerFunc {
 		}
 		der, ok := cache.get(key)
 		if key == "" || !ok {
+			build := func() (any, error) {
+				d, err := store.CRL(r.Context(), caID, issuerSerial)
+				if err == nil && key != "" {
+					cache.put(key, d)
+				}
+				return d, err
+			}
+			var v any
 			var crlErr error
-			if der, crlErr = store.CRL(r.Context(), caID, issuerSerial); crlErr != nil {
+			if key == "" {
+				v, crlErr = build()
+			} else {
+				v, crlErr, _ = cache.builds.Do(key, build)
+			}
+			if crlErr != nil {
 				http.NotFound(w, r)
 				return
 			}
-			if key != "" {
-				cache.put(key, der)
-			}
+			der = v.([]byte)
 		}
 		w.Header().Set("Content-Type", "application/pkix-crl")
 		w.Header().Set("Cache-Control", "max-age=600")

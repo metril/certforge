@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/signer"
 )
@@ -293,4 +295,43 @@ func getCRL(t *testing.T, client *http.Client, url string, wantStatus int) []byt
 		t.Fatal(err)
 	}
 	return b
+}
+
+// countingBox counts Open calls, i.e. unseal attempts of a CA's secret_cfg.
+type countingBox struct {
+	crypto.Box
+	opens atomic.Int32
+}
+
+func (b *countingBox) Open(ctx context.Context, s []byte) ([]byte, error) {
+	b.opens.Add(1)
+	return b.Box.Open(ctx, s)
+}
+
+// A5: an unknown issuer serial is rejected from the public config, before
+// the CA's secret_cfg is unsealed.
+func TestCRLUnknownIssuerSerialDoesNotUnseal(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "A5", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := res.(gen.CreateCa201JSONResponse)
+	cb := &countingBox{Box: f.box}
+	store := issuance.NewStore(f.pool, cb, f.settingsStore)
+
+	if _, err := store.CRL(context.Background(), ca.Id, "deadbeef"); !errors.Is(err, issuance.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if n := cb.opens.Load(); n != 0 {
+		t.Fatalf("bogus serial unsealed the CA key %d time(s)", n)
+	}
+	if _, err := store.CRL(context.Background(), ca.Id, ""); err != nil {
+		t.Fatal(err)
+	}
+	if cb.opens.Load() == 0 {
+		t.Fatal("current issuer should unseal")
+	}
 }

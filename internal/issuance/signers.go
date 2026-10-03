@@ -329,6 +329,20 @@ func currentIssuerSerial(cfg localCAConfig) string {
 	return c.SerialNumber.Text(16)
 }
 
+// knownIssuerSerial reports whether serial names cfg's current issuer ("" or
+// its hex serial) or one of its retired issuers.
+func knownIssuerSerial(cfg localCAConfig, serial string) bool {
+	if serial == "" || serial == currentIssuerSerial(cfg) {
+		return true
+	}
+	for _, ri := range cfg.Retired {
+		if ri.Serial == serial {
+			return true
+		}
+	}
+	return false
+}
+
 // retiredMaterial looks up a retired issuer by hex serial in both cfg's
 // public entries (the certificate) and sc's sealed entries (its key); the
 // chain above it (chainPEM) is the same for every issuer of this CA.
@@ -427,9 +441,17 @@ func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 		return nil, ErrNotFound
 	}
 
+	// An unauthenticated caller can name any serial: reject an unknown one
+	// from the public config before CASecret unseals the CA key (a KEK
+	// unwrap, a Vault call with Transit).
+	if !knownIssuerSerial(cfg, issuerSerial) {
+		return nil, ErrNotFound
+	}
+
 	mat, _, err := s.CASecret(ctx, row, issuerSerial)
 	if err != nil {
-		// Covers an unknown issuerSerial (retiredMaterial's
+		// Covers a corrupt stored certificate/key (and, as a backstop, an
+		// unknown issuerSerial (retiredMaterial's
 		// ValidationError) and a corrupt stored certificate/key alike:
 		// the route never distinguishes reasons for its 404.
 		return nil, ErrNotFound
