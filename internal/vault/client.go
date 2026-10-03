@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -123,7 +124,7 @@ func New(cfg Config) (*Client, error) {
 		CA:         pool,
 		Timeout:    timeout,
 		auth:       cfg.Auth,
-		httpClient: &http.Client{Transport: base},
+		httpClient: &http.Client{Transport: base, CheckRedirect: sameHostRedirect},
 		clock:      realClock{},
 		log:        cfg.Log,
 	}
@@ -432,4 +433,40 @@ func (c *Client) rawDo(ctx context.Context, method, path string, body any) (int,
 		return 0, nil, errBodyTooLarge
 	}
 	return resp.StatusCode, data, nil
+}
+
+// sameHostRedirect lets a redirect proceed only within the same scheme and
+// host as the request that was redirected; anything else returns the 3xx
+// response unfollowed, so X-Vault-Token (and a 307/308 body) is never
+// resent to another host.
+func sameHostRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 || req.URL.Scheme != via[0].URL.Scheme || req.URL.Host != via[0].URL.Host {
+		return http.ErrUseLastResponse
+	}
+	if len(via) >= 10 {
+		return http.ErrUseLastResponse
+	}
+	return nil
+}
+
+// escapeSegment escapes one request-path segment; "." and ".." are
+// percent-encoded so they cannot climb out of the prefix.
+func escapeSegment(s string) string {
+	switch s {
+	case ".":
+		return "%2E"
+	case "..":
+		return "%2E%2E"
+	}
+	return url.PathEscape(s)
+}
+
+// escapePath escapes each "/"-separated segment of p (a mount or KV path
+// that may legitimately nest) for use in a request path.
+func escapePath(p string) string {
+	segs := strings.Split(p, "/")
+	for i, s := range segs {
+		segs[i] = escapeSegment(s)
+	}
+	return strings.Join(segs, "/")
 }
