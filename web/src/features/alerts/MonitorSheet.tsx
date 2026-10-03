@@ -27,6 +27,7 @@ import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { ExpiryChip } from './ExpiryChip';
 import { MonitorStateChip } from './MonitorStateChip';
+import { ReadOnlyNotice } from './ReadOnlyNotice';
 
 // A minimal schema, shaped only enough for fieldErrorFromMessage's own
 // per-field name matching (Field.error below, not a SchemaForm) — this
@@ -167,6 +168,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
           )}
         </SheetHeader>
         <div className="grid gap-5 px-4">
+          {!canWrite && <ReadOnlyNotice reason="Needs the alerts:write permission" />}
           {monitor?.lastCheckedAt && (
             <div className="grid gap-2 rounded-md border border-border p-3">
               <span className="text-sm font-semibold">Last check</span>
@@ -247,7 +249,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                   aria-label="Check interval"
                   value={presetSelected ? String(draft.intervalSeconds) : ''}
                   onChange={(v) => setDraft((d) => ({ ...d, intervalSeconds: Number(v) }))}
-                  options={INTERVAL_OPTIONS.map((o) => ({ ...o, disabled: !canWrite }))}
+                  options={INTERVAL_OPTIONS.map((o) => ({ ...o, disabled: !canWrite, hint: !canWrite ? 'Needs the alerts:write permission' : undefined }))}
                 />
                 {!presetSelected && <span className="text-xs text-ink-muted">Currently {fmtInterval(draft.intervalSeconds)}</span>}
               </div>

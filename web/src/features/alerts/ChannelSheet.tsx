@@ -11,6 +11,7 @@ import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
+import { ReadOnlyNotice } from './ReadOnlyNotice';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
@@ -184,7 +185,8 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
           <SheetTitle>{channel ? channel.name : 'New channel'}</SheetTitle>
           <SheetDescription className="sr-only">Notification channel settings</SheetDescription>
         </SheetHeader>
-        <div className="px-4">
+        <div className="grid gap-3 px-4">
+          {!canWrite && <ReadOnlyNotice reason={writeReason ?? 'Needs the alerts:write permission'} />}
           <ChannelTest channel={channel} orgId={orgId} dirty={dirty} canWrite={canWrite} />
         </div>
         <form
@@ -220,6 +222,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
                       </>
                     ),
                     disabled: !!channel || !canWrite,
+                    hint: !canWrite && !channel ? (writeReason ?? 'Needs the alerts:write permission') : undefined,
                     hint: !isSmUp ? TYPE_META[t].label : undefined,
                   };
                 })}

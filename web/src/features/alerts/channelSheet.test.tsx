@@ -329,3 +329,20 @@ it('duplicate header names (case-insensitive) show an error and block save', asy
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(posted).toBeDefined());
 });
+
+it('shows a read-only notice for a viewer and none for a writer', async () => {
+  channels = [makeChannel()];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
+  const first = renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  expect(within(sheet).getByRole('status')).toHaveTextContent('Read-only: Needs the alerts:write permission');
+  first.unmount();
+});
+
+it('shows no read-only notice for a writer', async () => {
+  channels = [makeChannel()];
+  renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  await within(sheet).findByLabelText('Name');
+  expect(within(sheet).queryByText(/Read-only/)).not.toBeInTheDocument();
+});

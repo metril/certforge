@@ -279,3 +279,17 @@ it('port can be cleared and an out-of-range port blocks save', async () => {
   await waitFor(() => expect(posted).toBeDefined());
   expect(posted!.port).toBe(8443);
 });
+
+it('shows a read-only notice for a viewer and none for a writer', async () => {
+  monitors = [makeMonitor()];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
+  const first = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
+  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  expect(within(sheet).getByRole('status')).toHaveTextContent('Read-only: Needs the alerts:write permission');
+  first.unmount();
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: org.id }]))));
+  renderRoute('/o/acme/alerts/monitors?edit=mon-1');
+  const sheet2 = await screen.findByRole('dialog', { name: 'edge' });
+  await within(sheet2).findByLabelText('Name');
+  expect(within(sheet2).queryByText(/Read-only/)).not.toBeInTheDocument();
+});
