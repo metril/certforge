@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CircleAlert, Eye, EyeOff, Loader2, Lock } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { UNCHANGED } from '@/api/types';
@@ -37,7 +37,18 @@ type Props = {
  * the Replace/Keep-stored buttons — there's nothing a disabled field can let
  * the caller do, so it shows only the static "Stored"/"Not set" state.
  */
-export function SecretInput({ id, label, value, onChange, stored, placeholder, disabled = false, removeDisabledReason, onReveal, revealDisabledReason }: Props) {
+export function SecretInput({ id, label, value, onChange: onChangeProp, stored, placeholder, disabled = false, removeDisabledReason, onReveal, revealDisabledReason }: Props) {
+  // The last value this control itself emitted: a `value` that differs from it
+  // and is back at UNCHANGED/undefined was reset from outside (Discard, or a
+  // Save that reloaded the record), not typed.
+  const emitted = useRef(value);
+  const onChange = useCallback(
+    (v: string | undefined) => {
+      emitted.current = v;
+      onChangeProp(v);
+    },
+    [onChangeProp],
+  );
   const [editing, setEditing] = useState(!stored);
   // Fix round 1 (Take now #4): Replace and Remove both start editing with an
   // empty-looking input, but clearing back to "" afterward must mean
@@ -87,6 +98,21 @@ export function SecretInput({ id, label, value, onChange, stored, placeholder, d
     setRevealed(null);
     setRevealError(null);
   }, [stored]);
+
+  // An outside reset to the stored sentinel (Discard, or a save that reloaded
+  // the record) returns the control to "Stored"; otherwise a stale
+  // `editing`/`removed` would let a later type-then-clear send '' and wipe it.
+  useEffect(() => {
+    if (value === emitted.current) return;
+    emitted.current = value;
+    if (stored && (value === UNCHANGED || value === undefined)) {
+      setEditing(false);
+      setRemoved(false);
+      setShown(false);
+      setRevealed(null);
+      setRevealError(null);
+    }
+  }, [value, stored]);
 
   // Proactively emit the sentinel whenever we're showing "Stored" and
   // untouched, instead of relying on the caller to have seeded it.

@@ -374,3 +374,42 @@ it('secret reveal: no reveal button without onReveal', () => {
   renderUI(<RevealHarness />);
   expect(screen.queryByRole('button', { name: /^Reveal / })).toBeNull();
 });
+
+// W2: a Discard or Save in the parent resets the value to the sentinel from
+// outside; the control must return to "Stored" with no stale Remove/Replace mode.
+function ResettableHarness() {
+  const [v, setV] = useState<string | undefined>(UNCHANGED);
+  return (
+    <>
+      <SecretInput id="token" label="Recovery token" stored value={v} onChange={setV} />
+      <output data-testid="value">{String(v)}</output>
+      <button type="button" onClick={() => setV(UNCHANGED)}>
+        External reset
+      </button>
+    </>
+  );
+}
+
+it('secret: Discard after Remove restores Stored, and a later type-then-clear sends the sentinel, never an empty string', async () => {
+  const { user } = renderUI(<ResettableHarness />);
+  await user.click(screen.getByRole('button', { name: 'Remove Recovery token' }));
+  expect(screen.getByTestId('value').textContent).toBe('');
+  await user.click(screen.getByRole('button', { name: 'External reset' }));
+  expect(screen.getByText('Stored')).toBeInTheDocument();
+  expect(screen.getByTestId('value')).toHaveTextContent(UNCHANGED);
+  await user.click(screen.getByRole('button', { name: 'Replace Recovery token' }));
+  const input = screen.getByLabelText('Recovery token');
+  await user.type(input, 'x');
+  await user.clear(input);
+  expect(screen.getByTestId('value')).toHaveTextContent(UNCHANGED);
+});
+
+it('secret: after a replaced value is saved (reset to the sentinel) the field returns to Stored', async () => {
+  const { user } = renderUI(<ResettableHarness />);
+  await user.click(screen.getByRole('button', { name: 'Replace Recovery token' }));
+  await user.type(screen.getByLabelText('Recovery token'), 'new-token');
+  expect(screen.getByTestId('value')).toHaveTextContent('new-token');
+  await user.click(screen.getByRole('button', { name: 'External reset' }));
+  expect(screen.getByText('Stored')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Recovery token')).toBeNull();
+});
