@@ -126,6 +126,28 @@ func TestLeafCappedByIssuer(t *testing.T) {
 	}
 }
 
+// TestIssueRefusesNearlyExpiredIssuer: an issuing certificate that has
+// expired, or has under the 24 h floor left, must not sign a leaf.
+func TestIssueRefusesNearlyExpiredIssuer(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	cfg := testCfg(signer.EC256)
+	mat, _, err := Generate(cfg, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := signer.IssueRequest{Names: []string{"late.example.com"}, KeyType: signer.EC256}
+	for name, at := range map[string]time.Time{
+		"expired":      mat.Issuing.NotAfter.Add(time.Hour),
+		"inside floor": mat.Issuing.NotAfter.Add(-time.Hour),
+	} {
+		at := at
+		s := New(mat, cfg, noopRecorder{}, Opts{CAID: uuid.New(), Now: func() time.Time { return at }})
+		if _, err := s.Issue(context.Background(), req); !errors.Is(err, ErrIssuerExpiring) {
+			t.Errorf("%s: err = %v, want ErrIssuerExpiring", name, err)
+		}
+	}
+}
+
 func TestRenewalInfoNotSupported(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	cfg := testCfg(signer.EC256)
