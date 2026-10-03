@@ -228,10 +228,58 @@ it('switching scope with no draft does not ask', async () => {
   expect(screen.queryByText('Discard changes?')).toBeNull();
 });
 
-it('a viewer gets the issuance defaults form read-only (no Reset section)', async () => {
+it('a viewer gets the issuance defaults form read-only: every control disabled, no Reset section', async () => {
   mockOrgDefaults();
-  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-7' }], manyOrgs.slice(0, 8)))));
-  renderRoute('/settings/issuance-defaults?scope=org&org=team-7');
-  await screen.findByRole('group', { name: 'Key type' });
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-7' }], manyOrgs.slice(0, 8)))),
+    http.get(url('/orgs/:orgId/issuance-defaults'), () => HttpResponse.json({ keyType: 'rsa4096', mustStaple: true, renewPolicy: { mode: 'days', value: 30, useAri: false }, preferredChain: 'X', resolvers: ['1.1.1.1:53'], propagationSeconds: 60 })),
+  );
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-7');
+  const keyType = within(await screen.findByRole('group', { name: 'Key type' }));
+  expect(keyType.getByRole('switch', { name: 'Override Key type' })).toBeDisabled();
+  for (const r of await keyType.findAllByRole('radio')) expect(r).toBeDisabled();
+  expect(await screen.findByLabelText('Days before expiry')).toBeDisabled();
+  expect(screen.getByLabelText('Propagation wait in seconds')).toBeDisabled();
+  expect(screen.getByRole('switch', { name: 'Must-Staple' })).toBeDisabled();
+  expect(screen.getByRole('switch', { name: 'ARI' })).toBeDisabled();
   expect(screen.queryByRole('button', { name: /^Reset section/ })).toBeNull();
+  await user.hover(keyType.getByRole('switch', { name: 'Override Key type' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the certs:write permission');
+});
+
+it('the chain popover link to the other scope asks before dropping a draft', async () => {
+  mockOrgDefaults();
+  const { user, router } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
+  const keyType = within(screen.getByRole('group', { name: 'Key type' }));
+  await user.click(keyType.getByRole('button', { name: 'Global' }));
+  await user.click(await screen.findByRole('link', { name: 'Global' }));
+  expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+  expect(router.state.location.search).toMatchObject({ scope: 'org' });
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByRole('switch', { name: 'Override Must-Staple' })).toBeChecked();
+});
+
+it('an unsaved Checks and limits edit also asks before a scope switch', async () => {
+  const { user, router } = await openGlobalTab();
+  await user.click(screen.getByRole('switch', { name: 'Check CAA records' }));
+  await user.click(screen.getByRole('radio', { name: 'Organization' }));
+  expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+  expect(router.state.location.search).toMatchObject({ scope: 'global' });
+});
+
+it('Save is disabled with a tooltip while a number field shows an error', async () => {
+  mockOrgDefaults();
+  server.use(http.get(url('/orgs/:orgId/issuance-defaults'), () => HttpResponse.json({ propagationSeconds: 60 })));
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  const wait = await screen.findByLabelText('Propagation wait in seconds');
+  await user.clear(wait);
+  expect(await screen.findByText(/Enter a whole number/)).toBeInTheDocument();
+  const save = screen.getByRole('button', { name: 'Save org defaults' });
+  expect(save).toBeDisabled();
+  await user.hover(save.parentElement as HTMLElement);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('invalid value');
+  await user.type(wait, '90');
+  await waitFor(() => expect(screen.queryByText(/Enter a whole number/)).toBeNull());
+  expect(screen.getByRole('button', { name: 'Save org defaults' })).toBeEnabled();
 });

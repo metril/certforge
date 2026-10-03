@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useBlocker, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { LevelLinks } from '@/forms/InheritableField';
 import { orgDefaultsQuery, useSaveOrgDefaults, effectiveDefaultsQuery } from '@/api/queries/defaults';
@@ -9,6 +9,7 @@ import type { IssuanceDefaults, Org } from '@/api/types';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DiscardDialog } from '@/components/ui/sheet';
 import { Combobox } from '@/components/Combobox';
 import { FilterField } from '@/components/FilterToolbar';
@@ -45,6 +46,7 @@ function SaveRow({
   banner,
   canWrite,
   permAction,
+  invalid = false,
 }: {
   label: string;
   dirty: boolean;
@@ -54,6 +56,8 @@ function SaveRow({
   banner?: string | null;
   canWrite: boolean;
   permAction: Action;
+  /** A number field shows an error: saving would silently keep the last valid value. */
+  invalid?: boolean;
 }) {
   return (
     <div className="grid gap-2 py-4">
@@ -64,9 +68,20 @@ function SaveRow({
       )}
       <div className="flex gap-2">
         <PermissionTip allowed={canWrite} action={permAction}>
-          <Button disabled={!dirty || busy || !canWrite} onClick={onSave}>
-            {label}
-          </Button>
+          {invalid && canWrite ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="inline-flex">
+                  <Button disabled>{label}</Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>A field has an invalid value; fix it before saving</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button disabled={!dirty || busy || !canWrite} onClick={onSave}>
+              {label}
+            </Button>
+          )}
         </PermissionTip>
         {dirty && (
           <Button variant="ghost" onClick={onDiscard}>
@@ -123,7 +138,9 @@ function GlobalScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onD
   const saveGlobal = useSaveSettings('issuance_defaults', { silent: true });
   const [globalDraft, setGlobalDraft] = useState<IssuanceDefaults | null>(null);
   const [globalError, setGlobalError] = useState<ServerError>(null);
-  useEffect(() => onDirty(!!globalDraft), [globalDraft, onDirty]);
+  const [limitsDirty, setLimitsDirty] = useState(false);
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => onDirty(!!globalDraft || limitsDirty), [globalDraft, limitsDirty, onDirty]);
   // The shipped values come from the server (effective endpoint's `builtin`);
   // `stored` (null until the section was ever saved) is the edit buffer.
   const builtin = effectiveQ.data?.builtin as IssuanceDefaults | undefined;
@@ -142,6 +159,8 @@ function GlobalScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onD
       ctx={globalCtx}
       error={(k) => (globalError?.field === k ? globalError.message : null)}
       readOnly={!canWriteGlobal}
+      readOnlyReason="Needs the settings:write permission"
+      onInvalidChange={setInvalid}
     />
     <SaveRow
       label="Save global defaults"
@@ -149,6 +168,7 @@ function GlobalScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onD
       busy={saveGlobal.isPending}
       canWrite={canWriteGlobal}
       permAction="settings:write"
+      invalid={invalid}
       banner={bannerFor(globalError, globalDraft ?? globalStored ?? {})}
       onSave={async () => {
         setGlobalError(null);
@@ -164,7 +184,7 @@ function GlobalScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onD
         setGlobalError(null);
       }}
     />
-    <SchemaSection section="issuance" title="Checks and limits" help="settings.issuanceChecks" uiSchemaOverrides={ISSUANCE_UI_OVERRIDES} />
+    <SchemaSection section="issuance" title="Checks and limits" help="settings.issuanceChecks" uiSchemaOverrides={ISSUANCE_UI_OVERRIDES} onDirtyChange={setLimitsDirty} />
     </div>
   );
 }
@@ -179,6 +199,7 @@ function OrgScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onDirt
   const saveOrg = useSaveOrgDefaults(org.id);
   const [orgDraft, setOrgDraft] = useState<IssuanceDefaults | null>(null);
   const [orgError, setOrgError] = useState<ServerError>(null);
+  const [invalid, setInvalid] = useState(false);
   useEffect(() => onDirty(!!orgDraft), [orgDraft, onDirty]);
   const builtin = effectiveQ.data?.builtin as IssuanceDefaults | undefined;
   const builtinState = builtinStateOf(effectiveQ);
@@ -203,6 +224,8 @@ function OrgScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onDirt
       ctx={ctx}
       error={(k) => (orgError?.field === k ? orgError.message : null)}
       readOnly={!canWriteOrg}
+      readOnlyReason="Needs the certs:write permission"
+      onInvalidChange={setInvalid}
       // A field just reset to inherited (orgDraft explicitly null) whose
       // last-saved org value was set is "inherited after save", not yet
       // reflected by `effective` (review fix round 1, #3).
@@ -214,6 +237,7 @@ function OrgScope({ org, links, onDirty }: { org: Org; links: LevelLinks; onDirt
       busy={saveOrg.isPending}
       canWrite={canWriteOrg}
       permAction="certs:write"
+      invalid={invalid}
       banner={bannerFor(orgError, orgValue)}
       onSave={async () => {
         setOrgError(null);
@@ -240,7 +264,17 @@ export function IssuanceDefaultsSection() {
   const activeSlug = useActiveOrgSlug();
   const scope = search.scope ?? 'global';
   const dirty = useRef(false);
-  const [pending, setPending] = useState<{ scope?: 'global' | 'org'; org?: string } | null>(null);
+  // An unsaved draft would be silently dropped by the scope/org remount, whether the
+  // switch comes from the controls or a chain link: ask before any such navigation.
+  const blocker = useBlocker({
+    shouldBlockFn: ({ current, next }) =>
+      dirty.current &&
+      current.routeId === next.routeId &&
+      JSON.stringify(current.params) === JSON.stringify(next.params) &&
+      ((current.search as Record<string, unknown>).scope !== (next.search as Record<string, unknown>).scope ||
+        (current.search as Record<string, unknown>).org !== (next.search as Record<string, unknown>).org),
+    withResolver: true,
+  });
   const onDirty = useCallback((d: boolean) => {
     dirty.current = d;
   }, []);
@@ -260,11 +294,7 @@ export function IssuanceDefaultsSection() {
   if (!org) return <p className="text-sm text-ink-muted">{NO_ORG}</p>;
   const links = linksFor(org.slug);
   const apply = (patch: { scope?: 'global' | 'org'; org?: string }) => void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
-  // An unsaved draft would be silently dropped by the scope/org remount: ask first.
-  const go = (patch: { scope?: 'global' | 'org'; org?: string }) => {
-    if (dirty.current) setPending(patch);
-    else apply(patch);
-  };
+  const go = apply;
   return (
     <div className="grid max-w-[900px] gap-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -288,12 +318,9 @@ export function IssuanceDefaultsSection() {
       </div>
       {scope === 'org' ? <OrgScope key={org.id} org={org} links={links.org} onDirty={onDirty} /> : <GlobalScope key="global" org={org} links={links.global} onDirty={onDirty} />}
       <DiscardDialog
-        open={pending !== null}
-        onCancel={() => setPending(null)}
-        onDiscard={() => {
-          if (pending) apply(pending);
-          setPending(null);
-        }}
+        open={blocker.status === 'blocked'}
+        onCancel={() => blocker.reset?.()}
+        onDiscard={() => blocker.proceed?.()}
       />
     </div>
   );

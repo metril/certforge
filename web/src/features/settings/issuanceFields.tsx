@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { accountsQuery } from '@/api/queries/accounts';
 import { casQuery } from '@/api/queries/cas';
@@ -69,10 +69,18 @@ export const KEY_TYPES: SegmentOption<KeyType>[] = [
 /** A whole-number input that keeps what the user typed (so it can be cleared
  * and retyped), reports only a value inside min-max upward, and shows an
  * inline error otherwise; the last valid value stays what is saved. */
+const InvalidCtx = createContext<(id: string, bad: boolean) => void>(() => {});
+
 function IntInput({ value, onChange, min, max, ...rest }: { id?: string; value: number; onChange: (v: number) => void; min: number; max: number; className?: string; 'aria-label': string }) {
   const [raw, setRaw] = useState(String(value));
   const parsed = /^\d+$/.test(raw.trim()) ? Number(raw) : NaN;
   const bad = !(parsed >= min && parsed <= max);
+  const report = useContext(InvalidCtx);
+  const uid = useId();
+  useEffect(() => {
+    report(uid, bad);
+    return () => report(uid, false);
+  }, [report, uid, bad]);
   // An outside change (a mode switch resetting the value) replaces the draft text.
   useEffect(() => {
     setRaw((r) => (Number(r) === value && /^\d+$/.test(r.trim()) ? r : String(value)));
@@ -396,8 +404,11 @@ export type FormProps = {
   error?: (k: FieldKey) => string | null | undefined;
   /** True while a field was reset to inherited this session but the save hasn't landed (review fix round 1, #3). */
   pending?: (k: FieldKey) => boolean;
-  /** Hides "Reset section" (the per-field controls are the caller's to disable). */
+  /** Disables every control and hides "Reset section"; the reason is shown on each disabled control. */
   readOnly?: boolean;
+  readOnlyReason?: string;
+  /** Reports whether any number field currently shows an invalid (unsavable) value. */
+  onInvalidChange?: (invalid: boolean) => void;
 };
 
 // Task 4 (R12 deviation): the effective CA (this form's own `caId` override,
@@ -419,7 +430,17 @@ const SECTIONS: { title: string; keys: FieldKey[] }[] = [
   { title: 'Verification', keys: ['propagationSeconds', 'resolvers', 'verificationRules'] },
 ];
 
-export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builtinState, level, links, ctx, exclude = [], error, pending, readOnly = false }: FormProps) {
+export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builtinState, level, links, ctx, exclude = [], error, pending, readOnly = false, readOnlyReason = 'You do not have permission to edit these defaults', onInvalidChange }: FormProps) {
+  const invalidIds = useRef(new Set<string>());
+  const reportInvalid = useRef((id: string, bad: boolean) => {
+    const before = invalidIds.current.size > 0;
+    if (bad) invalidIds.current.add(id);
+    else invalidIds.current.delete(id);
+    const after = invalidIds.current.size > 0;
+    if (before !== after) onInvalidRef.current?.(after);
+  });
+  const onInvalidRef = useRef(onInvalidChange);
+  onInvalidRef.current = onInvalidChange;
   const eca = effectiveCa(value, inherited, ctx.cas);
   const privateCa = !!eca && isPrivate(eca);
   // Batch 2 review (Minor): the onChange interception above only fires when
@@ -479,10 +500,12 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
           error={error?.(f.key)}
           overrideDisabled={accountPrivate ? 'Not used by private CAs' : f.disabledReason?.(ctx)}
           pending={pending?.(f.key)}
+          readOnly={readOnly ? readOnlyReason : undefined}
         />
       );
   };
   return (
+    <InvalidCtx.Provider value={reportInvalid.current}>
     <div className="grid gap-4">
       {SECTIONS.map((sec) => {
         const fields = sec.keys.filter((k) => !exclude.includes(k)).map((k) => ISSUANCE_FIELDS.find((f) => f.key === k)!);
@@ -516,5 +539,6 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
         );
       })}
     </div>
+    </InvalidCtx.Provider>
   );
 }
