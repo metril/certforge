@@ -8,7 +8,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/metril/certforge/internal/notify/httpx"
 )
@@ -146,6 +148,15 @@ func (n Webhook) Send(ctx context.Context, ev Event, target Target, cfg map[stri
 		mac := hmac.New(sha256.New, []byte(secret))
 		mac.Write(body)
 		h.Set("X-CertForge-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		// V2 binds a timestamp into the MAC so a captured request cannot be
+		// replayed outside the receiver's freshness window. V1 stays for
+		// receivers that have not moved over.
+		ts := strconv.FormatInt(time.Now().Unix(), 10)
+		mac2 := hmac.New(sha256.New, []byte(secret))
+		mac2.Write([]byte(ts + "."))
+		mac2.Write(body)
+		h.Set("X-CertForge-Timestamp", ts)
+		h.Set("X-CertForge-Signature-V2", "sha256="+hex.EncodeToString(mac2.Sum(nil)))
 	}
 	if auth := secrets["authHeader"]; auth != "" {
 		h.Set("Authorization", auth)

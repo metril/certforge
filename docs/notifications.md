@@ -248,6 +248,8 @@ A webhook request also carries:
 | `X-CertForge-Event` | the event's `kind` |
 | `X-CertForge-Delivery` | the event's `id` |
 | `X-CertForge-Signature` | `sha256=<hex HMAC>`, sent only when the channel has a `signingSecret` — see Signature below |
+| `X-CertForge-Timestamp` | unix seconds when the request was signed, sent with the signature headers — see Signature below |
+| `X-CertForge-Signature-V2` | `sha256=<hex HMAC>` over `timestamp + "." + body`, sent only when the channel has a `signingSecret` |
 | `Authorization` | the channel's `authHeader`, sent verbatim, when set |
 
 Plus any extra `headers` the channel configures (at most 20, name
@@ -283,6 +285,30 @@ expected = "sha256=" + hmac.new(signing_secret.encode(), body, hashlib.sha256).h
 if not hmac.compare_digest(expected, request.headers.get("X-CertForge-Signature", "")):
     abort(401)
 ```
+
+### Signature V2 (replay protection)
+
+`X-CertForge-Signature` covers only the body, so a captured request can be
+replayed. Prefer `X-CertForge-Signature-V2`: the same `sha256=` + lowercase-hex
+HMAC-SHA256 with the same `signingSecret`, but computed over the
+`X-CertForge-Timestamp` value, a literal `.`, then the exact body. Verify the
+MAC, then reject the request when the timestamp is outside a freshness
+window; 5 minutes either side is recommended.
+
+```python
+import hashlib, hmac, time
+
+ts = request.headers.get("X-CertForge-Timestamp", "")
+if not ts.isdigit() or abs(time.time() - int(ts)) > 300:   # 5 minute window
+    abort(401)
+expected = "sha256=" + hmac.new(signing_secret.encode(), ts.encode() + b"." + body, hashlib.sha256).hexdigest()
+if not hmac.compare_digest(expected, request.headers.get("X-CertForge-Signature-V2", "")):
+    abort(401)
+```
+
+`X-CertForge-Signature` (V1) is still sent unchanged for compatibility with
+existing receivers; it carries no freshness guarantee, so migrate when you can.
+Each delivery is signed once; retries of the same delivery reuse the headers.
 
 ## SMTP
 
