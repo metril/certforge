@@ -244,6 +244,11 @@ func (s *SettingsSource) Get(ctx context.Context) (Settings, error) {
 			s.lastErr, s.errAt = err, s.now()
 		}
 		if s.valid {
+			// Serve the stale value and restart its TTL so the next retry
+			// waits the normal interval instead of every caller reloading.
+			if gen == s.gen {
+				s.at = s.now()
+			}
 			return s.cur, nil
 		}
 		return Settings{}, err
