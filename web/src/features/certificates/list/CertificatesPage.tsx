@@ -59,10 +59,10 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 
 // Up to 5 names in a bulk-failure toast (review fix round 1); ids beyond
 // that collapse into a "+N more" suffix instead of an unbounded list.
-function bulkFailureMessage(ids: string[], nameOf: (id: string) => string): string {
+function bulkFailureMessage(ids: string[], nameOf: (id: string) => string, reason?: string): string {
   const shown = ids.slice(0, 5).map(nameOf);
   const rest = ids.length - shown.length;
-  return `${plural(ids.length, 'certificate')} failed: ${shown.join(', ')}${rest > 0 ? `, +${rest} more` : ''}`;
+  return `${plural(ids.length, 'certificate')} failed: ${shown.join(', ')}${rest > 0 ? `, +${rest} more` : ''}${reason ? `. ${reason}` : ''}`;
 }
 
 // Card rows below `md` (controller ruling / preflight D9: the spec calls for
@@ -232,10 +232,10 @@ export function CertificatesPage() {
   // otherwise, so this handler can keep exactly those rows selected and
   // name them (the hooks only have ids; this page has `rows` to name them
   // with).
-  const reportBulk = ({ ok, failed }: BulkResult, verb: string) => {
+  const reportBulk = ({ ok, failed, reason }: BulkResult, verb: string) => {
     if (ok.length > 0) toast.success(`${verb} ${plural(ok.length, 'certificate')}`);
     if (failed.length > 0) {
-      toast.error(bulkFailureMessage(failed, nameOf));
+      toast.error(bulkFailureMessage(failed, nameOf, reason));
       sel.replace(failed);
     }
   };
@@ -347,7 +347,7 @@ export function CertificatesPage() {
                   onSuccess: (r) => reportBulk(r, 'Renewal queued for'),
                   onError: (err) => {
                     if (err instanceof BulkActionError) {
-                      toast.error(bulkFailureMessage(err.failed, nameOf));
+                      toast.error(bulkFailureMessage(err.failed, nameOf, err.reason));
                       sel.replace(err.failed);
                     }
                   },
@@ -381,7 +381,7 @@ export function CertificatesPage() {
             if (result.failed.length === 0) sel.clear();
           } catch (err) {
             if (err instanceof BulkActionError) {
-              toast.error(bulkFailureMessage(err.failed, nameOf));
+              toast.error(bulkFailureMessage(err.failed, nameOf, err.reason));
               sel.replace(err.failed);
             }
             // Re-thrown so ConfirmDestructive's own catch shows the inline

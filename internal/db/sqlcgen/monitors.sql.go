@@ -356,6 +356,45 @@ func (q *Queries) MonitorFingerprintKnownInOrg(ctx context.Context, arg MonitorF
 	return known, err
 }
 
+const monitorsExpectingCert = `-- name: MonitorsExpectingCert :many
+SELECT id, name FROM external_monitors
+WHERE org_id = $1 AND expected_cert_id = $2
+ORDER BY lower(name) LIMIT 6
+`
+
+type MonitorsExpectingCertParams struct {
+	OrgID  uuid.UUID  `json:"org_id"`
+	CertID *uuid.UUID `json:"cert_id"`
+}
+
+type MonitorsExpectingCertRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// Monitors (callers scope by org_id) whose expected_cert_id is cert_id;
+// DeleteCertificate 409s naming these instead of letting ON DELETE SET NULL
+// silently drop the expectation.
+func (q *Queries) MonitorsExpectingCert(ctx context.Context, arg MonitorsExpectingCertParams) ([]MonitorsExpectingCertRow, error) {
+	rows, err := q.db.Query(ctx, monitorsExpectingCert, arg.OrgID, arg.CertID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MonitorsExpectingCertRow{}
+	for rows.Next() {
+		var i MonitorsExpectingCertRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transitionMonitorState = `-- name: TransitionMonitorState :execrows
 UPDATE external_monitors
 SET state = $2, state_changed_at = $3, last_checked_at = $4, next_check_at = $5,

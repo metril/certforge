@@ -97,3 +97,11 @@ UPDATE external_monitors
 SET state = $2, state_changed_at = $3, last_checked_at = $4, next_check_at = $5,
     last_fingerprint = $6, last_not_after = $7, last_issuer = $8, last_error = $9, updated_at = now()
 WHERE id = $1 AND state = sqlc.arg(old_state)::text;
+
+-- name: MonitorsExpectingCert :many
+-- Monitors (callers scope by org_id) whose expected_cert_id is cert_id;
+-- DeleteCertificate 409s naming these instead of letting ON DELETE SET NULL
+-- silently drop the expectation.
+SELECT id, name FROM external_monitors
+WHERE org_id = sqlc.arg(org_id) AND expected_cert_id = sqlc.arg(cert_id)
+ORDER BY lower(name) LIMIT 6;

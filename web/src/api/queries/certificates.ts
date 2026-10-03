@@ -2,7 +2,7 @@ import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from 
 import { filenameFrom, saveBlob } from '@/lib/download';
 import { firstPagePoll, livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
-import { ApiError } from '../errors';
+import { ApiError, errorMessage } from '../errors';
 import type { Certificate, CertificateInput, CertificateUpload, CertificateVersionUpload, CertStatus, ExportRequest, RevocationReason } from '../types';
 
 export const certificateQuery = (orgId: string, id: string) =>
@@ -120,7 +120,8 @@ export function plural(n: number, word: string): string {
   return n === 1 ? `1 ${word}` : `${n} ${word}s`;
 }
 
-export type BulkResult = { ok: string[]; failed: string[] };
+// reason is the first failure's message (a 409 says what blocks the delete).
+export type BulkResult = { ok: string[]; failed: string[]; reason?: string };
 
 // Fix round 1 (review, Important): a total failure must reject the mutation
 // (not just report `failed: ids.length`) so a caller like `ConfirmDestructive`
@@ -132,10 +133,12 @@ export type BulkResult = { ok: string[]; failed: string[] };
 // through).
 export class BulkActionError extends Error {
   readonly failed: string[];
-  constructor(failed: string[]) {
+  readonly reason?: string;
+  constructor(failed: string[], reason?: string) {
     super(`All ${plural(failed.length, 'certificate')} failed.`);
     this.name = 'BulkActionError';
     this.failed = failed;
+    this.reason = reason;
   }
 }
 
@@ -151,9 +154,16 @@ async function settleBulk(ids: string[], run: (id: string) => Promise<unknown>):
   const results = await Promise.allSettled(ids.map((id) => run(id)));
   const ok: string[] = [];
   const failed: string[] = [];
-  results.forEach((r, i) => (r.status === 'fulfilled' ? ok : failed).push(ids[i]!));
-  if (ok.length === 0 && failed.length > 0) throw new BulkActionError(failed);
-  return { ok, failed };
+  let reason: string | undefined;
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') ok.push(ids[i]!);
+    else {
+      failed.push(ids[i]!);
+      reason ??= errorMessage(r.reason);
+    }
+  });
+  if (ok.length === 0 && failed.length > 0) throw new BulkActionError(failed, reason);
+  return { ok, failed, reason };
 }
 
 export function useRenewCertificates(orgId: string) {

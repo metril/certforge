@@ -91,6 +91,20 @@ func extraCertConflict(layoutNames []string) error {
 	return conflict("This certificate is listed as an extra certificate by layouts: %s. Remove it from those layouts first.", strings.Join(parts, ", "))
 }
 
+// monitorConflict is DeleteCertificate's 409 when monitors (up to six, from
+// MonitorsExpectingCert) still expect this certificate.
+func monitorConflict(mons []sqlcgen.MonitorsExpectingCertRow) error {
+	var parts []string
+	for i, m := range mons {
+		if i == 5 {
+			parts = append(parts, "and more")
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", m.Name, m.ID))
+	}
+	return conflict("This certificate is expected by monitors: %s. Change or delete those monitors first.", strings.Join(parts, ", "))
+}
+
 func countMap[T any](rows []T, key func(T) (uuid.UUID, int64)) map[uuid.UUID]int {
 	m := make(map[uuid.UUID]int, len(rows))
 	for _, r := range rows {

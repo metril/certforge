@@ -2,7 +2,7 @@
 
 ## External monitors
 
-An external monitor polls a TLS endpoint on a schedule — independent of whether CertForge itself deployed anything there — and raises an event on `monitor.mismatch`, `monitor.unreachable`, `monitor.expiring` or `monitor.recovered` (see [notifications.md](notifications.md)). `POST/GET/PATCH/DELETE /orgs/{orgId}/monitors` needs `alerts:read` (list/get) or `alerts:write` (create/update/delete); at most 500 per org.
+An external monitor polls a TLS endpoint on a schedule — independent of whether CertForge itself deployed anything there — and raises an event on `monitor.mismatch`, `monitor.unreachable`, `monitor.expiring` or `monitor.recovered` (see [notifications.md](notifications.md)). `POST/GET/PATCH/DELETE /orgs/{orgId}/monitors` needs `alerts:read` (list/get) or `alerts:write` (create/update/delete); at most 500 per org. Deleting a certificate that a monitor expects (`expectedCertId`) is refused with 409 naming those monitors; change or delete them first.
 
 Fields (`MonitorInput`):
 

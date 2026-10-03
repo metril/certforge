@@ -325,6 +325,9 @@ func (s *Server) UpdateCertificate(ctx context.Context, r gen.UpdateCertificateR
 // layout still lists this certificate as an extra certificate
 // (LayoutsListingExtraCert): output_specs.extra_cert_ids has no FK, so
 // deleting the certificate out from under it would leave a dangling id.
+// Monitors that expect the certificate (expected_cert_id) 409 too, checked in
+// the same transaction; the FK's ON DELETE SET NULL stays as a backstop, and a
+// monitor insert or update pointing at the row waits on this lock.
 func (s *Server) DeleteCertificate(ctx context.Context, r gen.DeleteCertificateRequestObject) (gen.DeleteCertificateResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCertsWrite, &r.OrgId); err != nil {
 		return nil, err
@@ -353,6 +356,13 @@ func (s *Server) DeleteCertificate(ctx context.Context, r gen.DeleteCertificateR
 	}
 	if len(layouts) > 0 {
 		return nil, extraCertConflict(layouts)
+	}
+	mons, err := q.MonitorsExpectingCert(ctx, sqlcgen.MonitorsExpectingCertParams{OrgID: r.OrgId, CertID: &r.Id})
+	if err != nil {
+		return nil, err
+	}
+	if len(mons) > 0 {
+		return nil, monitorConflict(mons)
 	}
 	n, err := q.DeleteCertificate(ctx, sqlcgen.DeleteCertificateParams{ID: r.Id, OrgID: r.OrgId})
 	if err != nil {
