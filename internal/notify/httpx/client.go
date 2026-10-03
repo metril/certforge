@@ -86,6 +86,10 @@ func New(opts Options) (*Client, error) {
 		Proxy:           nil, // contract: ignores proxy env vars
 		DialContext:     dialer.DialContext,
 		TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+		// A Client is built per send (every notifier's Send, a target's own
+		// call), so an idle keep-alive connection would never be reused and
+		// only linger until the server closes it.
+		DisableKeepAlives: true,
 	}
 	return &Client{
 		allowLoopback: opts.AllowLoopback,

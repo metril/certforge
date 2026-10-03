@@ -2,6 +2,7 @@ package httpx_test
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -43,6 +44,32 @@ func TestNoRedirectFollow(t *testing.T) {
 	}
 	if atomic.LoadInt32(&hits) != 0 {
 		t.Errorf("redirect target was hit %d times, want 0 (no redirect following)", hits)
+	}
+}
+
+// TestNoConnectionReuse: clients are built per send, so an idle keep-alive
+// connection would only linger; every request must use its own connection.
+func TestNoConnectionReuse(t *testing.T) {
+	var conns int32
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			atomic.AddInt32(&conns, 1)
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+
+	c := newClient(t)
+	for i := 0; i < 2; i++ {
+		if _, err := c.Do(context.Background(), http.MethodGet, srv.URL, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := atomic.LoadInt32(&conns); n != 2 {
+		t.Errorf("connections = %d, want 2 (no keep-alive reuse)", n)
 	}
 }
 
