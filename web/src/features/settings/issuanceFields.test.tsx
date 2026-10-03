@@ -341,3 +341,27 @@ describe('unset defaults: short state plus tooltip', () => {
     expect(screen.getAllByText('Not set')).toHaveLength(1);
   });
 });
+
+describe('number editors keep the typed text', () => {
+  const propagation = ISSUANCE_FIELDS.find((f) => f.key === 'propagationSeconds')!;
+  function Harness({ onSet }: { onSet: (v: unknown) => void }) {
+    const [v, setV] = useState<unknown>(120);
+    return <>{propagation.editor(v, (x) => { setV(x); onSet(x); }, ctx, 'p')}</>;
+  }
+
+  it('can be cleared, shows an inline error, and only reports in-range values', async () => {
+    const seen: unknown[] = [];
+    const { user } = renderUI(<Harness onSet={(v) => seen.push(v)} />);
+    const input = screen.getByLabelText('Propagation wait in seconds');
+    await user.clear(input);
+    expect(input).toHaveValue(null);
+    expect(screen.getByRole('alert')).toHaveTextContent('0 to 3600');
+    expect(seen).toEqual([]);
+    await user.type(input, '9999');
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    await user.clear(input);
+    await user.type(input, '45');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(seen.at(-1)).toBe(45);
+  });
+});
