@@ -49,15 +49,15 @@ type Resolved = { primary: string; secondary?: string; mono?: boolean };
 // shows the group name in mono (no lookup: the subject *is* the label), and
 // an apikey shows the key's name plus its raw id in mono (looked up in
 // apiKeysQuery, same id fallback).
-function resolveSubject(b: RoleBinding, users: UserDetail[], keys: ApiKey[]): Resolved {
+function resolveSubject(b: RoleBinding, users: Map<string, UserDetail>, keys: Map<string, ApiKey>): Resolved {
   if (b.subjectType === 'user') {
-    const u = users.find((x) => x.id === b.subject);
+    const u = users.get(b.subject);
     return u ? { primary: u.displayName, secondary: u.email ?? undefined } : { primary: b.subject, mono: true };
   }
   if (b.subjectType === 'oidc_group') {
     return { primary: b.subject, mono: true };
   }
-  const k = keys.find((x) => x.id === b.subject);
+  const k = keys.get(b.subject);
   return k ? { primary: k.name, secondary: b.subject } : { primary: b.subject, mono: true };
 }
 
@@ -140,13 +140,16 @@ export function BindingsTab() {
     return () => window.clearTimeout(t);
   }, [text, search.q, navigate]);
 
+  const userById = useMemo(() => new Map((users.data ?? []).map((u) => [u.id, u])), [users.data]);
+  const keyById = useMemo(() => new Map((keys.data ?? []).map((k) => [k.id, k])), [keys.data]);
   const resolvedRows = useMemo(
     () =>
       (q.data ?? [])
-        .map((b) => ({ b, resolved: resolveSubject(b, users.data ?? [], keys.data ?? []) }))
+        .map((b) => ({ b, resolved: resolveSubject(b, userById, keyById) }))
         .filter(({ b, resolved }) => matchesQuery(b, resolved, search.q ?? '')),
-    [q.data, users.data, keys.data, search.q],
+    [q.data, userById, keyById, search.q],
   );
+  const tableData = useMemo(() => resolvedRows.map((r) => r.b), [resolvedRows]);
 
   // M4: clears every filter (type, org, and the debounced search text, plus
   // its own local buffer so the debounce doesn't re-push the old value).
@@ -162,7 +165,7 @@ export function BindingsTab() {
         header: 'Subject',
         meta: { help: 'binding.subjectType' },
         cell: ({ row }) => (
-          <SubjectDisplay type={row.original.subjectType} resolved={resolveSubject(row.original, users.data ?? [], keys.data ?? [])} />
+          <SubjectDisplay type={row.original.subjectType} resolved={resolveSubject(row.original, userById, keyById)} />
         ),
       }),
       col.accessor('role', { header: 'Role', meta: { help: 'binding.role' }, cell: (c) => ROLE_LABEL[c.getValue()] }),
@@ -187,7 +190,7 @@ export function BindingsTab() {
           ),
       }),
     ],
-    [me, users.data, keys.data],
+    [me, userById, keyById],
   );
 
   const add = (canAnywhere(me, 'bindings:write') || canAnywhere(me, 'apikeys:write')) && (
@@ -243,7 +246,7 @@ export function BindingsTab() {
       ) : isMdUp ? (
         <DataTable
           ariaLabel="Role bindings"
-          data={resolvedRows.map((r) => r.b)}
+          data={tableData}
           columns={columns}
           getRowId={(b) => b.id}
           skeletonRows={q.isPending ? 3 : undefined}
