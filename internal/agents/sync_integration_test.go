@@ -815,3 +815,62 @@ func TestAssignmentsNotLogged(t *testing.T) {
 		t.Fatalf("target config logged: %s", buf.String())
 	}
 }
+
+// A10: a grant whose layout renders no key never decrypts the cert's private
+// key, and a target shared by several grants is opened once per call.
+func TestRenderOpensOnlyWhatItNeeds(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	cb := &countingBox{}
+	f.svc.Certs = certstore.New(f.pool, cb)
+	f.svc.Box = cb
+
+	certA := f.cert(t, "keyless-a")
+	f.setCurrent(t, certA, f.version(t, certA, 70, true))
+	certOnlyLayout := f.layout(t, "cert-only",
+		[]delivery.OutputFile{{Path: "/etc/ssl/a.pem", Format: "pem", Parts: []string{"fullchain"}, Mode: "0644"}}, "", nil)
+	c := f.client(t, "open-client")
+	gA, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certA, Delivery: "pull", LayoutID: &certOnlyLayout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb.opens.Store(0)
+	if _, _, err := f.svc.render(ctx, f.q, []uuid.UUID{gA}); err != nil {
+		t.Fatal(err)
+	}
+	if n := cb.opens.Load(); n != 0 {
+		t.Fatalf("cert-only render opened %d sealed values, want 0", n)
+	}
+
+	// Two grants on one target with a stored secret: one open per call.
+	// Each grant's key is opened too (a target consumes it): 2 keys + 1 secret.
+	targetID := f.fileTarget(t, "shared", t.TempDir(), map[string]string{"token": "shh"})
+	var ids []uuid.UUID
+	for i, n := range []string{"t1", "t2"} {
+		cid := f.cert(t, n)
+		f.setCurrent(t, cid, f.version(t, cid, int64(80+i), true))
+		g, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: cid, Delivery: "pull", TargetID: &targetID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, g)
+	}
+	cb.opens.Store(0)
+	if _, _, err := f.svc.render(ctx, f.q, ids); err != nil {
+		t.Fatal(err)
+	}
+	if n := cb.opens.Load(); n != 3 {
+		t.Fatalf("render opened %d sealed values, want 3 (shared target opened once)", n)
+	}
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb.opens.Store(0)
+	if _, err := f.svc.Assignments(ctx, cl); err != nil {
+		t.Fatal(err)
+	}
+	if n := cb.opens.Load(); n != 1 {
+		t.Fatalf("Assignments opened the shared target %d times, want 1", n)
+	}
+}

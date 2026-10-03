@@ -280,6 +280,26 @@ func (s *Service) openTargetSecrets(ctx context.Context, sealed []byte) (map[str
 	return m, nil
 }
 
+// memoSecretOpener returns an openTargetSecrets that opens each distinct
+// sealed value once. It lives for one call (render, Assignments) only: the
+// map is never shared across requests, so decrypted secrets are not cached.
+// Rows sharing a target carry byte-identical sealed values; callers must not
+// modify the returned map.
+func (s *Service) memoSecretOpener() func(ctx context.Context, sealed []byte) (map[string]string, error) {
+	opened := map[string]map[string]string{}
+	return func(ctx context.Context, sealed []byte) (map[string]string, error) {
+		if m, ok := opened[string(sealed)]; ok {
+			return m, nil
+		}
+		m, err := s.openTargetSecrets(ctx, sealed)
+		if err != nil {
+			return nil, err
+		}
+		opened[string(sealed)] = m
+		return m, nil
+	}
+}
+
 // targetOf builds the agentproto.Target for one grant's target row: typ
 // nil means no target. secrets is the target's decrypted secret_cfg
 // (openTargetSecrets), merged back into cfg (targets.Merge) so both what
@@ -451,6 +471,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 	}
 
 	push := map[uuid.UUID]bool{}
+	openSecrets := s.memoSecretOpener()
 	// Keyed on (version id, withKey): the same version can be loaded twice
 	// in one batch, once as a grant's own certificate (withKey=true) and
 	// once as another grant's extra certificate (withKey=false) — rows come
@@ -485,7 +506,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 		}
 		var target *agentproto.Target
 		if r.TargetType != nil {
-			secrets, err := s.openTargetSecrets(ctx, r.TargetSecretCfg)
+			secrets, err := openSecrets(ctx, r.TargetSecretCfg)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -496,21 +517,24 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 		expected := []byte("[]")
 		extraVersionIDs := []uuid.UUID{}
 		if r.CurrentVersionID != nil {
-			m, err := loadMaterial(r.CertID, *r.CurrentVersionID, true)
-			if err != nil {
-				return nil, nil, err
-			}
 			var layout *delivery.Layout
+			var layoutFiles []delivery.OutputFile
 			if len(r.LayoutFiles) > 0 {
-				var files []delivery.OutputFile
-				if err := json.Unmarshal(r.LayoutFiles, &files); err != nil {
+				if err := json.Unmarshal(r.LayoutFiles, &layoutFiles); err != nil {
 					return nil, nil, err
 				}
+				files := layoutFiles
 				password, err := s.openPassword(ctx, r.LayoutPassword)
 				if err != nil {
 					return nil, nil, err
 				}
 				layout = &delivery.Layout{Files: files, ExtraCertIDs: r.LayoutExtraCertIds, Password: password}
+			}
+			// Same rule as checkRefs: a target or a key-bearing layout file
+			// consumes the private key; anything else renders without it.
+			m, err := loadMaterial(r.CertID, *r.CurrentVersionID, target != nil || delivery.NeedsKey(layoutFiles))
+			if err != nil {
+				return nil, nil, err
 			}
 			extras := map[uuid.UUID]render.Material{}
 			if layout != nil {
