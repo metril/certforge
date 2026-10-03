@@ -83,7 +83,7 @@ it('is a Settings section with the schema form', async () => {
 it('shows a label and help tip for the listenerNames listArray field', async () => {
   const { user } = renderRoute('/settings/agents');
   const field = (await screen.findByText('Listener names')).closest('div')!;
-  await user.hover(within(field).getByRole('button', { name: 'Help' }));
+  await user.hover(within(field).getByRole('button', { name: /^Help/ }));
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Extra hostnames the listener certificate covers');
 });
 
@@ -167,13 +167,13 @@ it('says when the listener is not running, with the restart advice in a tooltip'
   const { user } = renderRoute('/settings/agents');
   const line = (await screen.findByText('The agent listener is not running.')).closest('p')!;
   expect(screen.queryByText('Restart the server after fixing the cause.')).not.toBeInTheDocument();
-  await user.hover(within(line).getByRole('button', { name: 'Help' }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Restart the server after fixing the cause.');
+  await user.click(within(line).getByRole('button', { name: /^Help/ }));
+  expect(await screen.findByRole('dialog')).toHaveTextContent('Restart the server after fixing the cause.');
 });
 
 it('warns that the Agent URL only reaches new enrolments', async () => {
   const { user } = renderRoute('/settings/agents');
   const field = (await screen.findByText('Agent URL')).closest('div')!;
-  await user.hover(within(field).getByRole('button', { name: 'Help' }));
+  await user.hover(within(field).getByRole('button', { name: /^Help/ }));
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Only new enrolments pick up a changed URL');
 });

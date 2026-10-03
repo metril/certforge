@@ -33,7 +33,7 @@ export function FormSection({ title, help, summary, collapsible = false, default
     const titleEl = (
       <h3 id={titleId} className="flex items-center gap-1.5 text-sm font-semibold">
         {title}
-        {help && <HelpTip id={help} />}
+        {help && <HelpTip id={help} label={typeof title === 'string' ? title : undefined} />}
       </h3>
     );
     if (!inCard) {
@@ -65,7 +65,7 @@ export function FormSection({ title, help, summary, collapsible = false, default
           </span>
         )}
       </CollapsibleTrigger>
-      {help && <HelpTip id={help} />}
+      {help && <HelpTip id={help} label={typeof title === 'string' ? title : undefined} />}
     </div>
   );
   if (!inCard) {

@@ -175,7 +175,7 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
         <span id={`${id}-label`} className="text-sm font-semibold">
           {label}
         </span>
-        {help && <HelpTip id={help} />}
+        {help && <HelpTip id={help} label={typeof label === 'string' ? label : undefined} />}
         {pending ? (
           <span className="inline-flex h-5 items-center rounded-sm border border-dashed border-border px-1.5 text-xs text-ink-muted">Pending</span>
         ) : !overridden && inheritedUnset ? null : (
@@ -259,7 +259,7 @@ function BaseField<T>({ id, label, help, value, inherited, builtinState, unset, 
         <span id={`${id}-label`} className="text-sm font-semibold">
           {label}
         </span>
-        {help && <HelpTip id={help} />}
+        {help && <HelpTip id={help} label={typeof label === 'string' ? label : undefined} />}
       </div>
       <div className="grid gap-1.5">
         <div className="flex flex-wrap items-center gap-3">

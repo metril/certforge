@@ -23,7 +23,7 @@ export function SwitchField({ id, label, help, helpText, checked, onCheckedChang
     <div className="flex min-h-9 items-center gap-3">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <Label htmlFor={id}>{label}</Label>
-        {(help || helpText) && <HelpTip id={help} text={helpText} />}
+        {(help || helpText) && <HelpTip id={help} text={helpText} label={typeof label === 'string' ? label : undefined} />}
       </div>
       <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
       <span className="w-40 text-sm text-ink-muted" aria-hidden>

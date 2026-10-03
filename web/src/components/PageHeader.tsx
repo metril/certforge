@@ -67,7 +67,7 @@ export function PageHeader({ title, help, actions, tabs, tabsLabel = 'Sections',
         <div className="grid min-w-0 gap-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">{title}</h1>
-            {help && <HelpTip id={help} />}
+            {help && <HelpTip id={help} label={typeof title === 'string' ? title : undefined} />}
           </div>
           {children}
         </div>
