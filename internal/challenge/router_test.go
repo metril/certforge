@@ -461,3 +461,48 @@ func TestSolverViewPreCheckUsesOwnTypeRule(t *testing.T) {
 		t.Fatalf("message should name the alias mismatch: %q", msg)
 	}
 }
+
+// reentrantSink calls back into the router from Step, which deadlocks if
+// markFailed still holds r.mu while it reports.
+type reentrantSink struct {
+	sinkRec
+	r *Router
+}
+
+func (s *reentrantSink) Step(name, status, message string) {
+	s.r.Timeout()
+	s.sinkRec.Step(name, status, message)
+}
+
+// markFailed must not hold r.mu across sink.Step, and concurrent calls for
+// one name must still report exactly one failure step.
+func TestMarkFailedReportsOnceWithoutHoldingLock(t *testing.T) {
+	sink := &reentrantSink{}
+	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{rule(t, "example.com", &recProvider{timeout: time.Minute})}, sink)
+	sink.r = r
+	step := "challenge example.com"
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+		for i := 0; i < 16; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				r.markFailed("example.com", errors.New("boom"))
+			}()
+		}
+		wg.Wait()
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("markFailed deadlocked: sink.Step ran under r.mu")
+	}
+	if n := sink.count(step, StepFailed); n != 1 {
+		t.Fatalf("failure step reported %d times, want 1", n)
+	}
+	if got, _ := r.Timeout(); got != failFastTimeout {
+		t.Fatalf("Timeout = %v, want fail-fast", got)
+	}
+}
