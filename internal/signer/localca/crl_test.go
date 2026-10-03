@@ -92,7 +92,7 @@ type recordingRecorder struct {
 	reason               int
 }
 
-func (r *recordingRecorder) Revoke(ctx context.Context, serial, issuerSerial string, reason int, at time.Time) error {
+func (r *recordingRecorder) Revoke(ctx context.Context, serial, issuerSerial string, reason int, at, notAfter time.Time) error {
 	r.serial, r.issuerSerial, r.reason = serial, issuerSerial, reason
 	return nil
 }

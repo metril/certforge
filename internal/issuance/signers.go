@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,6 +52,10 @@ type revokedEntry struct {
 	IssuerSerial string    `json:"issuerSerial"`
 	At           time.Time `json:"at"`
 	Reason       int       `json:"reason"`
+	// NotAfter is the leaf's expiry; entries past it are dropped from the
+	// CRL and pruned. Zero for entries recorded before it was stored, which
+	// are kept.
+	NotAfter time.Time `json:"notAfter,omitempty"`
 }
 
 // localCAConfig is the full shape of a localca CA's public cas.config
@@ -198,6 +203,12 @@ func clearSecretCfg(sc *localCASecretCfg) {
 	}
 }
 
+// revokedExpired reports whether e's leaf had expired by now. An entry
+// without a recorded NotAfter is never expired.
+func revokedExpired(e revokedEntry, now time.Time) bool {
+	return !e.NotAfter.IsZero() && e.NotAfter.Before(now)
+}
+
 // caRecorder implements localca.Recorder against a CA row already locked
 // FOR UPDATE inside the caller's transaction (Store.RevokeVersion):
 // Revoke appends to config.revoked and bumps crl_number in one UPDATE
@@ -208,12 +219,14 @@ type caRecorder struct {
 	row   sqlcgen.Ca // mutated in place; Revoke is called at most once per Signer.Revoke
 }
 
-func (r *caRecorder) Revoke(ctx context.Context, serial, issuerSerial string, reason int, at time.Time) error {
+func (r *caRecorder) Revoke(ctx context.Context, serial, issuerSerial string, reason int, at, notAfter time.Time) error {
 	var cfg localCAConfig
 	if err := json.Unmarshal(r.row.Config, &cfg); err != nil {
 		return err
 	}
-	cfg.Revoked = append(cfg.Revoked, revokedEntry{Serial: serial, IssuerSerial: issuerSerial, At: at, Reason: reason})
+	// Entries for leaves that have expired no longer belong on the CRL.
+	cfg.Revoked = slices.DeleteFunc(cfg.Revoked, func(e revokedEntry) bool { return revokedExpired(e, at) })
+	cfg.Revoked = append(cfg.Revoked, revokedEntry{Serial: serial, IssuerSerial: issuerSerial, At: at, Reason: reason, NotAfter: notAfter})
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -459,8 +472,9 @@ func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 
 	issuerHex := mat.Issuing.SerialNumber.Text(16)
 	var revoked []localca.Revoked
+	now := time.Now()
 	for _, re := range cfg.Revoked {
-		if re.IssuerSerial != issuerHex {
+		if re.IssuerSerial != issuerHex || revokedExpired(re, now) {
 			continue
 		}
 		sn, ok := new(big.Int).SetString(re.Serial, 16)
@@ -469,7 +483,7 @@ func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 		}
 		revoked = append(revoked, localca.Revoked{Serial: sn, RevokedAt: re.At, ReasonCode: re.Reason})
 	}
-	return localca.BuildCRL(mat.Issuing, mat.IssuingKey, revoked, big.NewInt(row.CrlNumber), time.Now())
+	return localca.BuildCRL(mat.Issuing, mat.IssuingKey, revoked, big.NewInt(row.CrlNumber), now)
 }
 
 // issuerSerialForLeaf decides which of cfg's issuers signed leaf, by
