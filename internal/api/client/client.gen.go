@@ -2092,7 +2092,7 @@ type KeysStatus struct {
 	// Rewrap The most recent rewrap, running or finished; null if one has never run.
 	Rewrap *RewrapStatus `json:"rewrap"`
 
-	// VaultAddress Vault address in use; present only when kind is vault-transit.
+	// VaultAddress Vault address in use; present only when kind is vault-transit and the caller holds global settings write.
 	VaultAddress *string `json:"vaultAddress,omitempty"`
 }
 

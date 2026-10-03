@@ -128,6 +128,14 @@ it('transit shows address', async () => {
   expect(screen.getByText(keysRunning.vaultAddress!)).toBeInTheDocument();
 });
 
+it('transit without an address (read-only caller) still shows the kind', async () => {
+  const noAddress = { ...keysRunning, vaultAddress: undefined };
+  server.use(http.get(url('/keys/status'), () => HttpResponse.json({ ...noAddress, rewrap: null })));
+  renderRoute('/settings/backup');
+  expect(await screen.findByText('Vault Transit')).toBeInTheDocument();
+  expect(screen.queryByText(keysRunning.vaultAddress!)).not.toBeInTheDocument();
+});
+
 it('previous key chips', async () => {
   server.use(http.get(url('/keys/status'), () => HttpResponse.json({ ...keysRunning, rewrap: null })));
   renderRoute('/settings/backup');

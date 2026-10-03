@@ -3265,7 +3265,7 @@ components:
       properties:
         kind: {$ref: "#/components/schemas/KekKind"}
         kekId: {type: string, description: Opaque id of the active KEK.}
-        vaultAddress: {type: string, format: uri, description: Vault address in use; present only when kind is vault-transit.}
+        vaultAddress: {type: string, format: uri, description: Vault address in use; present only when kind is vault-transit and the caller holds global settings write.}
         previous: {type: array, items: {$ref: "#/components/schemas/KekRef"}, description: Previous KEKs still configured to decrypt old data.}
         canaryOk: {type: boolean, description: A round-trip encrypt/decrypt against the active KEK just succeeded.}
         rewrap:

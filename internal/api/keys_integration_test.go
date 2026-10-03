@@ -37,7 +37,7 @@ func newKeysTestEnv(t *testing.T) *testEnv {
 	e := newTestEnvOpts(t, func(d *api.Deps) {
 		keysSvc = &kek.Service{
 			Settings: d.Settings, Pool: d.Pool, Audit: d.Auditor, River: &fakeKekInserter{},
-			Info: kek.Info{Kind: "static", KEKID: "static-test0000"},
+			Info: kek.Info{Kind: "static", KEKID: "static-test0000", VaultAddress: "https://vault.test:8200"},
 		}
 		d.Keys = keysSvc
 	})
@@ -102,5 +102,36 @@ func TestKeysRewrapRequiresSettingsWrite(t *testing.T) {
 	resp2, body2 := e.doClient(client, http.MethodPost, "/api/v1/keys/rewrap", nil, http.Header{"X-CSRF-Token": {csrf}}) //nolint:bodyclose // doClient closes the body
 	if resp2.StatusCode != http.StatusForbidden {
 		t.Fatalf("start status = %d, body %s", resp2.StatusCode, body2)
+	}
+}
+
+// A3: the Vault address is returned only to a principal holding global
+// settings:write; a read-only viewer gets the status without it.
+func TestKeysStatusHidesVaultAddressFromReaders(t *testing.T) {
+	e := newKeysTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	viewer, vcsrf, _ := e.userSession("viewer2", authz.RoleViewer, nil)
+
+	get := func(client *http.Client, csrf string) gen.KeysStatus {
+		resp, body := e.doClient(client, http.MethodGet, "/api/v1/keys/status", nil, http.Header{"X-CSRF-Token": {csrf}}) //nolint:bodyclose // doClient closes the body
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, body %s", resp.StatusCode, body)
+		}
+		var st gen.KeysStatus
+		if err := json.Unmarshal(body, &st); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	if st := get(viewer, vcsrf); st.VaultAddress != nil {
+		t.Fatalf("viewer saw vaultAddress %q", *st.VaultAddress)
+	}
+	resp, body := e.do(http.MethodGet, "/api/v1/keys/status", nil, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	var st gen.KeysStatus
+	if err := json.Unmarshal(body, &st); err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin status %d: %v", resp.StatusCode, err)
+	}
+	if st.VaultAddress == nil || *st.VaultAddress != "https://vault.test:8200" {
+		t.Fatalf("admin vaultAddress = %v", st.VaultAddress)
 	}
 }

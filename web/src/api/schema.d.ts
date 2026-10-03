@@ -2486,7 +2486,7 @@ export interface components {
             kekId: string;
             /**
              * Format: uri
-             * @description Vault address in use; present only when kind is vault-transit.
+             * @description Vault address in use; present only when kind is vault-transit and the caller holds global settings write.
              */
             vaultAddress?: string;
             /** @description Previous KEKs still configured to decrypt old data. */
