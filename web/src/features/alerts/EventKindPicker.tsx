@@ -16,7 +16,7 @@ const GROUPS = KIND_GROUPS.filter((g) => g.label !== 'Test');
  * Selecting any kind unfills "All events"; the emitted array is always in
  * EventKind enum order regardless of click order across groups.
  */
-export function EventKindPicker({ value, onChange }: { value: EventKind[]; onChange: (v: EventKind[]) => void }) {
+export function EventKindPicker({ value, onChange, disabled }: { value: EventKind[]; onChange: (v: EventKind[]) => void; disabled?: boolean }) {
   const allSelected = value.length === 0;
   return (
     <div className="grid gap-3">
@@ -27,9 +27,10 @@ export function EventKindPicker({ value, onChange }: { value: EventKind[]; onCha
       <button
         type="button"
         aria-pressed={allSelected}
+        disabled={disabled}
         onClick={() => onChange([])}
         className={cn(
-          'inline-flex h-7 w-fit items-center gap-1 rounded-sm border px-2.5 text-sm transition-colors',
+          'inline-flex h-7 w-fit items-center gap-1 rounded-sm border px-2.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50',
           allSelected ? 'border-primary bg-primary text-on-primary' : 'border-border bg-panel text-ink hover:bg-subtle',
         )}
       >
@@ -47,7 +48,7 @@ export function EventKindPicker({ value, onChange }: { value: EventKind[]; onCha
               const merged = new Set([...rest, ...groupSelected]);
               onChange(CHANNEL_KINDS.filter((k) => merged.has(k)));
             }}
-            options={g.kinds.map((k) => ({ value: k, label: KIND_SHORT[k] }))}
+            options={g.kinds.map((k) => ({ value: k, label: KIND_SHORT[k], disabled }))}
           />
         </div>
       ))}

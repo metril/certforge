@@ -195,7 +195,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
           }}
         >
           <Field id="channel-name" label="Name" error={submitted && !nameOk ? 'Required' : null}>
-            <Input id="channel-name" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="ops-webhook" />
+            <Input id="channel-name" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="ops-webhook" disabled={!canWrite} />
           </Field>
           <Field id="channel-type" label="Type" help="channel.type">
             <span className="flex items-start gap-1.5">
@@ -219,7 +219,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
                         <span className="sr-only">{TYPE_META[t].label}</span>
                       </>
                     ),
-                    disabled: !!channel,
+                    disabled: !!channel || !canWrite,
                     hint: !isSmUp ? TYPE_META[t].label : undefined,
                   };
                 })}
@@ -235,14 +235,16 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
             value={draft.configs[draft.type]}
             onChange={(v) => setConfig(draft.type, v)}
             storedSecrets={storedSecrets}
+            readonly={!canWrite}
             extraErrors={configError}
           />
-          <EventKindPicker value={draft.events} onChange={(events) => setDraft((d) => ({ ...d, events }))} />
+          <EventKindPicker value={draft.events} onChange={(events) => setDraft((d) => ({ ...d, events }))} disabled={!canWrite} />
           <SwitchField
             id="channel-enabled"
             label="Enabled"
             help="channel.enabled"
             checked={draft.enabled}
+            disabled={!canWrite}
             onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
           />
           <FormSection title="Advanced" collapsible count={(draft.minSeverity !== 'info' ? 1 : 0) + (draft.allOrgs ? 1 : 0)}>
@@ -252,7 +254,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
                 aria-label="Minimum severity"
                 value={draft.minSeverity}
                 onChange={(minSeverity) => setDraft((d) => ({ ...d, minSeverity }))}
-                options={SEVERITY_ORDER.map((s) => ({ value: s, label: SEVERITY_META[s].label }))}
+                options={SEVERITY_ORDER.map((s) => ({ value: s, label: SEVERITY_META[s].label, disabled: !canWrite }))}
               />
             </Field>
             <PermissionTip allowed={isGlobalAdmin(me)} action="alerts:write" reason="Needs a global admin">
@@ -262,7 +264,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
                 onText="Every org's events"
                 offText="This org only"
                 checked={draft.allOrgs}
-                disabled={!isGlobalAdmin(me)}
+                disabled={!isGlobalAdmin(me) || !canWrite}
                 onCheckedChange={(allOrgs) => setDraft((d) => ({ ...d, allOrgs }))}
               />
             </PermissionTip>

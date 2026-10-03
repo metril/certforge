@@ -296,3 +296,36 @@ it('shows Enabled outside the collapsed Advanced section', async () => {
   expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeVisible();
   expect(within(sheet).getByRole('button', { name: 'Advanced' })).toHaveAttribute('aria-expanded', 'false');
 });
+
+it('read-only without alerts:write makes every field non-editable', async () => {
+  channels = [makeChannel()];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
+  const { user } = renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  expect(within(sheet).getByLabelText('Name')).toBeDisabled();
+  await within(sheet).findByRole('button', { name: 'Add header' }).then((b) => expect(b).toBeDisabled());
+  expect(within(sheet).getByRole('button', { name: 'All events' })).toBeDisabled();
+  expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeDisabled();
+  await user.click(within(sheet).getByRole('button', { name: 'Advanced' }));
+  expect(within(sheet).getByRole('radio', { name: 'Critical' })).toBeDisabled();
+});
+
+it('duplicate header names (case-insensitive) show an error and block save', async () => {
+  const { user } = renderRoute('/o/acme/alerts/channels?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New channel' });
+  await user.type(await within(sheet).findByLabelText('Name'), 'ops');
+  await user.type(within(sheet).getByLabelText('URL'), 'https://hooks.example.com/a');
+  await user.click(within(sheet).getByRole('button', { name: 'Add header' }));
+  await user.type(within(sheet).getByLabelText('Header 1 name'), 'X-Env');
+  await user.click(within(sheet).getByRole('button', { name: 'Add header' }));
+  await user.type(within(sheet).getByLabelText('Header 2 name'), 'x-env');
+  expect(await within(sheet).findByText(/Duplicate header name/)).toBeInTheDocument();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await new Promise((r) => setTimeout(r, 100));
+  expect(posted).toBeUndefined();
+  await user.clear(within(sheet).getByLabelText('Header 2 name'));
+  await user.type(within(sheet).getByLabelText('Header 2 name'), 'X-Other');
+  expect(within(sheet).queryByText(/Duplicate header name/)).not.toBeInTheDocument();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toBeDefined());
+});

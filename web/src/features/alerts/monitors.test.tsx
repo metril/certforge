@@ -244,3 +244,38 @@ it('shows Enabled outside the collapsed Advanced section', async () => {
   expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeVisible();
   expect(within(sheet).getByRole('button', { name: /^Advanced/ })).toHaveAttribute('aria-expanded', 'false');
 });
+
+it('read-only without alerts:write makes every field non-editable', async () => {
+  monitors = [makeMonitor()];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
+  const { user } = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
+  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  expect(within(sheet).getByLabelText('Name')).toBeDisabled();
+  expect(within(sheet).getByLabelText('Host')).toBeDisabled();
+  expect(within(sheet).getByLabelText('Port')).toBeDisabled();
+  expect(within(sheet).getByRole('radio', { name: '15 m' })).toBeDisabled();
+  expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeDisabled();
+  await user.click(within(sheet).getByRole('button', { name: 'Advanced' }));
+  expect(within(sheet).getByLabelText('SNI')).toBeDisabled();
+});
+
+it('port can be cleared and an out-of-range port blocks save', async () => {
+  const { user } = renderRoute('/o/acme/alerts/monitors?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New monitor' });
+  await user.type(within(sheet).getByLabelText('Name'), 'edge');
+  await user.type(within(sheet).getByLabelText('Host'), 'edge.example.com');
+  const port = within(sheet).getByLabelText('Port');
+  await user.clear(port);
+  expect(port).toHaveValue(null);
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(await within(sheet).findByText('Port must be 1-65535')).toBeInTheDocument();
+  await user.type(port, '70000');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(within(sheet).getByText('Port must be 1-65535')).toBeInTheDocument();
+  expect(posted).toBeUndefined();
+  await user.clear(port);
+  await user.type(port, '8443');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toBeDefined());
+  expect(posted!.port).toBe(8443);
+});

@@ -19,6 +19,17 @@ function toObject(rows: Row[]): Record<string, string> {
   return out;
 }
 
+/** The names that appear on more than one row, compared case-insensitively
+ * (HTTP header names are) — an empty in-progress name never counts. */
+function duplicateNames(rows: Row[]): string[] {
+  const seen = new Map<string, number>();
+  for (const r of rows) {
+    const k = r.name.trim().toLowerCase();
+    if (k !== '') seen.set(k, (seen.get(k) ?? 0) + 1);
+  }
+  return [...seen].filter(([, n]) => n > 1).map(([k]) => k);
+}
+
 /**
  * Extra-headers editor for the webhook notifier's `headers` field
  * (uiSchema.ts routes any patternProperties-keyed object here via
@@ -27,20 +38,28 @@ function toObject(rows: Row[]): Record<string, string> {
  * row. Rows are local state (row identity by a stable counter, not by name)
  * so two rows can share an in-progress empty or duplicate name while being
  * typed; a row with an empty name is dropped from the emitted object rather
- * than sent as a real header.
+ * than sent as a real header. Duplicate names (case-insensitive) show an
+ * inline error and emit `null` instead of an object, so the form's own
+ * validation (type: object) fails and blocks the save.
  */
 export function HeadersField({ fieldPathId, formData, onChange, disabled, readonly }: FieldProps) {
   const [rows, setRows] = useState<Row[]>(() => rowsOf(formData));
   const nextId = useRef(rows.length);
   const off = disabled || readonly;
+  const dupes = duplicateNames(rows);
 
   function commit(next: Row[]) {
     setRows(next);
-    onChange(toObject(next), fieldPathId.path);
+    onChange(duplicateNames(next).length > 0 ? null : toObject(next), fieldPathId.path);
   }
 
   return (
     <div className="grid gap-2">
+      {dupes.length > 0 && (
+        <p role="alert" className="text-xs text-failed">
+          Duplicate header name: {dupes.join(', ')}. Header names are case-insensitive.
+        </p>
+      )}
       {rows.map((r, i) => (
         <div key={r.id} className="flex items-center gap-1.5">
           <Input
