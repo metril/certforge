@@ -190,12 +190,13 @@ export const attemptsQuery = (orgId: string, id: string) =>
   });
 
 // One attempt with its log: the list omits logs, so the viewer loads the log
-// of the attempt it shows, tailing it at the live rate while that runs.
+// of the attempt it shows, tailing it at the live rate until the fetched copy
+// itself says finished, so the last fetch holds the final log.
 export const attemptQuery = (orgId: string, id: string, attemptId: string, running: boolean) =>
   queryOptions({
     queryKey: ['attempts', orgId, id, attemptId],
     queryFn: () => call(api.GET('/orgs/{orgId}/certificates/{id}/attempts/{attemptId}', { params: { path: { orgId, id, attemptId } } })),
-    refetchInterval: livePoll(running),
+    refetchInterval: (q) => ((q.state.data ? q.state.data.outcome === 'running' : running) ? POLL.live : false),
     staleTime: 0,
   });
 

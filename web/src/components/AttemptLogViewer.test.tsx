@@ -200,3 +200,23 @@ it('tails the log every 2 s while the attempt runs', async () => {
   expect(calls).toBe(first + 1);
   expect(screen.getByText(`line ${first + 1}`)).toBeInTheDocument();
 });
+
+it('fetches the final log once the fetched attempt finishes, then stops polling', async () => {
+  vi.useFakeTimers({ now: NOW, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+  let calls = 0;
+  server.use(
+    http.get(attemptUrl, () => {
+      calls++;
+      return HttpResponse.json(calls < 3 ? makeAttempt({ outcome: 'running', log: `line ${calls}` }) : makeAttempt({ log: 'final line' }));
+    }),
+  );
+  // The list's copy still says running; only the fetched attempt knows it finished.
+  renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={noLog({ outcome: 'running', finishedAt: undefined })} defaultOpen />);
+  fireEvent.click(screen.getByRole('button', { name: 'Raw log' }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(4_200); });
+  expect(calls).toBe(3);
+  expect(screen.getByText('final line')).toBeInTheDocument();
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(calls).toBe(3);
+});
