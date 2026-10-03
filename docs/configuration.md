@@ -35,6 +35,7 @@ CertForge is configured from the web UI. The environment only carries what the s
 | `CF_LISTEN_AGENT` | no | `:8443` | Agent listener: TLS with agent client certificates, serves only `/agent/v1/*`. Must be reached directly or through TCP/TLS passthrough, never a TLS-terminating proxy. |
 | `CF_BASE_URL` | no | – | Public URL. The setup wizard stores its own value in Settings → General, which takes precedence |
 | `CF_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` |
+| `CF_OIDC_ALLOW_INSECURE_ISSUER` | no | `false` | `true` lets Settings → Authentication accept a plain `http://` OIDC issuer on a non-loopback host. Without it, `http://` is accepted only for `localhost`, `127.0.0.0/8` and `::1`. For dev and test stacks only. |
 
 <a id="the-kek"></a>
 ## The encryption key

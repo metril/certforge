@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -71,6 +72,10 @@ type Config struct {
 	ListenAgent  string
 	BaseURL      string
 	LogLevel     string
+	// AllowInsecureOIDCIssuer (CF_OIDC_ALLOW_INSECURE_ISSUER=true) lets the
+	// authentication settings section accept a plain http:// OIDC issuer on a
+	// non-loopback host. Off by default; for dev and test stacks only.
+	AllowInsecureOIDCIssuer bool
 }
 
 // Load reads and validates the CF_* environment variables.
@@ -83,6 +88,13 @@ func Load() (Config, error) {
 		LogLevel:    strings.ToLower(envOr("CF_LOG_LEVEL", "info")),
 	}
 	var errs []error
+	if v := envOr("CF_OIDC_ALLOW_INSECURE_ISSUER", ""); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			errs = append(errs, errors.New("CF_OIDC_ALLOW_INSECURE_ISSUER must be true or false"))
+		}
+		c.AllowInsecureOIDCIssuer = b
+	}
 	if c.DatabaseURL == "" {
 		errs = append(errs, errors.New("CF_DATABASE_URL is required"))
 	}

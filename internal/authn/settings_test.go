@@ -48,7 +48,7 @@ func TestClientIP(t *testing.T) {
 
 func TestAuthSettingsCheck(t *testing.T) {
 	r := settings.NewRegistry()
-	if err := RegisterSettings(r); err != nil {
+	if err := RegisterSettings(r, false); err != nil {
 		t.Fatal(err)
 	}
 	sec, _ := r.Section(SettingsSection)
@@ -80,5 +80,28 @@ func TestAuthSettingsDefaults(t *testing.T) {
 	st.normalize()
 	if st.SessionTTL() != 12*time.Hour || st.GroupsClaim != "groups" || len(st.Scopes) != 4 || st.OIDCReady() {
 		t.Fatalf("defaults %+v", st)
+	}
+}
+
+func TestAuthSettingsIssuerScheme(t *testing.T) {
+	for _, tc := range []struct {
+		issuer   string
+		insecure bool
+		ok       bool
+	}{
+		{"https://idp.example.test/realm", false, true},
+		{"http://localhost:5556/dex", false, true},
+		{"http://127.0.0.1:5556", false, true},
+		{"http://127.9.9.9", false, true},
+		{"http://[::1]:5556", false, true},
+		{"http://idp.example.test", false, false},
+		{"http://dex:5556/dex", false, false},
+		{"http://10.0.0.5", false, false},
+		{"http://dex:5556/dex", true, true},
+	} {
+		raw := `{"enabled":true,"issuer":"` + tc.issuer + `","clientId":"c"}`
+		if err := checkAuthSettings([]byte(raw), tc.insecure); (err == nil) != tc.ok {
+			t.Errorf("%s insecure=%v: err = %v, want ok=%v", tc.issuer, tc.insecure, err, tc.ok)
+		}
 	}
 }

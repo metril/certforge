@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"net/netip"
 	"slices"
 	"strings"
@@ -75,19 +76,24 @@ func (s AuthSettings) String() string {
 }
 
 // RegisterSettings adds the authentication section and its extra checks.
-func RegisterSettings(r *settings.Registry) error {
+// allowInsecureIssuer (CF_OIDC_ALLOW_INSECURE_ISSUER) admits a plain http://
+// issuer on a non-loopback host; otherwise http is accepted for loopback only.
+func RegisterSettings(r *settings.Registry, allowInsecureIssuer bool) error {
 	if err := r.Register(SettingsSection, json.RawMessage(authSchema), json.RawMessage(authDefault)); err != nil {
 		return err
 	}
-	return r.AddCheck(SettingsSection, checkAuthSettings)
+	return r.AddCheck(SettingsSection, func(raw json.RawMessage) error { return checkAuthSettings(raw, allowInsecureIssuer) })
 }
 
-func checkAuthSettings(raw json.RawMessage) error {
+func checkAuthSettings(raw json.RawMessage, allowInsecureIssuer bool) error {
 	var s AuthSettings
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return err
 	}
 	if _, err := parseProxies(s.TrustedProxies); err != nil {
+		return err
+	}
+	if err := checkIssuerScheme(s.Issuer, allowInsecureIssuer); err != nil {
 		return err
 	}
 	if s.Enabled && (s.Issuer == "" || s.ClientID == "") {
@@ -97,6 +103,30 @@ func checkAuthSettings(raw json.RawMessage) error {
 		return errors.New("scopes must include openid")
 	}
 	return nil
+}
+
+// checkIssuerScheme requires an https issuer, except plain http on a
+// loopback host (localhost, 127.0.0.0/8, ::1) or when allowInsecure is set.
+func checkIssuerScheme(issuer string, allowInsecure bool) error {
+	if issuer == "" || allowInsecure {
+		return nil
+	}
+	u, err := url.Parse(issuer)
+	if err != nil {
+		return fmt.Errorf("issuer: invalid URL: %w", err)
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	host := u.Hostname()
+	if a, err := netip.ParseAddr(host); err == nil {
+		if a.Unmap().IsLoopback() {
+			return nil
+		}
+	} else if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	return errors.New("issuer: must use https unless the host is loopback")
 }
 
 func parseProxies(in []string) ([]netip.Prefix, error) {

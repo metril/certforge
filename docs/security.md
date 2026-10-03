@@ -41,6 +41,8 @@ A deploy target type's secret config fields (schema `"secret": true`; no shipped
 
 ## External monitors
 
+The OIDC issuer must use `https://`, except for a loopback host (`localhost`, `127.0.0.0/8`, `::1`); `CF_OIDC_ALLOW_INSECURE_ISSUER=true` lifts that for dev and test stacks (the e2e compose stack sets it because its Dex issuer is `http://dex:5556/dex`).
+
 DNS credential URL fields (any schema property ending `_URL` or `_ENDPOINT`, or named `*_BASE_URL` / `*_API_BASE`, such as `HTTPREQ_ENDPOINT`, `PDNS_API_URL`, `AZURE_METADATA_ENDPOINT`) go through `httpx.CheckURL` on credential create and update; a refused host is a 422 naming the field. The same `allowLoopbackUrls` setting lifts the loopback/link-local block (the cloud-metadata addresses never lift). Stored credentials are not re-checked on read.
 
 External monitors (`GET`-free TLS handshakes against an operator-configured `host:port`) share the notifier SSRF policy exactly (Deviations R5): `Observe` rejects a loopback/link-local/unspecified host up front via `httpx.CheckHost`, using the same `allowLoopbackUrls` setting, then again at dial time via `httpx.DialControl` for DNS-rebinding parity. The TLS handshake itself uses `InsecureSkipVerify` only to capture whatever leaf certificate the server presents regardless of trust — this never disables verification for anything that actually trusts the connection, since no data is sent over it beyond the handshake; `leaf.Verify` against the system root pool runs separately afterward, and a failure there is recorded as the monitor's `ChainError` (surfaced in an event's `details`), never silently treated as success.

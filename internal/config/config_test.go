@@ -11,7 +11,7 @@ import (
 )
 
 var allVars = []string{
-	"CF_DATABASE_URL", "CF_KEK", "CF_KEK_FILE", "CF_LISTEN_HTTP", "CF_LISTEN_AGENT", "CF_BASE_URL", "CF_LOG_LEVEL",
+	"CF_DATABASE_URL", "CF_KEK", "CF_KEK_FILE", "CF_LISTEN_HTTP", "CF_LISTEN_AGENT", "CF_BASE_URL", "CF_LOG_LEVEL", "CF_OIDC_ALLOW_INSECURE_ISSUER",
 	"CF_KEK_VAULT_ADDR", "CF_KEK_VAULT_TRANSIT_KEY", "CF_KEK_VAULT_MOUNT", "CF_KEK_VAULT_NAMESPACE", "CF_KEK_VAULT_CA_FILE",
 	"CF_KEK_VAULT_TOKEN", "CF_KEK_VAULT_TOKEN_FILE", "CF_KEK_VAULT_ROLE_ID", "CF_KEK_VAULT_SECRET_ID", "CF_KEK_VAULT_SECRET_ID_FILE",
 	"CF_KEK_PREVIOUS", "CF_KEK_PREVIOUS_FILE",
@@ -398,4 +398,22 @@ func TestLoadPreviousKEKs(t *testing.T) {
 			t.Fatalf("previous = %+v", c.PreviousKEKs)
 		}
 	})
+}
+
+func TestLoadAllowInsecureOIDCIssuer(t *testing.T) {
+	base := map[string]string{"CF_DATABASE_URL": "postgres://x/y", "CF_KEK": key(1)}
+	setEnv(t, base)
+	if c, err := Load(); err != nil || c.AllowInsecureOIDCIssuer {
+		t.Fatalf("default: %v %+v", err, c.AllowInsecureOIDCIssuer)
+	}
+	base["CF_OIDC_ALLOW_INSECURE_ISSUER"] = "true"
+	setEnv(t, base)
+	if c, err := Load(); err != nil || !c.AllowInsecureOIDCIssuer {
+		t.Fatalf("true: %v", err)
+	}
+	base["CF_OIDC_ALLOW_INSECURE_ISSUER"] = "maybe"
+	setEnv(t, base)
+	if _, err := Load(); err == nil {
+		t.Fatal("bad value accepted")
+	}
 }

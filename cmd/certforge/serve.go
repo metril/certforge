@@ -100,7 +100,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	if err := issuance.RegisterIssuanceSettings(sections); err != nil {
 		return err
 	}
-	if err := authn.RegisterSettings(sections); err != nil {
+	if err := authn.RegisterSettings(sections, cfg.AllowInsecureOIDCIssuer); err != nil {
 		return err
 	}
 	if err := agents.RegisterSettings(sections); err != nil {

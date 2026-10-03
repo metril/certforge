@@ -29,6 +29,11 @@ services:
     # the host regardless of the host's actual IP.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      # The dev Dex issuer is http://dex:5556/dex (a compose service name,
+      # not loopback), which the authentication settings section otherwise
+      # refuses.
+      CF_OIDC_ALLOW_INSECURE_ISSUER: "true"
   pebble:
     image: ghcr.io/letsencrypt/pebble:2.10.1
     command: -config test/config/pebble-config.json -strict -dnsserver challtestsrv:8053
