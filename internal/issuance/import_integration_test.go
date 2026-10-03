@@ -3,6 +3,7 @@
 package issuance
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/crypto/cryptotest"
 	"github.com/metril/certforge/internal/importer"
@@ -184,5 +186,51 @@ func assertDupPattern(t *testing.T, label string, items []ImportItem) {
 	}
 	if items[1].Action != "skip" || items[1].Reason != "duplicate name in archive" {
 		t.Fatalf("%s: items[1] = %+v, want skip \"duplicate name in archive\"", label, items[1])
+	}
+}
+
+// failingBox seals like cryptotest.PrefixBox except for one plaintext,
+// which it refuses — a stand-in for an infrastructure failure partway
+// through an import.
+type failingBox struct {
+	cryptotest.PrefixBox
+	fail []byte
+}
+
+func (b failingBox) Seal(ctx context.Context, p []byte) ([]byte, error) {
+	if bytes.Equal(p, b.fail) {
+		return nil, errors.New("seal failed")
+	}
+	return b.PrefixBox.Seal(ctx, p)
+}
+
+// TestImportMidLoopErrorAuditsCreated: an infrastructure error on a later
+// entry must not lose the audit record for the entries already committed;
+// the partial result comes back alongside the error.
+func TestImportMidLoopErrorAuditsCreated(t *testing.T) {
+	f := newFixture(t)
+	leaf1, key1 := selfSigned(t, "first.example.test", 1301)
+	leaf2, key2 := selfSigned(t, "second.example.test", 1302)
+	svc := f.importSvc([]importer.ImportedCert{
+		{Name: "first.example.test", Source: importer.SourceAcmeSh, LeafDER: leaf1, KeyPKCS8: key1},
+		{Name: "second.example.test", Source: importer.SourceAcmeSh, LeafDER: leaf2, KeyPKCS8: key2},
+	})
+	svc.Certs = certstore.New(f.pool, failingBox{fail: key2})
+	svc.Auditor = audit.New(f.pool, bytes.Repeat([]byte{5}, 32))
+
+	res, err := svc.ImportCertificates(context.Background(), f.org, f.ca.ID, fstest.MapFS{}, false)
+	if err == nil {
+		t.Fatal("err = nil, want the seal failure")
+	}
+	if len(res.Items) != 1 || res.Items[0].Action != "create" || res.Items[0].CertificateID == nil {
+		t.Fatalf("partial items = %+v, want the first entry created", res.Items)
+	}
+	var n int
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM audit_events WHERE action = 'certificate.import' AND org_id = $1`, f.org).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("certificate.import audit events = %d, want 1", n)
 	}
 }

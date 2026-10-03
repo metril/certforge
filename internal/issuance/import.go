@@ -102,6 +102,8 @@ func (s *Service) importOverrides(ctx context.Context, orgID, caID uuid.UUID) (D
 // loop tracks names claimed within the run itself (claimed), in memory,
 // so dry-run and create report the exact same second entry as a skipped
 // duplicate, not "would create".
+// An error partway through returns the items already processed (and
+// audits the ones created) alongside the error.
 func (s *Service) ImportCertificates(ctx context.Context, orgID, caID uuid.UUID, fsys fs.FS, dryRun bool) (ImportResult, error) {
 	if _, err := s.Store.GetCA(ctx, orgID, caID); err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -137,7 +139,13 @@ func (s *Service) ImportCertificates(ctx context.Context, orgID, caID uuid.UUID,
 		} else {
 			item, err = s.importOne(ctx, orgID, over, policy, ic, dryRun)
 			if err != nil {
-				return ImportResult{}, err
+				// Earlier entries already committed: audit them even though
+				// the request fails, and hand back what was created so far.
+				// ctx may be what failed, so audit on a detached one.
+				if !dryRun && len(created) > 0 {
+					s.auditImport(context.WithoutCancel(ctx), orgID, len(created), len(skipped), created)
+				}
+				return result, err
 			}
 			if item.Action == "create" {
 				claimed[name] = true
