@@ -84,6 +84,9 @@ func EnqueueDue(ctx context.Context, s *Store, ins Inserter, limit int) (int, er
 	if _, err := s.PruneHookRuns(ctx, time.Now().Add(-hookRunRetention)); err != nil {
 		housekeeping = append(housekeeping, fmt.Errorf("prune hook runs: %w", err))
 	}
+	if _, err := s.PruneExpiredManualPending(ctx); err != nil {
+		housekeeping = append(housekeeping, fmt.Errorf("prune expired manual dns: %w", err))
+	}
 	ids, err := s.DueCertificateIDs(ctx, limit)
 	if err != nil {
 		return 0, errors.Join(append(housekeeping, err)...)

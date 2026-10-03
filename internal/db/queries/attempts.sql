@@ -35,11 +35,14 @@ INSERT INTO manual_dns_pending (attempt_id, cert_id, domain, fqdn, value, ttl, e
 VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: ListManualPending :many
-SELECT * FROM manual_dns_pending WHERE cert_id = $1 AND confirmed_at IS NULL ORDER BY fqdn, value;
+SELECT * FROM manual_dns_pending WHERE cert_id = $1 AND confirmed_at IS NULL AND expires_at > now() ORDER BY fqdn, value;
 
 -- name: ConfirmManualPending :execrows
 UPDATE manual_dns_pending SET confirmed_at = now()
 WHERE cert_id = $1 AND confirmed_at IS NULL AND expires_at > now();
+
+-- name: PruneExpiredManualPending :execrows
+DELETE FROM manual_dns_pending WHERE confirmed_at IS NULL AND expires_at < now();
 
 -- name: ManualAllConfirmed :one
 SELECT (count(*) > 0 AND count(*) FILTER (WHERE confirmed_at IS NULL) = 0)::boolean AS confirmed

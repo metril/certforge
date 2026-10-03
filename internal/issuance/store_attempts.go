@@ -131,6 +131,13 @@ func (s *Store) PruneHookRuns(ctx context.Context, before time.Time) (int64, err
 	return s.q.PruneHookRuns(ctx, before)
 }
 
+// PruneExpiredManualPending deletes unconfirmed manual-dns records whose
+// window has passed (left behind when an attempt died before cleaning up),
+// returning how many were removed.
+func (s *Store) PruneExpiredManualPending(ctx context.Context) (int64, error) {
+	return s.q.PruneExpiredManualPending(ctx)
+}
+
 // ListAttempts returns the newest attempts of an org's certificate. The log
 // is left empty unless includeLog is set.
 func (s *Store) ListAttempts(ctx context.Context, orgID, certID uuid.UUID, limit int, includeLog bool) ([]Attempt, error) {

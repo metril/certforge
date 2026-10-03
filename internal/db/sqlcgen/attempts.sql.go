@@ -227,7 +227,7 @@ func (q *Queries) ListAttempts(ctx context.Context, arg ListAttemptsParams) ([]L
 }
 
 const listManualPending = `-- name: ListManualPending :many
-SELECT id, attempt_id, cert_id, domain, fqdn, value, ttl, expires_at, confirmed_at, created_at FROM manual_dns_pending WHERE cert_id = $1 AND confirmed_at IS NULL ORDER BY fqdn, value
+SELECT id, attempt_id, cert_id, domain, fqdn, value, ttl, expires_at, confirmed_at, created_at FROM manual_dns_pending WHERE cert_id = $1 AND confirmed_at IS NULL AND expires_at > now() ORDER BY fqdn, value
 `
 
 func (q *Queries) ListManualPending(ctx context.Context, certID uuid.UUID) ([]ManualDnsPending, error) {
@@ -271,6 +271,18 @@ func (q *Queries) ManualAllConfirmed(ctx context.Context, attemptID uuid.UUID) (
 	var confirmed bool
 	err := row.Scan(&confirmed)
 	return confirmed, err
+}
+
+const pruneExpiredManualPending = `-- name: PruneExpiredManualPending :execrows
+DELETE FROM manual_dns_pending WHERE confirmed_at IS NULL AND expires_at < now()
+`
+
+func (q *Queries) PruneExpiredManualPending(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneExpiredManualPending)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const pruneIssuanceAttempts = `-- name: PruneIssuanceAttempts :execrows

@@ -209,6 +209,46 @@ func TestPruneIssuanceAttempts(t *testing.T) {
 	}
 }
 
+// TestPruneExpiredManualPending: expired unconfirmed records are hidden from
+// ManualPending and deleted by the prune; live ones survive.
+func TestPruneExpiredManualPending(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	c, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "web", CommonName: "example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attemptID, err := f.store.CreateAttempt(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, exp := range map[string]time.Time{"old": time.Now().Add(-time.Hour), "live": time.Now().Add(time.Hour)} {
+		rec := challenge.ManualRecord{AttemptID: attemptID, CertID: c.ID, Domain: "example.test",
+			FQDN: name + ".example.test", Value: name, TTL: 120, ExpiresAt: exp}
+		if err := f.store.InsertManualPending(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pending, err := f.store.ManualPending(ctx, f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].Value != "live" {
+		t.Fatalf("pending = %+v, want only the live record", pending)
+	}
+	n, err := f.store.PruneExpiredManualPending(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("pruned %d, want 1", n)
+	}
+	var left int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM manual_dns_pending WHERE cert_id = $1`, c.ID).Scan(&left); err != nil || left != 1 {
+		t.Fatalf("rows left = %d err=%v, want 1", left, err)
+	}
+}
+
 // TestPruneHookRuns: hook runs older than the cutoff are deleted.
 func TestPruneHookRuns(t *testing.T) {
 	f := newFixture(t)
