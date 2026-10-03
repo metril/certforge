@@ -33,7 +33,19 @@ export async function downloadBackup(): Promise<void> {
  * statically reaches loads eagerly regardless of `BackupSection`'s own
  * route being lazily loaded — `check-chunks.mjs`'s `_app` → `@rjsf`
  * reachability guard now fails the build if this regresses. */
-export async function runBackup(qc: QueryClient): Promise<void> {
+export function runBackup(qc: QueryClient): Promise<void> {
+  inFlight ??= backupNow(qc).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+// One backup at a time: a second caller (the palette while the section's
+// button, or an earlier palette run, is still downloading) shares the
+// running one instead of starting a concurrent archive.
+let inFlight: Promise<void> | null = null;
+
+async function backupNow(qc: QueryClient): Promise<void> {
   try {
     await downloadBackup();
     toast.success('Backup downloaded');

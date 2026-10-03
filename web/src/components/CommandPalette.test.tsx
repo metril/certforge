@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Action } from '@/lib/permissions';
@@ -384,6 +384,41 @@ it('back up now entry downloads', async () => {
   await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'archive');
   await user.click(await within(dialog).findByText('Settings: Back up now'));
   await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), 'certforge-20260101T000000Z.cfbak'));
+});
+
+it('back up now does nothing while a backup is already running', async () => {
+  let posts = 0;
+  server.use(
+    ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge' })),
+    http.post(url('/backup'), async () => {
+      posts++;
+      await delay(400);
+      return new HttpResponse(new Blob(['data']), { headers: { 'Content-Disposition': 'attachment; filename="certforge-20260101T000000Z.cfbak"' } });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  for (let i = 0; i < 2; i++) {
+    await user.keyboard('{Control>}k{/Control}');
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'archive');
+    await user.click(await within(dialog).findByText('Settings: Back up now'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  }
+  await waitFor(() => expect(saveBlob).toHaveBeenCalledTimes(1));
+  expect(posts).toBe(1);
+});
+
+it('clears the search text when the palette closes without running anything', async () => {
+  server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge' })));
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  await user.type(within(await screen.findByRole('dialog')).getByPlaceholderText('www.example.com'), 'archive');
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await user.keyboard('{Control>}k{/Control}');
+  expect(within(await screen.findByRole('dialog')).getByPlaceholderText('www.example.com')).toHaveValue('');
 });
 
 it('hides Import certificates and Upload certificate under All orgs', async () => {
