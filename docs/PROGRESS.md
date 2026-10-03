@@ -739,3 +739,4 @@ UI rework batch 4 review fixes: Global saves never pin a value equal to the ship
 - Minor fixes (import failure): a real import that fails partway keeps its 500 but the problem carries an `imported` list of the certificates already created, and the import page says how many were created and lists them.
 - Minor fixes (agent websocket): the agent reads server messages up to 8 MiB, sharing `agentproto.MaxMessage` with the server, so a large assignment or bundle no longer closes the socket with 1009.
 - Minor fixes (attempt log): the raw log viewer renders the newest 500 lines with a Show all / Show last 500 toggle, and its search still covers every line.
+- Minor fixes (table rows): DataTable sets `aria-selected` only on tables that have a selection (the certificates list); the audit, monitors and channels tables, which only open a sheet, no longer carry it.

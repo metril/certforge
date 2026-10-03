@@ -84,7 +84,7 @@ export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort,
               return (
                 <TableRow
                   key={row.id}
-                  aria-selected={onRowClick ? isSel : undefined}
+                  aria-selected={selected ? isSel : undefined}
                   tabIndex={onRowClick ? 0 : undefined}
                   className={cn('h-9 rounded-none', onRowClick && 'cursor-pointer', isSel && 'bg-primary/10 hover:bg-primary/15')}
                   onMouseDown={(e) => e.shiftKey && e.preventDefault()}
