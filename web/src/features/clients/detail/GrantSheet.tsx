@@ -25,7 +25,7 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 
-type Props = { orgId: string; client: Client; grants: Grant[]; editing?: Grant; onOpenChange: (open: boolean) => void };
+type Props = { orgId: string; client: Client; grants: Grant[]; editing?: Grant; /** The grant vanished from the poll while the sheet was open: show the snapshot's name and a removed notice, no form. */ removed?: boolean; onOpenChange: (open: boolean) => void };
 
 /** A field whose options come from a query: a skeleton while pending, an
  * inline error (with retry) on failure, never the "nothing yet" empty text
@@ -48,7 +48,7 @@ function QueryField({ label, q, children }: { label: string; q: UseQueryResult<u
 const fileHasKey = (f: { format: string; parts?: string[] }) =>
   f.format === 'p12' || f.format === 'jks' || !!f.parts?.some((p) => p === 'key' || p === 'combined');
 
-export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Props) {
+export function GrantSheet({ orgId, client, grants, editing, removed = false, onOpenChange }: Props) {
   const guard = useSheetGuard(onOpenChange);
   const certs = useQuery(allCertificatesQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
@@ -127,6 +127,12 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
           <SheetTitle>{editing ? `Edit ${editing.certificateName}` : 'Grant certificate'}</SheetTitle>
           <SheetDescription className="sr-only">For client {client.name}</SheetDescription>
         </SheetHeader>
+        {removed ? (
+          <p role="alert" className="flex items-center gap-1.5 px-4 text-sm">
+            <CircleAlert className="size-4 shrink-0 text-failed" aria-hidden />
+            This grant was removed. Close this sheet to continue.
+          </p>
+        ) : (
         <div className="grid gap-5 px-4">
           {editing ? (
             <div className="grid gap-1 text-sm">
@@ -272,12 +278,13 @@ export function GrantSheet({ orgId, client, grants, editing, onOpenChange }: Pro
             </p>
           )}
         </div>
+        )}
         <SheetFooter className="flex-row justify-end gap-2">
           <SheetClose asChild>
             <Button variant="outline">Cancel</Button>
           </SheetClose>
           <PermissionTip allowed={!keyBlocked} action="keys:export">
-            <Button disabled={busy || keyBlocked} onClick={() => void submit()}>
+            <Button disabled={busy || keyBlocked || removed} onClick={() => void submit()}>
               {editing ? 'Save' : 'Grant'}
             </Button>
           </PermissionTip>
