@@ -127,8 +127,7 @@ func effectiveDNSServers(servers []string) ([]string, error) {
 // affirmatively forbid issuance by this CA.
 //
 // For each name: strip a leading "*." and climb labels from the resulting
-// domain up to and including its registered domain (publicsuffix.
-// EffectiveTLDPlusOne), stopping at the first label with a non-empty CAA
+// domain all the way to the TLD, stopping at the first label with a non-empty CAA
 // record set (RFC 8659 §5.3). No record set anywhere in that climb means
 // CAA does not restrict the name, and the next name is checked. A lookup
 // error at one name is remembered but does not stop the rest of names from
@@ -161,13 +160,13 @@ func CheckCAA(ctx context.Context, r CAAResolver, names []string, identities []s
 	return "CAA checked; issuance allowed", nil
 }
 
-// caaLookupChain climbs labels from name up to and including its registered
-// domain, returning the first non-empty CAA record set found (and the owner
-// name it was found at), or no records when every label up to and
-// including the registered domain came back empty.
+// caaLookupChain climbs labels from name up to its last label (the TLD, per
+// RFC 8659 §5.3), returning the first non-empty CAA record set found (and
+// the owner name it was found at), or no records when every label came back
+// empty. An IP literal is looked up once and never climbed.
 func caaLookupChain(ctx context.Context, r CAAResolver, name string, servers []string) (owner string, records []CAARecord, err error) {
-	registered := registeredDomainOrSelf(name)
 	owner = name
+	ip := net.ParseIP(name) != nil
 	for {
 		recs, err := r.LookupCAA(ctx, owner, servers)
 		if err != nil {
@@ -176,11 +175,8 @@ func caaLookupChain(ctx context.Context, r CAAResolver, name string, servers []s
 		if len(recs) > 0 {
 			return owner, recs, nil
 		}
-		if strings.EqualFold(owner, registered) {
-			return owner, nil, nil
-		}
 		i := strings.IndexByte(owner, '.')
-		if i < 0 {
+		if ip || i < 0 {
 			return owner, nil, nil
 		}
 		owner = owner[i+1:]

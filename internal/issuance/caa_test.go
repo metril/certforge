@@ -47,6 +47,14 @@ func TestCheckCAA(t *testing.T) {
 		wantTag    string // checked only when non-empty: the fix hint's "CAA 0 <tag>"
 	}{
 		{
+			name:  "forbidding record above the registered domain",
+			names: []string{"a.example.co.uk"},
+			records: map[string][]CAARecord{
+				"co.uk": {{Tag: "issue", Value: "other-ca.example"}},
+			},
+			wantErr: true,
+		},
+		{
 			name:  "no records",
 			names: []string{"example.com"},
 		},
@@ -98,14 +106,6 @@ func TestCheckCAA(t *testing.T) {
 				"example.com": {{Tag: "issue", Value: "other-ca.example"}},
 			},
 			wantErr: true, // lab.example.com is empty, example.com forbids
-		},
-		{
-			name:  "climbing stops at the registered domain",
-			names: []string{"foo.example.co.uk"},
-			records: map[string][]CAARecord{
-				// co.uk would forbid, but climbing must never reach it.
-				"co.uk": {{Tag: "issue", Value: "other-ca.example"}},
-			},
 		},
 		{
 			name:       "lookup error succeeds and lets the CA check",
