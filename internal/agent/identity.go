@@ -301,7 +301,9 @@ func (id *Identity) TLSCertificate() tls.Certificate {
 
 // SaveState writes state.json (0600).
 func (id *Identity) SaveState() error {
+	id.mu.Lock()
 	b, err := json.MarshalIndent(id.State, "", "  ")
+	id.mu.Unlock()
 	if err != nil {
 		return err
 	}

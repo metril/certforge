@@ -170,7 +170,7 @@ func (a *Agent) pullOnce(ctx context.Context) error {
 		err = cl.Report(ctx, rep)
 	}
 	if err == nil {
-		err = cl.Heartbeat(ctx, agentproto.Heartbeat{Installed: a.ID.State.Installed()})
+		err = cl.Heartbeat(ctx, agentproto.Heartbeat{Installed: a.ID.Installed()})
 	}
 	if IsUnauthorized(err) {
 		return ErrRevoked
@@ -377,7 +377,7 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 				a.Challenge.CleanUp(v)
 			}
 		case <-heartbeat.C:
-			if err := send(agentproto.Heartbeat{Installed: a.ID.State.Installed()}); err != nil {
+			if err := send(agentproto.Heartbeat{Installed: a.ID.Installed()}); err != nil {
 				return err
 			}
 		case <-renew.C:

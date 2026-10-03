@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -176,7 +177,13 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 	if err != nil {
 		return agentproto.Report{}, err
 	}
-	st := &r.ID.State
+	// Work on a private copy of the grant state: a heartbeat or renewal
+	// reads and writes the identity's State from other goroutines, and no
+	// lock may be held across the file writes and hooks below. The copy is
+	// published under the lock at the end.
+	r.ID.mu.Lock()
+	st := &State{Grants: maps.Clone(r.ID.State.Grants)}
+	r.ID.mu.Unlock()
 	if st.Grants == nil {
 		st.Grants = map[uuid.UUID]GrantState{}
 	}
@@ -250,6 +257,8 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 		r.recordDeployOutcome(st, live, a, gs, had, versionID, res, written, certsDir)
 		rep.Results = append(rep.Results, res)
 	}
-	st.Revision = as.Revision
+	r.ID.mu.Lock()
+	r.ID.State.Grants, r.ID.State.Revision = st.Grants, as.Revision
+	r.ID.mu.Unlock()
 	return rep, r.ID.SaveState()
 }
