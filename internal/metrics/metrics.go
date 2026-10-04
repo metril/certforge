@@ -51,7 +51,7 @@ var (
 
 	// AuditHeadID is certforge_audit_head_id: the id of the newest audit
 	// event this process has seen written or verified. Prometheus keeps its
-	// history outside the database, so a drop (resets() > 0) shows the
+	// history outside the database, so a drop (see docs/monitoring.md) shows the
 	// audit table was rolled back or truncated (docs/security.md).
 	AuditHeadID = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "certforge_audit_head_id",

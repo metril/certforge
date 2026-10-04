@@ -72,7 +72,7 @@ Series with a `route` label use chi's own route pattern (`/api/v1/orgs/{orgId}/c
 | `certforge_backup_last_success_timestamp_seconds` | gauge | — | Unix time of the last successful backup; `0` if none has ever completed (Phase 6A Task 12). |
 | `certforge_kek_rewrap_remaining` | gauge | — | Sealed columns still on a non-active KEK, from the most recent rewrap run. |
 | `certforge_build_info` | gauge | `version` | Always `1`; labelled with the running server's version. |
-| `certforge_audit_head_id` | gauge | — | Id of the newest audit event written or verified by this process. Alert on `resets(max(certforge_audit_head_id)[1d]) > 0`: a drop means the audit table was rolled back or truncated. |
+| `certforge_audit_head_id` | gauge | — | Id of the newest audit event written or verified by this process. Set to the real head at startup (0 only for an empty table). Alert on `resets(max(certforge_audit_head_id > 0)[1d:5m]) > 0` (the `> 0` ignores a restart's brief 0): a drop means the audit table was rolled back or truncated. |
 | `certforge_http_requests_total` | counter | `route`, `method`, `status` | HTTP requests, main listener only. |
 | `certforge_http_request_duration_seconds` | histogram | `route` | HTTP request duration, main listener only. |
 
