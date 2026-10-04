@@ -314,7 +314,16 @@ func TestVaultAgainstCompose(t *testing.T) {
 		t.Fatalf("localca issuance failed: %s", localCert.LastError)
 	}
 
-	c.call(ctx, t, http.MethodPost, localCertPath+"/renew", nil, nil)
+	renewTries := 0
+	waitFor60(ctx, t, "localca renewal enqueued", func() (bool, bool) {
+		var res struct {
+			Enqueued bool `json:"enqueued"`
+		}
+		renewTries++
+		c.call(ctx, t, http.MethodPost, localCertPath+"/renew", nil, &res)
+		return res.Enqueued, res.Enqueued
+	})
+	t.Logf("localca renewal enqueued after %d tries", renewTries)
 	waitFor60(ctx, t, "localca renewed", func() (int, bool) {
 		var versions []versionOut
 		c.call(ctx, t, http.MethodGet, localCertPath+"/versions", nil, &versions)

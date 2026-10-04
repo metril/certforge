@@ -382,9 +382,19 @@ func TestIssuanceAgainstPebble(t *testing.T) {
 	}
 	firstFingerprint := versionsBefore[0].SHA256Fingerprint
 
-	c.call(ctx, t, http.MethodPost, certPath+"/renew", nil, new(struct {
-		Enqueued bool `json:"enqueued"`
-	}))
+	// The first issuance job can still be running for a moment after its
+	// version is visible, in which case the renew is deduplicated
+	// (enqueued=false); retry until a renewal is actually enqueued.
+	renewTries := 0
+	waitFor(ctx, t, "forced renewal to be enqueued", func() (bool, bool) {
+		var res struct {
+			Enqueued bool `json:"enqueued"`
+		}
+		renewTries++
+		c.call(ctx, t, http.MethodPost, certPath+"/renew", nil, &res)
+		return res.Enqueued, res.Enqueued
+	})
+	t.Logf("forced renewal enqueued after %d tries", renewTries)
 	versionsAfter := waitFor(ctx, t, "second version", func() ([]versionOut, bool) {
 		var versions []versionOut
 		c.call(ctx, t, http.MethodGet, certPath+"/versions", nil, &versions)
