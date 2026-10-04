@@ -220,6 +220,65 @@ func TestCreateBackupMidStreamErrorAborts(t *testing.T) {
 	if n := e.auditCount(t, "backup.created"); n != 0 {
 		t.Fatalf("backup.created audit count = %d, want 0", n)
 	}
+	d := waitBackupFailed(t, e)
+	if d["trigger"] != "on_demand" || d["error"] != "simulated mid-stream failure" || d["reason"] != nil {
+		t.Fatalf("backup.failed details = %v", d)
+	}
+}
+
+// waitBackupFailed polls for the backup.failed audit row (written by the
+// stream goroutine, after the client has already seen the abort).
+func waitBackupFailed(t *testing.T, e *testEnv) map[string]any {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		var raw []byte
+		err := e.deps.Pool.QueryRow(context.Background(), `SELECT details FROM audit_events WHERE action = 'backup.failed' ORDER BY id DESC LIMIT 1`).Scan(&raw)
+		if err == nil {
+			var d map[string]any
+			if json.Unmarshal(raw, &d) != nil {
+				t.Fatalf("details %s", raw)
+			}
+			return d
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("no backup.failed audit row")
+	return nil
+}
+
+// A client that goes away mid-stream is recorded as client_aborted, not a
+// server failure (the request context is already cancelled by then).
+func TestCreateBackupClientAbortAudited(t *testing.T) {
+	e := newTestEnvOpts(t, withBackup(t))
+	csrf, _ := e.seedAdminSession()
+	setBackupSettings(t, e, backup.Settings{Schedule: "off", RetainCount: 7})
+	e.deps.Backup.StreamFunc = func(ctx context.Context, w io.Writer) (backup.Summary, error) {
+		if _, err := w.Write(bytes.Repeat([]byte{0}, 256*1024)); err != nil {
+			return backup.Summary{}, err
+		}
+		<-ctx.Done()
+		return backup.Summary{}, ctx.Err()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.srv.URL+"/api/v1/backup", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(authn.CSRFHeader, csrf)
+	resp, err := e.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1024)
+	if _, err := resp.Body.Read(buf); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	_ = resp.Body.Close()
+	d := waitBackupFailed(t, e)
+	if d["trigger"] != "on_demand" || d["reason"] != "client_aborted" {
+		t.Fatalf("backup.failed details = %v", d)
+	}
 }
 
 // TestBackupAPIRestoreRoundTrip: the archive createBackup streams over

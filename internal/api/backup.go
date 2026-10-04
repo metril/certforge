@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/metril/certforge/internal/api/gen"
@@ -44,6 +46,15 @@ func (a abortingReader) Close() error {
 	return nil
 }
 
+// firstLine returns the first line of s, cut to at most n bytes.
+func firstLine(s string, n int) string {
+	s, _, _ = strings.Cut(s, "\n")
+	if len(s) > n {
+		s = s[:n]
+	}
+	return s
+}
+
 // CreateBackup streams one on-demand backup archive with no buffering to
 // disk or memory: Stream writes straight into an io.Pipe fed to the
 // response body. Needs settings:write. Once the whole stream completes successfully,
@@ -68,6 +79,14 @@ func (s *Server) CreateBackup(ctx context.Context, _ gen.CreateBackupRequestObje
 			// around table names, SQL errors and I/O failures only), so
 			// this needs no separate redaction step.
 			s.d.Log.Error("backup: on-demand stream failed", "err", err)
+			// WithoutCancel: the request context is usually already
+			// cancelled when the stream fails. The shared status row is not
+			// touched; scheduled-backup state stays authoritative.
+			details := map[string]any{"trigger": "on_demand", "error": firstLine(err.Error(), 200)}
+			if errors.Is(err, io.ErrClosedPipe) || ctx.Err() != nil {
+				details["reason"] = "client_aborted"
+			}
+			s.audit(context.WithoutCancel(ctx), audit.Event{Action: "backup.failed", ResourceType: "backup", Details: details})
 			_ = pw.CloseWithError(err)
 			return
 		}
