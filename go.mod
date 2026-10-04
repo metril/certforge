@@ -9,7 +9,7 @@ require (
 	github.com/getkin/kin-openapi v0.128.0
 	github.com/go-acme/lego/v4 v4.24.0
 	github.com/go-chi/chi/v5 v5.1.0
-	github.com/go-jose/go-jose/v4 v4.0.5
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/miekg/dns v1.1.64
