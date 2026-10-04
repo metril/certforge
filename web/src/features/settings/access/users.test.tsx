@@ -57,6 +57,21 @@ it('lists users and disables one after typing their name', async () => {
   expect(await within(table).findByText('Disabled')).toBeInTheDocument();
 });
 
+// H3: without a global users:read the server withholds issuer, groups and
+// last sign-in, so the tab hides those columns rather than showing blanks.
+it('hides the issuer, groups and last sign-in columns when the list is limited', async () => {
+  const redacted = { ...annUser, oidcIssuer: null, oidcSubject: null, groups: [], lastLogin: null };
+  server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, redacted], limited: true })));
+  renderRoute('/settings/access');
+  const table = await screen.findByRole('table', { name: 'Users' });
+  expect(within(table).getByText('Ann')).toBeInTheDocument();
+  expect(within(table).queryByRole('columnheader', { name: /Source/ })).toBeNull();
+  expect(within(table).queryByRole('columnheader', { name: /Groups/ })).toBeNull();
+  expect(within(table).queryByRole('columnheader', { name: /Last sign-in/ })).toBeNull();
+  expect(within(table).getByRole('columnheader', { name: /Email/ })).toBeInTheDocument();
+  expect(screen.getByText(/shown to global administrators only/)).toBeInTheDocument();
+});
+
 it('keeps the tab in the URL', async () => {
   server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser] })));
   const { router } = renderRoute('/settings/access?tab=users');

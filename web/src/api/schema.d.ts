@@ -3516,6 +3516,8 @@ export interface components {
         UserList: {
             /** @description Users sorted by display name. */
             items: components["schemas"]["UserDetail"][];
+            /** @description True when the caller lacks global users:read: other users show only name, email, status and creation time (issuer, subject, groups and last login are withheld); the caller's own row stays complete. */
+            limited: boolean;
         };
         /** @description Changes to a user. */
         UserUpdate: {

@@ -4037,9 +4037,10 @@ components:
     UserList:
       type: object
       description: All users.
-      required: [items]
+      required: [items, limited]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/UserDetail"}, description: Users sorted by display name.}
+        limited: {type: boolean, description: "True when the caller lacks global users:read: other users show only name, email, status and creation time (issuer, subject, groups and last login are withheld); the caller's own row stays complete."}
     UserUpdate:
       type: object
       description: Changes to a user.

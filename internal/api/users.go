@@ -19,20 +19,29 @@ func userDetail(u sqlcgen.User) gen.UserDetail {
 		Disabled: u.Disabled, LastLogin: u.LastLogin, CreatedAt: u.CreatedAt}
 }
 
-// ListUsers returns every user, local and OIDC.
+// ListUsers returns every user, local and OIDC. Without a global users:read
+// binding (an org-admin picking users for bindings, or an org-scoped API key)
+// other users come back without their OIDC issuer, subject, groups and last
+// login; the caller's own row stays complete.
 func (s *Server) ListUsers(ctx context.Context, _ gen.ListUsersRequestObject) (gen.ListUsersResponseObject, error) {
-	if _, err := authorize(ctx, authz.ActionUsersRead, nil); err != nil {
+	p, err := authorize(ctx, authz.ActionUsersRead, nil)
+	if err != nil {
 		return nil, err
 	}
+	limited := !authz.CanGlobal(p, authz.ActionUsersRead)
 	users, err := s.d.Queries.ListUsers(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]gen.UserDetail, 0, len(users))
 	for _, u := range users {
-		out = append(out, userDetail(u))
+		d := userDetail(u)
+		if limited && !(p.Kind == authn.KindUser && u.ID == p.UserID) {
+			d.OidcIssuer, d.OidcSubject, d.LastLogin, d.Groups = nil, nil, nil, []string{}
+		}
+		out = append(out, d)
 	}
-	return gen.ListUsers200JSONResponse(gen.UserList{Items: out}), nil
+	return gen.ListUsers200JSONResponse(gen.UserList{Items: out, Limited: limited}), nil
 }
 
 // UpdateUser enables or disables a user. Disabling revokes every session of

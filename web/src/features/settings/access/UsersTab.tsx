@@ -38,9 +38,7 @@ function matches(u: UserDetail, q: string): boolean {
   const needle = q.trim().toLowerCase();
   if (!needle) return true;
   return (
-    u.displayName.toLowerCase().includes(needle) ||
-    (u.email?.toLowerCase().includes(needle) ?? false) ||
-    u.groups.some((g) => g.toLowerCase().includes(needle))
+    u.displayName.toLowerCase().includes(needle) || (u.email?.toLowerCase().includes(needle) ?? false) || u.groups.some((g) => g.toLowerCase().includes(needle))
   );
 }
 
@@ -90,6 +88,7 @@ function StatusControl({
 
 function UserCard({
   u,
+  limited,
   canWrite,
   isSelf,
   pending,
@@ -97,6 +96,7 @@ function UserCard({
   onEnable,
 }: {
   u: UserDetail;
+  limited: boolean;
   canWrite: boolean;
   isSelf: boolean;
   pending: boolean;
@@ -113,11 +113,13 @@ function UserCard({
         <StatusControl u={u} canWrite={canWrite} isSelf={isSelf} pending={pending} onDisable={onDisable} onEnable={onEnable} />
       </div>
       <span className="font-mono text-xs text-ink-muted">{u.email ?? '–'}</span>
-      <div className="flex items-center justify-between text-xs text-ink-muted">
-        <span className="font-mono">{issuerHost(u)}</span>
-        <span>{u.lastLogin ? fmtDateTime(u.lastLogin) : 'Never signed in'}</span>
-      </div>
-      {u.groups.length > 0 && (
+      {!limited && (
+        <div className="flex items-center justify-between text-xs text-ink-muted">
+          <span className="font-mono">{issuerHost(u)}</span>
+          <span>{u.lastLogin ? fmtDateTime(u.lastLogin) : 'Never signed in'}</span>
+        </div>
+      )}
+      {!limited && u.groups.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {u.groups.map((g) => (
             <Badge key={g} variant="secondary" className="font-mono">
@@ -132,7 +134,7 @@ function UserCard({
 
 export function UsersTab() {
   const me = useMe();
-  const q = useQuery(usersQuery);
+  const q = useQuery({ ...usersQuery, select: (d) => d });
   const update = useUpdateUser();
   const [confirm, setConfirm] = useState<UserDetail | null>(null);
   const canWrite = can(me, 'users:write');
@@ -154,12 +156,19 @@ export function UsersTab() {
     if (text === urlQ) return;
     const t = window.setTimeout(() => {
       pushedQ.current = text;
-      void navigate({ search: (prev) => ({ ...prev, q: text || undefined }), replace: true });
+      void navigate({
+        search: (prev) => ({ ...prev, q: text || undefined }),
+        replace: true,
+      });
     }, 250);
     return () => window.clearTimeout(t);
   }, [text, search.q, navigate]);
 
-  const rows = useMemo(() => (q.data ?? []).filter((u) => matches(u, search.q ?? '')), [q.data, search.q]);
+  // The server withholds issuer, groups and last sign-in for callers without
+  // a global users:read; their columns are hidden rather than shown empty.
+  const limited = q.data?.limited ?? false;
+  const items = q.data?.items;
+  const rows = useMemo(() => (items ?? []).filter((u) => matches(u, search.q ?? '')), [items, search.q]);
   // M4: clears the debounce's own local buffer too, not just the URL's q —
   // otherwise the debounce effect would just re-push the cleared text's old
   // value right back a moment later.
@@ -186,26 +195,41 @@ export function UsersTab() {
           </span>
         ),
       }),
-      col.accessor('email', { header: 'Email', cell: (c) => <span className="font-mono text-xs">{c.getValue() ?? '–'}</span> }),
-      col.display({ id: 'source', header: 'Source', meta: { help: 'user.source' }, cell: ({ row }) => <span className="font-mono text-xs">{issuerHost(row.original)}</span> }),
-      col.accessor('groups', {
-        header: 'Groups',
-        meta: { help: 'user.groups' },
-        cell: (c) => {
-          const g = c.getValue();
-          return (
-            <span className="flex flex-wrap gap-1">
-              {g.slice(0, 3).map((x) => (
-                <Badge key={x} variant="secondary" className="font-mono">
-                  {x}
-                </Badge>
-              ))}
-              {g.length > 3 && <Badge variant="secondary">+{g.length - 3}</Badge>}
-            </span>
-          );
-        },
+      col.accessor('email', {
+        header: 'Email',
+        cell: (c) => <span className="font-mono text-xs">{c.getValue() ?? '–'}</span>,
       }),
-      col.accessor('lastLogin', { header: 'Last sign-in', cell: (c) => (c.getValue() ? fmtDateTime(c.getValue()!) : '–') }),
+      ...(limited
+        ? []
+        : [
+            col.display({
+              id: 'source',
+              header: 'Source',
+              meta: { help: 'user.source' },
+              cell: ({ row }) => <span className="font-mono text-xs">{issuerHost(row.original)}</span>,
+            }),
+            col.accessor('groups', {
+              header: 'Groups',
+              meta: { help: 'user.groups' },
+              cell: (c) => {
+                const g = c.getValue();
+                return (
+                  <span className="flex flex-wrap gap-1">
+                    {g.slice(0, 3).map((x) => (
+                      <Badge key={x} variant="secondary" className="font-mono">
+                        {x}
+                      </Badge>
+                    ))}
+                    {g.length > 3 && <Badge variant="secondary">+{g.length - 3}</Badge>}
+                  </span>
+                );
+              },
+            }),
+            col.accessor('lastLogin', {
+              header: 'Last sign-in',
+              cell: (c) => (c.getValue() ? fmtDateTime(c.getValue()!) : '–'),
+            }),
+          ]),
       col.display({
         id: 'status',
         header: 'Status',
@@ -214,19 +238,12 @@ export function UsersTab() {
           const u = row.original;
           const self = u.id === me.user.id;
           return (
-            <StatusControl
-              u={u}
-              canWrite={canWrite}
-              isSelf={self}
-              pending={update.isPending}
-              onDisable={() => runDisable(u)}
-              onEnable={() => runEnable(u)}
-            />
+            <StatusControl u={u} canWrite={canWrite} isSelf={self} pending={update.isPending} onDisable={() => runDisable(u)} onEnable={() => runEnable(u)} />
           );
         },
       }),
     ],
-    [me.user.id, canWrite, update.isPending, runDisable, runEnable],
+    [limited, me.user.id, canWrite, update.isPending, runDisable, runEnable],
   );
 
   if (q.isPending) return <p className="text-sm text-ink-muted">Loading…</p>;
@@ -241,7 +258,8 @@ export function UsersTab() {
         </div>
         <SavedViews list="users" current={{ q: search.q }} onApply={(s) => void navigate({ search: (prev) => ({ ...prev, ...s }) })} />
       </div>
-      {(q.data ?? []).length === 0 ? (
+      {limited && <p className="mb-3 text-xs text-ink-muted">Issuer, groups and last sign-in are shown to global administrators only.</p>}
+      {(items ?? []).length === 0 ? (
         <EmptyState message="No users have signed in yet." />
       ) : rows.length === 0 ? (
         <EmptyState message="No users match this search.">
@@ -257,6 +275,7 @@ export function UsersTab() {
             <UserCard
               key={u.id}
               u={u}
+              limited={limited}
               canWrite={canWrite}
               isSelf={u.id === me.user.id}
               pending={update.isPending}

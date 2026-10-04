@@ -2966,6 +2966,9 @@ type UserDetail struct {
 type UserList struct {
 	// Items Users sorted by display name.
 	Items []UserDetail `json:"items"`
+
+	// Limited True when the caller lacks global users:read: other users show only name, email, status and creation time (issuer, subject, groups and last login are withheld); the caller's own row stays complete.
+	Limited bool `json:"limited"`
 }
 
 // UserUpdate Changes to a user.

@@ -4,7 +4,9 @@ import { api, call } from '../client';
 
 export const usersQuery = queryOptions({
   queryKey: ['users'],
-  queryFn: async () => (await call(api.GET('/users'))).items,
+  queryFn: () => call(api.GET('/users')),
+  // Most callers only want the rows; UsersTab overrides this to also read `limited`.
+  select: (d) => d.items,
   refetchInterval: POLL.list,
 });
 
