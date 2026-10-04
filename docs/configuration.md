@@ -7,6 +7,7 @@ CertForge is configured from the web UI. The environment only carries what the s
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
 | `CF_DATABASE_URL` | yes | – | Postgres URL, for example `postgres://certforge:pw@postgres:5432/certforge?sslmode=disable` |
+| `pool_max_conns` (in `CF_DATABASE_URL`) | no | pgx default | Database pool size. It is a pgx pool parameter of the URL, not a separate variable, for example `postgres://certforge:pw@postgres:5432/certforge?sslmode=disable&pool_max_conns=20` |
 | `CF_KEK` | one of `CF_KEK`, `CF_KEK_FILE`, `CF_KEK_VAULT_ADDR` | – | Encryption key: 32 random bytes, base64 |
 | `CF_KEK_FILE` | see above | – | Path to a file with the encryption key (base64, or exactly 32 raw bytes) |
 | `CF_KEK_VAULT_ADDR` | see above | – | Vault (or OpenBao) address; selects a Transit-backed encryption key instead of a static one (see `docs/vault.md#transit-kek`) |
