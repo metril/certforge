@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -319,5 +320,75 @@ func TestDNSCAAResolverTCPFallback(t *testing.T) {
 	want := CAARecord{Flag: 0, Tag: "issue", Value: "letsencrypt.org"}
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("got %+v, want [%+v]", got, want)
+	}
+}
+
+// countingCAAResolver wraps fakeCAAResolver, counting lookups per label.
+type countingCAAResolver struct {
+	fakeCAAResolver
+	mu    sync.Mutex
+	calls map[string]int
+}
+
+func (c *countingCAAResolver) LookupCAA(ctx context.Context, fqdn string, servers []string) ([]CAARecord, error) {
+	c.mu.Lock()
+	c.calls[strings.TrimSuffix(fqdn, ".")]++
+	c.mu.Unlock()
+	return c.fakeCAAResolver.LookupCAA(ctx, fqdn, servers)
+}
+
+// TestCheckCAAQueriesEachLabelOnce: names sharing parent labels query each
+// label a single time, however the lookups interleave.
+func TestCheckCAAQueriesEachLabelOnce(t *testing.T) {
+	var names []string
+	for _, h := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"} {
+		names = append(names, h+".sub.example.com")
+	}
+	r := &countingCAAResolver{calls: map[string]int{}}
+	if _, err := CheckCAA(context.Background(), r, names, []string{"letsencrypt.org"}, []string{"192.0.2.1"}); err != nil {
+		t.Fatal(err)
+	}
+	for label, n := range r.calls {
+		if n != 1 {
+			t.Errorf("%s queried %d times, want 1", label, n)
+		}
+	}
+	if r.calls["com"] != 1 || r.calls["sub.example.com"] != 1 {
+		t.Fatalf("calls = %v", r.calls)
+	}
+}
+
+// TestCheckCAAOrderingMatchesInput: the first forbidding name by input
+// order wins, whatever order the parallel lookups finish in, and a lookup
+// error on an earlier name does not hide a later forbid.
+func TestCheckCAAOrderingMatchesInput(t *testing.T) {
+	ids := []string{"letsencrypt.org"}
+	recs := map[string][]CAARecord{
+		"bad1.test": {{Tag: "issue", Value: "other-one.example"}},
+		"bad2.test": {{Tag: "issue", Value: "other-two.example"}},
+	}
+	for i := 0; i < 20; i++ {
+		_, err := CheckCAA(context.Background(), fakeCAAResolver{records: recs},
+			[]string{"ok.test", "bad2.test", "bad1.test"}, ids, []string{"192.0.2.1"})
+		if err == nil || !strings.Contains(err.Error(), "bad2.test") {
+			t.Fatalf("err = %v, want the bad2.test forbid", err)
+		}
+		_, err = CheckCAA(context.Background(), fakeCAAResolver{records: recs},
+			[]string{"bad1.test", "bad2.test"}, ids, []string{"192.0.2.1"})
+		if err == nil || !strings.Contains(err.Error(), "bad1.test") {
+			t.Fatalf("err = %v, want the bad1.test forbid", err)
+		}
+	}
+	// One name fails its lookup, a later one forbids: the forbid still wins.
+	_, err := CheckCAA(context.Background(), fakeCAAResolver{records: recs, errs: map[string]error{"err.test": errors.New("boom")}},
+		[]string{"err.test", "bad1.test"}, ids, []string{"192.0.2.1"})
+	if err == nil || !strings.Contains(err.Error(), "bad1.test") {
+		t.Fatalf("err = %v, want the bad1.test forbid", err)
+	}
+	// With no forbid, the first (by input order) lookup error is reported.
+	detail, err := CheckCAA(context.Background(), fakeCAAResolver{errs: map[string]error{"e1.test": errors.New("first"), "e2.test": errors.New("second")}},
+		[]string{"e1.test", "e2.test"}, ids, []string{"192.0.2.1"})
+	if err != nil || !strings.Contains(detail, "first") {
+		t.Fatalf("detail = %q, err = %v, want the first lookup error", detail, err)
 	}
 }

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/metril/certforge/internal/signer"
 )
@@ -136,21 +138,48 @@ func effectiveDNSServers(servers []string) ([]string, error) {
 // lookup error fall back to a "success" detail, since the CA will still
 // evaluate CAA itself.
 func CheckCAA(ctx context.Context, r CAAResolver, names []string, identities []string, servers []string) (string, error) {
+	// Resolve the server list once: normalising an already-normalised list is
+	// a no-op, so /etc/resolv.conf is read once per run, not once per lookup.
+	// On failure keep servers as given; each lookup then reports the same
+	// error itself, as it always did.
+	if eff, err := effectiveDNSServers(servers); err == nil {
+		servers = eff
+	}
+	cr := &cachedCAAResolver{r: r, cache: map[string]*caaLookup{}}
+
+	// Look the chains up in parallel (shared parent labels hit the cache and
+	// are queried once), then evaluate strictly in input order so the first
+	// forbidding name wins and the first lookup error is the one remembered.
+	type chain struct {
+		owner   string
+		records []CAARecord
+		err     error
+	}
+	chains := make([]chain, len(names))
+	var g errgroup.Group
+	g.SetLimit(caaParallelism)
+	for i, name := range names {
+		g.Go(func() error {
+			c := &chains[i]
+			c.owner, c.records, c.err = caaLookupChain(ctx, cr, strings.TrimPrefix(name, "*."), servers)
+			return nil
+		})
+	}
+	_ = g.Wait()
+
 	var lookupErr error
-	for _, name := range names {
-		wildcard := strings.HasPrefix(name, "*.")
-		base := strings.TrimPrefix(name, "*.")
-		owner, records, err := caaLookupChain(ctx, r, base, servers)
-		if err != nil {
+	for i, name := range names {
+		c := chains[i]
+		if c.err != nil {
 			if lookupErr == nil {
-				lookupErr = err
+				lookupErr = c.err
 			}
 			continue
 		}
-		if len(records) == 0 {
+		if len(c.records) == 0 {
 			continue
 		}
-		if err := evaluateCAA(owner, records, wildcard, identities); err != nil {
+		if err := evaluateCAA(c.owner, c.records, strings.HasPrefix(name, "*."), identities); err != nil {
 			return "", err
 		}
 	}
@@ -158,6 +187,36 @@ func CheckCAA(ctx context.Context, r CAAResolver, names []string, identities []s
 		return fmt.Sprintf("CAA lookup failed (%v); the CA will check", lookupErr), nil
 	}
 	return "CAA checked; issuance allowed", nil
+}
+
+// caaParallelism bounds how many names CheckCAA climbs at once.
+const caaParallelism = 8
+
+// cachedCAAResolver memoises one CheckCAA run's lookups by label, so names
+// sharing a parent (example.com for a.example.com and b.example.com) query
+// it once. Concurrent callers of the same label wait on its single lookup.
+type cachedCAAResolver struct {
+	r     CAAResolver
+	mu    sync.Mutex
+	cache map[string]*caaLookup
+}
+
+type caaLookup struct {
+	once    sync.Once
+	records []CAARecord
+	err     error
+}
+
+func (c *cachedCAAResolver) LookupCAA(ctx context.Context, fqdn string, servers []string) ([]CAARecord, error) {
+	c.mu.Lock()
+	l, ok := c.cache[fqdn]
+	if !ok {
+		l = &caaLookup{}
+		c.cache[fqdn] = l
+	}
+	c.mu.Unlock()
+	l.once.Do(func() { l.records, l.err = c.r.LookupCAA(ctx, fqdn, servers) })
+	return l.records, l.err
 }
 
 // caaLookupChain climbs labels from name up to its last label (the TLD, per
