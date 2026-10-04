@@ -116,25 +116,15 @@ function channelColumns(me: Me, org: Org) {
 function ChannelCard({ channel, org, me, onOpen }: { channel: Channel; org: Org; me: Me; onOpen: () => void }) {
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        // A bubbled Enter/Space from the nested Enabled switch must reach
-        // its own default toggle action, not open the sheet on top of it
-        // (batch 1 review) — only the card's own keydown (focused directly,
-        // e.g. via Tab) opens it.
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className="grid cursor-pointer gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle"
+      className="relative grid gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-semibold">{channel.name}</span>
-        <EnabledSwitch channel={channel} routeOrgId={org.id} />
+        <button type="button" onClick={onOpen} className="truncate text-left font-semibold after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/50 focus-visible:after:rounded-md">
+          {channel.name}
+        </button>
+        <span className="relative z-10">
+          <EnabledSwitch channel={channel} routeOrgId={org.id} />
+        </span>
       </div>
       <span className="text-xs text-ink-muted">{channelMeta(me, org, channel).join(' · ')}</span>
       <LastDeliveryCell channel={channel} />

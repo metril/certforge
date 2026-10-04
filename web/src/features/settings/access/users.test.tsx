@@ -78,8 +78,8 @@ it('falls back to the Users tab for an unrecognized ?tab value', async () => {
 // sole existing tab. `onTabChange` is exported from AccessPage specifically
 // so this merge logic is unit-testable without that constraint.
 it('drops the search term when switching tabs', () => {
-  expect(onTabChange({ tab: 'users', q: 'ann' }, 'users')).toEqual({ tab: 'users', q: undefined });
-  expect(onTabChange({ q: 'ann', type: 'user' }, 'bindings')).toEqual({ q: undefined, type: 'user', tab: 'bindings' });
+  expect(onTabChange({ tab: 'users', q: 'ann' }, 'users')).toEqual({ tab: 'users', q: undefined, state: undefined, type: undefined, orgId: undefined });
+  expect(onTabChange({ q: 'ann', type: 'user' }, 'bindings')).toEqual({ q: undefined, state: undefined, type: undefined, orgId: undefined, tab: 'bindings' });
 });
 
 it('shows switches read-only without users:write', async () => {

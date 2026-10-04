@@ -42,21 +42,21 @@ export const test = base.extend({
     page.on('console', (msg: ConsoleMessage) => {
       if (msg.type() === 'error' && CSP_MESSAGE.test(msg.text())) violations.push(msg.text());
     });
+    // Collected through a binding so a navigation (which resets window state) cannot lose a violation.
+    const bound: string[] = [];
+    await page.exposeBinding('__cspViolation', (_source, text: string) => {
+      bound.push(text);
+    });
     await page.addInitScript(() => {
-      const w = window as unknown as { __cspViolations: string[] };
-      w.__cspViolations = [];
       document.addEventListener('securitypolicyviolation', (e) => {
-        w.__cspViolations.push(`${e.violatedDirective}: ${e.blockedURI}`);
+        void (window as unknown as { __cspViolation: (t: string) => Promise<void> }).__cspViolation(`${e.violatedDirective}: ${e.blockedURI}`);
       });
     });
 
     await runTest(page);
 
     expect(violations, 'CSP violations (console)').toEqual([]);
-    expect(
-      await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations),
-      'CSP violations (securitypolicyviolation)',
-    ).toEqual([]);
+    expect(bound, 'CSP violations (securitypolicyviolation)').toEqual([]);
   },
 });
 

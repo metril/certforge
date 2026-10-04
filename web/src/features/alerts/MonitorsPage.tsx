@@ -113,33 +113,26 @@ function monitorColumns(orgId: string) {
 function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: string; onOpen: () => void }) {
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        // A bubbled Enter/Space from the nested Check now button or the
-        // fingerprint CopyField must reach its own default action, not open
-        // the sheet on top of it (batch 2 review, same class as
-        // ChannelCard's own fix in batch 1) — only the card's own keydown
-        // (focused directly, e.g. via Tab) opens it.
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className="grid cursor-pointer gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle"
+      className="relative grid gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-semibold">{monitor.name}</span>
-        <CheckNowButton monitor={monitor} orgId={orgId} />
+        <button type="button" onClick={onOpen} className="truncate text-left font-semibold after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/50 focus-visible:after:rounded-md">
+          {monitor.name}
+        </button>
+        <span className="relative z-10">
+          <CheckNowButton monitor={monitor} orgId={orgId} />
+        </span>
       </div>
       <TargetCell monitor={monitor} />
       <div className="flex flex-wrap items-center gap-2">
         <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
         <span className="text-xs text-ink-muted">{fmtInterval(monitor.intervalSeconds)}</span>
       </div>
-      {monitor.lastFingerprint && <CopyField value={monitor.lastFingerprint} label="fingerprint" display={shortFp(monitor.lastFingerprint)} />}
+      {monitor.lastFingerprint && (
+        <div className="relative z-10 w-fit max-w-full">
+          <CopyField value={monitor.lastFingerprint} label="fingerprint" display={shortFp(monitor.lastFingerprint)} />
+        </div>
+      )}
       <NextCheckCell monitor={monitor} />
     </div>
   );

@@ -27,6 +27,7 @@ export function useSaveOrgDefaults(orgId: string) {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['defaults', orgId] });
       await qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      await qc.invalidateQueries({ queryKey: ['certs', 'all'] });
     },
   });
 }

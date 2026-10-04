@@ -5,6 +5,7 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 120_000,
   retries: 0,
+  forbidOnly: !!process.env.CI,
   reporter: [['list'], ['html', { open: 'never' }]],
   globalSetup: './e2e/global-setup.ts',
   // Every sign-in revokes that account's other sessions (admin is shared

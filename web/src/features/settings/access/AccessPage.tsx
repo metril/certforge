@@ -16,12 +16,13 @@ const TABS: { value: AccessTab; label: string; action: Action; render: () => Rea
 ];
 
 // Controller ruling: `q` is a per-tab filter, so switching tabs drops it
-// instead of carrying the previous tab's search term along. Exported as a
+// (and the other tabs' state/type/orgId filters) instead of carrying the
+// previous tab's search along. Exported as a
 // plain function (rather than inlined in `onValueChange`) so it's testable
 // without depending on Radix Tabs only calling `onValueChange` when the
 // clicked trigger differs from the currently-selected one.
 export function onTabChange(prev: SettingsSearch, v: AccessTab): SettingsSearch {
-  return { ...prev, tab: v, q: undefined };
+  return { ...prev, tab: v, q: undefined, state: undefined, type: undefined, orgId: undefined };
 }
 
 export function AccessPage() {
