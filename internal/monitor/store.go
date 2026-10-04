@@ -131,10 +131,9 @@ func (s *Store) Create(ctx context.Context, orgID uuid.UUID, in Input) (Monitor,
 	return s.create(ctx, s.Q, orgID, in)
 }
 
-// CreateCapped is Create under the per-org cap (S13): the org row is locked
-// FOR UPDATE in one transaction around the count and the insert, so
-// concurrent creates cannot go past max. ErrOverCap when the org is full;
-// pgx.ErrNoRows when the org does not exist.
+// CreateCapped is Create under the per-org cap (S13): a per-org advisory
+// transaction lock covers the count and the insert, so
+// concurrent creates cannot go past max. ErrOverCap when the org is full.
 func (s *Store) CreateCapped(ctx context.Context, orgID uuid.UUID, in Input, max int) (Monitor, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -142,7 +141,9 @@ func (s *Store) CreateCapped(ctx context.Context, orgID uuid.UUID, in Input, max
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Q.WithTx(tx)
-	if _, err := q.LockOrg(ctx, orgID); err != nil {
+	// An advisory lock keyed by the org, not LockOrg's FOR UPDATE, which
+	// would serialize every unrelated child-row insert of the org.
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('cf.monitors:' || $1::text, 0))", orgID); err != nil {
 		return Monitor{}, err
 	}
 	n, err := q.CountMonitorsInOrg(ctx, orgID)
