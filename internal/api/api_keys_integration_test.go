@@ -69,6 +69,41 @@ func TestAPIKeys(t *testing.T) {
 	}
 }
 
+// TestAPIKeyLastUsedThrottled: repeat authentications inside a minute do not
+// rewrite last_used_at, neither through the in-process guard nor the SQL one (H5).
+func TestAPIKeyLastUsedThrottled(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	k := createKey(t, e, e.client, csrf, map[string]any{"name": "ci", "scopes": []string{"certs:read"}}, http.StatusCreated)
+	ctx := context.Background()
+	lastUsed := func() *string {
+		var used *string
+		if err := e.deps.Pool.QueryRow(ctx, `SELECT last_used_at::text FROM api_keys WHERE id = $1`, k.APIKey.ID).Scan(&used); err != nil {
+			t.Fatal(err)
+		}
+		return used
+	}
+	e.doBearer(k.Token, http.MethodGet, "/api/v1/orgs", nil) //nolint:bodyclose // doClient closes the body
+	first := lastUsed()
+	if first == nil {
+		t.Fatal("first use did not set last_used_at")
+	}
+	id := uuid.MustParse(k.APIKey.ID)
+	if err := e.deps.Queries.TouchAPIKey(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastUsed(); got == nil || *got != *first {
+		t.Fatalf("SQL guard: last_used_at moved %s -> %v", *first, got)
+	}
+	if _, err := e.deps.Pool.Exec(ctx, `UPDATE api_keys SET last_used_at = NULL WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	e.doBearer(k.Token, http.MethodGet, "/api/v1/orgs", nil) //nolint:bodyclose // doClient closes the body
+	if lastUsed() != nil {
+		t.Fatal("in-process guard: a second use within a minute wrote again")
+	}
+}
+
 func TestAPIKeyScopeIntersection(t *testing.T) {
 	e := newTestEnv(t)
 	_, org := e.seedAdminSession()

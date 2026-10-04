@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -24,6 +26,42 @@ type MiddlewareOptions struct {
 	Public   func(r *http.Request) bool
 	Fail     FailFunc
 	Log      *slog.Logger
+
+	touches *touchGuard
+}
+
+const (
+	touchEvery = time.Minute
+	touchTTL   = 10 * time.Minute
+)
+
+// touchGuard remembers when each API key last had its last_used_at written,
+// so most authentications skip the database write entirely (the SQL guard
+// in TouchAPIKey covers other processes and a cold cache).
+type touchGuard struct {
+	mu     sync.Mutex
+	seen   map[uuid.UUID]time.Time
+	pruned time.Time
+}
+
+// due reports whether id is due a write (none in the last touchEvery) and
+// records it. Idle entries are pruned at most once per touchTTL.
+func (g *touchGuard) due(id uuid.UUID, now time.Time) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if now.Sub(g.pruned) >= touchTTL {
+		for k, t := range g.seen {
+			if now.Sub(t) >= touchTTL {
+				delete(g.seen, k)
+			}
+		}
+		g.pruned = now
+	}
+	if t, ok := g.seen[id]; ok && now.Sub(t) < touchEvery {
+		return false
+	}
+	g.seen[id] = now
+	return true
 }
 
 // Middleware resolves the session cookie or an API key bearer token into a
@@ -40,6 +78,7 @@ func Middleware(o MiddlewareOptions) func(http.Handler) http.Handler {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
+	o.touches = &touchGuard{seen: map[uuid.UUID]time.Time{}}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -145,8 +184,10 @@ func (o MiddlewareOptions) resolveBearer(ctx context.Context, header string) (*P
 	if err != nil {
 		return nil, err
 	}
-	if err := o.Queries.TouchAPIKey(ctx, k.ID); err != nil {
-		o.Log.Warn("api key last-used update failed", "err", err)
+	if o.touches == nil || o.touches.due(k.ID, time.Now()) {
+		if err := o.Queries.TouchAPIKey(ctx, k.ID); err != nil {
+			o.Log.Warn("api key last-used update failed", "err", err)
+		}
 	}
 	return &p, nil
 }
