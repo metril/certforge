@@ -169,9 +169,15 @@ func TestOIDCRateLimited(t *testing.T) {
 	fake := oidctest.New(t)
 	fake.SetUser(oidctest.User{Subject: "rl1"})
 	enableOIDC(t, e, csrf, fake)
-	oidcLogin(t, e, "/") // spends the single allowed callback
-	if _, loc := oidcLogin(t, e, "/"); loc != "/login?error=rate_limited" {
-		t.Fatalf("rate limited → %q", loc)
+	oidcLogin(t, e, "/") // spends the single allowed start and callback
+	jar, _ := cookiejar.New(nil)
+	b := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	// The start (A7) and the callback each have their own bucket.
+	for _, path := range []string{"/api/v1/auth/oidc/start?next=%2F", "/api/v1/auth/oidc/callback?code=x&state=y"} {
+		resp, _ := e.doClient(b, http.MethodGet, path, nil, nil) //nolint:bodyclose // doClient closes the body
+		if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusFound || loc != "/login?error=rate_limited" {
+			t.Fatalf("%s rate limited → %d %q", path, resp.StatusCode, loc)
+		}
 	}
 }
 

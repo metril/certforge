@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/metril/certforge/internal/api"
+	"github.com/metril/certforge/internal/authn"
 )
 
 const hardeningPw = "correct horse battery staple"
@@ -36,6 +37,25 @@ func TestLoginRateLimited(t *testing.T) {
 		`SELECT details->>'reason', details->>'method' FROM audit_events WHERE action = 'session.login_failed' ORDER BY id DESC LIMIT 1`)
 	if err := row.Scan(&reason, &method); err != nil || reason != "rate_limited" || method != "local" {
 		t.Fatalf("session.login_failed audit row: reason=%q method=%q err=%v", reason, method, err)
+	}
+}
+
+// TestRateLimitedAuditOncePerWindow: a burst of rejected logins from one
+// client writes one audit row, not one per request (A4); the limit itself
+// still rejects every request.
+func TestRateLimitedAuditOncePerWindow(t *testing.T) {
+	e := newTestEnvOpts(t, func(d *api.Deps) { d.LoginLimiter = authn.NewLimiter(1, 1) })
+	seedAdminPassword(t, e, hardeningPw)
+	e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong-password-1"}, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	for i := 0; i < 4; i++ {
+		if resp, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong-password-1"}, ""); resp.StatusCode != http.StatusTooManyRequests { //nolint:bodyclose // testEnv.doRaw closes the body
+			t.Fatalf("attempt %d: %d", i+2, resp.StatusCode)
+		}
+	}
+	var n int
+	if err := e.deps.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM audit_events WHERE action = 'session.login_failed' AND details->>'reason' = 'rate_limited'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("rate_limited audit rows = %d err=%v, want 1", n, err)
 	}
 }
 

@@ -115,23 +115,31 @@ func isPublic(r *http.Request) bool {
 	return false
 }
 
-// limitLogins applies the per-client login rate limit to the password login
-// and the OIDC callback. When src is non-nil, l is reconfigured from the
-// authentication section's loginRatePerMinute/loginBurst before every check.
-// A rate-limited attempt is audited as session.login_failed, same as a bad
-// password, so the audit log shows every rejected login attempt. It is a
-// method on *Server (not a free function) because the OIDC callback's
-// rate-limited response must also clear the cf_oidc state cookie, which
-// needs s.secureCookie and s.d.OIDC.
+// limitLogins applies the per-client login rate limit to the password login,
+// the OIDC start and callback, and first-run setup. When src is non-nil, l is
+// reconfigured from the authentication section's loginRatePerMinute/loginBurst
+// before every check. Each route group has its own bucket per client, so a
+// browser sign-in (start then callback) does not eat the password budget. A
+// rate-limited login or OIDC attempt is audited as session.login_failed, but
+// only the first per client per window (with the count of suppressed hits since
+// the previous audit), so one address cannot flood the audit chain; the limit
+// itself is unchanged. Setup is not audited as a failed login; it is logged. It
+// is a method on *Server (not a free function) because the OIDC callback's
+// rate-limited response must also clear the cf_oidc state cookie, which needs
+// s.secureCookie and s.d.OIDC.
 func (s *Server) limitLogins(l *authn.Limiter, src *authn.SettingsSource, aud *audit.Auditor, log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var method string
+			var method, group string
 			switch r.Method + " " + r.URL.Path {
 			case "POST /api/v1/auth/login":
-				method = "local"
+				method, group = "local", "login"
+			case "GET /api/v1/auth/oidc/start":
+				method, group = "oidc_start", "oidc-start"
 			case "GET /api/v1/auth/oidc/callback":
-				method = "oidc"
+				method, group = "oidc", "oidc"
+			case "POST /api/v1/setup/complete":
+				method, group = "setup", "setup"
 			default:
 				next.ServeHTTP(w, r)
 				return
@@ -141,21 +149,36 @@ func (s *Server) limitLogins(l *authn.Limiter, src *authn.SettingsSource, aud *a
 					l.Reconfigure(st.LoginRatePerMinute, st.LoginBurst)
 				}
 			}
-			if ok, wait := l.Allow(authn.LimitKey(audit.IPFrom(r.Context()))); !ok {
+			key := authn.LimitKey(audit.IPFrom(r.Context()))
+			// The password login keeps its original bucket key.
+			if group != "login" {
+				key = group + ":" + key
+			}
+			if ok, wait := l.Allow(key); !ok {
 				w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
-				if aud != nil {
+				first, suppressed := l.Rejected(key)
+				switch {
+				case method == "setup":
+					if first && log != nil {
+						log.Warn("setup rate limited", "suppressed", suppressed)
+					}
+				case first && aud != nil:
+					details := map[string]any{"reason": "rate_limited", "method": method}
+					if suppressed > 0 {
+						details["suppressed"] = suppressed
+					}
 					if err := aud.Record(r.Context(), audit.Event{
 						Action: "session.login_failed", ResourceType: "user", ActorType: "anonymous",
-						Details: map[string]any{"reason": "rate_limited", "method": method},
+						Details: details,
 					}); err != nil && log != nil {
 						log.Error("audit record failed", "action", "session.login_failed", "err", err)
 					}
 				}
-				// The OIDC callback is a browser navigation, not an API
-				// call: a rate-limited attempt still redirects to /login
-				// (B2), never problem+json, and the state cookie is
+				// The OIDC start and callback are browser navigations, not
+				// API calls: a rate-limited attempt still redirects to
+				// /login (B2), never problem+json, and the state cookie is
 				// cleared exactly as a normal callback would clear it.
-				if method == "oidc" {
+				if method == "oidc" || method == "oidc_start" {
 					if s.d.OIDC != nil {
 						http.SetCookie(w, s.d.OIDC.ClearStateCookie(s.secureCookie(r.Context(), r)))
 					}
