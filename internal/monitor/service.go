@@ -210,6 +210,19 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 // from Check's point of view, matching Sources.scan*'s own
 // "log and continue" convention for every other event source.
 func (s *Service) emit(ctx context.Context, m Monitor, newState string, obs Observation, stateChangedAt time.Time) {
+	ev := buildEvent(m, newState, obs, stateChangedAt)
+	if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
+		// Service has no *slog.Logger of its own (the Shared contract's
+		// Service{Store, Emitter, Settings, Now, Dial} does not list one);
+		// slog.Default() matches every other package's own fallback
+		// (deploy.Dispatcher.log(), notify.Service.log()) when no logger is
+		// configured.
+		slog.Default().Error("monitor: event not emitted", "monitor", m.ID, "state", newState, "err", err)
+	}
+}
+
+// buildEvent is the event raised for m's transition into newState.
+func buildEvent(m Monitor, newState string, obs Observation, stateChangedAt time.Time) notify.Event {
 	kind := monitorEventKind(newState)
 	details := map[string]any{
 		"host": m.Host, "port": m.Port, "fp": obs.Fingerprint, "issuer": obs.Issuer, "chainError": obs.ChainError,
@@ -224,18 +237,10 @@ func (s *Service) emit(ctx context.Context, m Monitor, newState string, obs Obse
 	if newState == "ok" {
 		suffix = "recovered"
 	}
-	ev := notify.Event{
+	return notify.Event{
 		Kind: kind, OrgID: &m.OrgID, Resource: notify.Resource{ID: m.ID.String(), Name: m.Name},
 		Summary:   fmt.Sprintf("%s (%s:%d) is %s", m.Name, m.Host, m.Port, suffix),
 		Details:   details,
 		DedupeKey: fmt.Sprintf("monitor.%s:%s:%s:%d", suffix, m.ID, obs.Fingerprint, stateChangedAt.Unix()),
-	}
-	if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-		// Service has no *slog.Logger of its own (the Shared contract's
-		// Service{Store, Emitter, Settings, Now, Dial} does not list one);
-		// slog.Default() matches every other package's own fallback
-		// (deploy.Dispatcher.log(), notify.Service.log()) when no logger is
-		// configured.
-		slog.Default().Error("monitor: event not emitted", "monitor", m.ID, "state", newState, "err", err)
 	}
 }
