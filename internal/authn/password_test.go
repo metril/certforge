@@ -131,3 +131,28 @@ func TestVerifyMalformed(t *testing.T) {
 		}
 	}
 }
+
+func TestVerifyPasswordCapsStoredParameters(t *testing.T) {
+	for _, h := range []string{
+		"$argon2id$v=19$m=4294967295,t=3,p=2$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"$argon2id$v=19$m=65536,t=4000000,p=2$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"$argon2id$v=19$m=65536,t=3,p=255$c2FsdHNhbHRzYWx0c2FsdA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+	} {
+		if _, err := VerifyPassword(h, "whatever-password"); !errors.Is(err, ErrInvalidHash) {
+			t.Errorf("%s: err = %v, want ErrInvalidHash", h, err)
+		}
+	}
+}
+
+func TestNeedsRehash(t *testing.T) {
+	cur := encodeArgon2id("pw", []byte("0123456789abcdef"))
+	if NeedsRehash(cur) {
+		t.Fatal("current-parameter hash flagged")
+	}
+	if !NeedsRehash(strings.Replace(cur, "m=65536,t=3", "m=19456,t=2", 1)) {
+		t.Fatal("old-parameter hash not flagged")
+	}
+	if NeedsRehash("garbage") {
+		t.Fatal("unparsable hash flagged")
+	}
+}

@@ -43,6 +43,15 @@ const (
 	argonKeyLen  uint32 = 32
 )
 
+// Upper bounds on the argon2 cost read from a stored hash (VerifyPassword
+// honours the stored parameters), so a tampered row cannot make a login
+// allocate unbounded memory or time. m is in KiB: 1 GiB.
+const (
+	maxArgonMemory  uint32 = 1 << 20
+	maxArgonTime    uint32 = 16
+	maxArgonThreads uint8  = 16
+)
+
 var b64 = base64.RawStdEncoding
 
 // argonSlots bounds how many argon2 hash/verify operations may run at once,
@@ -126,6 +135,9 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 		// database must not crash the server.
 		return false, ErrInvalidHash
 	}
+	if m > maxArgonMemory || t > maxArgonTime || p > maxArgonThreads {
+		return false, ErrInvalidHash
+	}
 	salt, err := b64.DecodeString(parts[4])
 	if err != nil {
 		return false, ErrInvalidHash
@@ -141,6 +153,21 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 	defer release()
 	got := argon2.IDKey([]byte(pw), salt, t, m, p, uint32(len(want)))
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
+}
+
+// NeedsRehash reports whether encoded was made with argon2 parameters other
+// than the current ones, so a successful login should store a fresh hash.
+func NeedsRehash(encoded string) bool {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 6 {
+		return false
+	}
+	var m, t uint32
+	var p uint8
+	if n, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &m, &t, &p); err != nil || n != 3 {
+		return false
+	}
+	return m != argonMemory || t != argonTime || p != argonThreads
 }
 
 // buildDummyHash computes the timing-equalizer hash via encodeArgon2id and

@@ -4,12 +4,16 @@ package api_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/argon2"
 
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/authn"
@@ -56,6 +60,32 @@ func TestRateLimitedAuditOncePerWindow(t *testing.T) {
 	if err := e.deps.Pool.QueryRow(context.Background(),
 		`SELECT count(*) FROM audit_events WHERE action = 'session.login_failed' AND details->>'reason' = 'rate_limited'`).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("rate_limited audit rows = %d err=%v, want 1", n, err)
+	}
+}
+
+// TestLoginRehashesOldParameters: a hash made with other argon2 parameters
+// still verifies and is replaced by a current-parameter one on login (A20).
+func TestLoginRehashesOldParameters(t *testing.T) {
+	e := newTestEnv(t)
+	seedAdminPassword(t, e, hardeningPw)
+	salt := []byte("0123456789abcdef")
+	key := argon2.IDKey([]byte(hardeningPw), salt, 2, 19456, 1, 32)
+	old := fmt.Sprintf("$argon2id$v=19$m=19456,t=2,p=1$%s$%s", base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key))
+	if _, err := e.deps.Pool.Exec(context.Background(), `UPDATE users SET local_password_hash = $1 WHERE local_password_hash IS NOT NULL`, old); err != nil {
+		t.Fatal(err)
+	}
+	if resp, body := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": hardeningPw}, ""); resp.StatusCode != http.StatusOK { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("login: %d %s", resp.StatusCode, body)
+	}
+	var got string
+	if err := e.deps.Pool.QueryRow(context.Background(), `SELECT local_password_hash FROM users WHERE local_password_hash IS NOT NULL`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if authn.NeedsRehash(got) || got == old {
+		t.Fatalf("hash not upgraded: %s", got)
+	}
+	if resp, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": hardeningPw}, ""); resp.StatusCode != http.StatusOK { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("login after rehash: %d", resp.StatusCode)
 	}
 }
 
