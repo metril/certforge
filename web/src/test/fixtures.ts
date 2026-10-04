@@ -84,7 +84,7 @@ export function makeAuditEvent(p: Partial<AuditEvent> = {}): AuditEvent {
 // Fix round 1 (review, Take now #3): later tasks (Orgs and sites) need a
 // site fixture.
 export function makeSite(p: Partial<Site> = {}): Site {
-  return { id: 's-1', orgId: org.id, name: 'Primary', createdAt: iso(-1), ...p };
+  return { id: 's-1', orgId: org.id, name: 'Primary', clientCount: 0, createdAt: iso(-1), ...p };
 }
 
 export function makeCert(p: Partial<Certificate> = {}): Certificate {

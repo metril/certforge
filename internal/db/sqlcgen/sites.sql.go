@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -86,24 +87,37 @@ func (q *Queries) GetSite(ctx context.Context, arg GetSiteParams) (Site, error) 
 	return i, err
 }
 
-const listSites = `-- name: ListSites :many
-SELECT id, org_id, name, created_at FROM sites WHERE org_id = $1 ORDER BY lower(name), id
+const listSitesWithClientCount = `-- name: ListSitesWithClientCount :many
+SELECT s.id, s.org_id, s.name, s.created_at, count(c.id) AS client_count
+FROM sites s LEFT JOIN clients c ON c.site_id = s.id AND c.org_id = s.org_id
+WHERE s.org_id = $1
+GROUP BY s.id
+ORDER BY lower(s.name), s.id
 `
 
-func (q *Queries) ListSites(ctx context.Context, orgID uuid.UUID) ([]Site, error) {
-	rows, err := q.db.Query(ctx, listSites, orgID)
+type ListSitesWithClientCountRow struct {
+	ID          uuid.UUID `json:"id"`
+	OrgID       uuid.UUID `json:"org_id"`
+	Name        string    `json:"name"`
+	CreatedAt   time.Time `json:"created_at"`
+	ClientCount int64     `json:"client_count"`
+}
+
+func (q *Queries) ListSitesWithClientCount(ctx context.Context, orgID uuid.UUID) ([]ListSitesWithClientCountRow, error) {
+	rows, err := q.db.Query(ctx, listSitesWithClientCount, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Site{}
+	items := []ListSitesWithClientCountRow{}
 	for rows.Next() {
-		var i Site
+		var i ListSitesWithClientCountRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
 			&i.Name,
 			&i.CreatedAt,
+			&i.ClientCount,
 		); err != nil {
 			return nil, err
 		}

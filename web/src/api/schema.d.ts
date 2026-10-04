@@ -2238,6 +2238,11 @@ export interface components {
             /** @description Name */
             name: string;
             /**
+             * Format: int64
+             * @description Clients at this site; deleting the site detaches them.
+             */
+            clientCount: number;
+            /**
              * Format: date-time
              * @description Creation time.
              */

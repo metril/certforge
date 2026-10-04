@@ -3015,11 +3015,12 @@ components:
     Site:
       type: object
       description: A location within an org, used as a filter.
-      required: [id, orgId, name, createdAt]
+      required: [id, orgId, name, clientCount, createdAt]
       properties:
         id: {type: string, format: uuid, description: Site id.}
         orgId: {type: string, format: uuid, description: Owning org.}
         name: {type: string, description: Name, unique in the org.}
+        clientCount: {type: integer, format: int64, minimum: 0, description: Clients at this site; deleting the site detaches them.}
         createdAt: {type: string, format: date-time, description: Creation time.}
     SiteInput:
       type: object

@@ -2752,6 +2752,9 @@ type Severity string
 
 // Site A location within an org, used as a filter.
 type Site struct {
+	// ClientCount Clients at this site; deleting the site detaches them.
+	ClientCount int64 `json:"clientCount"`
+
 	// CreatedAt Creation time.
 	CreatedAt time.Time `json:"createdAt"`
 

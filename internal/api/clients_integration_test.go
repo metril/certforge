@@ -387,3 +387,32 @@ func TestOrgDeleteBlockedByClients(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+func TestListSitesClientCount(t *testing.T) {
+	f := newAgentFixture(t)
+	ctx := f.as("viewer")
+	other := dbtest.Org(t, f.pool)
+	var busy, empty, foreign uuid.UUID
+	for site, args := range map[*uuid.UUID][2]any{&busy: {f.org, "busy"}, &empty: {f.org, "empty"}, &foreign: {other, "busy"}} {
+		if err := f.pool.QueryRow(context.Background(), `INSERT INTO sites (org_id, name) VALUES ($1, $2) RETURNING id`, args[0], args[1]).Scan(site); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, n := range []string{"a", "b", "c"} {
+		f.newClient(t, n)
+	}
+	if _, err := f.pool.Exec(context.Background(), `UPDATE clients SET site_id = $1 WHERE org_id = $2 AND name IN ('a', 'b')`, busy, f.org); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.srv.ListSites(ctx, gen.ListSitesRequestObject{OrgId: f.org})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, s := range res.(gen.ListSites200JSONResponse).Items {
+		got[s.Name] = s.ClientCount
+	}
+	if len(got) != 2 || got["busy"] != 2 || got["empty"] != 0 {
+		t.Fatalf("client counts %v", got)
+	}
+}

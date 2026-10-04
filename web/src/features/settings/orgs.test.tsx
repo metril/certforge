@@ -9,7 +9,7 @@ const general = { section: 'general', schema: { type: 'object', properties: {} }
 const base = [
   http.get(url('/settings/general'), () => HttpResponse.json(general)),
   http.get(url('/orgs'), () => HttpResponse.json({ items: [org] })),
-  http.get(url('/orgs/:orgId/sites'), () => HttpResponse.json({ items: [{ id: 's-1', orgId: org.id, name: 'Berlin', createdAt: '2026-09-01T00:00:00Z' }] })),
+  http.get(url('/orgs/:orgId/sites'), () => HttpResponse.json({ items: [{ id: 's-1', orgId: org.id, name: 'Berlin', clientCount: 0, createdAt: '2026-09-01T00:00:00Z' }] })),
 ];
 
 it('creates an org with a slug derived from the name', async () => {
@@ -107,8 +107,8 @@ it('shows an inline error for a duplicate site name', async () => {
 it('manages sites', async () => {
   const calls: string[] = [];
   server.use(...authHandlers({ authed: true }), ...base,
-    http.post(url('/orgs/:orgId/sites'), async ({ request }) => { calls.push(`POST ${JSON.stringify(await request.json())}`); return HttpResponse.json({ id: 's-2', orgId: org.id, name: 'Paris', createdAt: '2026-09-01T00:00:00Z' }, { status: 201 }); }),
-    http.patch(url('/orgs/:orgId/sites/:id'), async ({ request, params }) => { calls.push(`PATCH ${params.id} ${JSON.stringify(await request.json())}`); return HttpResponse.json({ id: 's-1', orgId: org.id, name: 'Berlin HQ', createdAt: '2026-09-01T00:00:00Z' }); }));
+    http.post(url('/orgs/:orgId/sites'), async ({ request }) => { calls.push(`POST ${JSON.stringify(await request.json())}`); return HttpResponse.json({ id: 's-2', orgId: org.id, name: 'Paris', clientCount: 0, createdAt: '2026-09-01T00:00:00Z' }, { status: 201 }); }),
+    http.patch(url('/orgs/:orgId/sites/:id'), async ({ request, params }) => { calls.push(`PATCH ${params.id} ${JSON.stringify(await request.json())}`); return HttpResponse.json({ id: 's-1', orgId: org.id, name: 'Berlin HQ', clientCount: 0, createdAt: '2026-09-01T00:00:00Z' }); }));
   const { user } = renderRoute('/settings/general');
   await user.click(await screen.findByRole('button', { name: 'Sites of Acme' }));
   const sheet = await screen.findByRole('dialog', { name: 'Sites of Acme' });
@@ -122,9 +122,31 @@ it('manages sites', async () => {
   expect(calls).toEqual(['POST {"name":"Paris"}', 'PATCH s-1 {"name":"Berlin HQ"}']);
 });
 
+it('states how many clients a site delete detaches', async () => {
+  server.use(...authHandlers({ authed: true }),
+    http.get(url('/orgs/:orgId/sites'), () => HttpResponse.json({ items: [
+      { id: 's-1', orgId: org.id, name: 'Berlin', clientCount: 3, createdAt: '2026-09-01T00:00:00Z' },
+      { id: 's-2', orgId: org.id, name: 'Paris', clientCount: 1, createdAt: '2026-09-01T00:00:00Z' },
+      { id: 's-3', orgId: org.id, name: 'Oslo', clientCount: 0, createdAt: '2026-09-01T00:00:00Z' },
+    ] })), ...base);
+  const { user } = renderRoute('/settings/general');
+  await user.click(await screen.findByRole('button', { name: 'Sites of Acme' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Sites of Acme' });
+  await user.click(await within(sheet).findByRole('button', { name: 'Delete Berlin' }));
+  await screen.findByText(/Role bindings/);
+  expect(await screen.findByText(/3 clients will be detached from this site/)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Delete Paris' }));
+  expect(await screen.findByText(/1 client will be detached from this site/)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Delete Oslo' }));
+  await screen.findByText(/Role bindings scoped to this site/);
+  expect(screen.queryByText(/will be detached from this site/)).not.toBeInTheDocument();
+});
+
 it('disables the rename Save button while the rename is pending', async () => {
   server.use(...authHandlers({ authed: true }), ...base,
-    http.patch(url('/orgs/:orgId/sites/:id'), async () => { await delay(300); return HttpResponse.json({ id: 's-1', orgId: org.id, name: 'Berlin HQ', createdAt: '2026-09-01T00:00:00Z' }); }));
+    http.patch(url('/orgs/:orgId/sites/:id'), async () => { await delay(300); return HttpResponse.json({ id: 's-1', orgId: org.id, name: 'Berlin HQ', clientCount: 0, createdAt: '2026-09-01T00:00:00Z' }); }));
   const { user } = renderRoute('/settings/general');
   await user.click(await screen.findByRole('button', { name: 'Sites of Acme' }));
   const sheet = await screen.findByRole('dialog', { name: 'Sites of Acme' });

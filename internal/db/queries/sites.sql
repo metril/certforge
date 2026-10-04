@@ -1,5 +1,9 @@
--- name: ListSites :many
-SELECT * FROM sites WHERE org_id = $1 ORDER BY lower(name), id;
+-- name: ListSitesWithClientCount :many
+SELECT s.id, s.org_id, s.name, s.created_at, count(c.id) AS client_count
+FROM sites s LEFT JOIN clients c ON c.site_id = s.id AND c.org_id = s.org_id
+WHERE s.org_id = $1
+GROUP BY s.id
+ORDER BY lower(s.name), s.id;
 
 -- name: GetSite :one
 SELECT * FROM sites WHERE id = $1 AND org_id = $2;
