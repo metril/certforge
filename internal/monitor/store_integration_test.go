@@ -97,3 +97,34 @@ func TestTransitionComparesFailureCounter(t *testing.T) {
 		t.Fatalf("first won = %v, second won = %v; want true, false", first, second)
 	}
 }
+
+// TestToggleEnabledResetsFailureCounter: disabling or re-enabling a monitor
+// starts its failure count from zero.
+func TestToggleEnabledResetsFailureCounter(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	store := &monitor.Store{Pool: pool, Q: sqlcgen.New(pool)}
+	ctx := context.Background()
+	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "m", host: "h.example.test", state: "ok", failures: 1})
+	count := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, "SELECT consecutive_failures FROM external_monitors WHERE id = $1", id).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	in := monitor.Input{Name: "m", Host: "h.example.test", Port: 443, IntervalSeconds: 3600, Enabled: true}
+	if _, err := store.Update(ctx, org, id, in, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != 1 {
+		t.Fatalf("counter after a no-op update = %d, want 1", got)
+	}
+	in.Enabled = false
+	if _, err := store.Update(ctx, org, id, in, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != 0 {
+		t.Fatalf("counter after disabling = %d, want 0", got)
+	}
+}

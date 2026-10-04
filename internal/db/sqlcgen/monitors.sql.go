@@ -459,7 +459,7 @@ SET name = $3, host = $4, port = $5, sni = $6, interval_seconds = $7, expected_c
     state = CASE WHEN $10::bool THEN 'unknown' ELSE state END,
     state_changed_at = CASE WHEN $10::bool THEN now() ELSE state_changed_at END,
     next_check_at = CASE WHEN $10::bool THEN now() ELSE next_check_at END,
-    consecutive_failures = CASE WHEN $10::bool THEN 0 ELSE consecutive_failures END,
+    consecutive_failures = CASE WHEN $10::bool OR enabled <> $9 THEN 0 ELSE consecutive_failures END,
     updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures

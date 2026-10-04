@@ -59,7 +59,7 @@ SET name = $3, host = $4, port = $5, sni = $6, interval_seconds = $7, expected_c
     state = CASE WHEN sqlc.arg(reset_state)::bool THEN 'unknown' ELSE state END,
     state_changed_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE state_changed_at END,
     next_check_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE next_check_at END,
-    consecutive_failures = CASE WHEN sqlc.arg(reset_state)::bool THEN 0 ELSE consecutive_failures END,
+    consecutive_failures = CASE WHEN sqlc.arg(reset_state)::bool OR enabled <> $9 THEN 0 ELSE consecutive_failures END,
     updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING *;
