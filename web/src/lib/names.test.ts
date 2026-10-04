@@ -21,7 +21,7 @@ it.each([
   ['*.com', 'invalid', null],
   ['*.co.uk', 'invalid', null],
   ['a.*.example.com', 'invalid', null],
-  ['bad_name.example.com', 'invalid', null],
+  ['bad!name.example.com', 'invalid', null],
   ['-edge.example.com', 'invalid', null],
   // Fix round 1 (review, Important #1): the client's IP check was looser
   // than the server's `net.ParseIP` — these four look IP-shaped but fail
@@ -48,7 +48,7 @@ it.each([
 });
 
 it('groups by registered domain in first-seen order, with IPs and invalid names last', () => {
-  const groups = groupByZone(['b.other.net', 'www.example.com', '10.0.0.1', 'bad_x.example.com', '*.example.com'].map(classifyName));
+  const groups = groupByZone(['b.other.net', 'www.example.com', '10.0.0.1', 'bad!x.example.com', '*.example.com'].map(classifyName));
   expect(groups.map((g) => [g.zone, g.names.length])).toEqual([
     ['other.net', 1],
     ['example.com', 2],
@@ -74,4 +74,8 @@ it('parses 200 names quickly', () => {
   const parsed = splitNames(text).map(classifyName);
   expect(parsed).toHaveLength(200);
   expect(performance.now() - t0).toBeLessThan(100);
+});
+
+it('accepts an underscore in a DNS label, as the server does', () => {
+  expect(classifyName('_acme.example.com')).toMatchObject({ kind: 'dns', zone: 'example.com' });
 });

@@ -154,7 +154,7 @@ export const help = {
     learnMore: 'certificates.md#names',
   },
   'cert.ipMarker': {
-    text: 'Phase 1 cannot validate IP names (dns-01 and manual-dns only), so the certificate will fail until HTTP-01 lands.',
+    text: 'IP address names cannot be validated yet: DNS verification cannot prove an IP, so a certificate that lists one is refused.',
     learnMore: 'certificates.md#names',
   },
   // Fix round 1 (review): the list column needs its own key — `cert.names`
