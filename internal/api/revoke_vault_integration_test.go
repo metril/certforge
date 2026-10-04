@@ -5,8 +5,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -90,6 +92,10 @@ func TestRevokeVaultVersionRecordRetry(t *testing.T) {
 	}
 	_, err := f.srv.RevokeCertificateVersion(f.as("operator"), revokeReq(f, v))
 	wantStatus(t, err, http.StatusInternalServerError)
+	var he *HTTPError
+	if !errors.As(err, &he) || he.Detail != "The CA revoked the certificate but it could not be recorded; retry the request." || strings.Contains(err.Error(), "blocked") {
+		t.Fatalf("err = %v, want a fixed detail with no database text", err)
+	}
 	if calls.Load() != 1 {
 		t.Fatalf("vault revoke calls = %d, want 1", calls.Load())
 	}

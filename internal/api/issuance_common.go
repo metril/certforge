@@ -41,7 +41,7 @@ func mapErr(err error) error {
 	case errors.As(err, &se):
 		return &HTTPError{Status: http.StatusBadGateway, Title: "CA error", Detail: se.Error()}
 	case errors.As(err, &rr):
-		return &HTTPError{Status: http.StatusInternalServerError, Title: "Revocation not recorded", Detail: rr.Error()}
+		return &HTTPError{Status: http.StatusInternalServerError, Title: "Revocation not recorded", Detail: "The CA revoked the certificate but it could not be recorded; retry the request."}
 	case errors.As(err, &ae):
 		return mapAgentErr(err)
 	}
