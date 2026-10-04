@@ -49,6 +49,11 @@ type Store struct {
 	box crypto.Box
 }
 
+// WithTx returns a Store whose queries run in tx.
+func (s *Store) WithTx(tx pgx.Tx) *Store {
+	return &Store{q: s.q.WithTx(tx), box: s.box}
+}
+
 // New returns a Store.
 func New(pool *pgxpool.Pool, box crypto.Box) *Store {
 	return &Store{q: sqlcgen.New(pool), box: box}

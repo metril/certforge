@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
@@ -15,6 +17,9 @@ import (
 
 // Builder gathers a map's input from the existing stores.
 type Builder struct {
+	// Pool, when set, makes Build read through one read-only REPEATABLE READ
+	// transaction so the map's queries see a single snapshot.
+	Pool     *pgxpool.Pool
 	Q        *sqlcgen.Queries
 	Issuance *issuance.Store
 	Certs    *certstore.Store
@@ -24,6 +29,21 @@ type Builder struct {
 // Build assembles orgID's map. Only lanes perms allows are read from the
 // database; certificates are always read.
 func (b *Builder) Build(ctx context.Context, orgID uuid.UUID, perms Perms) (Graph, error) {
+	if b.Pool == nil {
+		return b.build(ctx, orgID, perms)
+	}
+	tx, err := b.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return Graph{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	snap := *b
+	snap.Q = b.Q.WithTx(tx)
+	snap.Certs = b.Certs.WithTx(tx)
+	return snap.build(ctx, orgID, perms)
+}
+
+func (b *Builder) build(ctx context.Context, orgID uuid.UUID, perms Perms) (Graph, error) {
 	now := time.Now()
 	if b.Now != nil {
 		now = b.Now()
