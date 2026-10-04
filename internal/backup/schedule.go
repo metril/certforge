@@ -145,7 +145,7 @@ func (s *Service) runOnce(ctx context.Context, set Settings, now time.Time) erro
 		_ = os.Remove(tmp)
 		return s.recordFailure(ctx, now, fmt.Errorf("rename archive: %w", err))
 	}
-	if err := syncDir(set.Directory); err != nil {
+	if err := SyncDir(set.Directory); err != nil {
 		// The archive is in place; a failed directory sync only weakens
 		// durability across a crash, so log it rather than fail the run.
 		s.log().Warn("backup: sync directory", "dir", set.Directory, "err", err)
@@ -185,9 +185,9 @@ func (s *Service) recordFailure(ctx context.Context, now time.Time, cause error)
 	return cause
 }
 
-// syncDir fsyncs dir so a rename into it survives a crash. Directories
+// SyncDir fsyncs dir so a rename into it survives a crash. Directories
 // cannot be synced on Windows, where it is a no-op.
-func syncDir(dir string) error {
+func SyncDir(dir string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}

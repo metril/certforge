@@ -148,10 +148,10 @@ func TestPruneRemovesStaleTmp(t *testing.T) {
 }
 
 func TestSyncDir(t *testing.T) {
-	if err := syncDir(t.TempDir()); err != nil {
-		t.Fatalf("syncDir: %v", err)
+	if err := SyncDir(t.TempDir()); err != nil {
+		t.Fatalf("SyncDir: %v", err)
 	}
-	if err := syncDir(filepath.Join(t.TempDir(), "missing")); err == nil && runtime.GOOS != "windows" {
-		t.Fatal("syncDir of a missing dir succeeded")
+	if err := SyncDir(filepath.Join(t.TempDir(), "missing")); err == nil && runtime.GOOS != "windows" {
+		t.Fatal("SyncDir of a missing dir succeeded")
 	}
 }
