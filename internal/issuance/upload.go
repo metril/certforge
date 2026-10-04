@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"software.sslmate.com/src/go-pkcs12"
@@ -282,6 +283,9 @@ func uploadStatus(iss *signer.Issued) string {
 	return StatusExpired
 }
 
+// MaxCertNameLen is the certificate name limit the API documents (maxLength).
+const MaxCertNameLen = 100
+
 // UploadCertificate stores in as a brand-new unmanaged certificate (R10):
 // CreateExternalCertificate, certstore.Insert, then SetCurrentVersion, all
 // in one transaction (Store.Begin, shared across issuance.Store and
@@ -293,6 +297,13 @@ func uploadStatus(iss *signer.Issued) string {
 // uploads. Audited certificate.upload, then every registered Listener runs
 // (OnVersion), the same as an ordinary issuance.
 func (s *Service) UploadCertificate(ctx context.Context, orgID uuid.UUID, name string, in UploadInput) (Certificate, certstore.Version, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Certificate{}, certstore.Version{}, &ValidationError{"name", "required"}
+	}
+	if utf8.RuneCountInString(name) > MaxCertNameLen {
+		return Certificate{}, certstore.Version{}, &ValidationError{"name", fmt.Sprintf("at most %d characters", MaxCertNameLen)}
+	}
 	iss, keyType, err := ParseUpload(in)
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err
@@ -312,7 +323,7 @@ func (s *Service) UploadCertificate(ctx context.Context, orgID uuid.UUID, name s
 		return Certificate{}, certstore.Version{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	c, err := s.Store.CreateExternalCertificate(ctx, tx, orgID, strings.TrimSpace(name), cn, sans, Defaults{}, false, status, nil)
+	c, err := s.Store.CreateExternalCertificate(ctx, tx, orgID, name, cn, sans, Defaults{}, false, status, nil)
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err
 	}

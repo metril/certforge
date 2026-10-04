@@ -3858,7 +3858,7 @@ components:
         in the audit log.
       required: [name]
       properties:
-        name: {type: string, description: Unique name in the org.}
+        name: {type: string, minLength: 1, maxLength: 100, description: Unique name in the org.}
         certificatePem: {type: string, description: "PEM leaf certificate, optionally followed by its chain."}
         privateKeyPem: {type: string, writeOnly: true, description: PEM private key matching certificatePem; omit for a keyless certificate.}
         pkcs12Base64: {type: string, writeOnly: true, format: byte, description: "Base64 PKCS#12 bundle (certificate, chain and optionally a key)."}

@@ -35,7 +35,7 @@ export function UploadPage() {
   // Upload stayed enabled with a blank Name and `submit`'s own guard
   // silently no-opped on click instead of visibly refusing.
   const ready =
-    name.trim() !== '' && (value.format === 'pem' ? value.certificatePem.trim() !== '' : !!value.file && !p12TooLarge(value.file));
+    name.trim() !== '' && name.trim().length <= 100 && (value.format === 'pem' ? value.certificatePem.trim() !== '' : !!value.file && !p12TooLarge(value.file));
 
   async function submit() {
     setNameError(null);
@@ -82,6 +82,7 @@ export function UploadPage() {
             id="upload-name"
             placeholder="legacy-api"
             autoComplete="off"
+            maxLength={100}
             disabled={!canWrite}
             value={name}
             onChange={(e) => {

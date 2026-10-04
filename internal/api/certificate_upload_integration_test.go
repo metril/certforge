@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -189,5 +190,39 @@ func TestUploadKeySealed(t *testing.T) {
 	}
 	if bytes.Equal(raw, pkcs8) {
 		t.Fatal("private_key stored in the clear (matches the plaintext PKCS#8 upload)")
+	}
+}
+
+// customCert builds a self-signed leaf with the given validity window.
+func customCert(t *testing.T, cn string, serial int64, notBefore, notAfter time.Time) string {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: cn},
+		NotBefore: notBefore, NotAfter: notAfter, DNSNames: []string{cn}}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pemCert(der)
+}
+
+// TestUploadCertificateNameValidation: a blank (after trim) or over-long name
+// is a 422, the same limits createCertificate documents.
+func TestUploadCertificateNameValidation(t *testing.T) {
+	f := newAPIFixture(t)
+	op := f.as("operator")
+	leafDER, _, _ := realCert(t, "name.example.test", 801)
+	body := pemCert(leafDER)
+	for _, name := range []string{"", "   ", strings.Repeat("a", 101)} {
+		_, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+			Body: &gen.CertificateUpload{Name: name, CertificatePem: &body}})
+		wantStatus(t, err, 422)
+	}
+	if _, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateUpload{Name: strings.Repeat("a", 100), CertificatePem: &body}}); err != nil {
+		t.Fatalf("100-character name: %v", err)
 	}
 }

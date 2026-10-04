@@ -178,3 +178,11 @@ it('does not upload twice while navigation to the new certificate is pending', a
   expect(posts).toBe(1);
   await screen.findByRole('navigation', { name: 'Breadcrumb' });
 });
+
+it('Name is limited to 100 characters, like the API', async () => {
+  const { user } = renderRoute('/o/acme/certificates/upload');
+  const name = await screen.findByLabelText('Name');
+  await user.click(name);
+  await user.paste('a'.repeat(120));
+  expect(name).toHaveValue('a'.repeat(100));
+});
