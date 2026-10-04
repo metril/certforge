@@ -247,3 +247,35 @@ func TestVerifyFailureClosesRevokedWithoutProcessing(t *testing.T) {
 	default:
 	}
 }
+
+type slowHandler struct{ deadline chan time.Duration }
+
+func (h slowHandler) OnMessage(ctx context.Context, _ uuid.UUID, _ agentproto.Message) ([]agentproto.Message, error) {
+	start := time.Now()
+	<-ctx.Done()
+	h.deadline <- time.Since(start)
+	return nil, ctx.Err()
+}
+
+// TestOnMessageHasDeadlineUnderIdleTimeout: a stuck handler is cut off well
+// before the idle timeout, so pongs keep being read.
+func TestOnMessageHasDeadlineUnderIdleTimeout(t *testing.T) {
+	h, id, s := New(nil), uuid.New(), newFakeSession()
+	h.PingInterval, h.IdleTimeout = time.Hour, 400*time.Millisecond
+	hd := slowHandler{deadline: make(chan time.Duration, 1)}
+	go func() { _ = h.Serve(context.Background(), id, s, hd, nil) }()
+	for dl := time.Now().Add(2 * time.Second); !h.Connected(id); time.Sleep(time.Millisecond) {
+		if time.Now().After(dl) {
+			t.Fatal("not registered")
+		}
+	}
+	s.send(t, agentproto.Heartbeat{})
+	select {
+	case d := <-hd.deadline:
+		if d >= h.IdleTimeout {
+			t.Fatalf("handler ran %v, want under the idle timeout %v", d, h.IdleTimeout)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler context never expired")
+	}
+}
