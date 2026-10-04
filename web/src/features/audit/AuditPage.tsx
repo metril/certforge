@@ -18,6 +18,7 @@ import { SavedViews } from '@/components/SavedViews';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { failedWithoutData } from '@/lib/queryState';
 import { useAllOrgs, useMe, useOrg } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
 import { fmtDateTime } from '@/lib/time';
@@ -27,6 +28,12 @@ import { ChainStatus } from './ChainStatus';
 import { auditColumns } from './columns';
 import { EventSheet } from './EventSheet';
 import { auditSearch, toApiFilter, type AuditSearch } from './search';
+
+/** A local calendar day as the `YYYY-MM-DD` the date inputs use. */
+function localDay(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 // D5: card rows below `md`, no horizontal overflow at 375px.
 function AuditCard({ event, orgName }: { event: AuditEvent; orgName?: string }) {
@@ -68,7 +75,10 @@ export function AuditPage() {
   // 403 even for their own org, so the chip (and its request) is only
   // shown to a caller who actually has it.
   const canVerifyChain = can(me, 'audit:read', null);
-  const filter = useMemo(() => toApiFilter(search, allOrgs ? undefined : org.id), [search, allOrgs, org.id]);
+  // A free-text search scans the table, so without a range it defaults to the
+  // last 30 days; the From field shows it and picking an earlier date widens it.
+  const defaultFrom = search.q && !search.from ? localDay(Date.now() - 30 * 86_400_000) : undefined;
+  const filter = useMemo(() => toApiFilter(defaultFrom ? { ...search, from: defaultFrom } : search, allOrgs ? undefined : org.id), [search, defaultFrom, allOrgs, org.id]);
   const list = useInfiniteQuery({ ...auditInfinite(filter), enabled: allowed });
   const users = useQuery({ ...usersQuery, enabled: allowed && canAnywhere(me, 'users:read') });
   const [text, setText] = useState(search.q ?? '');
@@ -203,7 +213,10 @@ export function AuditPage() {
               </FilterField>
             )}
             <FilterField label="From">
-              <Input aria-label="From date" className="w-40" type="date" value={search.from ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} />
+              <div className="grid gap-1">
+                <Input aria-label="From date" title={defaultFrom ? 'Searching defaults to the last 30 days; pick an earlier date to widen it.' : undefined} className="w-40" type="date" value={search.from ?? defaultFrom ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} />
+                {defaultFrom && <span className="text-xs text-ink-muted">Last 30 days while searching</span>}
+              </div>
             </FilterField>
             <FilterField label="To">
               <Input aria-label="To date" className="w-40" type="date" value={search.to ?? ''} onChange={(e) => set({ to: e.target.value || undefined })} />
@@ -227,7 +240,7 @@ export function AuditPage() {
       {exportNotice && (
         <ToneChip className="mb-3" tone="pending" icon={TriangleAlert} label="The export hit the 100,000-row cap" help="audit.exportTruncated" />
       )}
-      {list.isError ? (
+      {failedWithoutData(list) ? (
         <ErrorState message={`Couldn't load the audit log. ${errorMessage(list.error)}`} onRetry={() => void list.refetch()} />
       ) : !list.isPending && rows.length === 0 ? (
         <EmptyState message="No events match these filters.">
