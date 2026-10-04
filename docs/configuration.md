@@ -79,7 +79,7 @@ Rendered from the server's settings schema: base URL and other server-wide value
 | Issuer URL | The OIDC issuer. CertForge reads `/.well-known/openid-configuration` from it. |
 | Client ID, Client secret | The client registered for CertForge. Redirect URI: `<base URL>/api/v1/auth/oidc/callback`. The secret is write-only; leave it empty for a public client (PKCE only). |
 | Scopes | Default `openid profile email groups`; must include `openid`. |
-| Groups claim | ID token claim holding the user's groups (default `groups`). Group role bindings (Settings → Access) match these. |
+| Groups claim | ID token claim holding the user's groups (default `groups`). A dotted path such as `realm_access.roles` reads a nested claim; a top-level claim whose name contains a dot wins over the path. Group role bindings (Settings → Access) match these. |
 | Session lifetime | Hours a sign-in lasts (1–720, default 12). Applies to new sessions. |
 | Trusted proxies | Addresses or CIDRs of reverse proxies. `X-Forwarded-For` is believed only from these; the audit log and the login rate limit use the resulting client address. |
 | Login rate limit (per minute) | Login attempts allowed per client address per minute (default 10). 0 disables the limit. |

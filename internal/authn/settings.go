@@ -30,7 +30,7 @@ const authSchema = `{
     "clientId": {"type": "string", "title": "Client ID", "description": "The client registered for CertForge at the identity provider.", "maxLength": 200, "examples": ["certforge"]},
     "clientSecret": {"type": "string", "title": "Client secret", "description": "Leave empty for a public client using PKCE only.", "secret": true, "maxLength": 1024},
     "scopes": {"type": "array", "title": "Scopes", "description": "Requested scopes; must include openid.", "items": {"type": "string"}, "default": ["openid", "profile", "email", "groups"]},
-    "groupsClaim": {"type": "string", "title": "Groups claim", "description": "ID token claim listing the user's groups; group role bindings match these.", "default": "groups", "maxLength": 128},
+    "groupsClaim": {"type": "string", "title": "Groups claim", "description": "ID token claim listing the user's groups; group role bindings match these. A dotted path (realm_access.roles) reads a nested claim.", "default": "groups", "maxLength": 128},
     "sessionTtlHours": {"type": "integer", "title": "Session lifetime (hours)", "description": "How long a sign-in lasts. Applies to new sessions.", "minimum": 1, "maximum": 720, "default": 12},
     "trustedProxies": {"type": "array", "title": "Trusted proxies", "description": "Addresses or CIDRs of reverse proxies whose X-Forwarded-For is believed.", "items": {"type": "string"}, "default": [], "examples": [["10.0.0.0/8"]]},
     "loginRatePerMinute": {"type": "integer", "title": "Login rate limit (per minute)", "description": "Login attempts allowed per client address per minute. 0 disables the limit.", "minimum": 0, "default": 10},
