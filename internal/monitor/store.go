@@ -204,7 +204,20 @@ type TransitionParams struct {
 // (false: a concurrent check already moved the row on, and this call wrote
 // nothing).
 func (s *Store) TransitionState(ctx context.Context, p TransitionParams) (bool, error) {
-	n, err := s.Q.TransitionMonitorState(ctx, sqlcgen.TransitionMonitorStateParams{
+	return s.TransitionStateWith(ctx, p, nil)
+}
+
+// TransitionStateWith is TransitionState inside one transaction: when the
+// compare-and-set wins, onWin (if non-nil) runs with that transaction, and an
+// error from it rolls the transition back — a state change and its event
+// commit together or not at all.
+func (s *Store) TransitionStateWith(ctx context.Context, p TransitionParams, onWin func(tx pgx.Tx) error) (bool, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	n, err := s.Q.WithTx(tx).TransitionMonitorState(ctx, sqlcgen.TransitionMonitorStateParams{
 		ID: p.ID, OldState: p.OldState, State: p.NewState, StateChangedAt: p.StateChangedAt,
 		LastCheckedAt: &p.CheckedAt, NextCheckAt: p.NextCheckAt, LastFingerprint: p.LastFingerprint,
 		LastNotAfter: p.LastNotAfter, LastIssuer: p.LastIssuer, LastError: p.LastError,
@@ -212,5 +225,16 @@ func (s *Store) TransitionState(ctx context.Context, p TransitionParams) (bool, 
 	if err != nil {
 		return false, err
 	}
-	return n > 0, nil
+	if n == 0 {
+		return false, nil
+	}
+	if onWin != nil {
+		if err := onWin(tx); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }

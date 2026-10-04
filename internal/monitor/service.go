@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math/rand"
 	"time"
 
@@ -190,35 +189,22 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 	}
 	nextCheckAt := jitteredNextCheck(now, m.IntervalSeconds)
 
-	won, err := s.Store.TransitionState(ctx, TransitionParams{
+	// The event is emitted in the transition's own transaction: a failed
+	// emit rolls the transition back, so the next check retries both.
+	var onWin func(pgx.Tx) error
+	if shouldEmit(m.State, newState) {
+		onWin = func(tx pgx.Tx) error {
+			_, err := s.Emitter.Emit(ctx, tx, buildEvent(m, newState, obs, stateChangedAt, now))
+			return err
+		}
+	}
+	if _, err := s.Store.TransitionStateWith(ctx, TransitionParams{
 		ID: id, OldState: m.State, NewState: newState, StateChangedAt: stateChangedAt, CheckedAt: now,
 		NextCheckAt: nextCheckAt, LastFingerprint: lastFP, LastNotAfter: lastNotAfter, LastIssuer: lastIssuer, LastError: lastError,
-	})
-	if err != nil {
+	}, onWin); err != nil {
 		return Monitor{}, err
 	}
-	if won && shouldEmit(m.State, newState) {
-		s.emit(ctx, m, newState, obs, stateChangedAt)
-	}
 	return s.Store.GetByID(ctx, id)
-}
-
-// emit raises newState's event (task-9 brief: "Event details: host, port,
-// fp, notAfter, issuer, chainError, error"). A failure here is logged by
-// the caller's own river retry (a delivery worker failure never blocks the
-// state write, which has already committed) — Emit itself is best-effort
-// from Check's point of view, matching Sources.scan*'s own
-// "log and continue" convention for every other event source.
-func (s *Service) emit(ctx context.Context, m Monitor, newState string, obs Observation, stateChangedAt time.Time) {
-	ev := buildEvent(m, newState, obs, stateChangedAt, s.now())
-	if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-		// Service has no *slog.Logger of its own (the Shared contract's
-		// Service{Store, Emitter, Settings, Now, Dial} does not list one);
-		// slog.Default() matches every other package's own fallback
-		// (deploy.Dispatcher.log(), notify.Service.log()) when no logger is
-		// configured.
-		slog.Default().Error("monitor: event not emitted", "monitor", m.ID, "state", newState, "err", err)
-	}
 }
 
 // buildEvent is the event raised for m's transition into newState.
