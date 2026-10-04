@@ -40,6 +40,13 @@ func (t *retryAfterTransport) RetryAfter() time.Duration {
 	return t.max
 }
 
+// reset forgets the delay seen so far (called before each request).
+func (t *retryAfterTransport) reset() {
+	t.mu.Lock()
+	t.max = 0
+	t.mu.Unlock()
+}
+
 // maxRetryAfter caps a CA's requested delay. It mirrors issuance's
 // backoffCap, which acme cannot import (issuance imports this package).
 const maxRetryAfter = 24 * time.Hour

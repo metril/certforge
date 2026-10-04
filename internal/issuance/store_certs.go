@@ -168,11 +168,19 @@ func (s *Store) effective(ctx context.Context, orgID uuid.UUID, cert Defaults) (
 	if err != nil {
 		return Effective{}, err
 	}
+	return effectiveWith(ctx, orgID, g, o, cert, s.GetCA)
+}
+
+// effectiveWith is effective's resolution given already-read global and org
+// levels and a CA lookup, so a caller resolving many certificates (the ARI
+// poll) can cache all three instead of re-reading them per certificate.
+func effectiveWith(ctx context.Context, orgID uuid.UUID, g, o, cert Defaults,
+	getCA func(ctx context.Context, orgID, id uuid.UUID) (CA, error)) (Effective, error) {
 	eff := Resolve(g, o, cert)
 	if eff.CAID.Value == nil || eff.AccountID.Value == nil {
 		return eff, nil
 	}
-	ca, err := s.GetCA(ctx, orgID, *eff.CAID.Value)
+	ca, err := getCA(ctx, orgID, *eff.CAID.Value)
 	if err != nil {
 		return Effective{}, err
 	}

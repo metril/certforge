@@ -132,12 +132,15 @@ func (s *Store) row(ctx context.Context, certID, versionID uuid.UUID) (sqlcgen.C
 
 // Get returns one version's metadata.
 func (s *Store) Get(ctx context.Context, certID, versionID uuid.UUID) (Version, error) {
-	r, err := s.row(ctx, certID, versionID)
+	r, err := s.q.GetCertificateVersionMeta(ctx, sqlcgen.GetCertificateVersionMetaParams{ID: versionID, CertID: certID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Version{}, ErrNotFound
+	}
 	if err != nil {
 		return Version{}, err
 	}
 	return Version{ID: r.ID, CertID: r.CertID, Serial: r.Serial, NotBefore: r.NotBefore, NotAfter: r.NotAfter,
-		SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, HasKey: r.PrivateKey != nil, CAID: r.CaID,
+		SHA256: r.Sha256Fp, KeyType: r.KeyType, Source: r.Source, HasKey: r.HasKey, CAID: r.CaID,
 		RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}, nil
 }
 
@@ -146,6 +149,17 @@ func (s *Store) Get(ctx context.Context, certID, versionID uuid.UUID) (Version, 
 // PrivateKeyPKCS8 nil with no error even when withKey is set; render.Render
 // only raises render.ErrNoKey once a key-bearing part is actually requested.
 func (s *Store) Material(ctx context.Context, certID, versionID uuid.UUID, withKey bool) (render.Material, error) {
+	if !withKey {
+		// No key wanted: skip selecting the sealed key at all.
+		d, err := s.q.GetCertificateVersionDER(ctx, sqlcgen.GetCertificateVersionDERParams{ID: versionID, CertID: certID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return render.Material{}, ErrNotFound
+		}
+		if err != nil {
+			return render.Material{}, err
+		}
+		return render.Material{LeafDER: d.LeafDer, ChainDER: d.ChainDer}, nil
+	}
 	r, err := s.row(ctx, certID, versionID)
 	if err != nil {
 		return render.Material{}, err
