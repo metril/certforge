@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
@@ -30,6 +31,38 @@ const maxAuditExportRows = 100_000
 
 // auditExportPage is the chunk size ExportAuditEvents fetches at a time.
 const auditExportPage = 1000
+
+// defaultAuditQueryTimeout bounds one audit list, count or export page. The
+// q filter is an unindexed substring scan over the whole table, so it needs a
+// ceiling; Deps.AuditQueryTimeout overrides it.
+const defaultAuditQueryTimeout = 5 * time.Second
+
+// auditRead runs fn in a read-only transaction whose statements are cut off
+// after the audit query timeout. A timeout (SQLSTATE 57014) becomes a 422
+// telling the caller to narrow the search.
+func (s *Server) auditRead(ctx context.Context, fn func(pgx.Tx, *sqlcgen.Queries) error) error {
+	timeout := s.d.AuditQueryTimeout
+	if timeout <= 0 {
+		timeout = defaultAuditQueryTimeout
+	}
+	tx, err := s.d.Pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// SET LOCAL takes no bind parameters; the value is a duration we own.
+	if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL statement_timeout = %d", timeout.Milliseconds())); err != nil {
+		return err
+	}
+	if err := fn(tx, sqlcgen.New(tx)); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "57014" && ctx.Err() == nil {
+			return unprocessable("q", "the search took too long; narrow it (add a date range)")
+		}
+		return err
+	}
+	return nil
+}
 
 type auditFilter struct {
 	from, to                                   *time.Time
@@ -167,8 +200,11 @@ func (s *Server) ListAuditEvents(ctx context.Context, req gen.ListAuditEventsReq
 			return nil, badRequest("cursor is not from this list")
 		}
 	}
-	rows, err := s.d.Queries.ListAuditEvents(ctx, f.params(before, hasCursor, limit+1))
-	if err != nil {
+	var rows []sqlcgen.ListAuditEventsRow
+	if err := s.auditRead(ctx, func(_ pgx.Tx, q *sqlcgen.Queries) (err error) {
+		rows, err = q.ListAuditEvents(ctx, f.params(before, hasCursor, limit+1))
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	var next *string
@@ -272,8 +308,11 @@ func (s *Server) ExportAuditEvents(ctx context.Context, req gen.ExportAuditEvent
 	if err != nil {
 		return nil, err
 	}
-	capped, err := s.d.Queries.CountAuditEventsCapped(ctx, f.countParams(maxAuditExportRows+1))
-	if err != nil {
+	var capped int64
+	if err := s.auditRead(ctx, func(_ pgx.Tx, q *sqlcgen.Queries) (err error) {
+		capped, err = q.CountAuditEventsCapped(ctx, f.countParams(maxAuditExportRows+1))
+		return err
+	}); err != nil {
 		return nil, err
 	}
 	truncated := capped > maxAuditExportRows
@@ -283,7 +322,12 @@ func (s *Server) ExportAuditEvents(ctx context.Context, req gen.ExportAuditEvent
 	pr2, pw := io.Pipe()
 	go func() {
 		writeAuditCSV(ctx, pw, func(ctx context.Context, before int64, has bool, limit int) ([]sqlcgen.ListAuditEventsRow, error) {
-			return s.d.Queries.ListAuditEvents(ctx, f.params(before, has, limit))
+			var rows []sqlcgen.ListAuditEventsRow
+			err := s.auditRead(ctx, func(_ pgx.Tx, q *sqlcgen.Queries) (err error) {
+				rows, err = q.ListAuditEvents(ctx, f.params(before, has, limit))
+				return err
+			})
+			return rows, err
 		}, maxAuditExportRows, auditExportPage, func(err error) {
 			s.d.Log.Error("audit export failed mid-stream", "err", err)
 		})

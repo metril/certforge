@@ -108,6 +108,10 @@ type Deps struct {
 	// AuditVerifyTTL caches GET /audit/verify's result; zero means 60 s.
 	AuditVerifyTTL time.Duration
 
+	// AuditQueryTimeout bounds each audit list, count and export query; zero
+	// means 5 s.
+	AuditQueryTimeout time.Duration
+
 	// Version is the running build's version string, returned by
 	// getServerInfo (Phase 6A Task 2; cmd/certforge's main.version, wired
 	// in cmd/certforge/serve.go). Empty answers {version: ""}.
