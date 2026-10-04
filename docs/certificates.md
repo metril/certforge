@@ -21,7 +21,7 @@ A `directoryUrl` goes through the same URL policy as notification channels and D
 - **Trust bundle**: PEM roots added to the system pool when talking to a private ACME server (Pebble, step-ca, Vault ACME).
 - **Resolvers**: `host` or `host:port` DNS servers used for propagation checks when neither the rule nor the defaults name any.
 - Only a global admin (`cas:write`) adds or edits CAs. In Phase 1 a CA row belongs to one org; shared global CAs arrive in Phase 2.
-- A CA cannot be deleted while accounts, certificates or defaults reference it. A private CA (local or Vault) also cannot be deleted while it has issued certificate versions that are neither expired nor revoked: revoke them or let them expire first.
+- A CA cannot be deleted while accounts, certificates or defaults reference it. A Vault CA's mount and role cannot change either while it has users or live issued versions (409). A private CA (local or Vault) also cannot be deleted while it has issued certificate versions that are neither expired nor revoked: revoke them or let them expire first.
 
 ### External Account Binding (EAB)
 
@@ -42,7 +42,7 @@ Every issuance field exists at three levels: global (Settings → Issuance defau
 | `renewPolicy` | `percent`, 33 | See [Renewal](#renewal). |
 | `preferredChain` | empty | Issuer common name of an alternate chain. |
 | `reuseKey` | off | Keeps the private key across renewals when the key type is unchanged. |
-| `mustStaple` | off | Adds the OCSP must-staple extension. |
+| `mustStaple` | off | Adds the OCSP must-staple extension. ACME CAs only: a private CA (local or Vault) does not support it, so setting it with one is a 422 on a certificate, org defaults or global defaults write (a stored `true` that is sent back unchanged still saves). |
 | `verificationRules` | none | Catch-all rules appended after a certificate's own rules. A level that sets this replaces the level above's list entirely — global, org and certificate never merge, only the closest non-null one applies. |
 | `propagationSeconds` | none (provider default) | How long to wait for TXT records. Unset (or 0) uses each rule's own DNS provider's default instead, so a DNS credential's own `*_PROPAGATION_TIMEOUT` setting takes effect; set a value here or on a rule to override it. |
 | `resolvers` | none | Resolvers for propagation checks. |
@@ -280,7 +280,7 @@ The web UI's **From acme.sh or certbot**, under Certificates → Import, is a fo
 
 ## Unmanaged certificates
 
-An uploaded certificate is **unmanaged**: CertForge stores it, can deploy it, and shows it in the same certificate list as everything else, but never renews it and never picks a CA, account or verification rule for it. `managed: false` on the certificate marks this; `nextRenewAt` is always `null`. **Renew now** and editing the certificate's definition both 409 "managed externally" — CertForge has nothing to renew or re-verify against, so both would be a no-op wearing the clothes of a real action. The one write CertForge accepts on an unmanaged certificate's material is `versions/upload`: add a version you renewed yourself, the same shape as the original upload. `versions/upload` in turn 409s on a still-managed certificate — it is not a way to hand CertForge a certificate you made outside of it while CertForge is still trying to renew the same names itself.
+An uploaded certificate is **unmanaged**: CertForge stores it, can deploy it, and shows it in the same certificate list as everything else, but never renews it and never picks a CA, account or verification rule for it. `managed: false` on the certificate marks this; `nextRenewAt` is always `null`. **Renew now** and editing the certificate's definition both 409 "managed externally" — CertForge has nothing to renew or re-verify against, so both would be a no-op wearing the clothes of a real action. The one write CertForge accepts on an unmanaged certificate's material is `versions/upload`: add a version you renewed yourself, the same shape as the original upload. A version whose leaf is not valid yet is a 422, and so is one that expires before the current version (a rollback) unless the request sets `allowOlder: true`; the web sheet then offers an **Allow an older certificate** switch. `versions/upload` in turn 409s on a still-managed certificate — it is not a way to hand CertForge a certificate you made outside of it while CertForge is still trying to renew the same names itself.
 
 A grant, layout and deploy target work on an unmanaged certificate exactly as they do on a managed one, with one rule: a layout that renders a key (any part `key`/`combined`, or a p12/jks file), or a Traefik deploy target (which always renders `fullchain` + `key`), cannot be granted against a certificate whose current version has no stored key — 422 on `certificateId` if you try. Uploading a keyless version onto a certificate that already has such a grant is refused the same way (409), so a grant never silently starts failing to deploy because a later upload dropped the key it depended on.
 

@@ -842,3 +842,67 @@ func TestDeleteCABlockedByLiveIssuedVersion(t *testing.T) {
 		t.Fatalf("delete after revoke: %v", err)
 	}
 }
+
+// B18: mustStaple=true with a private CA is a 422 on a certificate, org
+// defaults and global defaults write; an ACME CA accepts it, and a stored true
+// sent back unchanged is grandfathered.
+func TestMustStapleRefusedForPrivateCA(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	var ve *ValidationError
+	priv, err := f.store.CreateCA(ctx, f.org, CAInput{Name: "Local Root", Type: CATypeLocalCA,
+		Config: map[string]any{"subject": map[string]any{"commonName": "Test Root"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	yes := true
+
+	// Certificate: own caId, and the caId inherited from org defaults.
+	_, err = f.store.CreateCertificate(ctx, f.org, CertInput{Name: "ms", CommonName: "ms.example.test",
+		Overrides: Defaults{CAID: &priv.ID, MustStaple: &yes}})
+	if !errors.As(err, &ve) || ve.Field != "mustStaple" {
+		t.Fatalf("cert with private CA: %v", err)
+	}
+	if _, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "ms-acme", CommonName: "ms2.example.test",
+		Overrides: Defaults{CAID: &f.ca.ID, MustStaple: &yes}}); err != nil {
+		t.Fatalf("cert with ACME CA: %v", err)
+	}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{CAID: &priv.ID, MustStaple: &yes}); !errors.As(err, &ve) || ve.Field != "mustStaple" {
+		t.Fatalf("org defaults with private CA: %v", err)
+	}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{CAID: &priv.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "ms-inh", CommonName: "ms3.example.test",
+		Overrides: Defaults{MustStaple: &yes}}); !errors.As(err, &ve) || ve.Field != "mustStaple" {
+		t.Fatalf("cert inheriting a private org CA: %v", err)
+	}
+
+	// Grandfathered: a stored true is accepted again when sent back unchanged.
+	c, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "old", CommonName: "old.example.test",
+		Overrides: Defaults{CAID: &f.ca.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET overrides = $2 WHERE id = $1`, c.ID,
+		fmt.Sprintf(`{"caId":%q,"mustStaple":true}`, priv.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.store.UpdateCertificate(ctx, f.org, c.ID, CertInput{Name: "old2", CommonName: "old.example.test",
+		Overrides: Defaults{CAID: &priv.ID, MustStaple: &yes}}, nil); err != nil {
+		t.Fatalf("unchanged stored mustStaple: %v", err)
+	}
+
+	// Global defaults, plain and transactional.
+	gtx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = gtx.Rollback(ctx) }()
+	if err := f.store.ValidateGlobalDefaults(ctx, Defaults{CAID: &priv.ID, MustStaple: &yes}); !errors.As(err, &ve) {
+		t.Fatalf("global plain: %v", err)
+	}
+	if err := f.store.ValidateGlobalDefaultsTx(ctx, gtx, Defaults{CAID: &priv.ID, MustStaple: &yes}); !errors.As(err, &ve) {
+		t.Fatalf("global tx: %v", err)
+	}
+}

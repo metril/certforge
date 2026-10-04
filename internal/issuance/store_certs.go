@@ -338,6 +338,30 @@ func validateDefaultsShape(d Defaults, stored *Defaults) error {
 	return nil
 }
 
+// checkMustStaple refuses mustStaple=true on a Defaults value whose effective
+// CA (caID, nil = none known) is private: only ACME CAs honour it. A stored
+// true that is sent back unchanged is grandfathered, like an over-cap rule
+// list, so an older row still saves.
+func checkMustStaple(ctx context.Context, q *sqlcgen.Queries, d Defaults, stored *Defaults, caID *uuid.UUID) error {
+	if d.MustStaple == nil || !*d.MustStaple || caID == nil {
+		return nil
+	}
+	if stored != nil && stored.MustStaple != nil && *stored.MustStaple {
+		return nil
+	}
+	row, err := q.GetCAByID(ctx, *caID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // the caId check reports a missing CA
+		}
+		return err
+	}
+	if row.Type == CATypeLocalCA || row.Type == CATypeVaultPKI {
+		return &ValidationError{"mustStaple", "only applies to ACME CAs; a private CA does not support OCSP Must-Staple"}
+	}
+	return nil
+}
+
 // validateDefaultsTx validates an org-level Defaults value (org defaults, a
 // certificate's overrides, or the global settings section): the shape, plus
 // that any referenced caId or accountId names a row of this org (P34),
@@ -374,6 +398,13 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 			}
 			return err
 		}
+	}
+	msCA := d.CAID
+	if msCA == nil {
+		msCA = aboveCAID
+	}
+	if err := checkMustStaple(ctx, q, d, stored, msCA); err != nil {
+		return err
 	}
 	if d.AccountID != nil {
 		if _, err := q.LockAccountKeyShare(ctx, *d.AccountID); err != nil {
@@ -428,6 +459,9 @@ func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
 			}
 			return err
 		}
+	}
+	if err := checkMustStaple(ctx, s.q, d, &storedG, d.CAID); err != nil {
+		return err
 	}
 	if d.AccountID != nil {
 		a, err := s.q.GetAccountByID(ctx, *d.AccountID)
@@ -496,6 +530,9 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 			}
 			return err
 		}
+	}
+	if err := checkMustStaple(ctx, q, d, &storedG, d.CAID); err != nil {
+		return err
 	}
 	if d.AccountID != nil {
 		if _, err := q.LockAccountKeyShare(ctx, *d.AccountID); err != nil {
