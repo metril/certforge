@@ -106,6 +106,15 @@ const (
 	CertificateStatusRevoked CertificateStatus = "revoked"
 )
 
+// Defines values for CertificateBriefStatus.
+const (
+	CertificateBriefStatusActive  CertificateBriefStatus = "active"
+	CertificateBriefStatusExpired CertificateBriefStatus = "expired"
+	CertificateBriefStatusFailed  CertificateBriefStatus = "failed"
+	CertificateBriefStatusPending CertificateBriefStatus = "pending"
+	CertificateBriefStatusRevoked CertificateBriefStatus = "revoked"
+)
+
 // Defines values for CertificateVersionSource.
 const (
 	Imported CertificateVersionSource = "imported"
@@ -428,11 +437,11 @@ const (
 
 // Defines values for ListCertificatesParamsStatus.
 const (
-	Active  ListCertificatesParamsStatus = "active"
-	Expired ListCertificatesParamsStatus = "expired"
-	Failed  ListCertificatesParamsStatus = "failed"
-	Pending ListCertificatesParamsStatus = "pending"
-	Revoked ListCertificatesParamsStatus = "revoked"
+	ListCertificatesParamsStatusActive  ListCertificatesParamsStatus = "active"
+	ListCertificatesParamsStatusExpired ListCertificatesParamsStatus = "expired"
+	ListCertificatesParamsStatusFailed  ListCertificatesParamsStatus = "failed"
+	ListCertificatesParamsStatusPending ListCertificatesParamsStatus = "pending"
+	ListCertificatesParamsStatusRevoked ListCertificatesParamsStatus = "revoked"
 )
 
 // Defines values for DownloadCertificateVersionParamsFormat.
@@ -951,6 +960,45 @@ type Certificate struct {
 // CertificateStatus pending until first issued; active while a valid version exists.
 type CertificateStatus string
 
+// CertificateBrief The few fields of a certificate the Overview needs.
+type CertificateBrief struct {
+	// AriWindow Cached ARI window
+	AriWindow *AriWindow `json:"ariWindow"`
+
+	// FailureCount Consecutive failed attempts.
+	FailureCount int `json:"failureCount"`
+
+	// Id Certificate id.
+	Id openapi_types.UUID `json:"id"`
+
+	// LastErrorLine First line of the last error
+	LastErrorLine *string `json:"lastErrorLine"`
+
+	// ManualDns Waiting on manual DNS (the effective rules use manual-dns).
+	ManualDns bool `json:"manualDns"`
+
+	// Name Certificate name.
+	Name string `json:"name"`
+
+	// NextRenewAt When the next renewal is due.
+	NextRenewAt *time.Time `json:"nextRenewAt"`
+
+	// NotAfter Current version expiry; null when none.
+	NotAfter *time.Time `json:"notAfter"`
+
+	// NotBefore Current version start; null when none.
+	NotBefore *time.Time `json:"notBefore"`
+
+	// OrgId Owning org.
+	OrgId openapi_types.UUID `json:"orgId"`
+
+	// Status Certificate status.
+	Status CertificateBriefStatus `json:"status"`
+}
+
+// CertificateBriefStatus Certificate status.
+type CertificateBriefStatus string
+
 // CertificateDeployment One client's deployment of a certificate.
 type CertificateDeployment struct {
 	// ClientConnected The client's agent is connected now.
@@ -1024,6 +1072,37 @@ type CertificateList struct {
 
 	// NextCursor Cursor for the next page; null on the last page.
 	NextCursor *string `json:"nextCursor"`
+}
+
+// CertificateOverview Overview numbers and the certificates that need a look.
+type CertificateOverview struct {
+	// Beyond Non-revoked certificates expiring after the 90-day horizon.
+	Beyond int `json:"beyond"`
+	Counts struct {
+		// Active Active certificates.
+		Active int `json:"active"`
+
+		// Expired Expired certificates.
+		Expired int `json:"expired"`
+
+		// Failed Failed certificates.
+		Failed int `json:"failed"`
+
+		// Pending Pending certificates.
+		Pending int `json:"pending"`
+
+		// Revoked Revoked certificates.
+		Revoked int `json:"revoked"`
+
+		// Total All certificates.
+		Total int `json:"total"`
+	} `json:"counts"`
+
+	// Items Briefs of the certificates that need a look.
+	Items []CertificateBrief `json:"items"`
+
+	// Truncated True when more than 2000 certificates qualified and items was cut.
+	Truncated bool `json:"truncated"`
 }
 
 // CertificateUpload An existing certificate and (optionally) its key, stored as an unmanaged certificate. Exactly one of certificatePem or pkcs12Base64 is required. Recorded as certificate.upload in the audit log.
@@ -3614,6 +3693,9 @@ type ClientInterface interface {
 	// ListAllCertificates request
 	ListAllCertificates(ctx context.Context, params *ListAllCertificatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAllCertificateOverview request
+	GetAllCertificateOverview(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAllClients request
 	ListAllClients(ctx context.Context, params *ListAllClientsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3691,6 +3773,9 @@ type ClientInterface interface {
 
 	// ImportCertificatesWithBody request with any body
 	ImportCertificatesWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCertificateOverview request
+	GetCertificateOverview(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UploadCertificateWithBody request with any body
 	UploadCertificateWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4274,6 +4359,18 @@ func (c *APIClient) ListAllCertificates(ctx context.Context, params *ListAllCert
 	return c.Client.Do(req)
 }
 
+func (c *APIClient) GetAllCertificateOverview(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAllCertificateOverviewRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *APIClient) ListAllClients(ctx context.Context, params *ListAllClientsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAllClientsRequest(c.Server, params)
 	if err != nil {
@@ -4600,6 +4697,18 @@ func (c *APIClient) CreateCertificate(ctx context.Context, orgId OrgId, body Cre
 
 func (c *APIClient) ImportCertificatesWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewImportCertificatesRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) GetCertificateOverview(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCertificateOverviewRequest(c.Server, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -7122,6 +7231,33 @@ func NewListAllCertificatesRequest(server string, params *ListAllCertificatesPar
 	return req, nil
 }
 
+// NewGetAllCertificateOverviewRequest generates requests for GetAllCertificateOverview
+func NewGetAllCertificateOverviewRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/certificates/summary")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListAllClientsRequest generates requests for ListAllClients
 func NewListAllClientsRequest(server string, params *ListAllClientsParams) (*http.Request, error) {
 	var err error
@@ -8127,6 +8263,40 @@ func NewImportCertificatesRequestWithBody(server string, orgId OrgId, contentTyp
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetCertificateOverviewRequest generates requests for GetCertificateOverview
+func NewGetCertificateOverviewRequest(server string, orgId OrgId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/certificates/summary", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -12317,6 +12487,9 @@ type ClientWithResponsesInterface interface {
 	// ListAllCertificatesWithResponse request
 	ListAllCertificatesWithResponse(ctx context.Context, params *ListAllCertificatesParams, reqEditors ...RequestEditorFn) (*ListAllCertificatesResponse, error)
 
+	// GetAllCertificateOverviewWithResponse request
+	GetAllCertificateOverviewWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAllCertificateOverviewResponse, error)
+
 	// ListAllClientsWithResponse request
 	ListAllClientsWithResponse(ctx context.Context, params *ListAllClientsParams, reqEditors ...RequestEditorFn) (*ListAllClientsResponse, error)
 
@@ -12394,6 +12567,9 @@ type ClientWithResponsesInterface interface {
 
 	// ImportCertificatesWithBodyWithResponse request with any body
 	ImportCertificatesWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportCertificatesResponse, error)
+
+	// GetCertificateOverviewWithResponse request
+	GetCertificateOverviewWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*GetCertificateOverviewResponse, error)
 
 	// UploadCertificateWithBodyWithResponse request with any body
 	UploadCertificateWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadCertificateResponse, error)
@@ -13209,6 +13385,31 @@ func (r ListAllCertificatesResponse) StatusCode() int {
 	return 0
 }
 
+type GetAllCertificateOverviewResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *CertificateOverview
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAllCertificateOverviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAllCertificateOverviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAllClientsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -13807,6 +14008,32 @@ func (r ImportCertificatesResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ImportCertificatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetCertificateOverviewResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *CertificateOverview
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCertificateOverviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCertificateOverviewResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -16422,6 +16649,15 @@ func (c *ClientWithResponses) ListAllCertificatesWithResponse(ctx context.Contex
 	return ParseListAllCertificatesResponse(rsp)
 }
 
+// GetAllCertificateOverviewWithResponse request returning *GetAllCertificateOverviewResponse
+func (c *ClientWithResponses) GetAllCertificateOverviewWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAllCertificateOverviewResponse, error) {
+	rsp, err := c.GetAllCertificateOverview(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAllCertificateOverviewResponse(rsp)
+}
+
 // ListAllClientsWithResponse request returning *ListAllClientsResponse
 func (c *ClientWithResponses) ListAllClientsWithResponse(ctx context.Context, params *ListAllClientsParams, reqEditors ...RequestEditorFn) (*ListAllClientsResponse, error) {
 	rsp, err := c.ListAllClients(ctx, params, reqEditors...)
@@ -16666,6 +16902,15 @@ func (c *ClientWithResponses) ImportCertificatesWithBodyWithResponse(ctx context
 		return nil, err
 	}
 	return ParseImportCertificatesResponse(rsp)
+}
+
+// GetCertificateOverviewWithResponse request returning *GetCertificateOverviewResponse
+func (c *ClientWithResponses) GetCertificateOverviewWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*GetCertificateOverviewResponse, error) {
+	rsp, err := c.GetCertificateOverview(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCertificateOverviewResponse(rsp)
 }
 
 // UploadCertificateWithBodyWithResponse request with arbitrary body returning *UploadCertificateResponse
@@ -18679,6 +18924,53 @@ func ParseListAllCertificatesResponse(rsp *http.Response) (*ListAllCertificatesR
 	return response, nil
 }
 
+// ParseGetAllCertificateOverviewResponse parses an HTTP response from a GetAllCertificateOverviewWithResponse call
+func ParseGetAllCertificateOverviewResponse(rsp *http.Response) (*GetAllCertificateOverviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAllCertificateOverviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CertificateOverview
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAllClientsResponse parses an HTTP response from a ListAllClientsWithResponse call
 func ParseListAllClientsResponse(rsp *http.Response) (*ListAllClientsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -20081,6 +20373,60 @@ func ParseImportCertificatesResponse(rsp *http.Response) (*ImportCertificatesRes
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest ImportProblem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCertificateOverviewResponse parses an HTTP response from a GetCertificateOverviewWithResponse call
+func ParseGetCertificateOverviewResponse(rsp *http.Response) (*GetCertificateOverviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCertificateOverviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CertificateOverview
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -1030,6 +1030,38 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /certificates/summary:
+    get:
+      operationId: getAllCertificateOverview
+      tags: [certificates]
+      summary: Overview summary across orgs
+      description: Like getCertificateOverview, over every org where the caller has certs:read. 403 when there is none.
+      responses:
+        "200":
+          description: Status counts and the certificates that need a look.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateOverview"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/summary:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: getCertificateOverview
+      tags: [certificates]
+      summary: Overview summary
+      description: Needs certs:read. Status counts plus one brief per non-revoked certificate that is expired, pending, failed, has a recorded failure, expires within 90 days or renews within 7 days, or may be waiting on manual DNS. Capped at 2000 briefs (truncated).
+      responses:
+        "200":
+          description: Status counts and the certificates that need a look.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateOverview"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -3793,6 +3825,43 @@ components:
           description: Certificates.
           items: {$ref: "#/components/schemas/Certificate"}
         nextCursor: {type: string, nullable: true, description: Cursor for the next page; null on the last page.}
+    CertificateBrief:
+      type: object
+      description: The few fields of a certificate the Overview needs.
+      required: [id, orgId, name, status, failureCount, manualDns]
+      properties:
+        id: {type: string, format: uuid, description: Certificate id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Certificate name.}
+        status: {type: string, enum: [pending, active, failed, expired, revoked], description: Certificate status.}
+        notBefore: {type: string, format: date-time, nullable: true, description: Current version start; null when none.}
+        notAfter: {type: string, format: date-time, nullable: true, description: Current version expiry; null when none.}
+        nextRenewAt: {type: string, format: date-time, nullable: true, description: When the next renewal is due.}
+        failureCount: {type: integer, description: Consecutive failed attempts.}
+        lastErrorLine: {type: string, nullable: true, description: First line of the last error, at most 140 characters.}
+        manualDns: {type: boolean, description: Waiting on manual DNS (the effective rules use manual-dns).}
+        ariWindow: {allOf: [{$ref: "#/components/schemas/AriWindow"}], nullable: true, description: Cached ARI window, if any.}
+    CertificateOverview:
+      type: object
+      description: Overview numbers and the certificates that need a look.
+      required: [counts, items, beyond, truncated]
+      properties:
+        counts:
+          type: object
+          required: [active, pending, failed, expired, revoked, total]
+          properties:
+            active: {type: integer, description: Active certificates.}
+            pending: {type: integer, description: Pending certificates.}
+            failed: {type: integer, description: Failed certificates.}
+            expired: {type: integer, description: Expired certificates.}
+            revoked: {type: integer, description: Revoked certificates.}
+            total: {type: integer, description: All certificates.}
+        items:
+          type: array
+          description: Briefs of the certificates that need a look.
+          items: {$ref: "#/components/schemas/CertificateBrief"}
+        beyond: {type: integer, description: Non-revoked certificates expiring after the 90-day horizon.}
+        truncated: {type: boolean, description: True when more than 2000 certificates qualified and items was cut.}
     AttemptStep:
       type: object
       description: One step of an attempt.

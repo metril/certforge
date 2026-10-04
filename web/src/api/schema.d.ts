@@ -779,6 +779,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/certificates/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview summary across orgs
+         * @description Like getCertificateOverview, over every org where the caller has certs:read. 403 when there is none.
+         */
+        get: operations["getAllCertificateOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/certificates/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Overview summary
+         * @description Needs certs:read. Status counts plus one brief per non-revoked certificate that is expired, pending, failed, has a recorded failure, expires within 90 days or renews within 7 days, or may be waiting on manual DNS. Capped at 2000 briefs (truncated).
+         */
+        get: operations["getCertificateOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/certificates": {
         parameters: {
             query?: never;
@@ -3136,6 +3179,72 @@ export interface components {
             items: components["schemas"]["Certificate"][];
             /** @description Cursor for the next page; null on the last page. */
             nextCursor?: string | null;
+        };
+        /** @description The few fields of a certificate the Overview needs. */
+        CertificateBrief: {
+            /**
+             * Format: uuid
+             * @description Certificate id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /** @description Certificate name. */
+            name: string;
+            /**
+             * @description Certificate status.
+             * @enum {string}
+             */
+            status: "pending" | "active" | "failed" | "expired" | "revoked";
+            /**
+             * Format: date-time
+             * @description Current version start; null when none.
+             */
+            notBefore?: string | null;
+            /**
+             * Format: date-time
+             * @description Current version expiry; null when none.
+             */
+            notAfter?: string | null;
+            /**
+             * Format: date-time
+             * @description When the next renewal is due.
+             */
+            nextRenewAt?: string | null;
+            /** @description Consecutive failed attempts. */
+            failureCount: number;
+            /** @description First line of the last error */
+            lastErrorLine?: string | null;
+            /** @description Waiting on manual DNS (the effective rules use manual-dns). */
+            manualDns: boolean;
+            /** @description Cached ARI window */
+            ariWindow?: components["schemas"]["AriWindow"] | null;
+        };
+        /** @description Overview numbers and the certificates that need a look. */
+        CertificateOverview: {
+            counts: {
+                /** @description Active certificates. */
+                active: number;
+                /** @description Pending certificates. */
+                pending: number;
+                /** @description Failed certificates. */
+                failed: number;
+                /** @description Expired certificates. */
+                expired: number;
+                /** @description Revoked certificates. */
+                revoked: number;
+                /** @description All certificates. */
+                total: number;
+            };
+            /** @description Briefs of the certificates that need a look. */
+            items: components["schemas"]["CertificateBrief"][];
+            /** @description Non-revoked certificates expiring after the 90-day horizon. */
+            beyond: number;
+            /** @description True when more than 2000 certificates qualified and items was cut. */
+            truncated: boolean;
         };
         /** @description One step of an attempt. */
         AttemptStep: {
@@ -6243,6 +6352,56 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAllCertificateOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status counts and the certificates that need a look. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCertificateOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status counts and the certificates that need a look. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };
