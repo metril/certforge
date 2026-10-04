@@ -171,6 +171,16 @@ func commitStaged(tmp, p string) error {
 	return d.Close()
 }
 
+// requireHTTPS rejects a non-empty agent URL that is not https, so a server
+// response or an edited state.json cannot steer the agent to a cleartext
+// endpoint (Dial and ParseToken apply the same rule).
+func requireHTTPS(u string) error {
+	if u != "" && !strings.HasPrefix(u, "https://") {
+		return fmt.Errorf("agent: agent URL %q is not https", u)
+	}
+	return nil
+}
+
 func loadOrCreateKey(dir string) (*ecdsa.PrivateKey, error) {
 	p := filepath.Join(dir, keyFile)
 	if b, err := os.ReadFile(p); err == nil {
@@ -276,6 +286,9 @@ func LoadIdentity(dir string) (*Identity, error) {
 	}
 	if err := json.Unmarshal(b, &id.State); err != nil {
 		return nil, fmt.Errorf("agent: state.json: %w", err)
+	}
+	if err := requireHTTPS(id.State.AgentURL); err != nil {
+		return nil, err
 	}
 	id.State.ClientID = clientID // the certificate's URI SAN is authoritative, not the stored value
 	if id.State.Grants == nil {
