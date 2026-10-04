@@ -17,6 +17,10 @@ RETURNING *;
 -- name: SetLocalPasswordHash :exec
 UPDATE users SET local_password_hash = sqlc.arg(hash)::text WHERE id = sqlc.arg(id);
 
+-- name: RehashLocalPassword :execrows
+UPDATE users SET local_password_hash = sqlc.arg(new_hash)::text
+WHERE id = sqlc.arg(id) AND local_password_hash = sqlc.arg(old_hash)::text;
+
 -- name: TouchUserLogin :exec
 UPDATE users SET last_login = now() WHERE id = $1;
 

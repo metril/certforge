@@ -17,6 +17,7 @@ import (
 
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
 const hardeningPw = "correct horse battery staple"
@@ -86,6 +87,39 @@ func TestLoginRehashesOldParameters(t *testing.T) {
 	}
 	if resp, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": hardeningPw}, ""); resp.StatusCode != http.StatusOK { //nolint:bodyclose // testEnv.doRaw closes the body
 		t.Fatalf("login after rehash: %d", resp.StatusCode)
+	}
+}
+
+// TestRehashIsCompareAndSwap: a rehash computed from a hash that a password
+// reset has since replaced must not write (A20 race); the normal case does.
+func TestRehashIsCompareAndSwap(t *testing.T) {
+	e := newTestEnv(t)
+	seedAdminPassword(t, e, hardeningPw)
+	ctx := context.Background()
+	admin, err := e.deps.Queries.GetLocalAdmin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := *admin.LocalPasswordHash
+	reset, err := authn.HashPassword("a brand new password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.deps.Queries.SetLocalPasswordHash(ctx, sqlcgen.SetLocalPasswordHashParams{ID: admin.ID, Hash: reset}); err != nil {
+		t.Fatal(err)
+	}
+	rehash, _ := authn.HashPassword(hardeningPw)
+	n, err := e.deps.Queries.RehashLocalPassword(ctx, sqlcgen.RehashLocalPasswordParams{ID: admin.ID, NewHash: rehash, OldHash: stale})
+	if err != nil || n != 0 {
+		t.Fatalf("stale rehash wrote: n=%d err=%v", n, err)
+	}
+	cur, _ := e.deps.Queries.GetLocalAdmin(ctx)
+	if *cur.LocalPasswordHash != reset {
+		t.Fatal("password reset was overwritten")
+	}
+	n, err = e.deps.Queries.RehashLocalPassword(ctx, sqlcgen.RehashLocalPasswordParams{ID: admin.ID, NewHash: rehash, OldHash: reset})
+	if err != nil || n != 1 {
+		t.Fatalf("normal rehash: n=%d err=%v", n, err)
 	}
 }
 

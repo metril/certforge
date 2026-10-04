@@ -138,6 +138,25 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const rehashLocalPassword = `-- name: RehashLocalPassword :execrows
+UPDATE users SET local_password_hash = $1::text
+WHERE id = $2 AND local_password_hash = $3::text
+`
+
+type RehashLocalPasswordParams struct {
+	NewHash string    `json:"new_hash"`
+	ID      uuid.UUID `json:"id"`
+	OldHash string    `json:"old_hash"`
+}
+
+func (q *Queries) RehashLocalPassword(ctx context.Context, arg RehashLocalPasswordParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rehashLocalPassword, arg.NewHash, arg.ID, arg.OldHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setLocalPasswordHash = `-- name: SetLocalPasswordHash :exec
 UPDATE users SET local_password_hash = $1::text WHERE id = $2
 `

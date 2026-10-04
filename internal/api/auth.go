@@ -73,7 +73,10 @@ func (s *Server) rehashPassword(ctx context.Context, id uuid.UUID, stored, pw st
 	}
 	hash, err := authn.HashPassword(pw)
 	if err == nil {
-		err = s.d.Queries.SetLocalPasswordHash(ctx, sqlcgen.SetLocalPasswordHashParams{ID: id, Hash: hash})
+		// Compare-and-swap on the hash that was verified: a password reset
+		// that committed during the verify must not be overwritten. Zero rows
+		// means someone changed the password; nothing to do.
+		_, err = s.d.Queries.RehashLocalPassword(ctx, sqlcgen.RehashLocalPasswordParams{ID: id, NewHash: hash, OldHash: stored})
 	}
 	if err != nil {
 		s.d.Log.Warn("password rehash skipped", "err", err)
