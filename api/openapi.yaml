@@ -3848,6 +3848,7 @@ components:
       properties:
         counts:
           type: object
+          description: Certificates per status over the whole scope.
           required: [active, pending, failed, expired, revoked, total]
           properties:
             active: {type: integer, description: Active certificates.}

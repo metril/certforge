@@ -3225,6 +3225,7 @@ export interface components {
         };
         /** @description Overview numbers and the certificates that need a look. */
         CertificateOverview: {
+            /** @description Certificates per status over the whole scope. */
             counts: {
                 /** @description Active certificates. */
                 active: number;

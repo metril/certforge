@@ -1078,6 +1078,8 @@ type CertificateList struct {
 type CertificateOverview struct {
 	// Beyond Non-revoked certificates expiring after the 90-day horizon.
 	Beyond int `json:"beyond"`
+
+	// Counts Certificates per status over the whole scope.
 	Counts struct {
 		// Active Active certificates.
 		Active int `json:"active"`
