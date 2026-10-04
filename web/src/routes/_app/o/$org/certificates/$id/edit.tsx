@@ -14,7 +14,7 @@ import { denyAllOrgs } from '@/lib/org';
 export const Route = createFileRoute('/_app/o/$org/certificates/$id/edit')({
   beforeLoad: ({ context }) => denyAllOrgs(context),
   loader: async ({ context: { queryClient, org }, params }) => {
-    const cert = await queryClient.ensureQueryData(certificateQuery(org.id, params.id));
+    const cert = await queryClient.fetchQuery(certificateQuery(org.id, params.id));
     if (!cert.managed) throw redirect({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id: params.id, tab: 'overview' } });
     return cert;
   },

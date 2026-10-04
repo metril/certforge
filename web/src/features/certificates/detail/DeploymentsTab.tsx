@@ -17,6 +17,7 @@ import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { ClientWriteTip } from '@/features/clients/detail/ClientWriteTip';
+import { failedWithoutData } from '@/lib/queryState';
 
 const COLS = 'md:grid-cols-[minmax(0,1fr)_minmax(0,112px)_56px_minmax(0,120px)_minmax(0,120px)_minmax(0,120px)_minmax(0,180px)_112px]';
 
@@ -57,7 +58,7 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
   const { data: sites = [] } = useQuery({ ...sitesQuery(orgId), enabled: allowed });
   const redeploy = useRedeployGrant(orgId);
   if (!allowed) return <EmptyState message="Needs the clients:read permission." />;
-  if (q.isError) return <ErrorState message={`Couldn't load deployments. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
+  if (failedWithoutData(q)) return <ErrorState message={`Couldn't load deployments. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
   if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
   if (q.data.length === 0) {
     return (

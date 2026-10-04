@@ -19,6 +19,7 @@ import { LANE_KEYS, expandFor, filterFlow, tracePath, visibleNodeIds, type Flow,
 import { FlowConnectors } from './FlowConnectors';
 import { FlowLane } from './FlowLane';
 import { FlowPathPanel } from './FlowPathPanel';
+import { failedWithoutData } from '@/lib/queryState';
 
 function Skeleton() {
   return (
@@ -167,7 +168,7 @@ export function FlowPage() {
       </>
     );
   }
-  if (q.isError || !flow || !path) {
+  if (failedWithoutData(q) || !flow || !path) {
     return (
       <>
         {header}

@@ -11,6 +11,7 @@ import { actionTone } from '@/features/audit/actions';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { fmtDateTime, relTime } from '@/lib/time';
+import { failedWithoutData } from '@/lib/queryState';
 
 /** Audit events whose resource, details or actor carry this client's id. */
 export function ActivityTab({ orgId, orgSlug, clientId }: { orgId: string; orgSlug: string; clientId: string }) {
@@ -18,7 +19,7 @@ export function ActivityTab({ orgId, orgSlug, clientId }: { orgId: string; orgSl
   const allowed = can(me, 'audit:read', orgId);
   const q = useInfiniteQuery({ ...auditInfinite({ orgId, q: clientId }), enabled: allowed });
   if (!allowed) return <EmptyState message="Needs the audit:read permission." />;
-  if (q.isError) return <ErrorState message={`Couldn't load activity. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
+  if (failedWithoutData(q)) return <ErrorState message={`Couldn't load activity. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
   if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
   const events = q.data.pages.flatMap((p) => p.items);
   const auditLink = (label: string) => (

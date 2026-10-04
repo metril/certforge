@@ -21,6 +21,7 @@ import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { HookSheet } from './HookSheet';
 import { RowActions, UsedBy } from './RowActions';
+import { failedWithoutData } from '@/lib/queryState';
 
 const stickyCol = 'sticky left-0 z-10 bg-panel';
 
@@ -60,7 +61,7 @@ export function HooksPage() {
     <div className="grid gap-4">
       {q.isPending ? (
         <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-      ) : q.isError ? (
+      ) : failedWithoutData(q) ? (
         <ErrorState message={`Couldn't load hooks. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
       ) : hooks.length === 0 ? (
         <EmptyState message="No hooks yet.">{add}</EmptyState>

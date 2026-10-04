@@ -27,6 +27,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { ClientWriteTip } from './ClientWriteTip';
 import { FileCompare } from './FileCompare';
+import { failedWithoutData } from '@/lib/queryState';
 
 type Props = {
   client: Client;
@@ -107,7 +108,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   const redeploying = (g: Grant) => pendingRedeploys.isPending(g.id);
   const redeployRow = (g: Grant) => void pendingRedeploys.track(g.id, redeploy.mutateAsync(g.id));
 
-  if (q.isError) return <ErrorState message={`Couldn't load grants. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
+  if (failedWithoutData(q)) return <ErrorState message={`Couldn't load grants. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
   if (q.isPending) {
     return (
       <Table aria-label="Grants" aria-busy="true" className="table-fixed">

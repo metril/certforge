@@ -24,6 +24,7 @@ import { DAY, fmtDateTime, relTime } from '@/lib/time';
 import { AlertsHeader } from './AlertsLayout';
 import { DeliverySummary } from './DeliveryChip';
 import { EventRow, ResourceLink } from './EventRow';
+import { failedWithoutData } from '@/lib/queryState';
 
 type Range = '24h' | '7d' | '30d';
 const RANGE_DAYS: Record<Range, number> = { '24h': 1, '7d': 7, '30d': 30 };
@@ -179,7 +180,7 @@ export function EventsPage() {
     />
   );
 
-  if (list.isError) {
+  if (failedWithoutData(list)) {
     return (
       <>
         {header}

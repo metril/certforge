@@ -19,6 +19,7 @@ import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { EXPIRING_DAYS, type Tone } from '@/lib/status';
 import { daysUntil, fmtDate, relDays } from '@/lib/time';
+import { failedWithoutData } from '@/lib/queryState';
 
 const STATUS: Record<AgentCA['status'], { label: string; tone: Tone; icon: LucideIcon }> = {
   active: { label: 'Active', tone: 'valid', icon: ShieldCheck },
@@ -41,7 +42,7 @@ export function AgentCaPanel() {
   const [retireTarget, setRetireTarget] = useState<AgentCA | null>(null);
 
   if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
-  if (q.isError) return <ErrorState message={`Couldn't load agent CAs. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
+  if (failedWithoutData(q)) return <ErrorState message={`Couldn't load agent CAs. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
   const { items, listener } = q.data;
   const issuer = items.find((c) => c.id === listener.caId);
   const expiring = listener.notAfter !== null && daysUntil(listener.notAfter) < EXPIRING_DAYS;

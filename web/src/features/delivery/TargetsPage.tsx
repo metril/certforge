@@ -24,6 +24,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { RowActions, UsedBy } from './RowActions';
 import { TargetDetailSheet } from './TargetDetailSheet';
 import { TargetSheet } from './TargetSheet';
+import { failedWithoutData } from '@/lib/queryState';
 
 export function TargetsPage() {
   const org = useOrg();
@@ -97,12 +98,12 @@ export function TargetsPage() {
 
   return (
     <div className="grid gap-4">
-      {metaQ.isError && !q.isPending && !q.isError && (
+      {metaQ.isError && !q.isPending && !failedWithoutData(q) && (
         <ErrorState message={`Couldn't load target types. ${errorMessage(metaQ.error)}`} onRetry={() => void metaQ.refetch()} />
       )}
       {q.isPending ? (
         <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-      ) : q.isError ? (
+      ) : failedWithoutData(q) ? (
         <ErrorState message={`Couldn't load deploy targets. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
       ) : targets.length === 0 ? (
         <EmptyState message="No deploy targets yet.">{add}</EmptyState>

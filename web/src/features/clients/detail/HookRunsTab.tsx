@@ -16,6 +16,7 @@ import { PHASE_LABEL } from '@/lib/clientStatus';
 import { help } from '@/lib/help';
 import { fmtDateTime, fmtDuration, relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { failedWithoutData } from '@/lib/queryState';
 
 const COLS = 'md:grid-cols-[96px_minmax(0,140px)_96px_minmax(0,1fr)_80px_72px_28px]';
 
@@ -62,7 +63,7 @@ function Output({ run }: { run: HookRun }) {
 export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: string; clientId: string; onOpenCertificates: () => void }) {
   const q = useInfiniteQuery(hookRunsInfinite(orgId, clientId));
   const [open, setOpen] = useState<string | null>(null);
-  if (q.isError) return <ErrorState message={`Couldn't load hook runs. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
+  if (failedWithoutData(q)) return <ErrorState message={`Couldn't load hook runs. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
   if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
   const runs = q.data.pages.flatMap((p) => p.items);
   if (runs.length === 0) {
