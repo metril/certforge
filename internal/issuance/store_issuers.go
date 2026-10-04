@@ -376,10 +376,37 @@ func (s *Store) DeleteCA(ctx context.Context, orgID, id uuid.UUID) error {
 	if n > 0 {
 		return &InUseError{Users: n}
 	}
+	if live, err := s.caLiveIssued(ctx, q, id); err != nil {
+		return err
+	} else if live != nil {
+		return live
+	}
 	if _, err := q.DeleteCA(ctx, sqlcgen.DeleteCAParams{ID: id, OrgID: orgID}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// caLiveIssued returns an InUseError when a private CA (localca, vaultpki)
+// has issued versions that are neither expired nor revoked: deleting it would
+// null their ca_id and leave them unrevocable (retire, never delete). ACME
+// CAs revoke through an account, so they are not held by this rule.
+func (s *Store) caLiveIssued(ctx context.Context, q *sqlcgen.Queries, id uuid.UUID) (*InUseError, error) {
+	row, err := q.GetCAByID(ctx, id)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	if row.Type != CATypeLocalCA && row.Type != CATypeVaultPKI {
+		return nil, nil
+	}
+	n, err := q.CountCAIssuedLive(ctx, &id)
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, nil
+	}
+	return &InUseError{Users: n, Reason: fmt.Sprintf("this private CA has issued %d certificate versions that are neither expired nor revoked; revoke them or wait for them to expire first", n)}, nil
 }
 
 // CAEAB returns the decrypted EAB material, or nil when the CA has none.

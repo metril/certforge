@@ -54,6 +54,12 @@ SELECT (
   + (SELECT count(*) FROM issuance_defaults d WHERE d.config->>'caId' = sqlc.arg(id)::uuid::text)
 )::bigint AS users;
 
+-- name: CountCAIssuedLive :one
+-- Issued versions of a CA that are neither expired nor revoked; deleting the
+-- CA would orphan them (ca_id set NULL) and make them unrevocable.
+SELECT count(*)::bigint FROM certificate_versions
+WHERE ca_id = $1 AND revoked_at IS NULL AND not_after > now();
+
 -- name: CreateAccount :one
 INSERT INTO acme_accounts (org_id, ca_id, email, account_key, registration_uri)
 VALUES ($1, $2, $3, $4, $5)

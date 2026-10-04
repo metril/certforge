@@ -810,3 +810,35 @@ func mustJSON(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+// A private CA that issued a version which is neither expired nor revoked
+// cannot be deleted (its versions would lose ca_id and become unrevocable);
+// once the version is revoked or expired the delete goes through.
+func TestDeleteCABlockedByLiveIssuedVersion(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ca, err := f.store.CreateCA(ctx, f.org, CAInput{Name: "Local Root", Type: CATypeLocalCA,
+		Config: map[string]any{"subject": map[string]any{"commonName": "Test Root"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := f.cert(t, []string{"del.example.test"}, nil)
+	var vid uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO certificate_versions
+		(cert_id, serial, not_before, not_after, sha256_fp, key_type, leaf_der, private_key, ca_id)
+		VALUES ($1, 'ab', now() - interval '1 hour', now() + interval '1 hour', 'fp', 'ec256', '\x00', '\x00', $2)
+		RETURNING id`, c.ID, ca.ID).Scan(&vid); err != nil {
+		t.Fatal(err)
+	}
+	var iu *InUseError
+	err = f.store.DeleteCA(ctx, f.org, ca.ID)
+	if !errors.As(err, &iu) || !strings.Contains(iu.Error(), "neither expired nor revoked") {
+		t.Fatalf("err = %v, want in-use with reason", err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE certificate_versions SET revoked_at = now() WHERE id = $1`, vid); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.DeleteCA(ctx, f.org, ca.ID); err != nil {
+		t.Fatalf("delete after revoke: %v", err)
+	}
+}

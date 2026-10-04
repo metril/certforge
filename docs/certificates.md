@@ -19,7 +19,7 @@ Issuers → CAs. Pick a preset or Custom.
 - **Trust bundle**: PEM roots added to the system pool when talking to a private ACME server (Pebble, step-ca, Vault ACME).
 - **Resolvers**: `host` or `host:port` DNS servers used for propagation checks when neither the rule nor the defaults name any.
 - Only a global admin (`cas:write`) adds or edits CAs. In Phase 1 a CA row belongs to one org; shared global CAs arrive in Phase 2.
-- A CA cannot be deleted while accounts, certificates or defaults reference it.
+- A CA cannot be deleted while accounts, certificates or defaults reference it. A private CA (local or Vault) also cannot be deleted while it has issued certificate versions that are neither expired nor revoked: revoke them or let them expire first.
 
 ### External Account Binding (EAB)
 

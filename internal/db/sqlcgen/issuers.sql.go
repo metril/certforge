@@ -26,6 +26,20 @@ func (q *Queries) CountAccountUsers(ctx context.Context, id uuid.UUID) (int64, e
 	return users, err
 }
 
+const countCAIssuedLive = `-- name: CountCAIssuedLive :one
+SELECT count(*)::bigint FROM certificate_versions
+WHERE ca_id = $1 AND revoked_at IS NULL AND not_after > now()
+`
+
+// Issued versions of a CA that are neither expired nor revoked; deleting the
+// CA would orphan them (ca_id set NULL) and make them unrevocable.
+func (q *Queries) CountCAIssuedLive(ctx context.Context, caID *uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countCAIssuedLive, caID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countCAUsers = `-- name: CountCAUsers :one
 SELECT (
     (SELECT count(*) FROM acme_accounts a WHERE a.ca_id = $1::uuid)
