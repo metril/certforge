@@ -157,8 +157,6 @@ func (s *Server) CreateMonitor(ctx context.Context, r gen.CreateMonitorRequestOb
 	switch {
 	case errors.Is(err, monitor.ErrOverCap):
 		return nil, unprocessable("name", "at most 500 monitors per org")
-	case errors.Is(err, pgx.ErrNoRows):
-		return nil, notFound("org %s", r.OrgId)
 	case pgCode(err) == pgUniqueViolation:
 		return nil, conflict("A monitor named %q exists in this org.", in.Name)
 	case pgCode(err) == pgForeignKeyViolation:
