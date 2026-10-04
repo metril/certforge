@@ -11,12 +11,12 @@ RUN npm run build
 FROM scratch AS web-1
 COPY --from=webbuild /src/web/dist /dist
 
-FROM --platform=$BUILDPLATFORM alpine:3.22 AS web-0
+FROM --platform=$BUILDPLATFORM alpine:3.24 AS web-0
 RUN mkdir -p /dist
 
 FROM web-${WITH_WEB} AS web
 
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 ARG WITH_WEB=1
 ARG GO_TAGS=""
 ARG VERSION=dev
