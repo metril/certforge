@@ -62,7 +62,7 @@ export async function exportAudit(f: AuditFilter): Promise<ExportResult> {
   if (error !== undefined || !response.ok || !data) throw ApiError.from(response.status, error);
   const blob = data as Blob;
   saveBlob(blob, filenameFrom(response, 'audit.csv'));
-  const text = await blob.text();
+  const text = await blob.slice(-4096).text();
   const lines = text.split('\n').filter((l) => l.trim() !== '');
   const lastLine = lines[lines.length - 1] ?? '';
   return {
