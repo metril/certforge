@@ -22,6 +22,7 @@ import type { HelpKey } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
+import { usePendingIds } from '@/lib/usePendingIds';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { ClientWriteTip } from './ClientWriteTip';
@@ -59,6 +60,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   const { data: layouts = [] } = useQuery({ ...layoutsQuery(orgId), enabled: canDelivery });
   const { data: targets = [] } = useQuery({ ...deployTargetsQuery(orgId), enabled: canDelivery });
   const redeploy = useRedeployGrant(orgId);
+  const pendingRedeploys = usePendingIds();
   const del = useDeleteGrant(orgId);
   const [removing, setRemoving] = useState<Grant | null>(null);
   const [force, setForce] = useState(false);
@@ -100,9 +102,10 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
         {toggleButton(g)}
       </span>
     );
-  // Only the row actually being redeployed shows as busy; other rows stay
-  // clickable while one redeploy is in flight.
-  const redeploying = (g: Grant) => redeploy.isPending && redeploy.variables === g.id;
+  // Every row with a redeploy in flight shows as busy until its own request
+  // settles; other rows stay clickable.
+  const redeploying = (g: Grant) => pendingRedeploys.isPending(g.id);
+  const redeployRow = (g: Grant) => void pendingRedeploys.track(g.id, redeploy.mutateAsync(g.id));
 
   if (q.isError) return <ErrorState message={`Couldn't load grants. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
   if (q.isPending) {
@@ -162,7 +165,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
           className="size-7"
           disabled={!writable || redeploying(g)}
           aria-label={`Redeploy ${g.certificateName}`}
-          onClick={() => redeploy.mutate(g.id)}
+          onClick={() => redeployRow(g)}
         >
           <RotateCw className="size-3.5" aria-hidden />
         </Button>
@@ -195,7 +198,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
       <div className="flex flex-wrap items-center gap-3 text-xs text-ink-muted">
         {g.deployment?.reportedAt && <span>Reported {relTime(g.deployment.reportedAt)}</span>}
         <ClientWriteTip canWrite={canWrite} revoked={client.status === 'revoked'}>
-          <Button size="sm" variant={attention(g) ? 'default' : 'outline'} disabled={!writable || redeploying(g)} onClick={() => redeploy.mutate(g.id)}>
+          <Button size="sm" variant={attention(g) ? 'default' : 'outline'} disabled={!writable || redeploying(g)} onClick={() => redeployRow(g)}>
             <RotateCw className="size-3.5" aria-hidden />
             Redeploy
           </Button>

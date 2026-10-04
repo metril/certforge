@@ -306,6 +306,59 @@ it('only disables Renew now on the row being renewed', async () => {
   for (const b of within(queue).getAllByRole('button', { name: 'Renew now' }).slice(1)) expect(b).toBeEnabled();
 });
 
+it('keeps every in-flight Renew now row disabled until its own request settles', async () => {
+  const hold: Record<string, () => void> = {};
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), () =>
+      HttpResponse.json({ items: [makeCert({ id: 'c-a', name: 'alpha', status: 'failed', failureCount: 1, lastError: 'x' }), makeCert({ id: 'c-b', name: 'bravo', status: 'failed', failureCount: 1, lastError: 'x' })] }),
+    ),
+    http.post(url('/orgs/org-1/certificates/:id/renew'), async ({ params }) => {
+      await new Promise<void>((r) => { hold[params.id as string] = r; });
+      return new HttpResponse(null, { status: 202 });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  const btn = async (n: string) => within((await within(queue).findByRole('link', { name: n })).closest('li')!).getByRole('button', { name: 'Renew now' });
+  await user.click(await btn('alpha'));
+  await user.click(await btn('bravo'));
+  await waitFor(() => expect(Object.keys(hold)).toHaveLength(2));
+  expect(await btn('alpha')).toBeDisabled();
+  expect(await btn('bravo')).toBeDisabled();
+  hold['c-b']!();
+  await waitFor(async () => expect(await btn('bravo')).toBeEnabled());
+  expect(await btn('alpha')).toBeDisabled();
+  hold['c-a']!();
+  await waitFor(async () => expect(await btn('alpha')).toBeEnabled());
+});
+
+it('keeps every in-flight Check now row disabled until its own request settles', async () => {
+  const hold: Record<string, () => void> = {};
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/monitors'), () =>
+      HttpResponse.json([makeMonitor({ id: 'mon-1', name: 'edge', state: 'mismatch' }), makeMonitor({ id: 'mon-2', name: 'core', state: 'mismatch' })]),
+    ),
+    http.post(url('/orgs/org-1/monitors/:id/check'), async ({ params }) => {
+      await new Promise<void>((r) => { hold[params.id as string] = r; });
+      return HttpResponse.json(makeMonitor({ id: params.id as string, name: params.id === 'mon-1' ? 'edge' : 'core', state: 'mismatch' }));
+    }),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  const btn = async (n: string) => within((await within(queue).findByRole('link', { name: n })).closest('li')!).getByRole('button', { name: 'Check now' });
+  await user.click(await btn('edge'));
+  await user.click(await btn('core'));
+  await waitFor(() => expect(Object.keys(hold)).toHaveLength(2));
+  expect(await btn('edge')).toBeDisabled();
+  expect(await btn('core')).toBeDisabled();
+  hold['mon-2']!();
+  await waitFor(async () => expect(await btn('core')).toBeEnabled());
+  expect(await btn('edge')).toBeDisabled();
+  hold['mon-1']!();
+  await waitFor(async () => expect(await btn('edge')).toBeEnabled());
+});
+
 it('range presets are keyboard buttons that stay in sync with the brush', async () => {
   const rect = { left: 0, top: 0, right: 1000, bottom: 56, width: 1000, height: 56, x: 0, y: 0, toJSON: () => undefined } as DOMRect;
   const { router, user } = renderRoute('/o/acme/overview');

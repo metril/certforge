@@ -17,6 +17,7 @@ import { renewToastHandlers } from '@/lib/renewToast';
 import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
 import type { Tone } from '@/lib/status';
 import { relDays } from '@/lib/time';
+import { usePendingIds } from '@/lib/usePendingIds';
 import { toast } from 'sonner';
 import { attentionItems, upcomingRenewals, usesManualDns, type AttentionKind } from '../attention';
 import { attentionQueue, clientAttentionItems, type ClientAttentionKind } from '../clientAttention';
@@ -57,6 +58,8 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
   const monitors = useQuery({ ...monitorsQuery(org.id), enabled: canMonitors });
   const checkMonitor = useCheckMonitor(org.id);
   const renew = useRenewCertificates(org.id);
+  const checking = usePendingIds();
+  const renewing = usePendingIds();
   const slug = (c: Certificate) => (allOrgs ? slugOf(c.orgId) : org.slug);
   const items = attentionItems(certs, now);
   const others = items.filter((i) => i.kind !== 'manual-dns');
@@ -129,8 +132,8 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={!canCheck || (checkMonitor.isPending && checkMonitor.variables === m.id)}
-                            onClick={() => checkMonitor.mutate(m.id, { onError: (e) => toast.error(errorMessage(e)) })}
+                            disabled={!canCheck || checking.isPending(m.id)}
+                            onClick={() => void checking.track(m.id, checkMonitor.mutateAsync(m.id, { onError: (e) => toast.error(errorMessage(e)) }))}
                           >
                             Check now
                           </Button>
@@ -150,7 +153,7 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
                     </Link>
                     <span className="truncate text-ink-muted">{i.cause}</span>
                     {!allOrgs && can(me, 'certs:issue', org.id) && (
-                      <Button size="sm" variant="outline" disabled={renew.isPending && renew.variables?.[0] === i.cert.id} onClick={() => renew.mutate([i.cert.id], renewToastHandlers(i.cert.name))}>
+                      <Button size="sm" variant="outline" disabled={renewing.isPending(i.cert.id)} onClick={() => void renewing.track(i.cert.id, renew.mutateAsync([i.cert.id], renewToastHandlers(i.cert.name)))}>
                         Renew now
                       </Button>
                     )}
