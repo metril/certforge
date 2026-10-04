@@ -181,8 +181,9 @@ export function FlowPage() {
   return (
     <div
       onKeyDown={(e) => {
-        if (e.key !== 'Escape' || !focus || e.defaultPrevented) return;
-        // Escape inside a text field or an open popover/menu belongs to that control.
+        if (e.key !== 'Escape' || !focus) return;
+        // Escape inside a text field or an open popover/menu belongs to that control. A node's own
+        // tooltip also preventDefaults Escape, so defaultPrevented can't be the test.
         const t = e.target as HTMLElement;
         if (t.closest('input, textarea, select, [role="dialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]')) return;
         setFocus(undefined);
