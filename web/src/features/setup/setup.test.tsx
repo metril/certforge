@@ -112,3 +112,50 @@ it('redirects away from /setup once setup is already complete', async () => {
   const { router } = renderRoute('/setup');
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/overview'));
 });
+
+it('asks for the setup token when the server requires one and sends it', async () => {
+  const state = { authed: false, needsSetup: true };
+  let body: Record<string, unknown> = {};
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: state.needsSetup, tokenRequired: true })),
+    ...authHandlers(state),
+    http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })),
+    http.post(url('/setup/complete'), async ({ request }) => {
+      body = (await request.json()) as Record<string, unknown>;
+      return body.setupToken === 'right-token-123456' ? HttpResponse.json(me) : problem(401, 'Setup token required or invalid');
+    }),
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([])),
+    http.get(url('/meta/ca-presets'), () => HttpResponse.json([])),
+  );
+  const { router, user } = renderRoute('/setup');
+  await user.type(await screen.findByLabelText('Admin password'), PASSWORD);
+  await user.type(screen.getByLabelText('Confirm password'), PASSWORD);
+  // The token field is required before the wizard moves on.
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  await user.type(screen.getByLabelText('Setup token'), 'wrong-token-123456');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.type(screen.getByLabelText('Organization'), 'Acme');
+  await user.click(screen.getByRole('button', { name: 'Finish setup' }));
+
+  // A rejected token returns to its field with an inline error.
+  expect(await screen.findByText('The setup token was not accepted.')).toBeInTheDocument();
+  expect(body.setupToken).toBe('wrong-token-123456');
+  await user.clear(screen.getByLabelText('Setup token'));
+  await user.type(screen.getByLabelText('Setup token'), 'right-token-123456');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.click(screen.getByRole('button', { name: 'Finish setup' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/issuers/cas'));
+});
+
+it('shows no token field when the server does not require one', async () => {
+  server.use(...authHandlers({ authed: false, needsSetup: true }));
+  renderRoute('/setup');
+  await screen.findByLabelText('Admin password');
+  expect(screen.queryByLabelText('Setup token')).not.toBeInTheDocument();
+});

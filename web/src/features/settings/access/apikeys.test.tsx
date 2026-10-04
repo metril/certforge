@@ -243,3 +243,35 @@ it('shows card rows instead of a table below 768px with no horizontal overflow',
   expect(container.querySelector('[class*="min-w-["]')).toBeNull();
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
 });
+
+// H2: under a server maximum lifetime the sheet drops "Never", offers only
+// choices that fit, defaults to the maximum and caps the custom date.
+it('limits expiry choices to the server policy and defaults to the maximum', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+  let body: Record<string, unknown> = {};
+  server.use(
+    http.get(url('/api-keys'), () => HttpResponse.json({ items: [], policy: { maxLifetimeDays: 45, maxActivePerUser: 50 } })),
+    ...authHandlers({ authed: true }),
+    ...handlers((b) => (body = b)),
+  );
+  const { user } = renderRoute('/settings/access?tab=keys');
+  await user.click(await screen.findByRole('button', { name: 'New API key' }));
+  const sheet = await screen.findByRole('dialog', { name: 'New API key' });
+  expect(await within(sheet).findByRole('radio', { name: '45 days' })).toBeChecked();
+  expect(within(sheet).getByRole('radio', { name: '30 days' })).toBeInTheDocument();
+  expect(within(sheet).queryByRole('radio', { name: '90 days' })).not.toBeInTheDocument();
+  expect(within(sheet).queryByRole('radio', { name: 'Never' })).not.toBeInTheDocument();
+  expect(within(sheet).getByText(/at most 45 days/)).toBeInTheDocument();
+
+  await user.click(within(sheet).getByRole('radio', { name: 'Custom' }));
+  await user.type(within(sheet).getByLabelText('Expiry date'), '2027-12-31');
+  expect(within(sheet).getByRole('alert')).toHaveTextContent('Pick a date within 45 days.');
+  expect(within(sheet).getByRole('button', { name: 'Create' })).toBeDisabled();
+
+  await user.click(within(sheet).getByRole('radio', { name: '45 days' }));
+  await user.type(within(sheet).getByLabelText('Name'), 'deploy');
+  await user.click(within(sheet).getByRole('button', { name: 'Create' }));
+  await waitFor(() => expect(body.name).toBe('deploy'));
+  expect(body.expiresAt).toBe(new Date(NOW + 45 * DAY).toISOString());
+});

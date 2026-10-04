@@ -55,11 +55,15 @@ export function SetupWizard() {
   const [step, setStep] = useState(0);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [token, setToken] = useState('');
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState(() => window.location.origin);
   const [orgName, setOrgName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  const status = useQuery(setupStatusQuery);
+  const tokenRequired = status.data?.tokenRequired === true;
   const readiness = useQuery({ ...readinessQuery, enabled: step === 2, refetchInterval: false });
 
   const cleanBase = baseUrl.trim().replace(/\/+$/, '');
@@ -71,7 +75,7 @@ export function SetupWizard() {
     ? [...readiness.data.checks.filter((c) => !c.ok), ...(readiness.data.checks.some((c) => c.name === 'kek') ? [] : [{ name: 'kek' }])]
     : [];
   const canNext = [
-    password.length >= 12 && confirm === password,
+    password.length >= 12 && confirm === password && (!tokenRequired || token !== ''),
     isHttpUrl(cleanBase),
     kekOk,
     orgName.trim() !== '' && SLUG_RE.test(orgSlug),
@@ -79,8 +83,9 @@ export function SetupWizard() {
 
   async function finish() {
     setFinishError(null);
+    setTokenError(null);
     try {
-      await complete.mutateAsync({ adminPassword: password, orgName: orgName.trim(), orgSlug, baseUrl: cleanBase });
+      await complete.mutateAsync({ adminPassword: password, orgName: orgName.trim(), orgSlug, baseUrl: cleanBase, ...(tokenRequired ? { setupToken: token } : {}) });
       toast.success('Setup complete');
       await navigate({ to: '/o/$org/issuers/cas', params: { org: orgSlug }, search: { edit: 'new' } });
     } catch (err) {
@@ -91,10 +96,16 @@ export function SetupWizard() {
         // call in a route guard returns (it only refetches on a cache miss);
         // `setQueryData` makes /login's and /setup's guards see needsSetup:
         // false immediately, without an extra round trip to a 409ing endpoint.
-        qc.setQueryData(setupStatusQuery.queryKey, { needsSetup: false });
+        qc.setQueryData(setupStatusQuery.queryKey, { needsSetup: false, tokenRequired: false });
         await qc.invalidateQueries({ queryKey: setupStatusQuery.queryKey });
         toast.error('Setup was already completed. Sign in instead.');
         await navigate({ to: '/login' });
+        return;
+      }
+      if (err instanceof ApiError && err.status === 401) {
+        // The setup token was missing or wrong: send the person back to its field.
+        setTokenError('The setup token was not accepted.');
+        setStep(0);
         return;
       }
       setFinishError(errorMessage(err));
@@ -119,9 +130,14 @@ export function SetupWizard() {
         >
           {step === 0 && (
             <>
+              {tokenRequired && (
+                <Row id="setup-token" label="Setup token" help="setup.token" error={tokenError}>
+                  <Input id="setup-token" type="password" autoComplete="off" autoFocus value={token} onChange={(e) => { setToken(e.target.value); setTokenError(null); }} />
+                </Row>
+              )}
               <Row id="admin-password" label="Admin password" help="setup.adminPassword"
                 error={password && password.length < 12 ? '12 characters minimum' : null}>
-                <Input id="admin-password" type="password" autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Input id="admin-password" type="password" autoComplete="new-password" autoFocus={!tokenRequired} value={password} onChange={(e) => setPassword(e.target.value)} />
               </Row>
               <Row id="admin-confirm" label="Confirm password" error={confirm && confirm !== password ? 'Passwords differ' : null}>
                 <Input id="admin-confirm" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />

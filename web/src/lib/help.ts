@@ -21,6 +21,7 @@ export const help = {
   },
   'login.breakGlass': { text: 'The local admin password, for when single sign-on is unavailable.' },
   'setup.adminPassword': { text: 'Break-glass login for the local admin. Use at least 12 characters.' },
+  'setup.token': { text: 'This server was started with a setup token (CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE). Enter it to claim the server.', learnMore: 'configuration.md#first-run-setup-wizard' },
   'setup.baseUrl': { text: 'The address people and agents use to reach CertForge. Links in notifications use it.' },
   'setup.kek': {
     text: 'CertForge encrypts private keys with a key from its environment. It must load before setup can finish.',
