@@ -84,17 +84,23 @@ func (f *fakeNotifyInserter) InsertTx(_ context.Context, _ pgx.Tx, args river.Jo
 type fakeMonitorInserter struct {
 	mu    sync.Mutex
 	calls []monitor.CheckArgs
+	// dup lists monitors whose job is reported as skipped (UniqueSkippedAsDuplicate).
+	dup map[uuid.UUID]bool
 }
 
-func (f *fakeMonitorInserter) Insert(_ context.Context, args river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+func (f *fakeMonitorInserter) InsertMany(_ context.Context, params []river.InsertManyParams) ([]*rivertype.JobInsertResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	ca, ok := args.(monitor.CheckArgs)
-	if !ok {
-		return nil, fmt.Errorf("monitor test: unexpected job args %T", args)
+	out := make([]*rivertype.JobInsertResult, len(params))
+	for i, p := range params {
+		ca, ok := p.Args.(monitor.CheckArgs)
+		if !ok {
+			return nil, fmt.Errorf("monitor test: unexpected job args %T", p.Args)
+		}
+		f.calls = append(f.calls, ca)
+		out[i] = &rivertype.JobInsertResult{Job: &rivertype.JobRow{}, UniqueSkippedAsDuplicate: f.dup[ca.MonitorID]}
 	}
-	f.calls = append(f.calls, ca)
-	return &rivertype.JobInsertResult{Job: &rivertype.JobRow{}}, nil
+	return out, nil
 }
 
 func (f *fakeMonitorInserter) ids() []uuid.UUID {

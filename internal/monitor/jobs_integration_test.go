@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/monitor"
@@ -41,6 +43,27 @@ func TestScanEnqueuesDueOnly(t *testing.T) {
 	ids := ins.ids()
 	if len(ids) != 1 || ids[0] != due {
 		t.Fatalf("ids = %v, want [%v]", ids, due)
+	}
+}
+
+// TestScanCountsOnlyNewJobs: InsertMany reports a monitor already queued as
+// a unique-skipped duplicate; EnqueueDueChecks counts only the new jobs.
+func TestScanCountsOnlyNewJobs(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	store := &monitor.Store{Pool: pool, Q: sqlcgen.New(pool)}
+	past := time.Now().Add(-time.Second)
+	a := insertMonitor(t, pool, monitorRow{orgID: org, name: "a", host: "example.test", nextCheckAt: past})
+	insertMonitor(t, pool, monitorRow{orgID: org, name: "b", host: "example.test", nextCheckAt: past})
+	insertMonitor(t, pool, monitorRow{orgID: org, name: "c", host: "example.test", nextCheckAt: past})
+
+	ins := &fakeMonitorInserter{dup: map[uuid.UUID]bool{a: true}}
+	n, err := monitor.EnqueueDueChecks(context.Background(), store, ins, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 || len(ins.ids()) != 3 {
+		t.Fatalf("enqueued = %d of %d submitted, want 2 of 3", n, len(ins.ids()))
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -25,6 +26,13 @@ const maxSummary = 500
 // deploy.Inserter/kek.Inserter).
 type Inserter interface {
 	InsertTx(ctx context.Context, tx pgx.Tx, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+}
+
+// ManyInserter is the optional bulk form of Inserter: when River implements
+// it, EmitBatch enqueues a chunk's delivery jobs in one InsertManyTx
+// (*river.Client does); otherwise it falls back to one InsertTx per job.
+type ManyInserter interface {
+	InsertManyTx(ctx context.Context, tx pgx.Tx, params []river.InsertManyParams) ([]*rivertype.JobInsertResult, error)
 }
 
 // Emitter records a notification_events row (exact-once, by DedupeKey) and
@@ -47,21 +55,10 @@ type Emitter struct {
 // back — a caller-tx rollback then leaves nothing behind, event or job
 // alike (TestEmitInsideCallerTx).
 func (e *Emitter) Emit(ctx context.Context, tx pgx.Tx, ev Event) (bool, error) {
-	if !IsKind(ev.Kind) {
-		return false, fmt.Errorf("notify: unknown event kind %q", ev.Kind)
+	ev, err := prepare(ev)
+	if err != nil {
+		return false, err
 	}
-	// An empty DedupeKey would collapse every empty-key event of this kind
-	// into the first one ever emitted (notification_events.dedupe_key is
-	// UNIQUE) — batch-1 review finding 4.
-	if ev.DedupeKey == "" {
-		return false, errors.New("notify: dedupe key is required")
-	}
-	ev.Severity = SeverityOf(ev.Kind)
-	// Resource.Type is fixed per kind (ADR 0017), never the caller's
-	// choice — batch-1 review finding 4.
-	ev.Resource.Type = ResourceTypeOf(ev.Kind)
-	ev.Summary = truncateUTF8(ev.Summary, maxSummary)
-
 	if tx != nil {
 		return e.emitTx(ctx, tx, ev)
 	}
@@ -81,7 +78,44 @@ func (e *Emitter) Emit(ctx context.Context, tx pgx.Tx, ev Event) (bool, error) {
 	return created, nil
 }
 
+// prepare validates ev and fills the fields the emitter owns: Severity,
+// Resource.Type and a truncated Summary. Shared by Emit and EmitBatch.
+func prepare(ev Event) (Event, error) {
+	if !IsKind(ev.Kind) {
+		return ev, fmt.Errorf("notify: unknown event kind %q", ev.Kind)
+	}
+	// An empty DedupeKey would collapse every empty-key event of this kind
+	// into the first one ever emitted (notification_events.dedupe_key is
+	// UNIQUE) — batch-1 review finding 4.
+	if ev.DedupeKey == "" {
+		return ev, errors.New("notify: dedupe key is required")
+	}
+	ev.Severity = SeverityOf(ev.Kind)
+	// Resource.Type is fixed per kind (ADR 0017), never the caller's
+	// choice — batch-1 review finding 4.
+	ev.Resource.Type = ResourceTypeOf(ev.Kind)
+	ev.Summary = truncateUTF8(ev.Summary, maxSummary)
+	return ev, nil
+}
+
 func (e *Emitter) emitTx(ctx context.Context, tx pgx.Tx, ev Event) (bool, error) {
+	created, jobs, err := e.record(ctx, tx, ev, nil)
+	if err != nil || !created {
+		return false, err
+	}
+	for _, a := range jobs {
+		if _, err := e.River.InsertTx(ctx, tx, a, nil); err != nil {
+			return false, fmt.Errorf("notify: enqueue delivery: %w", err)
+		}
+	}
+	return true, nil
+}
+
+// record inserts the (prepared) event and, unless it was a duplicate, one
+// pending delivery per matching channel, returning the jobs to enqueue for
+// them. match, when non-nil, replaces the per-event channel lookup (the
+// batch path memoises it).
+func (e *Emitter) record(ctx context.Context, tx pgx.Tx, ev Event, match func(sqlcgen.MatchingChannelsParams) ([]uuid.UUID, error)) (bool, []DeliverArgs, error) {
 	q := sqlcgen.New(tx)
 
 	details := ev.Details
@@ -90,7 +124,7 @@ func (e *Emitter) emitTx(ctx context.Context, tx pgx.Tx, ev Event) (bool, error)
 	}
 	detailsJSON, err := json.Marshal(details)
 	if err != nil {
-		return false, fmt.Errorf("notify: encode event details: %w", err)
+		return false, nil, fmt.Errorf("notify: encode event details: %w", err)
 	}
 
 	id, err := q.InsertNotificationEvent(ctx, sqlcgen.InsertNotificationEventParams{
@@ -109,30 +143,33 @@ func (e *Emitter) emitTx(ctx context.Context, tx pgx.Tx, ev Event) (bool, error)
 	// pgx.ErrNoRows, not a constraint-violation error — the normal outcome
 	// for a duplicate, not a database error (TestEmitDuplicateIsNoop).
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
+		return false, nil, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("notify: insert event: %w", err)
+		return false, nil, fmt.Errorf("notify: insert event: %w", err)
 	}
 
-	channelIDs, err := q.MatchingChannels(ctx, sqlcgen.MatchingChannelsParams{
-		OrgID: ev.OrgID, Kind: ev.Kind, Severity: ev.Severity,
-	})
+	mp := sqlcgen.MatchingChannelsParams{OrgID: ev.OrgID, Kind: ev.Kind, Severity: ev.Severity}
+	var channelIDs []uuid.UUID
+	if match != nil {
+		channelIDs, err = match(mp)
+	} else {
+		channelIDs, err = q.MatchingChannels(ctx, mp)
+	}
 	if err != nil {
-		return false, fmt.Errorf("notify: match channels: %w", err)
+		return false, nil, fmt.Errorf("notify: match channels: %w", err)
 	}
 
+	jobs := make([]DeliverArgs, 0, len(channelIDs))
 	for _, chID := range channelIDs {
 		if err := q.InsertNotificationDelivery(ctx, sqlcgen.InsertNotificationDeliveryParams{
 			EventID: id, ChannelID: chID,
 		}); err != nil {
-			return false, fmt.Errorf("notify: insert delivery: %w", err)
+			return false, nil, fmt.Errorf("notify: insert delivery: %w", err)
 		}
-		if _, err := e.River.InsertTx(ctx, tx, DeliverArgs{EventID: id, ChannelID: chID}, nil); err != nil {
-			return false, fmt.Errorf("notify: enqueue delivery: %w", err)
-		}
+		jobs = append(jobs, DeliverArgs{EventID: id, ChannelID: chID})
 	}
-	return true, nil
+	return true, jobs, nil
 }
 
 // truncateUTF8 cuts s to at most maxBytes bytes, trimming back further if
@@ -152,4 +189,113 @@ func truncateUTF8(s string, maxBytes int) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+// emitBatchChunk is how many events EmitBatch commits per transaction.
+const emitBatchChunk = 100
+
+type channelKey struct {
+	org      uuid.UUID
+	hasOrg   bool
+	kind     string
+	severity string
+}
+
+// EmitBatch emits many events like Emit(ctx, nil, ev) each (same
+// validation, dedupe and delivery rows), but one transaction per chunk of
+// emitBatchChunk with a savepoint per event, so one failing event rolls
+// back only itself. The matching-channel lookup is memoised per (org,
+// kind, severity) across the batch and a chunk's delivery jobs are
+// enqueued together at its end. It returns how many events were newly
+// recorded (duplicates are not errors) and the joined errors of the events
+// or chunks that failed; every other event is still committed.
+func (e *Emitter) EmitBatch(ctx context.Context, evs []Event) (int, error) {
+	var errs []error
+	created := 0
+	memo := map[channelKey][]uuid.UUID{}
+	for start := 0; start < len(evs); start += emitBatchChunk {
+		end := min(start+emitBatchChunk, len(evs))
+		n, err := e.emitChunk(ctx, evs[start:end], memo)
+		created += n
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return created, errors.Join(errs...)
+}
+
+func (e *Emitter) emitChunk(ctx context.Context, evs []Event, memo map[channelKey][]uuid.UUID) (int, error) {
+	tx, err := e.Pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var errs []error
+	var jobs []river.InsertManyParams
+	created := 0
+	for _, ev := range evs {
+		ev, err := prepare(ev)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			return 0, errors.Join(append(errs, err)...)
+		}
+		match := func(p sqlcgen.MatchingChannelsParams) ([]uuid.UUID, error) {
+			k := channelKey{kind: p.Kind, severity: p.Severity}
+			if p.OrgID != nil {
+				k.org, k.hasOrg = *p.OrgID, true
+			}
+			if ids, ok := memo[k]; ok {
+				return ids, nil
+			}
+			ids, err := sqlcgen.New(sp).MatchingChannels(ctx, p)
+			if err == nil {
+				memo[k] = ids
+			}
+			return ids, err
+		}
+		ok, args, err := e.record(ctx, sp, ev, match)
+		if err != nil {
+			_ = sp.Rollback(ctx)
+			errs = append(errs, err)
+			continue
+		}
+		if err := sp.Commit(ctx); err != nil {
+			return 0, errors.Join(append(errs, err)...)
+		}
+		if ok {
+			created++
+		}
+		for _, a := range args {
+			jobs = append(jobs, river.InsertManyParams{Args: a})
+		}
+	}
+	if err := e.enqueueMany(ctx, tx, jobs); err != nil {
+		return 0, errors.Join(append(errs, err)...)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, errors.Join(append(errs, err)...)
+	}
+	return created, errors.Join(errs...)
+}
+
+func (e *Emitter) enqueueMany(ctx context.Context, tx pgx.Tx, jobs []river.InsertManyParams) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	if m, ok := e.River.(ManyInserter); ok {
+		if _, err := m.InsertManyTx(ctx, tx, jobs); err != nil {
+			return fmt.Errorf("notify: enqueue deliveries: %w", err)
+		}
+		return nil
+	}
+	for _, j := range jobs {
+		if _, err := e.River.InsertTx(ctx, tx, j.Args, j.InsertOpts); err != nil {
+			return fmt.Errorf("notify: enqueue delivery: %w", err)
+		}
+	}
+	return nil
 }
