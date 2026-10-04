@@ -63,7 +63,7 @@ func validName(n string) error {
 			return fmt.Errorf("%q has an invalid label %q", n, label)
 		}
 		for _, c := range label {
-			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
 				return fmt.Errorf("%q has an invalid character %q", n, c)
 			}
 		}

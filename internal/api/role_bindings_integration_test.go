@@ -299,7 +299,7 @@ func TestConcurrentAdminBindingDeletes(t *testing.T) {
 	ready.Wait()
 	close(start)
 	wg.Wait()
-	if !(codes[0] == http.StatusNoContent && codes[1] == http.StatusConflict) && !(codes[0] == http.StatusConflict && codes[1] == http.StatusNoContent) {
+	if (codes[0] != http.StatusNoContent || codes[1] != http.StatusConflict) && (codes[0] != http.StatusConflict || codes[1] != http.StatusNoContent) {
 		t.Fatalf("codes %v", codes)
 	}
 	var n int

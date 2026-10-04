@@ -60,7 +60,7 @@ func validZone(z string) error {
 			return fmt.Errorf("empty label")
 		}
 		for _, c := range label {
-			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
 				return fmt.Errorf("'*' is only allowed as the leftmost label, and names use letters, digits, '-' and '_'")
 			}
 		}

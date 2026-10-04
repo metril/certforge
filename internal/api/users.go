@@ -36,7 +36,7 @@ func (s *Server) ListUsers(ctx context.Context, _ gen.ListUsersRequestObject) (g
 	out := make([]gen.UserDetail, 0, len(users))
 	for _, u := range users {
 		d := userDetail(u)
-		if limited && !(p.Kind == authn.KindUser && u.ID == p.UserID) {
+		if limited && (p.Kind != authn.KindUser || u.ID != p.UserID) {
 			d.OidcIssuer, d.OidcSubject, d.LastLogin, d.Groups = nil, nil, nil, []string{}
 		}
 		out = append(out, d)
