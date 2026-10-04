@@ -44,6 +44,9 @@ type UploadInput struct {
 	PrivateKeyPEM  []byte
 	PKCS12         []byte
 	Password       string
+	// AllowOlder lets UploadVersion replace the current version with a leaf
+	// that expires earlier.
+	AllowOlder bool
 }
 
 // ParseUpload decodes in into canonical Issued material and its key type,
@@ -379,6 +382,9 @@ func (s *Service) UploadVersion(ctx context.Context, orgID, certID uuid.UUID, in
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err
 	}
+	if iss.NotBefore.After(time.Now()) {
+		return Certificate{}, certstore.Version{}, &ValidationError{"certificatePem", "certificate is not valid yet (notBefore " + iss.NotBefore.UTC().Format(time.RFC3339) + ")"}
+	}
 	status := uploadStatus(iss)
 
 	tx, err := s.Store.Begin(ctx)
@@ -392,6 +398,16 @@ func (s *Service) UploadVersion(ctx context.Context, orgID, certID uuid.UUID, in
 	}
 	if cur.Managed {
 		return Certificate{}, certstore.Version{}, &ConflictError{Msg: "certificate is managed by CertForge; upload a version only for an unmanaged certificate"}
+	}
+	if !in.AllowOlder && cur.CurrentVersionID != nil {
+		old, err := s.Certs.Get(ctx, certID, *cur.CurrentVersionID)
+		if err != nil {
+			return Certificate{}, certstore.Version{}, err
+		}
+		if iss.NotAfter.Before(old.NotAfter) {
+			return Certificate{}, certstore.Version{}, &ValidationError{"allowOlder", "certificate expires " + iss.NotAfter.UTC().Format(time.RFC3339) +
+				", before the current version (" + old.NotAfter.UTC().Format(time.RFC3339) + "); set allowOlder to replace it anyway"}
+		}
 	}
 	if len(iss.PrivateKeyPKCS8) == 0 && s.KeylessGrantHook != nil {
 		needsKey, err := s.KeylessGrantHook(ctx, s.Store.q.WithTx(tx), certID)

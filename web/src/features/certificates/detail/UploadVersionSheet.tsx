@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useUploadVersion } from '@/api/queries/certificates';
 import { HelpTip } from '@/components/HelpTip';
+import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import { UploadFields, type UploadFieldErrors } from '@/features/certificates/upload/UploadFields';
@@ -21,7 +22,10 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
   const [value, setValue] = useState<UploadValue>(emptyUploadValue);
   const [fieldErrors, setFieldErrors] = useState<UploadFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const dirty = useDirty({ ...value, file: value.file?.name ?? null });
+  // Offered only once the server refuses an older certificate.
+  const [olderNote, setOlderNote] = useState<string | null>(null);
+  const [allowOlder, setAllowOlder] = useState(false);
+  const dirty = useDirty({ ...value, file: value.file?.name ?? null, allowOlder });
 
   const ready = value.format === 'pem' ? value.certificatePem.trim() !== '' : !!value.file && !p12TooLarge(value.file);
 
@@ -30,7 +34,7 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
     setFormError(null);
     if (!ready) return;
     try {
-      await upload.mutateAsync(await toUploadBody(value));
+      await upload.mutateAsync({ ...(await toUploadBody(value)), ...(allowOlder ? { allowOlder: true } : {}) });
       toast.success('New version uploaded');
       guard.close();
     } catch (e) {
@@ -39,6 +43,10 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
       // needing this certificate's key can't take a keyless version — either
       // way the server's own message names the reason, so `conflict` (like
       // any field this sheet doesn't render) falls through to the form alert.
+      if (outcome.kind === 'field' && outcome.field === 'allowOlder') {
+        setOlderNote(outcome.message);
+        return;
+      }
       if (outcome.kind === 'field' && isUploadFieldName(outcome.field)) {
         setFieldErrors({ [outcome.field]: outcome.message });
         return;
@@ -57,6 +65,14 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
         </SheetHeader>
         <div className="grid gap-5 px-4">
           <UploadFields value={value} onChange={setValue} errors={fieldErrors} disabled={upload.isPending} />
+          {olderNote && (
+            <div className="grid gap-2">
+              <p role="alert" className="text-sm">
+                {olderNote}
+              </p>
+              <SwitchField id="upload-allow-older" label="Allow an older certificate" help="cert.allowOlder" checked={allowOlder} onCheckedChange={setAllowOlder} disabled={upload.isPending} />
+            </div>
+          )}
           {formError && (
             <p role="alert" className="text-sm">
               {formError}

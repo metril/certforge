@@ -1249,7 +1249,8 @@ paths:
       tags: [certificates]
       summary: Add an uploaded version to an unmanaged certificate
       description: >-
-        Needs certs:write. 409 when the certificate is managed. Recorded as
+        Needs certs:write. 409 when the certificate is managed. 422 when the leaf is not valid yet,
+        or expires before the current version unless allowOlder is true. Recorded as
         certificate.version_uploaded in the audit log.
       requestBody:
         required: true
@@ -3871,6 +3872,7 @@ components:
         privateKeyPem: {type: string, writeOnly: true, description: PEM private key matching certificatePem; omit for a keyless version.}
         pkcs12Base64: {type: string, writeOnly: true, format: byte, description: "Base64 PKCS#12 bundle (certificate, chain and optionally a key)."}
         password: {type: string, writeOnly: true, description: Password for pkcs12Base64; omit if it has none.}
+        allowOlder: {type: boolean, description: "Accept a leaf that expires before the current version (a rollback). Without it such an upload is a 422 naming allowOlder."}
     ImportSource:
       type: string
       enum: [acmesh, certbot]

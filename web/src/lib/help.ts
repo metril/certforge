@@ -165,6 +165,7 @@ export const help = {
     learnMore: 'certificates.md#unmanaged-certificates',
   },
   'cert.renewUnmanaged': { text: "Managed externally, so CertForge doesn't renew or edit it. Upload a new version instead." },
+  'cert.allowOlder': { text: 'The uploaded certificate expires before the current version. Turn this on to replace it anyway, for example to roll back.' },
   'cert.uploadVersion': { text: 'Becomes the current version. Grants deploy it on their next sync.' },
   'cert.ari': {
     text: "The CA's suggested renewal window. CertForge renews inside it when that is earlier.",

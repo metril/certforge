@@ -951,7 +951,7 @@ export interface paths {
         put?: never;
         /**
          * Add an uploaded version to an unmanaged certificate
-         * @description Needs certs:write. 409 when the certificate is managed. Recorded as certificate.version_uploaded in the audit log.
+         * @description Needs certs:write. 409 when the certificate is managed. 422 when the leaf is not valid yet, or expires before the current version unless allowOlder is true. Recorded as certificate.version_uploaded in the audit log.
          */
         post: operations["uploadCertificateVersion"];
         delete?: never;
@@ -3268,6 +3268,8 @@ export interface components {
             pkcs12Base64?: string;
             /** @description Password for pkcs12Base64; omit if it has none. */
             password?: string;
+            /** @description Accept a leaf that expires before the current version (a rollback). Without it such an upload is a 422 naming allowOlder. */
+            allowOlder?: boolean;
         };
         /**
          * @description Tool whose on-disk layout the archive was detected as.

@@ -1070,6 +1070,9 @@ type CertificateVersionSource string
 
 // CertificateVersionUpload A version to add to an existing unmanaged certificate; the same shape as CertificateUpload without a name. 409 when the certificate is managed.
 type CertificateVersionUpload struct {
+	// AllowOlder Accept a leaf that expires before the current version (a rollback). Without it such an upload is a 422 naming allowOlder.
+	AllowOlder *bool `json:"allowOlder,omitempty"`
+
 	// CertificatePem PEM leaf certificate, optionally followed by its chain.
 	CertificatePem *string `json:"certificatePem,omitempty"`
 
