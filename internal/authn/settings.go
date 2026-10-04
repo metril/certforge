@@ -34,11 +34,16 @@ const authSchema = `{
     "sessionTtlHours": {"type": "integer", "title": "Session lifetime (hours)", "description": "How long a sign-in lasts. Applies to new sessions.", "minimum": 1, "maximum": 720, "default": 12},
     "trustedProxies": {"type": "array", "title": "Trusted proxies", "description": "Addresses or CIDRs of reverse proxies whose X-Forwarded-For is believed.", "items": {"type": "string"}, "default": [], "examples": [["10.0.0.0/8"]]},
     "loginRatePerMinute": {"type": "integer", "title": "Login rate limit (per minute)", "description": "Login attempts allowed per client address per minute. 0 disables the limit.", "minimum": 0, "default": 10},
-    "loginBurst": {"type": "integer", "title": "Login rate limit burst", "description": "Login attempts a client may make in a single burst before the per-minute rate applies.", "minimum": 1, "default": 5}
+    "loginBurst": {"type": "integer", "title": "Login rate limit burst", "description": "Login attempts a client may make in a single burst before the per-minute rate applies.", "minimum": 1, "default": 5},
+    "apiKeyMaxLifetimeDays": {"type": "integer", "title": "API key maximum lifetime (days)", "description": "Longest lifetime a new API key may have; an expiry is then required. 0 means unlimited. Existing keys are unaffected.", "minimum": 0, "maximum": 3650, "default": 0},
+    "apiKeyMaxActivePerUser": {"type": "integer", "title": "Active API keys per user", "description": "Most active keys one user may hold; creating more is refused. 0 means unlimited.", "minimum": 0, "maximum": 100000, "default": 50}
   }
 }`
 
-const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5}`
+// DefaultAPIKeyMaxActive is the default per-user active API key cap.
+const DefaultAPIKeyMaxActive = 50
+
+const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5,"apiKeyMaxLifetimeDays":0,"apiKeyMaxActivePerUser":50}`
 
 // AuthSettings is the decoded authentication section plus its secret.
 type AuthSettings struct {
@@ -51,10 +56,14 @@ type AuthSettings struct {
 	TrustedProxies  []string `json:"trustedProxies"`
 	// LoginRatePerMinute is the per-client login attempt limit; <= 0 disables
 	// the limit (matches Limiter's own semantics).
-	LoginRatePerMinute int    `json:"loginRatePerMinute"`
-	LoginBurst         int    `json:"loginBurst"`
-	ClientSecret       string `json:"-"`
-	proxies            []netip.Prefix
+	LoginRatePerMinute int `json:"loginRatePerMinute"`
+	LoginBurst         int `json:"loginBurst"`
+	// APIKeyMaxLifetimeDays caps a new key's lifetime (0 unlimited);
+	// APIKeyMaxActivePerUser caps one user's active keys (0 unlimited).
+	APIKeyMaxLifetimeDays  int    `json:"apiKeyMaxLifetimeDays"`
+	APIKeyMaxActivePerUser int    `json:"apiKeyMaxActivePerUser"`
+	ClientSecret           string `json:"-"`
+	proxies                []netip.Prefix
 }
 
 // LogValue redacts ClientSecret so AuthSettings is safe to log.
@@ -282,7 +291,9 @@ func NewSettingsSource(store *settings.Store, reg *settings.Registry) (*Settings
 		if err != nil {
 			return AuthSettings{}, err
 		}
-		var st AuthSettings
+		// A section stored before the key cap existed has no such field;
+		// start from its default rather than reading the absence as unlimited.
+		st := AuthSettings{APIKeyMaxActivePerUser: DefaultAPIKeyMaxActive}
 		if err := json.Unmarshal(raw, &st); err != nil {
 			return AuthSettings{}, fmt.Errorf("authn: decode settings: %w", err)
 		}

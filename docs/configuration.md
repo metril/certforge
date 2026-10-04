@@ -33,6 +33,8 @@ CertForge is configured from the web UI. The environment only carries what the s
 | `CF_KEK_PREVIOUS_VAULT_SECRET_ID_FILE` | see above | – | Path to a file holding its secret id |
 | `CF_LISTEN_HTTP` | no | `:8080` | UI and API listener |
 | `CF_LISTEN_AGENT` | no | `:8443` | Agent listener: TLS with agent client certificates, serves only `/agent/v1/*`. Must be reached directly or through TCP/TLS passthrough, never a TLS-terminating proxy. |
+| `CF_SETUP_TOKEN` | no | – | Optional first-run setup token (at least 16 characters). When set, the setup wizard asks for it and `POST /setup/complete` returns 401 without it. Unset means setup needs no token |
+| `CF_SETUP_TOKEN_FILE` | no | – | Path to a file holding the setup token (whitespace trimmed); set only one of the two. Never logged |
 | `CF_BASE_URL` | no | – | Public URL. The setup wizard stores its own value in Settings → General, which takes precedence |
 | `CF_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` |
 | `CF_OIDC_ALLOW_INSECURE_ISSUER` | no | `false` | `true` lets Settings → Authentication accept a plain `http://` OIDC issuer on a non-loopback host. Without it, `http://` is accepted only for `localhost`, `127.0.0.0/8` and `::1`. For dev and test stacks only. |
@@ -84,6 +86,8 @@ Rendered from the server's settings schema: base URL and other server-wide value
 | Trusted proxies | Addresses or CIDRs of reverse proxies. `X-Forwarded-For` is believed only from these; the audit log and the login rate limit use the resulting client address. |
 | Login rate limit (per minute) | Login attempts allowed per client address per minute (default 10). 0 disables the limit. |
 | Login rate limit burst | Login attempts a client may make in a single burst before the per-minute rate applies (default 5, minimum 1). |
+| API key maximum lifetime (days) | Longest lifetime a new API key may have; an expiry is then required. 0 (default) is unlimited. Existing keys are unaffected. |
+| Active API keys per user | Most active keys one user may hold (default 50, 0 unlimited); creating more returns 409. The key list reports both limits in `policy`. |
 | Group mappings | Group-to-role bindings, edited on this page below the form. They are role bindings with subject type oidc_group, also listed under Settings → Access. |
 
 **Test connection** fetches the issuer's discovery document and signing keys without logging in.

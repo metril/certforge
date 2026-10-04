@@ -23,3 +23,7 @@ WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 mi
 
 -- name: ListRoleBindingsForAPIKey :many
 SELECT * FROM role_bindings WHERE subject_type = 'apikey' AND subject = $1 ORDER BY created_at, id;
+
+-- name: CountActiveAPIKeysByCreator :one
+SELECT count(*) FROM api_keys
+WHERE created_by = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now());

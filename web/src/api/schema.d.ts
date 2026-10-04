@@ -2505,6 +2505,8 @@ export interface components {
         SetupStatus: {
             /** @description True until POST /setup/complete succeeds. */
             needsSetup: boolean;
+            /** @description True when the server was started with a setup token, which POST /setup/complete must then carry in setupToken. */
+            tokenRequired: boolean;
         };
         /** @description First-run wizard input. */
         SetupRequest: {
@@ -2519,6 +2521,11 @@ export interface components {
             orgSlug: string;
             /** @description Public URL of this CertForge instance, for example https://certs.example.com. */
             baseUrl: string;
+            /**
+             * Format: password
+             * @description The server's setup token (CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE). Required only when status.tokenRequired is true; a missing or wrong token gives 401.
+             */
+            setupToken?: string;
         };
         /**
          * @description CA preset code; custom takes any directory URL.
@@ -3484,6 +3491,15 @@ export interface components {
         ApiKeyList: {
             /** @description Keys */
             items: components["schemas"]["ApiKey"][];
+            /** @description The server's key policy, so a creator without settings access can still honour it. */
+            policy: components["schemas"]["ApiKeyPolicy"];
+        };
+        /** @description Limits enforced when an API key is created (Settings, Authentication). */
+        ApiKeyPolicy: {
+            /** @description Longest allowed key lifetime in days; 0 means unlimited */
+            maxLifetimeDays: number;
+            /** @description Most active (not revoked */
+            maxActivePerUser: number;
         };
         /**
          * @description What a binding's subject names.

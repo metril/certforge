@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/authn"
 )
 
@@ -49,6 +50,49 @@ func TestSetupHTTP(t *testing.T) {
 	_, body = e.do(http.MethodGet, "/api/v1/setup/status", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
 	if !strings.Contains(string(body), `"needsSetup":false`) {
 		t.Fatalf("status after %s", body)
+	}
+}
+
+func TestSetupToken(t *testing.T) {
+	const tok = "0123456789abcdef-token"
+	e := newTestEnvOpts(t, func(d *api.Deps) { d.Config.SetupToken = tok })
+	if _, body := e.do(http.MethodGet, "/api/v1/setup/status", nil, ""); !strings.Contains(string(body), `"tokenRequired":true`) { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("status %s", body)
+	}
+	in := map[string]string{"adminPassword": "correct horse battery", "orgName": "Home", "orgSlug": "home", "baseUrl": "http://example.test"}
+	if resp, _ := e.do(http.MethodPost, "/api/v1/setup/complete", in, ""); resp.StatusCode != http.StatusUnauthorized { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("missing token: %d", resp.StatusCode)
+	}
+	in["setupToken"] = "wrong-wrong-wrong-wrong"
+	if resp, _ := e.do(http.MethodPost, "/api/v1/setup/complete", in, ""); resp.StatusCode != http.StatusUnauthorized { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("wrong token: %d", resp.StatusCode)
+	}
+	if _, body := e.do(http.MethodGet, "/api/v1/setup/status", nil, ""); !strings.Contains(string(body), `"needsSetup":true`) { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("a rejected token must not complete setup: %s", body)
+	}
+	in["setupToken"] = tok
+	if resp, body := e.do(http.MethodPost, "/api/v1/setup/complete", in, ""); resp.StatusCode != http.StatusOK { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("right token: %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestSetupStatusWithoutToken(t *testing.T) {
+	e := newTestEnv(t)
+	if _, body := e.do(http.MethodGet, "/api/v1/setup/status", nil, ""); !strings.Contains(string(body), `"tokenRequired":false`) { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("status %s", body)
+	}
+}
+
+func TestSetupRateLimited(t *testing.T) {
+	e := newTestEnvOpts(t, func(d *api.Deps) { d.LoginLimiter = nil })
+	bad := map[string]string{"adminPassword": "short", "orgName": "Home", "orgSlug": "home", "baseUrl": "http://example.test"}
+	for i := 0; i < 5; i++ {
+		if resp, _ := e.do(http.MethodPost, "/api/v1/setup/complete", bad, ""); resp.StatusCode != http.StatusUnprocessableEntity { //nolint:bodyclose // testEnv.doRaw closes the body
+			t.Fatalf("attempt %d: %d", i+1, resp.StatusCode)
+		}
+	}
+	if resp, _ := e.do(http.MethodPost, "/api/v1/setup/complete", bad, ""); resp.StatusCode != http.StatusTooManyRequests { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("6th: %d", resp.StatusCode)
 	}
 }
 

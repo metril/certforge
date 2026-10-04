@@ -12,6 +12,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const countActiveAPIKeysByCreator = `-- name: CountActiveAPIKeysByCreator :one
+SELECT count(*) FROM api_keys
+WHERE created_by = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+`
+
+func (q *Queries) CountActiveAPIKeysByCreator(ctx context.Context, createdBy uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveAPIKeysByCreator, createdBy)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAPIKey = `-- name: CreateAPIKey :one
 INSERT INTO api_keys (name, prefix, secret_hash, scopes, org_id, created_by, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, prefix, secret_hash, scopes, org_id, created_by, expires_at, last_used_at, revoked_at, created_at

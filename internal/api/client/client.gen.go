@@ -592,6 +592,18 @@ type ApiKeyInput struct {
 type ApiKeyList struct {
 	// Items Keys
 	Items []ApiKey `json:"items"`
+
+	// Policy The server's key policy, so a creator without settings access can still honour it.
+	Policy ApiKeyPolicy `json:"policy"`
+}
+
+// ApiKeyPolicy Limits enforced when an API key is created (Settings, Authentication).
+type ApiKeyPolicy struct {
+	// MaxActivePerUser Most active (not revoked
+	MaxActivePerUser int `json:"maxActivePerUser"`
+
+	// MaxLifetimeDays Longest allowed key lifetime in days; 0 means unlimited
+	MaxLifetimeDays int `json:"maxLifetimeDays"`
 }
 
 // ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
@@ -2764,12 +2776,18 @@ type SetupRequest struct {
 
 	// OrgSlug URL-safe identifier of the first org.
 	OrgSlug string `json:"orgSlug"`
+
+	// SetupToken The server's setup token (CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE). Required only when status.tokenRequired is true; a missing or wrong token gives 401.
+	SetupToken *string `json:"setupToken,omitempty"`
 }
 
 // SetupStatus First-run state.
 type SetupStatus struct {
 	// NeedsSetup True until POST /setup/complete succeeds.
 	NeedsSetup bool `json:"needsSetup"`
+
+	// TokenRequired True when the server was started with a setup token, which POST /setup/complete must then carry in setupToken.
+	TokenRequired bool `json:"tokenRequired"`
 }
 
 // Severity How serious an event is.

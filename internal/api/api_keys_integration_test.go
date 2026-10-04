@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -101,6 +103,74 @@ func TestAPIKeyLastUsedThrottled(t *testing.T) {
 	e.doBearer(k.Token, http.MethodGet, "/api/v1/orgs", nil) //nolint:bodyclose // doClient closes the body
 	if lastUsed() != nil {
 		t.Fatal("in-process guard: a second use within a minute wrote again")
+	}
+}
+
+func putAuthSettings(t *testing.T, e *testEnv, csrf string, body map[string]any) {
+	t.Helper()
+	if resp, out := e.do(http.MethodPut, "/api/v1/settings/authentication", body, csrf); resp.StatusCode != http.StatusOK { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("put settings: %d %s", resp.StatusCode, out)
+	}
+}
+
+// TestAPIKeyPolicy covers H2: a maximum lifetime makes expiresAt required and
+// bounded, the per-user active cap answers 409, and the list exposes the policy.
+func TestAPIKeyPolicy(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	old := createKey(t, e, e.client, csrf, map[string]any{"name": "old", "scopes": []string{"certs:read"}}, http.StatusCreated)
+	putAuthSettings(t, e, csrf, map[string]any{"apiKeyMaxLifetimeDays": 30, "apiKeyMaxActivePerUser": 3})
+
+	_, body := e.doClient(e.client, http.MethodGet, "/api/v1/api-keys", nil, nil) //nolint:bodyclose // doClient closes the body
+	var list struct {
+		Policy struct{ MaxLifetimeDays, MaxActivePerUser int }
+	}
+	if json.Unmarshal(body, &list) != nil || list.Policy.MaxLifetimeDays != 30 || list.Policy.MaxActivePerUser != 3 {
+		t.Fatalf("policy %s", body)
+	}
+	soon := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+	far := time.Now().Add(40 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	createKey(t, e, e.client, csrf, map[string]any{"name": "a", "scopes": []string{"certs:read"}}, http.StatusUnprocessableEntity)
+	createKey(t, e, e.client, csrf, map[string]any{"name": "a", "scopes": []string{"certs:read"}, "expiresAt": far}, http.StatusUnprocessableEntity)
+	createKey(t, e, e.client, csrf, map[string]any{"name": "a", "scopes": []string{"certs:read"}, "expiresAt": soon}, http.StatusCreated)
+	createKey(t, e, e.client, csrf, map[string]any{"name": "b", "scopes": []string{"certs:read"}, "expiresAt": soon}, http.StatusCreated)
+	// "old" counts: 3 active keys now, the cap is 3.
+	createKey(t, e, e.client, csrf, map[string]any{"name": "c", "scopes": []string{"certs:read"}, "expiresAt": soon}, http.StatusConflict)
+	// Existing keys keep working: enforcement is at creation only.
+	if resp, _ := e.doBearer(old.Token, http.MethodGet, "/api/v1/orgs", nil); resp.StatusCode != http.StatusOK { //nolint:bodyclose // doClient closes the body
+		t.Fatalf("old never-expiring key: %d", resp.StatusCode)
+	}
+}
+
+// TestAPIKeyCapConcurrent: concurrent creates at cap-1 let exactly one through.
+func TestAPIKeyCapConcurrent(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, _ := e.seedAdminSession()
+	putAuthSettings(t, e, csrf, map[string]any{"apiKeyMaxActivePerUser": 2})
+	createKey(t, e, e.client, csrf, map[string]any{"name": "first", "scopes": []string{"certs:read"}}, http.StatusCreated)
+	var wg sync.WaitGroup
+	codes := make(chan int, 6)
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, _ := e.doClient(e.client, http.MethodPost, "/api/v1/api-keys", map[string]any{"name": "n", "scopes": []string{"certs:read"}}, http.Header{"X-Csrf-Token": {csrf}}) //nolint:bodyclose // doClient closes the body
+			codes <- resp.StatusCode
+		}()
+	}
+	wg.Wait()
+	close(codes)
+	created, conflicts := 0, 0
+	for c := range codes {
+		switch c {
+		case http.StatusCreated:
+			created++
+		case http.StatusConflict:
+			conflicts++
+		}
+	}
+	if created != 1 || conflicts != 5 {
+		t.Fatalf("created %d conflicts %d, want 1 and 5", created, conflicts)
 	}
 }
 

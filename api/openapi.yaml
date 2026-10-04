@@ -3278,11 +3278,14 @@ components:
     SetupStatus:
       type: object
       description: First-run state.
-      required: [needsSetup]
+      required: [needsSetup, tokenRequired]
       properties:
         needsSetup:
           type: boolean
           description: True until POST /setup/complete succeeds.
+        tokenRequired:
+          type: boolean
+          description: True when the server was started with a setup token, which POST /setup/complete must then carry in setupToken.
     SetupRequest:
       type: object
       description: First-run wizard input.
@@ -3305,6 +3308,11 @@ components:
         baseUrl:
           type: string
           description: Public URL of this CertForge instance, for example https://certs.example.com.
+        setupToken:
+          type: string
+          format: password
+          maxLength: 256
+          description: The server's setup token (CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE). Required only when status.tokenRequired is true; a missing or wrong token gives 401.
     CAPresetCode:
       type: string
       description: CA preset code; custom takes any directory URL.
@@ -4008,9 +4016,20 @@ components:
     ApiKeyList:
       type: object
       description: API keys.
-      required: [items]
+      required: [items, policy]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/ApiKey"}, description: Keys, newest first.}
+        policy:
+          description: The server's key policy, so a creator without settings access can still honour it.
+          allOf:
+            - $ref: "#/components/schemas/ApiKeyPolicy"
+    ApiKeyPolicy:
+      type: object
+      description: Limits enforced when an API key is created (Settings, Authentication).
+      required: [maxLifetimeDays, maxActivePerUser]
+      properties:
+        maxLifetimeDays: {type: integer, minimum: 0, description: Longest allowed key lifetime in days; 0 means unlimited, and an expiry is then optional.}
+        maxActivePerUser: {type: integer, minimum: 0, description: Most active (not revoked, not expired) keys one user may hold; 0 means unlimited.}
     SubjectType:
       type: string
       enum: [user, oidc_group, apikey]

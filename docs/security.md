@@ -57,7 +57,7 @@ External monitors (`GET`-free TLS handshakes against an operator-configured `hos
 - Sessions are server-side rows. The `cf_session` cookie holds a random 256-bit token. The database stores only its SHA-256. The cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` when the base URL is https, the request came over TLS, or the request came from a trusted proxy (Settings → Authentication → Trusted proxies) with `X-Forwarded-Proto: https`. Lifetime is Settings → Authentication → Session lifetime (default 12 hours). Expired sessions are rejected and purged hourly.
 - Every session has its own CSRF token, returned by `GET /api/v1/auth/me`. POST, PUT, PATCH, and DELETE with a session must send the session's CSRF token in X-CSRF-Token, except on public routes (login, setup), which accept a stale session cookie without it. Request bodies must be `application/json` (415 otherwise), so a cross-site form cannot reach even public endpoints such as login and setup.
 - A new login (password or OIDC) revokes the user's other sessions (audited as session.revoked).
-- Password logins, the OIDC start and callback, and first-run setup are limited per client address (Settings → Authentication → Login rate limit, defaults 10 a minute with burst 5; 0 disables it), IPv6 grouped by /64, in memory; beyond that the local login API returns 429 with Retry-After, while the OIDC start and callback (browser navigations) instead redirect to /login?error=rate_limited.
+- Password logins, the OIDC start and callback, and first-run setup are limited per client address (Settings → Authentication → Login rate limit, defaults 10 a minute with burst 5; 0 disables it), IPv6 grouped by /64, in memory; only the first rate-limited attempt per client per minute is audited (with a count of the ones suppressed since); beyond that the local login API returns 429 with Retry-After, while the OIDC start and callback (browser navigations) instead redirect to /login?error=rate_limited.
 - Disabled users and deleted users lose access on their next request.
 - Site scope is not modelled yet: role bindings with a non-NULL `site_id` are ignored when a principal is loaded.
 
@@ -131,7 +131,7 @@ The `caa` attempt step (Settings → Issuance → Check CAA records) is a local 
 
 ## First run
 
-Until setup completes, anyone who can reach the server can claim it through `POST /api/v1/setup/complete`. Complete setup right after the first start, or keep the port private until then. Completion is atomic (transaction plus advisory lock) and happens only once.
+Until setup completes, anyone who can reach the server can claim it through `POST /api/v1/setup/complete`. Complete setup right after the first start, keep the port private until then, or set `CF_SETUP_TOKEN` (or `CF_SETUP_TOKEN_FILE`) so the wizard and `POST /api/v1/setup/complete` require it (compared in constant time, never logged; failed attempts are rate limited). Completion is atomic (transaction plus advisory lock) and happens only once.
 
 `bootstrap-admin` only resets an existing local admin's password (clearing its disabled flag) and revokes that user's sessions; it refuses while setup is pending, since no local admin exists yet outside the setup wizard. It does not complete setup, so `POST /api/v1/setup/complete` stays available, and reachable by anyone, until setup is actually run.
 
