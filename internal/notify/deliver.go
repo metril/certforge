@@ -26,6 +26,37 @@ const maxLastError = 1000
 // deliverTimeout bounds one Notifier.Send call (task-3 brief).
 const deliverTimeout = 45 * time.Second
 
+// deliverMaxAttempts and the backoff below let a delivery survive a channel
+// outage of about five hours: 12 attempts, 11 waits of 30 s doubling per
+// attempt and capped at 1 h (30 s, 1 m, 2 m, 4 m, 8 m, 16 m, 32 m, then 1 h
+// four times), about 5 h 3 m in total.
+const (
+	deliverMaxAttempts = 12
+	deliverBackoffBase = 30 * time.Second
+	deliverBackoffCap  = time.Hour
+)
+
+// deliverBackoff is the wait after the given (1-based) failed attempt.
+func deliverBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	if attempt > 20 {
+		return deliverBackoffCap
+	}
+	d := deliverBackoffBase << (attempt - 1)
+	if d > deliverBackoffCap {
+		return deliverBackoffCap
+	}
+	return d
+}
+
+// NextRetry implements river.Worker with the exponential backoff above in
+// place of river's default (which gives up after minutes).
+func (w *DeliverWorker) NextRetry(job *river.Job[DeliverArgs]) time.Time {
+	return time.Now().Add(deliverBackoff(job.Attempt))
+}
+
 // DeliverArgs is the river job delivering one event to one channel.
 type DeliverArgs struct {
 	EventID   uuid.UUID `json:"event_id"`
@@ -39,7 +70,7 @@ func (DeliverArgs) Kind() string { return "certforge_notify_deliver" }
 // running or scheduled for retry (same shape as deploy.DeployArgs).
 func (DeliverArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{
-		MaxAttempts: 5,
+		MaxAttempts: deliverMaxAttempts,
 		UniqueOpts: river.UniqueOpts{
 			ByArgs: true,
 			ByState: []rivertype.JobState{rivertype.JobStateAvailable, rivertype.JobStatePending,

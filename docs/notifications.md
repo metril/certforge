@@ -213,7 +213,8 @@ in; if the caller then rolls back, the event, its deliveries and their jobs
 all roll back with it — nothing is left half-recorded.
 
 Each delivery is retried independently by river (`certforge_notify_deliver`,
-five attempts) with its own `attempts`/`status`/`last_error` on
+12 attempts with exponential backoff: 30 s doubling per attempt, capped at
+1 h, so about 5 hours in total before the delivery is marked `failed`) with its own `attempts`/`status`/`last_error` on
 `notification_deliveries` — a channel failing does not block or retry any
 other channel's own delivery of the same event.
 
