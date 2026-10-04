@@ -128,7 +128,39 @@ func (s *Store) FingerprintKnownInOrg(ctx context.Context, orgID uuid.UUID, fp s
 // foreign-key violation on org_id is left to the caller (api.pgCode), the
 // same convention channels.go/delivery.go use.
 func (s *Store) Create(ctx context.Context, orgID uuid.UUID, in Input) (Monitor, error) {
-	r, err := s.Q.CreateMonitor(ctx, sqlcgen.CreateMonitorParams{
+	return s.create(ctx, s.Q, orgID, in)
+}
+
+// CreateCapped is Create under the per-org cap (S13): the org row is locked
+// FOR UPDATE in one transaction around the count and the insert, so
+// concurrent creates cannot go past max. ErrOverCap when the org is full;
+// pgx.ErrNoRows when the org does not exist.
+func (s *Store) CreateCapped(ctx context.Context, orgID uuid.UUID, in Input, max int) (Monitor, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return Monitor{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.Q.WithTx(tx)
+	if _, err := q.LockOrg(ctx, orgID); err != nil {
+		return Monitor{}, err
+	}
+	n, err := q.CountMonitorsInOrg(ctx, orgID)
+	if err != nil {
+		return Monitor{}, err
+	}
+	if int(n) >= max {
+		return Monitor{}, ErrOverCap
+	}
+	m, err := s.create(ctx, q, orgID, in)
+	if err != nil {
+		return Monitor{}, err
+	}
+	return m, tx.Commit(ctx)
+}
+
+func (s *Store) create(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in Input) (Monitor, error) {
+	r, err := q.CreateMonitor(ctx, sqlcgen.CreateMonitorParams{
 		OrgID: orgID, Name: in.Name, Host: in.Host, Port: int32(in.Port), Sni: in.SNI,
 		IntervalSeconds: int32(in.IntervalSeconds), ExpectedCertID: in.ExpectedCertID, Enabled: in.Enabled,
 	})
@@ -137,7 +169,7 @@ func (s *Store) Create(ctx context.Context, orgID uuid.UUID, in Input) (Monitor,
 	}
 	m := fromRow(r)
 	if m.ExpectedCertID != nil {
-		if name, err := s.CertificateName(ctx, orgID, *m.ExpectedCertID); err == nil {
+		if name, err := q.CertificateNameInOrg(ctx, sqlcgen.CertificateNameInOrgParams{ID: *m.ExpectedCertID, OrgID: orgID}); err == nil {
 			m.ExpectedCertificateName = &name
 		}
 	}

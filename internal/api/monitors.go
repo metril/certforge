@@ -153,18 +153,15 @@ func (s *Server) CreateMonitor(ctx context.Context, r gen.CreateMonitorRequestOb
 	if err := s.checkExpectedCert(ctx, r.OrgId, in); err != nil {
 		return nil, err
 	}
-	count, err := s.d.Monitors.Store.Count(ctx, r.OrgId)
-	if err != nil {
-		return nil, err
-	}
-	if count >= monitor.MaxPerOrg {
+	m, err := s.d.Monitors.Store.CreateCapped(ctx, r.OrgId, in, monitor.MaxPerOrg)
+	switch {
+	case errors.Is(err, monitor.ErrOverCap):
 		return nil, unprocessable("name", "at most 500 monitors per org")
-	}
-	m, err := s.d.Monitors.Store.Create(ctx, r.OrgId, in)
-	switch pgCode(err) {
-	case pgUniqueViolation:
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil, notFound("org %s", r.OrgId)
+	case pgCode(err) == pgUniqueViolation:
 		return nil, conflict("A monitor named %q exists in this org.", in.Name)
-	case pgForeignKeyViolation:
+	case pgCode(err) == pgForeignKeyViolation:
 		return nil, notFound("org %s", r.OrgId)
 	}
 	if err != nil {

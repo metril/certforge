@@ -4,6 +4,9 @@ package monitor_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -126,5 +129,45 @@ func TestToggleEnabledResetsFailureCounter(t *testing.T) {
 	}
 	if got := count(); got != 0 {
 		t.Fatalf("counter after disabling = %d, want 0", got)
+	}
+}
+
+// TestCreateCappedConcurrent covers S13: with the org one monitor below its
+// cap, concurrent creates let exactly one through.
+func TestCreateCappedConcurrent(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	store := &monitor.Store{Pool: pool, Q: sqlcgen.New(pool)}
+	ctx := context.Background()
+	const capN = 3
+	for i := 0; i < capN-1; i++ {
+		insertMonitor(t, pool, monitorRow{orgID: org, name: fmt.Sprintf("seed-%d", i), host: "h.example.test", state: "ok"})
+	}
+	const workers = 10
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, errs[i] = store.CreateCapped(ctx, org, monitor.Input{Name: fmt.Sprintf("new-%d", i), Host: "n.example.test", Port: 443, IntervalSeconds: 3600, Enabled: true}, capN)
+		}()
+	}
+	wg.Wait()
+	ok := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, monitor.ErrOverCap):
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if ok != 1 {
+		t.Fatalf("%d creates succeeded, want exactly 1", ok)
+	}
+	if n, err := store.Count(ctx, org); err != nil || n != capN {
+		t.Fatalf("count = %d, %v; want %d", n, err, capN)
 	}
 }
