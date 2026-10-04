@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -90,6 +91,10 @@ func runWithEnv(ctx context.Context, args []string, stdout, stderr io.Writer, ge
 		return 2
 	}
 
+	if w := insecureURLWarning(cfg.URL); w != "" {
+		fmt.Fprintln(stderr, w)
+	}
+
 	cwr, raw, err := newClients(cfg, *timeoutFlag)
 	if err != nil {
 		fmt.Fprintf(stderr, "cfctl: %v\n", err)
@@ -98,6 +103,23 @@ func runWithEnv(ctx context.Context, args []string, stdout, stderr io.Writer, ge
 
 	e := &env{cwr: cwr, raw: raw, json: *jsonFlag, org: *orgFlag, stdout: stdout, stderr: stderr}
 	return cmd(ctx, e, rest[1:])
+}
+
+// insecureURLWarning returns a warning when the bearer token would travel
+// over a cleartext (non-https) connection to a non-loopback host, else "".
+func insecureURLWarning(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "https" {
+		return ""
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ""
+	}
+	return fmt.Sprintf("cfctl: warning: %s is not https; the bearer token is sent in cleartext", raw)
 }
 
 // newClients builds the buffered and raw clients over the same server and

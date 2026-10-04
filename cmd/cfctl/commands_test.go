@@ -721,3 +721,19 @@ func TestNonJSONSuccessIsAnError(t *testing.T) {
 		})
 	}
 }
+
+func TestInsecureURLWarning(t *testing.T) {
+	for raw, warn := range map[string]bool{
+		"https://certforge.example.com": false,
+		"http://127.0.0.1:8080":         false,
+		"http://localhost:8080":         false,
+		"http://[::1]:8080":             false,
+		"http://certforge.example.com":  true,
+		"http://10.0.0.5":               true,
+		"ftp://certforge.example.com":   true,
+	} {
+		if got := insecureURLWarning(raw) != ""; got != warn {
+			t.Errorf("%s: warning = %v, want %v", raw, got, warn)
+		}
+	}
+}

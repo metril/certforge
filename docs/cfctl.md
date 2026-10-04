@@ -49,6 +49,9 @@ every other credential at rest.
 host** (`ps`, `/proc/<pid>/cmdline`, shell history). Prefer `CFCTL_TOKEN`
 or the config file for anything beyond a one-off interactive command.
 
+`cfctl` prints a warning on stderr when the server URL is not `https` and
+not a loopback address, since the bearer token would travel in cleartext.
+
 Other global flags: `--org <id|slug>` (the organization most commands
 operate on — a plain UUID or a slug, resolved through `listOrgs`),
 `--json` (print the server's raw JSON response instead of a table),
