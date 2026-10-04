@@ -61,32 +61,31 @@ func TestFileDigest(t *testing.T) {
 	}
 }
 
-func TestStageAtomicDirModesAndSweep(t *testing.T) {
+func TestStageAtomicParentDirsAndSweep(t *testing.T) {
 	root := t.TempDir()
 	w := &FileWriter{Log: discard, EUID: os.Geteuid(), Lookup: lookupIDs}
 
-	// New parent dirs follow the file's mode; an existing dir is untouched.
+	// New parent dirs are 0755 whatever the first file's mode, so a later
+	// world-readable file in the same dir stays reachable; each file keeps
+	// its own mode, and an existing dir is never chmod'ed.
+	if err := w.Write(filepath.Join(root, "n", "key.pem"), []byte("k"), 0o600, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(filepath.Join(root, "n", "cert.pem"), []byte("c"), 0o644, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	for p, want := range map[string]os.FileMode{"n": 0o755, "n/key.pem": 0o600, "n/cert.pem": 0o644} {
+		if got := mode(t, filepath.Join(root, p)); got != want {
+			t.Errorf("%s mode %v, want %v", p, got, want)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(root, "s"), 0o711); err != nil {
+		t.Fatal(err)
+	}
 	if err := w.Write(filepath.Join(root, "s", "key.pem"), []byte("k"), 0o600, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Write(filepath.Join(root, "g", "key.pem"), []byte("k"), 0o640, "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Write(filepath.Join(root, "p", "c.pem"), []byte("c"), 0o644, "", ""); err != nil {
-		t.Fatal(err)
-	}
-	for dir, want := range map[string]os.FileMode{"s": 0o700, "g": 0o750, "p": 0o755} {
-		if got := mode(t, filepath.Join(root, dir)); got != want {
-			t.Errorf("dir %s mode %v, want %v", dir, got, want)
-		}
-	}
-	if err := os.Chmod(filepath.Join(root, "p"), 0o711); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Write(filepath.Join(root, "p", "c.pem"), []byte("c2"), 0o600, "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if got := mode(t, filepath.Join(root, "p")); got != 0o711 {
+	if got := mode(t, filepath.Join(root, "s")); got != 0o711 {
 		t.Errorf("existing dir mode changed to %v", got)
 	}
 

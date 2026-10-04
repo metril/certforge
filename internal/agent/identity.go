@@ -119,7 +119,7 @@ func writeAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) e
 // finishes it. The temp is removed on error.
 func stageAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) error) (string, error) {
 	dir := filepath.Dir(p)
-	if err := os.MkdirAll(dir, parentDirMode(mode)); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	sweepStale(dir, "."+filepath.Base(p)+".tmp-")
@@ -153,15 +153,6 @@ func stageAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) e
 	}
 	done = true
 	return tmp, nil
-}
-
-// parentDirMode is the mode for parent directories created for a file of the
-// given mode: the file's read bits become traverse bits and the owner always
-// gets full access, so a 0600 secret gets 0700 dirs and 0640 gets 0750.
-// Directories that already exist are never touched.
-func parentDirMode(mode fs.FileMode) fs.FileMode {
-	m := mode.Perm()
-	return m | (m&0o444)>>2 | 0o700
 }
 
 // staleTempAge is how old a leftover temp must be before sweepStale removes
