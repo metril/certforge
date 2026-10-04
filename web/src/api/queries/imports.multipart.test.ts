@@ -19,7 +19,7 @@
 import { http, HttpResponse } from 'msw';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { makeImportResult, url } from '@/test/fixtures';
+import { makeImportResult, me, url } from '@/test/fixtures';
 
 // The jsdom environment (see vitest.config.ts) sets window.location so
 // client.ts's baseUrl (`${globalThis.location?.origin ?? ''}${API_BASE}`)
@@ -34,6 +34,7 @@ it('multipart body: archive is a File, caId and dryRun ride along as form fields
   let caId = '';
   let dryRun = '';
   server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(me)),
     http.post(url('/orgs/org-1/certificates/import'), async ({ request }) => {
       const fd = await request.formData();
       const archive = fd.get('archive');

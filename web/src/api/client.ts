@@ -79,11 +79,25 @@ function parseRetryAfter(value: string | null): number | undefined {
   return Number.isNaN(when) ? undefined : Math.max(0, Math.round((when - Date.now()) / 1000));
 }
 
+// Bodies that are large or not cheaply re-sendable (uploads) are not cloned:
+// request.clone() tees the stream and buffers it. The one CSRF retry is
+// skipped for them, so make sure the token is fresh before sending instead.
+const NO_CLONE_TYPES = ['multipart/form-data', 'application/octet-stream'];
+const NO_CLONE_BYTES = 1024 * 1024;
+
+function skipsRetryClone(request: Request): boolean {
+  const type = (request.headers.get('content-type') ?? '').toLowerCase();
+  if (NO_CLONE_TYPES.some((t) => type.startsWith(t))) return true;
+  return Number(request.headers.get('content-length') ?? 0) > NO_CLONE_BYTES;
+}
+
 export const authMiddleware: Middleware = {
-  onRequest({ request }) {
+  async onRequest({ request }) {
     if (!SAFE_METHODS.has(request.method)) {
+      const noClone = skipsRetryClone(request);
+      if (noClone && !csrfToken) await refreshCsrfToken();
       if (csrfToken) request.headers.set('X-CSRF-Token', csrfToken);
-      retryClones.set(request, request.clone());
+      if (!noClone) retryClones.set(request, request.clone());
     }
     return request;
   },
