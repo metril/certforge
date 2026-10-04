@@ -79,13 +79,18 @@ func (w *DeliverWorker) log() *slog.Logger {
 // own log) error so river schedules the retry — or gives up, having
 // already recorded the terminal failure itself.
 func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
-	if _, err := w.Q.GetNotificationDelivery(ctx, sqlcgen.GetNotificationDeliveryParams{
+	delivery, err := w.Q.GetNotificationDelivery(ctx, sqlcgen.GetNotificationDeliveryParams{
 		EventID: job.Args.EventID, ChannelID: job.Args.ChannelID,
-	}); err != nil {
+	})
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
 		return err
+	}
+	// A rescued or re-run job must not resend an already delivered event.
+	if delivery.Status == "delivered" {
+		return nil
 	}
 
 	eventRow, err := w.Q.GetNotificationEvent(ctx, job.Args.EventID)
@@ -146,13 +151,40 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 		metrics.NotificationsTotal.WithLabelValues(channel.Type, "failed").Inc()
 		return w.recordFailure(ctx, job, sendErr, secrets)
 	}
-	if err := w.Q.MarkNotificationDeliveryDelivered(ctx, sqlcgen.MarkNotificationDeliveryDeliveredParams{
-		EventID: job.Args.EventID, ChannelID: job.Args.ChannelID, Attempts: int32(job.Attempt),
-	}); err != nil {
-		w.log().Error("notify: delivery success not recorded", "event", job.Args.EventID, "channel", job.Args.ChannelID, "err", err)
-	}
+	w.markDelivered(ctx, job)
 	metrics.NotificationsTotal.WithLabelValues(channel.Type, "delivered").Inc()
 	return nil
+}
+
+// markDeliveredTries and markDeliveredDelay bound the retries of the
+// "mark delivered" write. The send already happened, so returning an error
+// here would resend; the mark is retried instead.
+const markDeliveredTries = 5
+
+var markDeliveredDelay = 200 * time.Millisecond
+
+// markDelivered records a successful send, retrying the write (never the
+// send) with a growing pause. If it still fails the delivery stays pending
+// and the failure is logged at error level.
+func (w *DeliverWorker) markDelivered(ctx context.Context, job *river.Job[DeliverArgs]) {
+	var err error
+	for i := 0; i < markDeliveredTries; i++ {
+		if i > 0 {
+			select {
+			case <-time.After(markDeliveredDelay << (i - 1)):
+			case <-ctx.Done():
+			}
+		}
+		if err = w.Q.MarkNotificationDeliveryDelivered(ctx, sqlcgen.MarkNotificationDeliveryDeliveredParams{
+			EventID: job.Args.EventID, ChannelID: job.Args.ChannelID, Attempts: int32(job.Attempt),
+		}); err == nil {
+			return
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	w.log().Error("notify: delivered event not recorded; delivery left pending", "event", job.Args.EventID, "channel", job.Args.ChannelID, "err", err)
 }
 
 // target builds a Notifier's Target: OrgName is empty for a global event

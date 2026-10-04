@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -250,5 +251,86 @@ func TestDeliverChannelDeleted(t *testing.T) {
 	}
 	if got := notifier.sendCount(); got != 0 {
 		t.Errorf("notifier.Send called %d times, want 0 (channel deleted)", got)
+	}
+}
+
+// TestDeliverSkipsAlreadyDelivered: a re-run job for a delivery already
+// marked delivered must not send again.
+func TestDeliverSkipsAlreadyDelivered(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, typ: "webhook"})
+
+	ins := &fakeInserter{}
+	e := &notify.Emitter{Pool: pool, River: ins}
+	if _, err := e.Emit(ctx, nil, newEvent(&org, "cert.issued", "cert.issued:"+uuid.NewString())); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	args := ins.first(t)
+	notifier := &fakeNotifier{typ: "webhook"}
+	reg := notify.NewRegistry()
+	reg.Register(notifier)
+	w := &notify.DeliverWorker{Q: sqlcgen.New(pool), Box: cryptotest.PrefixBox{}, Registry: reg}
+
+	for i := 0; i < 2; i++ {
+		if err := w.Work(ctx, deliverJob(args, 1+i, 5)); err != nil {
+			t.Fatalf("Work %d: %v", i, err)
+		}
+	}
+	if got := notifier.sendCount(); got != 1 {
+		t.Errorf("sends = %d, want 1", got)
+	}
+}
+
+// flakyMarkDB fails the first n "mark delivered" writes.
+type flakyMarkDB struct {
+	sqlcgen.DBTX
+	mu sync.Mutex
+	n  int
+}
+
+func (f *flakyMarkDB) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+	if strings.Contains(sql, "status = 'delivered'") {
+		f.mu.Lock()
+		fail := f.n > 0
+		if fail {
+			f.n--
+		}
+		f.mu.Unlock()
+		if fail {
+			return pgconn.CommandTag{}, errors.New("simulated write failure")
+		}
+	}
+	return f.DBTX.Exec(ctx, sql, args...)
+}
+
+// TestDeliverRetriesMarkDeliveredNotSend: a failing "mark delivered" write is
+// retried; the notifier is called once and the row ends delivered.
+func TestDeliverRetriesMarkDeliveredNotSend(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, typ: "webhook"})
+
+	ins := &fakeInserter{}
+	e := &notify.Emitter{Pool: pool, River: ins}
+	if _, err := e.Emit(ctx, nil, newEvent(&org, "cert.issued", "cert.issued:"+uuid.NewString())); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	args := ins.first(t)
+	notifier := &fakeNotifier{typ: "webhook"}
+	reg := notify.NewRegistry()
+	reg.Register(notifier)
+	w := &notify.DeliverWorker{Q: sqlcgen.New(&flakyMarkDB{DBTX: pool, n: 2}), Box: cryptotest.PrefixBox{}, Registry: reg}
+
+	if err := w.Work(ctx, deliverJob(args, 1, 5)); err != nil {
+		t.Fatalf("Work: %v", err)
+	}
+	if got := notifier.sendCount(); got != 1 {
+		t.Errorf("sends = %d, want 1", got)
+	}
+	if _, status, _ := deliveryRow(t, pool, args); status != "delivered" {
+		t.Errorf("status = %q, want delivered", status)
 	}
 }
