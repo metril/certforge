@@ -237,6 +237,9 @@ func keysRewrap(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON202 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		writeTable(e.stdout, []string{"FIELD", "VALUE"}, keysStatusRows(*resp.JSON202))
 	}
 	return 0

@@ -176,6 +176,9 @@ func certsRenew(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON202 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		fmt.Fprintf(e.stdout, "enqueued=%t\n", resp.JSON202.Enqueued)
 	}
 	return 0

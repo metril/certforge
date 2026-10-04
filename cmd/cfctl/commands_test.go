@@ -737,3 +737,17 @@ func TestInsecureURLWarning(t *testing.T) {
 		}
 	}
 }
+
+// TestNonJSONAcceptedIsAnError is the 202 counterpart of the JSON200 guard.
+func TestNonJSONAcceptedIsAnError(t *testing.T) {
+	srv := newFakeAPI(t, "tok", route{"POST", "/keys/rewrap", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("<html>proxy</html>"))
+	}})
+	var out, errOut bytes.Buffer
+	e := testEnv(t, srv, "tok", "", false, &out, &errOut)
+	if code := keysRewrap(context.Background(), e, nil); code != 1 || !strings.Contains(errOut.String(), "non-JSON") {
+		t.Fatalf("code = %d, stderr = %q", code, errOut.String())
+	}
+}
