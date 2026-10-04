@@ -12,6 +12,22 @@ import (
 	"github.com/google/uuid"
 )
 
+const accountExistsByEmail = `-- name: AccountExistsByEmail :one
+SELECT EXISTS (SELECT 1 FROM acme_accounts WHERE ca_id = $1 AND email = $2)
+`
+
+type AccountExistsByEmailParams struct {
+	CaID  uuid.UUID `json:"ca_id"`
+	Email string    `json:"email"`
+}
+
+func (q *Queries) AccountExistsByEmail(ctx context.Context, arg AccountExistsByEmailParams) (bool, error) {
+	row := q.db.QueryRow(ctx, accountExistsByEmail, arg.CaID, arg.Email)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const countAccountUsers = `-- name: CountAccountUsers :one
 SELECT (
     (SELECT count(*) FROM certificates c WHERE c.overrides->>'accountId' = $1::uuid::text)

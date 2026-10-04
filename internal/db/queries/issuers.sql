@@ -65,6 +65,9 @@ INSERT INTO acme_accounts (org_id, ca_id, email, account_key, registration_uri)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
+-- name: AccountExistsByEmail :one
+SELECT EXISTS (SELECT 1 FROM acme_accounts WHERE ca_id = $1 AND email = $2);
+
 -- name: GetAccount :one
 SELECT * FROM acme_accounts WHERE id = $1 AND org_id = $2;
 
