@@ -22,21 +22,29 @@ func (e *PathConflictError) Error() string { return e.Msg }
 // slug may use unless its writer holds global delivery write.
 func OrgPathPrefix(slug string) string { return "certforge/" + slug + "/" }
 
-// CheckOrgPath refuses a vault-kv config whose rendered path leaves
-// OrgPathPrefix(slug). The template is rendered with the org's real slug
-// and a safe placeholder for {cert} and {name}.
+// CheckOrgPath refuses a vault-kv config whose path template does not start
+// with the literal text certforge/<slug>/ ({org} may stand for the slug as
+// the second segment). The prefix is checked on the template itself, never
+// on a rendering, so a {name} or {cert} placeholder can never supply it, and
+// empty, "." and ".." segments are refused outright.
 func CheckOrgPath(raw json.RawMessage, slug string) error {
 	var cfg VaultKVConfig
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return err
 	}
 	cfg.fillDefaults()
-	rendered, err := renderPath(cfg.Path, slug, "00000000-0000-0000-0000-000000000000", "name")
-	if err != nil {
+	if _, err := renderPath(cfg.Path, slug, "00000000-0000-0000-0000-000000000000", "name"); err != nil {
 		return err
 	}
-	if !strings.HasPrefix(rendered, OrgPathPrefix(slug)) {
-		return fmt.Errorf("path must stay under %q unless you hold global delivery write", OrgPathPrefix(slug))
+	segs := strings.Split(cfg.Path, "/")
+	ok := len(segs) >= 3 && segs[0] == "certforge" && (segs[1] == slug || segs[1] == "{org}")
+	for _, seg := range segs {
+		if seg == "" || seg == "." || seg == ".." {
+			ok = false
+		}
+	}
+	if !ok {
+		return fmt.Errorf("path must start with %q unless you hold global delivery write", OrgPathPrefix(slug))
 	}
 	return nil
 }

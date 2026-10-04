@@ -200,3 +200,30 @@ func TestVaultKVDuplicateKeys(t *testing.T) {
 		t.Fatalf("VaultKVLayoutCheck: %v", err)
 	}
 }
+
+// TestCheckOrgPath covers S4(b): the org prefix must be literal template text.
+func TestCheckOrgPath(t *testing.T) {
+	cases := []struct {
+		slug, path string
+		ok         bool
+	}{
+		{"acme", "certforge/{org}/{name}", true},
+		{"acme", "certforge/acme/{name}", true},
+		{"acme", "certforge/acme/deep/{cert}", true},
+		{"name", "certforge/{name}/x", false},
+		{"00000000-0000-0000-0000-000000000000", "certforge/{cert}/x", false},
+		{"acme", "certforge/acme-other/x", false},
+		{"acme", "certforge/acme", false},
+		{"acme", "certforge/acme/../other/x", false},
+		{"acme", "certforge/acme/./x", false},
+		{"acme", "certforge//acme/x", false},
+		{"acme", "other/{org}/x", false},
+		{"acme", "{name}", false},
+	}
+	for _, c := range cases {
+		raw, _ := json.Marshal(VaultKVConfig{Path: c.path})
+		if err := CheckOrgPath(raw, c.slug); (err == nil) != c.ok {
+			t.Errorf("CheckOrgPath(%q, slug %q) = %v, want ok=%v", c.path, c.slug, err, c.ok)
+		}
+	}
+}

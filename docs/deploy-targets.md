@@ -75,7 +75,7 @@ The four `keys.*` field names must be distinct, and two files of a grant's layou
 
 **Path collisions.** Two live server grants of one target may never render the same `(mount, path)`: the second would silently overwrite the first's document. `createServerGrant`, `updateServerGrant`, a certificate rename and a target edit that changes `mount` or `path` render the pair for every live grant of the target and answer 409 on a duplicate. Names that clean to the same string collide (`Web.One` and `web.one`), and a `path` with neither `{name}` nor `{cert}` allows exactly one grant per target.
 
-**Org isolation.** The one shared Vault has no per-org mounts, so a principal without global `delivery:write` (an org-bound role or key) may only create or change a vault-kv target whose rendered path stays under `certforge/<its org slug>/` (403 otherwise). A global admin may use any path. A stored mount and path that a save leaves both unchanged are grandfathered, so an older target still saves.
+**Org isolation.** The one shared Vault has no per-org mounts, so a principal without global `delivery:write` (an org-bound role or key) may only create or change a vault-kv target whose rendered path starts with the literal text `certforge/<its org slug>/` (`{org}` may stand for the slug; 403 otherwise). A global admin may use any path. A stored mount and path that a save leaves both unchanged are grandfathered, so an older target still saves.
 
 Each deploy is one `PUT <mount>/data/<path>` (`internal/vault.Client.KVPut`), overwriting the whole document — nothing is merged with what was there before.
 
