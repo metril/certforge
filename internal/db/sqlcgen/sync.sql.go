@@ -152,6 +152,57 @@ func (q *Queries) ClientDeployments(ctx context.Context, clientID *uuid.UUID) ([
 	return items, nil
 }
 
+const clientDeploymentsNoLock = `-- name: ClientDeploymentsNoLock :many
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+WHERE g.client_id = $1
+ORDER BY g.id
+`
+
+type ClientDeploymentsNoLockRow struct {
+	GrantID         uuid.UUID  `json:"grant_id"`
+	CertID          uuid.UUID  `json:"cert_id"`
+	Delivery        string     `json:"delivery"`
+	AutoRemediate   bool       `json:"auto_remediate"`
+	RemovedAt       *time.Time `json:"removed_at"`
+	RemovedRevision int64      `json:"removed_revision"`
+	State           string     `json:"state"`
+	VersionID       *uuid.UUID `json:"version_id"`
+	Expected        []byte     `json:"expected"`
+}
+
+// ClientDeployments without the row locks: Heartbeat reads with this first
+// and takes the locked path only when a state would change.
+func (q *Queries) ClientDeploymentsNoLock(ctx context.Context, clientID *uuid.UUID) ([]ClientDeploymentsNoLockRow, error) {
+	rows, err := q.db.Query(ctx, clientDeploymentsNoLock, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ClientDeploymentsNoLockRow{}
+	for rows.Next() {
+		var i ClientDeploymentsNoLockRow
+		if err := rows.Scan(
+			&i.GrantID,
+			&i.CertID,
+			&i.Delivery,
+			&i.AutoRemediate,
+			&i.RemovedAt,
+			&i.RemovedRevision,
+			&i.State,
+			&i.VersionID,
+			&i.Expected,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const grantForBundle = `-- name: GrantForBundle :one
 SELECT g.id, g.cert_id, ce.name AS certificate_name, d.version_id, o.files AS layout_files,
        o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids, d.extra_version_ids,
