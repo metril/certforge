@@ -274,6 +274,8 @@ export function IssuanceDefaultsSection() {
       ((current.search as Record<string, unknown>).scope !== (next.search as Record<string, unknown>).scope ||
         (current.search as Record<string, unknown>).org !== (next.search as Record<string, unknown>).org),
     withResolver: true,
+    // Reload and tab close only warn while a draft is unsaved.
+    enableBeforeUnload: () => dirty.current,
   });
   const onDirty = useCallback((d: boolean) => {
     dirty.current = d;

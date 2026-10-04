@@ -1,9 +1,15 @@
 import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
-import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { useBlocker } from '@tanstack/react-router';
 import { server } from '@/test/server';
 import { authHandlers, me, meWith, org, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
+
+vi.mock('@tanstack/react-router', async (orig) => {
+  const mod = await orig<typeof import('@tanstack/react-router')>();
+  return { ...mod, useBlocker: vi.fn(mod.useBlocker) };
+});
 
 // Task 9: the global-only `issuance` settings section (CAA check + local
 // rate limits) rendered from its own JSON Schema (`issuanceSettingsSchema`,
@@ -217,6 +223,25 @@ it('switching scope with an unsaved draft asks first; Cancel keeps the draft, Di
   await user.click(screen.getByRole('radio', { name: 'Organization' }));
   expect(await screen.findByRole('switch', { name: 'Override Must-Staple' })).not.toBeChecked();
   expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull();
+});
+
+// The page's blocker is the one whose beforeunload option is a function of the draft state.
+function unloadWarns() {
+  const opts = vi
+    .mocked(useBlocker)
+    .mock.calls.map((c) => c[0] as { enableBeforeUnload?: unknown })
+    .filter((o) => typeof o.enableBeforeUnload === 'function')
+    .at(-1);
+  return (opts?.enableBeforeUnload as () => boolean)();
+}
+
+it('reload and tab close warn only while a draft is unsaved', async () => {
+  mockOrgDefaults();
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  const toggle = await screen.findByRole('switch', { name: 'Override Must-Staple' });
+  expect(unloadWarns()).toBe(false);
+  await user.click(toggle);
+  expect(unloadWarns()).toBe(true);
 });
 
 it('switching scope with no draft does not ask', async () => {
