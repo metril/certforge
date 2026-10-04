@@ -378,3 +378,33 @@ func TestPruneLedgerDropsExpiredReservations(t *testing.T) {
 		t.Fatalf("cert_issued = %d, new_order = %d, want 0, 1", f.ledgerCount(t, kindCertIssued), f.ledgerCount(t, kindNewOrder))
 	}
 }
+
+// TestLedgerSucceedFailureStaysCounted: when storing the issued certificate
+// fails after the CA already issued it, the issuance stays counted (a
+// following reserve at the limit is refused), not released.
+func TestLedgerSucceedFailureStaysCounted(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	cred := f.credential(t, "cf")
+	names := []string{"stored.example.test"}
+	c := f.cert(t, names, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	for _, stmt := range []string{
+		`CREATE FUNCTION cf_block_version() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'blocked'; END $$ LANGUAGE plpgsql`,
+		`CREATE TRIGGER cf_block_version BEFORE INSERT ON certificate_versions FOR EACH ROW EXECUTE FUNCTION cf_block_version()`,
+	} {
+		if _, err := f.pool.Exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fs := &fakeSigner{issued: issuedFor(t, names, now0)}
+	if err := newWorker(f, fs).Issue(ctx, c.ID); err == nil {
+		t.Fatal("want the store failure")
+	}
+	exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, uuid.New(), names, RateLimits{CertsPerRegisteredDomainPerWeek: 1}, now0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exceeded == nil {
+		t.Fatal("issuance that the CA completed was released from the ledger")
+	}
+}

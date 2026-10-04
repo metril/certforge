@@ -206,8 +206,12 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 		// failure_count, next_renew_at) is left untouched: river retries the
 		// job, and a successful retry needs no backoff to undo.
 		tl.Logf("error: %v", err)
-		if rerr := w.Store.ReleaseReservation(bg, attemptID); rerr != nil {
-			w.Log.Warn("release ledger reservation", "attempt", attemptID, "err", rerr)
+		// The CA already issued, so the issuance must keep counting toward
+		// the limits (a retry would otherwise issue past them): confirm the
+		// reservation in its own transaction. If that also fails it is left
+		// to expire.
+		if cerr := w.confirmIssued(bg, cert, attemptID, eff); cerr != nil {
+			w.Log.Warn("confirm ledger reservation after store failure", "attempt", attemptID, "err", cerr)
 		}
 		steps, log := tl.Snapshot()
 		if ferr := w.Store.FinishAttempt(bg, nil, attemptID, OutcomeFailed, "", nil, steps, log); ferr != nil {
@@ -216,6 +220,25 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 		return err
 	}
 	return nil
+}
+
+// confirmIssued makes the attempt's ledger reservation permanent in its own
+// short transaction, for an issuance whose storing failed.
+func (w *IssueWorker) confirmIssued(ctx context.Context, cert Certificate, attemptID uuid.UUID, eff Effective) error {
+	if eff.CAID.Value == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, saveTimeout)
+	defer cancel()
+	tx, err := w.Store.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // no-op after commit
+	if err := w.Store.ConfirmCertIssued(ctx, tx, *eff.CAID.Value, cert.ID, attemptID, cert.Names(), w.Now()); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline) (*signer.Issued, Effective, error) {
