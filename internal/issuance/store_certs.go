@@ -346,15 +346,20 @@ func validateDefaultsShape(d Defaults, stored *Defaults) error {
 	return nil
 }
 
+func sameCA(a, b *uuid.UUID) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
 // checkMustStaple refuses mustStaple=true on a Defaults value whose effective
 // CA (caID, nil = none known) is private: only ACME CAs honour it. A stored
-// true that is sent back unchanged is grandfathered, like an over-cap rule
-// list, so an older row still saves.
-func checkMustStaple(ctx context.Context, q *sqlcgen.Queries, d Defaults, stored *Defaults, caID *uuid.UUID) error {
+// true sent back with an unchanged effective CA (storedCA) is grandfathered,
+// like an over-cap rule list, so an older row still saves; switching the CA
+// to a private one while keeping mustStaple on is refused.
+func checkMustStaple(ctx context.Context, q *sqlcgen.Queries, d Defaults, stored *Defaults, storedCA, caID *uuid.UUID) error {
 	if d.MustStaple == nil || !*d.MustStaple || caID == nil {
 		return nil
 	}
-	if stored != nil && stored.MustStaple != nil && *stored.MustStaple {
+	if stored != nil && stored.MustStaple != nil && *stored.MustStaple && sameCA(storedCA, caID) {
 		return nil
 	}
 	row, err := q.GetCAByID(ctx, *caID)
@@ -411,7 +416,11 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 	if msCA == nil {
 		msCA = aboveCAID
 	}
-	if err := checkMustStaple(ctx, q, d, stored, msCA); err != nil {
+	storedCA := aboveCAID
+	if stored != nil && stored.CAID != nil {
+		storedCA = stored.CAID
+	}
+	if err := checkMustStaple(ctx, q, d, stored, storedCA, msCA); err != nil {
 		return err
 	}
 	if d.AccountID != nil {
@@ -468,7 +477,7 @@ func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
 			return err
 		}
 	}
-	if err := checkMustStaple(ctx, s.q, d, &storedG, d.CAID); err != nil {
+	if err := checkMustStaple(ctx, s.q, d, &storedG, storedG.CAID, d.CAID); err != nil {
 		return err
 	}
 	if d.AccountID != nil {
@@ -539,7 +548,7 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 			return err
 		}
 	}
-	if err := checkMustStaple(ctx, q, d, &storedG, d.CAID); err != nil {
+	if err := checkMustStaple(ctx, q, d, &storedG, storedG.CAID, d.CAID); err != nil {
 		return err
 	}
 	if d.AccountID != nil {

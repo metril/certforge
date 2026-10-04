@@ -906,3 +906,75 @@ func TestMustStapleRefusedForPrivateCA(t *testing.T) {
 		t.Fatalf("global tx: %v", err)
 	}
 }
+
+// B18 follow-up: the grandfather covers an unchanged (mustStaple, CA) pair
+// only; switching a stored mustStaple=true to a private CA is refused for a
+// certificate, org defaults and global defaults, unless mustStaple goes off.
+func TestMustStapleGrandfatherNeedsUnchangedCA(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	var ve *ValidationError
+	priv, err := f.store.CreateCA(ctx, f.org, CAInput{Name: "Local Root", Type: CATypeLocalCA,
+		Config: map[string]any{"subject": map[string]any{"commonName": "Test Root"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	yes := true
+	no := false
+
+	// Certificate stored with mustStaple on an ACME CA.
+	c, err := f.store.CreateCertificate(ctx, f.org, CertInput{Name: "sw", CommonName: "sw.example.test",
+		Overrides: Defaults{CAID: &f.ca.ID, MustStaple: &yes}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	upd := func(ov Defaults) error {
+		_, _, err := f.store.UpdateCertificate(ctx, f.org, c.ID, CertInput{Name: "sw", CommonName: "sw.example.test", Overrides: ov}, nil)
+		return err
+	}
+	if err := upd(Defaults{CAID: &priv.ID, MustStaple: &yes}); !errors.As(err, &ve) || ve.Field != "mustStaple" {
+		t.Fatalf("cert switch to private keeping mustStaple: %v", err)
+	}
+	if err := upd(Defaults{CAID: &f.ca.ID, MustStaple: &yes}); err != nil {
+		t.Fatalf("cert unchanged pair: %v", err)
+	}
+	if err := upd(Defaults{CAID: &priv.ID, MustStaple: &no}); err != nil {
+		t.Fatalf("cert switch with mustStaple off: %v", err)
+	}
+
+	// Org defaults.
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{CAID: &f.ca.ID, MustStaple: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{CAID: &priv.ID, MustStaple: &yes}); !errors.As(err, &ve) || ve.Field != "mustStaple" {
+		t.Fatalf("org switch to private keeping mustStaple: %v", err)
+	}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{CAID: &f.ca.ID, MustStaple: &yes}); err != nil {
+		t.Fatalf("org unchanged pair: %v", err)
+	}
+	if err := f.store.PutOrgDefaults(ctx, f.org, Defaults{CAID: &priv.ID, MustStaple: &no}); err != nil {
+		t.Fatalf("org switch with mustStaple off: %v", err)
+	}
+
+	// Global defaults, plain and transactional.
+	f.store.global = fakeGlobal{d: Defaults{CAID: &f.ca.ID, MustStaple: &yes}}
+	gtx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = gtx.Rollback(ctx) }()
+	for name, v := range map[string]func(Defaults) error{
+		"plain": func(d Defaults) error { return f.store.ValidateGlobalDefaults(ctx, d) },
+		"tx":    func(d Defaults) error { return f.store.ValidateGlobalDefaultsTx(ctx, gtx, d) },
+	} {
+		if err := v(Defaults{CAID: &priv.ID, MustStaple: &yes}); !errors.As(err, &ve) || ve.Field != "mustStaple" {
+			t.Fatalf("global %s switch to private keeping mustStaple: %v", name, err)
+		}
+		if err := v(Defaults{CAID: &f.ca.ID, MustStaple: &yes}); err != nil {
+			t.Fatalf("global %s unchanged pair: %v", name, err)
+		}
+		if err := v(Defaults{CAID: &priv.ID, MustStaple: &no}); err != nil {
+			t.Fatalf("global %s switch with mustStaple off: %v", name, err)
+		}
+	}
+}
