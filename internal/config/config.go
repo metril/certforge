@@ -79,7 +79,13 @@ type Config struct {
 	// BackupSpoolDir (CF_BACKUP_SPOOL_DIR) is where backups stage each
 	// table's plaintext CSV. Empty means the OS temp dir.
 	BackupSpoolDir string
+	// SetupToken (CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE) gates POST
+	// /setup/complete when set. Empty means no token is required. Never log it.
+	SetupToken string
 }
+
+// MinSetupTokenLength is the shortest accepted setup token.
+const MinSetupTokenLength = 16
 
 // Load reads and validates the CF_* environment variables.
 func Load() (Config, error) {
@@ -87,7 +93,7 @@ func Load() (Config, error) {
 		DatabaseURL:    strings.TrimSpace(os.Getenv("CF_DATABASE_URL")),
 		ListenHTTP:     envOr("CF_LISTEN_HTTP", ":8080"),
 		ListenAgent:    envOr("CF_LISTEN_AGENT", ":8443"),
-		BaseURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("CF_BASE_URL")), "/"),
+		BaseURL:        NormalizeBaseURL(os.Getenv("CF_BASE_URL")),
 		LogLevel:       strings.ToLower(envOr("CF_LOG_LEVEL", "info")),
 		BackupSpoolDir: strings.TrimSpace(os.Getenv("CF_BACKUP_SPOOL_DIR")),
 	}
@@ -114,6 +120,12 @@ func Load() (Config, error) {
 	} else {
 		c.PreviousKEKs = prev
 	}
+	tok, err := loadSetupToken()
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		c.SetupToken = tok
+	}
 	if c.BaseURL != "" {
 		if err := ValidateBaseURL(c.BaseURL); err != nil {
 			errs = append(errs, fmt.Errorf("CF_BASE_URL %w", err))
@@ -128,13 +140,22 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// ValidateBaseURL checks that s is an absolute http or https URL with a host.
+// ValidateBaseURL checks that s is an absolute http or https URL with a
+// hostname and no userinfo, query or fragment. A trailing slash is tolerated
+// (callers trim it with NormalizeBaseURL), so an existing value that has one
+// keeps working.
 func ValidateBaseURL(s string) error {
-	u, err := url.Parse(s)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return errors.New("must be an absolute http(s) URL")
+	u, err := url.Parse(NormalizeBaseURL(s))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
+		u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(s, "#") {
+		return errors.New("must be an absolute http(s) URL with a host and no credentials, query or fragment")
 	}
 	return nil
+}
+
+// NormalizeBaseURL trims surrounding space and trailing slashes.
+func NormalizeBaseURL(s string) string {
+	return strings.TrimRight(strings.TrimSpace(s), "/")
 }
 
 // SlogLevel returns the configured log level, defaulting to info.
@@ -144,6 +165,27 @@ func (c Config) SlogLevel() slog.Level {
 		return slog.LevelInfo
 	}
 	return l
+}
+
+// loadSetupToken reads CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE (never both).
+// Empty means setup needs no token.
+func loadSetupToken() (string, error) {
+	val := strings.TrimSpace(os.Getenv("CF_SETUP_TOKEN"))
+	path := strings.TrimSpace(os.Getenv("CF_SETUP_TOKEN_FILE"))
+	switch {
+	case val != "" && path != "":
+		return "", errors.New("set only one of CF_SETUP_TOKEN and CF_SETUP_TOKEN_FILE")
+	case path != "":
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("CF_SETUP_TOKEN_FILE: %w", err)
+		}
+		val = strings.TrimSpace(string(raw))
+	}
+	if val != "" && len(val) < MinSetupTokenLength {
+		return "", fmt.Errorf("the setup token must be at least %d characters", MinSetupTokenLength)
+	}
+	return val, nil
 }
 
 func loadKEK() (KEKConfig, error) {
