@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "gen": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts && tsr generate",
     "typecheck": "tsr generate && tsc -b",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test"
