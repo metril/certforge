@@ -2,8 +2,11 @@ package deploy
 
 import (
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
+	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/targets"
 )
@@ -60,7 +63,7 @@ func TestVaultKVDocumentShape(t *testing.T) {
 		{Name: "chain.pem", Data: []byte("CHAIN")},
 		{Name: "privkey.pem", Data: []byte("KEY"), Secret: true},
 	}
-	data := vaultKVData(noLayout, cfg)
+	data := mustVaultKVData(t, noLayout, cfg)
 	if len(data) != 3 {
 		t.Fatalf("data = %+v, want 3 fields (key dropped)", data)
 	}
@@ -72,13 +75,13 @@ func TestVaultKVDocumentShape(t *testing.T) {
 	}
 
 	cfg.IncludeKey = true
-	data = vaultKVData(noLayout, cfg)
+	data = mustVaultKVData(t, noLayout, cfg)
 	if len(data) != 4 || data["privkey.pem"] != "KEY" {
 		t.Fatalf("data with includeKey = %+v", data)
 	}
 
 	cfg.Keys = KeyNames{Fullchain: "custom-fullchain", Cert: "custom-cert", Chain: "custom-chain", Key: "custom-key"}
-	data = vaultKVData(noLayout, cfg)
+	data = mustVaultKVData(t, noLayout, cfg)
 	if data["custom-fullchain"] != "FULLCHAIN" || data["custom-key"] != "KEY" {
 		t.Fatalf("data with custom keys = %+v", data)
 	}
@@ -89,7 +92,7 @@ func TestVaultKVDocumentShape(t *testing.T) {
 		{Name: "cabundle.pem", Data: []byte("CA")},
 		{Name: "keystore.p12", Data: []byte("P12"), Secret: true},
 	}
-	data = vaultKVData(layout, cfg)
+	data = mustVaultKVData(t, layout, cfg)
 	if len(data) != 1 || data["cabundle.pem"] != "CA" {
 		t.Fatalf("layout data = %+v", data)
 	}
@@ -98,7 +101,7 @@ func TestVaultKVDocumentShape(t *testing.T) {
 	}
 
 	cfg.IncludeKey = true
-	data = vaultKVData(layout, cfg)
+	data = mustVaultKVData(t, layout, cfg)
 	if len(data) != 2 || data["keystore.p12"] != "P12" {
 		t.Fatalf("layout data with includeKey = %+v", data)
 	}
@@ -157,5 +160,43 @@ func TestVaultKVModes(t *testing.T) {
 	}
 	if !cfg.NeedsKey {
 		t.Fatalf("Parse(includeKey:true) config = %+v", cfg)
+	}
+}
+
+func mustVaultKVData(t *testing.T, files []render.File, cfg VaultKVConfig) map[string]any {
+	t.Helper()
+	data, err := vaultKVData(files, cfg)
+	if err != nil {
+		t.Fatalf("vaultKVData: %v", err)
+	}
+	return data
+}
+
+// TestVaultKVDuplicateKeys covers B8: duplicate keys.* values are refused
+// at config time, and two files that land on one document field are refused
+// when the document is built and by VaultKVLayoutCheck at grant time.
+func TestVaultKVDuplicateKeys(t *testing.T) {
+	_, err := VaultKV{}.ParseConfig(json.RawMessage(`{"keys": {"cert": "same", "chain": "same"}}`))
+	var fe *delivery.FieldError
+	if !errors.As(err, &fe) || !strings.HasPrefix(fe.Field, "config.keys.") {
+		t.Fatalf("duplicate key names: err = %v", err)
+	}
+	if _, err := (VaultKV{}).ParseConfig(json.RawMessage(`{"keys": {"cert": "fullchain.pem"}}`)); err == nil {
+		t.Fatal("a key name equal to another field's default accepted")
+	}
+
+	var cfg VaultKVConfig
+	cfg.fillDefaults()
+	cfg.Keys.Cert = "bundle.pem"
+	files := []render.File{{Name: "cert.pem", Data: []byte("C")}, {Name: "bundle.pem", Data: []byte("B")}}
+	if _, err := vaultKVData(files, cfg); err == nil {
+		t.Fatal("layout file colliding with a configured key accepted")
+	}
+	raw, _ := json.Marshal(cfg)
+	if err := VaultKVLayoutCheck(raw, []delivery.OutputFile{{Path: "/a/cert.pem", Format: "pem"}, {Path: "/b/bundle.pem", Format: "pem"}}); err == nil {
+		t.Fatal("VaultKVLayoutCheck accepted a collision")
+	}
+	if err := VaultKVLayoutCheck(raw, []delivery.OutputFile{{Path: "/a/x.pem", Format: "pem"}, {Path: "/b/y.pem", Format: "pem"}}); err != nil {
+		t.Fatalf("VaultKVLayoutCheck: %v", err)
 	}
 }

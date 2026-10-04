@@ -944,3 +944,29 @@ func TestGrantRunsOnRules(t *testing.T) {
 		t.Fatalf("admin create server grant on keyed target: %v", err)
 	}
 }
+
+// TestServerGrantLayoutKeyCollision422 covers B8: a layout whose files land
+// two on one vault-kv document field is refused on grant create and update.
+func TestServerGrantLayoutKeyCollision422(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault-collide", map[string]interface{}{"keys": map[string]interface{}{"cert": "b.pem"}})
+	certID, _ := f.currentCert(t, "collide")
+	files, _ := json.Marshal([]delivery.OutputFile{{Path: "/a/cert.pem", Format: "pem", Parts: []string{"leaf"}, Mode: "0644"}, {Path: "/c/b.pem", Format: "pem", Parts: []string{"chain"}, Mode: "0644"}})
+	l, err := f.q.CreateLayout(context.Background(), sqlcgen.CreateLayoutParams{OrgID: f.org, Name: "collide", Files: files, ExtraCertIds: []uuid.UUID{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, LayoutId: &l.ID}})
+	wantStatus(t, err, 422)
+
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: res.(gen.CreateServerGrant201JSONResponse).Id,
+		Body: &gen.GrantUpdate{LayoutId: &l.ID}})
+	wantStatus(t, err, 422)
+}
