@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { account, authHandlers, ca, meWith, problem, url } from '@/test/fixtures';
+import { account, authHandlers, ca, caLocal, meWith, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 it('lists accounts and registers a new one', async () => {
@@ -98,4 +98,18 @@ it('disables Register account and Delete for a viewer', async () => {
   renderRoute('/o/acme/issuers/accounts');
   expect(await screen.findByRole('button', { name: 'Register account' })).toBeDisabled();
   expect(screen.getByRole('button', { name: `Delete ${account.email}` })).toBeDisabled();
+});
+
+it('offers only ACME CAs when registering an account', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
+    http.get(url('/orgs/org-1/acme-accounts'), () => HttpResponse.json([])),
+  );
+  const { user } = renderRoute('/o/acme/issuers/accounts');
+  await user.click(await screen.findByRole('button', { name: 'Register account' }));
+  const dialog = screen.getByRole('dialog', { name: 'Register ACME account' });
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate authority' }));
+  expect(screen.getByRole('option', { name: "Let's Encrypt" })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: caLocal.name })).toBeNull();
 });

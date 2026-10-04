@@ -18,13 +18,16 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { kindOf } from '@/lib/caKinds';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { IssuersHeader } from './IssuersLayout';
 
 
 function RegisterDialog({ orgId, open, onOpenChange }: { orgId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { data: cas = [] } = useQuery(casQuery(orgId));
+  const { data: allCas = [] } = useQuery(casQuery(orgId));
+  // Only an ACME CA has accounts; the server does not check the kind.
+  const cas = allCas.filter((c) => kindOf(c) === 'acme');
   const create = useCreateAccount(orgId);
   const [caId, setCaId] = useState<string | undefined>(cas.length === 1 ? cas[0]!.id : undefined);
   const [email, setEmail] = useState('');
