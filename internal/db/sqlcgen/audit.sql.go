@@ -121,6 +121,17 @@ func (q *Queries) GetAuditEvent(ctx context.Context, id int64) (GetAuditEventRow
 	return i, err
 }
 
+const hasAuditAnchorMarker = `-- name: HasAuditAnchorMarker :one
+SELECT EXISTS (SELECT 1 FROM audit_events WHERE action = 'audit.anchor_initialized')
+`
+
+func (q *Queries) HasAuditAnchorMarker(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, hasAuditAnchorMarker)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertAuditEvent = `-- name: InsertAuditEvent :one
 INSERT INTO audit_events (ts, actor_type, actor_id, action, resource_type, resource_id, org_id, ip, details, prev_hash, hash, hash_alg)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)

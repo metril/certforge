@@ -753,7 +753,12 @@ func TestRestoreCarriesAuditHeadAnchor(t *testing.T) {
 	if len(src) == 0 || !bytes.Equal(src, dst) {
 		t.Fatalf("anchor src %s dst %s", src, dst)
 	}
-	if r, err := audit.New(dstPool, testKey(7)).Check(ctx); err != nil || !r.OK || r.Count != 3 || r.AnchorID != 3 {
+	// The restore command's startup re-chain must leave the carried anchor be.
+	restored := audit.New(dstPool, testKey(7))
+	if _, err := restored.Rechain(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := restored.Check(ctx); err != nil || !r.OK || r.Count != 3 || r.AnchorID != 3 {
 		t.Fatalf("restored chain %+v %v", r, err)
 	}
 }

@@ -7,8 +7,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/dbtest"
+	"github.com/metril/certforge/internal/metrics"
 )
 
 func recordN(t *testing.T, a *audit.Auditor, n int) {
@@ -104,27 +108,98 @@ func TestAnchorHashMismatch(t *testing.T) {
 	}
 }
 
+func countAction(t *testing.T, pool *pgxpool.Pool, action string) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_events WHERE action = $1`, action).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// An install upgraded from before the anchor existed has keyed rows and no
+// anchor or marker: Rechain appends the marker once, which anchors the head.
 func TestAnchorMissingAndUpgradePath(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()
 	a := audit.New(pool, testKey)
 	recordN(t, a, 3)
-	// An install upgraded from before the anchor existed: keyed rows, no anchor.
 	if _, err := pool.Exec(ctx, `DELETE FROM settings WHERE key = 'audit.head'`); err != nil {
 		t.Fatal(err)
 	}
 	wantReason(t, a, audit.ReasonAnchorMissing)
-	// Startup Rechain creates it from the current head; the first verify is clean.
 	if n, err := a.Rechain(ctx); err != nil || n != 0 {
 		t.Fatalf("rechain %d %v", n, err)
 	}
-	if r, err := a.Check(ctx); err != nil || !r.OK || r.AnchorID != 3 {
+	if r, err := a.Check(ctx); err != nil || !r.OK || r.AnchorID != 4 || r.Count != 4 {
 		t.Fatalf("after upgrade %+v %v", r, err)
 	}
-	// A fresh install (no rows, no anchor) is not a failure either.
-	pool2, _ := dbtest.New(t)
-	if r, err := audit.New(pool2, testKey).Check(ctx); err != nil || !r.OK {
-		t.Fatalf("empty %+v %v", r, err)
+	// A second startup changes nothing.
+	if _, err := a.Rechain(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := countAction(t, pool, audit.AnchorInitializedAction); n != 1 {
+		t.Fatalf("marker rows = %d", n)
+	}
+}
+
+// With the marker already in the chain, a vanished anchor is not re-created:
+// deleting the tail and the anchor row must not buy a clean chain.
+func TestRechainDoesNotRebootstrapOverDeletedAnchor(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	ctx := context.Background()
+	a := audit.New(pool, testKey)
+	if _, err := a.Rechain(ctx); err != nil { // fresh install: marker is row 1
+		t.Fatal(err)
+	}
+	recordN(t, a, 3)
+	for _, stmt := range []string{
+		"ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable",
+		"DELETE FROM audit_events WHERE id > 2",
+		"DELETE FROM settings WHERE key = 'audit.head'",
+	} {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.Rechain(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wantReason(t, a, audit.ReasonAnchorMissing)
+	if n := countAction(t, pool, audit.AnchorInitializedAction); n != 1 {
+		t.Fatalf("marker rows = %d", n)
+	}
+}
+
+func TestRechainOnEmptyTableWritesMarkerFirst(t *testing.T) {
+	audit.ResetHeadForTest()
+	pool, _ := dbtest.New(t)
+	ctx := context.Background()
+	a := audit.New(pool, testKey)
+	if _, err := a.Rechain(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := a.Check(ctx); err != nil || !r.OK || r.Count != 1 || r.AnchorID != 1 {
+		t.Fatalf("fresh install %+v %v", r, err)
+	}
+	if got := testutil.ToFloat64(metrics.AuditHeadID); got != 1 {
+		t.Fatalf("gauge = %v", got)
+	}
+}
+
+// The gauge must read the real head right after startup, not 0 until the
+// first Record, or the reset alert would fire on every restart.
+func TestRechainSetsHeadGauge(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	ctx := context.Background()
+	a := audit.New(pool, testKey)
+	recordN(t, a, 3) // anchor present, so Rechain writes nothing
+	audit.ResetHeadForTest()
+	if _, err := a.Rechain(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := testutil.ToFloat64(metrics.AuditHeadID); got != 3 {
+		t.Fatalf("gauge after startup = %v, want 3", got)
 	}
 }
 
@@ -139,8 +214,14 @@ func TestAnchorUpgradeFromLegacyRows(t *testing.T) {
 	if n, err := a.Rechain(ctx); err != nil || n != 3 {
 		t.Fatalf("rechain %d %v", n, err)
 	}
-	if r, err := a.Check(ctx); err != nil || !r.OK || r.AnchorID != 3 || r.HeadID != 3 {
+	if r, err := a.Check(ctx); err != nil || !r.OK || r.AnchorID != 4 || r.HeadID != 4 {
 		t.Fatalf("after rechain %+v %v", r, err)
+	}
+	if n, err := a.Rechain(ctx); err != nil || n != 0 {
+		t.Fatalf("second rechain %d %v", n, err)
+	}
+	if n := countAction(t, pool, audit.AnchorInitializedAction); n != 1 {
+		t.Fatalf("marker rows = %d", n)
 	}
 }
 
