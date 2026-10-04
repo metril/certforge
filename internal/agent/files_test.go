@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/delivery"
 )
@@ -57,5 +58,63 @@ func TestFileDigest(t *testing.T) {
 	_ = os.WriteFile(p, []byte("abc"), 0o600)
 	if sum, mt, err := fileDigest(p); err != nil || sum != delivery.Digest([]byte("abc")) || mt.IsZero() {
 		t.Fatalf("present: %q %v", sum, err)
+	}
+}
+
+func TestStageAtomicDirModesAndSweep(t *testing.T) {
+	root := t.TempDir()
+	w := &FileWriter{Log: discard, EUID: os.Geteuid(), Lookup: lookupIDs}
+
+	// New parent dirs follow the file's mode; an existing dir is untouched.
+	if err := w.Write(filepath.Join(root, "s", "key.pem"), []byte("k"), 0o600, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(filepath.Join(root, "g", "key.pem"), []byte("k"), 0o640, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(filepath.Join(root, "p", "c.pem"), []byte("c"), 0o644, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	for dir, want := range map[string]os.FileMode{"s": 0o700, "g": 0o750, "p": 0o755} {
+		if got := mode(t, filepath.Join(root, dir)); got != want {
+			t.Errorf("dir %s mode %v, want %v", dir, got, want)
+		}
+	}
+	if err := os.Chmod(filepath.Join(root, "p"), 0o711); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(filepath.Join(root, "p", "c.pem"), []byte("c2"), 0o600, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(t, filepath.Join(root, "p")); got != 0o711 {
+		t.Errorf("existing dir mode changed to %v", got)
+	}
+
+	// Stale temps are swept; fresh ones and other files' temps are kept.
+	dir := filepath.Join(root, "s")
+	stale := filepath.Join(dir, ".key.pem.tmp-111")
+	fresh := filepath.Join(dir, ".key.pem.tmp-222")
+	other := filepath.Join(dir, ".other.pem.tmp-333")
+	for _, p := range []string{stale, fresh, other} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	past := time.Now().Add(-time.Hour)
+	for _, p := range []string{stale, other} {
+		if err := os.Chtimes(p, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Write(filepath.Join(dir, "key.pem"), []byte("k2"), 0o600, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("stale temp survived")
+	}
+	for _, p := range []string{fresh, other} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s removed: %v", p, err)
+		}
 	}
 }

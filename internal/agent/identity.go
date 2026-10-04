@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -118,9 +119,10 @@ func writeAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) e
 // finishes it. The temp is removed on error.
 func stageAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) error) (string, error) {
 	dir := filepath.Dir(p)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, parentDirMode(mode)); err != nil {
 		return "", err
 	}
+	sweepStale(dir, "."+filepath.Base(p)+".tmp-")
 	f, err := os.CreateTemp(dir, "."+filepath.Base(p)+".tmp-*")
 	if err != nil {
 		return "", err
@@ -151,6 +153,35 @@ func stageAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) e
 	}
 	done = true
 	return tmp, nil
+}
+
+// parentDirMode is the mode for parent directories created for a file of the
+// given mode: the file's read bits become traverse bits and the owner always
+// gets full access, so a 0600 secret gets 0700 dirs and 0640 gets 0750.
+// Directories that already exist are never touched.
+func parentDirMode(mode fs.FileMode) fs.FileMode {
+	m := mode.Perm()
+	return m | (m&0o444)>>2 | 0o700
+}
+
+// staleTempAge is how old a leftover temp must be before sweepStale removes
+// it, so a concurrent writer's live temp is never taken.
+const staleTempAge = time.Minute
+
+// sweepStale removes crash leftovers (prefix+random temp siblings) in dir.
+func sweepStale(dir, prefix string) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if !strings.HasPrefix(e.Name(), prefix) || e.IsDir() {
+			continue
+		}
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > staleTempAge {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
 }
 
 // commitStaged renames tmp over p and syncs the directory; tmp is removed
