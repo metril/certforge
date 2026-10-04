@@ -260,6 +260,12 @@ var importCertificatesPath = regexp.MustCompile(`^/api/v1/orgs/[^/]+/certificate
 // upload cannot be JSON) with its own, larger cap; every other check here
 // (CSRF, session) is unaffected, since those run in later middleware.
 func requireJSON(next http.Handler) http.Handler {
+	return requireJSONLimit(next, maxRequestBody)
+}
+
+// requireJSONLimit is requireJSON with its own cap on non-import bodies (the
+// agent router uses agentproto.MaxMessage).
+func requireJSONLimit(next http.Handler, limit int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch:
@@ -272,7 +278,7 @@ func requireJSON(next http.Handler) http.Handler {
 				}
 				break
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 			if r.ContentLength != 0 {
 				mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 				if err != nil || mt != "application/json" {

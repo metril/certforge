@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/meta"
 )
@@ -248,5 +249,34 @@ func TestWellKnownHandlerNoTokenStore(t *testing.T) {
 	rec := serve(t, http.MethodGet, "/.well-known/acme-challenge/tok123", "", "")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("code %d", rec.Code)
+	}
+}
+
+// TestRequireJSONLimit: the agent router's cap is agentproto.MaxMessage, so a
+// pull-mode report above 1 MiB passes there while the public cap stays 1 MiB.
+func TestRequireJSONLimit(t *testing.T) {
+	read := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	post := func(h http.Handler, n int) int {
+		req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(strings.Repeat("a", n)))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if got := post(requireJSON(read), 2<<20); got != http.StatusRequestEntityTooLarge {
+		t.Fatalf("default cap: %d", got)
+	}
+	agent := requireJSONLimit(read, agentproto.MaxMessage)
+	if got := post(agent, 2<<20); got != http.StatusNoContent {
+		t.Fatalf("agent cap, 2 MiB: %d", got)
+	}
+	if got := post(agent, agentproto.MaxMessage+1); got != http.StatusRequestEntityTooLarge {
+		t.Fatalf("agent cap, over MaxMessage: %d", got)
 	}
 }

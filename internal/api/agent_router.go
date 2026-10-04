@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
@@ -32,7 +33,8 @@ func NewAgentRouter(d Deps) http.Handler {
 	}
 	a := &agentAPI{d: d}
 	r := chi.NewRouter()
-	r.Use(recoverer(d.Log), requireJSON)
+	// Reports can carry up to agentproto.MaxMessage, not the 1 MiB public cap.
+	r.Use(recoverer(d.Log), func(next http.Handler) http.Handler { return requireJSONLimit(next, agentproto.MaxMessage) })
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) { Write(w, http.StatusNotFound, "Not found", "") })
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		Write(w, http.StatusMethodNotAllowed, "Method not allowed", "")
