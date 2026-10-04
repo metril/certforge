@@ -58,6 +58,11 @@ func (s *Service) allowLoopback(ctx context.Context) (bool, error) {
 	return set.AllowLoopbackURLs, nil
 }
 
+// unreachableAfterFailures is how many consecutive failed checks put a
+// monitor into unreachable; fewer keep its previous state (flap suppression,
+// ADR 0017).
+const unreachableAfterFailures = 2
+
 // badStates are the states monitor.recovered may fire from (Task 9 brief:
 // "recovered fires only from mismatch/expiring/unreachable to ok").
 var badStates = map[string]bool{"mismatch": true, "expiring": true, "unreachable": true}
@@ -173,6 +178,16 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 	newState := deriveState(obs, expectedFP, hasExpected, fpKnownInOrg, now)
 	metrics.MonitorChecks.WithLabelValues(newState).Inc()
 
+	// A failed check below the threshold keeps the previous state and only
+	// records the error; any successful observation resets the counter.
+	failures := 0
+	if obs.Err != nil {
+		failures = min(m.ConsecutiveFailures+1, unreachableAfterFailures)
+		if failures < unreachableAfterFailures {
+			newState = m.State
+		}
+	}
+
 	lastFP, lastIssuer, lastNotAfter, lastError := m.LastFingerprint, m.LastIssuer, m.LastNotAfter, ""
 	if obs.Err == nil {
 		lastFP = obs.Fingerprint
@@ -201,6 +216,7 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 	if _, err := s.Store.TransitionStateWith(ctx, TransitionParams{
 		ID: id, OldState: m.State, NewState: newState, StateChangedAt: stateChangedAt, CheckedAt: now,
 		NextCheckAt: nextCheckAt, LastFingerprint: lastFP, LastNotAfter: lastNotAfter, LastIssuer: lastIssuer, LastError: lastError,
+		ConsecutiveFailures: failures,
 	}, onWin); err != nil {
 		return Monitor{}, err
 	}

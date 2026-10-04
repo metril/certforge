@@ -110,7 +110,7 @@ func TestMonitorTransitionEmitsOnce(t *testing.T) {
 	svc := newService(pool, ins)
 	allowLoopback(t, svc.Settings)
 
-	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "flaky", host: "unused.invalid", state: "ok"})
+	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "flaky", host: "unused.invalid", state: "ok", failures: 1})
 
 	var atBarrier sync.WaitGroup
 	atBarrier.Add(2)

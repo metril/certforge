@@ -76,6 +76,7 @@ type Monitor struct {
 	LastNotAfter            *time.Time
 	LastIssuer              string
 	LastError               string
+	ConsecutiveFailures     int
 	CreatedAt, UpdatedAt    time.Time
 }
 

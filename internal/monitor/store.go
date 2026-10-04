@@ -27,7 +27,7 @@ func fromRow(r sqlcgen.ExternalMonitor) Monitor {
 		IntervalSeconds: int(r.IntervalSeconds), ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
 		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
 		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConsecutiveFailures: int(r.ConsecutiveFailures), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
 
@@ -37,7 +37,7 @@ func fromGetRow(r sqlcgen.GetMonitorRow) Monitor {
 		IntervalSeconds: r.IntervalSeconds, ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
 		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
 		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConsecutiveFailures: r.ConsecutiveFailures, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	})
 	m.ExpectedCertificateName = r.ExpectedCertificateName
 	return m
@@ -197,6 +197,7 @@ type TransitionParams struct {
 	LastFingerprint           string
 	LastNotAfter              *time.Time
 	LastIssuer, LastError     string
+	ConsecutiveFailures       int
 }
 
 // TransitionState is the R5 compare-and-set: it applies only while the row
@@ -221,6 +222,7 @@ func (s *Store) TransitionStateWith(ctx context.Context, p TransitionParams, onW
 		ID: p.ID, OldState: p.OldState, State: p.NewState, StateChangedAt: p.StateChangedAt,
 		LastCheckedAt: &p.CheckedAt, NextCheckAt: p.NextCheckAt, LastFingerprint: p.LastFingerprint,
 		LastNotAfter: p.LastNotAfter, LastIssuer: p.LastIssuer, LastError: p.LastError,
+		ConsecutiveFailures: int32(p.ConsecutiveFailures),
 	})
 	if err != nil {
 		return false, err

@@ -208,25 +208,26 @@ type EnrollmentToken struct {
 }
 
 type ExternalMonitor struct {
-	ID              uuid.UUID  `json:"id"`
-	OrgID           uuid.UUID  `json:"org_id"`
-	Name            string     `json:"name"`
-	Host            string     `json:"host"`
-	Port            int32      `json:"port"`
-	Sni             *string    `json:"sni"`
-	IntervalSeconds int32      `json:"interval_seconds"`
-	ExpectedCertID  *uuid.UUID `json:"expected_cert_id"`
-	Enabled         bool       `json:"enabled"`
-	State           string     `json:"state"`
-	StateChangedAt  time.Time  `json:"state_changed_at"`
-	LastCheckedAt   *time.Time `json:"last_checked_at"`
-	NextCheckAt     time.Time  `json:"next_check_at"`
-	LastFingerprint string     `json:"last_fingerprint"`
-	LastNotAfter    *time.Time `json:"last_not_after"`
-	LastIssuer      string     `json:"last_issuer"`
-	LastError       string     `json:"last_error"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID                  uuid.UUID  `json:"id"`
+	OrgID               uuid.UUID  `json:"org_id"`
+	Name                string     `json:"name"`
+	Host                string     `json:"host"`
+	Port                int32      `json:"port"`
+	Sni                 *string    `json:"sni"`
+	IntervalSeconds     int32      `json:"interval_seconds"`
+	ExpectedCertID      *uuid.UUID `json:"expected_cert_id"`
+	Enabled             bool       `json:"enabled"`
+	State               string     `json:"state"`
+	StateChangedAt      time.Time  `json:"state_changed_at"`
+	LastCheckedAt       *time.Time `json:"last_checked_at"`
+	NextCheckAt         time.Time  `json:"next_check_at"`
+	LastFingerprint     string     `json:"last_fingerprint"`
+	LastNotAfter        *time.Time `json:"last_not_after"`
+	LastIssuer          string     `json:"last_issuer"`
+	LastError           string     `json:"last_error"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	ConsecutiveFailures int32      `json:"consecutive_failures"`
 }
 
 type Hook struct {

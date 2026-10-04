@@ -59,6 +59,7 @@ SET name = $3, host = $4, port = $5, sni = $6, interval_seconds = $7, expected_c
     state = CASE WHEN sqlc.arg(reset_state)::bool THEN 'unknown' ELSE state END,
     state_changed_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE state_changed_at END,
     next_check_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE next_check_at END,
+    consecutive_failures = CASE WHEN sqlc.arg(reset_state)::bool THEN 0 ELSE consecutive_failures END,
     updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING *;
@@ -95,7 +96,8 @@ LIMIT $1;
 -- zero rows (Deviations R5, Task 9 brief: "a compare-and-set on state").
 UPDATE external_monitors
 SET state = $2, state_changed_at = $3, last_checked_at = $4, next_check_at = $5,
-    last_fingerprint = $6, last_not_after = $7, last_issuer = $8, last_error = $9, updated_at = now()
+    last_fingerprint = $6, last_not_after = $7, last_issuer = $8, last_error = $9,
+    consecutive_failures = $10, updated_at = now()
 WHERE id = $1 AND state = sqlc.arg(old_state)::text;
 
 -- name: MonitorsExpectingCert :many
