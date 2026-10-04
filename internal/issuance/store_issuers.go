@@ -826,6 +826,9 @@ func (e *RevokeRecordError) Error() string {
 
 func (e *RevokeRecordError) Unwrap() error { return e.Err }
 
+// revokeRecordTimeout bounds recording a revocation Vault already made.
+const revokeRecordTimeout = 15 * time.Second
+
 // revokeVaultVersion is RevokeVersion's vaultpki half, run with no
 // transaction open: the Vault call, then a retried short write of
 // revoked_at. A concurrent revoke that recorded first leaves 0 rows to
@@ -834,6 +837,10 @@ func (s *Store) revokeVaultVersion(ctx context.Context, sig signer.Signer, leaf 
 	if err := sig.Revoke(ctx, leaf, reason); err != nil {
 		return certstore.Version{}, err
 	}
+	// Vault has revoked: record it even if the request is cancelled or times
+	// out meanwhile (a slow Vault is the usual reason), within its own bound.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), revokeRecordTimeout)
+	defer cancel()
 	now := time.Now()
 	var lastErr error
 	for attempt, backoff := 0, 100*time.Millisecond; attempt < 3; attempt, backoff = attempt+1, backoff*4 {
