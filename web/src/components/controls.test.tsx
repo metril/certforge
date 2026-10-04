@@ -310,6 +310,23 @@ it('confirm destructive requires the exact text and shows server errors inline',
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('CA is used by 2 certificates');
 });
 
+it('confirm destructive submits on Enter once the text matches, and never with empty confirm text', async () => {
+  const onConfirm = vi.fn().mockResolvedValue(undefined);
+  const { user } = renderUI(
+    <ConfirmDestructive open onOpenChange={() => {}} title="Delete" consequence="x" confirmText="abc" actionLabel="Delete" onConfirm={onConfirm} />,
+  );
+  const input = screen.getByRole('textbox');
+  await user.type(input, 'ab{Enter}');
+  expect(onConfirm).not.toHaveBeenCalled();
+  await user.type(input, 'c{Enter}');
+  await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+});
+
+it('confirm destructive keeps the action disabled when there is no confirm text (closing animation)', () => {
+  renderUI(<ConfirmDestructive open onOpenChange={() => {}} title="Delete" consequence="x" confirmText="" actionLabel="Delete" onConfirm={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+});
+
 // Reveal: the stored value is fetched on demand and never kept after hide.
 function RevealHarness({ onReveal, reason }: { onReveal?: () => Promise<string>; reason?: string }) {
   const [v, setV] = useState<string | undefined>(undefined);

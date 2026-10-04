@@ -49,7 +49,7 @@ it('shows the dependents that block a delete', async () => {
   expect(await within(dialog).findByText(/2 certificates, 1 DNS credential/)).toBeInTheDocument();
 });
 
-it('navigates to / and refreshes Me after deleting the active org', async () => {
+it('refreshes Me and stays on /settings after deleting an org (no org in the route)', async () => {
   let meCalls = 0;
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
@@ -60,13 +60,14 @@ it('navigates to / and refreshes Me after deleting the active org', async () => 
     ...base,
     http.delete(url('/orgs/:orgId'), () => new HttpResponse(null, { status: 204 })),
   );
-  const { user } = renderRoute('/settings/general');
+  const { user, router } = renderRoute('/settings/general');
   await user.click(await screen.findByRole('button', { name: 'Delete Acme' }));
   const dialog = await screen.findByRole('dialog', { name: 'Delete Acme' });
   await user.type(within(dialog).getByRole('textbox'), 'acme');
   await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
-  expect(await screen.findByText('No organization exists for your account yet.')).toBeInTheDocument();
-  expect(meCalls).toBeGreaterThanOrEqual(2);
+  await waitFor(() => expect(meCalls).toBeGreaterThanOrEqual(2));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Delete Acme' })).toBeNull());
+  expect(router.state.location.pathname).toBe('/settings/general');
 });
 
 it('keeps a manually edited slug when the name keeps changing', async () => {

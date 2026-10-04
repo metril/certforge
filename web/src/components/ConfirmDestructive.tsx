@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { CircleAlert } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,9 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const actionRef = useRef<HTMLButtonElement>(null);
+  const inputId = useId();
+  // During the close animation the caller's target (and so confirmText) is already cleared.
+  const canConfirm = open && confirmText !== '' && typed === confirmText && !busy;
 
   useEffect(() => {
     if (!open) {
@@ -37,6 +40,7 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
   }, [open]);
 
   async function run() {
+    if (!canConfirm) return;
     setBusy(true);
     setError(null);
     try {
@@ -69,12 +73,18 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
           </DialogDescription>
         </DialogHeader>
         {children}
-        <div className="grid gap-1.5">
-          <Label htmlFor="confirm-destructive">
+        <form
+          className="grid gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run();
+          }}
+        >
+          <Label htmlFor={inputId}>
             Type <span className="font-mono">{confirmText}</span> to confirm
           </Label>
-          <Input ref={inputRef} id="confirm-destructive" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
-        </div>
+          <Input ref={inputRef} id={inputId} autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        </form>
         {error && (
           <p role="alert" className="flex items-center gap-1 text-sm">
             <CircleAlert className="size-4 text-failed" aria-hidden />
@@ -85,7 +95,7 @@ export function ConfirmDestructive({ open, onOpenChange, title, consequence, hel
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button ref={actionRef} variant="destructive" disabled={typed !== confirmText || busy} onClick={() => void run()}>
+          <Button ref={actionRef} variant="destructive" disabled={!canConfirm} onClick={() => void run()}>
             {actionLabel}
           </Button>
         </DialogFooter>

@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader } from '@/components/Card';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
@@ -11,7 +11,7 @@ import type { Org } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
-import { useActiveOrgSlug, useMe } from '@/lib/org';
+import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { OrgSheet } from './OrgSheet';
 import { SitesSheet } from './SitesSheet';
@@ -23,7 +23,7 @@ export function OrgsList() {
   const del = useDeleteOrg();
   const refreshMe = useRefreshMe();
   const navigate = useNavigate();
-  const activeOrgSlug = useActiveOrgSlug();
+  const routeOrg = useParams({ strict: false }).org;
   const [editing, setEditing] = useState<Org | 'new' | null>(null);
   const [deleting, setDeleting] = useState<Org | null>(null);
   const [sitesOf, setSitesOf] = useState<Org | null>(null);
@@ -93,8 +93,9 @@ export function OrgsList() {
         confirmText={deleting?.slug ?? ''}
         actionLabel="Delete"
         onConfirm={async () => {
-          const wasActive = deleting?.slug === activeOrgSlug;
-          await del.mutateAsync(deleting!.id);
+          if (!deleting) return;
+          const wasActive = deleting.slug === routeOrg;
+          await del.mutateAsync(deleting.id);
           try {
             await refreshMe();
           } catch (e) {
