@@ -1,5 +1,5 @@
 import { Card, CardBody } from '@/components/Card';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CircleAlert, CircleCheck, CircleX, RotateCw, TriangleAlert } from 'lucide-react';
@@ -7,13 +7,12 @@ import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
 import { setupStatusQuery, useCompleteSetup } from '@/api/queries/auth';
 import { readinessQuery } from '@/api/queries/health';
+import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { Stepper } from '@/components/Stepper';
 import { Wordmark } from '@/components/Wordmark';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import type { HelpKey } from '@/lib/help';
 import { SLUG_RE, toSlug } from './slug';
 
 const STEPS = ['Admin password', 'Base URL', 'Encryption key', 'First organization'];
@@ -25,24 +24,6 @@ function isHttpUrl(v: string): boolean {
   } catch {
     return false;
   }
-}
-
-function Row({ id, label, help, error, children }: { id: string; label: string; help?: HelpKey; error?: string | null; children: ReactNode }) {
-  return (
-    <div className="grid gap-1.5">
-      <div className="flex items-center gap-1.5">
-        <Label htmlFor={id}>{label}</Label>
-        {help && <HelpTip id={help} />}
-      </div>
-      {children}
-      {error && (
-        <p className="flex items-center gap-1 text-xs">
-          <CircleAlert className="size-3.5 text-failed" aria-hidden />
-          {error}
-        </p>
-      )}
-    </div>
-  );
 }
 
 // Readiness check names -> what the person setting up sees.
@@ -65,6 +46,12 @@ export function SetupWizard() {
   const status = useQuery(setupStatusQuery);
   const tokenRequired = status.data?.tokenRequired === true;
   const readiness = useQuery({ ...readinessQuery, enabled: step === 2, refetchInterval: false });
+
+  // Step 2 has no field: focus its heading so each step starts with focus inside it.
+  const kekHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (step === 2) kekHeading.current?.focus();
+  }, [step]);
 
   const cleanBase = baseUrl.trim().replace(/\/+$/, '');
   // Fix round 1 (controller ruling): gate specifically on the kek check, not
@@ -131,22 +118,24 @@ export function SetupWizard() {
           {step === 0 && (
             <>
               {tokenRequired && (
-                <Row id="setup-token" label="Setup token" help="setup.token" error={tokenError}>
+                <Field id="setup-token" label="Setup token" help="setup.token" error={tokenError}>
                   <Input id="setup-token" type="password" autoComplete="off" autoFocus value={token} onChange={(e) => { setToken(e.target.value); setTokenError(null); }} />
-                </Row>
+                </Field>
               )}
-              <Row id="admin-password" label="Admin password" help="setup.adminPassword"
+              <Field id="admin-password" label="Admin password" help="setup.adminPassword"
                 error={password && password.length < 12 ? '12 characters minimum' : null}>
                 <Input id="admin-password" type="password" autoComplete="new-password" autoFocus={!tokenRequired} value={password} onChange={(e) => setPassword(e.target.value)} />
-              </Row>
-              <Row id="admin-confirm" label="Confirm password" error={confirm && confirm !== password ? 'Passwords differ' : null}>
+              </Field>
+              <Field id="admin-confirm" label="Confirm password" error={confirm && confirm !== password ? 'Passwords differ' : null}>
                 <Input id="admin-confirm" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-              </Row>
+              </Field>
             </>
           )}
           {step === 1 && (
-            <Row id="base-url" label="Base URL" help="setup.baseUrl" error={isHttpUrl(cleanBase) ? null : 'Enter a full URL, like https://certs.example.com'}>
-              <Input id="base-url" className="font-mono text-xs" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://certs.example.com" />
+            <div className="grid gap-1.5">
+              <Field id="base-url" label="Base URL" help="setup.baseUrl" error={isHttpUrl(cleanBase) ? null : 'Enter a full URL, like https://certs.example.com'}>
+                <Input id="base-url" autoFocus className="font-mono text-xs" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://certs.example.com" />
+              </Field>
               {cleanBase === window.location.origin ? (
                 <p className="flex items-center gap-1 text-xs">
                   <CircleCheck className="size-3.5 text-valid" aria-hidden />
@@ -158,12 +147,20 @@ export function SetupWizard() {
                   Differs from this browser's address
                 </p>
               )}
-            </Row>
+              {/^http:\/\//i.test(cleanBase) && (
+                <p className="flex items-center gap-1 text-xs">
+                  <TriangleAlert className="size-3.5 text-expiring" aria-hidden />
+                  https is recommended: sign-in cookies and API keys cross this address.
+                </p>
+              )}
+            </div>
           )}
           {step === 2 && (
             <section className="grid gap-3" aria-live="polite">
               <div className="flex items-center gap-1.5">
-                <h2 className="text-base font-semibold">Encryption key</h2>
+                <h2 ref={kekHeading} tabIndex={-1} className="text-base font-semibold outline-none">
+                  Encryption key
+                </h2>
                 <HelpTip id="setup.kek" />
               </div>
               {readiness.isPending && <p className="text-ink-muted">Checking…</p>}
@@ -194,7 +191,7 @@ export function SetupWizard() {
           )}
           {step === 3 && (
             <>
-              <Row id="org-name" label="Organization">
+              <Field id="org-name" label="Organization">
                 <Input
                   id="org-name"
                   autoFocus
@@ -205,8 +202,8 @@ export function SetupWizard() {
                     if (!slugTouched) setOrgSlug(toSlug(e.target.value));
                   }}
                 />
-              </Row>
-              <Row id="org-slug" label="Slug" help="setup.orgSlug" error={orgSlug && !SLUG_RE.test(orgSlug) ? 'Lowercase letters, digits, and hyphens' : null}>
+              </Field>
+              <Field id="org-slug" label="Slug" help="setup.orgSlug" error={orgSlug && !SLUG_RE.test(orgSlug) ? 'Lowercase letters, digits, and hyphens' : null}>
                 <Input
                   id="org-slug"
                   className="font-mono text-xs"
@@ -217,7 +214,7 @@ export function SetupWizard() {
                     setOrgSlug(e.target.value);
                   }}
                 />
-              </Row>
+              </Field>
               {finishError && (
                 <p role="alert" className="flex items-center gap-1 text-xs">
                   <CircleAlert className="size-3.5 text-failed" aria-hidden />
