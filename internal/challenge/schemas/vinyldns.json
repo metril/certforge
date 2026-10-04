@@ -36,6 +36,13 @@
         "secret": false,
         "x-group": "additional"
       },
+      "VINYLDNS_QUOTE_VALUE": {
+        "type": "string",
+        "title": "VINYLDNS_QUOTE_VALUE",
+        "description": "Adds quotes around the TXT record value (Default: false)",
+        "secret": false,
+        "x-group": "additional"
+      },
       "VINYLDNS_SECRET_KEY": {
         "type": "string",
         "title": "VINYLDNS_SECRET_KEY",

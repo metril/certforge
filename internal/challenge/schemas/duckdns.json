@@ -42,13 +42,6 @@
         "description": "Account token",
         "secret": true,
         "x-group": "credentials"
-      },
-      "DUCKDNS_TTL": {
-        "type": "string",
-        "title": "DUCKDNS_TTL",
-        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
-        "secret": false,
-        "x-group": "additional"
       }
     },
     "x-auth-methods": [
