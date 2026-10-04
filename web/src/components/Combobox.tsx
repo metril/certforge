@@ -17,7 +17,7 @@ export function OptionWithHint({ disabled, hint, children }: { disabled?: boolea
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span tabIndex={0}>{children}</span>
+        <span>{children}</span>
       </TooltipTrigger>
       <TooltipContent>{hint}</TooltipContent>
     </Tooltip>

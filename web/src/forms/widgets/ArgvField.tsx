@@ -76,6 +76,7 @@ export function ArgvField({ id, value, onChange, errors = [], disabled = false }
   const add = () => {
     onChange([...argv, '']);
     setRowIds((ids) => [...ids, makeRowId()]);
+    setFocusIndex(argv.length);
   };
 
   return (
@@ -108,13 +109,13 @@ export function ArgvField({ id, value, onChange, errors = [], disabled = false }
                 />
                 {i > 0 && !disabled && (
                   <>
-                    <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move argument ${i} up`} disabled={i === 1} onClick={() => move(i, -1)}>
+                    <Button type="button" variant="ghost" size="icon-sm" className="size-7" aria-label={`Move argument ${i} up`} disabled={i === 1} onClick={() => move(i, -1)}>
                       <ArrowUp className="size-3.5" aria-hidden />
                     </Button>
-                    <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move argument ${i} down`} disabled={i === argv.length - 1} onClick={() => move(i, 1)}>
+                    <Button type="button" variant="ghost" size="icon-sm" className="size-7" aria-label={`Move argument ${i} down`} disabled={i === argv.length - 1} onClick={() => move(i, 1)}>
                       <ArrowDown className="size-3.5" aria-hidden />
                     </Button>
-                    <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Remove argument ${i}`} onClick={() => remove(i)}>
+                    <Button type="button" variant="ghost" size="icon-sm" className="size-7" aria-label={`Remove argument ${i}`} onClick={() => remove(i)}>
                       <X className="size-3.5" aria-hidden />
                     </Button>
                   </>
@@ -131,7 +132,7 @@ export function ArgvField({ id, value, onChange, errors = [], disabled = false }
         })}
       </ol>
       {!disabled && (
-        <Button variant="outline" size="sm" className="w-fit" disabled={argv.length >= MAX_ARGV} onClick={add}>
+        <Button type="button" variant="outline" size="sm" className="w-fit" disabled={argv.length >= MAX_ARGV} onClick={add}>
           <Plus className="size-4" aria-hidden />
           Add argument
         </Button>

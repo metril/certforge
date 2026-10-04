@@ -42,6 +42,7 @@ export function EnrolPage() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (create.isPending) return;
     setFormError(null);
     if (!name.trim()) {
       setNameError('Enter a name.');

@@ -172,7 +172,8 @@ export function NamesStep({ state, dispatch }: { state: WizardState; dispatch: D
           onChange={(e) => setDraft(e.target.value)}
           onPaste={(e) => {
             e.preventDefault();
-            add(`${draft} ${e.clipboardData.getData('text/plain')}`);
+            const { selectionStart: a, selectionEnd: b } = e.currentTarget;
+            add(`${draft.slice(0, a)} ${e.clipboardData.getData('text/plain')} ${draft.slice(b)}`);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
