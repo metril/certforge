@@ -113,7 +113,9 @@ func extractTarGz(r io.Reader) (fs.FS, error) {
 		return nil, fmt.Errorf("%w: %w", ErrArchive, err)
 	}
 	defer func() { _ = gz.Close() }()
-	tr := tar.NewReader(gz)
+	// Count every inflated byte, including data tar skips inside non-regular
+	// entries, which readWithinBudget never sees.
+	tr := tar.NewReader(&budgetReader{r: gz, remaining: maxUncompressedBytes})
 	out := fstest.MapFS{}
 	var entries, total int64
 	for {
@@ -134,15 +136,8 @@ func extractTarGz(r io.Reader) (fs.FS, error) {
 		}
 		if hdr.Typeflag != tar.TypeReg {
 			// Directories, symlinks, hard links, devices, ... — never
-			// extracted, and (being typically zero-Size entries) not
-			// costly to skip. A crafted entry that lies and gives a
-			// non-regular type real data behind it still costs gzip a
-			// decompression pass to reach the next header, since tr.Next()
-			// must consume it regardless of Typeflag; that cost is not
-			// counted against maxUncompressedBytes here (only a TypeReg
-			// entry's own bytes are, in readWithinBudget below), but
-			// maxEntries above still bounds the number of such entries a
-			// single archive can force.
+			// extracted. Any data tr.Next() inflates to skip one still
+			// counts against maxUncompressedBytes via budgetReader.
 			continue
 		}
 		data, n, err := readWithinBudget(tr, maxUncompressedBytes-total)
@@ -192,4 +187,28 @@ func safeArchivePath(name string) (string, bool) {
 		return "", false
 	}
 	return cleaned, true
+}
+
+// budgetReader errors (ErrArchive) once more than remaining bytes have been
+// read through it. Unlike io.LimitReader it fails loudly instead of
+// returning a silent EOF that tar would treat as a truncated archive.
+type budgetReader struct {
+	r         io.Reader
+	remaining int64
+}
+
+func (b *budgetReader) Read(p []byte) (int, error) {
+	if b.remaining < 0 {
+		return 0, fmt.Errorf("%w: more than %d bytes uncompressed", ErrArchive, maxUncompressedBytes)
+	}
+	// Read at most one byte past the budget so overflow is detected exactly.
+	if int64(len(p)) > b.remaining+1 {
+		p = p[:b.remaining+1]
+	}
+	n, err := b.r.Read(p)
+	b.remaining -= int64(n)
+	if b.remaining < 0 {
+		return n, fmt.Errorf("%w: more than %d bytes uncompressed", ErrArchive, maxUncompressedBytes)
+	}
+	return n, err
 }

@@ -120,6 +120,32 @@ func TestExtractArchiveRejects(t *testing.T) {
 			t.Fatalf("err = %v, want ErrArchive", err)
 		}
 	})
+	t.Run("too large inside a skipped entry", func(t *testing.T) {
+		// A non-regular (here: unknown-type) entry's data is inflated while tar skips to the next
+		// header; those bytes must count against the budget too.
+		var buf bytes.Buffer
+		gw := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gw)
+		big := maxUncompressedBytes + 1
+		if err := tw.WriteHeader(&tar.Header{Name: "fake", Mode: 0o644, Size: int64(big), Typeflag: 'Z'}); err != nil {
+			t.Fatal(err)
+		}
+		chunk := make([]byte, 1<<20)
+		for n := 0; n < big; n += len(chunk) {
+			if _, err := tw.Write(chunk[:min(len(chunk), big-n)]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := tw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := gw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ExtractArchive(bytes.NewReader(buf.Bytes())); !errors.Is(err, ErrArchive) {
+			t.Fatalf("err = %v, want ErrArchive", err)
+		}
+	})
 	t.Run("too large streamed", func(t *testing.T) {
 		// readWithinBudget counts the actual bytes read.LimitReader off the
 		// entry, never hdr.Size, so this only needs an entry whose real
