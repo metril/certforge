@@ -106,6 +106,8 @@ To give one name its own credential, put a rule for exactly that name first: `a.
 
 Optional per `dns-01`/`manual-dns` rule: `propagationSeconds`, `resolvers`, `cnameAliasZone`. `http-01` and `tls-alpn-01` rules take none of those (they have no TXT propagation to wait on).
 
+A list holds at most 50 verification rules, and a rule's `resolvers` at most 10 entries (as does a `resolvers` default); each resolver value is validated per rule. A save over a cap is refused with 422, but a list sent back unchanged from what is stored is still accepted, so an existing longer list keeps working until that list is edited.
+
 - **Propagation budget**: each name gets its own propagation-check budget (its rule's `propagationSeconds`, or its provider's default) once past any manual-dns wait; it fails within that budget regardless of how long another name of the same certificate is still allowed to run (for example a `manual-dns` name's hour-long wait does not extend a `dns-01` name's much shorter budget).
 - **Ordering with overlapping zones**: put the narrow rule first. With `dev.example.com → B` above `example.com → A`, `x.dev.example.com` uses B; reversed, A shadows B.
 - **Uncovered names**: if a name matches no rule and no catch-all exists, the attempt fails before contacting the CA: `no verification rule matches <name> and no catch-all rule is configured`. Add a rule or a catch-all in the defaults.
