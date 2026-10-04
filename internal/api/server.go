@@ -162,6 +162,13 @@ type Server struct {
 	vaultSectionMu  sync.Mutex
 	vaultSectionAt  time.Time
 	vaultSectionErr error
+
+	// readyMu/readyAt/readyDB/readyKEK cache /readyz's database ping and KEK
+	// canary (readyCacheTTL healthy, readyFailCacheTTL failing; S7).
+	readyMu  sync.Mutex
+	readyAt  time.Time
+	readyDB  error
+	readyKEK error
 }
 
 var _ gen.StrictServerInterface = (*Server)(nil)

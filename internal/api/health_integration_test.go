@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/api"
 	"github.com/metril/certforge/internal/backup"
@@ -51,8 +52,44 @@ func TestReadyz(t *testing.T) {
 	if err := e.deps.Settings.EnsureCanary(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(1100 * time.Millisecond) // the failing result is cached for 1s
 	if code, b := readyz(t, e.srv.URL); code != http.StatusOK || b.Status != "ready" || b.Checks["database"] != "ok" {
 		t.Fatalf("ready %d %+v", code, b)
+	}
+}
+
+// TestReadyzCached covers S7: the database ping and KEK canary are cached,
+// so removing the canary after a healthy answer does not show until the
+// cache expires, and a failing answer expires sooner than a healthy one.
+func TestReadyzCached(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.deps.Settings.EnsureCanary(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := readyz(t, e.srv.URL); code != http.StatusOK {
+		t.Fatalf("first call %d", code)
+	}
+	if _, err := e.deps.Pool.Exec(context.Background(), `DELETE FROM settings WHERE key = 'crypto.canary'`); err != nil {
+		t.Fatal(err)
+	}
+	if code, b := readyz(t, e.srv.URL); code != http.StatusOK {
+		t.Fatalf("cached healthy answer expected, got %d %+v", code, b)
+	}
+	// A failing answer is cached for less: it is gone after the failure TTL
+	// even though the healthy TTL (5s) has not passed.
+	time.Sleep(5100 * time.Millisecond)
+	if code, _ := readyz(t, e.srv.URL); code != http.StatusServiceUnavailable {
+		t.Fatalf("after the healthy TTL: %d, want 503", code)
+	}
+	if err := e.deps.Settings.EnsureCanary(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := readyz(t, e.srv.URL); code != http.StatusServiceUnavailable {
+		t.Fatalf("a failing answer is still cached: %d, want 503", code)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	if code, _ := readyz(t, e.srv.URL); code != http.StatusOK {
+		t.Fatalf("after the failure TTL: %d, want 200", code)
 	}
 }
 
