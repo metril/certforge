@@ -7,6 +7,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { ToneChip } from '@/components/StatusChip';
 import { actionTone } from '@/features/audit/actions';
+import { failedWithoutData } from '@/lib/queryState';
 import { useActiveOrgSlug, useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
 import { fmtDateTime, relTime } from '@/lib/time';
@@ -42,7 +43,7 @@ export function RecentActivity({ orgId }: { orgId?: string }) {
           Audit log
         </Link>
       </div>
-      {q.isError ? (
+      {failedWithoutData(q) ? (
         <ErrorState message={`Couldn't load recent activity. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
       ) : q.data?.length === 0 ? (
         <p className="text-sm text-ink-muted">No activity yet.</p>

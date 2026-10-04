@@ -16,7 +16,7 @@ export function AttemptsTab({ orgId, certId, caId, onRenew }: { orgId: string; c
   // through to the empty-attempts branch below and render "No attempts yet"
   // with a Renew button — indistinguishable from a certificate that really
   // has none.
-  if (isError) return <ErrorState message={`Couldn't load attempts. ${errorMessage(error)}`} onRetry={() => void refetch()} />;
+  if (isError && data === undefined) return <ErrorState message={`Couldn't load attempts. ${errorMessage(error)}`} onRetry={() => void refetch()} />;
   const attempts = [...(data ?? [])].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
   if (attempts.length === 0) {
     return (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -20,9 +20,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { scopeLabel } from '@/lib/apiKeys';
 import { useMe } from '@/lib/org';
+import { failedWithoutData } from '@/lib/queryState';
 import { can, canAnywhere } from '@/lib/permissions';
 import { fmtDate } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useUrlText } from '@/lib/useUrlText';
 import { cn } from '@/lib/utils';
 import { BindingSheet, ROLE_LABEL } from './BindingSheet';
 
@@ -120,25 +122,7 @@ export function BindingsTab() {
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<RoleBinding | null>(null);
   const isMdUp = useMediaQuery('(min-width: 768px)');
-  const [text, setText] = useState(search.q ?? '');
-
-  // Debounced, URL-synced text filter (controller ruling D5), mirroring
-  // UsersTab's own `q` debounce.
-  const pushedQ = useRef(search.q ?? '');
-  useEffect(() => {
-    const urlQ = search.q ?? '';
-    if (urlQ !== pushedQ.current) {
-      pushedQ.current = urlQ;
-      if (urlQ !== text) setText(urlQ);
-      return;
-    }
-    if (text === urlQ) return;
-    const t = window.setTimeout(() => {
-      pushedQ.current = text;
-      void navigate({ search: (prev) => ({ ...prev, q: text || undefined }), replace: true });
-    }, 250);
-    return () => window.clearTimeout(t);
-  }, [text, search.q, navigate]);
+  const [text, setText] = useUrlText(search.q, (v) => void navigate({ search: (prev) => ({ ...prev, q: v }), replace: true }));
 
   const userById = useMemo(() => new Map((users.data ?? []).map((u) => [u.id, u])), [users.data]);
   const keyById = useMemo(() => new Map((keys.data ?? []).map((k) => [k.id, k])), [keys.data]);
@@ -155,7 +139,6 @@ export function BindingsTab() {
   // its own local buffer so the debounce doesn't re-push the old value).
   const clearFilters = () => {
     setText('');
-    pushedQ.current = '';
     void navigate({ search: (prev) => ({ ...prev, q: undefined, type: undefined, orgId: undefined }) });
   };
 
@@ -233,7 +216,7 @@ export function BindingsTab() {
         </div>
         <SavedViews list="bindings" current={{ q: search.q, type: search.type, orgId: search.orgId }} onApply={(s) => void navigate({ search: (prev) => ({ ...prev, ...s }) })} />
       </div>
-      {q.isError ? (
+      {failedWithoutData(q) ? (
         <ErrorState message={`Couldn't load bindings. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
       ) : q.data && q.data.length === 0 ? (
         <EmptyState message="No role bindings match.">{add}</EmptyState>
