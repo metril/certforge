@@ -56,7 +56,7 @@ services:
       # The ACME port itself is not published: the e2e test never talks to
       # Pebble directly, only the compose server does (over the compose
       # network, at pebble:14000).
-      - "${CF_PEBBLE_MGMT_PORT:-15000}:15000"
+      - "127.0.0.1:${CF_PEBBLE_MGMT_PORT:-15000}:15000"
     depends_on:
       - challtestsrv
   challtestsrv:
@@ -68,7 +68,7 @@ services:
       # api.e2e/agent.e2e/alpn.e2e to the right compose-network container;
       # the server itself still reaches challtestsrv over the compose
       # network (challtestsrv:8055) for its dns-01 TXT records.
-      - "${CF_CHALLTESTSRV_PORT:-18055}:8055"
+      - "127.0.0.1:${CF_CHALLTESTSRV_PORT:-18055}:8055"
   # ACME http-01 routing (Task 15's own agent grant, see the agent service
   # below): Pebble's http-01 validation for agent.e2e resolves to this
   # container, not the agent's own IP, so the only way it succeeds is
@@ -159,7 +159,7 @@ services:
     ports:
       # Container and default host port match so a browser mapping the name
       # dex to 127.0.0.1 reaches the same issuer URL the server uses.
-      - "${CF_DEX_PORT:-5556}:5556"
+      - "127.0.0.1:${CF_DEX_PORT:-5556}:5556"
     healthcheck:
       # The image has no curl; wget -q -O- exits non-zero on a non-2xx
       # response, which is all --wait needs here.
@@ -178,7 +178,7 @@ services:
     profiles: [e2e]
     image: axllent/mailpit:v1.31.3
     ports:
-      - "${CF_MAILPIT_PORT:-18025}:8025"
+      - "127.0.0.1:${CF_MAILPIT_PORT:-18025}:8025"
   # Task 14: dev-mode Vault for the Transit KEK, vaultpki, vault-kv and the
   # readiness check's own "vault" entry. Dev mode is in-memory and always
   # unsealed with a fixed root token, which is exactly what the e2e's
@@ -196,7 +196,7 @@ services:
       VAULT_DEV_ROOT_TOKEN_ID: ${CF_E2E_VAULT_TOKEN:-certforge-e2e-root}
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
     ports:
-      - "${CF_VAULT_PORT:-8200}:8200"
+      - "127.0.0.1:${CF_VAULT_PORT:-8200}:8200"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8200/v1/sys/health"]
       interval: 5s
