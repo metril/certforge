@@ -40,6 +40,9 @@ func (b *Builder) Build(ctx context.Context, orgID uuid.UUID, perms Perms) (Grap
 	snap := *b
 	snap.Q = b.Q.WithTx(tx)
 	snap.Certs = b.Certs.WithTx(tx)
+	// GlobalDefaults reads one settings row through the settings service,
+	// outside this transaction; acceptable for a single row.
+	snap.Issuance = b.Issuance.WithTx(tx)
 	return snap.build(ctx, orgID, perms)
 }
 

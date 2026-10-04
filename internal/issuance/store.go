@@ -32,6 +32,15 @@ func NewStore(pool *pgxpool.Pool, box crypto.Box, global GlobalSettings) *Store 
 	return &Store{pool: pool, q: sqlcgen.New(pool), box: box, global: global}
 }
 
+// WithTx returns a copy of the Store whose queries run in tx, for callers
+// that read several things through one snapshot (the flow map). Methods that
+// open their own transaction or use the pool directly are not affected.
+func (s *Store) WithTx(tx pgx.Tx) *Store {
+	c := *s
+	c.q = s.q.WithTx(tx)
+	return &c
+}
+
 // sealJSON marshals v (typically a secret_cfg-shaped struct whose []byte
 // fields hold private-key bytes, base64-encoded by encoding/json) and
 // seals it. The marshalled plaintext is cleared once sealed — Security
