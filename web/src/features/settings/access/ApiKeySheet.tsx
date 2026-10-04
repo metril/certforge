@@ -75,6 +75,13 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
   const dirty = name !== '' || scope !== initialScope || expiryPick !== null || customDate !== '' || JSON.stringify(picked) !== JSON.stringify(['certs:read']);
   const orgId = scope === GLOBAL ? null : (scope ?? null);
   const grantable = (s: ApiKeyScope) => canGrantScope(me, s, orgId);
+  // A scope change can make picked permissions ungrantable; drop them rather
+  // than show them picked but disabled.
+  const changeScope = (v: string | undefined) => {
+    setScope(v);
+    const next = v === GLOBAL ? null : (v ?? null);
+    setPicked((p) => p.filter((s) => canGrantScope(me, s, next)));
+  };
   const customExpiresAt = expiry === 'custom' ? endOfDayLocalISO(customDate) : undefined;
   const customPast = expiry === 'custom' && customExpiresAt !== null && customExpiresAt !== undefined && Date.parse(customExpiresAt) < Date.now();
   const customOverCap = cap > 0 && customExpiresAt != null && Date.parse(customExpiresAt) > Date.now() + cap * DAY;
@@ -127,7 +134,7 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
           <Input id="key-name" placeholder="ci-deploy" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field id="key-org" label="Scope" help="apikey.org">
-          <Combobox id="key-org" aria-label="Scope" value={scope} onChange={setScope} options={scopes} placeholder="Pick an org" emptyText="No org matches." />
+          <Combobox id="key-org" aria-label="Scope" value={scope} onChange={changeScope} options={scopes} placeholder="Pick an org" emptyText="No org matches." />
         </Field>
         <Field id="key-scopes" label="Permissions" help="apikey.scopes">
           <ChipSet<ApiKeyScope>
