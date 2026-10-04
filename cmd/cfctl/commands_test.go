@@ -687,3 +687,37 @@ func TestRunEndToEnd(t *testing.T) {
 		t.Fatalf("out = %q", out.String())
 	}
 }
+
+// TestNonJSONSuccessIsAnError asserts a 200 whose body the generated client
+// did not decode (no JSON content type) is reported, not dereferenced.
+func TestNonJSONSuccessIsAnError(t *testing.T) {
+	plain := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html>proxy</html>"))
+	}
+	srv := newFakeAPI(t, "tok",
+		route{"GET", "/server-info", plain},
+		route{"GET", "/keys/status", plain},
+		route{"GET", "/orgs", plain},
+	)
+	for name, call := range map[string]func(e *env) int{
+		"status":     func(e *env) int { return cmdStatus(context.Background(), e, nil) },
+		"keysStatus": func(e *env) int { return keysStatus(context.Background(), e, nil) },
+		"orgSlug":    func(e *env) int { return monitorsList(context.Background(), e, nil) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			org := ""
+			if name == "orgSlug" {
+				org = "acme"
+			}
+			e := testEnv(t, srv, "tok", org, false, &out, &errOut)
+			if code := call(e); code != 1 {
+				t.Fatalf("code = %d, want 1", code)
+			}
+			if !strings.Contains(errOut.String(), "non-JSON") {
+				t.Fatalf("stderr = %q", errOut.String())
+			}
+		})
+	}
+}

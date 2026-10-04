@@ -203,6 +203,9 @@ func (e *env) resolveOrg(ctx context.Context) (uuid.UUID, error) {
 	if err := e.checkStatus(resp.StatusCode(), resp.Body, http.StatusOK); err != nil {
 		return uuid.Nil, err
 	}
+	if resp.JSON200 == nil {
+		return uuid.Nil, errNonJSON
+	}
 	for _, o := range resp.JSON200.Items {
 		if o.Slug == e.org {
 			return o.Id, nil
@@ -210,6 +213,10 @@ func (e *env) resolveOrg(ctx context.Context) (uuid.UUID, error) {
 	}
 	return uuid.Nil, fmt.Errorf("no org with id or slug %q", e.org)
 }
+
+// errNonJSON is returned when a success status carries a body the generated
+// client did not decode as JSON (JSON200 is nil), such as a proxy's HTML page.
+var errNonJSON = errors.New("unexpected non-JSON response from server")
 
 // checkStatus echoes body under --json (cfctl's raw output mode, on
 // success or failure alike) and turns a status outside ok into a
