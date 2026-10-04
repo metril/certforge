@@ -238,7 +238,7 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 		// A cancelled ctx can surface as a truncated-response decode error
 		// when the CA's reply races the cancellation; report the cancellation.
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, fmt.Errorf("%w: %v", ctxErr, err)
+			return nil, fmt.Errorf("%w: %w", ctxErr, err)
 		}
 		return nil, classify(err, rt)
 	}
