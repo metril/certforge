@@ -168,3 +168,40 @@ func TestCertificateOverview(t *testing.T) {
 	_, err = f.srv.GetAllCertificateOverview(none, gen.GetAllCertificateOverviewRequestObject{})
 	wantStatus(t, err, http.StatusForbidden)
 }
+
+func TestCertificateOverviewTruncated(t *testing.T) {
+	old := overviewCap
+	overviewCap = 3
+	t.Cleanup(func() { overviewCap = old })
+	f := newAPIFixture(t)
+	manual := []challenge.RuleSpec{{Match: "x.example.test", Method: challenge.MethodManualDNS, Via: challenge.ViaServer}}
+	http01 := []challenge.RuleSpec{{Match: "x.example.test", Method: challenge.MethodHTTP01, Via: challenge.ViaServer}}
+	// Urgent rows, one an overdue renewal whose expiry is far out.
+	f.seedOverview(t, f.org, ovSeed{name: "overdue-far", status: "active", rules: http01, notAfterDays: days(300), renewDays: days(-2)})
+	f.seedOverview(t, f.org, ovSeed{name: "failed", status: "failed", rules: http01, failures: 1, lastErr: "x"})
+	f.seedOverview(t, f.org, ovSeed{name: "expired", status: "expired", rules: http01, notAfterDays: days(-3)})
+	// Manual-DNS-only extras must not push the urgent rows out.
+	for _, n := range []string{"m1", "m2", "m3"} {
+		f.seedOverview(t, f.org, ovSeed{name: n, status: "active", rules: manual, notAfterDays: days(400), renewDays: days(100)})
+	}
+	res, err := f.srv.GetCertificateOverview(f.as("viewer"), gen.GetCertificateOverviewRequestObject{OrgId: f.org})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ov := res.(gen.GetCertificateOverview200JSONResponse)
+	if !ov.Truncated || len(ov.Items) != 3 {
+		t.Fatalf("truncated %v items %d", ov.Truncated, len(ov.Items))
+	}
+	got := map[string]bool{}
+	for _, b := range ov.Items {
+		got[b.Name] = true
+	}
+	for _, n := range []string{"overdue-far", "failed", "expired"} {
+		if !got[n] {
+			t.Fatalf("urgent %s cut: %v", n, got)
+		}
+	}
+	if c := ov.Counts; c.Total != 6 || c.Active != 4 || ov.Beyond != 4 {
+		t.Fatalf("counts %+v beyond %d", c, ov.Beyond)
+	}
+}

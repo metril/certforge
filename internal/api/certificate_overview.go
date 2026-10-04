@@ -17,7 +17,7 @@ import (
 )
 
 // overviewCap bounds the briefs one summary returns; truncated says it bit.
-const overviewCap = 2000
+var overviewCap = 2000
 
 // GetCertificateOverview is the Overview's summary for one org.
 func (s *Server) GetCertificateOverview(ctx context.Context, r gen.GetCertificateOverviewRequestObject) (gen.GetCertificateOverviewResponseObject, error) {
@@ -117,7 +117,7 @@ func (s *Server) certOverview(ctx context.Context, orgIDs []uuid.UUID) (gen.Cert
 		}
 		out.Beyond += int(c.Beyond)
 	}
-	rows, err := q.CertificateOverviewBriefs(ctx, sqlcgen.CertificateOverviewBriefsParams{OrgIds: orgIDs, InheritOrgs: inherit, RowLimit: overviewCap + 1})
+	rows, err := q.CertificateOverviewBriefs(ctx, sqlcgen.CertificateOverviewBriefsParams{OrgIds: orgIDs, InheritOrgs: inherit, RowLimit: int32(overviewCap + 1)})
 	if err != nil {
 		return gen.CertificateOverview{}, err
 	}
