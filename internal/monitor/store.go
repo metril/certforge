@@ -198,6 +198,8 @@ type TransitionParams struct {
 	LastNotAfter              *time.Time
 	LastIssuer, LastError     string
 	ConsecutiveFailures       int
+	// OldFailures is the counter the caller read; the CAS applies only while it still holds.
+	OldFailures int
 }
 
 // TransitionState is the R5 compare-and-set: it applies only while the row
@@ -222,7 +224,7 @@ func (s *Store) TransitionStateWith(ctx context.Context, p TransitionParams, onW
 		ID: p.ID, OldState: p.OldState, State: p.NewState, StateChangedAt: p.StateChangedAt,
 		LastCheckedAt: &p.CheckedAt, NextCheckAt: p.NextCheckAt, LastFingerprint: p.LastFingerprint,
 		LastNotAfter: p.LastNotAfter, LastIssuer: p.LastIssuer, LastError: p.LastError,
-		ConsecutiveFailures: int32(p.ConsecutiveFailures),
+		ConsecutiveFailures: int32(p.ConsecutiveFailures), OldFailures: int32(p.OldFailures),
 	})
 	if err != nil {
 		return false, err

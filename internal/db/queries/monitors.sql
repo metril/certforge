@@ -94,11 +94,14 @@ LIMIT $1;
 -- of the same monitor cannot both "win" a transition — the loser's WHERE
 -- no longer matches once the winner's UPDATE has committed, and it affects
 -- zero rows (Deviations R5, Task 9 brief: "a compare-and-set on state").
+-- consecutive_failures is part of the compare: a first failure leaves state
+-- unchanged, so state alone cannot tell two racing checks apart.
 UPDATE external_monitors
 SET state = $2, state_changed_at = $3, last_checked_at = $4, next_check_at = $5,
     last_fingerprint = $6, last_not_after = $7, last_issuer = $8, last_error = $9,
     consecutive_failures = $10, updated_at = now()
-WHERE id = $1 AND state = sqlc.arg(old_state)::text;
+WHERE id = $1 AND state = sqlc.arg(old_state)::text
+  AND consecutive_failures = sqlc.arg(old_failures)::int;
 
 -- name: MonitorsExpectingCert :many
 -- Monitors (callers scope by org_id) whose expected_cert_id is cert_id;

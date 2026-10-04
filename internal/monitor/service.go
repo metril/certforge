@@ -216,7 +216,7 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 	if _, err := s.Store.TransitionStateWith(ctx, TransitionParams{
 		ID: id, OldState: m.State, NewState: newState, StateChangedAt: stateChangedAt, CheckedAt: now,
 		NextCheckAt: nextCheckAt, LastFingerprint: lastFP, LastNotAfter: lastNotAfter, LastIssuer: lastIssuer, LastError: lastError,
-		ConsecutiveFailures: failures,
+		ConsecutiveFailures: failures, OldFailures: m.ConsecutiveFailures,
 	}, onWin); err != nil {
 		return Monitor{}, err
 	}

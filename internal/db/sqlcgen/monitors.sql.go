@@ -407,6 +407,7 @@ SET state = $2, state_changed_at = $3, last_checked_at = $4, next_check_at = $5,
     last_fingerprint = $6, last_not_after = $7, last_issuer = $8, last_error = $9,
     consecutive_failures = $10, updated_at = now()
 WHERE id = $1 AND state = $11::text
+  AND consecutive_failures = $12::int
 `
 
 type TransitionMonitorStateParams struct {
@@ -421,6 +422,7 @@ type TransitionMonitorStateParams struct {
 	LastError           string     `json:"last_error"`
 	ConsecutiveFailures int32      `json:"consecutive_failures"`
 	OldState            string     `json:"old_state"`
+	OldFailures         int32      `json:"old_failures"`
 }
 
 // The compare-and-set at the heart of R5's dedupe rule: WHERE id AND state
@@ -428,6 +430,8 @@ type TransitionMonitorStateParams struct {
 // of the same monitor cannot both "win" a transition — the loser's WHERE
 // no longer matches once the winner's UPDATE has committed, and it affects
 // zero rows (Deviations R5, Task 9 brief: "a compare-and-set on state").
+// consecutive_failures is part of the compare: a first failure leaves state
+// unchanged, so state alone cannot tell two racing checks apart.
 func (q *Queries) TransitionMonitorState(ctx context.Context, arg TransitionMonitorStateParams) (int64, error) {
 	result, err := q.db.Exec(ctx, transitionMonitorState,
 		arg.ID,
@@ -441,6 +445,7 @@ func (q *Queries) TransitionMonitorState(ctx context.Context, arg TransitionMoni
 		arg.LastError,
 		arg.ConsecutiveFailures,
 		arg.OldState,
+		arg.OldFailures,
 	)
 	if err != nil {
 		return 0, err

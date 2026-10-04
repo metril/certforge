@@ -73,3 +73,27 @@ func TestUpdateDoesNotOverwriteConcurrentTransition(t *testing.T) {
 		t.Fatalf("nextCheckAt after resetting update = %v, want >= %v", updated.NextCheckAt, before)
 	}
 }
+
+// TestTransitionComparesFailureCounter: two transitions from the same read
+// (same state, same counter) cannot both apply.
+func TestTransitionComparesFailureCounter(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	store := &monitor.Store{Pool: pool, Q: sqlcgen.New(pool)}
+	ctx := context.Background()
+	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "m", host: "h.example.test", state: "ok"})
+	now := time.Now()
+	p := monitor.TransitionParams{ID: id, OldState: "ok", NewState: "ok", StateChangedAt: now, CheckedAt: now,
+		NextCheckAt: now.Add(time.Hour), LastError: "refused", ConsecutiveFailures: 1, OldFailures: 0}
+	first, err := store.TransitionState(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.TransitionState(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first || second {
+		t.Fatalf("first won = %v, second won = %v; want true, false", first, second)
+	}
+}
