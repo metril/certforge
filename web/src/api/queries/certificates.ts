@@ -65,6 +65,24 @@ export async function fetchAllCertificates(orgId: string): Promise<Certificate[]
 export const allCertificatesQuery = (orgId: string) =>
   queryOptions({ queryKey: ['certs', orgId, 'all'], queryFn: () => fetchAllCertificates(orgId), refetchInterval: POLL.list });
 
+/** The Overview's server-side summary (counts plus the briefs that need a look)
+ * for one org, or for every readable org when orgId is 'all'. */
+export const certificateOverviewQuery = (orgId: string | 'all') =>
+  queryOptions({
+    queryKey: ['certs', orgId, 'overview'],
+    queryFn: () =>
+      call(orgId === 'all' ? api.GET('/certificates/summary') : api.GET('/orgs/{orgId}/certificates/summary', { params: { path: { orgId } } })),
+    refetchInterval: POLL.list,
+  });
+
+/** The command palette's server-side search: name, common name or SAN, first 20 by name. */
+export const certificateSearchQuery = (orgId: string, q: string) =>
+  queryOptions({
+    queryKey: ['certs', orgId, 'search', q],
+    queryFn: () => call(api.GET('/orgs/{orgId}/certificates', { params: { path: { orgId }, query: { q, sort: 'name', limit: 20 } } })),
+    staleTime: 10_000,
+  });
+
 export type CertListQuery = { status?: CertStatus; q?: string; sort?: string };
 
 export const certListQueryKey = (orgId: string, s: CertListQuery) => ['certs', orgId, 'list', s] as const;

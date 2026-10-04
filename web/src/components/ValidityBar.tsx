@@ -1,5 +1,5 @@
 import type { AriWindow, Certificate } from '@/api/types';
-import { validityTone, type Tone } from '@/lib/status';
+import { certTone, type Tone } from '@/lib/status';
 import { DAY, fmtDate, relDays, relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { HelpTip } from './HelpTip';
@@ -180,7 +180,7 @@ export function CertValidity({ cert, size = 'compact', now, className }: { cert:
       notAfter={v.notAfter}
       renewAt={cert.nextRenewAt}
       ari={cert.ariWindow}
-      tone={validityTone(cert, now)}
+      tone={certTone(cert, now)}
       now={now}
       size={size}
       className={className}

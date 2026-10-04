@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, iso, makeAuditEvent, makeCert, meWith, NOW, org, org2, url } from '@/test/fixtures';
+import { authHandlers, iso, makeAuditEvent, makeCert, overviewOf, meWith, NOW, org, org2, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 afterEach(() => vi.useRealTimers());
@@ -17,7 +17,7 @@ it('shows the last 20 events for the org', async () => {
   let query: URLSearchParams | undefined;
   server.use(
     ...authHandlers({ authed: true }),
-    http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/:orgId/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/audit'), ({ request }) => {
       query = new URL(request.url).searchParams;
       return HttpResponse.json({ items: [makeAuditEvent({ id: 3, action: 'certificate.renew' }), makeAuditEvent({ id: 2, action: 'ca.create', actorName: 'Ann' })], nextCursor: null });
@@ -35,7 +35,7 @@ it('is hidden without audit:read', async () => {
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))),
-    http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/:orgId/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
   );
   renderRoute('/o/acme/overview');
   await screen.findByRole('region', { name: 'Upcoming renewals' });
@@ -51,7 +51,7 @@ it('falls back to actorName for a caller without users:read, and never fetches /
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'auditor', orgId: org.id }]))),
-    http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/:orgId/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/audit'), () => HttpResponse.json({ items: [makeAuditEvent({ id: 4, actorId: 'u-9', actorName: 'Someone' })], nextCursor: null })),
     http.get(url('/users'), () => {
       throw new Error('an auditor without users:read must never fetch /users');
@@ -70,7 +70,7 @@ it('falls back to actorType when actorName is blank too', async () => {
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'auditor', orgId: org.id }]))),
-    http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/:orgId/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/audit'), () =>
       HttpResponse.json({ items: [makeAuditEvent({ id: 4, actorId: 'u-9', actorName: '', actorType: 'system' })], nextCursor: null }),
     ),
@@ -87,7 +87,7 @@ it('shows and links into /o/all/audit under All orgs', async () => {
   server.use(
     http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'admin', orgId: null }], [org, org2]))),
-    http.get(url('/certificates'), () => HttpResponse.json({ items: [makeCert({ orgId: org.id })], nextCursor: null })),
+    http.get(url('/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert({ orgId: org.id })]))),
     http.get(url('/audit'), () => HttpResponse.json({ items: [makeAuditEvent({ id: 5, action: 'org.create' })], nextCursor: null })),
   );
   const { user } = renderRoute('/o/all/overview');
@@ -107,7 +107,7 @@ it('refreshes relative times on each poll, not just on new data', async () => {
   vi.setSystemTime(NOW);
   server.use(
     ...authHandlers({ authed: true }),
-    http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/:orgId/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/audit'), () => HttpResponse.json({ items: [makeAuditEvent({ id: 1, ts: iso(0) })], nextCursor: null })),
   );
   const { queryClient, user } = renderRoute('/o/acme/overview');

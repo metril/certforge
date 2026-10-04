@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import {
   backupStatus,
+  emptyOverview,
   issuanceSettingsSchema,
   keysStatic,
   org,
@@ -48,12 +49,14 @@ import {
 export const server = setupServer(
   http.get(url('/orgs'), () => HttpResponse.json({ items: [org] })),
   http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get(url('/orgs/:orgId/certificates/summary'), () => HttpResponse.json(emptyOverview)),
   http.get(url('/orgs/:orgId/cas'), () => HttpResponse.json([])),
   http.get(url('/orgs/:orgId/certificates/:id/manual-dns'), () => HttpResponse.json([])),
   http.get(url('/orgs/:orgId/certificates/:id/attempts'), () => HttpResponse.json([])),
   http.get('*/readyz', () => HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })),
   http.get(url('/auth/methods'), () => HttpResponse.json({ oidcEnabled: false, localEnabled: true })),
   http.get(url('/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get(url('/certificates/summary'), () => HttpResponse.json(emptyOverview)),
   http.get(url('/audit'), () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get(url('/users'), () => HttpResponse.json({ items: [] })),
   http.get(url('/audit/verify'), () =>

@@ -2,7 +2,7 @@ import { delay, http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, iso, makeCert, makeClient, makeMonitor, meWith, NOW, org, org2, problem, url } from '@/test/fixtures';
+import { authHandlers, iso, makeCert, overviewOf, makeClient, makeMonitor, meWith, NOW, org, org2, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let ready = true;
@@ -17,9 +17,9 @@ beforeEach(() => {
         ? HttpResponse.json({ status: 'ready', checks: { database: 'ok', kek: 'ok' } })
         : HttpResponse.json({ status: 'unavailable', checks: { database: 'ok', kek: 'failed' } }, { status: 503 }),
     ),
-    http.get(url('/orgs/org-1/certificates'), () =>
-      HttpResponse.json({
-        items: [
+    http.get(url('/orgs/org-1/certificates/summary'), () =>
+      HttpResponse.json(
+        overviewOf([
           makeCert({ id: 'c-1', name: 'www', nextRenewAt: iso(3) }),
           makeCert({ id: 'c-2', name: 'api', status: 'failed', failureCount: 2, lastError: 'dns: NXDOMAIN' }),
           makeCert({ id: 'c-3', name: 'lab', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'lab.local', method: 'manual-dns', via: 'server' }] }),
@@ -27,9 +27,8 @@ beforeEach(() => {
           // first-issuance `pending` one) still gets a mounted ManualDnsCard
           // while it's renewing over manual-dns and waiting for TXT records.
           makeCert({ id: 'c-4', name: 'proxy', status: 'active', verificationRules: [{ match: 'proxy.example.com', method: 'manual-dns', via: 'server' }] }),
-        ],
-        nextCursor: null,
-      }),
+        ]),
+      ),
     ),
     http.get(url('/orgs/org-1/certificates/c-3/manual-dns'), () => HttpResponse.json([{ name: '_acme-challenge.lab.local', type: 'TXT', value: 'abc', ttl: 60 }])),
     http.get(url('/orgs/org-1/certificates/c-4/manual-dns'), () => HttpResponse.json([{ name: '_acme-challenge.proxy.example.com', type: 'TXT', value: 'xyz', ttl: 60 }])),
@@ -74,7 +73,7 @@ it('shows the health strip only when the server is not ready', async () => {
 });
 
 it('shows Retry when the certificates fetch fails', async () => {
-  server.use(http.get(url('/orgs/org-1/certificates'), () => problem(500, 'boom')));
+  server.use(http.get(url('/orgs/org-1/certificates/summary'), () => problem(500, 'boom')));
   renderRoute('/o/acme/overview');
   expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
   expect(screen.getByText(/boom/)).toBeInTheDocument();
@@ -105,7 +104,7 @@ it('keeps the brushed expiry range in the URL, and clears it there too', async (
 it('disables New certificate in the empty state for a viewer', async () => {
   server.use(
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))),
-    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [], nextCursor: null })),
+    http.get(url('/orgs/org-1/certificates/summary'), () => HttpResponse.json(overviewOf([]))),
   );
   renderRoute('/o/acme/overview');
   expect(await screen.findByRole('button', { name: 'New certificate' })).toBeDisabled();
@@ -146,7 +145,7 @@ it('queues client problems with one fix each', async () => {
 it('gives a client problem no fix link when the caller lacks clients:write', async () => {
   server.use(
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))),
-    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/orgs/org-1/clients'), () => HttpResponse.json({ items: [makeClient({ id: 'cl-1', name: 'web-1', driftCount: 1 })], nextCursor: null })),
   );
   renderRoute('/o/acme/overview');
@@ -159,7 +158,7 @@ it('gives a client problem no fix link when the caller lacks clients:write', asy
 it('under All orgs, gates each client problem\'s fix link by that client\'s own org', async () => {
   server.use(
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }, { role: 'viewer', orgId: 'org-2' }, { role: 'viewer', orgId: null }], [org, org2]))),
-    http.get(url('/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/clients'), () =>
       HttpResponse.json({
         items: [
@@ -180,7 +179,7 @@ it('under All orgs, gates each client problem\'s fix link by that client\'s own 
 
 it('warns when the clients walk was truncated', async () => {
   server.use(
-    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/orgs/org-1/clients'), () => HttpResponse.json({ items: [makeClient()], nextCursor: 'next' })),
   );
   renderRoute('/o/acme/overview');
@@ -190,7 +189,7 @@ it('warns when the clients walk was truncated', async () => {
 
 it('shows a Retry line instead of "Nothing needs attention" when the clients check fails', async () => {
   server.use(
-    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/orgs/org-1/clients'), () => problem(500, 'boom')),
   );
   renderRoute('/o/acme/overview');
@@ -225,7 +224,7 @@ it('stays silent about the agent listener certificate at 14 days or more', async
 it('monitor row links and checks now', async () => {
   let checked: string | undefined;
   server.use(
-    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/orgs/org-1/monitors'), () =>
       HttpResponse.json([makeMonitor({ id: 'mon-1', name: 'edge', state: 'mismatch', lastFingerprint: 'ab'.repeat(32), expectedCertificateName: 'www.example.com' })]),
     ),
@@ -248,7 +247,7 @@ it('no monitor query without alerts:read', async () => {
   let requested = false;
   server.use(
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-2' }], [org, org2]))),
-    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/orgs/org-1/monitors'), () => {
       requested = true;
       return HttpResponse.json([]);
@@ -265,7 +264,7 @@ it('no monitor query in all orgs', async () => {
     http.get(url('/auth/me'), () =>
       HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }, { role: 'viewer', orgId: 'org-2' }, { role: 'viewer', orgId: null }], [org, org2])),
     ),
-    http.get(url('/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     // Any org, not just org-1: under All orgs, `org.id` is the literal
     // string 'all' (batch 4 review), so a missing `!allOrgs` guard would hit
     // /orgs/all/monitors — served silently by the default
@@ -287,7 +286,7 @@ it('keeps the page and shows a stale notice when a later poll fails', async () =
   const { queryClient } = renderRoute('/o/acme/overview');
   await screen.findByRole('region', { name: 'Needs attention' });
   await screen.findByText('api');
-  server.use(http.get(url('/orgs/org-1/certificates'), () => problem(500, 'boom')));
+  server.use(http.get(url('/orgs/org-1/certificates/summary'), () => problem(500, 'boom')));
   await queryClient.refetchQueries({ queryKey: ['certs'] });
   expect(await screen.findByRole('status')).toHaveTextContent(/showing the last loaded data/);
   expect(screen.getByText('api')).toBeInTheDocument();
@@ -309,8 +308,8 @@ it('only disables Renew now on the row being renewed', async () => {
 it('keeps every in-flight Renew now row disabled until its own request settles', async () => {
   const hold: Record<string, () => void> = {};
   server.use(
-    http.get(url('/orgs/org-1/certificates'), () =>
-      HttpResponse.json({ items: [makeCert({ id: 'c-a', name: 'alpha', status: 'failed', failureCount: 1, lastError: 'x' }), makeCert({ id: 'c-b', name: 'bravo', status: 'failed', failureCount: 1, lastError: 'x' })] }),
+    http.get(url('/orgs/org-1/certificates/summary'), () =>
+      HttpResponse.json(overviewOf([makeCert({ id: 'c-a', name: 'alpha', status: 'failed', failureCount: 1, lastError: 'x' }), makeCert({ id: 'c-b', name: 'bravo', status: 'failed', failureCount: 1, lastError: 'x' })])),
     ),
     http.post(url('/orgs/org-1/certificates/:id/renew'), async ({ params }) => {
       await new Promise<void>((r) => { hold[params.id as string] = r; });
@@ -335,7 +334,7 @@ it('keeps every in-flight Renew now row disabled until its own request settles',
 it('keeps every in-flight Check now row disabled until its own request settles', async () => {
   const hold: Record<string, () => void> = {};
   server.use(
-    http.get(url('/orgs/org-1/certificates'), () => HttpResponse.json({ items: [makeCert()], nextCursor: null })),
+    http.get(url('/orgs/org-1/certificates/summary'), () => HttpResponse.json(overviewOf([makeCert()]))),
     http.get(url('/orgs/org-1/monitors'), () =>
       HttpResponse.json([makeMonitor({ id: 'mon-1', name: 'edge', state: 'mismatch' }), makeMonitor({ id: 'mon-2', name: 'core', state: 'mismatch' })]),
     ),

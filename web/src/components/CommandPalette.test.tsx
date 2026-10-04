@@ -435,3 +435,29 @@ it('hides Import certificates and Upload certificate under All orgs', async () =
   expect(within(dialog).queryByText('Import certificates')).not.toBeInTheDocument();
   expect(within(dialog).queryByText('Upload certificate')).not.toBeInTheDocument();
 });
+
+// P1: certificates are searched on the server once typing pauses; an empty
+// query lists none and sends no request, and the first request already
+// carries the whole typed text rather than one request per keystroke.
+it('searches certificates server-side with a debounce, and lists none for an empty query', async () => {
+  const queries: (string | null)[] = [];
+  server.use(
+    http.get(url('/orgs/org-1/certificates'), ({ request }) => {
+      const u = new URL(request.url);
+      queries.push(u.searchParams.get('q'));
+      expect(u.searchParams.get('limit')).toBe('20');
+      return HttpResponse.json({ items: [makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com', sans: ['cdn.example.net'] })], nextCursor: null });
+    }),
+    ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com', sans: ['cdn.example.net'] })),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  await screen.findByRole('heading', { name: 'Overview' });
+  await user.keyboard('{Control>}k{/Control}');
+  const input = await screen.findByPlaceholderText('www.example.com');
+  expect(screen.queryByRole('option', { name: /^edge/ })).not.toBeInTheDocument();
+  expect(queries).toEqual([]);
+  await user.type(input, 'cdn.ex');
+  expect(await screen.findByRole('option', { name: /^edge/ })).toBeInTheDocument();
+  expect(queries).toEqual(['cdn.ex']);
+  expect(screen.getByRole('option', { name: /^Renew edge/ })).toBeInTheDocument();
+});

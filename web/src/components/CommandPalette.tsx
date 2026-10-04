@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { FileText, FolderInput, Plus, RotateCw, Server, ShieldCheck, Upload } from 'lucide-react';
 import { runBackup } from '@/api/queries/backup';
-import { allCertificatesQuery, useRenewCertificates } from '@/api/queries/certificates';
+import { certificateSearchQuery, useRenewCertificates } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ALL_ORGS_SLUG, useMe, useOrgSlugOf } from '@/lib/org';
@@ -60,7 +60,6 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const canWriteClients = !!org && can(me, 'clients:write', org.id);
   const canReadDelivery = !!org && can(me, 'delivery:read', org.id);
   const canReadAlerts = !!org && can(me, 'alerts:read', org.id);
-  const { data: certs = [] } = useQuery({ ...allCertificatesQuery(org?.id ?? ''), enabled: open && !!org && (canReadCerts || canIssue) });
   // M7: under All orgs there's no single org to scope the request to, but the
   // GET /clients cross-org listing (already used by the clients list's own
   // All orgs view) covers it — read-only navigation only, matching every
@@ -69,6 +68,19 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const { data: clientsData } = useQuery({ ...allClientsQuery(allOrgs ? 'all' : (org?.id ?? '')), enabled: open && (allOrgs || !!org) && canReadClients });
   const clients = clientsData?.items ?? [];
   const [search, setSearch] = useState('');
+  // Certificates are searched on the server, 150 ms after the last keystroke;
+  // an empty query lists none.
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(search.trim()), search.trim() === '' ? 0 : 150);
+    return () => window.clearTimeout(t);
+  }, [search]);
+  const { data: found } = useQuery({
+    ...certificateSearchQuery(org?.id ?? '', debounced),
+    enabled: open && !!org && (canReadCerts || canIssue) && debounced !== '',
+    placeholderData: keepPreviousData,
+  });
+  const certs = search.trim() === '' ? [] : (found?.items ?? []);
   // Escape and an overlay click close the palette without going through run().
   useEffect(() => {
     if (!open) setSearch('');

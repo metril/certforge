@@ -5,7 +5,7 @@ import { allClientsQuery } from '@/api/queries/clients';
 import { monitorsQuery, useCheckMonitor } from '@/api/queries/monitors';
 import { useRenewCertificates } from '@/api/queries/certificates';
 import { errorMessage } from '@/api/errors';
-import type { Certificate, Client } from '@/api/types';
+import type { CertBrief, Client } from '@/api/types';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -19,7 +19,7 @@ import type { Tone } from '@/lib/status';
 import { relDays } from '@/lib/time';
 import { usePendingIds } from '@/lib/usePendingIds';
 import { toast } from 'sonner';
-import { attentionItems, upcomingRenewals, usesManualDns, type AttentionKind } from '../attention';
+import { attentionItems, upcomingRenewals, type AttentionKind } from '../attention';
 import { attentionQueue, clientAttentionItems, type ClientAttentionKind } from '../clientAttention';
 import { monitorAttentionItems, type MonitorAttentionKind } from '../monitorAttention';
 import { CertRow } from './CertRow';
@@ -44,7 +44,7 @@ const MONITOR_KIND: Record<MonitorAttentionKind, { tone: Tone; label: string }> 
 
 /** Block 2: everything that wants a look (attention queue, manual-DNS cards,
  * client and monitor rows) with the next 7 days of renewals underneath. */
-export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: number }) {
+export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number }) {
   const org = useOrg();
   const allOrgs = useAllOrgs();
   const slugOf = useOrgSlugOf();
@@ -60,7 +60,7 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
   const renew = useRenewCertificates(org.id);
   const checking = usePendingIds();
   const renewing = usePendingIds();
-  const slug = (c: Certificate) => (allOrgs ? slugOf(c.orgId) : org.slug);
+  const slug = (c: CertBrief) => (allOrgs ? slugOf(c.orgId) : org.slug);
   const items = attentionItems(certs, now);
   const others = items.filter((i) => i.kind !== 'manual-dns');
   // Controller ruling: a card is mounted for every non-revoked,
@@ -69,7 +69,7 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
   // on TXT records must show, not just a first-issuance `pending` one.
   // The `manual-dns` *attention item* stays `pending`-only, so the count
   // doesn't double-count a cert this section already surfaces its own way.
-  const manualDnsCerts = certs.filter((c) => c.status !== 'revoked' && c.status !== 'expired' && usesManualDns(c));
+  const manualDnsCerts = certs.filter((c) => c.status !== 'revoked' && c.status !== 'expired' && c.manualDns);
   const clientItems = clientAttentionItems(clients.data?.items ?? [], now);
   const monitorItems = canMonitors ? monitorAttentionItems(monitors.data ?? []) : [];
   const queue = attentionQueue(others, clientItems, monitorItems);

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { Certificate } from '@/api/types';
+import type { CertBrief } from '@/api/types';
 import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -28,15 +28,14 @@ export type Tick = { id: string; x: number; windowFrom: number | null; tone: Ton
  * further out (or never issued) don't get a tick; `beyond` counts the
  * former so the caption can still say "N later" instead of silently
  * dropping them. */
-export function horizonTicks(certs: Certificate[], now: number): { ticks: Tick[]; beyond: number } {
+export function horizonTicks(certs: CertBrief[], now: number): { ticks: Tick[]; beyond: number } {
   const span = HORIZON_DAYS * DAY;
   const x = (t: number) => Math.max(0, Math.min(1, (t - now) / span)) * W;
   const ticks: Tick[] = [];
   let beyond = 0;
   for (const c of certs) {
-    const v = c.currentVersion;
-    if (!v || c.status === 'revoked') continue;
-    const end = Date.parse(v.notAfter);
+    if (!c.notAfter || c.status === 'revoked') continue;
+    const end = Date.parse(c.notAfter);
     if (end - now > span) {
       beyond++;
       continue;
@@ -46,7 +45,7 @@ export function horizonTicks(certs: Certificate[], now: number): { ticks: Tick[]
       x: x(end),
       windowFrom: c.nextRenewAt ? x(Date.parse(c.nextRenewAt)) : null,
       tone: validityTone(c, now),
-      label: `${c.name}, expires ${relDays(v.notAfter, now)}`,
+      label: `${c.name}, expires ${relDays(c.notAfter, now)}`,
     });
   }
   return { ticks, beyond };
@@ -59,16 +58,18 @@ export function rangeToDays(x0: number, x1: number): [number, number] {
   return [Math.round((a / W) * HORIZON_DAYS), Math.round((b / W) * HORIZON_DAYS)];
 }
 
-type Props = { certs: Certificate[]; now: number; range: [number, number] | null; onRange: (r: [number, number] | null) => void };
+/** `beyond` is the server's count of every certificate expiring after the horizon; the briefs only carry the ones that qualified for other reasons. */
+type Props = { certs: CertBrief[]; beyond?: number; now: number; range: [number, number] | null; onRange: (r: [number, number] | null) => void };
 
 /** The 90-day expiry horizon: one coloured tick per certificate, the
  * renewal window shaded behind it, and a drag-to-brush range that reports
  * back in whole days. `viewBox` with `preserveAspectRatio="none"` keeps it
  * inside the page width at any viewport (no horizontal scroll). */
-export function ExpiryHorizon({ certs, now, range, onRange }: Props) {
+export function ExpiryHorizon({ certs, beyond: beyondAll, now, range, onRange }: Props) {
   const ref = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<[number, number] | null>(null);
-  const { ticks, beyond } = horizonTicks(certs, now);
+  const { ticks, beyond: beyondLocal } = horizonTicks(certs, now);
+  const beyond = beyondAll ?? beyondLocal;
   const toX = (clientX: number) => {
     const r = ref.current!.getBoundingClientRect();
     return Math.max(0, Math.min(W, ((clientX - r.left) / Math.max(r.width, 1)) * W));
