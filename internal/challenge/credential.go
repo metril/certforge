@@ -331,6 +331,20 @@ func CheckURLFields(ctx context.Context, code string, cfg map[string]string, all
 	return nil
 }
 
+// CheckURLResolved applies the notifier SSRF policy to one URL: the URL
+// check itself, then a resolution of its hostname with every address checked
+// (r nil = system DNS).
+func CheckURLResolved(ctx context.Context, rawURL string, allowLoopback bool, r HostResolver) error {
+	if err := httpx.CheckURL(rawURL, allowLoopback); err != nil {
+		return err
+	}
+	if r == nil {
+		r = net.DefaultResolver
+	}
+	u, _ := url.Parse(rawURL) // CheckURL parsed it
+	return checkResolved(ctx, u.Hostname(), allowLoopback, r)
+}
+
 // checkResolved refuses a metadata name, an unresolvable name, and a name
 // with any resolved address the policy blocks. A literal IP was already
 // classified by CheckURL.
@@ -345,7 +359,7 @@ func checkResolved(ctx context.Context, host string, allowLoopback bool, r HostR
 	defer cancel()
 	addrs, err := r.LookupNetIP(ctx, "ip", host)
 	if err != nil || len(addrs) == 0 {
-		return fmt.Errorf("host %q could not be resolved; the address must resolve when the credential is saved", host)
+		return fmt.Errorf("host %q could not be resolved; the address must resolve when it is saved", host)
 	}
 	for _, a := range addrs {
 		if err := httpx.CheckHost(a.String(), allowLoopback); err != nil {

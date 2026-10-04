@@ -3,9 +3,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -203,4 +205,49 @@ func TestEffectiveDefaultsServeBuiltins(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("builtin = %v, want %v", got, want)
 	}
+}
+
+// B10: an ACME directoryUrl goes through the notifier SSRF policy on create
+// and update (422 naming the field); allowLoopbackUrls lifts loopback only,
+// RFC 1918 hosts and a URL unchanged from the stored one are accepted.
+func TestCADirectoryURLFollowsSSRFPolicy(t *testing.T) {
+	f := newAPIFixture(t)
+	create := func(u string) (gen.CreateCaResponseObject, error) {
+		return f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+			Name: "ca-" + uuid.NewString()[:8], Preset: ptr(gen.CAPresetCode("custom")), DirectoryUrl: ptr(u)}})
+	}
+	for _, u := range []string{"https://127.0.0.1:14000/dir", "https://localhost/dir", "https://169.254.169.254/dir",
+		"https://127.0.0.1.nip.io/dir", "https://nxdomain.example.invalid/dir"} {
+		_, err := create(u)
+		wantStatus(t, err, http.StatusUnprocessableEntity)
+		if !strings.Contains(err.Error(), "directoryUrl") && !strings.Contains(err.Error(), "not allowed") && !strings.Contains(err.Error(), "resolve") {
+			t.Fatalf("%s: unexpected error %v", u, err)
+		}
+	}
+	var id uuid.UUID
+	for _, u := range []string{"https://ca.example.test/dir", "https://10.1.2.3:14000/dir"} {
+		res, err := create(u)
+		if err != nil {
+			t.Fatalf("%s: %v", u, err)
+		}
+		id = res.(gen.CreateCa201JSONResponse).Id
+	}
+	update := func(u string) error {
+		_, err := f.srv.UpdateCa(f.as("admin"), gen.UpdateCaRequestObject{OrgId: f.org, Id: id, Body: &gen.CAInput{
+			Name: "renamed-" + uuid.NewString()[:8], Preset: ptr(gen.CAPresetCode("custom")), DirectoryUrl: ptr(u)}})
+		return err
+	}
+	if err := update("https://10.1.2.3:14000/dir"); err != nil {
+		t.Fatalf("unchanged url: %v", err)
+	}
+	wantStatus(t, update("https://127.0.0.1/dir"), http.StatusUnprocessableEntity)
+
+	if err := f.settingsStore.Set(context.Background(), "section.notifications", map[string]any{"allowLoopbackUrls": true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := create("https://127.0.0.1:14000/dir"); err != nil {
+		t.Fatalf("loopback with opt-out: %v", err)
+	}
+	_, err := create("https://169.254.169.254/dir")
+	wantStatus(t, err, http.StatusUnprocessableEntity)
 }

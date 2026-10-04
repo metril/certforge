@@ -16,6 +16,8 @@ Issuers → CAs. Pick a preset or Custom.
 | `sslcom` | `https://acme.ssl.com/sslcom-dv-rsa` | required |
 | `custom` | any `https://` directory URL | optional |
 
+A `directoryUrl` goes through the same URL policy as notification channels and DNS credentials when it is saved: the hostname must resolve, loopback and cloud-metadata addresses are refused (loopback is allowed by the notifications `allowLoopbackUrls` setting), and private RFC 1918 addresses are allowed. A URL equal to the stored one is not re-checked.
+
 - **Trust bundle**: PEM roots added to the system pool when talking to a private ACME server (Pebble, step-ca, Vault ACME).
 - **Resolvers**: `host` or `host:port` DNS servers used for propagation checks when neither the rule nor the defaults name any.
 - Only a global admin (`cas:write`) adds or edits CAs. In Phase 1 a CA row belongs to one org; shared global CAs arrive in Phase 2.

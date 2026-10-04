@@ -7,6 +7,7 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authz"
+	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/issuance"
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
 )
@@ -122,12 +123,35 @@ func (s *Server) ListCas(ctx context.Context, r gen.ListCasRequestObject) (gen.L
 	return out, nil
 }
 
+// checkCADirectoryURL applies the notifier SSRF policy to an ACME CA's
+// directoryUrl (422 naming the field): hostnames are resolved and every
+// address checked, and the "notifications" allowLoopbackUrls setting is the
+// opt-out for loopback hosts. An empty URL (a preset's own) and a URL equal to
+// the stored one are not re-checked.
+func (s *Server) checkCADirectoryURL(ctx context.Context, in issuance.CAInput, stored string) error {
+	if (in.Type != "" && in.Type != issuance.CATypeACME) || in.DirectoryURL == "" || in.DirectoryURL == stored {
+		return nil
+	}
+	allowLoopback, err := s.monitorAllowLoopback(ctx)
+	if err != nil {
+		return err
+	}
+	if err := challenge.CheckURLResolved(ctx, in.DirectoryURL, allowLoopback, s.d.HostResolver); err != nil {
+		return unprocessable("directoryUrl", err.Error())
+	}
+	return nil
+}
+
 // CreateCa adds a CA to the org.
 func (s *Server) CreateCa(ctx context.Context, r gen.CreateCaRequestObject) (gen.CreateCaResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCAsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	c, err := s.d.Issuance.Store.CreateCA(ctx, r.OrgId, caIn(r.Body))
+	in := caIn(r.Body)
+	if err := s.checkCADirectoryURL(ctx, in, ""); err != nil {
+		return nil, err
+	}
+	c, err := s.d.Issuance.Store.CreateCA(ctx, r.OrgId, in)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -153,7 +177,15 @@ func (s *Server) UpdateCa(ctx context.Context, r gen.UpdateCaRequestObject) (gen
 	if _, err := authorize(ctx, authz.ActionCAsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	c, err := s.d.Issuance.Store.UpdateCA(ctx, r.OrgId, r.Id, caIn(r.Body))
+	in := caIn(r.Body)
+	stored := ""
+	if cur, err := s.d.Issuance.Store.GetCA(ctx, r.OrgId, r.Id); err == nil {
+		stored = cur.DirectoryURL
+	}
+	if err := s.checkCADirectoryURL(ctx, in, stored); err != nil {
+		return nil, err
+	}
+	c, err := s.d.Issuance.Store.UpdateCA(ctx, r.OrgId, r.Id, in)
 	if err != nil {
 		return nil, mapErr(err)
 	}
