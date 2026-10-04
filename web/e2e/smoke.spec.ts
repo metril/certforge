@@ -97,8 +97,8 @@ test('names step wraps chips at 375px and supports a pointer drag to change the 
   await page.goto(`/o/${E2E.orgSlug}/certificates/new`);
 
   const names = ['first.example.test', 'second.example.test', 'third.example.test', 'fourth.example.test', 'fifth.example.test'];
-  await page.getByLabel('Names').fill(names.join(', '));
-  await page.getByLabel('Names').blur();
+  await page.getByLabel('Names', { exact: true }).fill(names.join(', '));
+  await page.getByLabel('Names', { exact: true }).blur();
 
   // The chip grid (grouped by zone); scoped to avoid matching the same name
   // text in the CN slot or the wizard's summary rail.
