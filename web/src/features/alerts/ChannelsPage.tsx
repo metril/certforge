@@ -128,7 +128,10 @@ function ChannelCard({ channel, org, me, onOpen }: { channel: Channel; org: Org;
         </span>
       </div>
       <span className="text-xs text-ink-muted">{channelMeta(me, org, channel).join(' · ')}</span>
-      <LastDeliveryCell channel={channel} />
+      {/* z-10: the title's stretched overlay must not cover the chip's tooltip trigger. */}
+      <span className="relative z-10 w-fit">
+        <LastDeliveryCell channel={channel} />
+      </span>
     </div>
   );
 }

@@ -126,7 +126,10 @@ function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: stri
       </div>
       <TargetCell monitor={monitor} />
       <div className="flex flex-wrap items-center gap-2">
-        <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
+        {/* z-10: the title's stretched overlay must not cover the chip's tooltip trigger. */}
+        <span className="relative z-10">
+          <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
+        </span>
         <span className="text-xs text-ink-muted">{fmtInterval(monitor.intervalSeconds)}</span>
       </div>
       {monitor.lastFingerprint && (
@@ -134,7 +137,9 @@ function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: stri
           <CopyField value={monitor.lastFingerprint} label="fingerprint" display={shortFp(monitor.lastFingerprint)} />
         </div>
       )}
-      <NextCheckCell monitor={monitor} />
+      <span className="relative z-10 w-fit">
+        <NextCheckCell monitor={monitor} />
+      </span>
     </div>
   );
 }
