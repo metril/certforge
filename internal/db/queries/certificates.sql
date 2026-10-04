@@ -329,7 +329,7 @@ SELECT * FROM certificate_versions WHERE id = $1 AND cert_id = $2 FOR UPDATE;
 
 -- name: SetCertificateVersionRevoked :one
 UPDATE certificate_versions SET revoked_at = $3
-WHERE id = $1 AND cert_id = $2
+WHERE id = $1 AND cert_id = $2 AND revoked_at IS NULL
 RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at;
 
 -- name: ListCertificateVersionsByIDs :many

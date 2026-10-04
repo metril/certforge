@@ -26,6 +26,7 @@ func mapErr(err error) error {
 	var ce *issuance.ConflictError
 	var se *signer.Error
 	var ae *agents.Error
+	var rr *issuance.RevokeRecordError
 	switch {
 	case err == nil:
 		return nil
@@ -39,6 +40,8 @@ func mapErr(err error) error {
 		return &HTTPError{Status: http.StatusConflict, Title: "Conflict", Detail: ce.Msg}
 	case errors.As(err, &se):
 		return &HTTPError{Status: http.StatusBadGateway, Title: "CA error", Detail: se.Error()}
+	case errors.As(err, &rr):
+		return &HTTPError{Status: http.StatusInternalServerError, Title: "Revocation not recorded", Detail: rr.Error()}
 	case errors.As(err, &ae):
 		return mapAgentErr(err)
 	}

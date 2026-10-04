@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"regexp"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
@@ -747,9 +749,10 @@ func purgeExpiredRetiredSecret(in []retiredSecretKey, now time.Time) []retiredSe
 // over the issuer that actually signed it (current or, per Task 6's
 // carry-forward, a retired one found by the leaf's AuthorityKeyId), and
 // records the revocation both on the version (revoked_at) and, for localca,
-// the CA (config.revoked, crl_number++, via localca's Recorder); vaultpki
-// has no local CRL bookkeeping of its own — Revoke just calls Vault's own
-// pki/revoke. 409 if already revoked; 422 for an ACME CA or a non-issued
+// the CA (config.revoked, crl_number++, via localca's Recorder), all in one
+// transaction; vaultpki has no local CRL bookkeeping of its own — Revoke just
+// calls Vault's own pki/revoke, made outside any transaction
+// (revokeVaultVersion). 409 if already revoked; 422 for an ACME CA or a non-issued
 // version.
 func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid.UUID, reason int, baseURL func(context.Context) string) (certstore.Version, error) {
 	if _, err := s.q.GetCertificate(ctx, sqlcgen.GetCertificateParams{ID: certID, OrgID: orgID}); err != nil {
@@ -787,6 +790,15 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	if err != nil {
 		return certstore.Version{}, err
 	}
+	if caRow.Type == CATypeVaultPKI {
+		// Release the row and CA locks before the network call: Vault can
+		// be slow, and holding them would stall every certificate or CA
+		// write on this CA for the duration.
+		if err := tx.Commit(ctx); err != nil {
+			return certstore.Version{}, err
+		}
+		return s.revokeVaultVersion(ctx, sig, leaf, certID, versionID, reason)
+	}
 	if err := sig.Revoke(ctx, leaf, reason); err != nil {
 		return certstore.Version{}, err
 	}
@@ -799,9 +811,59 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	if err := tx.Commit(ctx); err != nil {
 		return certstore.Version{}, err
 	}
+	return versionFromRevoked(updated), nil
+}
+
+// RevokeRecordError means Vault revoked the certificate but the revocation
+// could not be recorded locally. Retrying the request records it: Vault's
+// pki/revoke on an already-revoked serial succeeds (it answers 200 with the
+// original revocation_time), so the retry is a no-op there.
+type RevokeRecordError struct{ Err error }
+
+func (e *RevokeRecordError) Error() string {
+	return "the CA revoked the certificate but recording it failed (" + e.Err.Error() + "); retry the request to record it"
+}
+
+func (e *RevokeRecordError) Unwrap() error { return e.Err }
+
+// revokeVaultVersion is RevokeVersion's vaultpki half, run with no
+// transaction open: the Vault call, then a retried short write of
+// revoked_at. A concurrent revoke that recorded first leaves 0 rows to
+// update (revoked_at IS NULL), reported as the usual 409.
+func (s *Store) revokeVaultVersion(ctx context.Context, sig signer.Signer, leaf *x509.Certificate, certID, versionID uuid.UUID, reason int) (certstore.Version, error) {
+	if err := sig.Revoke(ctx, leaf, reason); err != nil {
+		return certstore.Version{}, err
+	}
+	now := time.Now()
+	var lastErr error
+	for attempt, backoff := 0, 100*time.Millisecond; attempt < 3; attempt, backoff = attempt+1, backoff*4 {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				lastErr = ctx.Err()
+			case <-time.After(backoff):
+			}
+			if ctx.Err() != nil {
+				break
+			}
+		}
+		updated, err := s.q.SetCertificateVersionRevoked(ctx, sqlcgen.SetCertificateVersionRevokedParams{ID: versionID, CertID: certID, RevokedAt: &now})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return certstore.Version{}, &ConflictError{Msg: "version is already revoked"}
+		}
+		if err == nil {
+			return versionFromRevoked(updated), nil
+		}
+		lastErr = err
+	}
+	slog.Error("vault revoked a certificate but recording the revocation failed", "version", versionID, "err", lastErr)
+	return certstore.Version{}, &RevokeRecordError{Err: lastErr}
+}
+
+func versionFromRevoked(updated sqlcgen.SetCertificateVersionRevokedRow) certstore.Version {
 	return certstore.Version{ID: updated.ID, CertID: updated.CertID, Serial: updated.Serial, NotBefore: updated.NotBefore,
 		NotAfter: updated.NotAfter, SHA256: updated.Sha256Fp, KeyType: updated.KeyType, Source: updated.Source,
-		HasKey: updated.HasKey, CAID: updated.CaID, RevokedAt: updated.RevokedAt, CreatedAt: updated.CreatedAt}, nil
+		HasKey: updated.HasKey, CAID: updated.CaID, RevokedAt: updated.RevokedAt, CreatedAt: updated.CreatedAt}
 }
 
 // revokeSigner builds the Signer RevokeVersion calls Revoke on, dispatching
