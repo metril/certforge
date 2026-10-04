@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -148,4 +149,40 @@ func TestVaultKVTargetOrgPrefix(t *testing.T) {
 	_, err = f.srv.UpdateDeployTarget(op, gen.UpdateDeployTargetRequestObject{OrgId: f.org, Id: id,
 		Body: &gen.DeployTargetInput{Name: "t6", Type: gen.DeployTargetType("vault-kv"), Config: map[string]interface{}{"path": "anywhere/{name}", "mount": "other-mount"}}})
 	wantStatus(t, err, 403)
+}
+
+// TestServerGrantRenameCreateRace covers the S4 lock order: a rename that
+// would collide racing a grant create for that same certificate must never
+// leave both committed.
+func TestServerGrantRenameCreateRace(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "kv-race", nil)
+	a, _ := f.currentCert(t, "a1")
+	if _, err := f.kvGrant(t, targetID, a); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := f.currentCert(t, "b1")
+	var renameErr, createErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, renameErr = f.srv.UpdateCertificate(op, gen.UpdateCertificateRequestObject{OrgId: f.org, Id: b,
+			Body: &gen.CertificateInput{Name: "A1", CommonName: "b1.example.test"}})
+	}()
+	go func() {
+		defer wg.Done()
+		_, createErr = f.kvGrant(t, targetID, b)
+	}()
+	wg.Wait()
+	if renameErr == nil && createErr == nil {
+		t.Fatal("both the colliding rename and the grant create committed")
+	}
+	if renameErr != nil {
+		wantStatus(t, renameErr, 409)
+	}
+	if createErr != nil {
+		wantStatus(t, createErr, 409)
+	}
 }

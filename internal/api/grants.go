@@ -401,9 +401,15 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.queries().WithTx(tx)
 
-	// FOR UPDATE first (LockServerTarget below is only FOR SHARE): two
-	// concurrent creates on one vault-kv target must not both pass the
-	// path-collision check.
+	// Lock order is certificate, then target (a rename holds the certificate
+	// row FOR UPDATE and then locks the target, see deploy's
+	// ResyncCertificateRename). The target is taken FOR UPDATE (not just
+	// LockServerTarget's FOR SHARE) so two concurrent creates or a rename
+	// cannot both pass the vault-kv path-collision check.
+	_, certErr := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: r.Body.CertificateId, OrgID: r.OrgId})
+	if certErr != nil && !errors.Is(certErr, pgx.ErrNoRows) {
+		return nil, certErr
+	}
 	if _, err := q.DeployTargetForUpdate(ctx, sqlcgen.DeployTargetForUpdateParams{ID: r.Id, OrgID: r.OrgId}); errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("deploy target %s", r.Id)
 	} else if err != nil {
@@ -418,10 +424,8 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	if target.RunsOn != "server" {
 		return nil, unprocessable("deployTargetId", "this target runs on agents; pick a client")
 	}
-	if _, err := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: r.Body.CertificateId, OrgID: r.OrgId}); errors.Is(err, pgx.ErrNoRows) {
+	if certErr != nil {
 		return nil, unprocessable("certificateId", fmt.Sprintf("certificate %s is not in this org", r.Body.CertificateId))
-	} else if err != nil {
-		return nil, err
 	}
 	var layoutFiles []delivery.OutputFile
 	if r.Body.LayoutId != nil {
