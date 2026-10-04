@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -121,7 +122,22 @@ func (w *CheckWorker) Timeout(*river.Job[CheckArgs]) time.Duration { return chec
 
 // Work implements river.Worker.
 func (w *CheckWorker) Work(ctx context.Context, job *river.Job[CheckArgs]) error {
-	_, err := w.S.Check(ctx, job.Args.MonitorID)
+	// A check queued before its monitor was deleted or disabled is dropped,
+	// not retried (A11).
+	m, err := w.S.Store.GetByID(ctx, job.Args.MonitorID)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !m.Enabled {
+		return nil
+	}
+	_, err = w.S.Check(ctx, job.Args.MonitorID)
+	if errors.Is(err, ErrNotFound) {
+		return nil // deleted between the read above and Check's own
+	}
 	return err
 }
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/riverqueue/river"
 
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -64,6 +65,28 @@ func TestScanCountsOnlyNewJobs(t *testing.T) {
 	}
 	if n != 2 || len(ins.ids()) != 3 {
 		t.Fatalf("enqueued = %d of %d submitted, want 2 of 3", n, len(ins.ids()))
+	}
+}
+
+// TestCheckWorkerSkipsMissingAndDisabled (A11): a queued check for a
+// deleted monitor returns nil (no retry), and one for a monitor disabled
+// since it was queued is not run.
+func TestCheckWorkerSkipsMissingAndDisabled(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	off := false
+	disabled := insertMonitor(t, pool, monitorRow{orgID: org, name: "off", host: "example.test", enabled: &off})
+	svc := newService(pool, &fakeNotifyInserter{})
+	svc.Dial = func(string, int, string, bool) monitor.Observation {
+		t.Error("Dial called for a missing or disabled monitor")
+		return monitor.Observation{}
+	}
+	w := &monitor.CheckWorker{S: svc}
+	for name, id := range map[string]uuid.UUID{"missing": uuid.New(), "disabled": disabled} {
+		job := &river.Job[monitor.CheckArgs]{Args: monitor.CheckArgs{MonitorID: id}}
+		if err := w.Work(context.Background(), job); err != nil {
+			t.Fatalf("%s: Work = %v, want nil", name, err)
+		}
 	}
 }
 
