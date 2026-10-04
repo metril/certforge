@@ -37,8 +37,8 @@ export function useUpdateCertificate(orgId: string, id: string) {
     mutationFn: (body: CertificateInput) => call(api.PUT('/orgs/{orgId}/certificates/{id}', { params: { path: { orgId, id } }, body })),
     meta: { silent: true },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['certs', orgId] });
-      qc.invalidateQueries({ queryKey: ['certs', orgId, 'one', id] });
+      void qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      void qc.invalidateQueries({ queryKey: ['certs', orgId, 'one', id] });
     },
   });
 }
@@ -330,8 +330,8 @@ export function useUploadVersion(orgId: string, id: string) {
     meta: { silent: true },
     gcTime: 0,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['certs', orgId] });
-      qc.invalidateQueries({ queryKey: ['versions', orgId, id] });
+      void qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      void qc.invalidateQueries({ queryKey: ['versions', orgId, id] });
     },
   });
 }

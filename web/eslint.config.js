@@ -30,5 +30,10 @@ export default defineConfig([
       ],
     },
   },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    languageOptions: { parserOptions: { project: './tsconfig.app.json', tsconfigRootDir: import.meta.dirname } },
+    rules: { '@typescript-eslint/no-floating-promises': 'error' },
+  },
   { files: ['src/forms/theme/**', '**/*.test.{ts,tsx}'], rules: { '@typescript-eslint/no-explicit-any': 'off' } },
 ]);

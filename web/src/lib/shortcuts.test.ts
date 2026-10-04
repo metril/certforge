@@ -113,7 +113,7 @@ it('ignores composing (IME) keydown events', () => {
 it('does not preventDefault on Ctrl/Cmd-K when no palette handler is registered', () => {
   renderHook(() => useShortcuts({}));
   const event = new KeyboardEvent('keydown', { key: 'k', metaKey: true, cancelable: true, bubbles: true });
-  act(() => window.dispatchEvent(event));
+  void act(() => window.dispatchEvent(event));
   expect(event.defaultPrevented).toBe(false);
 });
 
@@ -130,7 +130,7 @@ it('still lets Ctrl/Cmd-K through when focus is inside the palette\'s own dialog
   dialog.setAttribute('role', 'dialog');
   dialog.className = 'cf-command-palette';
   document.body.appendChild(dialog);
-  act(() => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true })));
+  void act(() => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true })));
   expect(openPalette).toHaveBeenCalledTimes(1);
   dialog.remove();
 });
