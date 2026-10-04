@@ -163,7 +163,33 @@ func (d *Dispatcher) OnVersion(ctx context.Context, certID, versionID uuid.UUID)
 // and re-enqueues through OnVersion itself, which also covers this
 // certificate's own extra-cert grants (harmless, idempotent, if any lists
 // it as an extra rather than its own).
-func (d *Dispatcher) ResyncCertificateRename(ctx context.Context, _ *sqlcgen.Queries, certID uuid.UUID) (func(), error) {
+func (d *Dispatcher) ResyncCertificateRename(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (func(), error) {
+	// S4: the new name must not make two grants of one vault-kv target
+	// render the same KV path; a conflict fails the rename.
+	cert, err := q.GetCertificateByID(ctx, certID)
+	if err != nil {
+		return nil, err
+	}
+	grantIDs, err := q.LiveServerGrantIDsForCert(ctx, certID)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, gid := range grantIDs {
+		views, err := q.ServerGrantViews(ctx, sqlcgen.ServerGrantViewsParams{OrgID: cert.OrgID, GrantID: &gid})
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range views {
+			if v.DeployTargetID == nil || seen[*v.DeployTargetID] {
+				continue
+			}
+			seen[*v.DeployTargetID] = true
+			if err := CheckServerGrantPaths(ctx, q, cert.OrgID, *v.DeployTargetID); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return func() {
 		rows, err := d.Q.CurrentVersionsForCerts(ctx, []uuid.UUID{certID})
 		if err != nil {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/signer"
 )
@@ -27,6 +28,7 @@ func mapErr(err error) error {
 	var se *signer.Error
 	var ae *agents.Error
 	var rr *issuance.RevokeRecordError
+	var pc *deploy.PathConflictError
 	switch {
 	case err == nil:
 		return nil
@@ -44,6 +46,8 @@ func mapErr(err error) error {
 		return &HTTPError{Status: http.StatusInternalServerError, Title: "Revocation not recorded", Detail: "The CA revoked the certificate but it could not be recorded; retry the request."}
 	case errors.As(err, &ae):
 		return mapAgentErr(err)
+	case errors.As(err, &pc):
+		return conflict("%s", pc.Msg)
 	}
 	return err
 }

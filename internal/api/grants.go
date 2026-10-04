@@ -401,6 +401,14 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.queries().WithTx(tx)
 
+	// FOR UPDATE first (LockServerTarget below is only FOR SHARE): two
+	// concurrent creates on one vault-kv target must not both pass the
+	// path-collision check.
+	if _, err := q.DeployTargetForUpdate(ctx, sqlcgen.DeployTargetForUpdateParams{ID: r.Id, OrgID: r.OrgId}); errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("deploy target %s", r.Id)
+	} else if err != nil {
+		return nil, err
+	}
 	target, err := q.LockServerTarget(ctx, sqlcgen.LockServerTargetParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("deploy target %s", r.Id)
@@ -438,6 +446,9 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	}
 	if err != nil {
 		return nil, err
+	}
+	if err := deploy.CheckServerGrantPaths(ctx, q, r.OrgId, r.Id); err != nil {
+		return nil, mapErr(err)
 	}
 	versionID, err := q.CertificateCurrentVersion(ctx, r.Body.CertificateId)
 	if err != nil {
@@ -525,6 +536,9 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	// just whoever created the grant.
 	if err := s.requireKeyIfNeeded(ctx, q, r.OrgId, g.CertID, needsKey, layoutFiles); err != nil {
 		return nil, err
+	}
+	if err := deploy.CheckServerGrantPaths(ctx, q, r.OrgId, *g.DeployTargetID); err != nil {
+		return nil, mapErr(err)
 	}
 	if _, err := q.UpdateServerGrantLayout(ctx, sqlcgen.UpdateServerGrantLayoutParams{ID: r.Id, OutputSpecID: layoutID}); err != nil {
 		return nil, err

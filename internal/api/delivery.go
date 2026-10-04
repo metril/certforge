@@ -1,10 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 
@@ -14,10 +16,12 @@ import (
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/notify/httpx"
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/targets"
@@ -741,7 +745,7 @@ type validatedTarget struct {
 // allowed — an agent's own network is the operator's to reach); and the
 // resolved secrets are sealed (nil when there are none). old is nil on
 // create.
-func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old *sqlcgen.DeployTarget) (validatedTarget, error) {
+func (s *Server) validTarget(ctx context.Context, orgID uuid.UUID, in *gen.DeployTargetInput, old *sqlcgen.DeployTarget) (validatedTarget, error) {
 	if in == nil {
 		return validatedTarget{}, badRequest("missing body")
 	}
@@ -794,6 +798,11 @@ func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old
 			return validatedTarget{}, unprocessable("config", "re-enter the secret")
 		}
 	}
+	if typ == deploy.TypeVaultKV {
+		if err := s.checkVaultKVOrgPath(ctx, orgID, cfg.Public, old); err != nil {
+			return validatedTarget{}, err
+		}
+	}
 	allowLoopback := true
 	if side == targets.Server {
 		if allowLoopback, err = s.monitorAllowLoopback(ctx); err != nil {
@@ -820,6 +829,30 @@ func (s *Server) validTarget(ctx context.Context, in *gen.DeployTargetInput, old
 		}
 	}
 	return validatedTarget{name: name, side: side, public: cfg.Public, secretCfg: secretCfg, secretKeys: storedSecretKeys(cfg.Secrets), needsKey: cfg.NeedsKey}, nil
+}
+
+// checkVaultKVOrgPath is S4's isolation gate: a principal without global
+// delivery write may only set a vault-kv path that stays under
+// certforge/<its org slug>/ (the one shared Vault has no per-org mounts). An
+// unchanged stored path is grandfathered so an older target still saves.
+func (s *Server) checkVaultKVOrgPath(ctx context.Context, orgID uuid.UUID, public []byte, old *sqlcgen.DeployTarget) error {
+	if p, ok := authn.PrincipalFrom(ctx); ok && authz.Can(p, authz.ActionDeliveryWrite, nil) {
+		return nil
+	}
+	if old != nil {
+		var oldCfg, newCfg deploy.VaultKVConfig
+		if json.Unmarshal(old.Config, &oldCfg) == nil && json.Unmarshal(public, &newCfg) == nil && oldCfg.Path == newCfg.Path {
+			return nil
+		}
+	}
+	org, err := s.queries().GetOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if err := deploy.CheckOrgPath(public, org.Slug); err != nil {
+		return &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "config.path: " + err.Error()}
+	}
+	return nil
 }
 
 // requireKeysExport requires keys:export when a server-run target's
@@ -878,7 +911,7 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	vt, err := s.validTarget(ctx, r.Body, nil)
+	vt, err := s.validTarget(ctx, r.OrgId, r.Body, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -928,7 +961,7 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	if err != nil {
 		return nil, err
 	}
-	vt, err := s.validTarget(ctx, r.Body, &cur)
+	vt, err := s.validTarget(ctx, r.OrgId, r.Body, &cur)
 	if err != nil {
 		return nil, err
 	}
@@ -962,6 +995,12 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	}
 	if err != nil {
 		return nil, err
+	}
+	// S4: a changed mount or path must not make two live grants collide.
+	if t.Type == deploy.TypeVaultKV && !bytes.Equal(cur.Config, t.Config) {
+		if err := deploy.CheckServerGrantPaths(ctx, q, r.OrgId, t.ID); err != nil {
+			return nil, mapErr(err)
+		}
 	}
 	// Server grants on this target never go through agents.Resync (below),
 	// so a target edit gets its own redeploy: mark pending and enqueue
