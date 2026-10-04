@@ -43,3 +43,39 @@ type Importer interface {
 	// error.
 	Import(ctx context.Context, fsys fs.FS) ([]ImportedCert, error)
 }
+
+// maxRootDepth bounds how many directory levels findRoot descends below the
+// archive root looking for a tool's layout.
+const maxRootDepth = 4
+
+// findRoot returns the shallowest directory, searching breadth-first up to
+// maxRootDepth levels below fsys (fsys itself first), for which has reports
+// true. Subdirectories are visited in name order, so the result is stable.
+func findRoot(fsys fs.FS, has func(fs.FS) bool) (fs.FS, bool) {
+	level := []fs.FS{fsys}
+	for depth := 0; depth <= maxRootDepth && len(level) > 0; depth++ {
+		var next []fs.FS
+		for _, d := range level {
+			if has(d) {
+				return d, true
+			}
+			if depth == maxRootDepth {
+				continue
+			}
+			entries, err := fs.ReadDir(d, ".")
+			if err != nil {
+				continue
+			}
+			for _, e := range entries {
+				if !e.IsDir() {
+					continue
+				}
+				if sub, err := fs.Sub(d, e.Name()); err == nil {
+					next = append(next, sub)
+				}
+			}
+		}
+		level = next
+	}
+	return nil, false
+}

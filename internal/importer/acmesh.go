@@ -7,7 +7,8 @@ import (
 )
 
 // AcmeSh parses an ~/.acme.sh state directory: one subdirectory per
-// certificate, named <domain> (RSA) or <domain>_ecc (EC), holding either
+// certificate, named <domain> (RSA) or <domain>_ecc (EC; imported as <domain>
+// unless the RSA <domain> directory also exists), holding either
 // fullchain.cer (leaf followed by its chain, concatenated PEM) or
 // <domain>.cer (leaf only) plus ca.cer (chain), and <domain>.key.
 var AcmeSh Importer = acmeSh{}
@@ -35,6 +36,11 @@ func (acmeSh) Import(_ context.Context, fsys fs.FS) ([]ImportedCert, error) {
 		}
 		dir := e.Name()
 		domain := strings.TrimSuffix(dir, "_ecc")
+		name := domain
+		if dir != domain && hasDir(entries, domain) {
+			// acme.sh's RSA-plus-ECC pair: keep foo_ecc as the ECC name.
+			name = dir
+		}
 		leafDER, chainDER, ok := acmeShCertFiles(root, dir, domain)
 		if !ok {
 			continue
@@ -53,7 +59,7 @@ func (acmeSh) Import(_ context.Context, fsys fs.FS) ([]ImportedCert, error) {
 				key = b
 			}
 		}
-		out = append(out, ImportedCert{Name: domain, Source: SourceAcmeSh, LeafDER: leafDER, ChainDER: chainDER, KeyPKCS8: key})
+		out = append(out, ImportedCert{Name: name, Source: SourceAcmeSh, LeafDER: leafDER, ChainDER: chainDER, KeyPKCS8: key})
 	}
 	return out, nil
 }
@@ -90,17 +96,11 @@ func acmeShCertFiles(fsys fs.FS, dir, domain string) (leafDER []byte, chainDER [
 	return certs[0], chainDER, true
 }
 
-// acmeShRoot returns the FS to search for certificate directories: fsys
-// itself, or its .acme.sh subdirectory (an archive of a whole home
-// directory, or of ~/.acme.sh's parent).
+// acmeShRoot returns the FS to search for certificate directories: the
+// shallowest directory within a few levels of fsys that has the acme.sh
+// layout (an archive of a home directory, or of ~/.acme.sh itself).
 func acmeShRoot(fsys fs.FS) (fs.FS, bool) {
-	if hasAcmeShLayout(fsys) {
-		return fsys, true
-	}
-	if sub, err := fs.Sub(fsys, ".acme.sh"); err == nil && hasAcmeShLayout(sub) {
-		return sub, true
-	}
-	return nil, false
+	return findRoot(fsys, hasAcmeShLayout)
 }
 
 // hasAcmeShLayout reports whether fsys has at least one top-level directory
@@ -120,6 +120,15 @@ func hasAcmeShLayout(fsys fs.FS) bool {
 		}
 		domain := strings.TrimSuffix(e.Name(), "_ecc")
 		if _, err := fs.Stat(fsys, e.Name()+"/"+domain+".cer"); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDir(entries []fs.DirEntry, name string) bool {
+	for _, e := range entries {
+		if e.IsDir() && e.Name() == name {
 			return true
 		}
 	}
