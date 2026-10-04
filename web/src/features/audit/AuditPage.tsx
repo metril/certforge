@@ -77,7 +77,8 @@ export function AuditPage() {
   const canVerifyChain = can(me, 'audit:read', null);
   // A free-text search scans the table, so without a range it defaults to the
   // last 30 days; the From field shows it and picking an earlier date widens it.
-  const defaultFrom = search.q && !search.from ? localDay(Date.now() - 30 * 86_400_000) : undefined;
+  // Anchored to `to` when one is set, so the default never lands after it.
+  const defaultFrom = search.q && !search.from ? localDay((search.to ? new Date(`${search.to}T00:00:00`).getTime() : Date.now()) - 30 * 86_400_000) : undefined;
   const filter = useMemo(() => toApiFilter(defaultFrom ? { ...search, from: defaultFrom } : search, allOrgs ? undefined : org.id), [search, defaultFrom, allOrgs, org.id]);
   const list = useInfiniteQuery({ ...auditInfinite(filter), enabled: allowed });
   const users = useQuery({ ...usersQuery, enabled: allowed && canAnywhere(me, 'users:read') });

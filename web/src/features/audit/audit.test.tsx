@@ -271,3 +271,46 @@ it('shows card rows instead of a table below 768px with no horizontal overflow',
   expect(container.querySelector('[class*="min-w-["]')).toBeNull();
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
 });
+
+// P2 web half: a free-text search defaults the range to 30 days. The request
+// is checked, and the default is never written to the URL.
+const dayIso = (d: string) => new Date(`${d}T00:00:00`).toISOString();
+const localDay = (ms: number) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+it('defaults from to 30 days ago when q is set, without writing it to the URL', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(Date.UTC(2026, 5, 15, 12));
+  const seen = capture();
+  const { router } = renderRoute('/o/acme/audit?q=renew');
+  await screen.findByRole('table', { name: 'Audit events' });
+  expect(seen[seen.length - 1]!.get('from')).toBe(dayIso(localDay(Date.now() - 30 * 86_400_000)));
+  expect(router.state.location.search).not.toHaveProperty('from');
+  expect(screen.getByLabelText('From date')).toHaveValue(localDay(Date.now() - 30 * 86_400_000));
+  vi.useRealTimers();
+});
+
+it('lets an explicit from win over the q default', async () => {
+  const seen = capture();
+  renderRoute('/o/acme/audit?q=renew&from=2020-03-01');
+  await screen.findByRole('table', { name: 'Audit events' });
+  expect(seen[seen.length - 1]!.get('from')).toBe(dayIso('2020-03-01'));
+});
+
+it('anchors the q default to an old to date', async () => {
+  const seen = capture();
+  renderRoute('/o/acme/audit?q=renew&to=2020-06-15');
+  await screen.findByRole('table', { name: 'Audit events' });
+  const from = seen[seen.length - 1]!.get('from')!;
+  expect(from).toBe(dayIso(localDay(new Date('2020-06-15T00:00:00').getTime() - 30 * 86_400_000)));
+  expect(Date.parse(from)).toBeLessThan(Date.parse(seen[seen.length - 1]!.get('to')!));
+});
+
+it('sends no default from without q', async () => {
+  const seen = capture();
+  renderRoute('/o/acme/audit');
+  await screen.findByRole('table', { name: 'Audit events' });
+  expect(seen[seen.length - 1]!.has('from')).toBe(false);
+});
