@@ -108,17 +108,13 @@ jobs:
   govulncheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Advisory for now: the 1.23 toolchain and several modules have known
-    # advisories that need minor-version or toolchain upgrades. Make this
-    # blocking once those are done.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.25"
-      # Pinned: govulncheck 1.8+ needs a newer Go than go.mod's 1.23.
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      # Pinned; go downloads the Go 1.26 toolchain this release requires.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
   server-image:
     runs-on: ubuntu-latest
     timeout-minutes: 30
