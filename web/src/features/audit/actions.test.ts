@@ -29,7 +29,7 @@ const SERVER_ACTIONS = [
   'ca.rotate', 'certificate.import', 'certificate.revoked', 'channel.create', 'channel.update', 'channel.delete', 'channel.test',
   'monitor.create', 'monitor.update', 'monitor.delete', 'monitor.check', 'backup.created', 'backup.failed',
   'kek.rewrap_started', 'kek.rewrap_finished', 'smtp.test', 'dns_credential.secret_revealed', 'acme_account.create',
-  'agent_ca.rotate', 'api_key.revoke', 'audit.export', 'certificate.delete', 'certificate.renew', 'client.reenroll',
+  'agent_ca.rotate', 'api_key.revoke', 'audit.anchor_initialized', 'audit.export', 'certificate.delete', 'certificate.renew', 'client.reenroll',
   'deployment.ok', 'grant.redeploy', 'hook.run', 'issuance_defaults.update', 'role_binding.delete', 'session.revoked',
   'settings.update', 'setup.complete', 'site.delete', 'user.update',
 ];

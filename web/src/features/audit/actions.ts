@@ -8,7 +8,7 @@ import type { Tone } from '@/lib/status';
 // deploy_target/hook/agent_ca actions.
 export const AUDIT_ACTIONS = [
   'acme_account.create', 'acme_account.delete', 'agent_ca.retire', 'agent_ca.rotate', 'api_key.create',
-  'api_key.revoke', 'audit.export', 'auth.local_admin_password_set', 'auth.login', 'auth.login_failed',
+  'api_key.revoke', 'audit.anchor_initialized', 'audit.export', 'auth.local_admin_password_set', 'auth.login', 'auth.login_failed',
   'auth.logout', 'backup.created', 'backup.failed', 'ca.create', 'ca.delete', 'ca.rotate', 'ca.update',
   'certificate.create', 'certificate.delete', 'certificate.import', 'certificate.key_exported',
   'certificate.manual_dns_confirmed', 'certificate.renew', 'certificate.revoked', 'certificate.update',
