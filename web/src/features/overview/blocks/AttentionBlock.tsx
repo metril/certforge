@@ -60,6 +60,15 @@ export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number
   const renew = useRenewCertificates(org.id);
   const checking = usePendingIds();
   const renewing = usePendingIds();
+  // Toast from the promise: with parallel rows only the latest mutation's
+  // per-call callbacks fire, so an earlier row's result would be lost.
+  const renewRow = (id: string, name: string) => {
+    const h = renewToastHandlers(name);
+    return renew.mutateAsync([id]).then(h.onSuccess, (e: unknown) => {
+      h.onError(e);
+      throw e;
+    });
+  };
   const slug = (c: CertBrief) => (allOrgs ? slugOf(c.orgId) : org.slug);
   const items = attentionItems(certs, now);
   const others = items.filter((i) => i.kind !== 'manual-dns');
@@ -133,7 +142,7 @@ export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number
                             size="sm"
                             variant="outline"
                             disabled={!canCheck || checking.isPending(m.id)}
-                            onClick={() => void checking.track(m.id, checkMonitor.mutateAsync(m.id, { onError: (e) => toast.error(errorMessage(e)) }))}
+                            onClick={() => void checking.track(m.id, checkMonitor.mutateAsync(m.id).catch((e: unknown) => { toast.error(errorMessage(e)); throw e; }))}
                           >
                             Check now
                           </Button>
@@ -153,7 +162,7 @@ export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number
                     </Link>
                     <span className="truncate text-ink-muted">{i.cause}</span>
                     {!allOrgs && can(me, 'certs:issue', org.id) && (
-                      <Button size="sm" variant="outline" disabled={renewing.isPending(i.cert.id)} onClick={() => void renewing.track(i.cert.id, renew.mutateAsync([i.cert.id], renewToastHandlers(i.cert.name)))}>
+                      <Button size="sm" variant="outline" disabled={renewing.isPending(i.cert.id)} onClick={() => void renewing.track(i.cert.id, renewRow(i.cert.id, i.cert.name))}>
                         Renew now
                       </Button>
                     )}

@@ -380,3 +380,25 @@ it('range presets are keyboard buttons that stay in sync with the brush', async 
   await user.click(screen.getByRole('button', { name: '7 d' }));
   await waitFor(() => expect(router.state.location.search).toEqual({ range: [0, 7] }));
 });
+
+it('still toasts the first row\'s failure once a second Renew now is in flight', async () => {
+  const hold: Record<string, () => void> = {};
+  server.use(
+    http.get(url('/orgs/org-1/certificates/summary'), () =>
+      HttpResponse.json(overviewOf([makeCert({ id: 'c-a', name: 'alpha', status: 'failed', failureCount: 1, lastError: 'x' }), makeCert({ id: 'c-b', name: 'bravo', status: 'failed', failureCount: 1, lastError: 'x' })])),
+    ),
+    http.post(url('/orgs/org-1/certificates/:id/renew'), async ({ params }) => {
+      await new Promise<void>((r) => { hold[params.id as string] = r; });
+      return params.id === 'c-a' ? problem(500, 'boom') : new HttpResponse(null, { status: 202 });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/overview');
+  const queue = await screen.findByRole('region', { name: 'Needs attention' });
+  const btn = async (n: string) => within((await within(queue).findByRole('link', { name: n })).closest('li')!).getByRole('button', { name: 'Renew now' });
+  await user.click(await btn('alpha'));
+  await user.click(await btn('bravo'));
+  await waitFor(() => expect(Object.keys(hold)).toHaveLength(2));
+  hold['c-a']!();
+  expect(await screen.findByText('Renewal failed for alpha.')).toBeInTheDocument();
+  hold['c-b']!();
+});
