@@ -243,8 +243,8 @@ func TestAuditVerify(t *testing.T) {
 	csrf, _ := e.seedAdminSession()
 	e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
 	var st struct {
-		Ok         bool   `json:"ok"`
-		Count      int64  `json:"count"`
+		Ok         bool    `json:"ok"`
+		Count      int64   `json:"count"`
 		BrokenAtID *int64  `json:"brokenAtId"`
 		Reason     *string `json:"reason"`
 		HeadID     *int64  `json:"headId"`
