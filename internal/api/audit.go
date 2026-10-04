@@ -391,8 +391,18 @@ func (s *Server) VerifyAuditChain(ctx context.Context, _ gen.VerifyAuditChainReq
 		return nil, err
 	}
 	out := gen.AuditChainStatus{Ok: r.OK, Count: r.Count, CheckedAt: time.Now().UTC(), HeadHash: hex.EncodeToString(r.HeadHash)}
+	if r.HeadID > 0 {
+		out.HeadId = &r.HeadID
+	}
+	if r.AnchorID > 0 {
+		out.AnchorId = &r.AnchorID
+	}
 	if !r.OK {
-		out.BrokenAtId = &r.BrokenAtID
+		if r.BrokenAtID > 0 {
+			out.BrokenAtId = &r.BrokenAtID
+		}
+		reason := gen.AuditChainStatusReason(r.Reason)
+		out.Reason = &reason
 	}
 	s.verifyAt, s.verifyRes = time.Now(), out
 	return gen.VerifyAuditChain200JSONResponse(out), nil

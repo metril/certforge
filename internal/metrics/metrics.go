@@ -49,6 +49,15 @@ var (
 		Help: "External monitor checks by resulting state.",
 	}, []string{"result"})
 
+	// AuditHeadID is certforge_audit_head_id: the id of the newest audit
+	// event this process has seen written or verified. Prometheus keeps its
+	// history outside the database, so a drop (resets() > 0) shows the
+	// audit table was rolled back or truncated (docs/security.md).
+	AuditHeadID = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "certforge_audit_head_id",
+		Help: "Id of the newest audit event written or verified by this process.",
+	})
+
 	// httpRequestsTotal and httpRequestDuration back Middleware:
 	// certforge_http_requests_total{route,method,status} and
 	// certforge_http_request_duration_seconds{route}. route is chi's route
@@ -69,7 +78,7 @@ func init() {
 	Registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-		IssuanceAttempts, IssuanceDuration, NotificationsTotal, MonitorChecks,
+		IssuanceAttempts, IssuanceDuration, NotificationsTotal, MonitorChecks, AuditHeadID,
 		httpRequestsTotal, httpRequestDuration,
 	)
 }

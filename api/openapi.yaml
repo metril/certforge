@@ -4076,6 +4076,17 @@ components:
         brokenAtId: {type: integer, format: int64, nullable: true, description: First row that failed; null when ok.}
         checkedAt: {type: string, format: date-time, description: When the walk ran (results are cached 60 s).}
         headHash: {type: string, description: Hex hash of the last verified row.}
+        reason:
+          type: string
+          nullable: true
+          enum: [row_mismatch, downgrade, anchor_missing, anchor_invalid, anchor_mismatch, tail_truncated]
+          description: >-
+            Why the chain failed; null when ok. row_mismatch is a row that does not verify,
+            downgrade a legacy-hash row after the chain was keyed, anchor_missing a keyed chain with no head anchor,
+            anchor_invalid a head anchor whose MAC fails, anchor_mismatch a row at the anchor id that differs from it
+            and tail_truncated a chain that ends before the anchor (newest rows removed).
+        headId: {type: integer, format: int64, nullable: true, description: Id of the last verified row; null when the chain is empty.}
+        anchorId: {type: integer, format: int64, nullable: true, description: Id the stored head anchor points at; null when there is none.}
     ClientStatus:
       type: string
       enum: [pending, active, revoked]

@@ -245,10 +245,12 @@ func TestAuditVerify(t *testing.T) {
 	var st struct {
 		Ok         bool   `json:"ok"`
 		Count      int64  `json:"count"`
-		BrokenAtID *int64 `json:"brokenAtId"`
+		BrokenAtID *int64  `json:"brokenAtId"`
+		Reason     *string `json:"reason"`
+		HeadID     *int64  `json:"headId"`
 	}
 	_, body := e.do(http.MethodGet, "/api/v1/audit/verify", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
-	if json.Unmarshal(body, &st) != nil || !st.Ok || st.Count < 1 || st.BrokenAtID != nil {
+	if json.Unmarshal(body, &st) != nil || !st.Ok || st.Count < 1 || st.BrokenAtID != nil || st.Reason != nil || st.HeadID == nil {
 		t.Fatalf("verify %s", body)
 	}
 	for _, stmt := range []string{
@@ -261,7 +263,7 @@ func TestAuditVerify(t *testing.T) {
 		}
 	}
 	_, body = e.do(http.MethodGet, "/api/v1/audit/verify", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
-	if json.Unmarshal(body, &st) != nil || st.Ok || st.BrokenAtID == nil {
+	if json.Unmarshal(body, &st) != nil || st.Ok || st.BrokenAtID == nil || st.Reason == nil || *st.Reason != "row_mismatch" {
 		t.Fatalf("tampered verify %s", body)
 	}
 }

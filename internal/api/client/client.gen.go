@@ -62,6 +62,16 @@ const (
 	AttemptStepStatusWaitingManual AttemptStepStatus = "waiting_manual"
 )
 
+// Defines values for AuditChainStatusReason.
+const (
+	AnchorInvalid  AuditChainStatusReason = "anchor_invalid"
+	AnchorMismatch AuditChainStatusReason = "anchor_mismatch"
+	AnchorMissing  AuditChainStatusReason = "anchor_missing"
+	Downgrade      AuditChainStatusReason = "downgrade"
+	RowMismatch    AuditChainStatusReason = "row_mismatch"
+	TailTruncated  AuditChainStatusReason = "tail_truncated"
+)
+
 // Defines values for BackupSchedule.
 const (
 	Daily  BackupSchedule = "daily"
@@ -622,6 +632,9 @@ type AttemptStepStatus string
 
 // AuditChainStatus Result of verifying the audit chain.
 type AuditChainStatus struct {
+	// AnchorId Id the stored head anchor points at; null when there is none.
+	AnchorId *int64 `json:"anchorId"`
+
 	// BrokenAtId First row that failed; null when ok.
 	BrokenAtId *int64 `json:"brokenAtId"`
 
@@ -634,9 +647,18 @@ type AuditChainStatus struct {
 	// HeadHash Hex hash of the last verified row.
 	HeadHash string `json:"headHash"`
 
+	// HeadId Id of the last verified row; null when the chain is empty.
+	HeadId *int64 `json:"headId"`
+
 	// Ok Every row links and verifies.
 	Ok bool `json:"ok"`
+
+	// Reason Why the chain failed; null when ok. row_mismatch is a row that does not verify, downgrade a legacy-hash row after the chain was keyed, anchor_missing a keyed chain with no head anchor, anchor_invalid a head anchor whose MAC fails, anchor_mismatch a row at the anchor id that differs from it and tail_truncated a chain that ends before the anchor (newest rows removed).
+	Reason *AuditChainStatusReason `json:"reason"`
 }
+
+// AuditChainStatusReason Why the chain failed; null when ok. row_mismatch is a row that does not verify, downgrade a legacy-hash row after the chain was keyed, anchor_missing a keyed chain with no head anchor, anchor_invalid a head anchor whose MAC fails, anchor_mismatch a row at the anchor id that differs from it and tail_truncated a chain that ends before the anchor (newest rows removed).
+type AuditChainStatusReason string
 
 // AuditEvent One audit log entry.
 type AuditEvent struct {

@@ -1,6 +1,9 @@
 -- name: LastAuditHash :one
 SELECT hash FROM audit_events ORDER BY id DESC LIMIT 1;
 
+-- name: LastAuditEvent :one
+SELECT id, hash FROM audit_events ORDER BY id DESC LIMIT 1;
+
 -- name: InsertAuditEvent :one
 INSERT INTO audit_events (ts, actor_type, actor_id, action, resource_type, resource_id, org_id, ip, details, prev_hash, hash, hash_alg)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)

@@ -104,6 +104,22 @@ it('shows a broken chain', async () => {
   expect(await screen.findByText('Chain broken at #42')).toBeInTheDocument();
 });
 
+it('shows why the chain failed when the server gives a reason', async () => {
+  capture();
+  server.use(http.get(url('/audit/verify'), () =>
+    HttpResponse.json({ ok: false, count: 41, brokenAtId: 42, reason: 'tail_truncated', headId: 41, anchorId: 50, checkedAt: '2026-09-24T12:00:00Z', headHash: 'ab' })));
+  renderRoute('/o/acme/audit');
+  expect(await screen.findByText('Chain broken: newest events removed (from #42)')).toBeInTheDocument();
+});
+
+it('shows a missing head anchor, which names no row', async () => {
+  capture();
+  server.use(http.get(url('/audit/verify'), () =>
+    HttpResponse.json({ ok: false, count: 41, brokenAtId: null, reason: 'anchor_missing', checkedAt: '2026-09-24T12:00:00Z', headHash: 'ab' })));
+  renderRoute('/o/acme/audit');
+  expect(await screen.findByText('Chain broken: head anchor missing')).toBeInTheDocument();
+});
+
 // Fix round 1, Important #1: VerifyAuditChain needs GLOBAL audit:read (an
 // org-scoped auditor gets 403 even for their own org), so the chip - and
 // its request - is only shown to a caller who actually has it.

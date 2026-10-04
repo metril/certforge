@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/backup"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db"
@@ -719,5 +720,40 @@ func TestServiceStreamSurvivesRootRewrapBetweenConstructionAndStream(t *testing.
 	}
 	if !bytes.Equal(restoredRoot, rewrapped.Marshal()) {
 		t.Fatal("restored crypto.root does not match the rewrapped (KEK-B-sealed) row")
+	}
+}
+
+// settings is in the archive, so the audit head anchor travels with
+// audit_events; the restored chain verifies against it.
+func TestRestoreCarriesAuditHeadAnchor(t *testing.T) {
+	ctx := context.Background()
+	srcPool, srcQ := dbtest.New(t)
+	be := newBackupEnv(srcQ, testKey(1))
+	opts := be.writeOpts(ctx, t)
+	aud := audit.New(srcPool, testKey(7))
+	for i := 0; i < 3; i++ {
+		if err := aud.Record(ctx, audit.Event{Action: "x", ResourceType: "y"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var archive bytes.Buffer
+	if _, err := backup.Write(ctx, srcPool, &archive, opts); err != nil {
+		t.Fatal(err)
+	}
+	dstPool := dbtest.Empty(t)
+	if _, err := backup.Restore(ctx, dstPool, bytes.NewReader(archive.Bytes()), be.restoreOpts()); err != nil {
+		t.Fatal(err)
+	}
+	var src, dst []byte
+	for pool, out := range map[*pgxpool.Pool]*[]byte{srcPool: &src, dstPool: &dst} {
+		if err := pool.QueryRow(ctx, `SELECT value FROM settings WHERE key = 'audit.head'`).Scan(out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(src) == 0 || !bytes.Equal(src, dst) {
+		t.Fatalf("anchor src %s dst %s", src, dst)
+	}
+	if r, err := audit.New(dstPool, testKey(7)).Check(ctx); err != nil || !r.OK || r.Count != 3 || r.AnchorID != 3 {
+		t.Fatalf("restored chain %+v %v", r, err)
 	}
 }

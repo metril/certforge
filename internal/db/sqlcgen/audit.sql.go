@@ -162,6 +162,22 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 	return id, err
 }
 
+const lastAuditEvent = `-- name: LastAuditEvent :one
+SELECT id, hash FROM audit_events ORDER BY id DESC LIMIT 1
+`
+
+type LastAuditEventRow struct {
+	ID   int64  `json:"id"`
+	Hash []byte `json:"hash"`
+}
+
+func (q *Queries) LastAuditEvent(ctx context.Context) (LastAuditEventRow, error) {
+	row := q.db.QueryRow(ctx, lastAuditEvent)
+	var i LastAuditEventRow
+	err := row.Scan(&i.ID, &i.Hash)
+	return i, err
+}
+
 const lastAuditHash = `-- name: LastAuditHash :one
 SELECT hash FROM audit_events ORDER BY id DESC LIMIT 1
 `

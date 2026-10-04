@@ -3593,6 +3593,21 @@ export interface components {
             checkedAt: string;
             /** @description Hex hash of the last verified row. */
             headHash: string;
+            /**
+             * @description Why the chain failed; null when ok. row_mismatch is a row that does not verify, downgrade a legacy-hash row after the chain was keyed, anchor_missing a keyed chain with no head anchor, anchor_invalid a head anchor whose MAC fails, anchor_mismatch a row at the anchor id that differs from it and tail_truncated a chain that ends before the anchor (newest rows removed).
+             * @enum {string|null}
+             */
+            reason?: "row_mismatch" | "downgrade" | "anchor_missing" | "anchor_invalid" | "anchor_mismatch" | "tail_truncated" | null;
+            /**
+             * Format: int64
+             * @description Id of the last verified row; null when the chain is empty.
+             */
+            headId?: number | null;
+            /**
+             * Format: int64
+             * @description Id the stored head anchor points at; null when there is none.
+             */
+            anchorId?: number | null;
         };
         /**
          * @description pending until the agent enrols with its token; revoked clients are refused.
