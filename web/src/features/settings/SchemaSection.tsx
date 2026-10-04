@@ -178,7 +178,12 @@ export function SchemaSection({
                       setSavingDirect(false);
                     }
                   } else {
-                    await save.mutateAsync(body);
+                    try {
+                      await save.mutateAsync(body);
+                    } finally {
+                      // Drop the typed body (it may hold a secret) from the mutation's state.
+                      save.reset();
+                    }
                   }
                   setDraft(null);
                   setSaveError(null);
