@@ -834,14 +834,14 @@ func (s *Server) validTarget(ctx context.Context, orgID uuid.UUID, in *gen.Deplo
 // checkVaultKVOrgPath is S4's isolation gate: a principal without global
 // delivery write may only set a vault-kv path that stays under
 // certforge/<its org slug>/ (the one shared Vault has no per-org mounts). An
-// unchanged stored path is grandfathered so an older target still saves.
+// unchanged stored mount and path are grandfathered so an older target still saves.
 func (s *Server) checkVaultKVOrgPath(ctx context.Context, orgID uuid.UUID, public []byte, old *sqlcgen.DeployTarget) error {
 	if p, ok := authn.PrincipalFrom(ctx); ok && authz.Can(p, authz.ActionDeliveryWrite, nil) {
 		return nil
 	}
 	if old != nil {
 		var oldCfg, newCfg deploy.VaultKVConfig
-		if json.Unmarshal(old.Config, &oldCfg) == nil && json.Unmarshal(public, &newCfg) == nil && oldCfg.Path == newCfg.Path {
+		if json.Unmarshal(old.Config, &oldCfg) == nil && json.Unmarshal(public, &newCfg) == nil && oldCfg.Path == newCfg.Path && oldCfg.Mount == newCfg.Mount {
 			return nil
 		}
 	}

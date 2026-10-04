@@ -144,4 +144,8 @@ func TestVaultKVTargetOrgPrefix(t *testing.T) {
 		t.Fatalf("unchanged stored path: %v", err)
 	}
 	wantStatus(t, update("elsewhere/{name}"), 403)
+	// Changing the mount while keeping the out-of-prefix path is refused too.
+	_, err = f.srv.UpdateDeployTarget(op, gen.UpdateDeployTargetRequestObject{OrgId: f.org, Id: id,
+		Body: &gen.DeployTargetInput{Name: "t6", Type: gen.DeployTargetType("vault-kv"), Config: map[string]interface{}{"path": "anywhere/{name}", "mount": "other-mount"}}})
+	wantStatus(t, err, 403)
 }
