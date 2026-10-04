@@ -12,21 +12,49 @@ import (
 	"github.com/google/uuid"
 )
 
+const confirmLedgerReservation = `-- name: ConfirmLedgerReservation :execrows
+UPDATE rate_ledger SET reserved_until = NULL, at = $2
+WHERE attempt_id = $1 AND kind = 'cert_issued' AND reserved_until IS NOT NULL
+`
+
+type ConfirmLedgerReservationParams struct {
+	AttemptID *uuid.UUID `json:"attempt_id"`
+	At        time.Time  `json:"at"`
+}
+
+// Turns the attempt's cert_issued reservations into plain rows, dated at
+// issue time. 0 rows: nothing was reserved (private CA, or the reservation
+// was pruned), the caller inserts instead.
+func (q *Queries) ConfirmLedgerReservation(ctx context.Context, arg ConfirmLedgerReservationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmLedgerReservation, arg.AttemptID, arg.At)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countLedgerByCA = `-- name: CountLedgerByCA :one
 SELECT count(*) FROM rate_ledger
 WHERE ca_id = $1 AND kind = $2 AND at > $3
+  AND (reserved_until IS NULL OR reserved_until > $4)
 `
 
 type CountLedgerByCAParams struct {
-	CaID uuid.UUID `json:"ca_id"`
-	Kind string    `json:"kind"`
-	At   time.Time `json:"at"`
+	CaID          uuid.UUID  `json:"ca_id"`
+	Kind          string     `json:"kind"`
+	At            time.Time  `json:"at"`
+	ReservedUntil *time.Time `json:"reserved_until"`
 }
 
 // Counts kind's rows for the whole CA (newOrdersPer3Hours; registered_domain
 // is always ” for new_order rows).
 func (q *Queries) CountLedgerByCA(ctx context.Context, arg CountLedgerByCAParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countLedgerByCA, arg.CaID, arg.Kind, arg.At)
+	row := q.db.QueryRow(ctx, countLedgerByCA,
+		arg.CaID,
+		arg.Kind,
+		arg.At,
+		arg.ReservedUntil,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -35,15 +63,19 @@ func (q *Queries) CountLedgerByCA(ctx context.Context, arg CountLedgerByCAParams
 const countLedgerByDomain = `-- name: CountLedgerByDomain :one
 SELECT count(*) FROM rate_ledger
 WHERE ca_id = $1 AND kind = $2 AND registered_domain = $3 AND at > $4
+  AND (reserved_until IS NULL OR reserved_until > $5)
 `
 
 type CountLedgerByDomainParams struct {
-	CaID             uuid.UUID `json:"ca_id"`
-	Kind             string    `json:"kind"`
-	RegisteredDomain string    `json:"registered_domain"`
-	At               time.Time `json:"at"`
+	CaID             uuid.UUID  `json:"ca_id"`
+	Kind             string     `json:"kind"`
+	RegisteredDomain string     `json:"registered_domain"`
+	At               time.Time  `json:"at"`
+	ReservedUntil    *time.Time `json:"reserved_until"`
 }
 
+// Every Count*/Oldest* query skips reservations that expired before the last
+// parameter (the caller's now).
 // Counts kind's rows scoped to one registered domain (certsPerRegistered
 // DomainPerWeek, failedValidationsPerHour). CA-wide: not org-scoped. at > $4
 // (not >=), fix round 1: a row exactly window-old must not still count, or
@@ -55,6 +87,7 @@ func (q *Queries) CountLedgerByDomain(ctx context.Context, arg CountLedgerByDoma
 		arg.Kind,
 		arg.RegisteredDomain,
 		arg.At,
+		arg.ReservedUntil,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -64,14 +97,16 @@ func (q *Queries) CountLedgerByDomain(ctx context.Context, arg CountLedgerByDoma
 const countLedgerByNames = `-- name: CountLedgerByNames :one
 SELECT count(*) FROM rate_ledger
 WHERE ca_id = $1 AND kind = $2 AND names_hash = $3 AND registered_domain = $4 AND at > $5
+  AND (reserved_until IS NULL OR reserved_until > $6)
 `
 
 type CountLedgerByNamesParams struct {
-	CaID             uuid.UUID `json:"ca_id"`
-	Kind             string    `json:"kind"`
-	NamesHash        string    `json:"names_hash"`
-	RegisteredDomain string    `json:"registered_domain"`
-	At               time.Time `json:"at"`
+	CaID             uuid.UUID  `json:"ca_id"`
+	Kind             string     `json:"kind"`
+	NamesHash        string     `json:"names_hash"`
+	RegisteredDomain string     `json:"registered_domain"`
+	At               time.Time  `json:"at"`
+	ReservedUntil    *time.Time `json:"reserved_until"`
 }
 
 // Counts cert_issued rows for one names_hash, restricted to the registered
@@ -85,10 +120,45 @@ func (q *Queries) CountLedgerByNames(ctx context.Context, arg CountLedgerByNames
 		arg.NamesHash,
 		arg.RegisteredDomain,
 		arg.At,
+		arg.ReservedUntil,
 	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const insertLedgerReservation = `-- name: InsertLedgerReservation :exec
+INSERT INTO rate_ledger (ca_id, kind, registered_domain, names_hash, cert_id, at, attempt_id, reserved_until)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type InsertLedgerReservationParams struct {
+	CaID             uuid.UUID  `json:"ca_id"`
+	Kind             string     `json:"kind"`
+	RegisteredDomain string     `json:"registered_domain"`
+	NamesHash        string     `json:"names_hash"`
+	CertID           *uuid.UUID `json:"cert_id"`
+	At               time.Time  `json:"at"`
+	AttemptID        *uuid.UUID `json:"attempt_id"`
+	ReservedUntil    *time.Time `json:"reserved_until"`
+}
+
+// InsertLedgerRow for ReserveLedger: attempt_id ties the row to one issue
+// attempt. reserved_until is set for cert_issued rows (a reservation that
+// stops counting when it passes) and NULL for new_order rows (the order is
+// sent, so it always counts).
+func (q *Queries) InsertLedgerReservation(ctx context.Context, arg InsertLedgerReservationParams) error {
+	_, err := q.db.Exec(ctx, insertLedgerReservation,
+		arg.CaID,
+		arg.Kind,
+		arg.RegisteredDomain,
+		arg.NamesHash,
+		arg.CertID,
+		arg.At,
+		arg.AttemptID,
+		arg.ReservedUntil,
+	)
+	return err
 }
 
 const insertLedgerRow = `-- name: InsertLedgerRow :exec
@@ -119,6 +189,19 @@ func (q *Queries) InsertLedgerRow(ctx context.Context, arg InsertLedgerRowParams
 		arg.At,
 	)
 	return err
+}
+
+const ledgerAttemptReserved = `-- name: LedgerAttemptReserved :one
+SELECT EXISTS (SELECT 1 FROM rate_ledger WHERE attempt_id = $1)
+`
+
+// True when ReserveLedger already ran for the attempt (a retry of it must
+// not count twice).
+func (q *Queries) LedgerAttemptReserved(ctx context.Context, attemptID *uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, ledgerAttemptReserved, attemptID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const ledgerDomainsInWindow = `-- name: LedgerDomainsInWindow :many
@@ -164,17 +247,24 @@ func (q *Queries) LedgerDomainsInWindow(ctx context.Context, arg LedgerDomainsIn
 const oldestLedgerByCA = `-- name: OldestLedgerByCA :one
 SELECT min(at)::timestamptz FROM rate_ledger
 WHERE ca_id = $1 AND kind = $2 AND at > $3
+  AND (reserved_until IS NULL OR reserved_until > $4)
 `
 
 type OldestLedgerByCAParams struct {
-	CaID uuid.UUID `json:"ca_id"`
-	Kind string    `json:"kind"`
-	At   time.Time `json:"at"`
+	CaID          uuid.UUID  `json:"ca_id"`
+	Kind          string     `json:"kind"`
+	At            time.Time  `json:"at"`
+	ReservedUntil *time.Time `json:"reserved_until"`
 }
 
 // OldestLedgerByDomain's counterpart for CountLedgerByCA.
 func (q *Queries) OldestLedgerByCA(ctx context.Context, arg OldestLedgerByCAParams) (time.Time, error) {
-	row := q.db.QueryRow(ctx, oldestLedgerByCA, arg.CaID, arg.Kind, arg.At)
+	row := q.db.QueryRow(ctx, oldestLedgerByCA,
+		arg.CaID,
+		arg.Kind,
+		arg.At,
+		arg.ReservedUntil,
+	)
 	var column_1 time.Time
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -183,13 +273,15 @@ func (q *Queries) OldestLedgerByCA(ctx context.Context, arg OldestLedgerByCAPara
 const oldestLedgerByDomain = `-- name: OldestLedgerByDomain :one
 SELECT min(at)::timestamptz FROM rate_ledger
 WHERE ca_id = $1 AND kind = $2 AND registered_domain = $3 AND at > $4
+  AND (reserved_until IS NULL OR reserved_until > $5)
 `
 
 type OldestLedgerByDomainParams struct {
-	CaID             uuid.UUID `json:"ca_id"`
-	Kind             string    `json:"kind"`
-	RegisteredDomain string    `json:"registered_domain"`
-	At               time.Time `json:"at"`
+	CaID             uuid.UUID  `json:"ca_id"`
+	Kind             string     `json:"kind"`
+	RegisteredDomain string     `json:"registered_domain"`
+	At               time.Time  `json:"at"`
+	ReservedUntil    *time.Time `json:"reserved_until"`
 }
 
 // The oldest row still inside the window CountLedgerByDomain just counted;
@@ -201,6 +293,7 @@ func (q *Queries) OldestLedgerByDomain(ctx context.Context, arg OldestLedgerByDo
 		arg.Kind,
 		arg.RegisteredDomain,
 		arg.At,
+		arg.ReservedUntil,
 	)
 	var column_1 time.Time
 	err := row.Scan(&column_1)
@@ -210,14 +303,16 @@ func (q *Queries) OldestLedgerByDomain(ctx context.Context, arg OldestLedgerByDo
 const oldestLedgerByNames = `-- name: OldestLedgerByNames :one
 SELECT min(at)::timestamptz FROM rate_ledger
 WHERE ca_id = $1 AND kind = $2 AND names_hash = $3 AND registered_domain = $4 AND at > $5
+  AND (reserved_until IS NULL OR reserved_until > $6)
 `
 
 type OldestLedgerByNamesParams struct {
-	CaID             uuid.UUID `json:"ca_id"`
-	Kind             string    `json:"kind"`
-	NamesHash        string    `json:"names_hash"`
-	RegisteredDomain string    `json:"registered_domain"`
-	At               time.Time `json:"at"`
+	CaID             uuid.UUID  `json:"ca_id"`
+	Kind             string     `json:"kind"`
+	NamesHash        string     `json:"names_hash"`
+	RegisteredDomain string     `json:"registered_domain"`
+	At               time.Time  `json:"at"`
+	ReservedUntil    *time.Time `json:"reserved_until"`
 }
 
 // OldestLedgerByDomain's counterpart for CountLedgerByNames.
@@ -228,6 +323,7 @@ func (q *Queries) OldestLedgerByNames(ctx context.Context, arg OldestLedgerByNam
 		arg.NamesHash,
 		arg.RegisteredDomain,
 		arg.At,
+		arg.ReservedUntil,
 	)
 	var column_1 time.Time
 	err := row.Scan(&column_1)
@@ -235,13 +331,27 @@ func (q *Queries) OldestLedgerByNames(ctx context.Context, arg OldestLedgerByNam
 }
 
 const pruneLedger = `-- name: PruneLedger :execrows
-DELETE FROM rate_ledger WHERE at < $1
+DELETE FROM rate_ledger WHERE at < $1 OR (reserved_until IS NOT NULL AND reserved_until < now())
 `
 
 // Deletes rows older than the retention cutoff (now - 30d); run by the
-// 5-minute certforge_schedule job.
+// 5-minute certforge_schedule job. Also drops expired reservations (a
+// crashed worker never released its own).
 func (q *Queries) PruneLedger(ctx context.Context, at time.Time) (int64, error) {
 	result, err := q.db.Exec(ctx, pruneLedger, at)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const releaseLedgerReservation = `-- name: ReleaseLedgerReservation :execrows
+DELETE FROM rate_ledger WHERE attempt_id = $1 AND reserved_until IS NOT NULL
+`
+
+// Drops the attempt's still-reserved rows; its new_order row stays.
+func (q *Queries) ReleaseLedgerReservation(ctx context.Context, attemptID *uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseLedgerReservation, attemptID)
 	if err != nil {
 		return 0, err
 	}

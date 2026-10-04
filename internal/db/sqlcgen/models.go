@@ -351,6 +351,8 @@ type RateLedger struct {
 	NamesHash        string     `json:"names_hash"`
 	CertID           *uuid.UUID `json:"cert_id"`
 	At               time.Time  `json:"at"`
+	AttemptID        *uuid.UUID `json:"attempt_id"`
+	ReservedUntil    *time.Time `json:"reserved_until"`
 }
 
 type RoleBinding struct {

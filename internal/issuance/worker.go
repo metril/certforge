@@ -206,6 +206,9 @@ func (w *IssueWorker) Issue(ctx context.Context, certID uuid.UUID) error {
 		// failure_count, next_renew_at) is left untouched: river retries the
 		// job, and a successful retry needs no backoff to undo.
 		tl.Logf("error: %v", err)
+		if rerr := w.Store.ReleaseReservation(bg, attemptID); rerr != nil {
+			w.Log.Warn("release ledger reservation", "attempt", attemptID, "err", rerr)
+		}
 		steps, log := tl.Snapshot()
 		if ferr := w.Store.FinishAttempt(bg, nil, attemptID, OutcomeFailed, "", nil, steps, log); ferr != nil {
 			w.Log.Warn("finish attempt after succeed error", "attempt", attemptID, "err", ferr)
@@ -273,12 +276,17 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	req := signer.IssueRequest{Names: cert.Names(), KeyType: eff.KeyType.Value, PreferredChain: eff.PreferredChain.Value,
 		MustStaple: eff.MustStaple.Value, Account: material, Challenge: router, Replaces: replaces,
 		ReuseKeyPKCS8: w.reuseKeyPKCS8(ctx, cert, eff, tl)}
-	// Recorded here, directly before the order is actually sent: everything
+	// Reserved here, directly before the order is actually sent: everything
 	// above (account lookup, CA-mismatch check, router/solver build) can
 	// still fail the attempt without ever contacting the CA, and none of
-	// those must count as an order (fix round 1).
-	if err := w.Store.RecordNewOrder(ctx, ca.ID, w.Now()); err != nil {
+	// those must count as an order (fix round 1). The reserve re-checks the
+	// limits atomically, so rateLedgerStep above is only an early precheck.
+	exceeded, err := w.Store.ReserveLedger(ctx, ca.ID, cert.ID, attemptID, cert.Names(), cfg.RateLimits, w.Now(), !ca.Staging())
+	if err != nil {
 		return nil, eff, err
+	}
+	if exceeded != nil {
+		return nil, eff, ledgerRefusal(tl, exceeded)
 	}
 	tl.Step("order", challenge.StepRunning, strings.Join(req.Names, ", "))
 	iss, err := sig.Issue(ctx, req)
@@ -444,14 +452,20 @@ func (w *IssueWorker) rateLedgerStep(ctx context.Context, tl *Timeline, cert Cer
 			return err
 		}
 		if exceeded != nil {
-			tl.Step("rate_ledger", challenge.StepFailed, exceeded.Error())
-			return &signer.Error{Type: "urn:ietf:params:acme:error:rateLimited", Detail: exceeded.Error(), Err: exceeded}
+			return ledgerRefusal(tl, exceeded)
 		}
 		tl.Step("rate_ledger", challenge.StepSuccess, "within limits")
 		return nil
 	}
 	tl.Step("rate_ledger", challenge.StepSuccess, "recorded only (staging CA)")
 	return nil
+}
+
+// ledgerRefusal records exceeded on the rate_ledger step and wraps it the
+// way fail expects (a rateLimited *signer.Error carrying the *LedgerExceeded).
+func ledgerRefusal(tl *Timeline, exceeded *LedgerExceeded) error {
+	tl.Step("rate_ledger", challenge.StepFailed, exceeded.Error())
+	return &signer.Error{Type: "urn:ietf:params:acme:error:rateLimited", Detail: exceeded.Error(), Err: exceeded}
 }
 
 // replacesEligible reports whether v (cert's current version) qualifies as
@@ -630,7 +644,7 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 	if err != nil {
 		return err
 	}
-	if err := w.Store.RecordCertIssued(ctx, tx, *eff.CAID.Value, cert.ID, cert.Names(), w.Now()); err != nil {
+	if err := w.Store.ConfirmCertIssued(ctx, tx, *eff.CAID.Value, cert.ID, attemptID, cert.Names(), w.Now()); err != nil {
 		return err
 	}
 	next := NextRenewAt(eff.RenewPolicy.Value, iss.NotBefore, iss.NotAfter, w.Now())
@@ -719,6 +733,11 @@ func (w *IssueWorker) notifyVersion(ctx context.Context, certID, versionID uuid.
 func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, eff Effective, cause error, start time.Time) error {
 	now := w.Now()
 	failures := cert.FailureCount + 1
+	// Free this attempt's cert_issued reservation (a no-op before the
+	// reserve); its new_order row stays. Failing to is covered by expiry.
+	if rerr := w.Store.ReleaseReservation(ctx, attemptID); rerr != nil {
+		w.Log.Warn("release ledger reservation", "attempt", attemptID, "err", rerr)
+	}
 	var acmeType string
 	var retryAfter time.Duration
 	var se *signer.Error

@@ -96,6 +96,79 @@ func (s *Store) RecordNewOrder(ctx context.Context, caID uuid.UUID, at time.Time
 	return s.q.InsertLedgerRow(ctx, sqlcgen.InsertLedgerRowParams{CaID: caID, Kind: kindNewOrder, At: at})
 }
 
+// reservationTTL is how long a reserved cert_issued row counts before it
+// lapses: the issue worker's timeout (3h) plus margin. A worker that dies
+// without releasing its rows is covered by this alone.
+const reservationTTL = 3*time.Hour + 15*time.Minute
+
+// ReserveLedger is the authoritative, atomic rate-limit gate for one issue
+// attempt, called directly before the order is sent. In one short
+// transaction, under a per-CA transaction-level advisory lock (never held
+// across the ACME order), it re-runs CheckLedger (only when enforce) and,
+// when within limits, inserts the attempt's new_order row and a reserved
+// cert_issued row per registered domain, so concurrent attempts see each
+// other's claims. It returns the exceeded limit and writes nothing when one
+// is hit. A repeat call for the same attemptID writes nothing again.
+// enforce=false (a staging CA) records without refusing. The reserved rows
+// are confirmed by ConfirmCertIssued on success or dropped by
+// ReleaseReservation on failure; the new_order row stays either way.
+// failedValidationsPerHour counts outcomes, not reservations, so concurrent
+// attempts can still overshoot that one limit.
+func (s *Store) ReserveLedger(ctx context.Context, caID, certID, attemptID uuid.UUID, names []string, limits RateLimits, now time.Time, enforce bool) (*LedgerExceeded, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // no-op after commit
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('cf.ledger:' || $1::text, 0))`, caID.String()); err != nil {
+		return nil, err
+	}
+	q := s.q.WithTx(tx)
+	if done, err := q.LedgerAttemptReserved(ctx, &attemptID); err != nil || done {
+		return nil, err
+	}
+	if enforce {
+		ts := *s
+		ts.q = q
+		exceeded, err := CheckLedger(ctx, &ts, caID, names, limits, now)
+		if err != nil || exceeded != nil {
+			return exceeded, err
+		}
+	}
+	if err := q.InsertLedgerReservation(ctx, sqlcgen.InsertLedgerReservationParams{CaID: caID, Kind: kindNewOrder, At: now, AttemptID: &attemptID}); err != nil {
+		return nil, err
+	}
+	until := now.Add(reservationTTL)
+	hash := NamesHash(names)
+	for _, d := range RegisteredDomains(names) {
+		if err := q.InsertLedgerReservation(ctx, sqlcgen.InsertLedgerReservationParams{CaID: caID, Kind: kindCertIssued,
+			RegisteredDomain: d, NamesHash: hash, CertID: &certID, At: now, AttemptID: &attemptID, ReservedUntil: &until}); err != nil {
+			return nil, err
+		}
+	}
+	return nil, tx.Commit(ctx)
+}
+
+// ConfirmCertIssued is succeed's replacement for RecordCertIssued once
+// ReserveLedger ran: it turns the attempt's reserved cert_issued rows into
+// plain ones dated at, inside tx. When there are none (a private CA never
+// reserves, or the reservation was pruned) it inserts them like
+// RecordCertIssued.
+func (s *Store) ConfirmCertIssued(ctx context.Context, tx pgx.Tx, caID, certID, attemptID uuid.UUID, names []string, at time.Time) error {
+	n, err := s.q.WithTx(tx).ConfirmLedgerReservation(ctx, sqlcgen.ConfirmLedgerReservationParams{AttemptID: &attemptID, At: at})
+	if err != nil || n > 0 {
+		return err
+	}
+	return s.RecordCertIssued(ctx, tx, caID, certID, names, at)
+}
+
+// ReleaseReservation drops attemptID's still-reserved cert_issued rows (the
+// attempt failed); its new_order row stays, since the order was sent.
+func (s *Store) ReleaseReservation(ctx context.Context, attemptID uuid.UUID) error {
+	_, err := s.q.ReleaseLedgerReservation(ctx, &attemptID)
+	return err
+}
+
 // RecordCertIssued writes one cert_issued row per registered domain of
 // names, all sharing names_hash and certID. tx, when given, is succeed's own
 // transaction, so the rows commit or roll back atomically with the stored
@@ -190,11 +263,11 @@ func CheckLedger(ctx context.Context, s *Store, caID uuid.UUID, names []string, 
 // issuance) costs one query per domain per limit, not two.
 func (s *Store) checkDomainLimit(ctx context.Context, caID uuid.UUID, limit, kind, domain string, max int, window time.Duration, now time.Time) (*LedgerExceeded, error) {
 	since := now.Add(-window)
-	n, err := s.q.CountLedgerByDomain(ctx, sqlcgen.CountLedgerByDomainParams{CaID: caID, Kind: kind, RegisteredDomain: domain, At: since})
+	n, err := s.q.CountLedgerByDomain(ctx, sqlcgen.CountLedgerByDomainParams{CaID: caID, Kind: kind, RegisteredDomain: domain, At: since, ReservedUntil: &now})
 	if err != nil || n < int64(max) {
 		return nil, err
 	}
-	oldest, err := s.q.OldestLedgerByDomain(ctx, sqlcgen.OldestLedgerByDomainParams{CaID: caID, Kind: kind, RegisteredDomain: domain, At: since})
+	oldest, err := s.q.OldestLedgerByDomain(ctx, sqlcgen.OldestLedgerByDomainParams{CaID: caID, Kind: kind, RegisteredDomain: domain, At: since, ReservedUntil: &now})
 	if err != nil {
 		return nil, err
 	}
@@ -204,11 +277,11 @@ func (s *Store) checkDomainLimit(ctx context.Context, caID uuid.UUID, limit, kin
 // checkNamesLimit is CheckLedger's duplicateCertsPerWeek half.
 func (s *Store) checkNamesLimit(ctx context.Context, caID uuid.UUID, hash, firstDomain string, max int, window time.Duration, now time.Time) (*LedgerExceeded, error) {
 	since := now.Add(-window)
-	n, err := s.q.CountLedgerByNames(ctx, sqlcgen.CountLedgerByNamesParams{CaID: caID, Kind: kindCertIssued, NamesHash: hash, RegisteredDomain: firstDomain, At: since})
+	n, err := s.q.CountLedgerByNames(ctx, sqlcgen.CountLedgerByNamesParams{CaID: caID, Kind: kindCertIssued, NamesHash: hash, RegisteredDomain: firstDomain, At: since, ReservedUntil: &now})
 	if err != nil || n < int64(max) {
 		return nil, err
 	}
-	oldest, err := s.q.OldestLedgerByNames(ctx, sqlcgen.OldestLedgerByNamesParams{CaID: caID, Kind: kindCertIssued, NamesHash: hash, RegisteredDomain: firstDomain, At: since})
+	oldest, err := s.q.OldestLedgerByNames(ctx, sqlcgen.OldestLedgerByNamesParams{CaID: caID, Kind: kindCertIssued, NamesHash: hash, RegisteredDomain: firstDomain, At: since, ReservedUntil: &now})
 	if err != nil {
 		return nil, err
 	}
@@ -218,11 +291,11 @@ func (s *Store) checkNamesLimit(ctx context.Context, caID uuid.UUID, hash, first
 // checkCALimit is CheckLedger's newOrdersPer3Hours half (scope: the whole CA).
 func (s *Store) checkCALimit(ctx context.Context, caID uuid.UUID, limit, kind string, max int, window time.Duration, now time.Time) (*LedgerExceeded, error) {
 	since := now.Add(-window)
-	n, err := s.q.CountLedgerByCA(ctx, sqlcgen.CountLedgerByCAParams{CaID: caID, Kind: kind, At: since})
+	n, err := s.q.CountLedgerByCA(ctx, sqlcgen.CountLedgerByCAParams{CaID: caID, Kind: kind, At: since, ReservedUntil: &now})
 	if err != nil || n < int64(max) {
 		return nil, err
 	}
-	oldest, err := s.q.OldestLedgerByCA(ctx, sqlcgen.OldestLedgerByCAParams{CaID: caID, Kind: kind, At: since})
+	oldest, err := s.q.OldestLedgerByCA(ctx, sqlcgen.OldestLedgerByCAParams{CaID: caID, Kind: kind, At: since, ReservedUntil: &now})
 	if err != nil {
 		return nil, err
 	}
@@ -297,13 +370,13 @@ func (s *Store) RateLedgerReport(ctx context.Context, orgID, caID uuid.UUID, lim
 
 func (s *Store) reportDomainItem(ctx context.Context, caID uuid.UUID, limit, kind, domain string, max int, window time.Duration, now time.Time) (LedgerItem, error) {
 	since := now.Add(-window)
-	n, err := s.q.CountLedgerByDomain(ctx, sqlcgen.CountLedgerByDomainParams{CaID: caID, Kind: kind, RegisteredDomain: domain, At: since})
+	n, err := s.q.CountLedgerByDomain(ctx, sqlcgen.CountLedgerByDomainParams{CaID: caID, Kind: kind, RegisteredDomain: domain, At: since, ReservedUntil: &now})
 	if err != nil {
 		return LedgerItem{}, err
 	}
 	var resets *time.Time
 	if n > 0 {
-		oldest, err := s.q.OldestLedgerByDomain(ctx, sqlcgen.OldestLedgerByDomainParams{CaID: caID, Kind: kind, RegisteredDomain: domain, At: since})
+		oldest, err := s.q.OldestLedgerByDomain(ctx, sqlcgen.OldestLedgerByDomainParams{CaID: caID, Kind: kind, RegisteredDomain: domain, At: since, ReservedUntil: &now})
 		if err != nil {
 			return LedgerItem{}, err
 		}
@@ -315,13 +388,13 @@ func (s *Store) reportDomainItem(ctx context.Context, caID uuid.UUID, limit, kin
 
 func (s *Store) reportCAItem(ctx context.Context, caID uuid.UUID, limit, kind string, max int, window time.Duration, now time.Time) (LedgerItem, error) {
 	since := now.Add(-window)
-	n, err := s.q.CountLedgerByCA(ctx, sqlcgen.CountLedgerByCAParams{CaID: caID, Kind: kind, At: since})
+	n, err := s.q.CountLedgerByCA(ctx, sqlcgen.CountLedgerByCAParams{CaID: caID, Kind: kind, At: since, ReservedUntil: &now})
 	if err != nil {
 		return LedgerItem{}, err
 	}
 	var resets *time.Time
 	if n > 0 {
-		oldest, err := s.q.OldestLedgerByCA(ctx, sqlcgen.OldestLedgerByCAParams{CaID: caID, Kind: kind, At: since})
+		oldest, err := s.q.OldestLedgerByCA(ctx, sqlcgen.OldestLedgerByCAParams{CaID: caID, Kind: kind, At: since, ReservedUntil: &now})
 		if err != nil {
 			return LedgerItem{}, err
 		}
@@ -333,13 +406,13 @@ func (s *Store) reportCAItem(ctx context.Context, caID uuid.UUID, limit, kind st
 
 func (s *Store) reportNamesItem(ctx context.Context, caID uuid.UUID, hash, firstDomain, scope string, max int, window time.Duration, now time.Time) (LedgerItem, error) {
 	since := now.Add(-window)
-	n, err := s.q.CountLedgerByNames(ctx, sqlcgen.CountLedgerByNamesParams{CaID: caID, Kind: kindCertIssued, NamesHash: hash, RegisteredDomain: firstDomain, At: since})
+	n, err := s.q.CountLedgerByNames(ctx, sqlcgen.CountLedgerByNamesParams{CaID: caID, Kind: kindCertIssued, NamesHash: hash, RegisteredDomain: firstDomain, At: since, ReservedUntil: &now})
 	if err != nil {
 		return LedgerItem{}, err
 	}
 	var resets *time.Time
 	if n > 0 {
-		oldest, err := s.q.OldestLedgerByNames(ctx, sqlcgen.OldestLedgerByNamesParams{CaID: caID, Kind: kindCertIssued, NamesHash: hash, RegisteredDomain: firstDomain, At: since})
+		oldest, err := s.q.OldestLedgerByNames(ctx, sqlcgen.OldestLedgerByNamesParams{CaID: caID, Kind: kindCertIssued, NamesHash: hash, RegisteredDomain: firstDomain, At: since, ReservedUntil: &now})
 		if err != nil {
 			return LedgerItem{}, err
 		}
