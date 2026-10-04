@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { help } from '@/lib/help';
+import { failedWithoutData } from '@/lib/queryState';
 import { fmtInterval, shortFp } from '@/lib/monitors';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
@@ -169,11 +170,11 @@ export function MonitorsPage() {
 
   return (
     <>
-      <AlertsHeader help="alerts.monitors" actions={q.isPending || q.isError || monitors.length === 0 ? undefined : add} />
+      <AlertsHeader help="alerts.monitors" actions={q.isPending || failedWithoutData(q) || monitors.length === 0 ? undefined : add} />
       <div className="grid gap-4">
         {q.isPending ? (
           <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-        ) : q.isError ? (
+        ) : failedWithoutData(q) ? (
           <ErrorState message={`Couldn't load monitors. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
         ) : monitors.length === 0 ? (
           <EmptyState message="No monitors yet.">{add}</EmptyState>

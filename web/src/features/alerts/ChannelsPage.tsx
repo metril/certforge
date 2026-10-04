@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch';
 import { canWriteChannel, toChannelInput, TYPE_META } from '@/lib/channels';
 import { KIND_LABEL } from '@/lib/events';
 import { help } from '@/lib/help';
+import { failedWithoutData } from '@/lib/queryState';
 import { useMe, useOrg } from '@/lib/org';
 import { can, isGlobalAdmin } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
@@ -166,11 +167,11 @@ export function ChannelsPage() {
 
   return (
     <>
-      <AlertsHeader help="alerts.channels" actions={q.isPending || q.isError || channels.length === 0 ? undefined : add} />
+      <AlertsHeader help="alerts.channels" actions={q.isPending || failedWithoutData(q) || channels.length === 0 ? undefined : add} />
       <div className="grid gap-4">
         {q.isPending ? (
           <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-        ) : q.isError ? (
+        ) : failedWithoutData(q) ? (
           <ErrorState message={`Couldn't load channels. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
         ) : channels.length === 0 ? (
           <EmptyState message="No channels yet.">{add}</EmptyState>
