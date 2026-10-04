@@ -88,7 +88,14 @@ export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort,
                   tabIndex={onRowClick || onRowOpen ? 0 : undefined}
                   className={cn('h-9 rounded-none', (onRowClick || onRowOpen) && 'cursor-pointer', isSel && 'bg-primary/10 hover:bg-primary/15')}
                   onMouseDown={(e) => e.shiftKey && e.preventDefault()}
-                  onClick={(e) => onRowClick?.(row.id, e)}
+                  onClick={(e) => {
+                    if (onRowClick) return onRowClick(row.id, e);
+                    // Open-only table: a click on the row opens it, but not one on an inner control or while selecting text.
+                    const inner = (e.target as HTMLElement).closest('a,button,input,select,textarea,[role="button"]');
+                    if (inner && e.currentTarget.contains(inner)) return;
+                    if (window.getSelection()?.toString()) return;
+                    onRowOpen?.(row.id);
+                  }}
                   onKeyDown={(e) => {
                     if (e.target !== e.currentTarget) return;
                     if (e.key === ' ') {
