@@ -40,7 +40,7 @@ export function TargetsPage() {
     void navigate({ search: (prev) => ({ ...prev, edit: id, view: undefined }), replace: id === undefined });
   // Task 8 owns the `view` param (a server target's own Grants action); Task
   // 9 renders the detail sheet it opens and its own not-found handling.
-  const openView = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, view: id, edit: undefined }) });
+  const openView = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, view: id, edit: undefined }), replace: id === undefined });
   const types = metaQ.data?.deployTargets ?? [];
   const typeName = (code: string) => types.find((t) => t.code === code)?.name ?? code;
   const targets = q.data ?? [];
