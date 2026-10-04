@@ -86,6 +86,8 @@ func TestCertificateOverview(t *testing.T) {
 		ids[s.name] = f.seedOverview(t, f.org, s)
 	}
 	ids["inherit-pending"] = f.seedOverview(t, org2, ovSeed{name: "inherit-pending", status: "pending"})
+	// No renewal date and far-out expiry: only the manual-DNS candidate rule holds.
+	f.seedOverview(t, org2, ovSeed{name: "inherit-unmanaged", status: "active", notAfterDays: days(200)})
 	ids["inherit-far"] = f.seedOverview(t, org2, ovSeed{name: "inherit-far", status: "active", notAfterDays: days(200), renewDays: days(100)})
 
 	res, err := f.srv.GetCertificateOverview(f.as("viewer"), gen.GetCertificateOverviewRequestObject{OrgId: f.org})
@@ -147,12 +149,12 @@ func TestCertificateOverview(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := all.(gen.GetAllCertificateOverview200JSONResponse)
-	if a.Counts.Total != 12 || a.Counts.Pending != 2 || a.Beyond != 5 || len(a.Items) != 9 {
+	if a.Counts.Total != 13 || a.Counts.Pending != 2 || a.Beyond != 6 || len(a.Items) != 10 {
 		t.Fatalf("admin all %+v beyond %d items %d", a.Counts, a.Beyond, len(a.Items))
 	}
 	for _, b := range a.Items {
 		switch b.Name {
-		case "inherit-pending", "inherit-far":
+		case "inherit-pending", "inherit-far", "inherit-unmanaged":
 			if !b.ManualDns || b.OrgId != org2 {
 				t.Fatalf("inherited manual dns not resolved: %+v", b)
 			}

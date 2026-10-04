@@ -384,13 +384,14 @@ GROUP BY c.status;
 -- renewals), plus rows that may be waiting on manual DNS (their own rules or
 -- overrides name manual-dns, or they inherit rules from an org in
 -- inherit_orgs). Attention candidates sort first so the cap never drops
--- them; needs_look is false for the manual-DNS-only extras.
+-- them, then the rest by expiry, and the manual-DNS-only extras (needs_look
+-- false) come last.
 SELECT c.id, c.org_id, c.name, c.status, c.next_renew_at, c.failure_count, c.last_error,
        c.verification_rules, c.overrides, c.ari_window_start, c.ari_window_end, c.ari_checked_at,
        v.not_before, v.not_after,
-       (c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
+       COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
         OR v.not_after < now() + interval '90 days'
-        OR c.next_renew_at < now() + interval '7 days')::bool AS needs_look
+        OR c.next_renew_at < now() + interval '7 days', false)::bool AS needs_look
 FROM certificates c
 LEFT JOIN certificate_versions v ON v.id = c.current_version_id
 WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
@@ -402,5 +403,9 @@ WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
            AND (c.verification_rules @> '[{"method":"manual-dns"}]'::jsonb
                 OR c.overrides::text LIKE '%manual-dns%'
                 OR (c.verification_rules = '[]'::jsonb AND c.org_id = ANY(sqlc.arg(inherit_orgs)::uuid[])))))
-ORDER BY (c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0) DESC, v.not_after NULLS LAST, c.id
+ORDER BY COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
+                  OR v.not_after < now() + interval '90 days'
+                  OR c.next_renew_at < now() + interval '7 days', false) DESC,
+         COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0 OR c.next_renew_at < now(), false) DESC,
+         v.not_after NULLS LAST, c.id
 LIMIT sqlc.arg(row_limit)::int;
