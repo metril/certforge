@@ -210,7 +210,7 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 // from Check's point of view, matching Sources.scan*'s own
 // "log and continue" convention for every other event source.
 func (s *Service) emit(ctx context.Context, m Monitor, newState string, obs Observation, stateChangedAt time.Time) {
-	ev := buildEvent(m, newState, obs, stateChangedAt)
+	ev := buildEvent(m, newState, obs, stateChangedAt, s.now())
 	if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
 		// Service has no *slog.Logger of its own (the Shared contract's
 		// Service{Store, Emitter, Settings, Now, Dial} does not list one);
@@ -222,7 +222,10 @@ func (s *Service) emit(ctx context.Context, m Monitor, newState string, obs Obse
 }
 
 // buildEvent is the event raised for m's transition into newState.
-func buildEvent(m Monitor, newState string, obs Observation, stateChangedAt time.Time) notify.Event {
+//
+// An expiring leaf already past notAfter keeps the state (and kind) expiring
+// but reads "expired" in the summary.
+func buildEvent(m Monitor, newState string, obs Observation, stateChangedAt, now time.Time) notify.Event {
 	kind := monitorEventKind(newState)
 	details := map[string]any{
 		"host": m.Host, "port": m.Port, "fp": obs.Fingerprint, "issuer": obs.Issuer, "chainError": obs.ChainError,
@@ -237,9 +240,13 @@ func buildEvent(m Monitor, newState string, obs Observation, stateChangedAt time
 	if newState == "ok" {
 		suffix = "recovered"
 	}
+	word := suffix
+	if newState == "expiring" && !obs.NotAfter.IsZero() && !obs.NotAfter.After(now) {
+		word = "expired"
+	}
 	return notify.Event{
 		Kind: kind, OrgID: &m.OrgID, Resource: notify.Resource{ID: m.ID.String(), Name: m.Name},
-		Summary:   fmt.Sprintf("%s (%s:%d) is %s", m.Name, m.Host, m.Port, suffix),
+		Summary:   fmt.Sprintf("%s (%s:%d) is %s", m.Name, m.Host, m.Port, word),
 		Details:   details,
 		DedupeKey: fmt.Sprintf("monitor.%s:%s:%s:%d", suffix, m.ID, obs.Fingerprint, stateChangedAt.Unix()),
 	}

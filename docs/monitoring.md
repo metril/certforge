@@ -25,8 +25,8 @@ Editing `host`, `port`, `sni` or `expectedCertificateId` resets `state` to `unkn
 | `unknown` | No check has completed yet (just created, or just edited in a way that resets state — see above). |
 | `ok` | Reachable; the leaf matches `expectedCertificateId`'s current version, or — when unset — the current version of some certificate in the org; and does not expire within 14 days. |
 | `mismatch` | Reachable, but the leaf's fingerprint does not match `expectedCertificateId`'s current version, or — when unset — does not match any certificate's current version in the org. |
-| `expiring` | Reachable and matching (as `ok` defines matching), but the leaf expires within 14 days. |
-| `unreachable` | The dial or TLS handshake failed (refused, timed out, or the host policy rejected it), or no certificate was presented. |
+| `expiring` | Reachable and matching (as `ok` defines matching), but the leaf expires within 14 days, or has already expired (the state stays `expiring`; the UI chip and the event summary say "expired"). |
+| `unreachable` | Two consecutive checks failed (the dial or TLS handshake was refused, timed out or rejected by the host policy, or no certificate was presented). A single failed check keeps the previous state and only records the error. |
 
 State order on a conflict between conditions is `unreachable` > `mismatch` > `expiring` > `ok` — an unreachable host is reported as such even if it happens to also be within its expiry window from the last successful check, and a mismatch is reported ahead of an otherwise-fine expiry. An event fires only on a genuine transition (the new state differs from the old, and the write actually won a race against a concurrent check of the same monitor — see [notifications.md#dedupe](notifications.md#dedupe)); `monitor.recovered` fires only when the *previous* state was `mismatch`, `expiring` or `unreachable` and the new one is `ok` — moving from `unknown` straight to `ok` (a monitor's first-ever successful check) is not itself a "recovery" and raises no event.
 

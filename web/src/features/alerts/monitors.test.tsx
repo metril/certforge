@@ -8,6 +8,7 @@ import { server } from '@/test/server';
 import { authHandlers, iso, makeCert, makeMonitor, meWith, NOW, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 import { ExpiryChip } from './ExpiryChip';
+import { MonitorStateChip } from './MonitorStateChip';
 
 let monitors: Monitor[];
 let posted: MonitorInput | undefined;
@@ -292,4 +293,11 @@ it('shows a read-only notice for a viewer and none for a writer', async () => {
   const sheet2 = await screen.findByRole('dialog', { name: 'edge' });
   await within(sheet2).findByLabelText('Name');
   expect(within(sheet2).queryByText(/Read-only/)).not.toBeInTheDocument();
+});
+
+it('state chip reads Expired for an expiring monitor past notAfter', () => {
+  const { rerender } = render(<MonitorStateChip state="expiring" enabled notAfter={iso(-1)} now={NOW} />);
+  expect(screen.getByText('Expired')).toBeInTheDocument();
+  rerender(<MonitorStateChip state="expiring" enabled notAfter={iso(9)} now={NOW} />);
+  expect(screen.getByText('Expiring')).toBeInTheDocument();
 });

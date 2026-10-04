@@ -174,7 +174,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
               <span className="text-sm font-semibold">Last check</span>
               <div className="grid gap-1.5 text-sm">
                 <span className="flex items-center gap-1.5">
-                  <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} />
+                  <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
                   <span className="text-xs text-ink-muted">{relTime(monitor.lastCheckedAt)}</span>
                 </span>
                 {monitor.lastFingerprint && (

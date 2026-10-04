@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDashed, CirclePause, Clock, ShieldAlert, Unplug, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleDashed, CirclePause, CircleX, Clock, ShieldAlert, Unplug, type LucideIcon } from 'lucide-react';
 import type { MonitorState } from '@/api/types';
 import { ToneChip } from '@/components/StatusChip';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,10 +16,27 @@ const STATE_META: Record<MonitorState, { label: string; tone: Tone; icon: Lucide
 /**
  * A monitor's state (Task 4). A disabled monitor always shows Paused
  * regardless of its last-observed state (UI conventions "Monitor states");
- * Unreachable is the only state that carries a `lastError` tooltip.
+ * Unreachable is the only state that carries a `lastError` tooltip. An
+ * `expiring` monitor whose leaf is already past `notAfter` reads Expired
+ * (the server keeps the state `expiring`).
  */
-export function MonitorStateChip({ state, enabled, lastError }: { state: MonitorState; enabled: boolean; lastError?: string | null }) {
+export function MonitorStateChip({
+  state,
+  enabled,
+  lastError,
+  notAfter,
+  now = Date.now(),
+}: {
+  state: MonitorState;
+  enabled: boolean;
+  lastError?: string | null;
+  notAfter?: string | null;
+  now?: number;
+}) {
   if (!enabled) return <ToneChip tone="neutral" icon={CirclePause} label="Paused" />;
+  if (state === 'expiring' && notAfter && Date.parse(notAfter) <= now) {
+    return <ToneChip tone="expired" icon={CircleX} label="Expired" />;
+  }
   const m = STATE_META[state];
   if (state === 'unreachable' && lastError) {
     return (

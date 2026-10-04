@@ -93,7 +93,7 @@ function monitorColumns(orgId: string) {
       id: 'state',
       header: 'State',
       meta: { className: 'w-32' },
-      cell: ({ row }) => <MonitorStateChip state={row.original.state} enabled={row.original.enabled} lastError={row.original.lastError} />,
+      cell: ({ row }) => <MonitorStateChip state={row.original.state} enabled={row.original.enabled} lastError={row.original.lastError} notAfter={row.original.lastNotAfter} />,
     }),
     col.display({
       id: 'nextCheck',
@@ -136,7 +136,7 @@ function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: stri
       </div>
       <TargetCell monitor={monitor} />
       <div className="flex flex-wrap items-center gap-2">
-        <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} />
+        <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
         <span className="text-xs text-ink-muted">{fmtInterval(monitor.intervalSeconds)}</span>
       </div>
       {monitor.lastFingerprint && <CopyField value={monitor.lastFingerprint} label="fingerprint" display={shortFp(monitor.lastFingerprint)} />}

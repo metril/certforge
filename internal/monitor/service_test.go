@@ -107,7 +107,7 @@ func TestMonitorEventPayloadKeepsDetails(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.state, func(t *testing.T) {
-			ev := buildEvent(m, c.state, c.obs, time.Now())
+			ev := buildEvent(m, c.state, c.obs, time.Now(), time.Now())
 			var body struct {
 				Details map[string]any `json:"details"`
 			}
@@ -120,5 +120,20 @@ func TestMonitorEventPayloadKeepsDetails(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestEventSummaryExpired: an expired leaf keeps kind monitor.expiring but
+// the summary says expired.
+func TestEventSummaryExpired(t *testing.T) {
+	m := Monitor{ID: uuid.New(), OrgID: uuid.New(), Name: "edge", Host: "edge.example", Port: 443}
+	now := time.Now()
+	past := buildEvent(m, "expiring", Observation{Fingerprint: "f", NotAfter: now.Add(-time.Hour)}, now, now)
+	if past.Kind != "monitor.expiring" || past.Summary != "edge (edge.example:443) is expired" {
+		t.Errorf("past: kind %q summary %q", past.Kind, past.Summary)
+	}
+	soon := buildEvent(m, "expiring", Observation{Fingerprint: "f", NotAfter: now.Add(time.Hour)}, now, now)
+	if soon.Summary != "edge (edge.example:443) is expiring" {
+		t.Errorf("soon: summary %q", soon.Summary)
 	}
 }
