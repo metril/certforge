@@ -114,7 +114,7 @@ function RotationSteps({ keys }: { keys: KeysStatus }) {
         const done = i < current;
         const active = i === current;
         return (
-          <li key={st.label} aria-current={active ? 'step' : undefined} className={cn('flex items-center gap-2 text-sm', active ? 'font-semibold text-ink' : 'text-ink-muted')}>
+          <li key={i} aria-current={active ? 'step' : undefined} className={cn('flex items-center gap-2 text-sm', active ? 'font-semibold text-ink' : 'text-ink-muted')}>
             <span
               className={cn(
                 'inline-flex size-6 items-center justify-center rounded-full border text-xs',

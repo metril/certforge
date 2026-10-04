@@ -84,17 +84,23 @@ func (f *fakeNotifyInserter) InsertTx(_ context.Context, _ pgx.Tx, args river.Jo
 type fakeMonitorInserter struct {
 	mu    sync.Mutex
 	calls []monitor.CheckArgs
+	// dup lists monitors whose job is reported as skipped (UniqueSkippedAsDuplicate).
+	dup map[uuid.UUID]bool
 }
 
-func (f *fakeMonitorInserter) Insert(_ context.Context, args river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+func (f *fakeMonitorInserter) InsertMany(_ context.Context, params []river.InsertManyParams) ([]*rivertype.JobInsertResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	ca, ok := args.(monitor.CheckArgs)
-	if !ok {
-		return nil, fmt.Errorf("monitor test: unexpected job args %T", args)
+	out := make([]*rivertype.JobInsertResult, len(params))
+	for i, p := range params {
+		ca, ok := p.Args.(monitor.CheckArgs)
+		if !ok {
+			return nil, fmt.Errorf("monitor test: unexpected job args %T", p.Args)
+		}
+		f.calls = append(f.calls, ca)
+		out[i] = &rivertype.JobInsertResult{Job: &rivertype.JobRow{}, UniqueSkippedAsDuplicate: f.dup[ca.MonitorID]}
 	}
-	f.calls = append(f.calls, ca)
-	return &rivertype.JobInsertResult{Job: &rivertype.JobRow{}}, nil
+	return out, nil
 }
 
 func (f *fakeMonitorInserter) ids() []uuid.UUID {
@@ -119,6 +125,7 @@ type monitorRow struct {
 	nextCheckAt    time.Time
 	enabled        *bool // nil means true
 	expectedCertID *uuid.UUID
+	failures       int
 }
 
 // insertMonitor inserts an external_monitors row directly (bypassing
@@ -144,10 +151,10 @@ func insertMonitor(t *testing.T, pool *pgxpool.Pool, m monitorRow) uuid.UUID {
 	}
 	var id uuid.UUID
 	err := pool.QueryRow(context.Background(), `
-		INSERT INTO external_monitors (org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, next_check_at)
-		VALUES ($1, $2, $3, $4, $5, 3600, $6, $7, $8, now(), $9)
+		INSERT INTO external_monitors (org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, next_check_at, consecutive_failures)
+		VALUES ($1, $2, $3, $4, $5, 3600, $6, $7, $8, now(), $9, $10)
 		RETURNING id`,
-		m.orgID, m.name, m.host, m.port, m.sni, m.expectedCertID, enabled, m.state, m.nextCheckAt).Scan(&id)
+		m.orgID, m.name, m.host, m.port, m.sni, m.expectedCertID, enabled, m.state, m.nextCheckAt, m.failures).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert monitor: %v", err)
 	}

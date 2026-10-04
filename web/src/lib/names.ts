@@ -6,7 +6,7 @@ export type NameKind = 'dns' | 'wildcard' | 'ip' | 'invalid';
 export type ParsedName = { value: string; kind: NameKind; zone: string | null; error?: string };
 export type NameGroup = { zone: string; kind: 'zone' | 'ip' | 'invalid'; names: ParsedName[] };
 
-const LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
+const LABEL = /^(?!-)[a-z0-9_-]{1,63}(?<!-)$/;
 // Loose "looks like an IP attempt" shapes, used only to pick a clearer error
 // message for a near-miss than the generic DNS-label one.
 const IPV4_SHAPE = /^\d{1,3}(\.\d{1,3}){3}$/;
@@ -69,7 +69,7 @@ export function classifyName(value: string): ParsedName {
   if (host.length > 253) return invalid(value, 'Longer than 253 characters');
   const labels = host.split('.');
   if (labels.length < 2) return invalid(value, 'Needs a domain, like host.example.com');
-  if (!labels.every((l) => LABEL.test(l))) return invalid(value, 'Letters, digits, and hyphens only; use xn-- for IDNs');
+  if (!labels.every((l) => LABEL.test(l))) return invalid(value, 'Letters, digits, hyphens and underscores only; use xn-- for IDNs');
   const parsed = parse(host, { allowPrivateDomains: true });
   // Fix round 1 (review, Important #4): the server's own validator has no
   // public-suffix list at all, so it accepts any dotted, syntactically

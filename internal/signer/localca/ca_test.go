@@ -245,7 +245,7 @@ func TestRotateKeepsOldLeavesVerifying(t *testing.T) {
 
 type noopRecorder struct{}
 
-func (noopRecorder) Revoke(ctx context.Context, serial, issuerSerial string, reason int, at time.Time) error {
+func (noopRecorder) Revoke(ctx context.Context, serial, issuerSerial string, reason int, at, notAfter time.Time) error {
 	return nil
 }
 

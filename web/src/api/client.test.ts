@@ -73,6 +73,28 @@ it('retries once after a CSRF-flavoured 403, refreshing the token first', async 
   expect(logoutCalls).toBe(2);
 });
 
+// P7: a multipart body is not cloned (cloning tees and buffers the whole
+// upload), so it gets no CSRF retry; instead a missing token is fetched
+// before the request is sent.
+it('does not retry a multipart request, and fetches a missing token before sending it', async () => {
+  let calls = 0;
+  const seen: (string | null)[] = [];
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(me)),
+    http.post(url('/auth/logout'), ({ request }) => {
+      calls += 1;
+      seen.push(request.headers.get('X-CSRF-Token'));
+      return csrfProblem();
+    }),
+  );
+  const form = new FormData();
+  form.set('file', new Blob(['x']), 'x.bin');
+  const err = await call(api.POST('/auth/logout', { body: form as never, bodySerializer: (b: unknown) => b as never })).catch((e: unknown) => e);
+  expect(calls).toBe(1);
+  expect(seen).toEqual([me.csrfToken]);
+  expect((err as ApiError).status).toBe(403);
+});
+
 // The client matches on title OR detail: a reworded detail that drops the
 // word "csrf" (title alone still says so) must still trigger the retry.
 it('retries on a CSRF 403 whose detail does not mention CSRF, matching the title instead', async () => {

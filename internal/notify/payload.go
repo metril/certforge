@@ -14,8 +14,8 @@ import (
 // material"). cert.issued through agent.cert_expiring are the fields
 // Sources (Task 7) actually emits; cert.renewal_failed carries no raw
 // cause.Error() (issuance.FailureInfo/ClassifyFailure's classified view
-// only — TestFailurePayloadHasNoURLOrHost). monitor.*/backup.* remain
-// provisional until Tasks 9/12 emit them for real.
+// only — TestFailurePayloadHasNoURLOrHost). monitor.* and backup.* match what
+// internal/monitor and internal/backup emit.
 var detailAllowlist = map[string][]string{
 	"cert.issued":         {"serial", "notAfter", "names", "caName"},
 	"cert.renewal_failed": {"failures", "step", "problemType", "status", "class", "nextAttemptAt"},
@@ -25,14 +25,19 @@ var detailAllowlist = map[string][]string{
 	"deploy.drift":        {"target"},
 	"client.offline":      {"lastSeen"},
 	"agent.cert_expiring": {"notAfter"},
-	"monitor.mismatch":    {"fingerprint", "expectedFingerprint", "issuer"},
-	"monitor.unreachable": {"lastError"},
-	"monitor.expiring":    {"notAfter"},
-	"monitor.recovered":   {},
+	"monitor.mismatch":    monitorDetailKeys,
+	"monitor.unreachable": monitorDetailKeys,
+	"monitor.expiring":    monitorDetailKeys,
+	"monitor.recovered":   monitorDetailKeys,
 	"backup.completed":    {"sizeBytes", "file"},
 	"backup.failed":       {"error"},
 	"test":                {},
 }
+
+// monitorDetailKeys are the keys monitor.Service's events carry (host, port,
+// the observed leaf's fingerprint/issuer/notAfter, the chain verification
+// error and, for an unreachable host, the dial error).
+var monitorDetailKeys = []string{"host", "port", "fp", "issuer", "notAfter", "chainError", "error"}
 
 // payloadOrg is the wire org{id,name} object; nil renders as JSON null for
 // a global event (Wire formats row).

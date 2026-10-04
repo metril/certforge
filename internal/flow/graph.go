@@ -512,7 +512,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 		}
 		return l
 	}
-	g.Issuers = fill(issuers, !(perms.CAs || perms.Accounts || perms.DNSCreds))
+	g.Issuers = fill(issuers, (!perms.CAs && !perms.Accounts && !perms.DNSCreds))
 	g.Certificates = fill(certNodes, false)
 	g.Delivery = fill(delivery, !perms.Delivery)
 	g.Clients = fill(clients, !perms.Clients)

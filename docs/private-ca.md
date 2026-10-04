@@ -17,8 +17,9 @@ A `localca` CA is two certificates:
 - **Issuing intermediate** — signed by the root, `MaxPathLenZero` (it may
   not sign further CAs), also `KeyUsageCertSign | KeyUsageCRLSign`. Its
   private key signs every leaf certificate and every CRL. Its common name
-  is the subject's with a suffix identifying when it was minted, e.g.
-  `Acme Corp Issuing CA 2026-01`.
+  is the subject's with a suffix identifying when it was minted plus the
+  first 8 hex digits of its serial, e.g. `Acme Corp Issuing CA 2026-01-3fa9c1d2`
+  (two rotations in one month stay distinguishable).
 
 Both certificates get a `SubjectKeyId` (RFC 5280 §4.2.1.2 method 1) and the
 intermediate's `AuthorityKeyId` is the root's `SubjectKeyId` — Go's
@@ -42,6 +43,11 @@ Requirements:
 - The issuing certificate must be a CA (`IsCA`, `KeyUsageCertSign`) and
   currently valid.
 - The supplied private key must match the issuing certificate's public key.
+- Each certificate must have been signed by the next one in the bundle
+  (issuing by its parent, and so on up), and every parent must be a CA.
+- Keys must be RSA of at least 2048 bits or ECDSA on P-256, P-384 or P-521,
+  and no certificate may be signed with MD5 or SHA-1 (a self-signed root's
+  own signature is exempt).
 - When `crl` is requested, the issuing certificate must itself be able to
   sign one: `KeyUsageCRLSign` set and a `SubjectKeyId` present. Otherwise
   `Import` returns `ErrCannotSignCRL` (the CA lifecycle layer maps this to
@@ -55,7 +61,7 @@ the supplied chain as-is. An import never needs a root private key —
 ## Rotation
 
 `Rotate(root, rootKeyPKCS8, cfg, now)` signs a fresh issuing intermediate
-under the existing root and returns new `Material`; the caller persists it
+under the existing root (which must not have expired) and returns new `Material`; the caller persists it
 as the CA's current issuer and keeps the retired one (and its sealed key)
 around until its own `NotAfter`, so certificates it already issued can
 still be revoked and its CRL can still be served. `Rotate` zeroes its copy

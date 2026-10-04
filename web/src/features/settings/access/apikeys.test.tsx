@@ -6,6 +6,14 @@ import { authHandlers, DAY, iso, makeApiKey, meWith, NOW, org, url } from '@/tes
 import { keyState } from '@/lib/apiKeys';
 import { renderRoute } from '@/test/render';
 
+// Roles cannot make a scope grantable globally but not in an org, so the
+// prune test narrows one scope by hand.
+const narrow = vi.hoisted(() => ({ on: false }));
+vi.mock('@/lib/permissions', async (orig) => {
+  const mod = await orig<typeof import('@/lib/permissions')>();
+  return { ...mod, canGrantScope: (me: never, s: never, orgId: string | null) => (narrow.on && s === 'keys:export' ? orgId === null : mod.canGrantScope(me, s, orgId)) };
+});
+
 const TOKEN = 'cf_0123456789ab_' + 'x'.repeat(43);
 
 function handlers(onPost?: (b: Record<string, unknown>) => void) {
@@ -242,4 +250,76 @@ it('shows card rows instead of a table below 768px with no horizontal overflow',
   expect(cardsRoot.className).not.toMatch(/min-w-\[/);
   expect(container.querySelector('[class*="min-w-["]')).toBeNull();
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
+});
+
+// H2: under a server maximum lifetime the sheet drops "Never", offers only
+// choices that fit, defaults to the maximum and caps the custom date.
+it('limits expiry choices to the server policy and defaults to the maximum', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+  let body: Record<string, unknown> = {};
+  server.use(
+    http.get(url('/api-keys'), () => HttpResponse.json({ items: [], policy: { maxLifetimeDays: 45, maxActivePerUser: 50 } })),
+    ...authHandlers({ authed: true }),
+    ...handlers((b) => (body = b)),
+  );
+  const { user } = renderRoute('/settings/access?tab=keys');
+  await user.click(await screen.findByRole('button', { name: 'New API key' }));
+  const sheet = await screen.findByRole('dialog', { name: 'New API key' });
+  expect(await within(sheet).findByRole('radio', { name: '45 days' })).toBeChecked();
+  expect(within(sheet).getByRole('radio', { name: '30 days' })).toBeInTheDocument();
+  expect(within(sheet).queryByRole('radio', { name: '90 days' })).not.toBeInTheDocument();
+  expect(within(sheet).queryByRole('radio', { name: 'Never' })).not.toBeInTheDocument();
+  expect(within(sheet).getByText(/at most 45 days/)).toBeInTheDocument();
+
+  await user.click(within(sheet).getByRole('radio', { name: 'Custom' }));
+  await user.type(within(sheet).getByLabelText('Expiry date'), '2027-12-31');
+  expect(within(sheet).getByRole('alert')).toHaveTextContent('Pick a date within 45 days.');
+  expect(within(sheet).getByRole('button', { name: 'Create' })).toBeDisabled();
+
+  await user.click(within(sheet).getByRole('radio', { name: '45 days' }));
+  await user.type(within(sheet).getByLabelText('Name'), 'deploy');
+  await user.click(within(sheet).getByRole('button', { name: 'Create' }));
+  await waitFor(() => expect(body.name).toBe('deploy'));
+  expect(body.expiresAt).toBe(new Date(NOW + 45 * DAY).toISOString());
+});
+
+// X11: a scope change drops permissions it makes ungrantable, from the chips and the request.
+it('drops a picked permission that the new scope cannot grant', async () => {
+  narrow.on = true;
+  let body: Record<string, unknown> = {};
+  server.use(...authHandlers({ authed: true }), ...handlers((b) => (body = b)));
+  const { user } = renderRoute('/settings/access?tab=keys');
+  await user.click(await screen.findByRole('button', { name: 'New API key' }));
+  const sheet = await screen.findByRole('dialog', { name: 'New API key' });
+  await user.type(within(sheet).getByLabelText('Name'), 'deploy');
+  await user.click(within(sheet).getByRole('combobox', { name: 'Scope' }));
+  await user.click(await screen.findByRole('option', { name: 'All orgs' }));
+  const chip = within(sheet).getByRole('button', { name: 'keys:export' });
+  await user.click(chip);
+  expect(chip).toHaveAttribute('aria-pressed', 'true');
+  await user.click(within(sheet).getByRole('combobox', { name: 'Scope' }));
+  await user.click(await screen.findByRole('option', { name: 'Acme' }));
+  expect(within(sheet).getByRole('button', { name: 'keys:export' })).toHaveAttribute('aria-pressed', 'false');
+  await user.click(within(sheet).getByRole('button', { name: 'Create' }));
+  await waitFor(() => expect(body.name).toBe('deploy'));
+  expect(body.scopes).toEqual(['certs:read']);
+  narrow.on = false;
+});
+
+// X12: the one-time key survives a route change until it is marked stored.
+it('blocks a route change while the new key is unacknowledged', async () => {
+  server.use(...authHandlers({ authed: true }), ...handlers());
+  const { user, router } = renderRoute('/settings/access?tab=keys');
+  await user.click(await screen.findByRole('button', { name: 'New API key' }));
+  const sheet = await screen.findByRole('dialog', { name: 'New API key' });
+  await user.type(within(sheet).getByLabelText('Name'), 'deploy');
+  await user.click(within(sheet).getByRole('button', { name: 'Create' }));
+  const dialog = await screen.findByRole('dialog', { name: 'API key deploy' });
+  void router.navigate({ to: '/o/$org/audit', params: { org: 'acme' } });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(router.state.location.pathname).toBe('/settings/access');
+  await user.click(within(dialog).getByRole('switch', { name: 'Stored safely' }));
+  void router.navigate({ to: '/o/$org/audit', params: { org: 'acme' } });
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/audit'));
 });

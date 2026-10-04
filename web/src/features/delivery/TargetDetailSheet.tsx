@@ -25,6 +25,7 @@ import { needsKey, typeMeta } from '@/lib/targets';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { ServerGrantForm } from './ServerGrantForm';
+import { failedWithoutData } from '@/lib/queryState';
 
 type Props = { orgId: string; orgSlug: string; target: DeployTarget; types: ProviderSchema[]; onEdit: () => void; onOpenChange: (open: boolean) => void };
 
@@ -115,7 +116,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
   );
 
   const grantsList = () => {
-    if (q.isError) return <ErrorState message={`Couldn't load grants. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
+    if (failedWithoutData(q)) return <ErrorState message={`Couldn't load grants. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
     if (q.isPending) return <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>;
     const grants = q.data;
     if (grants.length === 0) return <EmptyState message="No certificates granted yet.">{newGrantButton}</EmptyState>;

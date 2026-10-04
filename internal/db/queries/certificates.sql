@@ -256,7 +256,7 @@ RETURNING next_renew_at;
 UPDATE certificates SET status = $2, failure_count = $3, last_error = $4, next_renew_at = $5, updated_at = now()
 WHERE id = $1;
 
--- name: ListARIDue :many
+-- name: ListARIDueWithLeaf :many
 -- Certificates due for an ACME Renewal Information poll (ARIPollWorker):
 -- managed, with a stored current version, status active, and either never
 -- polled or past their ari_retry_after. Paginated with a plain id keyset
@@ -266,12 +266,16 @@ WHERE id = $1;
 -- cannot crowd out certificates ordered after it on the next page, or on
 -- the next run. Whether the certificate's effective renewPolicy.useAri is
 -- actually set is resolved separately in Go (Store.EffectiveFor merges
--- three JSON levels, not expressible here).
-SELECT * FROM certificates
-WHERE managed AND current_version_id IS NOT NULL AND status = 'active'
-  AND (ari_retry_after IS NULL OR ari_retry_after <= now())
-  AND (NOT sqlc.arg(has_cursor)::bool OR id > sqlc.arg(last_id)::uuid)
-ORDER BY id
+-- three JSON levels, not expressible here). Also returns the current
+-- version's ca_id and leaf_der (never the sealed private key), so the poll
+-- needs no per-certificate version read.
+SELECT sqlc.embed(c), v.ca_id AS version_ca_id, v.leaf_der AS version_leaf_der
+FROM certificates c
+JOIN certificate_versions v ON v.id = c.current_version_id AND v.cert_id = c.id
+WHERE c.managed AND c.current_version_id IS NOT NULL AND c.status = 'active'
+  AND (c.ari_retry_after IS NULL OR c.ari_retry_after <= now())
+  AND (NOT sqlc.arg(has_cursor)::bool OR c.id > sqlc.arg(last_id)::uuid)
+ORDER BY c.id
 LIMIT sqlc.arg(page_limit)::int;
 
 -- name: SetARIWindow :exec
@@ -286,11 +290,19 @@ WHERE id = $1 AND current_version_id = $2;
 -- Sets only ari_retry_after, leaving any cached window untouched (fix
 -- round 1): used when a poll is skipped (useAri off, no CA recorded for
 -- the current version) or errors before a window was actually fetched, so
--- the certificate does not occupy ListARIDue's next page, or the next
+-- the certificate does not occupy ListARIDueWithLeaf's next page, or the next
 -- run's first page, forever. Conditional on current_version_id, same as
 -- SetARIWindow.
 UPDATE certificates SET ari_retry_after = $3
 WHERE id = $1 AND current_version_id = $2;
+
+-- name: BumpARIRetryAfterMany :exec
+-- BumpARIRetryAfter for a batch (one round trip per PollDue page): three
+-- parallel arrays of equal length, same current_version_id condition.
+UPDATE certificates c SET ari_retry_after = b.retry_after
+FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(version_ids)::uuid[]) AS version_id,
+             unnest(sqlc.arg(retry_afters)::timestamptz[]) AS retry_after) b
+WHERE c.id = b.id AND c.current_version_id = b.version_id;
 
 -- name: LowerNextRenewAt :exec
 -- Moves next_renew_at earlier only (LEAST(), so a later ARI window can
@@ -320,6 +332,15 @@ FROM certificate_versions WHERE cert_id = $1 ORDER BY created_at DESC;
 -- name: GetCertificateVersion :one
 SELECT * FROM certificate_versions WHERE id = $1 AND cert_id = $2;
 
+-- name: GetCertificateVersionMeta :one
+-- Metadata only: no DER, no sealed key (has_key is computed).
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
+FROM certificate_versions WHERE id = $1 AND cert_id = $2;
+
+-- name: GetCertificateVersionDER :one
+-- Render input without the sealed key (Material withKey=false).
+SELECT leaf_der, chain_der FROM certificate_versions WHERE id = $1 AND cert_id = $2;
+
 -- name: LockCertificateVersionForUpdate :one
 -- Locks one version for the duration of RevokeVersion's read-check-write
 -- (issuance.Store.RevokeVersion), so a concurrent revoke of the same
@@ -329,7 +350,7 @@ SELECT * FROM certificate_versions WHERE id = $1 AND cert_id = $2 FOR UPDATE;
 
 -- name: SetCertificateVersionRevoked :one
 UPDATE certificate_versions SET revoked_at = $3
-WHERE id = $1 AND cert_id = $2
+WHERE id = $1 AND cert_id = $2 AND revoked_at IS NULL
 RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at;
 
 -- name: ListCertificateVersionsByIDs :many
@@ -345,3 +366,46 @@ FROM certificate_versions WHERE id = ANY($1::uuid[]);
 -- over every certificate. Same org filter as the certificate list.
 SELECT c.id, c.verification_rules, c.overrides FROM certificates c
 WHERE c.org_id = sqlc.arg(org_id)::uuid;
+
+-- name: CertificateOverviewCounts :many
+-- Per-status counts and, per status, how many certificates expire after the
+-- 90-day horizon (the Overview's "N later"; revoked excluded by the caller).
+SELECT c.status, count(*)::bigint AS n,
+       (count(*) FILTER (WHERE v.not_after > now() + interval '90 days'))::bigint AS beyond
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
+GROUP BY c.status;
+
+-- name: CertificateOverviewBriefs :many
+-- The non-revoked certificates the Overview needs to look at: expired,
+-- pending or failed ones, any with a recorded failure, any expiring inside
+-- the 90-day horizon or renewing within 7 days (this also catches overdue
+-- renewals), plus rows that may be waiting on manual DNS (their own rules or
+-- overrides name manual-dns, or they inherit rules from an org in
+-- inherit_orgs). Attention candidates sort first so the cap never drops
+-- them, then the rest by expiry, and the manual-DNS-only extras (needs_look
+-- false) come last.
+SELECT c.id, c.org_id, c.name, c.status, c.next_renew_at, c.failure_count, c.last_error,
+       c.verification_rules, c.overrides, c.ari_window_start, c.ari_window_end, c.ari_checked_at,
+       v.not_before, v.not_after,
+       COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
+        OR v.not_after < now() + interval '90 days'
+        OR c.next_renew_at < now() + interval '7 days', false)::bool AS needs_look
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.org_id = ANY(sqlc.arg(org_ids)::uuid[])
+  AND c.status <> 'revoked'
+  AND (c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
+       OR v.not_after < now() + interval '90 days'
+       OR c.next_renew_at < now() + interval '7 days'
+       OR (c.status <> 'expired'
+           AND (c.verification_rules @> '[{"method":"manual-dns"}]'::jsonb
+                OR c.overrides::text LIKE '%manual-dns%'
+                OR (c.verification_rules = '[]'::jsonb AND c.org_id = ANY(sqlc.arg(inherit_orgs)::uuid[])))))
+ORDER BY COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
+                  OR v.not_after < now() + interval '90 days'
+                  OR c.next_renew_at < now() + interval '7 days', false) DESC,
+         COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0 OR c.next_renew_at < now(), false) DESC,
+         v.not_after NULLS LAST, c.id
+LIMIT sqlc.arg(row_limit)::int;

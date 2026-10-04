@@ -11,6 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,7 +38,26 @@ type WriteOpts struct {
 	PreviousKEKIDs []string
 	// AppVersion is recorded as Header.AppVersion.
 	AppVersion string
+	// SpoolDir is where each table's plaintext CSV is staged (a private
+	// 0700 subdirectory is created inside it) while its size and hash are
+	// computed. Empty means the OS temp dir. If no spool can be created
+	// there, Write logs a warning and buffers each table in memory instead,
+	// so a backup never fails because of the spool. Never default this to
+	// the backup directory: the spool is unencrypted.
+	SpoolDir string
 }
+
+// spoolPrefix names the private spool directories; stale ones (a crashed
+// run) are removed at the start of the next backup.
+const spoolPrefix = ".certforge-spool-"
+
+// spoolStaleAfter is how old an untouched spool directory must be before a
+// new backup treats it as abandoned (a live backup touches its directory
+// at every table); a held lock protects it regardless of age.
+const spoolStaleAfter = time.Hour
+
+// spoolLockName is the lock file inside each spool directory.
+const spoolLockName = ".lock"
 
 // Summary is what Write produced.
 type Summary struct {
@@ -143,9 +165,17 @@ func writeTx(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSe
 	}
 	tw := tar.NewWriter(body)
 
+	spool, err := newSpool(opts.SpoolDir)
+	if err != nil {
+		slog.Warn("backup: spool directory unusable, buffering tables in memory", "err", err)
+		spool = nil
+	} else {
+		defer spool.close()
+	}
+
 	sums := make([]TableSum, 0, len(Manifest))
 	for _, table := range Manifest {
-		sum, err := dumpTable(ctx, tx, tw, table)
+		sum, err := dumpTable(ctx, tx, tw, spool, table)
 		if err != nil {
 			return Summary{}, err
 		}
@@ -182,10 +212,75 @@ func snapshotVersion(ctx context.Context, tx pgx.Tx) (int64, error) {
 	return v, nil
 }
 
+// spool is a private 0700 directory holding one table's plaintext CSV at a
+// time. It holds an exclusive lock on its ".lock" file for its life so a
+// concurrent backup's stale sweep never removes a live spool.
+type spool struct {
+	dir  string
+	lock *os.File
+}
+
+// newSpool removes stale spool directories left by an interrupted backup,
+// then creates a fresh private one under base (the OS temp dir when empty).
+func newSpool(base string) (*spool, error) {
+	if base == "" {
+		base = os.TempDir()
+	}
+	sweepSpools(base)
+	dir, err := os.MkdirTemp(base, spoolPrefix+"*")
+	if err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile(filepath.Join(dir, spoolLockName), os.O_RDWR|os.O_CREATE, 0o600)
+	if err == nil {
+		err = lockFile(lock)
+	}
+	if err != nil {
+		if lock != nil {
+			_ = lock.Close()
+		}
+		_ = os.RemoveAll(dir)
+		return nil, err
+	}
+	return &spool{dir: dir, lock: lock}, nil
+}
+
+// sweepSpools removes spool directories in base that are older than
+// spoolStaleAfter and whose lock is not held by a live backup.
+func sweepSpools(base string) {
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), spoolPrefix) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) <= spoolStaleAfter {
+			continue
+		}
+		dir := filepath.Join(base, e.Name())
+		if held, f := lockHeld(filepath.Join(dir, spoolLockName)); !held {
+			_ = os.RemoveAll(dir)
+			if f != nil {
+				_ = f.Close()
+			}
+		}
+	}
+}
+
+func (s *spool) close() {
+	_ = os.RemoveAll(s.dir)
+	_ = s.lock.Close()
+}
+
 // dumpTable copies table's non-generated columns to CSV (with a header
-// row), hashes the exact bytes produced, and writes them as one tar entry
-// named "<table>.csv". Row count comes from COPY's own command tag.
-func dumpTable(ctx context.Context, tx pgx.Tx, tw *tar.Writer, table string) (TableSum, error) {
+// row) into a spool file, hashing the exact bytes produced, then streams
+// the file into the tar as one entry named "<table>.csv" (size known from
+// the spool). Row count comes from COPY's own command tag. The spool file is
+// removed before return on every path.
+func dumpTable(ctx context.Context, tx pgx.Tx, tw *tar.Writer, sp *spool, table string) (TableSum, error) {
 	cols, err := tableColumns(ctx, tx, table)
 	if err != nil {
 		return TableSum{}, err
@@ -198,12 +293,46 @@ func dumpTable(ctx context.Context, tx pgx.Tx, tw *tar.Writer, table string) (Ta
 	sql := fmt.Sprintf(`COPY (SELECT %s FROM %s) TO STDOUT (FORMAT csv, HEADER)`,
 		strings.Join(selectList, ", "), pgx.Identifier{table}.Sanitize())
 
+	if sp == nil {
+		return dumpTableMem(ctx, tx, tw, table, sql)
+	}
+	f, err := os.OpenFile(filepath.Join(sp.dir, table+".csv"), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return TableSum{}, fmt.Errorf("backup: spool %s: %w", table, err)
+	}
+	defer func() {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+	}()
+
+	h := sha256.New()
+	cw := &countingWriter{w: io.MultiWriter(f, h)}
+	tag, err := tx.Conn().PgConn().CopyTo(ctx, cw, sql)
+	if err != nil {
+		return TableSum{}, fmt.Errorf("backup: dump %s: %w", table, err)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return TableSum{}, fmt.Errorf("backup: spool %s: %w", table, err)
+	}
+
+	name := table + ".csv"
+	if err := tw.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Size: cw.n, Mode: 0600}); err != nil {
+		return TableSum{}, fmt.Errorf("backup: tar header %s: %w", name, err)
+	}
+	if _, err := io.CopyN(tw, f, cw.n); err != nil {
+		return TableSum{}, fmt.Errorf("backup: tar write %s: %w", name, err)
+	}
+	return TableSum{Name: table, Rows: tag.RowsAffected(), SHA256: hex.EncodeToString(h.Sum(nil))}, nil
+}
+
+// dumpTableMem is dumpTable's fallback when no spool directory is usable:
+// the whole CSV is buffered in memory.
+func dumpTableMem(ctx context.Context, tx pgx.Tx, tw *tar.Writer, table, sql string) (TableSum, error) {
 	var buf bytes.Buffer
 	tag, err := tx.Conn().PgConn().CopyTo(ctx, &buf, sql)
 	if err != nil {
 		return TableSum{}, fmt.Errorf("backup: dump %s: %w", table, err)
 	}
-
 	sum := sha256.Sum256(buf.Bytes())
 	if err := writeTarEntry(tw, table+".csv", buf.Bytes()); err != nil {
 		return TableSum{}, err

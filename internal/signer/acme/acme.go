@@ -48,11 +48,22 @@ type Signer struct {
 	cfg Config
 	now func() time.Time
 
-	riOnce   sync.Once
-	riClient *lego.Client
-	riRT     *retryAfterTransport
-	riErr    error
+	// riMu guards the cached RenewalInfo client: it is built on first use
+	// and kept on success only; a build error is remembered for riErrTTL.
+	riMu    sync.Mutex
+	riCl    *lego.Client
+	riRT    *retryAfterTransport
+	riErr   error
+	riErrAt time.Time
+	// riCall serialises RenewalInfo requests so riRT's largest-Retry-After
+	// can be reset per request (concurrent callers share one Signer).
+	riCall sync.Mutex
 }
+
+// riErrTTL is how long a failed RenewalInfo client build (an unreachable
+// directory) is remembered, so one transient failure does not fail every
+// certificate on the CA for the whole run, nor retry the fetch per call.
+const riErrTTL = 30 * time.Second
 
 // New returns a Signer for cfg.
 func New(cfg Config) *Signer {
@@ -224,6 +235,11 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 	}
 	res, err := cl.Certificate.Obtain(or)
 	if err != nil {
+		// A cancelled ctx can surface as a truncated-response decode error
+		// when the CA's reply races the cancellation; report the cancellation.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("%w: %w", ctxErr, err)
+		}
 		return nil, classify(err, rt)
 	}
 	return signer.IssuedFromPEM(res.Certificate, res.PrivateKey)
@@ -355,6 +371,9 @@ func (s *Signer) RenewalInfo(ctx context.Context, cert *x509.Certificate) (*sign
 	if err != nil {
 		return nil, err
 	}
+	s.riCall.Lock()
+	defer s.riCall.Unlock()
+	rt.reset()
 	ri, err := cl.Certificate.GetRenewalInfo(certificate.RenewalInfoRequest{Cert: cert})
 	if err != nil {
 		return nil, classify(err, rt)
@@ -363,25 +382,34 @@ func (s *Signer) RenewalInfo(ctx context.Context, cert *x509.Certificate) (*sign
 }
 
 // renewalInfoClient builds the lego client (and so fetches the ACME
-// directory) at most once per Signer instance (fix round 1): every
-// subsequent RenewalInfo call on the same instance reuses it.
-// ARIPollWorker caches one Signer per CA across a whole poll run
-// (internal/issuance/ari.go's signerFor), so many certificates on the same
-// CA no longer each pay for their own directory fetch. GetRenewalInfo
-// itself is an unauthenticated GET (RFC 9773), so reusing the same
-// ctx-bound client is safe as long as the caller threads one ctx through
-// the whole run it wants cached — true of both callers here (one ctx per
-// river Work call, one ctx per ad-hoc post-issuance poll).
+// directory) once per Signer instance and reuses it on every later
+// RenewalInfo call. Only success is cached for good: a failure is cached
+// for riErrTTL (fix round 2). ARIPollWorker caches one Signer per CA
+// across a whole poll run (internal/issuance/ari.go), so many certificates
+// on the same CA share one directory fetch. The client is built on a
+// context detached from the first caller's cancellation, since later
+// callers reuse it; GetRenewalInfo itself is an unauthenticated GET
+// (RFC 9773).
 func (s *Signer) renewalInfoClient(ctx context.Context) (*lego.Client, *retryAfterTransport, error) {
-	s.riOnce.Do(func() {
-		u, err := s.renewalInfoUser()
-		if err != nil {
-			s.riErr = err
-			return
+	s.riMu.Lock()
+	defer s.riMu.Unlock()
+	if s.riCl != nil {
+		return s.riCl, s.riRT, nil
+	}
+	if s.riErr != nil && s.now().Sub(s.riErrAt) < riErrTTL {
+		return nil, nil, s.riErr
+	}
+	u, err := s.renewalInfoUser()
+	if err == nil {
+		var cl *lego.Client
+		var rt *retryAfterTransport
+		if cl, rt, err = s.client(context.WithoutCancel(ctx), u, certcrypto.EC256); err == nil {
+			s.riCl, s.riRT, s.riErr = cl, rt, nil
+			return cl, rt, nil
 		}
-		s.riClient, s.riRT, s.riErr = s.client(ctx, u, certcrypto.EC256)
-	})
-	return s.riClient, s.riRT, s.riErr
+	}
+	s.riErr, s.riErrAt = err, s.now()
+	return nil, nil, err
 }
 
 func classify(err error, rt *retryAfterTransport) error {

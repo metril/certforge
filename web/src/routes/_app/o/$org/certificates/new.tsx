@@ -8,7 +8,7 @@ export const Route = createFileRoute('/_app/o/$org/certificates/new')({
   beforeLoad: ({ context }) => denyAllOrgs(context),
   validateSearch: z.object({ from: z.string().optional().catch(undefined) }),
   loaderDeps: ({ search }) => ({ from: search.from }),
-  loader: ({ context: { queryClient, org }, deps }) => (deps.from ? queryClient.ensureQueryData(certificateQuery(org.id, deps.from)) : undefined),
+  loader: ({ context: { queryClient, org }, deps }) => (deps.from ? queryClient.fetchQuery(certificateQuery(org.id, deps.from)) : undefined),
   component: function NewCertificateRoute() {
     const from = Route.useLoaderData();
     return <CertificateWizard key={from?.id ?? 'new'} from={from} />;

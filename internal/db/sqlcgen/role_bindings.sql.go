@@ -172,11 +172,20 @@ const listRoleBindingsWithLabels = `-- name: ListRoleBindingsWithLabels :many
 SELECT rb.id, rb.subject_type, rb.subject, rb.role, rb.org_id, rb.created_at,
        COALESCE(u.display_name, k.name, '')::text AS subject_label
 FROM role_bindings rb
-LEFT JOIN users u ON rb.subject_type = 'user' AND u.id::text = rb.subject
-LEFT JOIN api_keys k ON rb.subject_type = 'apikey' AND k.id::text = rb.subject
+LEFT JOIN users u ON rb.subject_type = 'user'
+  AND u.id = CASE WHEN rb.subject ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN rb.subject::uuid END
+LEFT JOIN api_keys k ON rb.subject_type = 'apikey'
+  AND k.id = CASE WHEN rb.subject ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN rb.subject::uuid END
 WHERE rb.site_id IS NULL
+  AND ($1::uuid IS NULL OR rb.org_id = $1)
+  AND ($2::text IS NULL OR rb.subject_type = $2)
 ORDER BY rb.created_at, rb.id
 `
+
+type ListRoleBindingsWithLabelsParams struct {
+	OrgID       *uuid.UUID `json:"org_id"`
+	SubjectType *string    `json:"subject_type"`
+}
 
 type ListRoleBindingsWithLabelsRow struct {
 	ID           uuid.UUID  `json:"id"`
@@ -188,8 +197,11 @@ type ListRoleBindingsWithLabelsRow struct {
 	SubjectLabel string     `json:"subject_label"`
 }
 
-func (q *Queries) ListRoleBindingsWithLabels(ctx context.Context) ([]ListRoleBindingsWithLabelsRow, error) {
-	rows, err := q.db.Query(ctx, listRoleBindingsWithLabels)
+// The subject is text (a user id, key id or OIDC group name): cast it, behind a
+// CASE that only reaches the cast for a canonical uuid, so the primary-key
+// indexes on users and api_keys stay usable and a group name cannot raise.
+func (q *Queries) ListRoleBindingsWithLabels(ctx context.Context, arg ListRoleBindingsWithLabelsParams) ([]ListRoleBindingsWithLabelsRow, error) {
+	rows, err := q.db.Query(ctx, listRoleBindingsWithLabels, arg.OrgID, arg.SubjectType)
 	if err != nil {
 		return nil, err
 	}

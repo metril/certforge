@@ -11,10 +11,10 @@ import (
 )
 
 var allVars = []string{
-	"CF_DATABASE_URL", "CF_KEK", "CF_KEK_FILE", "CF_LISTEN_HTTP", "CF_LISTEN_AGENT", "CF_BASE_URL", "CF_LOG_LEVEL",
+	"CF_DATABASE_URL", "CF_KEK", "CF_KEK_FILE", "CF_LISTEN_HTTP", "CF_LISTEN_AGENT", "CF_BASE_URL", "CF_LOG_LEVEL", "CF_OIDC_ALLOW_INSECURE_ISSUER",
 	"CF_KEK_VAULT_ADDR", "CF_KEK_VAULT_TRANSIT_KEY", "CF_KEK_VAULT_MOUNT", "CF_KEK_VAULT_NAMESPACE", "CF_KEK_VAULT_CA_FILE",
 	"CF_KEK_VAULT_TOKEN", "CF_KEK_VAULT_TOKEN_FILE", "CF_KEK_VAULT_ROLE_ID", "CF_KEK_VAULT_SECRET_ID", "CF_KEK_VAULT_SECRET_ID_FILE",
-	"CF_KEK_PREVIOUS", "CF_KEK_PREVIOUS_FILE",
+	"CF_KEK_PREVIOUS", "CF_KEK_PREVIOUS_FILE", "CF_SETUP_TOKEN", "CF_SETUP_TOKEN_FILE",
 	"CF_KEK_PREVIOUS_VAULT_ADDR", "CF_KEK_PREVIOUS_VAULT_TRANSIT_KEY", "CF_KEK_PREVIOUS_VAULT_MOUNT", "CF_KEK_PREVIOUS_VAULT_NAMESPACE",
 	"CF_KEK_PREVIOUS_VAULT_CA_FILE", "CF_KEK_PREVIOUS_VAULT_TOKEN", "CF_KEK_PREVIOUS_VAULT_TOKEN_FILE",
 	"CF_KEK_PREVIOUS_VAULT_ROLE_ID", "CF_KEK_PREVIOUS_VAULT_SECRET_ID", "CF_KEK_PREVIOUS_VAULT_SECRET_ID_FILE",
@@ -398,4 +398,86 @@ func TestLoadPreviousKEKs(t *testing.T) {
 			t.Fatalf("previous = %+v", c.PreviousKEKs)
 		}
 	})
+}
+
+func TestLoadAllowInsecureOIDCIssuer(t *testing.T) {
+	base := map[string]string{"CF_DATABASE_URL": "postgres://x/y", "CF_KEK": key(1)}
+	setEnv(t, base)
+	if c, err := Load(); err != nil || c.AllowInsecureOIDCIssuer {
+		t.Fatalf("default: %v %+v", err, c.AllowInsecureOIDCIssuer)
+	}
+	base["CF_OIDC_ALLOW_INSECURE_ISSUER"] = "true"
+	setEnv(t, base)
+	if c, err := Load(); err != nil || !c.AllowInsecureOIDCIssuer {
+		t.Fatalf("true: %v", err)
+	}
+	base["CF_OIDC_ALLOW_INSECURE_ISSUER"] = "maybe"
+	setEnv(t, base)
+	if _, err := Load(); err == nil {
+		t.Fatal("bad value accepted")
+	}
+}
+
+func TestBackupSpoolDir(t *testing.T) {
+	t.Setenv("CF_DATABASE_URL", "postgres://x")
+	t.Setenv("CF_KEK", "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+	t.Setenv("CF_BACKUP_SPOOL_DIR", " /var/spool/cf ")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BackupSpoolDir != "/var/spool/cf" {
+		t.Fatalf("BackupSpoolDir = %q", c.BackupSpoolDir)
+	}
+}
+
+func TestValidateBaseURL(t *testing.T) {
+	for _, ok := range []string{"https://certs.example.com", "https://certs.example.com/", "http://127.0.0.1:8080", "https://x.example/cf"} {
+		if err := ValidateBaseURL(ok); err != nil {
+			t.Errorf("%q rejected: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "certs.example.com", "ftp://x", "https://u:p@x.example", "https://x.example?a=1", "https://x.example/#f", "https://x.example#", "https://:443"} {
+		if ValidateBaseURL(bad) == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
+func TestLoadSetupToken(t *testing.T) {
+	base := map[string]string{"CF_DATABASE_URL": "postgres://x/y", "CF_KEK": key(1)}
+	with := func(kv map[string]string) map[string]string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range kv {
+			m[k] = v
+		}
+		return m
+	}
+	setEnv(t, base)
+	if c, err := Load(); err != nil || c.SetupToken != "" {
+		t.Fatalf("unset: %v %q", err, c.SetupToken)
+	}
+	setEnv(t, with(map[string]string{"CF_SETUP_TOKEN": "0123456789abcdef"}))
+	if c, err := Load(); err != nil || c.SetupToken != "0123456789abcdef" {
+		t.Fatalf("env: %v %q", err, c.SetupToken)
+	}
+	f := filepath.Join(t.TempDir(), "tok")
+	if err := os.WriteFile(f, []byte("fedcba9876543210\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setEnv(t, with(map[string]string{"CF_SETUP_TOKEN_FILE": f}))
+	if c, err := Load(); err != nil || c.SetupToken != "fedcba9876543210" {
+		t.Fatalf("file: %v %q", err, c.SetupToken)
+	}
+	setEnv(t, with(map[string]string{"CF_SETUP_TOKEN": "0123456789abcdef", "CF_SETUP_TOKEN_FILE": f}))
+	if _, err := Load(); err == nil {
+		t.Fatal("both set accepted")
+	}
+	setEnv(t, with(map[string]string{"CF_SETUP_TOKEN": "short"}))
+	if _, err := Load(); err == nil || strings.Contains(err.Error(), "short\"") {
+		t.Fatalf("short token: %v", err)
+	}
 }

@@ -71,6 +71,12 @@ Runs on the server, not an agent — its grants are client-less ("server grants"
 
 Without a layout, the document gets exactly `keys.fullchain`/`keys.cert`/`keys.chain` (plus `keys.key` when `includeKey`). With a layout, each of the layout's own output files is written under its own file name instead (e.g. an `/etc/ssl/web.pem` file lands at the `web.pem` field); a server grant's layout may only render PEM files (see Grants and status below), and among those a `key`/`combined` part is refused outright (422, not silently dropped) unless the target has `includeKey`.
 
+The four `keys.*` field names must be distinct, and two files of a grant's layout may not land on one document field (a layout file whose base name equals a `keys.*` name collides too): the target config is 422 on the first, the grant create/update 422 on the second.
+
+**Path collisions.** Two live server grants of one target may never render the same `(mount, path)`: the second would silently overwrite the first's document. `createServerGrant`, `updateServerGrant`, a certificate rename and a target edit that changes `mount` or `path` render the pair for every live grant of the target and answer 409 on a duplicate. Names that clean to the same string collide (`Web.One` and `web.one`), and a `path` with neither `{name}` nor `{cert}` allows exactly one grant per target.
+
+**Org isolation.** The one shared Vault has no per-org mounts, so a principal without global `delivery:write` (an org-bound role or key) may only create or change a vault-kv target whose rendered path starts with the literal text `certforge/<its org slug>/` (`{org}` may stand for the slug; 403 otherwise). A global admin may use any path. A stored mount and path that a save leaves both unchanged are grandfathered, so an older target still saves.
+
 Each deploy is one `PUT <mount>/data/<path>` (`internal/vault.Client.KVPut`), overwriting the whole document — nothing is merged with what was there before.
 
 ### Grants and status

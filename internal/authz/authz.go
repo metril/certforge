@@ -151,18 +151,50 @@ func Can(p authn.Principal, action Action, orgID *uuid.UUID) bool {
 	return bindingsAllow(p.Bindings, action, orgID)
 }
 
+// CanGlobal reports whether p holds action through a global (org-less)
+// binding. Unlike Can(p, action, nil), which also admits org-bound roles for
+// the shared-read actions, an org-scoped API key or an org-only binding never
+// passes. Use it to decide how much detail a shared-read listing may show.
+func CanGlobal(p authn.Principal, action Action) bool {
+	switch p.Kind {
+	case authn.KindUser:
+	case authn.KindAPIKey:
+		k := p.APIKey
+		if k == nil || k.OrgID != nil || !scopeCovers(k, action) {
+			return false
+		}
+		if len(k.Bindings) > 0 && !globalBindingAllows(k.Bindings, action) {
+			return false
+		}
+	default:
+		return false
+	}
+	return globalBindingAllows(p.Bindings, action)
+}
+
+func globalBindingAllows(bindings []authn.Binding, action Action) bool {
+	for _, b := range bindings {
+		if b.OrgID == nil && roleActions[b.Role][action] {
+			return true
+		}
+	}
+	return false
+}
+
+func scopeCovers(k *authn.APIKeyInfo, action Action) bool {
+	for _, s := range k.Scopes {
+		if slices.Contains(scopeActions[s], action) {
+			return true
+		}
+	}
+	return false
+}
+
 func keyAllows(k *authn.APIKeyInfo, action Action, orgID *uuid.UUID) bool {
 	if k == nil {
 		return false
 	}
-	scoped := false
-	for _, s := range k.Scopes {
-		if slices.Contains(scopeActions[s], action) {
-			scoped = true
-			break
-		}
-	}
-	if !scoped {
+	if !scopeCovers(k, action) {
 		return false
 	}
 	if k.OrgID != nil {

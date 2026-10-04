@@ -88,7 +88,10 @@ export function ImportPage() {
         toast.success(`Imported ${created} certificate${created === 1 ? '' : 's'}`);
       }
     } catch (e) {
-      if (e instanceof ApiError) {
+      // Items created before the failure are stored whatever the status; show them (with the error) instead of a field error.
+      const imported = e instanceof ApiError && Array.isArray(e.problem.imported) ? (e.problem.imported as ImportResult['items']) : [];
+      if (imported.length > 0) setPartial(imported);
+      if (e instanceof ApiError && imported.length === 0) {
         if (e.status === 413) {
           setArchiveError('Larger than 32 MiB.');
           return;
@@ -108,7 +111,6 @@ export function ImportPage() {
           return;
         }
       }
-      if (e instanceof ApiError && Array.isArray(e.problem.imported)) setPartial(e.problem.imported as ImportResult['items']);
       setFormError(errorMessage(e));
     } finally {
       if (dryRun) setPreviewing(false);
@@ -148,6 +150,7 @@ export function ImportPage() {
             disabled={!canWrite}
           />
         </Field>
+        {cas.isError && <ErrorState message={`Couldn't load the CAs: ${errorMessage(cas.error)}`} onRetry={() => void cas.refetch()} />}
         <div>
           <PermissionTip allowed={canWrite} action="certs:write">
             <Button disabled={!canWrite || !ready || previewing || importing} onClick={() => void run(true)}>

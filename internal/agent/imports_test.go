@@ -2,7 +2,6 @@ package agent
 
 import (
 	"errors"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -33,7 +32,6 @@ const forbiddenAgentDepExact = "github.com/metril/certforge/internal/notify"
 // go list -deps, the same command a human would run to check it by hand.
 func TestAgentImports(t *testing.T) {
 	cmd := exec.Command("go", "list", "-deps", "github.com/metril/certforge/cmd/certforge-agent")
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
 	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError

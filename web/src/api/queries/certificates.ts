@@ -2,7 +2,7 @@ import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from 
 import { filenameFrom, saveBlob } from '@/lib/download';
 import { firstPagePoll, livePoll, POLL } from '@/lib/polling';
 import { api, call } from '../client';
-import { ApiError } from '../errors';
+import { ApiError, errorMessage } from '../errors';
 import type { Certificate, CertificateInput, CertificateUpload, CertificateVersionUpload, CertStatus, ExportRequest, RevocationReason } from '../types';
 
 export const certificateQuery = (orgId: string, id: string) =>
@@ -37,8 +37,8 @@ export function useUpdateCertificate(orgId: string, id: string) {
     mutationFn: (body: CertificateInput) => call(api.PUT('/orgs/{orgId}/certificates/{id}', { params: { path: { orgId, id } }, body })),
     meta: { silent: true },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['certs', orgId] });
-      qc.invalidateQueries({ queryKey: ['certs', orgId, 'one', id] });
+      void qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      void qc.invalidateQueries({ queryKey: ['certs', orgId, 'one', id] });
     },
   });
 }
@@ -64,6 +64,28 @@ export async function fetchAllCertificates(orgId: string): Promise<Certificate[]
 
 export const allCertificatesQuery = (orgId: string) =>
   queryOptions({ queryKey: ['certs', orgId, 'all'], queryFn: () => fetchAllCertificates(orgId), refetchInterval: POLL.list });
+
+/** The same walk for pickers: fetched when the picker mounts, never polled. */
+export const allCertificatesPickerQuery = (orgId: string) =>
+  queryOptions({ queryKey: ['certs', orgId, 'all'], queryFn: () => fetchAllCertificates(orgId) });
+
+/** The Overview's server-side summary (counts plus the briefs that need a look)
+ * for one org, or for every readable org when orgId is 'all'. */
+export const certificateOverviewQuery = (orgId: string | 'all') =>
+  queryOptions({
+    queryKey: ['certs', orgId, 'overview'],
+    queryFn: () =>
+      call(orgId === 'all' ? api.GET('/certificates/summary') : api.GET('/orgs/{orgId}/certificates/summary', { params: { path: { orgId } } })),
+    refetchInterval: POLL.list,
+  });
+
+/** The command palette's server-side search: name, common name or SAN, first 20 by name. */
+export const certificateSearchQuery = (orgId: string, q: string) =>
+  queryOptions({
+    queryKey: ['certs', orgId, 'search', q],
+    queryFn: () => call(api.GET('/orgs/{orgId}/certificates', { params: { path: { orgId }, query: { q, sort: 'name', limit: 20 } } })),
+    staleTime: 10_000,
+  });
 
 export type CertListQuery = { status?: CertStatus; q?: string; sort?: string };
 
@@ -120,7 +142,8 @@ export function plural(n: number, word: string): string {
   return n === 1 ? `1 ${word}` : `${n} ${word}s`;
 }
 
-export type BulkResult = { ok: string[]; failed: string[] };
+// reason is the first failure's message (a 409 says what blocks the delete).
+export type BulkResult = { ok: string[]; failed: string[]; reason?: string };
 
 // Fix round 1 (review, Important): a total failure must reject the mutation
 // (not just report `failed: ids.length`) so a caller like `ConfirmDestructive`
@@ -132,10 +155,12 @@ export type BulkResult = { ok: string[]; failed: string[] };
 // through).
 export class BulkActionError extends Error {
   readonly failed: string[];
-  constructor(failed: string[]) {
+  readonly reason?: string;
+  constructor(failed: string[], reason?: string) {
     super(`All ${plural(failed.length, 'certificate')} failed.`);
     this.name = 'BulkActionError';
     this.failed = failed;
+    this.reason = reason;
   }
 }
 
@@ -151,9 +176,16 @@ async function settleBulk(ids: string[], run: (id: string) => Promise<unknown>):
   const results = await Promise.allSettled(ids.map((id) => run(id)));
   const ok: string[] = [];
   const failed: string[] = [];
-  results.forEach((r, i) => (r.status === 'fulfilled' ? ok : failed).push(ids[i]!));
-  if (ok.length === 0 && failed.length > 0) throw new BulkActionError(failed);
-  return { ok, failed };
+  let reason: string | undefined;
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') ok.push(ids[i]!);
+    else {
+      failed.push(ids[i]!);
+      reason ??= errorMessage(r.reason);
+    }
+  });
+  if (ok.length === 0 && failed.length > 0) throw new BulkActionError(failed, reason);
+  return { ok, failed, reason };
 }
 
 export function useRenewCertificates(orgId: string) {
@@ -298,8 +330,8 @@ export function useUploadVersion(orgId: string, id: string) {
     meta: { silent: true },
     gcTime: 0,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['certs', orgId] });
-      qc.invalidateQueries({ queryKey: ['versions', orgId, id] });
+      void qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      void qc.invalidateQueries({ queryKey: ['versions', orgId, id] });
     },
   });
 }

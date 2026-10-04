@@ -104,6 +104,23 @@ func TestSendMailPlainNoAuth(t *testing.T) {
 	}
 }
 
+// TestSendMailQuitFailureIsNotAFailure: the message was accepted at the end
+// of DATA, so a failing QUIT must not surface as a send error (a retry would
+// duplicate the email).
+func TestSendMailQuitFailureIsNotAFailure(t *testing.T) {
+	srv := startFakeSMTP(t, fakeSMTPOptions{failQuit: true})
+
+	host, port := splitAddr(t, srv.Addr())
+	cfg := notify.SMTPSettings{Host: host, Port: port, From: "certforge@example.test", Security: "none", TimeoutSeconds: 5}
+
+	if err := notify.SendMail(context.Background(), cfg, "", []string{"ops@example.test"}, "hi", "body\n"); err != nil {
+		t.Fatalf("SendMail: %v", err)
+	}
+	if len(srv.Messages()) != 1 {
+		t.Fatalf("messages = %d, want 1", len(srv.Messages()))
+	}
+}
+
 // TestStartTLSMissingIsError covers the contract's "a server that does
 // not offer it is an error, never a downgrade": a "starttls" SendMail
 // against a server that never advertises STARTTLS must fail outright, and

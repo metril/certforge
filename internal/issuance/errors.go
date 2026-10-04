@@ -17,9 +17,16 @@ type ValidationError struct{ Field, Msg string }
 func (e *ValidationError) Error() string { return e.Field + ": " + e.Msg }
 
 // InUseError blocks deleting something that is still referenced.
-type InUseError struct{ Users int64 }
+type InUseError struct {
+	Users int64
+	// Reason, when set, replaces the generic message.
+	Reason string
+}
 
 func (e *InUseError) Error() string {
+	if e.Reason != "" {
+		return e.Reason
+	}
 	return fmt.Sprintf("still referenced by %d certificates, accounts or defaults", e.Users)
 }
 

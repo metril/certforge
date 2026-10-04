@@ -12,6 +12,22 @@ import (
 	"github.com/google/uuid"
 )
 
+const accountExistsByEmail = `-- name: AccountExistsByEmail :one
+SELECT EXISTS (SELECT 1 FROM acme_accounts WHERE ca_id = $1 AND email = $2)
+`
+
+type AccountExistsByEmailParams struct {
+	CaID  uuid.UUID `json:"ca_id"`
+	Email string    `json:"email"`
+}
+
+func (q *Queries) AccountExistsByEmail(ctx context.Context, arg AccountExistsByEmailParams) (bool, error) {
+	row := q.db.QueryRow(ctx, accountExistsByEmail, arg.CaID, arg.Email)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const countAccountUsers = `-- name: CountAccountUsers :one
 SELECT (
     (SELECT count(*) FROM certificates c WHERE c.overrides->>'accountId' = $1::uuid::text)
@@ -24,6 +40,20 @@ func (q *Queries) CountAccountUsers(ctx context.Context, id uuid.UUID) (int64, e
 	var users int64
 	err := row.Scan(&users)
 	return users, err
+}
+
+const countCAIssuedLive = `-- name: CountCAIssuedLive :one
+SELECT count(*)::bigint FROM certificate_versions
+WHERE ca_id = $1 AND revoked_at IS NULL AND not_after > now()
+`
+
+// Issued versions of a CA that are neither expired nor revoked; deleting the
+// CA would orphan them (ca_id set NULL) and make them unrevocable.
+func (q *Queries) CountCAIssuedLive(ctx context.Context, caID *uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countCAIssuedLive, caID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const countCAUsers = `-- name: CountCAUsers :one

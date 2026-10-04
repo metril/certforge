@@ -30,6 +30,9 @@ func cmdStatus(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON200 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		writeTable(e.stdout, []string{"FIELD", "VALUE"}, [][]string{
 			{"version", resp.JSON200.Version},
 		})
@@ -149,6 +152,9 @@ func clientsGet(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON200 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		c := *resp.JSON200
 		writeTable(e.stdout, []string{"FIELD", "VALUE"}, [][]string{
 			{"id", c.Id.String()},
@@ -193,6 +199,9 @@ func keysStatus(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON200 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		writeTable(e.stdout, []string{"FIELD", "VALUE"}, keysStatusRows(*resp.JSON200))
 	}
 	return 0
@@ -228,6 +237,9 @@ func keysRewrap(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON202 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		writeTable(e.stdout, []string{"FIELD", "VALUE"}, keysStatusRows(*resp.JSON202))
 	}
 	return 0

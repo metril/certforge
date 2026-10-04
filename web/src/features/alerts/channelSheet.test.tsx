@@ -165,6 +165,18 @@ it("remove stored secret sends '' and marks dirty", async () => {
   expect(put!.config).toEqual({ url: '' });
 });
 
+// W1: the webhook signingSecret has minLength 16; Remove's '' must not be
+// blocked by it.
+it("remove a stored secret that has minLength saves '' ", async () => {
+  channels = [makeChannel({ storedSecrets: ['url', 'signingSecret'] })];
+  const { user } = renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  await user.click(await within(sheet).findByRole('button', { name: 'Remove Signing secret' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(put).toBeDefined());
+  expect(put!.config).toMatchObject({ signingSecret: '' });
+});
+
 it('re-enter secret maps to token field', async () => {
   channels = [makeChannel({ id: 'ch-ntfy', name: 'push', type: 'ntfy', storedSecrets: ['token'], config: { server: 'https://ntfy.sh', topic: 'certforge' } })];
   server.use(http.patch(url('/orgs/:orgId/channels/:id'), () => problem(422, 'Invalid config: re-enter the secret')));
@@ -283,4 +295,54 @@ it('shows Enabled outside the collapsed Advanced section', async () => {
   const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
   expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeVisible();
   expect(within(sheet).getByRole('button', { name: 'Advanced' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+it('read-only without alerts:write makes every field non-editable', async () => {
+  channels = [makeChannel()];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
+  const { user } = renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  expect(within(sheet).getByLabelText('Name')).toBeDisabled();
+  await within(sheet).findByRole('button', { name: 'Add header' }).then((b) => expect(b).toBeDisabled());
+  expect(within(sheet).getByRole('button', { name: 'All events' })).toBeDisabled();
+  expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeDisabled();
+  await user.click(within(sheet).getByRole('button', { name: 'Advanced' }));
+  expect(within(sheet).getByRole('radio', { name: 'Critical' })).toBeDisabled();
+});
+
+it('duplicate header names (case-insensitive) show an error and block save', async () => {
+  const { user } = renderRoute('/o/acme/alerts/channels?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New channel' });
+  await user.type(await within(sheet).findByLabelText('Name'), 'ops');
+  await user.type(within(sheet).getByLabelText('URL'), 'https://hooks.example.com/a');
+  await user.click(within(sheet).getByRole('button', { name: 'Add header' }));
+  await user.type(within(sheet).getByLabelText('Header 1 name'), 'X-Env');
+  await user.click(within(sheet).getByRole('button', { name: 'Add header' }));
+  await user.type(within(sheet).getByLabelText('Header 2 name'), 'x-env');
+  expect(await within(sheet).findByText(/Duplicate header name/)).toBeInTheDocument();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await new Promise((r) => setTimeout(r, 100));
+  expect(posted).toBeUndefined();
+  await user.clear(within(sheet).getByLabelText('Header 2 name'));
+  await user.type(within(sheet).getByLabelText('Header 2 name'), 'X-Other');
+  expect(within(sheet).queryByText(/Duplicate header name/)).not.toBeInTheDocument();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toBeDefined());
+});
+
+it('shows a read-only notice for a viewer and none for a writer', async () => {
+  channels = [makeChannel()];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
+  const first = renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  expect(within(sheet).getByRole('status')).toHaveTextContent('Read-only: Needs the alerts:write permission');
+  first.unmount();
+});
+
+it('shows no read-only notice for a writer', async () => {
+  channels = [makeChannel()];
+  renderRoute('/o/acme/alerts/channels?edit=ch-1');
+  const sheet = await screen.findByRole('dialog', { name: 'ops-webhook' });
+  await within(sheet).findByLabelText('Name');
+  expect(within(sheet).queryByText(/Read-only/)).not.toBeInTheDocument();
 });

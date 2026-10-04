@@ -100,6 +100,9 @@ func Enroll(ctx context.Context, dir, token string, facts agentproto.Facts) (*Id
 	if err := json.NewDecoder(resp.Body).Decode(&er); err != nil {
 		return nil, fmt.Errorf("enrol: %w", err)
 	}
+	if err := requireHTTPS(er.AgentURL); err != nil {
+		return nil, err
+	}
 	// Validate the certificate and derive its client id before writing
 	// anything: a bad response must leave the data directory untouched.
 	cert, err := parseCert([]byte(er.Certificate), key)

@@ -318,13 +318,14 @@ it('keeps the scope row wrapping at phone width', async () => {
 // Fix round 2 (Important #1): the Global tab needs settings:write (global-
 // only); the Org tab needs certs:write in that org. A viewer has neither,
 // so both Save buttons stay disabled even once dirty.
-it('disables Save global/org defaults for a viewer, even once dirty', async () => {
+it('a viewer cannot override or edit anything, and both Save buttons stay disabled', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
   const { user } = renderRoute('/settings/issuance-defaults?scope=org');
-  await user.click(await screen.findByRole('switch', { name: 'Override Key type' }));
+  expect(await screen.findByRole('switch', { name: 'Override Key type' })).toBeDisabled();
+  expect(screen.getByRole('switch', { name: 'Override Must-Staple' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Save org defaults' })).toBeDisabled();
   await user.click(screen.getByRole('radio', { name: 'Global' }));
-  await user.click(await screen.findByRole('switch', { name: 'Must-Staple' }));
+  expect(await screen.findByRole('switch', { name: 'Must-Staple' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Save global defaults' })).toBeDisabled();
 });
 

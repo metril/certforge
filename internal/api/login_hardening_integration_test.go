@@ -4,14 +4,20 @@ package api_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/argon2"
+
 	"github.com/metril/certforge/internal/api"
+	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
 const hardeningPw = "correct horse battery staple"
@@ -36,6 +42,84 @@ func TestLoginRateLimited(t *testing.T) {
 		`SELECT details->>'reason', details->>'method' FROM audit_events WHERE action = 'session.login_failed' ORDER BY id DESC LIMIT 1`)
 	if err := row.Scan(&reason, &method); err != nil || reason != "rate_limited" || method != "local" {
 		t.Fatalf("session.login_failed audit row: reason=%q method=%q err=%v", reason, method, err)
+	}
+}
+
+// TestRateLimitedAuditOncePerWindow: a burst of rejected logins from one
+// client writes one audit row, not one per request (A4); the limit itself
+// still rejects every request.
+func TestRateLimitedAuditOncePerWindow(t *testing.T) {
+	e := newTestEnvOpts(t, func(d *api.Deps) { d.LoginLimiter = authn.NewLimiter(1, 1) })
+	seedAdminPassword(t, e, hardeningPw)
+	e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong-password-1"}, "") //nolint:bodyclose // testEnv.doRaw closes the body
+	for i := 0; i < 4; i++ {
+		if resp, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong-password-1"}, ""); resp.StatusCode != http.StatusTooManyRequests { //nolint:bodyclose // testEnv.doRaw closes the body
+			t.Fatalf("attempt %d: %d", i+2, resp.StatusCode)
+		}
+	}
+	var n int
+	if err := e.deps.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM audit_events WHERE action = 'session.login_failed' AND details->>'reason' = 'rate_limited'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("rate_limited audit rows = %d err=%v, want 1", n, err)
+	}
+}
+
+// TestLoginRehashesOldParameters: a hash made with other argon2 parameters
+// still verifies and is replaced by a current-parameter one on login (A20).
+func TestLoginRehashesOldParameters(t *testing.T) {
+	e := newTestEnv(t)
+	seedAdminPassword(t, e, hardeningPw)
+	salt := []byte("0123456789abcdef")
+	key := argon2.IDKey([]byte(hardeningPw), salt, 2, 19456, 1, 32)
+	old := fmt.Sprintf("$argon2id$v=19$m=19456,t=2,p=1$%s$%s", base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key))
+	if _, err := e.deps.Pool.Exec(context.Background(), `UPDATE users SET local_password_hash = $1 WHERE local_password_hash IS NOT NULL`, old); err != nil {
+		t.Fatal(err)
+	}
+	if resp, body := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": hardeningPw}, ""); resp.StatusCode != http.StatusOK { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("login: %d %s", resp.StatusCode, body)
+	}
+	var got string
+	if err := e.deps.Pool.QueryRow(context.Background(), `SELECT local_password_hash FROM users WHERE local_password_hash IS NOT NULL`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if authn.NeedsRehash(got) || got == old {
+		t.Fatalf("hash not upgraded: %s", got)
+	}
+	if resp, _ := e.do(http.MethodPost, "/api/v1/auth/login", map[string]string{"password": hardeningPw}, ""); resp.StatusCode != http.StatusOK { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("login after rehash: %d", resp.StatusCode)
+	}
+}
+
+// TestRehashIsCompareAndSwap: a rehash computed from a hash that a password
+// reset has since replaced must not write (A20 race); the normal case does.
+func TestRehashIsCompareAndSwap(t *testing.T) {
+	e := newTestEnv(t)
+	seedAdminPassword(t, e, hardeningPw)
+	ctx := context.Background()
+	admin, err := e.deps.Queries.GetLocalAdmin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := *admin.LocalPasswordHash
+	reset, err := authn.HashPassword("a brand new password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.deps.Queries.SetLocalPasswordHash(ctx, sqlcgen.SetLocalPasswordHashParams{ID: admin.ID, Hash: reset}); err != nil {
+		t.Fatal(err)
+	}
+	rehash, _ := authn.HashPassword(hardeningPw)
+	n, err := e.deps.Queries.RehashLocalPassword(ctx, sqlcgen.RehashLocalPasswordParams{ID: admin.ID, NewHash: rehash, OldHash: stale})
+	if err != nil || n != 0 {
+		t.Fatalf("stale rehash wrote: n=%d err=%v", n, err)
+	}
+	cur, _ := e.deps.Queries.GetLocalAdmin(ctx)
+	if *cur.LocalPasswordHash != reset {
+		t.Fatal("password reset was overwritten")
+	}
+	n, err = e.deps.Queries.RehashLocalPassword(ctx, sqlcgen.RehashLocalPasswordParams{ID: admin.ID, NewHash: rehash, OldHash: reset})
+	if err != nil || n != 1 {
+		t.Fatalf("normal rehash: n=%d err=%v", n, err)
 	}
 }
 

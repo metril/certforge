@@ -11,45 +11,47 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
-env:
-  GOTOOLCHAIN: local
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.23"
-      - uses: golangci/golangci-lint-action@v6
+          go-version: "1.25"
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v1.61.0
+          version: v2.14.0
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.23"
+          go-version: "1.25"
       - run: go test -race ./...
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.23"
+          go-version: "1.25"
       - run: go test -race -tags integration ./...
   generate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.23"
+          go-version: "1.25"
       # generate also runs `npm --prefix web run gen` (openapi-typescript +
       # tsr), so web/'s toolchain and node_modules need to exist first.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: npm
@@ -68,9 +70,10 @@ jobs:
           test -z "$(git status --porcelain)"
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: npm
@@ -82,11 +85,12 @@ jobs:
       - run: npm run build --prefix web
   embedweb:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.23"
+          go-version: "1.25"
       # internal/webui's embedweb build tag embeds internal/webui/dist, which
       # is only populated by `make build-embed` from a built web/ UI (Phase
       # 1C). A stub index.html is enough for go:embed and go vet to compile
@@ -95,8 +99,37 @@ jobs:
       - run: go vet -tags embedweb ./...
   agent-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: docker build -f deploy/Dockerfile.agent -t certforge-agent:ci .
       - run: docker run --rm certforge-agent:ci version
       - run: docker run --rm certforge-agent:ci status | grep -q "Not enrolled"
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25"
+      # Pinned; go downloads the Go 1.26 toolchain this release requires.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+  server-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      # Same Dockerfile and build args as the release's certforge image, but
+      # amd64 only and not pushed, so a break shows up here and not at release.
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: deploy/Dockerfile.server
+          push: false
+          build-args: |
+            VERSION=ci
+            WITH_WEB=1
+          cache-from: type=gha,scope=certforge-ci
+          cache-to: type=gha,mode=max,scope=certforge-ci

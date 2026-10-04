@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { allCertificatesQuery, allOrgsCertificatesQuery } from '@/api/queries/certificates';
+import { certificateOverviewQuery } from '@/api/queries/certificates';
 import { agentCAsQuery } from '@/api/queries/agents';
 import { errorMessage } from '@/api/errors';
 import { readinessQuery } from '@/api/queries/health';
+import { failedWithoutData } from '@/lib/queryState';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
@@ -11,7 +12,6 @@ import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { can } from '@/lib/permissions';
 import { useAllOrgs, useMe, useOrg } from '@/lib/org';
-import { statusCounts } from './attention';
 import { AttentionBlock } from './blocks/AttentionBlock';
 import { InsightsCard } from './blocks/InsightsCard';
 import { StatusRow } from './blocks/StatusRow';
@@ -21,12 +21,14 @@ export function OverviewPage() {
   const org = useOrg();
   const allOrgs = useAllOrgs();
   const me = useMe();
-  const { data: certs = [], isPending, isError, error, refetch } = useQuery(allOrgs ? allOrgsCertificatesQuery : allCertificatesQuery(org.id));
+  const overview = useQuery(certificateOverviewQuery(allOrgs ? 'all' : org.id));
+  const { data, isPending, isError, error, refetch } = overview;
+  const certs = data?.items ?? [];
   const readiness = useQuery(readinessQuery);
   const agentCAs = useQuery({ ...agentCAsQuery, enabled: can(me, 'settings:read') });
   const now = Date.now();
 
-  if (isError) {
+  if (failedWithoutData(overview)) {
     return (
       <>
         <PageHeader title="Overview" help="overview.page" />
@@ -35,7 +37,7 @@ export function OverviewPage() {
     );
   }
 
-  if (!isPending && certs.length === 0) {
+  if (!isPending && data?.counts.total === 0) {
     return (
       <>
         <PageHeader title="Overview" help="overview.page" />
@@ -60,15 +62,25 @@ export function OverviewPage() {
     );
   }
 
-  const counts = statusCounts(certs);
+  const counts = data?.counts ?? { active: 0, pending: 0, failed: 0, expired: 0, revoked: 0, total: 0 };
 
   return (
     <>
       <PageHeader title="Overview" help="overview.page" />
       <div className="grid gap-6">
+        {isError && (
+          <p role="status" className="text-sm text-expiring">
+            Couldn't refresh certificates, showing the last loaded data. {errorMessage(error)}
+          </p>
+        )}
+        {data?.truncated && (
+          <p role="status" className="text-xs text-ink-muted">
+            Showing the {certs.length} certificates that need a look first; more than that qualified.
+          </p>
+        )}
         <StatusRow counts={counts} orgSlug={org.slug} readiness={readiness.data} listener={agentCAs.data?.listener} />
         <AttentionBlock certs={certs} now={now} />
-        <InsightsCard certs={certs} now={now} />
+        <InsightsCard certs={certs} beyond={data?.beyond ?? 0} now={now} />
       </div>
     </>
   );

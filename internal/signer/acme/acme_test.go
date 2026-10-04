@@ -179,6 +179,36 @@ func TestRenewalInfoCachesDirectory(t *testing.T) {
 	}
 }
 
+// TestRenewalInfoErrorExpires (fix round 2): a failed directory fetch is
+// remembered only for riErrTTL (no re-fetch inside it), then retried; a
+// success is cached for good.
+func TestRenewalInfoErrorExpires(t *testing.T) {
+	srv, dirHits := fakeRenewalInfoCA(t)
+	bundle := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	s := New(Config{DirectoryURL: srv.URL + "/dir", TrustBundlePEM: string(bundle)})
+	clock := time.Now()
+	s.now = func() time.Time { return clock }
+	s.riErr, s.riErrAt = errors.New("directory down"), clock
+
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(1), AuthorityKeyId: []byte{1, 2, 3, 4}}
+	if _, err := s.RenewalInfo(context.Background(), leaf); err == nil {
+		t.Fatal("want the cached error inside the TTL")
+	}
+	if got := atomic.LoadInt32(dirHits); got != 0 {
+		t.Fatalf("directory fetched %d times inside the error TTL, want 0", got)
+	}
+	clock = clock.Add(riErrTTL + time.Second)
+	if _, err := s.RenewalInfo(context.Background(), leaf); err != nil {
+		t.Fatalf("after the TTL the fetch must be retried: %v", err)
+	}
+	if _, err := s.RenewalInfo(context.Background(), leaf); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(dirHits); got != 1 {
+		t.Fatalf("directory fetched %d times, want 1 (success cached)", got)
+	}
+}
+
 func testAccount(t *testing.T) signer.AccountMaterial {
 	t.Helper()
 	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

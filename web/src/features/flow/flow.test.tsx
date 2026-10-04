@@ -98,6 +98,30 @@ it('selecting a node dims the rest, shows the path panel with Open links, and cl
   expect(screen.getByRole('button', { name: /Certificate api/ })).not.toHaveClass('opacity-40');
 });
 
+it('Escape on a node clears the path even when an open tooltip already handled the key', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  renderRoute('/o/acme/flow?focus=certificate:www');
+  await screen.findByRole('region', { name: 'Path' });
+  const www = screen.getByRole('button', { name: /Certificate www/ });
+  www.addEventListener('keydown', (ev) => ev.preventDefault());
+  www.focus();
+  const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  www.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(true);
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Path' })).toBeNull());
+});
+
+it('Escape inside the filter input does not clear the path selection', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user } = renderRoute('/o/acme/flow?focus=certificate:www');
+  await screen.findByRole('region', { name: 'Path' });
+  await user.click(screen.getByRole('textbox', { name: 'Filter by name' }));
+  await user.keyboard('{Escape}');
+  expect(screen.getByRole('region', { name: 'Path' })).toBeInTheDocument();
+});
+
 it('moves focus within a lane with the arrow keys and clears by clicking the selected node', async () => {
   setWidth(true);
   useFlow(() => base);

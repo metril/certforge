@@ -40,18 +40,17 @@ func (s *Server) ListRoleBindings(ctx context.Context, req gen.ListRoleBindingsR
 	if !ok {
 		return nil, errUnauthenticated
 	}
-	rows, err := s.d.Queries.ListRoleBindingsWithLabels(ctx)
+	var subjType *string
+	if req.Params.SubjectType != nil {
+		st := string(*req.Params.SubjectType)
+		subjType = &st
+	}
+	rows, err := s.d.Queries.ListRoleBindingsWithLabels(ctx, sqlcgen.ListRoleBindingsWithLabelsParams{OrgID: req.Params.OrgId, SubjectType: subjType})
 	if err != nil {
 		return nil, err
 	}
 	out := []gen.RoleBinding{}
 	for _, r := range rows {
-		if req.Params.OrgId != nil && (r.OrgID == nil || *r.OrgID != *req.Params.OrgId) {
-			continue
-		}
-		if req.Params.SubjectType != nil && r.SubjectType != string(*req.Params.SubjectType) {
-			continue
-		}
 		if !authz.Can(p, authz.ActionBindingsRead, r.OrgID) {
 			continue
 		}

@@ -1,12 +1,14 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"path"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -163,7 +165,49 @@ func (d *Dispatcher) OnVersion(ctx context.Context, certID, versionID uuid.UUID)
 // and re-enqueues through OnVersion itself, which also covers this
 // certificate's own extra-cert grants (harmless, idempotent, if any lists
 // it as an extra rather than its own).
-func (d *Dispatcher) ResyncCertificateRename(ctx context.Context, _ *sqlcgen.Queries, certID uuid.UUID) (func(), error) {
+func (d *Dispatcher) ResyncCertificateRename(ctx context.Context, q *sqlcgen.Queries, certID uuid.UUID) (func(), error) {
+	// S4: the new name must not make two grants of one vault-kv target
+	// render the same KV path; a conflict fails the rename.
+	cert, err := q.GetCertificateByID(ctx, certID)
+	if err != nil {
+		return nil, err
+	}
+	grantIDs, err := q.LiveServerGrantIDsForCert(ctx, certID)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[uuid.UUID]bool{}
+	var tids []uuid.UUID
+	for _, gid := range grantIDs {
+		views, err := q.ServerGrantViews(ctx, sqlcgen.ServerGrantViewsParams{OrgID: cert.OrgID, GrantID: &gid})
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range views {
+			if v.DeployTargetID != nil && !seen[*v.DeployTargetID] {
+				seen[*v.DeployTargetID] = true
+				tids = append(tids, *v.DeployTargetID)
+			}
+		}
+	}
+	// Lock order everywhere is certificate, then target (this rename holds
+	// the certificate row FOR UPDATE; createServerGrant locks the
+	// certificate before the target); targets in id order so two renames
+	// touching several targets cannot deadlock. The lock makes the check
+	// below see every concurrent rename and grant create.
+	sort.Slice(tids, func(i, j int) bool { return bytes.Compare(tids[i][:], tids[j][:]) < 0 })
+	for _, tid := range tids {
+		t, err := q.DeployTargetForUpdate(ctx, sqlcgen.DeployTargetForUpdateParams{ID: tid, OrgID: cert.OrgID})
+		if err != nil {
+			return nil, err
+		}
+		if t.Type != TypeVaultKV {
+			continue
+		}
+		if err := CheckServerGrantPaths(ctx, q, cert.OrgID, tid); err != nil {
+			return nil, err
+		}
+	}
 	return func() {
 		rows, err := d.Q.CurrentVersionsForCerts(ctx, []uuid.UUID{certID})
 		if err != nil {

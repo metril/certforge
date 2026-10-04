@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
-import type { Certificate } from '@/api/types';
+import type { CertBrief } from '@/api/types';
 import { HelpTip } from '@/components/HelpTip';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { validityTone, type Tone } from '@/lib/status';
 import { DAY, relDays } from '@/lib/time';
 
@@ -16,6 +18,9 @@ const TONE_VAR: Record<Tone, string> = {
   neutral: '--cf-ink-muted',
 };
 
+/** Keyboard-reachable alternative to the pointer brush: "expiring within N days". */
+const PRESETS = [7, 30, 90] as const;
+
 export type Tick = { id: string; x: number; windowFrom: number | null; tone: Tone; label: string };
 
 /** Places one tick per certificate with a current version, at its expiry, on
@@ -23,15 +28,14 @@ export type Tick = { id: string; x: number; windowFrom: number | null; tone: Ton
  * further out (or never issued) don't get a tick; `beyond` counts the
  * former so the caption can still say "N later" instead of silently
  * dropping them. */
-export function horizonTicks(certs: Certificate[], now: number): { ticks: Tick[]; beyond: number } {
+export function horizonTicks(certs: CertBrief[], now: number): { ticks: Tick[]; beyond: number } {
   const span = HORIZON_DAYS * DAY;
   const x = (t: number) => Math.max(0, Math.min(1, (t - now) / span)) * W;
   const ticks: Tick[] = [];
   let beyond = 0;
   for (const c of certs) {
-    const v = c.currentVersion;
-    if (!v) continue;
-    const end = Date.parse(v.notAfter);
+    if (!c.notAfter || c.status === 'revoked') continue;
+    const end = Date.parse(c.notAfter);
     if (end - now > span) {
       beyond++;
       continue;
@@ -41,7 +45,7 @@ export function horizonTicks(certs: Certificate[], now: number): { ticks: Tick[]
       x: x(end),
       windowFrom: c.nextRenewAt ? x(Date.parse(c.nextRenewAt)) : null,
       tone: validityTone(c, now),
-      label: `${c.name}, expires ${relDays(v.notAfter, now)}`,
+      label: `${c.name}, expires ${relDays(c.notAfter, now)}`,
     });
   }
   return { ticks, beyond };
@@ -54,16 +58,18 @@ export function rangeToDays(x0: number, x1: number): [number, number] {
   return [Math.round((a / W) * HORIZON_DAYS), Math.round((b / W) * HORIZON_DAYS)];
 }
 
-type Props = { certs: Certificate[]; now: number; range: [number, number] | null; onRange: (r: [number, number] | null) => void };
+/** `beyond` is the server's count of every certificate expiring after the horizon; the briefs only carry the ones that qualified for other reasons. */
+type Props = { certs: CertBrief[]; beyond?: number; now: number; range: [number, number] | null; onRange: (r: [number, number] | null) => void };
 
 /** The 90-day expiry horizon: one coloured tick per certificate, the
  * renewal window shaded behind it, and a drag-to-brush range that reports
  * back in whole days. `viewBox` with `preserveAspectRatio="none"` keeps it
  * inside the page width at any viewport (no horizontal scroll). */
-export function ExpiryHorizon({ certs, now, range, onRange }: Props) {
+export function ExpiryHorizon({ certs, beyond: beyondAll, now, range, onRange }: Props) {
   const ref = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<[number, number] | null>(null);
-  const { ticks, beyond } = horizonTicks(certs, now);
+  const { ticks, beyond: beyondLocal } = horizonTicks(certs, now);
+  const beyond = beyondAll ?? beyondLocal;
   const toX = (clientX: number) => {
     const r = ref.current!.getBoundingClientRect();
     return Math.max(0, Math.min(W, ((clientX - r.left) / Math.max(r.width, 1)) * W));
@@ -116,6 +122,22 @@ export function ExpiryHorizon({ certs, now, range, onRange }: Props) {
         ))}
         {sel && <rect x={Math.min(sel[0], sel[1])} y={0} width={Math.abs(sel[1] - sel[0])} height={56} fill="var(--cf-primary)" opacity={0.15} />}
       </svg>
+      <div role="group" aria-label="Expiry range presets" className="flex items-center gap-1.5">
+        {PRESETS.map((d) => {
+          // Derived from `range`, so a brush selection clears or updates it.
+          const active = range?.[0] === 0 && range[1] === d;
+          return (
+            <Tooltip key={d}>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant={active ? 'secondary' : 'outline'} aria-pressed={active} onClick={() => onRange(active ? null : [0, d])}>
+                  {d} d
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{active ? 'Clear the range' : `Show certificates expiring within ${d} days`}</TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
       <div className="flex justify-between text-xs text-ink-muted" aria-hidden>
         <span>Today</span>
         <span>30 d</span>

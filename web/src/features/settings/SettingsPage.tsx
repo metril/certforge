@@ -1,17 +1,31 @@
+import { lazy, Suspense } from 'react';
 import { Link } from '@tanstack/react-router';
 import { PageHeader } from '@/components/PageHeader';
 import { useMe } from '@/lib/org';
 import { canAnywhere } from '@/lib/permissions';
-import { AccessPage } from './access/AccessPage';
-import { AgentsSection } from './agents/AgentsSection';
-import { AuthenticationSection } from './AuthenticationSection';
-import { BackupSection } from './BackupSection';
-import { EncryptionKeyCard } from './EncryptionKeyCard';
-import { IntegrationsSection } from './IntegrationsSection';
-import { IssuanceDefaultsSection } from './IssuanceDefaultsSection';
 import { OrgsList } from './OrgsList';
-import { SchemaSection } from './SchemaSection';
 import { SECTIONS, type SectionSlug } from './sections';
+
+// Each section loads on demand: SchemaSection and the integrations/backup
+// sections pull in @rjsf (SchemaForm), which only some sections need.
+const AccessPage = lazy(() => import('./access/AccessPage').then((m) => ({ default: m.AccessPage })));
+const AgentsSection = lazy(() => import('./agents/AgentsSection').then((m) => ({ default: m.AgentsSection })));
+const AuthenticationSection = lazy(() => import('./AuthenticationSection').then((m) => ({ default: m.AuthenticationSection })));
+const BackupSection = lazy(() => import('./BackupSection').then((m) => ({ default: m.BackupSection })));
+const EncryptionKeyCard = lazy(() => import('./EncryptionKeyCard').then((m) => ({ default: m.EncryptionKeyCard })));
+const IntegrationsSection = lazy(() => import('./IntegrationsSection').then((m) => ({ default: m.IntegrationsSection })));
+const IssuanceDefaultsSection = lazy(() => import('./IssuanceDefaultsSection').then((m) => ({ default: m.IssuanceDefaultsSection })));
+const SchemaSection = lazy(() => import('./SchemaSection').then((m) => ({ default: m.SchemaSection })));
+
+function SectionSkeleton() {
+  return (
+    <div role="status" aria-label="Loading section" className="grid max-w-[720px] gap-3 rounded-md border border-border bg-panel p-4">
+      <div className="h-4 w-40 animate-pulse rounded-sm bg-subtle" />
+      <div className="h-3 w-2/3 animate-pulse rounded-sm bg-subtle" />
+      <div className="h-3 w-1/2 animate-pulse rounded-sm bg-subtle" />
+    </div>
+  );
+}
 
 const item = 'flex h-9 items-center px-3 text-sm text-ink-muted hover:bg-subtle hover:text-ink';
 
@@ -43,23 +57,25 @@ export function SettingsPage({ section }: { section: SectionSlug }) {
           <h2 id="settings-title" className="mb-4 text-lg font-semibold">
             {current.label}
           </h2>
-          {section === 'general' && (
-            <>
-              <SchemaSection section="general" />
-              <OrgsList />
-            </>
-          )}
-          {section === 'access' && <AccessPage />}
-          {section === 'authentication' && <AuthenticationSection />}
-          {section === 'issuance-defaults' && <IssuanceDefaultsSection />}
-          {section === 'agents' && <AgentsSection />}
-          {section === 'integrations' && <IntegrationsSection />}
-          {section === 'backup' && (
-            <div className="grid gap-4">
-              <BackupSection />
-              <EncryptionKeyCard />
-            </div>
-          )}
+          <Suspense fallback={<SectionSkeleton />}>
+            {section === 'general' && (
+              <>
+                <SchemaSection section="general" />
+                <OrgsList />
+              </>
+            )}
+            {section === 'access' && <AccessPage />}
+            {section === 'authentication' && <AuthenticationSection />}
+            {section === 'issuance-defaults' && <IssuanceDefaultsSection />}
+            {section === 'agents' && <AgentsSection />}
+            {section === 'integrations' && <IntegrationsSection />}
+            {section === 'backup' && (
+              <div className="grid gap-4">
+                <BackupSection />
+                <EncryptionKeyCard />
+              </div>
+            )}
+          </Suspense>
         </section>
       </div>
     </>

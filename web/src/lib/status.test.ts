@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { iso, makeCert, NOW } from '@/test/fixtures';
-import { validityTone } from './status';
+import { certTone } from './status';
 
 it.each([
   ['valid with time to spare', makeCert(), 'valid'],
@@ -12,4 +12,4 @@ it.each([
   // Fix round 1: a revoked cert with a currentVersion whose notAfter is still
   // in the future must not draw as valid.
   ['revoked with a future notAfter', makeCert({ status: 'revoked' }), 'neutral'],
-] as const)('%s → %s', (_, cert, tone) => expect(validityTone(cert, NOW)).toBe(tone));
+] as const)('%s → %s', (_, cert, tone) => expect(certTone(cert, NOW)).toBe(tone));

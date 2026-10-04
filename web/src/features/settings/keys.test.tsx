@@ -38,7 +38,7 @@ it('quiet row when nothing needs attention', async () => {
   expect(screen.queryByRole('button', { name: 'Re-encrypt now' })).not.toBeInTheDocument();
   expect(screen.queryByRole('list', { name: 'Key replacement steps' })).not.toBeInTheDocument();
   await user.tab();
-  await user.hover(screen.getAllByRole('button', { name: 'Help' }).at(-1)!);
+  await user.hover(screen.getAllByRole('button', { name: /^Help/ }).at(-1)!);
   expect(await screen.findByRole('tooltip')).toHaveTextContent(
     "Set in the server's environment. Needed to restore any backup. To replace it, set the new key as CF_KEK, move the old one to CF_KEK_PREVIOUS, and restart.",
   );
@@ -83,8 +83,8 @@ it('stepper: remove the old key once nothing is left', async () => {
   await screen.findByText('Finished');
   expect(stepOf('Remove the old key')).toHaveAttribute('aria-current', 'step');
   expect(stepOf('Re-encrypting').querySelector('svg')).not.toBeNull();
-  await user.hover(within(stepOf('Remove the old key')).getByRole('button', { name: 'Help' }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Delete CF_KEK_PREVIOUS from the environment and restart.');
+  await user.click(within(stepOf('Remove the old key')).getByRole('button', { name: /^Help/ }));
+  expect(await screen.findByRole('dialog')).toHaveTextContent('Delete CF_KEK_PREVIOUS from the environment and restart.');
 });
 
 it('stepper: a finished run for another key does not suggest removing the old key', async () => {
@@ -126,6 +126,14 @@ it('transit shows address', async () => {
   renderRoute('/settings/backup');
   expect(await screen.findByText('Vault Transit')).toBeInTheDocument();
   expect(screen.getByText(keysRunning.vaultAddress!)).toBeInTheDocument();
+});
+
+it('transit without an address (read-only caller) still shows the kind', async () => {
+  const noAddress = { ...keysRunning, vaultAddress: undefined };
+  server.use(http.get(url('/keys/status'), () => HttpResponse.json({ ...noAddress, rewrap: null })));
+  renderRoute('/settings/backup');
+  expect(await screen.findByText('Vault Transit')).toBeInTheDocument();
+  expect(screen.queryByText(keysRunning.vaultAddress!)).not.toBeInTheDocument();
 });
 
 it('previous key chips', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -18,9 +18,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { keyState, scopeLabel } from '@/lib/apiKeys';
 import { useMe } from '@/lib/org';
+import { failedWithoutData } from '@/lib/queryState';
 import { can, canAnywhere } from '@/lib/permissions';
 import { fmtDate, fmtDateTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useUrlText } from '@/lib/useUrlText';
 import { ApiKeySheet } from './ApiKeySheet';
 import { OneTimeSecretDialog } from './OneTimeSecretDialog';
 
@@ -88,25 +90,7 @@ export function ApiKeysTab() {
   const isMdUp = useMediaQuery('(min-width: 768px)');
   const search = useSearch({ from: '/_app/settings/$section' });
   const navigate = useNavigate({ from: '/settings/$section' });
-  const [text, setText] = useState(search.q ?? '');
-
-  // Debounced, URL-synced text filter (controller ruling D5), same contract
-  // as UsersTab's and BindingsTab's own `q` debounce.
-  const pushedQ = useRef(search.q ?? '');
-  useEffect(() => {
-    const urlQ = search.q ?? '';
-    if (urlQ !== pushedQ.current) {
-      pushedQ.current = urlQ;
-      if (urlQ !== text) setText(urlQ);
-      return;
-    }
-    if (text === urlQ) return;
-    const t = window.setTimeout(() => {
-      pushedQ.current = text;
-      void navigate({ search: (prev) => ({ ...prev, q: text || undefined }), replace: true });
-    }, 250);
-    return () => window.clearTimeout(t);
-  }, [text, search.q, navigate]);
+  const [text, setText] = useUrlText(search.q, (v) => void navigate({ search: (prev) => ({ ...prev, q: v }), replace: true }));
 
   const rows = useMemo(
     () => (q.data ?? []).filter((k) => (search.state ? keyState(k) === search.state : true) && matches(k, search.q ?? '')),
@@ -195,7 +179,7 @@ export function ApiKeysTab() {
         </div>
         <SavedViews list="apikeys" current={{ q: search.q, state: search.state }} onApply={(s) => void navigate({ search: (prev) => ({ ...prev, ...s }) })} />
       </div>
-      {q.isError ? (
+      {failedWithoutData(q) ? (
         <ErrorState message={`Couldn't load API keys. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
       ) : q.data && q.data.length === 0 ? (
         <EmptyState message="No API keys yet.">{add}</EmptyState>

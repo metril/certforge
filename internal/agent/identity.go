@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -121,6 +122,7 @@ func stageAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) e
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
+	sweepStale(dir, "."+filepath.Base(p)+".tmp-")
 	f, err := os.CreateTemp(dir, "."+filepath.Base(p)+".tmp-*")
 	if err != nil {
 		return "", err
@@ -153,6 +155,26 @@ func stageAtomic(p string, data []byte, mode fs.FileMode, chown func(*os.File) e
 	return tmp, nil
 }
 
+// staleTempAge is how old a leftover temp must be before sweepStale removes
+// it, so a concurrent writer's live temp is never taken.
+const staleTempAge = time.Minute
+
+// sweepStale removes crash leftovers (prefix+random temp siblings) in dir.
+func sweepStale(dir, prefix string) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if !strings.HasPrefix(e.Name(), prefix) || e.IsDir() {
+			continue
+		}
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > staleTempAge {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
+
 // commitStaged renames tmp over p and syncs the directory; tmp is removed
 // when the rename fails.
 func commitStaged(tmp, p string) error {
@@ -169,6 +191,16 @@ func commitStaged(tmp, p string) error {
 		return err
 	}
 	return d.Close()
+}
+
+// requireHTTPS rejects a non-empty agent URL that is not https, so a server
+// response or an edited state.json cannot steer the agent to a cleartext
+// endpoint (Dial and ParseToken apply the same rule).
+func requireHTTPS(u string) error {
+	if u != "" && !strings.HasPrefix(u, "https://") {
+		return fmt.Errorf("agent: agent URL %q is not https", u)
+	}
+	return nil
 }
 
 func loadOrCreateKey(dir string) (*ecdsa.PrivateKey, error) {
@@ -276,6 +308,9 @@ func LoadIdentity(dir string) (*Identity, error) {
 	}
 	if err := json.Unmarshal(b, &id.State); err != nil {
 		return nil, fmt.Errorf("agent: state.json: %w", err)
+	}
+	if err := requireHTTPS(id.State.AgentURL); err != nil {
+		return nil, err
 	}
 	id.State.ClientID = clientID // the certificate's URI SAN is authoritative, not the stored value
 	if id.State.Grants == nil {

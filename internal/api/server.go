@@ -40,13 +40,16 @@ import (
 
 // Deps are the services handlers use.
 type Deps struct {
-	Config        config.Config
-	Log           *slog.Logger
-	Pool          *pgxpool.Pool
-	Queries       *sqlcgen.Queries
-	Settings      *settings.Store
-	Sections      *settings.Registry
-	Meta          *meta.Registry
+	Config   config.Config
+	Log      *slog.Logger
+	Pool     *pgxpool.Pool
+	Queries  *sqlcgen.Queries
+	Settings *settings.Store
+	Sections *settings.Registry
+	Meta     *meta.Registry
+	// HostResolver resolves hostnames in DNS credential URL fields at save
+	// time; nil uses the system resolver. Tests inject a stub.
+	HostResolver  challenge.HostResolver
 	Sessions      *authn.Sessions
 	Auditor       *audit.Auditor
 	AuthSettings  *authn.SettingsSource // authentication section; nil falls back to RemoteAddr
@@ -105,6 +108,10 @@ type Deps struct {
 	// AuditVerifyTTL caches GET /audit/verify's result; zero means 60 s.
 	AuditVerifyTTL time.Duration
 
+	// AuditQueryTimeout bounds each audit list, count and export query; zero
+	// means 5 s.
+	AuditQueryTimeout time.Duration
+
 	// Version is the running build's version string, returned by
 	// getServerInfo (Phase 6A Task 2; cmd/certforge's main.version, wired
 	// in cmd/certforge/serve.go). Empty answers {version: ""}.
@@ -155,6 +162,13 @@ type Server struct {
 	vaultSectionMu  sync.Mutex
 	vaultSectionAt  time.Time
 	vaultSectionErr error
+
+	// readyMu/readyAt/readyDB/readyKEK cache /readyz's database ping and KEK
+	// canary (readyCacheTTL healthy, readyFailCacheTTL failing; S7).
+	readyMu  sync.Mutex
+	readyAt  time.Time
+	readyDB  error
+	readyKEK error
 }
 
 var _ gen.StrictServerInterface = (*Server)(nil)

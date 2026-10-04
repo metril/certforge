@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -90,6 +91,10 @@ func runWithEnv(ctx context.Context, args []string, stdout, stderr io.Writer, ge
 		return 2
 	}
 
+	if w := insecureURLWarning(cfg.URL); w != "" {
+		fmt.Fprintln(stderr, w)
+	}
+
 	cwr, raw, err := newClients(cfg, *timeoutFlag)
 	if err != nil {
 		fmt.Fprintf(stderr, "cfctl: %v\n", err)
@@ -98,6 +103,23 @@ func runWithEnv(ctx context.Context, args []string, stdout, stderr io.Writer, ge
 
 	e := &env{cwr: cwr, raw: raw, json: *jsonFlag, org: *orgFlag, stdout: stdout, stderr: stderr}
 	return cmd(ctx, e, rest[1:])
+}
+
+// insecureURLWarning returns a warning when the bearer token would travel
+// over a cleartext (non-https) connection to a non-loopback host, else "".
+func insecureURLWarning(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "https" {
+		return ""
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ""
+	}
+	return fmt.Sprintf("cfctl: warning: %s is not https; the bearer token is sent in cleartext", raw)
 }
 
 // newClients builds the buffered and raw clients over the same server and
@@ -203,6 +225,9 @@ func (e *env) resolveOrg(ctx context.Context) (uuid.UUID, error) {
 	if err := e.checkStatus(resp.StatusCode(), resp.Body, http.StatusOK); err != nil {
 		return uuid.Nil, err
 	}
+	if resp.JSON200 == nil {
+		return uuid.Nil, errNonJSON
+	}
 	for _, o := range resp.JSON200.Items {
 		if o.Slug == e.org {
 			return o.Id, nil
@@ -210,6 +235,10 @@ func (e *env) resolveOrg(ctx context.Context) (uuid.UUID, error) {
 	}
 	return uuid.Nil, fmt.Errorf("no org with id or slug %q", e.org)
 }
+
+// errNonJSON is returned when a success status carries a body the generated
+// client did not decode as JSON (JSON200 is nil), such as a proxy's HTML page.
+var errNonJSON = errors.New("unexpected non-JSON response from server")
 
 // checkStatus echoes body under --json (cfctl's raw output mode, on
 // success or failure alike) and turns a status outside ok into a

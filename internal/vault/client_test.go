@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -465,5 +466,74 @@ func TestRenewLoopLogsLoginFailure(t *testing.T) {
 	waitFor(t, func() bool { return strings.Contains(buf.String(), "vault login failed") })
 	if out := buf.String(); !strings.Contains(out, "level=WARN") || strings.Contains(out, "s3cret-id") {
 		t.Fatalf("log = %q, want a WARN line without the secret id", out)
+	}
+}
+
+// A redirect to another host must not be followed: it would resend
+// X-Vault-Token (and a 307/308 body) there.
+func TestRedirectToOtherHostIsNotFollowed(t *testing.T) {
+	var hits int
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))
+	defer other.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer origin.Close()
+	c := newTestClient(t, origin.URL, TokenAuth{Token: "tok"})
+	if err := c.Login(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PKIReadCA(context.Background(), "pki"); err == nil {
+		t.Fatal("want an error for the unfollowed redirect")
+	}
+	if hits != 0 {
+		t.Fatalf("redirect target received %d request(s)", hits)
+	}
+}
+
+func TestSameHostRedirectIsFollowed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/pki/cert/ca" {
+			http.Redirect(w, r, "/v1/pki2/cert/ca", http.StatusTemporaryRedirect)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"data": map[string]any{"certificate": "PEM"}})
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL, TokenAuth{Token: "tok"})
+	_ = c.Login(context.Background())
+	if got, err := c.PKIReadCA(context.Background(), "pki"); err != nil || got != "PEM" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+// C2: every path segment built from caller-supplied names is escaped.
+func TestEscapePath(t *testing.T) {
+	for in, want := range map[string]string{
+		"pki":        "pki",
+		"a/b":        "a/b",
+		"a b/c?d":    "a%20b/c%3Fd",
+		"../x":       "%2E%2E/x",
+		"a/../b":     "a/%2E%2E/b",
+		"role%2Fx#y": "role%252Fx%23y",
+	} {
+		if got := escapePath(in); got != want {
+			t.Errorf("escapePath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSignEscapesRole(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		writeJSON(w, 200, map[string]any{"data": map[string]any{}})
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL, TokenAuth{Token: "tok"})
+	_ = c.Login(context.Background())
+	_, _ = c.PKISign(context.Background(), "pki", "../../sys/x?y", SignRequest{CSR: "c"})
+	if want := "/v1/pki/sign/..%2F..%2Fsys%2Fx%3Fy"; gotPath != want {
+		t.Fatalf("path = %q, want %q", gotPath, want)
 	}
 }

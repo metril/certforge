@@ -1,46 +1,71 @@
+version: "2"
 run:
   timeout: 5m
   build-tags:
     - integration
     - e2e
 linters:
-  disable-all: true
+  default: none
   enable:
+    - bodyclose
     - errcheck
+    - errorlint
     - govet
-    - staticcheck
-    - gosimple
-    - unused
     - ineffassign
+    - misspell
+    - noctx
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+    revive:
+      rules:
+        - name: package-comments
+        - name: blank-imports
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: var-naming
+        - name: indent-error-flow
+  exclusions:
+    generated: lax
+    rules:
+      # golangci-lint v1.61's noctx only checked net/http client calls. v2's
+      # noctx also flags listeners, TLS dials/handshakes, os/exec and httptest
+      # requests; those have no request lifecycle to cancel here, so only the
+      # new categories are excluded and the net/http client checks stay on.
+      - linters:
+          - noctx
+        text: '^(net\.Listen|net\.ListenPacket|crypto/tls\.|\(\*crypto/tls\.Conn\)|os/exec\.Command|net/http/httptest\.NewRequest)'
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - internal/db/sqlcgen
+      - internal/api/gen
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
     - gofmt
     - goimports
-    - misspell
-    - revive
-    - errorlint
-    - bodyclose
-    - noctx
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - fmt.Fprintf
-      - fmt.Fprintln
-      - fmt.Fprint
-  goimports:
-    local-prefixes: github.com/metril/certforge
-  revive:
-    rules:
-      - name: package-comments
-      - name: blank-imports
-      - name: context-as-argument
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: var-naming
-      - name: indent-error-flow
-issues:
-  include:
-    - EXC0013
-    - EXC0015
-  exclude-dirs:
-    - internal/db/sqlcgen
-    - internal/api/gen
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/metril/certforge
+  exclusions:
+    generated: lax
+    paths:
+      - internal/db/sqlcgen
+      - internal/api/gen
+      - third_party$
+      - builtin$
+      - examples$

@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 	"mime"
 	"mime/quotedprintable"
 	"net"
@@ -152,7 +153,13 @@ func SendMail(ctx context.Context, cfg SMTPSettings, password string, to []strin
 	if err := w.Close(); err != nil {
 		return redactSMTPErr(fmt.Errorf("notify: smtp: %w", err), password)
 	}
-	return redactSMTPErr(client.Quit(), password)
+	// The server accepted the message when DATA closed; a QUIT failure is
+	// not a send failure, and reporting one would make the caller retry and
+	// duplicate the email.
+	if err := client.Quit(); err != nil {
+		slog.Warn("notify: smtp: quit after delivery", "err", redactSMTPErr(err, password))
+	}
+	return nil
 }
 
 // redactSMTPErr wraps err with password (and its URL/path-escaped forms)

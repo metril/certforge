@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/signer"
 )
@@ -293,4 +295,106 @@ func getCRL(t *testing.T, client *http.Client, url string, wantStatus int) []byt
 		t.Fatal(err)
 	}
 	return b
+}
+
+// countingBox counts Open calls, i.e. unseal attempts of a CA's secret_cfg.
+type countingBox struct {
+	crypto.Box
+	opens atomic.Int32
+}
+
+func (b *countingBox) Open(ctx context.Context, s []byte) ([]byte, error) {
+	b.opens.Add(1)
+	return b.Box.Open(ctx, s)
+}
+
+// A5: an unknown issuer serial is rejected from the public config, before
+// the CA's secret_cfg is unsealed.
+func TestCRLUnknownIssuerSerialDoesNotUnseal(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "A5", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := res.(gen.CreateCa201JSONResponse)
+	cb := &countingBox{Box: f.box}
+	store := issuance.NewStore(f.pool, cb, f.settingsStore)
+
+	if _, err := store.CRL(context.Background(), ca.Id, "deadbeef"); !errors.Is(err, issuance.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if n := cb.opens.Load(); n != 0 {
+		t.Fatalf("bogus serial unsealed the CA key %d time(s)", n)
+	}
+	if _, err := store.CRL(context.Background(), ca.Id, ""); err != nil {
+		t.Fatal(err)
+	}
+	if cb.opens.Load() == 0 {
+		t.Fatal("current issuer should unseal")
+	}
+}
+
+// TestCRLDropsExpiredLeaves covers L2: a revoked leaf past its NotAfter is
+// omitted from the CRL (the stored entry is still there until the next
+// Revoke prunes it), and an entry without a stored NotAfter is kept.
+func TestCRLDropsExpiredLeaves(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "ExpiryCA", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := res.(gen.CreateCa201JSONResponse)
+	revoke := func(name string) *x509.Certificate {
+		leaf, v := issueLocalLeaf(t, f, ca.Id, name)
+		if _, err := f.srv.RevokeCertificateVersion(f.as("operator"), gen.RevokeCertificateVersionRequestObject{
+			OrgId: f.org, Id: v.CertID, Vid: v.ID, Body: &gen.RevokeCertificateVersionJSONRequestBody{},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return leaf
+	}
+	live := revoke("live.example.test")
+
+	// Append an expired entry and a legacy one (no notAfter) for the same issuer.
+	_, err = f.pool.Exec(ctx, `UPDATE cas SET config = jsonb_set(config, '{revoked}', config->'revoked' || jsonb_build_array(
+		jsonb_build_object('serial','aa01','issuerSerial',config->'revoked'->0->>'issuerSerial','at',now(),'reason',0,'notAfter',now() - interval '1 day'),
+		jsonb_build_object('serial','bb02','issuerSerial',config->'revoked'->0->>'issuerSerial','at',now(),'reason',0)))
+		WHERE id = $1`, ca.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serials := func() map[string]bool {
+		der, err := f.store.CRL(ctx, ca.Id, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		crl, err := x509.ParseRevocationList(der)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]bool{}
+		for _, e := range crl.RevokedCertificateEntries {
+			out[e.SerialNumber.Text(16)] = true
+		}
+		return out
+	}
+	got := serials()
+	if len(got) != 2 || !got[live.SerialNumber.Text(16)] || !got["bb02"] || got["aa01"] {
+		t.Fatalf("CRL serials = %v, want the live and legacy entries only", got)
+	}
+
+	// The next revocation prunes the expired entry from the stored config.
+	revoke("live2.example.test")
+	var n int
+	if err := f.pool.QueryRow(ctx, `SELECT jsonb_array_length(config->'revoked') FROM cas WHERE id = $1`, ca.Id).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Fatalf("stored revoked entries = %d, want 3 (expired one pruned)", n)
+	}
 }

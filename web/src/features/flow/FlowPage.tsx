@@ -19,6 +19,7 @@ import { LANE_KEYS, expandFor, filterFlow, tracePath, visibleNodeIds, type Flow,
 import { FlowConnectors } from './FlowConnectors';
 import { FlowLane } from './FlowLane';
 import { FlowPathPanel } from './FlowPathPanel';
+import { failedWithoutData } from '@/lib/queryState';
 
 function Skeleton() {
   return (
@@ -167,7 +168,7 @@ export function FlowPage() {
       </>
     );
   }
-  if (q.isError || !flow || !path) {
+  if (failedWithoutData(q) || !flow || !path) {
     return (
       <>
         {header}
@@ -181,7 +182,12 @@ export function FlowPage() {
   return (
     <div
       onKeyDown={(e) => {
-        if (e.key === 'Escape' && focus) setFocus(undefined);
+        if (e.key !== 'Escape' || !focus) return;
+        // Escape inside a text field or an open popover/menu belongs to that control. A node's own
+        // tooltip also preventDefaults Escape, so defaultPrevented can't be the test.
+        const t = e.target as HTMLElement;
+        if (t.closest('input, textarea, select, [role="dialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]')) return;
+        setFocus(undefined);
       }}
     >
       {header}

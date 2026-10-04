@@ -7,6 +7,7 @@ CertForge is configured from the web UI. The environment only carries what the s
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
 | `CF_DATABASE_URL` | yes | – | Postgres URL, for example `postgres://certforge:pw@postgres:5432/certforge?sslmode=disable` |
+| `pool_max_conns` (in `CF_DATABASE_URL`) | no | pgx default | Database pool size. It is a pgx pool parameter of the URL, not a separate variable, for example `postgres://certforge:pw@postgres:5432/certforge?sslmode=disable&pool_max_conns=20` |
 | `CF_KEK` | one of `CF_KEK`, `CF_KEK_FILE`, `CF_KEK_VAULT_ADDR` | – | Encryption key: 32 random bytes, base64 |
 | `CF_KEK_FILE` | see above | – | Path to a file with the encryption key (base64, or exactly 32 raw bytes) |
 | `CF_KEK_VAULT_ADDR` | see above | – | Vault (or OpenBao) address; selects a Transit-backed encryption key instead of a static one (see `docs/vault.md#transit-kek`) |
@@ -33,8 +34,12 @@ CertForge is configured from the web UI. The environment only carries what the s
 | `CF_KEK_PREVIOUS_VAULT_SECRET_ID_FILE` | see above | – | Path to a file holding its secret id |
 | `CF_LISTEN_HTTP` | no | `:8080` | UI and API listener |
 | `CF_LISTEN_AGENT` | no | `:8443` | Agent listener: TLS with agent client certificates, serves only `/agent/v1/*`. Must be reached directly or through TCP/TLS passthrough, never a TLS-terminating proxy. |
+| `CF_SETUP_TOKEN` | no | – | Optional first-run setup token (at least 16 characters). When set, the setup wizard asks for it and `POST /setup/complete` returns 401 without it. Unset means setup needs no token |
+| `CF_SETUP_TOKEN_FILE` | no | – | Path to a file holding the setup token (whitespace trimmed); set only one of the two. Never logged |
 | `CF_BASE_URL` | no | – | Public URL. The setup wizard stores its own value in Settings → General, which takes precedence |
 | `CF_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` |
+| `CF_OIDC_ALLOW_INSECURE_ISSUER` | no | `false` | `true` lets Settings → Authentication accept a plain `http://` OIDC issuer on a non-loopback host. Without it, `http://` is accepted only for `localhost`, `127.0.0.0/8` and `::1`. For dev and test stacks only. |
+| `CF_BACKUP_SPOOL_DIR` | no | OS temp dir | Directory where a backup stages each table's unencrypted CSV (in a private `0700` subdirectory, deleted when the backup ends) while hashing it. Defaults to the OS temp dir, never the backup directory. If `/tmp` is a tmpfs the staged data sits in memory; point this at a disk path for that case. If no spool can be created, the backup buffers tables in memory and logs a warning. |
 
 <a id="the-kek"></a>
 ## The encryption key
@@ -67,7 +72,7 @@ Open **Settings** in the sidebar. Sections that arrive in later phases (Agents, 
 
 ### General
 
-Rendered from the server's settings schema: base URL and other server-wide values. **Save** applies immediately; no restart. Below it, **Organizations**: admins create, rename and delete orgs (the slug is permanent; "all" is reserved), and org admins manage each org's **Sites**. An org with certificates, credentials, accounts, CAs, sites, role bindings or active API keys cannot be deleted; the dialog lists them. Its issuance defaults and revoked API keys are removed with the org.
+Rendered from the server's settings schema: base URL and other server-wide values. **Save** applies immediately; no restart. Below it, **Organizations**: admins create, rename and delete orgs (the slug is permanent; "all" is reserved), and org admins manage each org's **Sites**. An org with certificates, credentials, accounts, CAs, sites, role bindings, active API keys, notification channels or monitors cannot be deleted; the dialog lists them. Its issuance defaults, revoked API keys and notification events are removed with the org.
 
 ### Authentication
 
@@ -77,11 +82,13 @@ Rendered from the server's settings schema: base URL and other server-wide value
 | Issuer URL | The OIDC issuer. CertForge reads `/.well-known/openid-configuration` from it. |
 | Client ID, Client secret | The client registered for CertForge. Redirect URI: `<base URL>/api/v1/auth/oidc/callback`. The secret is write-only; leave it empty for a public client (PKCE only). |
 | Scopes | Default `openid profile email groups`; must include `openid`. |
-| Groups claim | ID token claim holding the user's groups (default `groups`). Group role bindings (Settings → Access) match these. |
+| Groups claim | ID token claim holding the user's groups (default `groups`). A dotted path such as `realm_access.roles` reads a nested claim; a top-level claim whose name contains a dot wins over the path. Group role bindings (Settings → Access) match these. |
 | Session lifetime | Hours a sign-in lasts (1–720, default 12). Applies to new sessions. |
 | Trusted proxies | Addresses or CIDRs of reverse proxies. `X-Forwarded-For` is believed only from these; the audit log and the login rate limit use the resulting client address. |
 | Login rate limit (per minute) | Login attempts allowed per client address per minute (default 10). 0 disables the limit. |
 | Login rate limit burst | Login attempts a client may make in a single burst before the per-minute rate applies (default 5, minimum 1). |
+| API key maximum lifetime (days) | Longest lifetime a new API key may have; an expiry is then required. 0 (default) is unlimited. Existing keys are unaffected. |
+| Active API keys per user | Most active keys one user may hold (default 50, 0 unlimited); creating more returns 409. The key list reports both limits in `policy`. |
 | Group mappings | Group-to-role bindings, edited on this page below the form. They are role bindings with subject type oidc_group, also listed under Settings → Access. |
 
 **Test connection** fetches the issuer's discovery document and signing keys without logging in.
@@ -183,7 +190,7 @@ Global settings shared across every notification channel, served by `GET/PUT /ap
 
 | Field | Default | Meaning |
 |---|---|---|
-| Allow loopback and link-local (`allowLoopbackUrls`) | off | Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback and link-local hosts. RFC 1918 private-network hosts are always allowed. Off by default (SSRF protection). |
+| Allow loopback and link-local (`allowLoopbackUrls`) | off | Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback and link-local hosts. RFC 1918 private-network hosts are always allowed. Also applies to DNS credential URL fields (such as `HTTPREQ_ENDPOINT`), checked when a credential is created or updated. Off by default (SSRF protection). |
 | Expiry warning (days) (`expiryWarningDays`) | 7 | How many days before a certificate version's `notAfter` a `cert.expiring` event is raised (1–60). |
 | Renewal failure threshold (`failureThreshold`) | 3 | Consecutive renewal failures for one certificate before a `cert.renewal_failed` event is raised, at most once per day (1–10). |
 

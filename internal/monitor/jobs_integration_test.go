@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/riverqueue/river"
+
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/monitor"
@@ -44,6 +47,49 @@ func TestScanEnqueuesDueOnly(t *testing.T) {
 	}
 }
 
+// TestScanCountsOnlyNewJobs: InsertMany reports a monitor already queued as
+// a unique-skipped duplicate; EnqueueDueChecks counts only the new jobs.
+func TestScanCountsOnlyNewJobs(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	store := &monitor.Store{Pool: pool, Q: sqlcgen.New(pool)}
+	past := time.Now().Add(-time.Second)
+	a := insertMonitor(t, pool, monitorRow{orgID: org, name: "a", host: "example.test", nextCheckAt: past})
+	insertMonitor(t, pool, monitorRow{orgID: org, name: "b", host: "example.test", nextCheckAt: past})
+	insertMonitor(t, pool, monitorRow{orgID: org, name: "c", host: "example.test", nextCheckAt: past})
+
+	ins := &fakeMonitorInserter{dup: map[uuid.UUID]bool{a: true}}
+	n, err := monitor.EnqueueDueChecks(context.Background(), store, ins, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 || len(ins.ids()) != 3 {
+		t.Fatalf("enqueued = %d of %d submitted, want 2 of 3", n, len(ins.ids()))
+	}
+}
+
+// TestCheckWorkerSkipsMissingAndDisabled (A11): a queued check for a
+// deleted monitor returns nil (no retry), and one for a monitor disabled
+// since it was queued is not run.
+func TestCheckWorkerSkipsMissingAndDisabled(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	off := false
+	disabled := insertMonitor(t, pool, monitorRow{orgID: org, name: "off", host: "example.test", enabled: &off})
+	svc := newService(pool, &fakeNotifyInserter{})
+	svc.Dial = func(string, int, string, bool) monitor.Observation {
+		t.Error("Dial called for a missing or disabled monitor")
+		return monitor.Observation{}
+	}
+	w := &monitor.CheckWorker{S: svc}
+	for name, id := range map[string]uuid.UUID{"missing": uuid.New(), "disabled": disabled} {
+		job := &river.Job[monitor.CheckArgs]{Args: monitor.CheckArgs{MonitorID: id}}
+		if err := w.Work(context.Background(), job); err != nil {
+			t.Fatalf("%s: Work = %v, want nil", name, err)
+		}
+	}
+}
+
 // TestMonitorTransitionEmitsOnce: two checks of the same monitor that
 // genuinely overlap — both must read state "ok" before either can write —
 // and both observe the same resulting state (unreachable) emit exactly one
@@ -64,7 +110,7 @@ func TestMonitorTransitionEmitsOnce(t *testing.T) {
 	svc := newService(pool, ins)
 	allowLoopback(t, svc.Settings)
 
-	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "flaky", host: "unused.invalid", state: "ok"})
+	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "flaky", host: "unused.invalid", state: "ok", failures: 1})
 
 	var atBarrier sync.WaitGroup
 	atBarrier.Add(2)

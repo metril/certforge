@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -69,5 +70,23 @@ func TestDialRejectsLoopbackAfterResolve(t *testing.T) {
 	// ran at all).
 	if !strings.Contains(err.Error(), "not allowed") {
 		t.Fatalf("error = %q, want the SSRF policy's own rejection (\"not allowed\")", err.Error())
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		in   string
+		want time.Duration
+	}{
+		{"", 0}, {"junk", 0}, {"2", 2 * time.Second}, {"-5", 0},
+		{"99999", maxRetryAfter},
+		{now.Add(3 * time.Second).Format(http.TimeFormat), 3 * time.Second},
+		{now.Add(-time.Hour).Format(http.TimeFormat), 0},
+		{now.Add(time.Hour).Format(http.TimeFormat), maxRetryAfter},
+	} {
+		if got := parseRetryAfter(c.in, now); got != c.want {
+			t.Errorf("parseRetryAfter(%q) = %v, want %v", c.in, got, c.want)
+		}
 	}
 }

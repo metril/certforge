@@ -115,8 +115,8 @@ it('shows the Import help tip', async () => {
   const { user } = renderRoute('/o/acme/certificates');
   await rowOf('www');
   const importGroup = screen.getByRole('button', { name: 'Import' }).closest('div')!;
-  await user.hover(within(importGroup).getByRole('button', { name: 'Help' }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Import takes over renewal from acme.sh or certbot.');
+  await user.click(within(importGroup).getByRole('button', { name: /^Help/ }));
+  expect(await screen.findByRole('dialog')).toHaveTextContent('Import takes over renewal from acme.sh or certbot.');
 });
 
 it('disables Import without certs:write', async () => {

@@ -27,11 +27,17 @@ func decodeCertPEMs(b []byte) [][]byte {
 // normalizeKeyPEM decodes a PEM private key of any of the three encodings
 // acme.sh and certbot both use (PKCS#1, SEC1, PKCS#8) and re-marshals it as
 // PKCS#8, the shape certstore always stores. ok is false when b holds no
-// recognizable private key.
+// recognizable private key; other blocks (an EC PARAMETERS header) are skipped.
 func normalizeKeyPEM(b []byte) (der []byte, ok bool) {
-	block, _ := pem.Decode(b)
-	if block == nil || !strings.HasSuffix(block.Type, "PRIVATE KEY") {
-		return nil, false
+	var block *pem.Block
+	for {
+		block, b = pem.Decode(b)
+		if block == nil {
+			return nil, false
+		}
+		if strings.HasSuffix(block.Type, "PRIVATE KEY") {
+			break
+		}
 	}
 	var key any
 	var err error

@@ -57,6 +57,21 @@ it('lists users and disables one after typing their name', async () => {
   expect(await within(table).findByText('Disabled')).toBeInTheDocument();
 });
 
+// H3: without a global users:read the server withholds issuer, groups and
+// last sign-in, so the tab hides those columns rather than showing blanks.
+it('hides the issuer, groups and last sign-in columns when the list is limited', async () => {
+  const redacted = { ...annUser, oidcIssuer: null, oidcSubject: null, groups: [], lastLogin: null };
+  server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, redacted], limited: true })));
+  renderRoute('/settings/access');
+  const table = await screen.findByRole('table', { name: 'Users' });
+  expect(within(table).getByText('Ann')).toBeInTheDocument();
+  expect(within(table).queryByRole('columnheader', { name: /Source/ })).toBeNull();
+  expect(within(table).queryByRole('columnheader', { name: /Groups/ })).toBeNull();
+  expect(within(table).queryByRole('columnheader', { name: /Last sign-in/ })).toBeNull();
+  expect(within(table).getByRole('columnheader', { name: /Email/ })).toBeInTheDocument();
+  expect(screen.getByText(/shown to global administrators only/)).toBeInTheDocument();
+});
+
 it('keeps the tab in the URL', async () => {
   server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser] })));
   const { router } = renderRoute('/settings/access?tab=users');
@@ -78,8 +93,8 @@ it('falls back to the Users tab for an unrecognized ?tab value', async () => {
 // sole existing tab. `onTabChange` is exported from AccessPage specifically
 // so this merge logic is unit-testable without that constraint.
 it('drops the search term when switching tabs', () => {
-  expect(onTabChange({ tab: 'users', q: 'ann' }, 'users')).toEqual({ tab: 'users', q: undefined });
-  expect(onTabChange({ q: 'ann', type: 'user' }, 'bindings')).toEqual({ q: undefined, type: 'user', tab: 'bindings' });
+  expect(onTabChange({ tab: 'users', q: 'ann' }, 'users')).toEqual({ tab: 'users', q: undefined, state: undefined, type: undefined, orgId: undefined });
+  expect(onTabChange({ q: 'ann', type: 'user' }, 'bindings')).toEqual({ q: undefined, state: undefined, type: undefined, orgId: undefined, tab: 'bindings' });
 });
 
 it('shows switches read-only without users:write', async () => {

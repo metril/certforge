@@ -19,10 +19,12 @@ import (
 type fakeRegistrar struct {
 	gotEAB *acmesigner.EAB
 	err    error
+	calls  int
 }
 
 func (r *fakeRegistrar) Register(_ context.Context, email string, eab *acmesigner.EAB) (signer.AccountMaterial, error) {
 	r.gotEAB = eab
+	r.calls++
 	if r.err != nil {
 		return signer.AccountMaterial{}, r.err
 	}
@@ -117,5 +119,24 @@ func TestNewRiverConfigIsValid(t *testing.T) {
 	ari := NewARIPollWorker(f.store, certs)
 	if _, err := NewRiver(f.pool, w, ari, f.store, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A second registration of the same (ca, email) is a 409 before the CA is
+// contacted, so no orphan account is created at the CA.
+func TestRegisterAccountDuplicateEmailConflictsBeforeRegistering(t *testing.T) {
+	f := newFixture(t)
+	svc, _ := newService(f)
+	reg := &fakeRegistrar{}
+	svc.NewRegistrar = func(CA) Registrar { return reg }
+	if _, err := svc.RegisterAccount(context.Background(), f.org, f.ca.ID, "dup@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	var ce *ConflictError
+	if _, err := svc.RegisterAccount(context.Background(), f.org, f.ca.ID, "dup@example.test"); !errors.As(err, &ce) {
+		t.Fatalf("err = %v, want ConflictError", err)
+	}
+	if reg.calls != 1 {
+		t.Fatalf("registrar called %d times, want 1", reg.calls)
 	}
 }

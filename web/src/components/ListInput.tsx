@@ -82,7 +82,8 @@ export function ListInput({ id, value, onChange, placeholder, validate, disabled
             const text = e.clipboardData.getData('text/plain');
             if (/[\s,]/.test(text)) {
               e.preventDefault();
-              commit(draft + text);
+              const { selectionStart: a, selectionEnd: b } = e.currentTarget;
+              commit(draft.slice(0, a ?? draft.length) + text + draft.slice(b ?? draft.length));
             }
           }}
         />

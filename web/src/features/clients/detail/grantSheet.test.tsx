@@ -209,3 +209,17 @@ it('lets an admin grant a deploy target', async () => {
   await pick(user, 'Deploy target', /^edge traefik/);
   expect(within(sheet).getByRole('button', { name: 'Grant' })).toBeEnabled();
 });
+
+it('keeps the sheet open with a removed notice when the grant disappears', async () => {
+  const { user, queryClient } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
+  await screen.findByRole('dialog', { name: 'Edit www' });
+  server.use(http.get(url('/orgs/org-1/clients/cl-1/grants'), () => HttpResponse.json({ items: [] })));
+  await queryClient.invalidateQueries({ queryKey: ['grants'] });
+  const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  expect(await within(sheet).findByText(/This grant was removed/)).toBeInTheDocument();
+  expect(within(sheet).getByRole('button', { name: 'Save' })).toBeDisabled();
+  await user.hover(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('This grant was removed');
+  await user.click(within(sheet).getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});

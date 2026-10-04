@@ -13,7 +13,7 @@ import { ValidityBar } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { isPrivate } from '@/lib/caKinds';
-import { validityTone } from '@/lib/status';
+import { certTone } from '@/lib/status';
 import { fmtDate, relTime } from '@/lib/time';
 import { RevokeVersionDialog } from './RevokeVersionDialog';
 
@@ -88,7 +88,7 @@ export function VersionsTab({
                       notAfter={v.notAfter}
                       renewAt={current ? cert.nextRenewAt : null}
                       ghost={successor ? { notBefore: successor.notBefore, notAfter: successor.notAfter } : null}
-                      tone={current ? validityTone(cert) : 'neutral'}
+                      tone={current ? certTone(cert) : 'neutral'}
                     />
                     <span className="text-xs text-ink-muted">
                       {fmtDate(v.notBefore)} to {fmtDate(v.notAfter)}

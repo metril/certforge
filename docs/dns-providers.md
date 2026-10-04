@@ -633,7 +633,6 @@ Auth methods (one is required): **Token** (`DODE_TOKEN`).
 | `DODE_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `DODE_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `DODE_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 60) |
-| `DODE_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Domeneshop
 
@@ -675,7 +674,6 @@ Auth methods (one is required): **Token** (`DUCKDNS_TOKEN`).
 | `DUCKDNS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `DUCKDNS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `DUCKDNS_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 60) |
-| `DUCKDNS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Dyn
 
@@ -1185,7 +1183,7 @@ Auth methods (one is required): **API key** (`IONOS_API_KEY`).
 | `IONOS_API_KEY` | credentials | yes | API key `<prefix>.<secret>` https://developer.hosting.ionos.com/docs/getstarted |
 | `IONOS_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `IONOS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
-| `IONOS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `IONOS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 900) |
 | `IONOS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
 
 ## IPv64
@@ -2227,6 +2225,7 @@ Auth methods (one is required): **Access key + Secret key + Host** (`VINYLDNS_AC
 | `VINYLDNS_SECRET_KEY` | credentials | yes | The VinylDNS API Secret key |
 | `VINYLDNS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 4) |
 | `VINYLDNS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
+| `VINYLDNS_QUOTE_VALUE` | additional | no | Adds quotes around the TXT record value (Default: false) |
 | `VINYLDNS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 30) |
 
 ## VK Cloud
@@ -2395,6 +2394,20 @@ Auth methods (one is required): **IAM token + Folder ID** (`YANDEX_CLOUD_IAM_TOK
 | `YANDEX_CLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `YANDEX_CLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `YANDEX_CLOUD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 60) |
+
+## ZoneEdit
+
+Code: `zoneedit`. Website: <https://www.zoneedit.com>
+
+Auth methods (one is required): **User + Auth token** (`ZONEEDIT_USER`, `ZONEEDIT_AUTH_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ZONEEDIT_AUTH_TOKEN` | credentials | yes | Authentication token |
+| `ZONEEDIT_USER` | credentials | no | User ID |
+| `ZONEEDIT_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ZONEEDIT_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `ZONEEDIT_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 
 ## Zone.ee
 

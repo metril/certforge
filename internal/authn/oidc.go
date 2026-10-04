@@ -19,14 +19,19 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-jose/go-jose/v4"
 	"golang.org/x/oauth2"
+	"golang.org/x/sync/singleflight"
 )
 
 // StateCookieName holds the signed OIDC flow state between start and callback.
 const StateCookieName = "cf_oidc"
 
 const (
-	stateTTL      = 10 * time.Minute
-	providerTTL   = 10 * time.Minute
+	stateTTL    = 10 * time.Minute
+	providerTTL = 10 * time.Minute
+	// failureTTL is how long a failed discovery is remembered: long enough
+	// that an unreachable IdP is not dialled once per anonymous start, short
+	// enough that a recovered IdP is picked up within seconds.
+	failureTTL    = 5 * time.Second
 	maxGroups     = 256
 	maxGroupBytes = 256
 )
@@ -71,6 +76,14 @@ type OIDC struct {
 	now       func() time.Time
 	mu        sync.Mutex
 	providers map[string]cachedProvider
+	failures  map[string]cachedFailure
+	gen       int // bumped by Forget so an in-flight discovery cannot repopulate the cache
+	flight    singleflight.Group
+}
+
+type cachedFailure struct {
+	err error
+	at  time.Time
 }
 
 // NewOIDC returns a client that signs flow state with stateKey
@@ -79,31 +92,58 @@ func NewOIDC(stateKey []byte, hc *http.Client) *OIDC {
 	if hc == nil {
 		hc = &http.Client{Timeout: 10 * time.Second}
 	}
-	return &OIDC{key: stateKey, hc: hc, now: time.Now, providers: map[string]cachedProvider{}}
+	return &OIDC{key: stateKey, hc: hc, now: time.Now, providers: map[string]cachedProvider{}, failures: map[string]cachedFailure{}}
 }
 
 // Forget drops cached discovery documents.
 func (o *OIDC) Forget() {
 	o.mu.Lock()
 	o.providers = map[string]cachedProvider{}
+	o.failures = map[string]cachedFailure{}
+	o.gen++
 	o.mu.Unlock()
 }
 
+// provider returns the cached discovery for issuer. Concurrent misses share
+// one fetch (singleflight) and a failure is remembered for failureTTL, so an
+// unreachable IdP costs one dial per few seconds, not one per request.
 func (o *OIDC) provider(ctx context.Context, issuer string) (*oidc.Provider, error) {
 	o.mu.Lock()
 	c, ok := o.providers[issuer]
+	f, failed := o.failures[issuer]
+	gen := o.gen
 	o.mu.Unlock()
 	if ok && o.now().Sub(c.at) < providerTTL {
 		return c.p, nil
 	}
-	p, err := oidc.NewProvider(oidc.ClientContext(ctx, o.hc), issuer)
-	if err != nil {
-		return nil, fmt.Errorf("oidc discovery: %w", err)
+	if failed && o.now().Sub(f.at) < failureTTL {
+		return nil, f.err
 	}
-	o.mu.Lock()
-	o.providers[issuer] = cachedProvider{p: p, at: o.now()}
-	o.mu.Unlock()
-	return p, nil
+	v, err, _ := o.flight.Do(issuer, func() (any, error) {
+		// Detached from the first caller's context so its cancellation does
+		// not fail every waiter; o.hc's timeout still bounds the fetch.
+		p, err := oidc.NewProvider(oidc.ClientContext(context.WithoutCancel(ctx), o.hc), issuer)
+		o.mu.Lock()
+		defer o.mu.Unlock()
+		if o.gen != gen {
+			return p, err
+		}
+		if err != nil {
+			err = fmt.Errorf("oidc discovery: %w", err)
+			o.failures[issuer] = cachedFailure{err: err, at: o.now()}
+			return nil, err
+		}
+		delete(o.failures, issuer)
+		o.providers[issuer] = cachedProvider{p: p, at: o.now()}
+		return p, nil
+	})
+	if err != nil {
+		if !strings.HasPrefix(err.Error(), "oidc discovery:") {
+			err = fmt.Errorf("oidc discovery: %w", err)
+		}
+		return nil, err
+	}
+	return v.(*oidc.Provider), nil
 }
 
 func oauthConfig(p *oidc.Provider, cfg AuthSettings, redirectURL string) *oauth2.Config {
@@ -211,7 +251,7 @@ func (o *OIDC) Finish(ctx context.Context, cfg AuthSettings, redirectURL string,
 		return Identity{}, st.Next, fmt.Errorf("oidc claims: %w", err)
 	}
 	id := Identity{Issuer: idt.Issuer, Subject: idt.Subject, Email: claimString(claims, "email"),
-		Name: claimString(claims, "name"), Groups: claimGroups(claims[cfg.GroupsClaim])}
+		Name: claimString(claims, "name"), Groups: claimGroups(claimAt(claims, cfg.GroupsClaim))}
 	for _, alt := range []string{claimString(claims, "preferred_username"), id.Email, id.Subject} {
 		if id.Name == "" {
 			id.Name = alt
@@ -223,6 +263,26 @@ func (o *OIDC) Finish(ctx context.Context, cfg AuthSettings, redirectURL string,
 func claimString(c map[string]any, k string) string {
 	s, _ := c[k].(string)
 	return s
+}
+
+// claimAt reads a claim by name. A key that exists at the top level wins
+// (including one containing a dot); otherwise name is walked as a dotted
+// path through nested objects, e.g. "realm_access.roles".
+func claimAt(c map[string]any, name string) any {
+	if v, ok := c[name]; ok || !strings.Contains(name, ".") {
+		return v
+	}
+	var cur any = c
+	for _, part := range strings.Split(name, ".") {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil
+		}
+		if cur, ok = m[part]; !ok {
+			return nil
+		}
+	}
+	return cur
 }
 
 // claimGroups accepts a string or an array of strings, capped.

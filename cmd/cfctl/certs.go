@@ -133,6 +133,9 @@ func certsGet(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON200 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		c := *resp.JSON200
 		writeTable(e.stdout, []string{"FIELD", "VALUE"}, [][]string{
 			{"id", c.Id.String()},
@@ -173,6 +176,9 @@ func certsRenew(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON202 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		fmt.Fprintf(e.stdout, "enqueued=%t\n", resp.JSON202.Enqueued)
 	}
 	return 0

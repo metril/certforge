@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,45 @@ func testEvent() notify.Event {
 		Resource: notify.Resource{Type: "certificate", ID: "cert-1", Name: "example.com"},
 		Summary:  "example.com expires in 7 days",
 		Details:  map[string]any{"notAfter": "2026-10-06T00:00:00Z"},
+	}
+}
+
+func TestWebhookSignatureV2(t *testing.T) {
+	const secret = "a-signing-secret-16"
+	var hdr http.Header
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hdr = r.Header.Clone()
+		gotBody, _ = io.ReadAll(r.Body)
+	}))
+	defer srv.Close()
+	n := notify.Webhook{Settings: allowLoopback}
+	secrets := map[string]string{"url": srv.URL, "signingSecret": secret}
+	if err := n.Send(context.Background(), testEvent(), notify.Target{Version: "1.0.0"}, map[string]any{}, secrets); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	ts := hdr.Get("X-CertForge-Timestamp")
+	unix, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil || time.Since(time.Unix(unix, 0)) > time.Minute {
+		t.Fatalf("X-CertForge-Timestamp = %q", ts)
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(ts + "."))
+	mac.Write(gotBody)
+	if want := "sha256=" + hex.EncodeToString(mac.Sum(nil)); hdr.Get("X-CertForge-Signature-V2") != want {
+		t.Errorf("V2 = %q, want %q", hdr.Get("X-CertForge-Signature-V2"), want)
+	}
+	if hdr.Get("X-CertForge-Signature") == "" {
+		t.Error("V1 signature header dropped")
+	}
+
+	// Unsigned channels send neither new header.
+	hdr = nil
+	if err := n.Send(context.Background(), testEvent(), notify.Target{Version: "1.0.0"}, map[string]any{}, map[string]string{"url": srv.URL}); err != nil {
+		t.Fatal(err)
+	}
+	if hdr.Get("X-CertForge-Timestamp") != "" || hdr.Get("X-CertForge-Signature-V2") != "" {
+		t.Error("unsigned request carries V2 headers")
 	}
 }
 

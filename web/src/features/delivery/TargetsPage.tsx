@@ -24,6 +24,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { RowActions, UsedBy } from './RowActions';
 import { TargetDetailSheet } from './TargetDetailSheet';
 import { TargetSheet } from './TargetSheet';
+import { failedWithoutData } from '@/lib/queryState';
 
 export function TargetsPage() {
   const org = useOrg();
@@ -40,7 +41,7 @@ export function TargetsPage() {
     void navigate({ search: (prev) => ({ ...prev, edit: id, view: undefined }), replace: id === undefined });
   // Task 8 owns the `view` param (a server target's own Grants action); Task
   // 9 renders the detail sheet it opens and its own not-found handling.
-  const openView = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, view: id, edit: undefined }) });
+  const openView = (id: string | undefined) => void navigate({ search: (prev) => ({ ...prev, view: id, edit: undefined }), replace: id === undefined });
   const types = metaQ.data?.deployTargets ?? [];
   const typeName = (code: string) => types.find((t) => t.code === code)?.name ?? code;
   const targets = q.data ?? [];
@@ -97,12 +98,12 @@ export function TargetsPage() {
 
   return (
     <div className="grid gap-4">
-      {metaQ.isError && !q.isPending && !q.isError && (
+      {metaQ.isError && !q.isPending && !failedWithoutData(q) && (
         <ErrorState message={`Couldn't load target types. ${errorMessage(metaQ.error)}`} onRetry={() => void metaQ.refetch()} />
       )}
       {q.isPending ? (
         <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-      ) : q.isError ? (
+      ) : failedWithoutData(q) ? (
         <ErrorState message={`Couldn't load deploy targets. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
       ) : targets.length === 0 ? (
         <EmptyState message="No deploy targets yet.">{add}</EmptyState>

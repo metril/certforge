@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/certstore"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/issuance"
 	"github.com/metril/certforge/internal/signer"
 )
@@ -26,6 +28,8 @@ func mapErr(err error) error {
 	var ce *issuance.ConflictError
 	var se *signer.Error
 	var ae *agents.Error
+	var rr *issuance.RevokeRecordError
+	var pc *deploy.PathConflictError
 	switch {
 	case err == nil:
 		return nil
@@ -38,11 +42,31 @@ func mapErr(err error) error {
 	case errors.As(err, &ce):
 		return &HTTPError{Status: http.StatusConflict, Title: "Conflict", Detail: ce.Msg}
 	case errors.As(err, &se):
-		return &HTTPError{Status: http.StatusBadGateway, Title: "CA error", Detail: se.Error()}
+		return caErr(se)
+	case errors.As(err, &rr):
+		return &HTTPError{Status: http.StatusInternalServerError, Title: "Revocation not recorded", Detail: "The CA revoked the certificate but it could not be recorded; retry the request."}
 	case errors.As(err, &ae):
 		return mapAgentErr(err)
+	case errors.As(err, &pc):
+		return conflict("%s", pc.Msg)
 	}
 	return err
+}
+
+// caErr is the 502 for an upstream CA or signer failure. It carries the
+// signer error's own Detail and problem type, never Err's text: the wrapped
+// transport error can name the Vault address, which only settings:write
+// holders may see. The full error is logged instead.
+func caErr(se *signer.Error) error {
+	slog.Warn("CA request failed", "err", se)
+	detail := se.Detail
+	if detail == "" {
+		detail = "the CA request failed"
+	}
+	if se.Type != "" {
+		detail += " (" + se.ShortType() + ")"
+	}
+	return &HTTPError{Status: http.StatusBadGateway, Title: "CA error", Detail: detail}
 }
 
 func unprocessable(field, detail string) error {

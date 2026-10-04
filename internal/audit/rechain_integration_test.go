@@ -54,7 +54,8 @@ func TestRechain(t *testing.T) {
 	if err := a.Record(ctx, audit.Event{Action: "after", ResourceType: "x"}); err != nil {
 		t.Fatal(err)
 	}
-	if r, err := a.Check(ctx); err != nil || !r.OK || r.Count != 4 {
+	// 3 converted rows, the audit.anchor_initialized marker Rechain appended, and "after".
+	if r, err := a.Check(ctx); err != nil || !r.OK || r.Count != 5 {
 		t.Fatalf("after rechain %+v %v", r, err)
 	}
 	if n, err := a.Rechain(ctx); err != nil || n != 0 {
@@ -112,7 +113,8 @@ func TestCheckRejectsLegacyAfterRechain(t *testing.T) {
 	if err := a.Record(ctx, audit.Event{Action: "after", ResourceType: "x"}); err != nil {
 		t.Fatal(err)
 	}
-	if r, err := a.Check(ctx); err != nil || !r.OK || r.Count != 3 {
+	// 2 converted rows, the anchor marker, and "after".
+	if r, err := a.Check(ctx); err != nil || !r.OK || r.Count != 4 {
 		t.Fatalf("chain after rechain %+v %v", r, err)
 	}
 

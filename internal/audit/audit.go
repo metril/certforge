@@ -7,10 +7,14 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
+	"log/slog"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +23,7 @@ import (
 
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/metrics"
 )
 
 const lockKey int64 = 0x43460002
@@ -34,6 +39,34 @@ const lockKey int64 = 0x43460002
 // mitigation, not a substitute for external head-hash anchoring (ADR 0008,
 // still an open known gap).
 const chainKeyedSettingKey = "audit.chain_keyed"
+
+// headSettingKey holds the chain head anchor {id, hash, mac}: the newest
+// event's id and hash, MACed with the audit key and rewritten by every Record
+// in the same transaction as the insert. A walk that ends before the anchor,
+// or finds a different hash at its id, means the newest rows were removed
+// (ADR 0008). Without the MAC an owner who truncated to N could write a
+// matching (N, hash_N) read straight from the table.
+const headSettingKey = "audit.head"
+
+// AnchorInitializedAction is the one-time event Rechain appends when no head
+// anchor exists, so the bootstrap is recorded in the MAC'd chain itself.
+const AnchorInitializedAction = "audit.anchor_initialized"
+
+// Why a chain failed to verify (VerifyResult.Reason).
+const (
+	ReasonRowMismatch    = "row_mismatch"
+	ReasonDowngrade      = "downgrade"
+	ReasonAnchorMissing  = "anchor_missing"
+	ReasonAnchorInvalid  = "anchor_invalid"
+	ReasonAnchorMismatch = "anchor_mismatch"
+	ReasonTailTruncated  = "tail_truncated"
+)
+
+type headAnchor struct {
+	ID   int64  `json:"id"`
+	Hash string `json:"hash"`
+	MAC  string `json:"mac"`
+}
 
 // ErrChainBroken means a stored event does not match its hash chain.
 var ErrChainBroken = errors.New("audit: hash chain broken")
@@ -114,8 +147,30 @@ func (a *Auditor) Record(ctx context.Context, e Event) error {
 	if a.disabled {
 		return ErrAuditUnavailable
 	}
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("audit: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
+		return fmt.Errorf("audit: lock: %w", err)
+	}
+	id, err := a.appendLocked(ctx, sqlcgen.New(tx), e)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	setHead(id)
+	return nil
+}
+
+// appendLocked inserts e and rewrites the head anchor. The caller holds the
+// append advisory lock inside the transaction q runs in.
+func (a *Auditor) appendLocked(ctx context.Context, q *sqlcgen.Queries, e Event) (int64, error) {
 	if e.Action == "" || e.ResourceType == "" {
-		return errors.New("audit: action and resource type are required")
+		return 0, errors.New("audit: action and resource type are required")
 	}
 	actorType, actorID := e.ActorType, e.ActorID
 	if actorType == "" {
@@ -131,45 +186,111 @@ func (a *Auditor) Record(ctx context.Context, e Event) error {
 	}
 	canon, err := canonicalJSON(details)
 	if err != nil {
-		return fmt.Errorf("audit: details: %w", err)
+		return 0, fmt.Errorf("audit: details: %w", err)
 	}
 	row := sqlcgen.InsertAuditEventParams{
 		ActorType: actorType, ActorID: actorID,
 		Action: e.Action, ResourceType: e.ResourceType, ResourceID: e.ResourceID,
 		OrgID: e.OrgID, Ip: IPFrom(ctx), Details: canon, HashAlg: HashAlgHMAC,
 	}
-	tx, err := a.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("audit: begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
-		return fmt.Errorf("audit: lock: %w", err)
-	}
 	// Stamp ts only after the lock is held, so id order and ts order agree
 	// with chain order under contention.
 	row.Ts = a.now().UTC().Truncate(time.Microsecond)
-	q := sqlcgen.New(tx)
 	prev, err := q.LastAuditHash(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		prev = genesis
 	} else if err != nil {
-		return fmt.Errorf("audit: last hash: %w", err)
+		return 0, fmt.Errorf("audit: last hash: %w", err)
 	}
 	row.PrevHash = prev
 	row.Hash = a.sum(HashAlgHMAC, prev, row.Ts, row.ActorType, row.ActorID, row.Action, row.ResourceType, row.ResourceID, row.OrgID, row.Ip, canon)
-	if _, err := q.InsertAuditEvent(ctx, row); err != nil {
-		return fmt.Errorf("audit: insert: %w", err)
+	id, err := q.InsertAuditEvent(ctx, row)
+	if err != nil {
+		return 0, fmt.Errorf("audit: insert: %w", err)
 	}
-	return tx.Commit(ctx)
+	if err := a.writeAnchor(ctx, q, id, row.Hash); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+var (
+	headMu  sync.Mutex
+	headMax int64
+)
+
+// setHead raises certforge_audit_head_id; a verify that finished before a
+// later append must not lower what Record already reported.
+func setHead(id int64) {
+	headMu.Lock()
+	defer headMu.Unlock()
+	if id > headMax {
+		headMax = id
+		metrics.AuditHeadID.Set(float64(id))
+	}
+}
+
+func (a *Auditor) headMAC(id int64, hash []byte) []byte {
+	m := hmac.New(sha256.New, a.key)
+	m.Write([]byte("certforge-audit-head\x00"))
+	m.Write([]byte(strconv.FormatInt(id, 10)))
+	m.Write([]byte{0})
+	m.Write(hash)
+	return m.Sum(nil)
+}
+
+// writeAnchor stores the head anchor for (id, hash). Callers hold the append
+// advisory lock inside the transaction q runs in.
+func (a *Auditor) writeAnchor(ctx context.Context, q *sqlcgen.Queries, id int64, hash []byte) error {
+	b, err := json.Marshal(headAnchor{ID: id, Hash: hex.EncodeToString(hash), MAC: hex.EncodeToString(a.headMAC(id, hash))})
+	if err != nil {
+		return err
+	}
+	if err := q.UpsertSettingValue(ctx, sqlcgen.UpsertSettingValueParams{Key: headSettingKey, Value: b}); err != nil {
+		return fmt.Errorf("audit: write %s: %w", headSettingKey, err)
+	}
+	return nil
+}
+
+// readAnchor returns the stored anchor; found is false when none exists. A
+// stored value that does not parse comes back found with a zero anchor, which
+// anchorValid rejects.
+func (a *Auditor) readAnchor(ctx context.Context, q *sqlcgen.Queries) (anchor headAnchor, found bool, err error) {
+	row, err := q.GetSetting(ctx, headSettingKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return headAnchor{}, false, nil
+	}
+	if err != nil {
+		return headAnchor{}, false, fmt.Errorf("audit: %s: %w", headSettingKey, err)
+	}
+	if json.Unmarshal(row.Value, &anchor) != nil {
+		anchor = headAnchor{}
+	}
+	return anchor, true, nil
+}
+
+// anchorValid reports whether the anchor's MAC matches, and its hash bytes.
+func (a *Auditor) anchorValid(an headAnchor) ([]byte, bool) {
+	h, err := hex.DecodeString(an.Hash)
+	if err != nil {
+		return nil, false
+	}
+	mac, err := hex.DecodeString(an.MAC)
+	if err != nil {
+		return nil, false
+	}
+	return h, hmac.Equal(mac, a.headMAC(an.ID, h))
 }
 
 // VerifyResult is the outcome of walking the chain.
 type VerifyResult struct {
 	OK         bool
 	Count      int64  // rows that verified
-	BrokenAtID int64  // first bad row when !OK
+	BrokenAtID int64  // first bad row when !OK; 0 when no row is to blame
 	HeadHash   []byte // hash of the last good row
+	HeadID     int64  // id of the last good row; 0 for an empty chain
+	AnchorID   int64  // id the stored head anchor points at; 0 when there is none
+	Reason     string // Reason* constant when !OK
 }
 
 // Check walks the whole chain. A mismatch is a result, not an error. Two
@@ -190,10 +311,25 @@ func (a *Auditor) Check(ctx context.Context) (VerifyResult, error) {
 	if err != nil {
 		return VerifyResult{}, err
 	}
+	// The anchor is read before the walk so appends need not be blocked: a
+	// row written meanwhile is simply past it.
+	anchor, haveAnchor, err := a.readAnchor(ctx, q)
+	if err != nil {
+		return VerifyResult{}, err
+	}
 	res := VerifyResult{OK: true, HeadHash: genesis}
+	var anchorHash []byte
+	if haveAnchor {
+		res.AnchorID = anchor.ID
+		var ok bool
+		if anchorHash, ok = a.anchorValid(anchor); !ok {
+			res.OK, res.Reason = false, ReasonAnchorInvalid
+			return res, nil
+		}
+	}
 	prev := genesis
 	var after int64
-	seenHMAC := false
+	seenHMAC, anchorSeen := false, false
 	for {
 		rows, err := q.ListAuditEventsAsc(ctx, sqlcgen.ListAuditEventsAscParams{ID: after, Limit: page})
 		if err != nil {
@@ -201,23 +337,41 @@ func (a *Auditor) Check(ctx context.Context) (VerifyResult, error) {
 		}
 		for _, ev := range rows {
 			if (keyed || seenHMAC) && ev.HashAlg != HashAlgHMAC {
-				res.OK, res.BrokenAtID = false, ev.ID
+				res.OK, res.BrokenAtID, res.Reason = false, ev.ID, ReasonDowngrade
 				return res, nil
 			}
 			if ev.HashAlg == HashAlgHMAC {
 				seenHMAC = true
 			}
 			if !a.rowOK(ev, prev) {
-				res.OK, res.BrokenAtID = false, ev.ID
+				res.OK, res.BrokenAtID, res.Reason = false, ev.ID, ReasonRowMismatch
 				return res, nil
 			}
-			prev, after, res.HeadHash = ev.Hash, ev.ID, ev.Hash
+			if haveAnchor && ev.ID == anchor.ID {
+				anchorSeen = true
+				if !bytes.Equal(ev.Hash, anchorHash) {
+					res.OK, res.BrokenAtID, res.Reason = false, ev.ID, ReasonAnchorMismatch
+					return res, nil
+				}
+			}
+			prev, after, res.HeadHash, res.HeadID = ev.Hash, ev.ID, ev.Hash, ev.ID
 			res.Count++
 		}
 		if len(rows) < page {
-			return res, nil
+			break
 		}
 	}
+	switch {
+	case haveAnchor && !anchorSeen:
+		res.OK, res.BrokenAtID, res.Reason = false, res.HeadID+1, ReasonTailTruncated
+	case !haveAnchor && res.Count > 0 && (keyed || seenHMAC):
+		res.OK, res.Reason = false, ReasonAnchorMissing
+	}
+	if res.HeadID > 0 {
+		setHead(res.HeadID)
+		slog.Info("audit chain verified", "ok", res.OK, "headId", res.HeadID, "headHash", hex.EncodeToString(res.HeadHash)[:16])
+	}
+	return res, nil
 }
 
 // Verify walks the chain and returns the number of events checked, or an
@@ -344,7 +498,49 @@ func (a *Auditor) Rechain(ctx context.Context) (int64, error) {
 	if err := q.UpsertSettingValue(ctx, sqlcgen.UpsertSettingValueParams{Key: chainKeyedSettingKey, Value: []byte("true")}); err != nil {
 		return 0, fmt.Errorf("audit: mark %s: %w", chainKeyedSettingKey, err)
 	}
-	return changed, tx.Commit(ctx)
+	// Rewritten hashes invalidate the anchor, so rewrite it from the new
+	// head. With no anchor at all the head cannot simply be re-anchored: a
+	// table owner who deleted the tail and the anchor row would get a clean
+	// chain at the next restart. The bootstrap is bound to the MAC'd chain
+	// instead: the audit.anchor_initialized row is appended once (which
+	// writes the anchor like any insert); if that row already exists and
+	// the anchor is gone, nothing is written and Check reports
+	// anchor_missing.
+	_, haveAnchor, err := a.readAnchor(ctx, q)
+	if err != nil {
+		return 0, err
+	}
+	if !haveAnchor {
+		marked, err := q.HasAuditAnchorMarker(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("audit: anchor marker: %w", err)
+		}
+		if !marked {
+			if _, err := a.appendLocked(ctx, q, Event{Action: AnchorInitializedAction, ResourceType: "audit",
+				ActorType: "system"}); err != nil {
+				return 0, err
+			}
+		}
+	} else if changed > 0 {
+		last, err := q.LastAuditEvent(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("audit: last event: %w", err)
+		}
+		if err := a.writeAnchor(ctx, q, last.ID, last.Hash); err != nil {
+			return 0, err
+		}
+	}
+	head := int64(0)
+	if last, err := q.LastAuditEvent(ctx); err == nil {
+		head = last.ID
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, fmt.Errorf("audit: last event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	setHead(head)
+	return changed, nil
 }
 
 // sum is the chain link: H(prev, ts, actor, action, resource, org, ip,

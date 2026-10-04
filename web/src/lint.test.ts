@@ -2,7 +2,11 @@
 import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
-const eslint = new ESLint({ cwd: process.cwd() });
+// The fixture is not part of the tsconfig, so the type-aware rule is switched off for it.
+const eslint = new ESLint({
+  cwd: process.cwd(),
+  overrideConfig: [{ files: ['src/**/*.{ts,tsx}'], languageOptions: { parserOptions: { project: null } }, rules: { '@typescript-eslint/no-floating-promises': 'off' } }],
+});
 
 async function restricted(code: string) {
   const [result] = await eslint.lintText(code, { filePath: 'src/__lint_fixture__.tsx' });

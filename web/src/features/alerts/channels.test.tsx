@@ -172,3 +172,13 @@ it('card: switch toggles by keyboard without opening the sheet', async () => {
   expect(patched!.body.enabled).toBe(false);
   expect(router.state.location.search).toEqual({});
 });
+
+it('keeps the list on screen when a background refetch fails', async () => {
+  channels = [makeChannel()];
+  const { queryClient } = renderRoute('/o/acme/alerts/channels');
+  const table = await screen.findByRole('table', { name: 'Channels' });
+  server.use(http.get(url('/orgs/:orgId/channels'), () => HttpResponse.json({ title: 'boom', status: 500 }, { status: 500 })));
+  await queryClient.refetchQueries({ queryKey: ['channels'] }).catch(() => {});
+  expect(within(table).getByText('ops-webhook')).toBeInTheDocument();
+  expect(screen.queryByText(/Couldn't load channels/)).toBeNull();
+});

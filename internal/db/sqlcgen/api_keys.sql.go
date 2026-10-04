@@ -12,6 +12,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const countActiveAPIKeysByCreator = `-- name: CountActiveAPIKeysByCreator :one
+SELECT count(*) FROM api_keys
+WHERE created_by = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+`
+
+func (q *Queries) CountActiveAPIKeysByCreator(ctx context.Context, createdBy uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveAPIKeysByCreator, createdBy)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAPIKey = `-- name: CreateAPIKey :one
 INSERT INTO api_keys (name, prefix, secret_hash, scopes, org_id, created_by, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, prefix, secret_hash, scopes, org_id, created_by, expires_at, last_used_at, revoked_at, created_at
@@ -103,6 +115,7 @@ func (q *Queries) GetAPIKeyByPrefix(ctx context.Context, prefix string) (ApiKey,
 const listAPIKeys = `-- name: ListAPIKeys :many
 SELECT k.id, k.name, k.prefix, k.secret_hash, k.scopes, k.org_id, k.created_by, k.expires_at, k.last_used_at, k.revoked_at, k.created_at, u.display_name AS created_by_name
 FROM api_keys k JOIN users u ON u.id = k.created_by
+WHERE $1::uuid IS NULL OR k.org_id = $1
 ORDER BY k.created_at DESC, k.id
 `
 
@@ -121,8 +134,8 @@ type ListAPIKeysRow struct {
 	CreatedByName string     `json:"created_by_name"`
 }
 
-func (q *Queries) ListAPIKeys(ctx context.Context) ([]ListAPIKeysRow, error) {
-	rows, err := q.db.Query(ctx, listAPIKeys)
+func (q *Queries) ListAPIKeys(ctx context.Context, orgID *uuid.UUID) ([]ListAPIKeysRow, error) {
+	rows, err := q.db.Query(ctx, listAPIKeys, orgID)
 	if err != nil {
 		return nil, err
 	}

@@ -180,7 +180,7 @@ var skipped = map[string]bool{"manual": true, "exec": true}
 // (forceSecret, forceNonSecret) were reviewed against. Bumping lego's
 // go.mod pin requires bumping this constant and reviewing the regenerated
 // schema diff for new or renamed fields the overrides above should cover.
-const legoVersion = "v4.24.0"
+const legoVersion = "v4.25.2"
 
 func main() {
 	legoDir := flag.String("lego-dir", "", "lego module dir (default: resolved via go mod download)")

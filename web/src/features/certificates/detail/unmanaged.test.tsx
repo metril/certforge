@@ -70,6 +70,29 @@ it('uploads a new version from the header action, then closes and refetches vers
   await waitFor(() => expect(versionsCalls).toBeGreaterThan(initialVersionsCalls));
 });
 
+it('offers the Allow an older certificate switch only after the server refuses an older leaf', async () => {
+  const bodies: unknown[] = [];
+  server.use(
+    http.post(url('/orgs/org-1/certificates/c-1/versions/upload'), async ({ request }) => {
+      const b = (await request.json()) as { allowOlder?: boolean };
+      bodies.push(b);
+      if (!b.allowOlder) return HttpResponse.json({ title: 'Invalid allowOlder', status: 422, detail: 'certificate expires before the current version' }, { status: 422 });
+      return HttpResponse.json(makeVersion({ id: 'v-2' }), { status: 201 });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/certificates/c-1/versions');
+  await screen.findByRole('table', { name: 'Versions' });
+  await user.click(screen.getByRole('button', { name: 'Upload new version' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Upload new version' });
+  expect(within(sheet).queryByRole('switch')).not.toBeInTheDocument();
+  await user.type(within(sheet).getByLabelText('Certificate'), 'CERT-DATA');
+  await user.click(within(sheet).getByRole('button', { name: 'Upload' }));
+  await user.click(await within(sheet).findByRole('switch', { name: 'Allow an older certificate' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Upload' }));
+  await waitFor(() => expect(bodies).toEqual([{ certificatePem: 'CERT-DATA' }, { certificatePem: 'CERT-DATA', allowOlder: true }]));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Upload new version' })).not.toBeInTheDocument());
+});
+
 it('offers no Upload new version action for a managed certificate', async () => {
   server.use(http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert({ managed: true }))));
   renderRoute('/o/acme/certificates/c-1/overview');

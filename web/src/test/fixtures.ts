@@ -1,5 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import type {
+  CertBrief,
+  CertificateOverview,
   AcmeAccount,
   AgentCA,
   ApiKey,
@@ -84,7 +86,7 @@ export function makeAuditEvent(p: Partial<AuditEvent> = {}): AuditEvent {
 // Fix round 1 (review, Take now #3): later tasks (Orgs and sites) need a
 // site fixture.
 export function makeSite(p: Partial<Site> = {}): Site {
-  return { id: 's-1', orgId: org.id, name: 'Primary', createdAt: iso(-1), ...p };
+  return { id: 's-1', orgId: org.id, name: 'Primary', clientCount: 0, createdAt: iso(-1), ...p };
 }
 
 export function makeCert(p: Partial<Certificate> = {}): Certificate {
@@ -893,3 +895,35 @@ export const metaNotifiers: ProviderSchema[] = [
   { code: 'ntfy', name: 'ntfy', aliases: [], schema: ntfyNotifierSchema },
   { code: 'homeassistant', name: 'Home Assistant', aliases: [], schema: homeassistantNotifierSchema },
 ] as ProviderSchema[];
+
+/** The overview summary's brief for a full test certificate. */
+export function briefOf(c: Certificate): CertBrief {
+  const rules = c.verificationRules.length ? c.verificationRules : (((c.effective as { verificationRules?: { value?: Certificate['verificationRules'] } } | undefined)?.verificationRules?.value) ?? []);
+  return {
+    id: c.id,
+    orgId: c.orgId ?? 'org-1',
+    name: c.name,
+    status: c.status,
+    notBefore: c.currentVersion?.notBefore ?? null,
+    notAfter: c.currentVersion?.notAfter ?? null,
+    nextRenewAt: c.nextRenewAt ?? null,
+    failureCount: c.failureCount,
+    lastErrorLine: c.lastError ? c.lastError.split('\n')[0]! : null,
+    manualDns: c.status !== 'revoked' && rules.some((r) => r.method === 'manual-dns'),
+    ariWindow: c.ariWindow ?? null,
+  };
+}
+
+/** The overview summary a server would give for these certificates. */
+export function overviewOf(certs: Certificate[]): CertificateOverview {
+  const n = (s: string) => certs.filter((c) => c.status === s).length;
+  const horizon = NOW + 90 * DAY;
+  return {
+    counts: { active: n('active'), pending: n('pending'), failed: n('failed'), expired: n('expired'), revoked: n('revoked'), total: certs.length },
+    items: certs.filter((c) => c.status !== 'revoked').map(briefOf),
+    beyond: certs.filter((c) => c.status !== 'revoked' && c.currentVersion && Date.parse(c.currentVersion.notAfter) > horizon).length,
+    truncated: false,
+  };
+}
+
+export const emptyOverview: CertificateOverview = { counts: { active: 0, pending: 0, failed: 0, expired: 0, revoked: 0, total: 0 }, items: [], beyond: 0, truncated: false };

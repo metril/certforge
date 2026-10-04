@@ -57,7 +57,7 @@ func (c *Client) Login(ctx context.Context) error {
 	case AppRoleAuth:
 		var resp loginResponse
 		body := map[string]string{"role_id": a.RoleID, "secret_id": a.SecretID}
-		path := "/v1/auth/" + a.mount() + "/login"
+		path := "/v1/auth/" + escapePath(a.mount()) + "/login"
 		if err := c.doJSON(ctx, http.MethodPost, path, body, &resp, requestOpts{noRelogin: true}); err != nil {
 			return c.Redact(err)
 		}

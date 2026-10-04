@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,11 +20,11 @@ const scanLimit = 500
 // every minute").
 const scanPeriod = time.Minute
 
-// Inserter enqueues a job outside any transaction (EnqueueDueChecks runs no
+// Inserter enqueues jobs outside any transaction (EnqueueDueChecks runs no
 // write of its own to share one with); *river.Client[pgx.Tx] implements it,
 // the same shape issuance.Inserter/Inserter uses for its own periodic scan.
 type Inserter interface {
-	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+	InsertMany(ctx context.Context, params []river.InsertManyParams) ([]*rivertype.JobInsertResult, error)
 }
 
 // EnqueueDueChecks enqueues a certforge_monitor_check for every monitor
@@ -35,12 +36,19 @@ func EnqueueDueChecks(ctx context.Context, store *Store, ins Inserter, limit int
 	if err != nil {
 		return 0, err
 	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	params := make([]river.InsertManyParams, len(ids))
+	for i, id := range ids {
+		params[i] = river.InsertManyParams{Args: CheckArgs{MonitorID: id}}
+	}
+	results, err := ins.InsertMany(ctx, params)
+	if err != nil {
+		return 0, err
+	}
 	n := 0
-	for _, id := range ids {
-		res, err := ins.Insert(ctx, CheckArgs{MonitorID: id}, nil)
-		if err != nil {
-			return n, err
-		}
+	for _, res := range results {
 		if !res.UniqueSkippedAsDuplicate {
 			n++
 		}
@@ -114,7 +122,22 @@ func (w *CheckWorker) Timeout(*river.Job[CheckArgs]) time.Duration { return chec
 
 // Work implements river.Worker.
 func (w *CheckWorker) Work(ctx context.Context, job *river.Job[CheckArgs]) error {
-	_, err := w.S.Check(ctx, job.Args.MonitorID)
+	// A check queued before its monitor was deleted or disabled is dropped,
+	// not retried (A11).
+	m, err := w.S.Store.GetByID(ctx, job.Args.MonitorID)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !m.Enabled {
+		return nil
+	}
+	_, err = w.S.Check(ctx, job.Args.MonitorID)
+	if errors.Is(err, ErrNotFound) {
+		return nil // deleted between the read above and Check's own
+	}
 	return err
 }
 

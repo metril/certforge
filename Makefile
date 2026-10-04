@@ -1,9 +1,8 @@
 SHELL := /bin/bash
 GO ?= go
-export GOTOOLCHAIN := local
 SQLC_VERSION := v1.27.0
 OAPI_CODEGEN_VERSION := v2.4.1
-GOLANGCI_LINT_VERSION := v1.61.0
+GOLANGCI_LINT_VERSION := v2.14.0
 SWAGGER_UI_VERSION := 5.17.14
 COMPOSE_TEST := docker compose -p certforge-e2e -f deploy/compose.yaml -f deploy/compose.test.yaml
 COMPOSE_TEST_ABS := docker compose -p certforge-e2e -f $(CURDIR)/deploy/compose.yaml -f $(CURDIR)/deploy/compose.test.yaml
@@ -40,7 +39,7 @@ test-integration:
 	$(GO) test -race -tags integration ./...
 
 lint:
-	$(GO) run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
+	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
 
 # Dev/test KEK. World-readable because the container runs as uid 65532; see docs/configuration.md for production.
 deploy/secrets/kek:

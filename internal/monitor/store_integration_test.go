@@ -4,6 +4,9 @@ package monitor_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -71,5 +74,100 @@ func TestUpdateDoesNotOverwriteConcurrentTransition(t *testing.T) {
 	}
 	if updated.NextCheckAt.Before(before) {
 		t.Fatalf("nextCheckAt after resetting update = %v, want >= %v", updated.NextCheckAt, before)
+	}
+}
+
+// TestTransitionComparesFailureCounter: two transitions from the same read
+// (same state, same counter) cannot both apply.
+func TestTransitionComparesFailureCounter(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	store := &monitor.Store{Pool: pool, Q: sqlcgen.New(pool)}
+	ctx := context.Background()
+	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "m", host: "h.example.test", state: "ok"})
+	now := time.Now()
+	p := monitor.TransitionParams{ID: id, OldState: "ok", NewState: "ok", StateChangedAt: now, CheckedAt: now,
+		NextCheckAt: now.Add(time.Hour), LastError: "refused", ConsecutiveFailures: 1, OldFailures: 0}
+	first, err := store.TransitionState(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.TransitionState(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first || second {
+		t.Fatalf("first won = %v, second won = %v; want true, false", first, second)
+	}
+}
+
+// TestToggleEnabledResetsFailureCounter: disabling or re-enabling a monitor
+// starts its failure count from zero.
+func TestToggleEnabledResetsFailureCounter(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	store := &monitor.Store{Pool: pool, Q: sqlcgen.New(pool)}
+	ctx := context.Background()
+	id := insertMonitor(t, pool, monitorRow{orgID: org, name: "m", host: "h.example.test", state: "ok", failures: 1})
+	count := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, "SELECT consecutive_failures FROM external_monitors WHERE id = $1", id).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	in := monitor.Input{Name: "m", Host: "h.example.test", Port: 443, IntervalSeconds: 3600, Enabled: true}
+	if _, err := store.Update(ctx, org, id, in, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != 1 {
+		t.Fatalf("counter after a no-op update = %d, want 1", got)
+	}
+	in.Enabled = false
+	if _, err := store.Update(ctx, org, id, in, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != 0 {
+		t.Fatalf("counter after disabling = %d, want 0", got)
+	}
+}
+
+// TestCreateCappedConcurrent covers S13: with the org one monitor below its
+// cap, concurrent creates let exactly one through.
+func TestCreateCappedConcurrent(t *testing.T) {
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	store := &monitor.Store{Pool: pool, Q: sqlcgen.New(pool)}
+	ctx := context.Background()
+	const capN = 3
+	for i := 0; i < capN-1; i++ {
+		insertMonitor(t, pool, monitorRow{orgID: org, name: fmt.Sprintf("seed-%d", i), host: "h.example.test", state: "ok"})
+	}
+	const workers = 10
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, errs[i] = store.CreateCapped(ctx, org, monitor.Input{Name: fmt.Sprintf("new-%d", i), Host: "n.example.test", Port: 443, IntervalSeconds: 3600, Enabled: true}, capN)
+		}()
+	}
+	wg.Wait()
+	ok := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, monitor.ErrOverCap):
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if ok != 1 {
+		t.Fatalf("%d creates succeeded, want exactly 1", ok)
+	}
+	if n, err := store.Count(ctx, org); err != nil || n != capN {
+		t.Fatalf("count = %d, %v; want %d", n, err, capN)
 	}
 }

@@ -47,7 +47,7 @@ func newTestEnvOpts(t *testing.T, opts ...func(*api.Deps)) *testEnv {
 	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(key), key))
 	aud := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	sections := settings.DefaultRegistry()
-	if err := authn.RegisterSettings(sections); err != nil {
+	if err := authn.RegisterSettings(sections, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := vault.RegisterSettings(sections); err != nil {

@@ -37,16 +37,11 @@ func (certbot) Import(_ context.Context, fsys fs.FS) ([]ImportedCert, error) {
 	return out, nil
 }
 
-// certbotRoot returns the FS to search: fsys itself, or its letsencrypt
-// subdirectory (an archive of /etc rather than of /etc/letsencrypt itself).
+// certbotRoot returns the FS to search: the shallowest directory within a
+// few levels of fsys that has certbot's archive/ or live/ layout (an archive
+// of /etc, or of a whole filesystem, rather than of /etc/letsencrypt itself).
 func certbotRoot(fsys fs.FS) (fs.FS, bool) {
-	if hasCertbotLayout(fsys) {
-		return fsys, true
-	}
-	if sub, err := fs.Sub(fsys, "letsencrypt"); err == nil && hasCertbotLayout(sub) {
-		return sub, true
-	}
-	return nil, false
+	return findRoot(fsys, hasCertbotLayout)
 }
 
 func hasCertbotLayout(fsys fs.FS) bool {

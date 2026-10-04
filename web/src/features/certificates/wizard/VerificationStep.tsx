@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleMinus } from 'lucide-react';
-import { allCertificatesQuery } from '@/api/queries/certificates';
+import { allCertificatesPickerQuery } from '@/api/queries/certificates';
 import { allClientsQuery } from '@/api/queries/clients';
 import { dnsCredentialsQuery, metaSchemasQuery } from '@/api/queries/dns';
 import type { ProviderSchema } from '@/api/types';
@@ -95,7 +95,7 @@ function NotNeededCoverage({ names }: { names: string[] }) {
 
 export function VerificationStep({ orgId, state, dispatch, inherited, privateCa }: Props) {
   const credsQ = useQuery(dnsCredentialsQuery(orgId));
-  const certsQ = useQuery(allCertificatesQuery(orgId));
+  const certsQ = useQuery(allCertificatesPickerQuery(orgId));
   const clientsQ = useQuery(allClientsQuery(orgId));
   const { data: meta } = useQuery(metaSchemasQuery);
   const creds = useMemo(() => credsQ.data ?? [], [credsQ.data]);

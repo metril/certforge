@@ -73,7 +73,14 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected, coll
         dashed: m.synthetic,
       });
     }
-    setLines(out);
+    setLines((prev) =>
+      prev.length === out.length && prev.every((l, i) => {
+        const n = out[i];
+        return l.key === n.key && l.d === n.d && l.cls === n.cls && l.width === n.width && l.opacity === n.opacity && l.dashed === n.dashed;
+      })
+        ? prev
+        : out,
+    );
   }, [containerRef, getEl, kinds, merged, path, selected]);
 
   const schedule = useCallback(() => {

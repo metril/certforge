@@ -687,3 +687,67 @@ func TestRunEndToEnd(t *testing.T) {
 		t.Fatalf("out = %q", out.String())
 	}
 }
+
+// TestNonJSONSuccessIsAnError asserts a 200 whose body the generated client
+// did not decode (no JSON content type) is reported, not dereferenced.
+func TestNonJSONSuccessIsAnError(t *testing.T) {
+	plain := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html>proxy</html>"))
+	}
+	srv := newFakeAPI(t, "tok",
+		route{"GET", "/server-info", plain},
+		route{"GET", "/keys/status", plain},
+		route{"GET", "/orgs", plain},
+	)
+	for name, call := range map[string]func(e *env) int{
+		"status":     func(e *env) int { return cmdStatus(context.Background(), e, nil) },
+		"keysStatus": func(e *env) int { return keysStatus(context.Background(), e, nil) },
+		"orgSlug":    func(e *env) int { return monitorsList(context.Background(), e, nil) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			org := ""
+			if name == "orgSlug" {
+				org = "acme"
+			}
+			e := testEnv(t, srv, "tok", org, false, &out, &errOut)
+			if code := call(e); code != 1 {
+				t.Fatalf("code = %d, want 1", code)
+			}
+			if !strings.Contains(errOut.String(), "non-JSON") {
+				t.Fatalf("stderr = %q", errOut.String())
+			}
+		})
+	}
+}
+
+func TestInsecureURLWarning(t *testing.T) {
+	for raw, warn := range map[string]bool{
+		"https://certforge.example.com": false,
+		"http://127.0.0.1:8080":         false,
+		"http://localhost:8080":         false,
+		"http://[::1]:8080":             false,
+		"http://certforge.example.com":  true,
+		"http://10.0.0.5":               true,
+		"ftp://certforge.example.com":   true,
+	} {
+		if got := insecureURLWarning(raw) != ""; got != warn {
+			t.Errorf("%s: warning = %v, want %v", raw, got, warn)
+		}
+	}
+}
+
+// TestNonJSONAcceptedIsAnError is the 202 counterpart of the JSON200 guard.
+func TestNonJSONAcceptedIsAnError(t *testing.T) {
+	srv := newFakeAPI(t, "tok", route{"POST", "/keys/rewrap", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("<html>proxy</html>"))
+	}})
+	var out, errOut bytes.Buffer
+	e := testEnv(t, srv, "tok", "", false, &out, &errOut)
+	if code := keysRewrap(context.Background(), e, nil); code != 1 || !strings.Contains(errOut.String(), "non-JSON") {
+		t.Fatalf("code = %d, stderr = %q", code, errOut.String())
+	}
+}

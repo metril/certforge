@@ -106,3 +106,36 @@ func TestSettingsSourceNegativeCache(t *testing.T) {
 		t.Fatalf("after negativeCacheTTL: calls %d err %v", calls, err)
 	}
 }
+
+func TestSettingsSourceStaleServeWaitsTTL(t *testing.T) {
+	calls := 0
+	now := time.Now()
+	fail := false
+	src := &SettingsSource{baseURL: "https://cf.example.com", ttl: time.Minute, now: func() time.Time { return now },
+		load: func(context.Context) (Settings, error) {
+			calls++
+			if fail {
+				return Settings{}, errors.New("store unreachable")
+			}
+			return Settings{HeartbeatSeconds: 30}, nil
+		}}
+	if _, err := src.Get(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fail = true
+	now = now.Add(2 * time.Minute)
+	for i := 0; i < 3; i++ {
+		got, err := src.Get(context.Background())
+		if err != nil || got.HeartbeatSeconds != 30 {
+			t.Fatalf("stale serve: %+v %v", got, err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("calls %d, want 2 (one failed retry, then served stale within the TTL)", calls)
+	}
+	now = now.Add(time.Minute)
+	_, _ = src.Get(context.Background())
+	if calls != 3 {
+		t.Fatalf("calls %d, want 3 after the TTL elapsed", calls)
+	}
+}

@@ -71,6 +71,9 @@ func channelsList(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON200 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		var rows [][]string
 		for _, c := range *resp.JSON200 {
 			rows = append(rows, []string{c.Id.String(), c.Name, string(c.Type), fmt.Sprintf("%t", c.Enabled), c.Summary})
@@ -107,6 +110,9 @@ func channelsTest(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON200 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		r := *resp.JSON200
 		errStr := ""
 		if r.Error != nil {
@@ -155,6 +161,9 @@ func monitorsList(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON200 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		var rows [][]string
 		for _, m := range *resp.JSON200 {
 			rows = append(rows, monitorRow(m))
@@ -195,6 +204,9 @@ func monitorsCheck(ctx context.Context, e *env, args []string) int {
 		return fail(e.stderr, err)
 	}
 	if !e.json {
+		if resp.JSON200 == nil {
+			return fail(e.stderr, errNonJSON)
+		}
 		writeTable(e.stdout, []string{"ID", "NAME", "HOST", "PORT", "STATE"}, [][]string{monitorRow(*resp.JSON200)})
 	}
 	return 0

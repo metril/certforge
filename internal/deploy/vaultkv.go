@@ -159,10 +159,15 @@ func (VaultKV) ParseConfig(raw json.RawMessage) (json.RawMessage, error) {
 	if _, err := renderPath(c.Path, "org", "00000000-0000-0000-0000-000000000000", "name"); err != nil {
 		return nil, &delivery.FieldError{Field: "config.path", Msg: err.Error()}
 	}
-	for field, v := range map[string]string{"fullchain": c.Keys.Fullchain, "cert": c.Keys.Cert, "chain": c.Keys.Chain, "key": c.Keys.Key} {
-		if !keyNameRe.MatchString(v) {
-			return nil, &delivery.FieldError{Field: "config.keys." + field, Msg: "must match ^[A-Za-z0-9._-]{1,128}$"}
+	seen := map[string]string{}
+	for _, f := range []struct{ field, v string }{{"fullchain", c.Keys.Fullchain}, {"cert", c.Keys.Cert}, {"chain", c.Keys.Chain}, {"key", c.Keys.Key}} {
+		if !keyNameRe.MatchString(f.v) {
+			return nil, &delivery.FieldError{Field: "config.keys." + f.field, Msg: "must match ^[A-Za-z0-9._-]{1,128}$"}
 		}
+		if other, dup := seen[f.v]; dup {
+			return nil, &delivery.FieldError{Field: "config.keys." + f.field, Msg: fmt.Sprintf("duplicates the %s field name %q", other, f.v)}
+		}
+		seen[f.v] = f.field
 	}
 	return json.Marshal(c)
 }
@@ -218,32 +223,63 @@ func renderPath(tmpl, org, cert, name string) (string, error) {
 	return rendered, nil
 }
 
-// vaultKVData builds the KV v2 document from a target's rendered files:
-// the four canonical PEM names (fullchain.pem, cert.pem, chain.pem,
-// privkey.pem, as render.PEM.Render produces them) map to the field names
-// cfg.Keys holds; any other file (a layout's own output) is written under
-// its own base name. A key-bearing file (Secret) is dropped unless
-// cfg.IncludeKey.
-func vaultKVData(files []render.File, cfg VaultKVConfig) map[string]any {
+// docKey is the document field a file named name is written under: the
+// four canonical PEM names map to cfg.Keys' field names, any other file
+// (a layout's own output) keeps its base name.
+func docKey(name string, cfg VaultKVConfig) string {
+	switch name {
+	case "fullchain.pem":
+		return cfg.Keys.Fullchain
+	case "cert.pem":
+		return cfg.Keys.Cert
+	case "chain.pem":
+		return cfg.Keys.Chain
+	case "privkey.pem":
+		return cfg.Keys.Key
+	}
+	return path.Base(name)
+}
+
+// vaultKVData builds the KV v2 document from a target's rendered files
+// (see docKey for the field names). A key-bearing file (Secret) is dropped
+// unless cfg.IncludeKey. Two files landing on one field is an error: one
+// would silently overwrite the other.
+func vaultKVData(files []render.File, cfg VaultKVConfig) (map[string]any, error) {
 	data := make(map[string]any, len(files))
 	for _, f := range files {
 		if f.Secret && !cfg.IncludeKey {
 			continue
 		}
-		key := path.Base(f.Name)
-		switch f.Name {
-		case "fullchain.pem":
-			key = cfg.Keys.Fullchain
-		case "cert.pem":
-			key = cfg.Keys.Cert
-		case "chain.pem":
-			key = cfg.Keys.Chain
-		case "privkey.pem":
-			key = cfg.Keys.Key
+		key := docKey(f.Name, cfg)
+		if _, dup := data[key]; dup {
+			return nil, fmt.Errorf("deploy: vault-kv: two files would be written to the document field %q; rename a layout file or a keys.* field name", key)
 		}
 		data[key] = string(f.Data)
 	}
-	return data
+	return data, nil
+}
+
+// VaultKVLayoutCheck refuses, at grant time, a layout whose files would
+// land two on one document field of the vault-kv target config raw (the
+// same rule vaultKVData enforces when the document is built).
+func VaultKVLayoutCheck(raw json.RawMessage, files []delivery.OutputFile) error {
+	var cfg VaultKVConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return err
+	}
+	cfg.fillDefaults()
+	seen := map[string]bool{}
+	for _, f := range files {
+		if !cfg.IncludeKey && delivery.NeedsKey([]delivery.OutputFile{f}) {
+			continue
+		}
+		key := docKey(path.Base(f.Path), cfg)
+		if seen[key] {
+			return fmt.Errorf("two files of this layout would be written to the vault-kv document field %q; rename a layout file or a keys.* field name", key)
+		}
+		seen[key] = true
+	}
+	return nil
 }
 
 // Deploy implements targets.Target: it decodes req.Config (already
@@ -265,7 +301,11 @@ func (t VaultKV) Deploy(ctx context.Context, req targets.Request) (targets.Resul
 	if err != nil {
 		return targets.Result{}, err
 	}
-	version, err := client.KVPut(ctx, cfg.Mount, kvPath, vaultKVData(req.Files, cfg), nil)
+	data, err := vaultKVData(req.Files, cfg)
+	if err != nil {
+		return targets.Result{}, err
+	}
+	version, err := client.KVPut(ctx, cfg.Mount, kvPath, data, nil)
 	if err != nil {
 		return targets.Result{}, err
 	}

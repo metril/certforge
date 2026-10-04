@@ -240,3 +240,45 @@ func TestCertbotCorruptKeyNotSilentlyDropped(t *testing.T) {
 		t.Fatal("KeyPKCS8 unexpectedly parses as a valid PKCS#8 key")
 	}
 }
+
+// TestAcmeShRSAAndECCPair: when foo and foo_ecc both exist the ECC
+// certificate keeps "foo_ecc"; a lone _ecc directory still imports as foo.
+func TestAcmeShRSAAndECCPair(t *testing.T) {
+	fsys := fstest.MapFS{
+		"foo/fullchain.cer":     &fstest.MapFile{Data: []byte("rsa")},
+		"foo_ecc/fullchain.cer": &fstest.MapFile{Data: []byte("ecc")},
+		"bar_ecc/fullchain.cer": &fstest.MapFile{Data: []byte("lone")},
+	}
+	items, err := AcmeSh.Import(context.Background(), fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, it := range items {
+		got[it.Name] = string(it.LeafDER)
+	}
+	want := map[string]string{"foo": "rsa", "foo_ecc": "ecc", "bar": "lone"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+// TestDetectDeepRoots: archives of a whole /etc or home tree are recognised a
+// few levels down, but not arbitrarily deep.
+func TestDetectDeepRoots(t *testing.T) {
+	x := &fstest.MapFile{Data: []byte("x")}
+	if !AcmeSh.Detect(fstest.MapFS{"home/u/.acme.sh/example.test/fullchain.cer": x}) {
+		t.Error("acme.sh not detected under home/u/.acme.sh")
+	}
+	if !Certbot.Detect(fstest.MapFS{"etc/letsencrypt/live/example.test/cert.pem": x}) {
+		t.Error("certbot not detected under etc/letsencrypt")
+	}
+	if Certbot.Detect(fstest.MapFS{"a/b/c/d/e/f/g/live/example.test/cert.pem": x}) {
+		t.Error("certbot detected beyond the depth bound")
+	}
+}

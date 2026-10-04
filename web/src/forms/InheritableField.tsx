@@ -3,6 +3,7 @@ import { useRouter } from '@tanstack/react-router';
 import { CircleAlert } from 'lucide-react';
 import type { Source } from '@/api/types';
 import { HelpTip } from '@/components/HelpTip';
+import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -49,7 +50,26 @@ type Props<T> = {
   overrideDisabled?: string;
   /** This field was reset to inherited this session but the save hasn't landed yet, so `inherited` (still the last server response) would show a stale value/badge (review fix round 1, #3). */
   pending?: boolean;
+  /** The reason the caller cannot edit (e.g. a missing permission): every control of the field renders disabled behind a tooltip giving it. */
+  readOnly?: string;
 };
+
+/** Disables every control of an editor at once (native fieldset semantics) and explains why on hover or focus. */
+function ReadOnlyGate({ reason, children }: { reason?: string; children: ReactNode }) {
+  if (!reason) return <>{children}</>;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div tabIndex={0} className="min-w-0 flex-1">
+          <fieldset disabled className="contents">
+            {children}
+          </fieldset>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>{reason}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function SourceBadge({ source, chain }: { source: Source; chain?: ChainEntry[] }) {
   return (
@@ -118,19 +138,19 @@ function FieldSourceBadge({ effective, level, links, entries }: { effective: Sou
   );
 }
 
-export function InheritableField<T>({ id, label, help, value, inherited, chain, builtinState, unset, level, links, initial, display, editor, onChange, error, overrideDisabled, pending }: Props<T>) {
+export function InheritableField<T>({ id, label, help, value, inherited, chain, builtinState, unset, level, links, initial, display, editor, onChange, error, overrideDisabled, pending, readOnly }: Props<T>) {
   const overridden = value !== null && value !== undefined;
   const unknownShipped = (inherited.value === null || inherited.value === undefined) && inherited.source === 'default';
   if (level === 'global') {
     return (
       <BaseField
-        {...{ id, label, help, value, inherited, builtinState, unset, initial, display, editor, onChange, error, overrideDisabled }}
+        {...{ id, label, help, value, inherited, builtinState, unset, initial, display, editor, onChange, error, overrideDisabled, readOnly }}
         unknownShipped={unknownShipped}
       />
     );
   }
   const inheritedUnset = !!unset && (inherited.value === null || inherited.value === undefined) && !(inherited.source === 'default' && builtinState);
-  const switchDisabled = !overridden && !!overrideDisabled;
+  const switchDisabled = !!readOnly || (!overridden && !!overrideDisabled);
   const inheritedView = pending ? (
     <span className="text-ink-muted">Inherited after save</span>
   ) : (inherited.value === null || inherited.value === undefined) && inherited.source === 'default' && builtinState === 'loading' ? (
@@ -155,7 +175,7 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
         <span id={`${id}-label`} className="text-sm font-semibold">
           {label}
         </span>
-        {help && <HelpTip id={help} />}
+        {help && <HelpTip id={help} label={typeof label === 'string' ? label : undefined} />}
         {pending ? (
           <span className="inline-flex h-5 items-center rounded-sm border border-dashed border-border px-1.5 text-xs text-ink-muted">Pending</span>
         ) : !overridden && inheritedUnset ? null : (
@@ -165,23 +185,25 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
           <Label htmlFor={`${id}-override`} className="text-ink-muted">
             Override
           </Label>
-          <Switch
-            id={`${id}-override`}
-            aria-label={`Override ${label}`}
-            checked={overridden}
-            disabled={switchDisabled}
-            onCheckedChange={(on) => onChange(on ? ((inherited.value ?? initial) as T) : null)}
-          />
+          <PermissionTip allowed={!readOnly} action="" reason={readOnly}>
+            <Switch
+              id={`${id}-override`}
+              aria-label={`Override ${label}`}
+              checked={overridden}
+              disabled={switchDisabled}
+              onCheckedChange={(on) => onChange(on ? ((inherited.value ?? initial) as T) : null)}
+            />
+          </PermissionTip>
           <span className="text-sm text-ink-muted" aria-hidden>
-            {overridden ? 'Set here' : switchDisabled ? overrideDisabled : null}
+            {overridden ? 'Set here' : switchDisabled && !readOnly ? overrideDisabled : null}
           </span>
         </div>
       </div>
       {overridden ? (
         <div className="grid gap-1.5">
           <div className="flex flex-wrap items-center gap-3">
-            {editor(value as T, (v) => onChange(v))}
-            <Button type="button" variant="link" size="sm" className="px-0" onClick={() => onChange(null)}>
+            <ReadOnlyGate reason={readOnly}>{editor(value as T, (v) => onChange(v))}</ReadOnlyGate>
+            <Button type="button" variant="link" size="sm" className="px-0" disabled={!!readOnly} onClick={() => onChange(null)}>
               Use {SOURCE_LABEL[next]} value
             </Button>
           </div>
@@ -202,10 +224,10 @@ export function InheritableField<T>({ id, label, help, value, inherited, chain, 
   );
 }
 
-type BaseProps<T> = Pick<Props<T>, 'id' | 'label' | 'help' | 'value' | 'inherited' | 'builtinState' | 'unset' | 'initial' | 'display' | 'editor' | 'onChange' | 'error' | 'overrideDisabled'> & { unknownShipped: boolean };
+type BaseProps<T> = Pick<Props<T>, 'id' | 'label' | 'help' | 'value' | 'inherited' | 'builtinState' | 'unset' | 'initial' | 'display' | 'editor' | 'onChange' | 'error' | 'overrideDisabled' | 'readOnly'> & { unknownShipped: boolean };
 
 /** A Global field: Global is the base layer, so there is no Override switch. The control shows the stored value, else the value CertForge ships with; Reset removes the stored key. */
-function BaseField<T>({ id, label, help, value, inherited, builtinState, unset, initial, display, editor, onChange, error, overrideDisabled, unknownShipped }: BaseProps<T>) {
+function BaseField<T>({ id, label, help, value, inherited, builtinState, unset, initial, display, editor, onChange, error, overrideDisabled, readOnly, unknownShipped }: BaseProps<T>) {
   const stored = value !== null && value !== undefined;
   const shipped = inherited.value as T | null | undefined;
   const hasShipped = shipped !== null && shipped !== undefined;
@@ -213,7 +235,7 @@ function BaseField<T>({ id, label, help, value, inherited, builtinState, unset, 
   void display;
   let body: ReactNode;
   if (shown !== undefined) {
-    body = editor(shown, (v) => onChange(v));
+    body = <ReadOnlyGate reason={readOnly}>{editor(shown, (v) => onChange(v))}</ReadOnlyGate>;
   } else if (unknownShipped && builtinState === 'loading') {
     body = <span role="status" aria-label="Loading default" className="inline-block h-3 w-24 animate-pulse rounded-sm bg-subtle align-middle" />;
   } else if (unknownShipped && builtinState === 'error') {
@@ -224,7 +246,7 @@ function BaseField<T>({ id, label, help, value, inherited, builtinState, unset, 
         {unset ? <UnsetValue unset={unset} /> : <span className="text-sm text-ink-muted">not set</span>}
         {overrideDisabled && <span className="text-sm text-ink-muted">({overrideDisabled})</span>}
         {!overrideDisabled && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(initial)}>
+          <Button type="button" variant="ghost" size="sm" disabled={!!readOnly} onClick={() => onChange(initial)}>
             Set
           </Button>
         )}
@@ -237,7 +259,7 @@ function BaseField<T>({ id, label, help, value, inherited, builtinState, unset, 
         <span id={`${id}-label`} className="text-sm font-semibold">
           {label}
         </span>
-        {help && <HelpTip id={help} />}
+        {help && <HelpTip id={help} label={typeof label === 'string' ? label : undefined} />}
       </div>
       <div className="grid gap-1.5">
         <div className="flex flex-wrap items-center gap-3">
@@ -245,7 +267,7 @@ function BaseField<T>({ id, label, help, value, inherited, builtinState, unset, 
           {stored && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>
+                <Button type="button" variant="ghost" size="sm" disabled={!!readOnly} onClick={() => onChange(null)}>
                   Reset
                 </Button>
               </TooltipTrigger>

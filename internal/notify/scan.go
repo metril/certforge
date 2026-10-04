@@ -122,6 +122,7 @@ func (s *Sources) scanExpiring(ctx context.Context, now time.Time, warningDays i
 	if err != nil {
 		return err
 	}
+	var evs []Event
 	for _, r := range rows {
 		ev := Event{
 			Kind:      "cert.expiring",
@@ -131,10 +132,9 @@ func (s *Sources) scanExpiring(ctx context.Context, now time.Time, warningDays i
 			Details:   map[string]any{"commonName": r.CommonName, "notAfter": r.NotAfter},
 			DedupeKey: "cert.expiring:" + r.VersionID.String(),
 		}
-		if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-			s.log().Error("notify: cert.expiring not emitted", "cert", r.CertID, "err", err)
-		}
+		evs = append(evs, ev)
 	}
+	s.emitBatch(ctx, "cert.expiring", evs)
 	return nil
 }
 
@@ -144,6 +144,7 @@ func (s *Sources) scanExpired(ctx context.Context, since time.Time) error {
 	if err != nil {
 		return err
 	}
+	var evs []Event
 	for _, r := range rows {
 		ev := Event{
 			Kind:      "cert.expired",
@@ -153,10 +154,9 @@ func (s *Sources) scanExpired(ctx context.Context, since time.Time) error {
 			Details:   map[string]any{"commonName": r.CommonName, "notAfter": r.NotAfter},
 			DedupeKey: "cert.expired:" + r.VersionID.String(),
 		}
-		if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-			s.log().Error("notify: cert.expired not emitted", "cert", r.CertID, "err", err)
-		}
+		evs = append(evs, ev)
 	}
+	s.emitBatch(ctx, "cert.expired", evs)
 	return nil
 }
 
@@ -170,6 +170,7 @@ func (s *Sources) scanDeployments(ctx context.Context, since time.Time) error {
 	if err != nil {
 		return err
 	}
+	var evs []Event
 	for _, r := range rows {
 		if r.VersionID == nil {
 			continue // defensive: the query already filters this out
@@ -187,16 +188,16 @@ func (s *Sources) scanDeployments(ctx context.Context, since time.Time) error {
 			Details:   details,
 			DedupeKey: fmt.Sprintf("%s:%s:%s", kind, r.GrantID, r.VersionID),
 		}
-		if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-			s.log().Error("notify: deploy event not emitted", "grant", r.GrantID, "err", err)
-		}
+		evs = append(evs, ev)
 	}
+	s.emitBatch(ctx, "deploy event", evs)
 
 	srows, err := s.Q.ScanFailedServerDeployments(ctx, sqlcgen.ScanFailedServerDeploymentsParams{
 		Since: since, PageLimit: scanLimit})
 	if err != nil {
 		return err
 	}
+	evs = nil
 	for _, r := range srows {
 		if r.VersionID == nil {
 			continue // defensive: the query already filters this out
@@ -215,10 +216,9 @@ func (s *Sources) scanDeployments(ctx context.Context, since time.Time) error {
 			Details:   map[string]any{"target": r.TargetName, "lastError": redactURLs(r.LastError)},
 			DedupeKey: fmt.Sprintf("deploy.failed:%s:%s", r.GrantID, r.VersionID),
 		}
-		if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-			s.log().Error("notify: server deploy event not emitted", "grant", r.GrantID, "err", err)
-		}
+		evs = append(evs, ev)
 	}
+	s.emitBatch(ctx, "server deploy event", evs)
 	return nil
 }
 
@@ -227,6 +227,7 @@ func (s *Sources) scanOffline(ctx context.Context, cutoff, since time.Time) erro
 	if err != nil {
 		return err
 	}
+	var evs []Event
 	for _, r := range rows {
 		if r.LastSeen == nil {
 			continue // defensive: the query already filters this out
@@ -239,10 +240,9 @@ func (s *Sources) scanOffline(ctx context.Context, cutoff, since time.Time) erro
 			Details:   map[string]any{"lastSeen": *r.LastSeen},
 			DedupeKey: fmt.Sprintf("client.offline:%s:%d", r.ClientID, r.LastSeen.Unix()),
 		}
-		if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-			s.log().Error("notify: client.offline not emitted", "client", r.ClientID, "err", err)
-		}
+		evs = append(evs, ev)
 	}
+	s.emitBatch(ctx, "client.offline", evs)
 	return nil
 }
 
@@ -253,6 +253,7 @@ func (s *Sources) scanAgentCertExpiring(ctx context.Context, now, since time.Tim
 	if err != nil {
 		return err
 	}
+	var evs []Event
 	for _, r := range rows {
 		if r.AgentCertNotAfter == nil {
 			continue // defensive: the query already filters this out
@@ -265,9 +266,19 @@ func (s *Sources) scanAgentCertExpiring(ctx context.Context, now, since time.Tim
 			Details:   map[string]any{"notAfter": *r.AgentCertNotAfter},
 			DedupeKey: fmt.Sprintf("agent.cert_expiring:%s:%s", r.ClientID, r.AgentCertSerial),
 		}
-		if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-			s.log().Error("notify: agent.cert_expiring not emitted", "client", r.ClientID, "err", err)
-		}
+		evs = append(evs, ev)
 	}
+	s.emitBatch(ctx, "agent.cert_expiring", evs)
 	return nil
+}
+
+// emitBatch emits a scan's events with one EmitBatch and logs what failed
+// (each remaining event is already committed).
+func (s *Sources) emitBatch(ctx context.Context, what string, evs []Event) {
+	if len(evs) == 0 {
+		return
+	}
+	if _, err := s.Emitter.EmitBatch(ctx, evs); err != nil {
+		s.log().Error("notify: "+what+" not emitted", "err", err)
+	}
 }

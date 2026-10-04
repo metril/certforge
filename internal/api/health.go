@@ -15,6 +15,38 @@ func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
 // probe (Shared contract).
 const vaultCacheTTL = 30 * time.Second
 
+// readyCacheTTL and readyFailCacheTTL are how long /readyz caches its
+// database ping and KEK canary (the canary is one Vault transit decrypt
+// under a Transit KEK, and the endpoint is unauthenticated). A failing
+// result is cached for less, so recovery shows up quickly.
+const (
+	readyCacheTTL     = 5 * time.Second
+	readyFailCacheTTL = time.Second
+)
+
+// readyChecks returns the cached database ping and KEK canary results,
+// probing again once the cached ones are older than their TTL. The canary
+// only runs when the ping succeeds.
+func (s *Server) readyChecks(ctx context.Context) (dbErr, kekErr error) {
+	s.readyMu.Lock()
+	defer s.readyMu.Unlock()
+	ttl := readyCacheTTL
+	if s.readyDB != nil || s.readyKEK != nil {
+		ttl = readyFailCacheTTL
+	}
+	if !s.readyAt.IsZero() && time.Since(s.readyAt) < ttl {
+		return s.readyDB, s.readyKEK
+	}
+	s.readyDB, s.readyKEK = s.d.Pool.Ping(ctx), nil
+	if s.readyDB != nil {
+		s.d.Log.Warn("readyz: database ping failed", "err", s.readyDB)
+	} else if s.readyKEK = s.d.Settings.VerifyCanary(ctx); s.readyKEK != nil {
+		s.d.Log.Warn("readyz: KEK canary failed", "err", s.readyKEK)
+	}
+	s.readyAt = time.Now()
+	return s.readyDB, s.readyKEK
+}
+
 // readyz checks the database, the KEK canary and, when configured, Vault
 // reachability. Details are logged, not returned, because the endpoint is
 // unauthenticated.
@@ -23,12 +55,10 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	checks := map[string]string{"database": "ok", "kek": "ok"}
 	ready := true
-	if err := s.d.Pool.Ping(ctx); err != nil {
-		s.d.Log.Warn("readyz: database ping failed", "err", err)
+	if dbErr, kekErr := s.readyChecks(ctx); dbErr != nil {
 		checks["database"], checks["kek"] = "failed", "unknown"
 		ready = false
-	} else if err := s.d.Settings.VerifyCanary(ctx); err != nil {
-		s.d.Log.Warn("readyz: KEK canary failed", "err", err)
+	} else if kekErr != nil {
 		checks["kek"] = "failed"
 		ready = false
 	}

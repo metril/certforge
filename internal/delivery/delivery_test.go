@@ -144,6 +144,7 @@ func TestValidateFilesFormats(t *testing.T) {
 		"alias on pem":    {{Path: "/a.pem", Format: "pem", Parts: []string{"cert"}, Mode: "0644", Alias: "x"}},
 		"alias on p12":    {{Path: "/a.p12", Format: "p12", Mode: "0600", Alias: "x"}},
 		"bad alias":       {{Path: "/a.jks", Format: "jks", Mode: "0600", Alias: "bad alias!"}},
+		"reserved alias":  {{Path: "/a.jks", Format: "jks", Mode: "0600", Alias: "Extra-1"}},
 	}
 	for name, files := range invalid {
 		var fe *FieldError

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useBlocker } from '@tanstack/react-router';
+import { toast } from 'sonner';
 import { CopyField } from '@/components/CopyField';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
@@ -12,6 +14,17 @@ export function OneTimeSecretDialog({ token, name, onDone }: { token: string | n
   useEffect(() => {
     if (!token) setStored(false);
   }, [token]);
+  // The key is shown once and lives only in this component's parent: a route
+  // change or a tab close before it is acknowledged would lose it.
+  const guarding = token !== null && !stored;
+  useBlocker({
+    shouldBlockFn: () => {
+      if (guarding) toast.error('Mark the API key as stored before leaving; it is shown only once.');
+      return guarding;
+    },
+    disabled: !guarding,
+    enableBeforeUnload: guarding,
+  });
   const block = (e: Event) => {
     if (!stored) e.preventDefault();
   };

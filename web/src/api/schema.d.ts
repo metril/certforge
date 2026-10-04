@@ -779,6 +779,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/certificates/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview summary across orgs
+         * @description Like getCertificateOverview, over every org where the caller has certs:read. 403 when there is none.
+         */
+        get: operations["getAllCertificateOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/certificates/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Overview summary
+         * @description Needs certs:read. Status counts plus one brief per non-revoked certificate that is expired, pending, failed, has a recorded failure, expires within 90 days or renews within 7 days, or may be waiting on manual DNS. Capped at 2000 briefs (truncated).
+         */
+        get: operations["getCertificateOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/certificates": {
         parameters: {
             query?: never;
@@ -951,7 +994,7 @@ export interface paths {
         put?: never;
         /**
          * Add an uploaded version to an unmanaged certificate
-         * @description Needs certs:write. 409 when the certificate is managed. Recorded as certificate.version_uploaded in the audit log.
+         * @description Needs certs:write. 409 when the certificate is managed. 422 when the leaf is not valid yet, or expires before the current version unless allowOlder is true. Recorded as certificate.version_uploaded in the audit log.
          */
         post: operations["uploadCertificateVersion"];
         delete?: never;
@@ -2238,6 +2281,11 @@ export interface components {
             /** @description Name */
             name: string;
             /**
+             * Format: int64
+             * @description Clients at this site; deleting the site detaches them.
+             */
+            clientCount: number;
+            /**
              * Format: date-time
              * @description Creation time.
              */
@@ -2486,7 +2534,7 @@ export interface components {
             kekId: string;
             /**
              * Format: uri
-             * @description Vault address in use; present only when kind is vault-transit.
+             * @description Vault address in use; present only when kind is vault-transit and the caller holds global settings write.
              */
             vaultAddress?: string;
             /** @description Previous KEKs still configured to decrypt old data. */
@@ -2500,6 +2548,8 @@ export interface components {
         SetupStatus: {
             /** @description True until POST /setup/complete succeeds. */
             needsSetup: boolean;
+            /** @description True when the server was started with a setup token, which POST /setup/complete must then carry in setupToken. */
+            tokenRequired: boolean;
         };
         /** @description First-run wizard input. */
         SetupRequest: {
@@ -2514,6 +2564,11 @@ export interface components {
             orgSlug: string;
             /** @description Public URL of this CertForge instance, for example https://certs.example.com. */
             baseUrl: string;
+            /**
+             * Format: password
+             * @description The server's setup token (CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE). Required only when status.tokenRequired is true; a missing or wrong token gives 401.
+             */
+            setupToken?: string;
         };
         /**
          * @description CA preset code; custom takes any directory URL.
@@ -3125,6 +3180,73 @@ export interface components {
             /** @description Cursor for the next page; null on the last page. */
             nextCursor?: string | null;
         };
+        /** @description The few fields of a certificate the Overview needs. */
+        CertificateBrief: {
+            /**
+             * Format: uuid
+             * @description Certificate id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /** @description Certificate name. */
+            name: string;
+            /**
+             * @description Certificate status.
+             * @enum {string}
+             */
+            status: "pending" | "active" | "failed" | "expired" | "revoked";
+            /**
+             * Format: date-time
+             * @description Current version start; null when none.
+             */
+            notBefore?: string | null;
+            /**
+             * Format: date-time
+             * @description Current version expiry; null when none.
+             */
+            notAfter?: string | null;
+            /**
+             * Format: date-time
+             * @description When the next renewal is due.
+             */
+            nextRenewAt?: string | null;
+            /** @description Consecutive failed attempts. */
+            failureCount: number;
+            /** @description First line of the last error */
+            lastErrorLine?: string | null;
+            /** @description Waiting on manual DNS (the effective rules use manual-dns). */
+            manualDns: boolean;
+            /** @description Cached ARI window */
+            ariWindow?: components["schemas"]["AriWindow"] | null;
+        };
+        /** @description Overview numbers and the certificates that need a look. */
+        CertificateOverview: {
+            /** @description Certificates per status over the whole scope. */
+            counts: {
+                /** @description Active certificates. */
+                active: number;
+                /** @description Pending certificates. */
+                pending: number;
+                /** @description Failed certificates. */
+                failed: number;
+                /** @description Expired certificates. */
+                expired: number;
+                /** @description Revoked certificates. */
+                revoked: number;
+                /** @description All certificates. */
+                total: number;
+            };
+            /** @description Briefs of the certificates that need a look. */
+            items: components["schemas"]["CertificateBrief"][];
+            /** @description Non-revoked certificates expiring after the 90-day horizon. */
+            beyond: number;
+            /** @description True when more than 2000 certificates qualified and items was cut. */
+            truncated: boolean;
+        };
         /** @description One step of an attempt. */
         AttemptStep: {
             /**
@@ -3263,6 +3385,8 @@ export interface components {
             pkcs12Base64?: string;
             /** @description Password for pkcs12Base64; omit if it has none. */
             password?: string;
+            /** @description Accept a leaf that expires before the current version (a rollback). Without it such an upload is a 422 naming allowOlder. */
+            allowOlder?: boolean;
         };
         /**
          * @description Tool whose on-disk layout the archive was detected as.
@@ -3393,6 +3517,8 @@ export interface components {
         UserList: {
             /** @description Users sorted by display name. */
             items: components["schemas"]["UserDetail"][];
+            /** @description True when the caller lacks global users:read: other users show only name, email, status and creation time (issuer, subject, groups and last login are withheld); the caller's own row stays complete. */
+            limited: boolean;
         };
         /** @description Changes to a user. */
         UserUpdate: {
@@ -3477,6 +3603,15 @@ export interface components {
         ApiKeyList: {
             /** @description Keys */
             items: components["schemas"]["ApiKey"][];
+            /** @description The server's key policy, so a creator without settings access can still honour it. */
+            policy: components["schemas"]["ApiKeyPolicy"];
+        };
+        /** @description Limits enforced when an API key is created (Settings, Authentication). */
+        ApiKeyPolicy: {
+            /** @description Longest allowed key lifetime in days; 0 means unlimited */
+            maxLifetimeDays: number;
+            /** @description Most active (not revoked */
+            maxActivePerUser: number;
         };
         /**
          * @description What a binding's subject names.
@@ -3588,6 +3723,21 @@ export interface components {
             checkedAt: string;
             /** @description Hex hash of the last verified row. */
             headHash: string;
+            /**
+             * @description Why the chain failed; null when ok. row_mismatch is a row that does not verify, downgrade a legacy-hash row after the chain was keyed, anchor_missing a keyed chain with no head anchor, anchor_invalid a head anchor whose MAC fails, anchor_mismatch a row at the anchor id that differs from it and tail_truncated a chain that ends before the anchor (newest rows removed).
+             * @enum {string|null}
+             */
+            reason?: "row_mismatch" | "downgrade" | "anchor_missing" | "anchor_invalid" | "anchor_mismatch" | "tail_truncated" | null;
+            /**
+             * Format: int64
+             * @description Id of the last verified row; null when the chain is empty.
+             */
+            headId?: number | null;
+            /**
+             * Format: int64
+             * @description Id the stored head anchor points at; null when there is none.
+             */
+            anchorId?: number | null;
         };
         /**
          * @description pending until the agent enrols with its token; revoked clients are refused.
@@ -6205,6 +6355,56 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAllCertificateOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status counts and the certificates that need a look. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCertificateOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status counts and the certificates that need a look. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };

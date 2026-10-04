@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { makeImportResult, url } from '@/test/fixtures';
+import { makeImportResult, me, url } from '@/test/fixtures';
 import { makeQueryClient } from '@/lib/queryClient';
 import { useImportCertificates } from './imports';
 
@@ -12,7 +12,7 @@ import { useImportCertificates } from './imports';
 // covered separately in imports.multipart.test.ts, which needs a plain node
 // environment — see that file's comment.
 it('create (non-dry-run) invalidates certs', async () => {
-  server.use(http.post(url('/orgs/org-1/certificates/import'), () => HttpResponse.json(makeImportResult({ dryRun: false }))));
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(me)), http.post(url('/orgs/org-1/certificates/import'), () => HttpResponse.json(makeImportResult({ dryRun: false }))));
   const qc = makeQueryClient({ test: true });
   qc.setQueryData(['certs', 'org-1'], []);
   const { result } = renderHook(() => useImportCertificates('org-1'), {

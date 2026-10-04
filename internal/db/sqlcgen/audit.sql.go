@@ -82,9 +82,9 @@ const getAuditEvent = `-- name: GetAuditEvent :one
 SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
        COALESCE(u.display_name, k.name, cl.name, '')::text AS actor_name
 FROM audit_events a
-LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
-LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
-LEFT JOIN clients cl ON a.actor_type = 'agent' AND cl.id::text = a.actor_id
+LEFT JOIN users u ON u.id = CASE WHEN a.actor_type = 'user' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
+LEFT JOIN api_keys k ON k.id = CASE WHEN a.actor_type = 'apikey' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
+LEFT JOIN clients cl ON cl.id = CASE WHEN a.actor_type = 'agent' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
 WHERE a.id = $1::bigint
 `
 
@@ -119,6 +119,17 @@ func (q *Queries) GetAuditEvent(ctx context.Context, id int64) (GetAuditEventRow
 		&i.ActorName,
 	)
 	return i, err
+}
+
+const hasAuditAnchorMarker = `-- name: HasAuditAnchorMarker :one
+SELECT EXISTS (SELECT 1 FROM audit_events WHERE action = 'audit.anchor_initialized')
+`
+
+func (q *Queries) HasAuditAnchorMarker(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, hasAuditAnchorMarker)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const insertAuditEvent = `-- name: InsertAuditEvent :one
@@ -162,6 +173,22 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 	return id, err
 }
 
+const lastAuditEvent = `-- name: LastAuditEvent :one
+SELECT id, hash FROM audit_events ORDER BY id DESC LIMIT 1
+`
+
+type LastAuditEventRow struct {
+	ID   int64  `json:"id"`
+	Hash []byte `json:"hash"`
+}
+
+func (q *Queries) LastAuditEvent(ctx context.Context) (LastAuditEventRow, error) {
+	row := q.db.QueryRow(ctx, lastAuditEvent)
+	var i LastAuditEventRow
+	err := row.Scan(&i.ID, &i.Hash)
+	return i, err
+}
+
 const lastAuditHash = `-- name: LastAuditHash :one
 SELECT hash FROM audit_events ORDER BY id DESC LIMIT 1
 `
@@ -177,9 +204,9 @@ const listAuditEvents = `-- name: ListAuditEvents :many
 SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
        COALESCE(u.display_name, k.name, cl.name, '')::text AS actor_name
 FROM audit_events a
-LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
-LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
-LEFT JOIN clients cl ON a.actor_type = 'agent' AND cl.id::text = a.actor_id
+LEFT JOIN users u ON u.id = CASE WHEN a.actor_type = 'user' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
+LEFT JOIN api_keys k ON k.id = CASE WHEN a.actor_type = 'apikey' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
+LEFT JOIN clients cl ON cl.id = CASE WHEN a.actor_type = 'agent' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
 WHERE (NOT $1::bool OR a.ts >= $2::timestamptz)
   AND (NOT $3::bool OR a.ts < $4::timestamptz)
   AND ($5::text = '' OR a.actor_id = $5::text)

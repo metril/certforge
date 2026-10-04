@@ -28,7 +28,14 @@ type Limiter struct {
 type bucket struct {
 	lim  *rate.Limiter
 	seen time.Time
+	// auditedAt is when a rejection last reported first=true; suppressed
+	// counts rejections since then (see Rejected).
+	auditedAt  time.Time
+	suppressed int
 }
+
+// RejectWindow is how long Rejected stays quiet after reporting a key.
+const RejectWindow = time.Minute
 
 // NewLimiter allows perMinute events per key with the given burst;
 // perMinute <= 0 disables limiting.
@@ -69,6 +76,30 @@ func (l *Limiter) Allow(key string) (bool, time.Duration) {
 		return false, d
 	}
 	return true, 0
+}
+
+// Rejected is called after Allow denies key. It reports first=true for the
+// first rejection per key per RejectWindow, together with the number of
+// rejections suppressed since the previous report, so callers can audit one
+// event per window instead of one per request. It never affects Allow.
+func (l *Limiter) Rejected(key string) (first bool, suppressed int) {
+	if l == nil {
+		return true, 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b := l.buckets[key]
+	if b == nil {
+		return true, 0
+	}
+	now := l.now()
+	if b.auditedAt.IsZero() || now.Sub(b.auditedAt) >= RejectWindow {
+		suppressed = b.suppressed
+		b.auditedAt, b.suppressed = now, 0
+		return true, suppressed
+	}
+	b.suppressed++
+	return false, 0
 }
 
 // evictOldestLocked removes the single least-recently-seen bucket. Callers

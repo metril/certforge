@@ -100,7 +100,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	if err := issuance.RegisterIssuanceSettings(sections); err != nil {
 		return err
 	}
-	if err := authn.RegisterSettings(sections); err != nil {
+	if err := authn.RegisterSettings(sections, cfg.AllowInsecureOIDCIssuer); err != nil {
 		return err
 	}
 	if err := agents.RegisterSettings(sections); err != nil {
@@ -255,7 +255,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	backupSvc := &backup.Service{
 		Pool: pool, Settings: store, Audit: aud, Log: log, Emitter: notifyEmitter,
 		BaseKey: backupBaseKey, KEKID: env.KEKID(),
-		PreviousKEKIDs: previousKEKIDs, AppVersion: version,
+		PreviousKEKIDs: previousKEKIDs, AppVersion: version, SpoolDir: cfg.BackupSpoolDir,
 	}
 	riverClient, err := issuance.NewRiver(pool, issueWorker, ariWorker, issuanceStore, log,
 		agentListener.RegisterRiver, agentSvc.RegisterRiver, keysSvc.RegisterRiver, dispatcher.RegisterRiver,

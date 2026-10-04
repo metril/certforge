@@ -59,6 +59,14 @@ export function ChannelTest({ channel, orgId, dirty, canWrite }: Props) {
     }
   }
 
+  // Clear a stale result once the draft diverges or the saved config changes (not just hide it while dirty).
+  const configKey = JSON.stringify([channel?.config, channel?.events, channel?.minSeverity, channel?.storedSecrets]);
+  const [seen, setSeen] = useState({ dirty, configKey });
+  if (seen.dirty !== dirty || seen.configKey !== configKey) {
+    setSeen({ dirty, configKey });
+    if (result) setResult(null);
+  }
+
   const shown = !dirty && result;
   const meta = shown ? RESULT_META[shown.status] : undefined;
 

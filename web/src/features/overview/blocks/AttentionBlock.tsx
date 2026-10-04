@@ -5,7 +5,7 @@ import { allClientsQuery } from '@/api/queries/clients';
 import { monitorsQuery, useCheckMonitor } from '@/api/queries/monitors';
 import { useRenewCertificates } from '@/api/queries/certificates';
 import { errorMessage } from '@/api/errors';
-import type { Certificate, Client } from '@/api/types';
+import type { CertBrief, Client } from '@/api/types';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -17,8 +17,9 @@ import { renewToastHandlers } from '@/lib/renewToast';
 import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
 import type { Tone } from '@/lib/status';
 import { relDays } from '@/lib/time';
+import { usePendingIds } from '@/lib/usePendingIds';
 import { toast } from 'sonner';
-import { attentionItems, upcomingRenewals, usesManualDns, type AttentionKind } from '../attention';
+import { attentionItems, upcomingRenewals, type AttentionKind } from '../attention';
 import { attentionQueue, clientAttentionItems, type ClientAttentionKind } from '../clientAttention';
 import { monitorAttentionItems, type MonitorAttentionKind } from '../monitorAttention';
 import { CertRow } from './CertRow';
@@ -43,7 +44,7 @@ const MONITOR_KIND: Record<MonitorAttentionKind, { tone: Tone; label: string }> 
 
 /** Block 2: everything that wants a look (attention queue, manual-DNS cards,
  * client and monitor rows) with the next 7 days of renewals underneath. */
-export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: number }) {
+export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number }) {
   const org = useOrg();
   const allOrgs = useAllOrgs();
   const slugOf = useOrgSlugOf();
@@ -57,7 +58,18 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
   const monitors = useQuery({ ...monitorsQuery(org.id), enabled: canMonitors });
   const checkMonitor = useCheckMonitor(org.id);
   const renew = useRenewCertificates(org.id);
-  const slug = (c: Certificate) => (allOrgs ? slugOf(c.orgId) : org.slug);
+  const checking = usePendingIds();
+  const renewing = usePendingIds();
+  // Toast from the promise: with parallel rows only the latest mutation's
+  // per-call callbacks fire, so an earlier row's result would be lost.
+  const renewRow = (id: string, name: string) => {
+    const h = renewToastHandlers(name);
+    return renew.mutateAsync([id]).then(h.onSuccess, (e: unknown) => {
+      h.onError(e);
+      throw e;
+    });
+  };
+  const slug = (c: CertBrief) => (allOrgs ? slugOf(c.orgId) : org.slug);
   const items = attentionItems(certs, now);
   const others = items.filter((i) => i.kind !== 'manual-dns');
   // Controller ruling: a card is mounted for every non-revoked,
@@ -66,7 +78,7 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
   // on TXT records must show, not just a first-issuance `pending` one.
   // The `manual-dns` *attention item* stays `pending`-only, so the count
   // doesn't double-count a cert this section already surfaces its own way.
-  const manualDnsCerts = certs.filter((c) => c.status !== 'revoked' && c.status !== 'expired' && usesManualDns(c));
+  const manualDnsCerts = certs.filter((c) => c.status !== 'revoked' && c.status !== 'expired' && c.manualDns);
   const clientItems = clientAttentionItems(clients.data?.items ?? [], now);
   const monitorItems = canMonitors ? monitorAttentionItems(monitors.data ?? []) : [];
   const queue = attentionQueue(others, clientItems, monitorItems);
@@ -129,8 +141,8 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={!canCheck || checkMonitor.isPending}
-                            onClick={() => checkMonitor.mutate(m.id, { onError: (e) => toast.error(errorMessage(e)) })}
+                            disabled={!canCheck || checking.isPending(m.id)}
+                            onClick={() => void checking.track(m.id, checkMonitor.mutateAsync(m.id).catch((e: unknown) => { toast.error(errorMessage(e)); throw e; }))}
                           >
                             Check now
                           </Button>
@@ -150,7 +162,7 @@ export function AttentionBlock({ certs, now }: { certs: Certificate[]; now: numb
                     </Link>
                     <span className="truncate text-ink-muted">{i.cause}</span>
                     {!allOrgs && can(me, 'certs:issue', org.id) && (
-                      <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate([i.cert.id], renewToastHandlers(i.cert.name))}>
+                      <Button size="sm" variant="outline" disabled={renewing.isPending(i.cert.id)} onClick={() => void renewing.track(i.cert.id, renewRow(i.cert.id, i.cert.name))}>
                         Renew now
                       </Button>
                     )}

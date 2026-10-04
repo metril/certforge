@@ -40,6 +40,7 @@ type fakeServer struct {
 
 	mu         sync.Mutex
 	bundle     string // trust bundle returned by enrol and renew
+	agentURL   string // non-empty: AgentURL returned by enrol instead of the listener's
 	renewals   int
 	reports    []agentproto.Report
 	heartbeats int
@@ -98,9 +99,15 @@ func newFakeServer(t *testing.T) *fakeServer {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		if cert := sign(w, req.CSR); cert != nil {
 			var bundle string
-			f.with(func() { bundle = f.bundle })
+			agentURL := f.srv.URL
+			f.with(func() {
+				bundle = f.bundle
+				if f.agentURL != "" {
+					agentURL = f.agentURL
+				}
+			})
 			_ = json.NewEncoder(w).Encode(agentproto.EnrollResponse{Certificate: string(agentca.CertPEM(cert.Raw)),
-				TrustBundle: bundle, AgentURL: f.srv.URL, ClientID: f.clientID})
+				TrustBundle: bundle, AgentURL: agentURL, ClientID: f.clientID})
 		}
 	})
 	mux.HandleFunc("POST /agent/v1/renew", func(w http.ResponseWriter, r *http.Request) {
@@ -265,5 +272,33 @@ func TestStatusOutput(t *testing.T) {
 	buf.Reset()
 	if err := Status(&buf, dir, time.Now()); err != nil || !strings.Contains(buf.String(), f.clientID.String()) || !strings.Contains(buf.String(), "Revision:") {
 		t.Fatalf("status %s %v", buf.String(), err)
+	}
+}
+
+func TestEnrollRejectsNonHTTPSAgentURL(t *testing.T) {
+	f := newFakeServer(t)
+	f.with(func() { f.agentURL = "http://evil.example" })
+	dir := filepath.Join(t.TempDir(), "data")
+	if _, err := Enroll(context.Background(), dir, f.token(t), facts); err == nil || !strings.Contains(err.Error(), "not https") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "state.json")); err == nil {
+		t.Fatal("state.json written for a rejected enrolment")
+	}
+}
+
+func TestLoadIdentityRejectsNonHTTPSAgentURL(t *testing.T) {
+	f := newFakeServer(t)
+	dir := t.TempDir()
+	id, err := Enroll(context.Background(), dir, f.token(t), facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id.State.AgentURL = "http://evil.example"
+	if err := id.SaveState(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadIdentity(dir); err == nil || !strings.Contains(err.Error(), "not https") {
+		t.Fatalf("err = %v", err)
 	}
 }

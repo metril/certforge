@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/metril/certforge/internal/api"
+	"github.com/metril/certforge/internal/audit"
 )
 
 type auditPage struct {
@@ -72,6 +73,25 @@ func TestAuditList(t *testing.T) {
 	}
 	getAudit(t, e, e.client, "cursor=garbage", http.StatusBadRequest)
 	getAudit(t, e, e.client, "limit=0", http.StatusUnprocessableEntity)
+}
+
+// A system or anonymous actor id is not a UUID; the actor joins must not try
+// to cast it.
+func TestAuditListNonUUIDActor(t *testing.T) {
+	e := newTestEnv(t)
+	e.seedAdminSession()
+	ctx := context.Background()
+	if err := e.deps.Auditor.Record(ctx, audit.Event{Action: "job.run", ResourceType: "job", ActorType: "system", ActorID: "system"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.deps.Auditor.Record(ctx, audit.Event{Action: "job.run", ResourceType: "job", ActorType: "user", ActorID: "not-a-uuid"}); err != nil {
+		t.Fatal(err)
+	}
+	p := getAudit(t, e, e.client, "action=job.run", http.StatusOK)
+	if len(p.Items) != 2 || p.Items[0].ActorName != "" || p.Items[1].ActorName != "" {
+		t.Fatalf("non-uuid actors %+v", p)
+	}
+	getAudit(t, e, e.client, "q=system", http.StatusOK)
 }
 
 func TestAuditScope(t *testing.T) {
@@ -223,12 +243,14 @@ func TestAuditVerify(t *testing.T) {
 	csrf, _ := e.seedAdminSession()
 	e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
 	var st struct {
-		Ok         bool   `json:"ok"`
-		Count      int64  `json:"count"`
-		BrokenAtID *int64 `json:"brokenAtId"`
+		Ok         bool    `json:"ok"`
+		Count      int64   `json:"count"`
+		BrokenAtID *int64  `json:"brokenAtId"`
+		Reason     *string `json:"reason"`
+		HeadID     *int64  `json:"headId"`
 	}
 	_, body := e.do(http.MethodGet, "/api/v1/audit/verify", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
-	if json.Unmarshal(body, &st) != nil || !st.Ok || st.Count < 1 || st.BrokenAtID != nil {
+	if json.Unmarshal(body, &st) != nil || !st.Ok || st.Count < 1 || st.BrokenAtID != nil || st.Reason != nil || st.HeadID == nil {
 		t.Fatalf("verify %s", body)
 	}
 	for _, stmt := range []string{
@@ -241,7 +263,7 @@ func TestAuditVerify(t *testing.T) {
 		}
 	}
 	_, body = e.do(http.MethodGet, "/api/v1/audit/verify", nil, "") //nolint:bodyclose // testEnv.doRaw closes the body
-	if json.Unmarshal(body, &st) != nil || st.Ok || st.BrokenAtID == nil {
+	if json.Unmarshal(body, &st) != nil || st.Ok || st.BrokenAtID == nil || st.Reason == nil || *st.Reason != "row_mismatch" {
 		t.Fatalf("tampered verify %s", body)
 	}
 }

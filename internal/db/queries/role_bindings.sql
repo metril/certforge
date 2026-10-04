@@ -30,9 +30,16 @@ FOR UPDATE OF u, rb;
 SELECT rb.id, rb.subject_type, rb.subject, rb.role, rb.org_id, rb.created_at,
        COALESCE(u.display_name, k.name, '')::text AS subject_label
 FROM role_bindings rb
-LEFT JOIN users u ON rb.subject_type = 'user' AND u.id::text = rb.subject
-LEFT JOIN api_keys k ON rb.subject_type = 'apikey' AND k.id::text = rb.subject
+-- The subject is text (a user id, key id or OIDC group name): cast it, behind a
+-- CASE that only reaches the cast for a canonical uuid, so the primary-key
+-- indexes on users and api_keys stay usable and a group name cannot raise.
+LEFT JOIN users u ON rb.subject_type = 'user'
+  AND u.id = CASE WHEN rb.subject ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN rb.subject::uuid END
+LEFT JOIN api_keys k ON rb.subject_type = 'apikey'
+  AND k.id = CASE WHEN rb.subject ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN rb.subject::uuid END
 WHERE rb.site_id IS NULL
+  AND (sqlc.narg(org_id)::uuid IS NULL OR rb.org_id = sqlc.narg(org_id))
+  AND (sqlc.narg(subject_type)::text IS NULL OR rb.subject_type = sqlc.narg(subject_type))
 ORDER BY rb.created_at, rb.id;
 
 -- name: InsertRoleBinding :one

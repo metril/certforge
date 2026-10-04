@@ -1,10 +1,19 @@
 package challenge
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net"
+	"net/netip"
+	"net/url"
+	"regexp"
 	"sort"
 	"strings"
+	"time"
+
+	"github.com/metril/certforge/internal/notify/httpx"
 )
 
 // Unchanged is the write-only sentinel: on update, a secret field with this
@@ -88,6 +97,34 @@ func CanonicalizeStored(code string, cfg map[string]string) map[string]string {
 	}
 	out, err := canonicalize(e, cfg)
 	if err != nil {
+		return cfg
+	}
+	return dropRetired(e, out, false)
+}
+
+// dropRetired returns cfg without keys the provider schema no longer defines
+// (a schema regeneration can retire a field that older stored credentials
+// still carry). Only stored config goes through here; API input keeps being
+// rejected with ErrUnknownField. With warn, one line per dropped key names the
+// provider and key, never the value.
+func dropRetired(e *entry, cfg map[string]string, warn bool) map[string]string {
+	var out map[string]string
+	for k := range cfg {
+		if _, known := e.secret[k]; known {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string, len(cfg))
+			for k2, v := range cfg {
+				out[k2] = v
+			}
+		}
+		delete(out, k)
+		if warn {
+			slog.Warn("dropping stored DNS credential key the provider schema no longer defines", "provider", e.meta.Code, "key", k)
+		}
+	}
+	if out == nil {
 		return cfg
 	}
 	return out
@@ -174,6 +211,7 @@ func MergeUpdate(code string, oldPublic, oldSecret, in map[string]string) (publi
 	if !ok {
 		return nil, nil, nil, false, fmt.Errorf("%w %q", ErrUnknownProvider, code)
 	}
+	oldPublic, oldSecret = dropRetired(e, oldPublic, true), dropRetired(e, oldSecret, true)
 	oldPublic, oldSecret = CanonicalizeStored(code, oldPublic), CanonicalizeStored(code, oldSecret)
 	resolved := make(map[string]string, len(in))
 	for k, v := range in {
@@ -181,7 +219,12 @@ func MergeUpdate(code string, oldPublic, oldSecret, in map[string]string) (publi
 			if e.secret[k] {
 				reusedSecret = true
 			}
-			if old, ok := oldSecret[k]; ok {
+			// oldSecret is canonical; an alias key must look up its canonical name.
+			ck := k
+			if c, isAlias := e.aliasOf[k]; isAlias {
+				ck = c
+			}
+			if old, ok := oldSecret[ck]; ok {
 				resolved[k] = old
 			}
 			continue
@@ -230,4 +273,128 @@ func SecretKeys(secret map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// isURLField reports whether a schema property names a URL, endpoint or
+// network host. The provider schemas carry no format marker, so this goes by
+// the property name: a _URL, _ENDPOINT, _HOST, _HOSTNAME, _ADDRESS or
+// _NAMESERVER suffix, or _BASE_URL / _API_BASE in the name.
+func isURLField(name string) bool {
+	for _, suf := range []string{"_URL", "_ENDPOINT", "_HOST", "_HOSTNAME", "_ADDRESS", "_NAMESERVER", "_API_BASE"} {
+		if strings.HasSuffix(name, suf) {
+			return true
+		}
+	}
+	return strings.Contains(name, "_BASE_URL")
+}
+
+// regionAlias matches the symbolic OVH endpoint names (ovh-eu, kimsufi-ca,
+// ...) that an _ENDPOINT field accepts instead of a URL.
+var regionAlias = regexp.MustCompile(`^(ovh|kimsufi|soyoustart|runabove)-[a-z]{2}$`)
+
+// HostResolver resolves a hostname to its addresses; *net.Resolver
+// satisfies it. Injectable so tests need no real DNS.
+type HostResolver interface {
+	LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error)
+}
+
+// resolveTimeout bounds the save-time lookup of one credential field.
+const resolveTimeout = 3 * time.Second
+
+// metadataNames are well-known cloud-metadata hostnames, refused by name
+// whatever they resolve to.
+var metadataNames = map[string]bool{
+	"metadata.google.internal": true, "metadata": true, "instance-data": true,
+	"instance-data.ec2.internal": true, "metadata.azure.internal": true, "metadata.tencentyun.com": true,
+}
+
+// CheckURLFields runs every URL- or host-typed field of cfg through the
+// notifier URL policy (httpx.CheckURL) and then resolves its hostname and
+// classifies every resolved address the same way, so a credential cannot
+// point the server at a loopback, link-local or cloud-metadata address, by
+// literal or by name (lego providers dial with their own HTTP clients, so
+// the dial-time check httpx applies is not available). allowLoopback is the
+// notifications section's allowLoopbackUrls; the metadata addresses and
+// names stay blocked regardless. A hostname that does not resolve is
+// refused. Empty values and the Unchanged sentinel are skipped, as are
+// unknown fields (SplitConfig rejects those). A value without a scheme is
+// checked as the host of https://<value>; the symbolic OVH region names
+// ("ovh-eu") are skipped. r nil uses net.DefaultResolver. The error names the
+// first offending field (sorted order). The check runs at save time only.
+func CheckURLFields(ctx context.Context, code string, cfg map[string]string, allowLoopback bool, r HostResolver) error {
+	e, ok := lookupEntry(code)
+	if !ok {
+		return nil
+	}
+	if r == nil {
+		r = net.DefaultResolver
+	}
+	// An alias key is checked under its canonical name (isURLField goes by name).
+	if c, err := canonicalize(e, cfg); err == nil {
+		cfg = c
+	}
+	keys := make([]string, 0, len(cfg))
+	for k := range cfg {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := strings.TrimSpace(cfg[k])
+		if _, known := e.secret[k]; !known || !isURLField(k) || v == "" || v == Unchanged {
+			continue
+		}
+		if regionAlias.MatchString(v) {
+			continue
+		}
+		if !strings.Contains(v, "://") {
+			// A bare host or host:port is checked as the host of an https URL.
+			v = "https://" + v
+		}
+		if err := httpx.CheckURL(v, allowLoopback); err != nil {
+			return fmt.Errorf("%s: %w", k, err)
+		}
+		u, _ := url.Parse(v) // CheckURL parsed it
+		if err := checkResolved(ctx, u.Hostname(), allowLoopback, r); err != nil {
+			return fmt.Errorf("%s: %w", k, err)
+		}
+	}
+	return nil
+}
+
+// CheckURLResolved applies the notifier SSRF policy to one URL: the URL
+// check itself, then a resolution of its hostname with every address checked
+// (r nil = system DNS).
+func CheckURLResolved(ctx context.Context, rawURL string, allowLoopback bool, r HostResolver) error {
+	if err := httpx.CheckURL(rawURL, allowLoopback); err != nil {
+		return err
+	}
+	if r == nil {
+		r = net.DefaultResolver
+	}
+	u, _ := url.Parse(rawURL) // CheckURL parsed it
+	return checkResolved(ctx, u.Hostname(), allowLoopback, r)
+}
+
+// checkResolved refuses a metadata name, an unresolvable name, and a name
+// with any resolved address the policy blocks. A literal IP was already
+// classified by CheckURL.
+func checkResolved(ctx context.Context, host string, allowLoopback bool, r HostResolver) error {
+	if _, err := netip.ParseAddr(host); err == nil {
+		return nil
+	}
+	if metadataNames[strings.ToLower(strings.TrimSuffix(host, "."))] {
+		return fmt.Errorf("host %q is a cloud-metadata name and is not allowed", host)
+	}
+	ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
+	defer cancel()
+	addrs, err := r.LookupNetIP(ctx, "ip", host)
+	if err != nil || len(addrs) == 0 {
+		return fmt.Errorf("host %q could not be resolved; the address must resolve when it is saved", host)
+	}
+	for _, a := range addrs {
+		if err := httpx.CheckHost(a.String(), allowLoopback); err != nil {
+			return fmt.Errorf("host %q resolves to %s, which is not allowed", host, a)
+		}
+	}
+	return nil
 }

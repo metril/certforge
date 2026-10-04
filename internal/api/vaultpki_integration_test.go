@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -132,5 +133,36 @@ func TestVaultPKICACreateInvalidConfig(t *testing.T) {
 	wantStatus(t, err, http.StatusUnprocessableEntity)
 	if !strings.Contains(err.Error(), "role") {
 		t.Fatalf("err = %v, want it to mention role", err)
+	}
+}
+
+// B2: changing a vaultpki CA's mount or role is a 409 once it has an issued
+// live version; ttl and name stay editable.
+func TestVaultPKICAMountRoleLockedWhileInUse(t *testing.T) {
+	f := newAPIFixture(t)
+	ca := selfSignedTestCA(t, "vault issuing")
+	fv := fakeVaultPKI(t, encodeCertPEMLocal(ca))
+	f.setVaultSettings(t, `{"address":"`+fv.URL+`","authMethod":"token","token":"t1"}`)
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "Vault", Type: ptrT(gen.Vaultpki), Config: ptrT(map[string]interface{}{"role": "myrole"}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.(gen.CreateCa201JSONResponse).Id
+	c, v := f.issuedCert(t, "vault-in-use")
+	_ = c
+	if _, err := f.pool.Exec(context.Background(), `UPDATE certificate_versions SET ca_id = $1 WHERE id = $2`, id, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	update := func(cfg map[string]interface{}) error {
+		_, err := f.srv.UpdateCa(f.as("admin"), gen.UpdateCaRequestObject{OrgId: f.org, Id: id, Body: &gen.CAInput{
+			Name: "Vault", Type: ptrT(gen.Vaultpki), Config: &cfg}})
+		return err
+	}
+	wantStatus(t, update(map[string]interface{}{"role": "otherrole"}), http.StatusConflict)
+	wantStatus(t, update(map[string]interface{}{"role": "myrole", "mount": "pki2"}), http.StatusConflict)
+	if err := update(map[string]interface{}{"role": "myrole", "ttl": "2160h"}); err != nil {
+		t.Fatalf("ttl-only change: %v", err)
 	}
 }

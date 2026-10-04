@@ -92,6 +92,29 @@ it('expands a drift row from the URL with expected against installed files', asy
   await waitFor(() => expect(calls).toEqual(['redeploy g-2']));
 });
 
+it('keeps every in-flight redeploy disabled until its own request settles', async () => {
+  const hold: Record<string, () => void> = {};
+  server.use(
+    http.post(url('/orgs/org-1/grants/:id/redeploy'), async ({ params }) => {
+      await new Promise<void>((r) => { hold[params.id as string] = r; });
+      return HttpResponse.json(grants.find((g) => g.id === params.id));
+    }),
+  );
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  const btn = (n: string) => screen.getByRole('button', { name: `Redeploy ${n}` });
+  await user.click(btn('www'));
+  await user.click(btn('mail'));
+  await waitFor(() => expect(Object.keys(hold)).toHaveLength(2));
+  expect(btn('www')).toBeDisabled();
+  expect(btn('mail')).toBeDisabled();
+  hold['g-3']!();
+  await waitFor(() => expect(btn('mail')).toBeEnabled());
+  expect(btn('www')).toBeDisabled();
+  hold['g-1']!();
+  await waitFor(() => expect(btn('www')).toBeEnabled());
+});
+
 it('shows the agent error of a failed deployment and toggles rows through the URL', async () => {
   const { user, router } = renderRoute('/o/acme/clients/cl-1/certificates');
   await findLoadedTable();
@@ -253,4 +276,15 @@ it('either target saved as agent is pickable', async () => {
   expect(opt).not.toHaveAttribute('aria-disabled', 'true');
   await user.click(opt);
   expect(within(sheet).getByRole('combobox', { name: 'Deploy target' })).toHaveTextContent(targetEitherAgent.name);
+});
+
+it('shows a dash with a permission tooltip for layout and target without delivery:read', async () => {
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'none' as never, orgId: org.id }]))),
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () => HttpResponse.json({ items: [makeGrant({ layoutId: 'l-1', deployTargetId: 't-1' })] })),
+  );
+  renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  expect(screen.queryByText('…')).not.toBeInTheDocument();
+  expect(screen.getAllByText('—').length).toBeGreaterThan(0);
 });

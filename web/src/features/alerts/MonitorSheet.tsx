@@ -5,7 +5,7 @@ import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
-import { allCertificatesQuery } from '@/api/queries/certificates';
+import { allCertificatesPickerQuery } from '@/api/queries/certificates';
 import { useCheckMonitor, useCreateMonitor, useDeleteMonitor, useUpdateMonitor } from '@/api/queries/monitors';
 import type { Monitor, MonitorInput } from '@/api/types';
 import { Combobox, type ComboOption } from '@/components/Combobox';
@@ -27,6 +27,7 @@ import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { ExpiryChip } from './ExpiryChip';
 import { MonitorStateChip } from './MonitorStateChip';
+import { ReadOnlyNotice } from './ReadOnlyNotice';
 
 // A minimal schema, shaped only enough for fieldErrorFromMessage's own
 // per-field name matching (Field.error below, not a SchemaForm) — this
@@ -49,13 +50,13 @@ function fieldErrors(es: ErrorSchema | null): Record<string, string> {
   return out;
 }
 
-type Draft = { name: string; host: string; port: number; sni: string; intervalSeconds: number; expectedCertificateId: string | null; enabled: boolean };
+type Draft = { name: string; host: string; port: string; sni: string; intervalSeconds: number; expectedCertificateId: string | null; enabled: boolean };
 
 function initialDraft(monitor?: Monitor): Draft {
   return {
     name: monitor?.name ?? '',
     host: monitor?.host ?? '',
-    port: monitor?.port ?? 443,
+    port: String(monitor?.port ?? 443),
     sni: monitor?.sni ?? '',
     intervalSeconds: monitor?.intervalSeconds ?? 3600,
     expectedCertificateId: monitor?.expectedCertificateId ?? null,
@@ -67,7 +68,7 @@ function toInput(d: Draft): MonitorInput {
   return {
     name: d.name,
     host: d.host,
-    port: d.port,
+    port: Number(d.port),
     sni: d.sni.trim() === '' ? null : d.sni,
     intervalSeconds: d.intervalSeconds,
     expectedCertificateId: d.expectedCertificateId,
@@ -79,7 +80,7 @@ function toInput(d: Draft): MonitorInput {
  * contracts, Monitor operations: changing host, port, sni or the expected
  * certificate does). */
 function targetChanged(monitor: Monitor, d: Draft): boolean {
-  return monitor.host !== d.host || monitor.port !== d.port || (monitor.sni ?? '') !== d.sni || monitor.expectedCertificateId !== d.expectedCertificateId;
+  return monitor.host !== d.host || monitor.port !== Number(d.port) || (monitor.sni ?? '') !== d.sni || monitor.expectedCertificateId !== d.expectedCertificateId;
 }
 
 type Props = { orgId: string; open: boolean; monitor?: Monitor; onOpenChange: (open: boolean) => void };
@@ -88,7 +89,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
-  const { data: allCerts = [] } = useQuery(allCertificatesQuery(orgId));
+  const { data: allCerts = [] } = useQuery(allCertificatesPickerQuery(orgId));
   const [draft, setDraft] = useState<Draft>(() => initialDraft(monitor));
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,6 +104,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   const canWrite = can(me, 'alerts:write', orgId);
   const nameOk = draft.name.trim() !== '';
   const hostOk = draft.host.trim() !== '';
+  const portOk = /^\d+$/.test(draft.port.trim()) && Number(draft.port) >= 1 && Number(draft.port) <= 65535;
   const presetSelected = INTERVALS.some((i) => i.value === draft.intervalSeconds);
 
   const certOptions: ComboOption[] = [
@@ -113,7 +115,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   async function submit() {
     setSubmitted(true);
     setServerErrors({});
-    if (!nameOk || !hostOk) return;
+    if (!nameOk || !hostOk || !portOk) return;
     setSaving(true);
     try {
       const input = toInput(draft);
@@ -166,12 +168,13 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
           )}
         </SheetHeader>
         <div className="grid gap-5 px-4">
+          {!canWrite && <ReadOnlyNotice reason="Needs the alerts:write permission" />}
           {monitor?.lastCheckedAt && (
             <div className="grid gap-2 rounded-md border border-border p-3">
               <span className="text-sm font-semibold">Last check</span>
               <div className="grid gap-1.5 text-sm">
                 <span className="flex items-center gap-1.5">
-                  <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} />
+                  <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
                   <span className="text-xs text-ink-muted">{relTime(monitor.lastCheckedAt)}</span>
                 </span>
                 {monitor.lastFingerprint && (
@@ -213,6 +216,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 value={draft.name}
                 onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                 placeholder="edge"
+                disabled={!canWrite}
               />
             </Field>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr]">
@@ -223,16 +227,18 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                   value={draft.host}
                   onChange={(e) => setDraft((d) => ({ ...d, host: e.target.value }))}
                   placeholder="edge.example.com"
+                  disabled={!canWrite}
                 />
               </Field>
-              <Field id="monitor-port" label="Port" error={serverErrors.port}>
+              <Field id="monitor-port" label="Port" error={(submitted && !portOk ? 'Port must be 1-65535' : null) ?? serverErrors.port}>
                 <Input
                   id="monitor-port"
                   type="number"
                   min={1}
                   max={65535}
                   value={draft.port}
-                  onChange={(e) => setDraft((d) => ({ ...d, port: Number(e.target.value) }))}
+                  onChange={(e) => setDraft((d) => ({ ...d, port: e.target.value }))}
+                  disabled={!canWrite}
                 />
               </Field>
             </div>
@@ -243,7 +249,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                   aria-label="Check interval"
                   value={presetSelected ? String(draft.intervalSeconds) : ''}
                   onChange={(v) => setDraft((d) => ({ ...d, intervalSeconds: Number(v) }))}
-                  options={INTERVAL_OPTIONS}
+                  options={INTERVAL_OPTIONS.map((o) => ({ ...o, disabled: !canWrite, hint: !canWrite ? 'Needs the alerts:write permission' : undefined }))}
                 />
                 {!presetSelected && <span className="text-xs text-ink-muted">Currently {fmtInterval(draft.intervalSeconds)}</span>}
               </div>
@@ -252,6 +258,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
               id="monitor-enabled"
               label="Enabled"
               checked={draft.enabled}
+              disabled={!canWrite}
               onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
             />
             <FormSection
@@ -267,6 +274,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 value={draft.sni}
                 placeholder={draft.host || 'host'}
                 onChange={(e) => setDraft((d) => ({ ...d, sni: e.target.value }))}
+                disabled={!canWrite}
               />
             </Field>
             <Field id="monitor-expected" label="Expected certificate" help="monitor.expected" error={serverErrors.expectedCertificateId}>
@@ -278,6 +286,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
                 options={certOptions}
                 placeholder="Any CertForge certificate"
                 emptyText="No certificate matches."
+                disabled={!canWrite}
               />
             </Field>
             </FormSection>

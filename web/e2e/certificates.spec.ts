@@ -37,7 +37,7 @@ test('upload PEM', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Upload certificate' })).toBeVisible();
   await page.getByLabel('Name', { exact: true }).fill('pw-upload');
   const pem = await readFile(fixture('upload.pem'), 'utf8');
-  await page.getByLabel('Certificate').fill(pem);
+  await page.getByLabel('Certificate', { exact: true }).fill(pem);
   await snap(page, 'upload');
 
   await page.getByRole('button', { name: 'Upload', exact: true }).click();
@@ -54,7 +54,7 @@ test('import dry run', async ({ page }) => {
 
   await page.goto(`/o/${E2E.orgSlug}/certificates/import`);
   await expect(page.getByRole('heading', { name: 'Import certificates' })).toBeVisible();
-  await page.getByLabel('Archive').setInputFiles(fixture('acmesh.zip'));
+  await page.getByLabel('Archive', { exact: true }).setInputFiles(fixture('acmesh.zip'));
   await page.getByRole('combobox', { name: 'CA' }).click();
   await page.getByRole('option', { name: /^Pebble/ }).click();
   await page.getByRole('button', { name: 'Preview' }).click();
@@ -73,8 +73,8 @@ test('screens', async ({ page }) => {
 
   // The wizard's Verification step with rule 1 set to HTTP.
   await page.goto(`/o/${E2E.orgSlug}/certificates/new`);
-  await page.getByLabel('Names').fill('wizard-http.example.test');
-  await page.getByLabel('Names').blur();
+  await page.getByLabel('Names', { exact: true }).fill('wizard-http.example.test');
+  await page.getByLabel('Names', { exact: true }).blur();
   await page.getByRole('button', { name: 'Next' }).click();
   await page.getByRole('radiogroup', { name: 'Rule 1 method' }).getByRole('radio', { name: 'HTTP' }).click();
   await snap(page, 'wizard-http01');
@@ -124,7 +124,7 @@ test('375 px: upload and import', async ({ page }) => {
   // narrow layout, so a region is what's actually there.
   await page.goto(`/o/${E2E.orgSlug}/certificates/import`);
   await expect(page.getByRole('heading', { name: 'Import certificates' })).toBeVisible();
-  await page.getByLabel('Archive').setInputFiles(fixture('acmesh.zip'));
+  await page.getByLabel('Archive', { exact: true }).setInputFiles(fixture('acmesh.zip'));
   await page.getByRole('combobox', { name: 'CA' }).click();
   await page.getByRole('option', { name: /^Pebble/ }).click();
   await page.getByRole('button', { name: 'Preview' }).click();

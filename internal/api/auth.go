@@ -54,6 +54,7 @@ func (s *Server) Login(ctx context.Context, req gen.LoginRequestObject) (gen.Log
 			ActorType: "anonymous", Details: map[string]any{"method": "local"}})
 		return nil, errInvalidCredentials
 	}
+	s.rehashPassword(ctx, admin.ID, *admin.LocalPasswordHash, req.Body.Password)
 	me, err := s.startSession(ctx, admin.ID)
 	if err != nil {
 		return nil, err
@@ -61,6 +62,25 @@ func (s *Server) Login(ctx context.Context, req gen.LoginRequestObject) (gen.Log
 	s.audit(ctx, audit.Event{Action: "session.login", ResourceType: "user", ResourceID: admin.ID.String(),
 		ActorType: authn.KindUser, ActorID: admin.ID.String(), Details: map[string]any{"method": "local"}})
 	return gen.Login200JSONResponse(me), nil
+}
+
+// rehashPassword stores a fresh hash after a successful login when the stored
+// one used other argon2 parameters. Best effort: a busy semaphore or a failed
+// write never fails the login.
+func (s *Server) rehashPassword(ctx context.Context, id uuid.UUID, stored, pw string) {
+	if !authn.NeedsRehash(stored) {
+		return
+	}
+	hash, err := authn.HashPassword(pw)
+	if err == nil {
+		// Compare-and-swap on the hash that was verified: a password reset
+		// that committed during the verify must not be overwritten. Zero rows
+		// means someone changed the password; nothing to do.
+		_, err = s.d.Queries.RehashLocalPassword(ctx, sqlcgen.RehashLocalPasswordParams{ID: id, NewHash: hash, OldHash: stored})
+	}
+	if err != nil {
+		s.d.Log.Warn("password rehash skipped", "err", err)
+	}
 }
 
 // Logout ends the current session.

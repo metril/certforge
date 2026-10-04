@@ -32,7 +32,7 @@
       "IONOS_PROPAGATION_TIMEOUT": {
         "type": "string",
         "title": "IONOS_PROPAGATION_TIMEOUT",
-        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 900)",
         "secret": false,
         "x-group": "additional"
       },

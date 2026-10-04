@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -26,6 +27,49 @@ func apiKeyOut(k sqlcgen.ApiKey, createdByName string) gen.ApiKey {
 		CreatedByName: createdByName, ExpiresAt: k.ExpiresAt, LastUsedAt: k.LastUsedAt, RevokedAt: k.RevokedAt, CreatedAt: k.CreatedAt}
 }
 
+// apiKeyPolicy reads the key limits from the authentication settings; without
+// a settings source or on a read error it falls back to the defaults.
+func (s *Server) apiKeyPolicy(ctx context.Context) authn.AuthSettings {
+	if s.d.AuthSettings != nil {
+		if st, err := s.d.AuthSettings.Get(ctx); err == nil {
+			return st
+		}
+	}
+	return authn.AuthSettings{APIKeyMaxActivePerUser: authn.DefaultAPIKeyMaxActive}
+}
+
+// errAPIKeyCap means the creator already holds the maximum number of active keys.
+var errAPIKeyCap = conflict("you already have the maximum number of active API keys; revoke one first")
+
+// createKeyCapped inserts a key after counting the creator's active keys under
+// a per-user advisory lock, so concurrent creates cannot both pass the cap.
+// max <= 0 means unlimited.
+func (s *Server) createKeyCapped(ctx context.Context, arg sqlcgen.CreateAPIKeyParams, max int) (sqlcgen.ApiKey, error) {
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return sqlcgen.ApiKey{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
+	if max > 0 {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('cf.apikeys:'||$1::text, 0))`, arg.CreatedBy); err != nil {
+			return sqlcgen.ApiKey{}, err
+		}
+		n, err := q.CountActiveAPIKeysByCreator(ctx, arg.CreatedBy)
+		if err != nil {
+			return sqlcgen.ApiKey{}, err
+		}
+		if n >= int64(max) {
+			return sqlcgen.ApiKey{}, errAPIKeyCap
+		}
+	}
+	k, err := q.CreateAPIKey(ctx, arg)
+	if err != nil {
+		return sqlcgen.ApiKey{}, err
+	}
+	return k, tx.Commit(ctx)
+}
+
 // ListApiKeys returns the keys the caller may read.
 func (s *Server) ListApiKeys(ctx context.Context, req gen.ListApiKeysRequestObject) (gen.ListApiKeysResponseObject, error) { //nolint:revive // method name fixed by the listApiKeys operationId
 	p, ok := authn.PrincipalFrom(ctx)
@@ -35,15 +79,12 @@ func (s *Server) ListApiKeys(ctx context.Context, req gen.ListApiKeysRequestObje
 	if req.Params.OrgId != nil && !authz.Can(p, authz.ActionAPIKeysRead, req.Params.OrgId) {
 		return nil, &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "missing permission apikeys:read"}
 	}
-	rows, err := s.d.Queries.ListAPIKeys(ctx)
+	rows, err := s.d.Queries.ListAPIKeys(ctx, req.Params.OrgId)
 	if err != nil {
 		return nil, err
 	}
 	out := []gen.ApiKey{}
 	for _, r := range rows {
-		if req.Params.OrgId != nil && (r.OrgID == nil || *r.OrgID != *req.Params.OrgId) {
-			continue
-		}
 		if !authz.Can(p, authz.ActionAPIKeysRead, r.OrgID) {
 			continue
 		}
@@ -51,7 +92,9 @@ func (s *Server) ListApiKeys(ctx context.Context, req gen.ListApiKeysRequestObje
 			CreatedBy: r.CreatedBy, ExpiresAt: r.ExpiresAt, LastUsedAt: r.LastUsedAt, RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}
 		out = append(out, apiKeyOut(k, r.CreatedByName))
 	}
-	return gen.ListApiKeys200JSONResponse(gen.ApiKeyList{Items: out}), nil
+	pol := s.apiKeyPolicy(ctx)
+	return gen.ListApiKeys200JSONResponse(gen.ApiKeyList{Items: out, Policy: gen.ApiKeyPolicy{
+		MaxLifetimeDays: pol.APIKeyMaxLifetimeDays, MaxActivePerUser: pol.APIKeyMaxActivePerUser}}), nil
 }
 
 // CreateApiKey mints a key whose scopes never exceed the creator's role.
@@ -74,6 +117,15 @@ func (s *Server) CreateApiKey(ctx context.Context, req gen.CreateApiKeyRequestOb
 	if in.ExpiresAt != nil && !in.ExpiresAt.After(time.Now().Add(time.Minute)) {
 		return nil, unprocessable("expiresAt", "expiresAt must be at least a minute in the future")
 	}
+	pol := s.apiKeyPolicy(ctx)
+	if d := pol.APIKeyMaxLifetimeDays; d > 0 {
+		if in.ExpiresAt == nil {
+			return nil, unprocessable("expiresAt", fmt.Sprintf("expiresAt is required: keys may live at most %d days", d))
+		}
+		if in.ExpiresAt.After(time.Now().Add(time.Duration(d) * 24 * time.Hour)) {
+			return nil, unprocessable("expiresAt", fmt.Sprintf("expiresAt must be within %d days from now", d))
+		}
+	}
 	granted := []string{}
 	for _, sc := range in.Scopes {
 		act, ok := authz.ScopeGrant[string(sc)]
@@ -95,8 +147,8 @@ func (s *Server) CreateApiKey(ctx context.Context, req gen.CreateApiKeyRequestOb
 	if err != nil {
 		return nil, err
 	}
-	k, err := s.d.Queries.CreateAPIKey(ctx, sqlcgen.CreateAPIKeyParams{Name: name, Prefix: prefix, SecretHash: hash,
-		Scopes: granted, OrgID: in.OrgId, CreatedBy: p.UserID, ExpiresAt: in.ExpiresAt})
+	k, err := s.createKeyCapped(ctx, sqlcgen.CreateAPIKeyParams{Name: name, Prefix: prefix, SecretHash: hash,
+		Scopes: granted, OrgID: in.OrgId, CreatedBy: p.UserID, ExpiresAt: in.ExpiresAt}, pol.APIKeyMaxActivePerUser)
 	if pgCode(err) == pgUniqueViolation {
 		// The 12-hex prefix collided with an existing key's; regenerate once
 		// and retry rather than fail the request over a ~1-in-2^48 event.
@@ -104,8 +156,8 @@ func (s *Server) CreateApiKey(ctx context.Context, req gen.CreateApiKeyRequestOb
 		if err != nil {
 			return nil, err
 		}
-		k, err = s.d.Queries.CreateAPIKey(ctx, sqlcgen.CreateAPIKeyParams{Name: name, Prefix: prefix, SecretHash: hash,
-			Scopes: granted, OrgID: in.OrgId, CreatedBy: p.UserID, ExpiresAt: in.ExpiresAt})
+		k, err = s.createKeyCapped(ctx, sqlcgen.CreateAPIKeyParams{Name: name, Prefix: prefix, SecretHash: hash,
+			Scopes: granted, OrgID: in.OrgId, CreatedBy: p.UserID, ExpiresAt: in.ExpiresAt}, pol.APIKeyMaxActivePerUser)
 	}
 	if pgCode(err) == pgForeignKeyViolation {
 		return nil, unprocessable("orgId", "no such org")

@@ -4,9 +4,13 @@ package notify_test
 
 import (
 	"context"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/notify"
@@ -261,5 +265,75 @@ func TestEmitSummaryTruncated(t *testing.T) {
 	}
 	if len(summary) != 500 {
 		t.Errorf("stored summary length = %d, want 500", len(summary))
+	}
+}
+
+// matchTracer counts the channel-match queries a pool runs.
+type matchTracer struct{ n atomic.Int32 }
+
+func (m *matchTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, d pgx.TraceQueryStartData) context.Context {
+	if strings.Contains(d.SQL, "notification_channels") && strings.Contains(d.SQL, "all_orgs") {
+		m.n.Add(1)
+	}
+	return ctx
+}
+
+func (m *matchTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+// TestEmitBatch (fix round 2, P6): a duplicate dedupe key is a no-op like
+// Emit; an invalid event and a database-rejected event (a NUL byte in the
+// summary, which Postgres refuses mid-chunk) fail alone while every other
+// event in the chunk commits with its delivery and job; and the channel
+// match runs once per (org, kind, severity), not once per event.
+func TestEmitBatch(t *testing.T) {
+	ctx := context.Background()
+	base, _ := dbtest.New(t)
+	org := dbtest.Org(t, base)
+	insertChannel(t, base, testChannel{orgID: org, name: "all-events"})
+
+	cfg, err := pgxpool.ParseConfig(base.Config().ConnString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := &matchTracer{}
+	cfg.ConnConfig.Tracer = tr
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+
+	ins := &fakeInserter{}
+	e := &notify.Emitter{Pool: pool, River: ins}
+	key := func(s string) string { return s + ":" + uuid.NewString() }
+	a, b, c := newEvent(&org, "cert.issued", key("a")), newEvent(&org, "cert.issued", key("b")), newEvent(&org, "cert.issued", key("c"))
+	nul := newEvent(&org, "cert.issued", key("nul"))
+	nul.Summary = "bad\x00summary"
+	empty := newEvent(&org, "cert.issued", "")
+	evs := []notify.Event{a, a, empty, b, nul, c}
+
+	created, err := e.EmitBatch(ctx, evs)
+	if err == nil {
+		t.Fatal("want the joined errors of the invalid and rejected events")
+	}
+	if created != 3 {
+		t.Fatalf("created = %d, want 3 (a, b, c)", created)
+	}
+	for _, ev := range []notify.Event{a, b, c} {
+		if got := countRows(t, pool, "notification_events", "dedupe_key = $1", ev.DedupeKey); got != 1 {
+			t.Fatalf("%s: event rows = %d, want 1", ev.DedupeKey, got)
+		}
+	}
+	if got := countRows(t, pool, "notification_events", "dedupe_key = $1", nul.DedupeKey); got != 0 {
+		t.Fatalf("rejected event left %d rows", got)
+	}
+	if got := countRows(t, pool, "notification_deliveries", "TRUE"); got != 3 {
+		t.Fatalf("deliveries = %d, want 3", got)
+	}
+	if got := len(ins.channelIDs()); got != 3 {
+		t.Fatalf("jobs enqueued = %d, want 3", got)
+	}
+	if got := tr.n.Load(); got != 1 {
+		t.Fatalf("channel match ran %d times for one (org, kind, severity), want 1", got)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/importer"
 	"github.com/metril/certforge/internal/signer"
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
@@ -143,11 +144,28 @@ func (s *Service) RegisterAccount(ctx context.Context, orgID, caID uuid.UUID, em
 	if err != nil {
 		return Account{}, err
 	}
+	// Checked before registering: the unique (ca_id, email) constraint would
+	// only fire after the CA already holds a new, never-stored account.
+	exists, err := s.Store.q.AccountExistsByEmail(ctx, sqlcgen.AccountExistsByEmailParams{CaID: caID, Email: email})
+	if err != nil {
+		return Account{}, err
+	}
+	if exists {
+		return Account{}, &ConflictError{Msg: "an account with this email already exists for this CA"}
+	}
 	m, err := s.NewRegistrar(ca).Register(ctx, email, eab)
 	if err != nil {
 		return Account{}, err
 	}
-	return s.Store.InsertAccount(ctx, orgID, caID, m)
+	a, err := s.Store.InsertAccount(ctx, orgID, caID, m)
+	if err != nil {
+		// The CA holds an account CertForge could not store; the URI lets the
+		// operator find and deactivate it there.
+		s.logger().Error("account registered at the CA but not stored", "caId", caID, "email", email,
+			"registrationUri", m.RegistrationURI, "error", err)
+		return Account{}, err
+	}
+	return a, nil
 }
 
 // validateWildcardMethods rejects a certificate whose own rules (its Rules

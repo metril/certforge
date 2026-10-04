@@ -90,6 +90,13 @@ func generateKey(kt signer.KeyType) (crypto.Signer, error) {
 	}
 }
 
+// serialSuffix is the first 8 hex digits of serial, zero-padded, so two
+// issuing CAs minted in the same month still get distinct common names.
+func serialSuffix(serial *big.Int) string {
+	h := fmt.Sprintf("%032x", serial)
+	return h[:8]
+}
+
 func pkixName(s Subject) pkix.Name {
 	n := pkix.Name{CommonName: s.CommonName}
 	if s.Organization != "" {
@@ -163,7 +170,7 @@ func issueIntermediate(root *x509.Certificate, rootKey crypto.Signer, cfg Config
 		notAfter = root.NotAfter
 	}
 	name := pkixName(cfg.Subject)
-	name.CommonName = fmt.Sprintf("%s Issuing CA %s", cfg.Subject.CommonName, now.UTC().Format("2006-01"))
+	name.CommonName = fmt.Sprintf("%s Issuing CA %s-%s", cfg.Subject.CommonName, now.UTC().Format("2006-01"), serialSuffix(serial))
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial,
 		Subject:               name,
@@ -192,6 +199,9 @@ func issueIntermediate(root *x509.Certificate, rootKey crypto.Signer, cfg Config
 // key is parsed.
 func Rotate(root *x509.Certificate, rootKeyPKCS8 []byte, cfg Config, now time.Time) (Material, error) {
 	defer clear(rootKeyPKCS8)
+	if !now.Before(root.NotAfter) {
+		return Material{}, errors.New("localca: root certificate has expired")
+	}
 	parsed, err := x509.ParsePKCS8PrivateKey(rootKeyPKCS8)
 	if err != nil {
 		return Material{}, fmt.Errorf("localca: parse root key: %w", err)
@@ -242,6 +252,10 @@ func Import(certPEM, keyPEM string, crl bool, now time.Time) (Material, error) {
 		return Material{}, errors.New("localca: imported key does not match the issuing certificate")
 	}
 
+	if err := checkImportChain(certs); err != nil {
+		return Material{}, err
+	}
+
 	var root *x509.Certificate
 	if n := len(chain); n > 0 {
 		last := chain[n-1]
@@ -250,6 +264,56 @@ func Import(certPEM, keyPEM string, crl bool, now time.Time) (Material, error) {
 		}
 	}
 	return Material{Root: root, Issuing: issuing, IssuingKey: issuingKey, Chain: chain}, nil
+}
+
+// checkImportChain enforces the import policy on certs (issuing first):
+// every certificate's key is RSA >= 2048 or ECDSA P-256/P-384/P-521, no
+// certificate is signed with MD5 or SHA-1 (a self-signed top of the bundle is exempt:
+// its self-signature protects nothing), and each certificate was signed by
+// the next one up (which must itself be a CA).
+func checkImportChain(certs []*x509.Certificate) error {
+	for i, c := range certs {
+		switch pub := c.PublicKey.(type) {
+		case *rsa.PublicKey:
+			if pub.N.BitLen() < 2048 {
+				return fmt.Errorf("localca: %s uses an RSA key shorter than 2048 bits", certLabel(i, c))
+			}
+		case *ecdsa.PublicKey:
+			switch pub.Curve {
+			case elliptic.P256(), elliptic.P384(), elliptic.P521():
+			default:
+				return fmt.Errorf("localca: %s uses an unsupported elliptic curve", certLabel(i, c))
+			}
+		default:
+			return fmt.Errorf("localca: %s uses an unsupported key type", certLabel(i, c))
+		}
+		// Only the top of the bundle may be self-signed; a self-signed
+		// certificate with anything after it has no link to that rest.
+		top := i == len(certs)-1
+		selfSigned := top && bytes.Equal(c.RawIssuer, c.RawSubject) && c.CheckSignatureFrom(c) == nil
+		switch c.SignatureAlgorithm {
+		case x509.MD2WithRSA, x509.MD5WithRSA, x509.SHA1WithRSA, x509.DSAWithSHA1, x509.ECDSAWithSHA1:
+			if !selfSigned {
+				return fmt.Errorf("localca: %s is signed with a weak algorithm (%s)", certLabel(i, c), c.SignatureAlgorithm)
+			}
+		}
+		if selfSigned {
+			continue
+		}
+		if i+1 < len(certs) {
+			if err := c.CheckSignatureFrom(certs[i+1]); err != nil {
+				return fmt.Errorf("localca: %s was not signed by the next certificate in the chain: %w", certLabel(i, c), err)
+			}
+		}
+	}
+	return nil
+}
+
+func certLabel(i int, c *x509.Certificate) string {
+	if i == 0 {
+		return "the issuing certificate"
+	}
+	return fmt.Sprintf("chain certificate %q", c.Subject.CommonName)
 }
 
 // parseCertChain decodes every CERTIFICATE PEM block in s, in order.
@@ -274,12 +338,19 @@ func parseCertChain(s string) ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
-// parsePrivateKeyPEM decodes a single PEM private key block (PKCS#1, SEC1
-// or PKCS#8).
+// parsePrivateKeyPEM decodes the first PEM private key block (PKCS#1, SEC1
+// or PKCS#8), skipping other blocks such as an EC PARAMETERS header.
 func parsePrivateKeyPEM(s string) (any, error) {
-	blk, _ := pem.Decode([]byte(s))
-	if blk == nil || !strings.HasSuffix(blk.Type, "PRIVATE KEY") {
-		return nil, errors.New("localca: no private key PEM block")
+	var blk *pem.Block
+	rest := []byte(s)
+	for {
+		blk, rest = pem.Decode(rest)
+		if blk == nil {
+			return nil, errors.New("localca: no private key PEM block")
+		}
+		if strings.HasSuffix(blk.Type, "PRIVATE KEY") {
+			break
+		}
 	}
 	switch blk.Type {
 	case "RSA PRIVATE KEY":

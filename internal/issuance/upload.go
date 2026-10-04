@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"software.sslmate.com/src/go-pkcs12"
@@ -43,6 +44,9 @@ type UploadInput struct {
 	PrivateKeyPEM  []byte
 	PKCS12         []byte
 	Password       string
+	// AllowOlder lets UploadVersion replace the current version with a leaf
+	// that expires earlier.
+	AllowOlder bool
 }
 
 // ParseUpload decodes in into canonical Issued material and its key type,
@@ -282,6 +286,9 @@ func uploadStatus(iss *signer.Issued) string {
 	return StatusExpired
 }
 
+// MaxCertNameLen is the certificate name limit the API documents (maxLength).
+const MaxCertNameLen = 100
+
 // UploadCertificate stores in as a brand-new unmanaged certificate (R10):
 // CreateExternalCertificate, certstore.Insert, then SetCurrentVersion, all
 // in one transaction (Store.Begin, shared across issuance.Store and
@@ -293,6 +300,13 @@ func uploadStatus(iss *signer.Issued) string {
 // uploads. Audited certificate.upload, then every registered Listener runs
 // (OnVersion), the same as an ordinary issuance.
 func (s *Service) UploadCertificate(ctx context.Context, orgID uuid.UUID, name string, in UploadInput) (Certificate, certstore.Version, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Certificate{}, certstore.Version{}, &ValidationError{"name", "required"}
+	}
+	if utf8.RuneCountInString(name) > MaxCertNameLen {
+		return Certificate{}, certstore.Version{}, &ValidationError{"name", fmt.Sprintf("at most %d characters", MaxCertNameLen)}
+	}
 	iss, keyType, err := ParseUpload(in)
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err
@@ -312,7 +326,7 @@ func (s *Service) UploadCertificate(ctx context.Context, orgID uuid.UUID, name s
 		return Certificate{}, certstore.Version{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	c, err := s.Store.CreateExternalCertificate(ctx, tx, orgID, strings.TrimSpace(name), cn, sans, Defaults{}, false, status, nil)
+	c, err := s.Store.CreateExternalCertificate(ctx, tx, orgID, name, cn, sans, Defaults{}, false, status, nil)
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err
 	}
@@ -368,6 +382,9 @@ func (s *Service) UploadVersion(ctx context.Context, orgID, certID uuid.UUID, in
 	if err != nil {
 		return Certificate{}, certstore.Version{}, err
 	}
+	if iss.NotBefore.After(time.Now()) {
+		return Certificate{}, certstore.Version{}, &ValidationError{"certificatePem", "certificate is not valid yet (notBefore " + iss.NotBefore.UTC().Format(time.RFC3339) + ")"}
+	}
 	status := uploadStatus(iss)
 
 	tx, err := s.Store.Begin(ctx)
@@ -381,6 +398,16 @@ func (s *Service) UploadVersion(ctx context.Context, orgID, certID uuid.UUID, in
 	}
 	if cur.Managed {
 		return Certificate{}, certstore.Version{}, &ConflictError{Msg: "certificate is managed by CertForge; upload a version only for an unmanaged certificate"}
+	}
+	if !in.AllowOlder && cur.CurrentVersionID != nil {
+		old, err := s.Certs.Get(ctx, certID, *cur.CurrentVersionID)
+		if err != nil {
+			return Certificate{}, certstore.Version{}, err
+		}
+		if iss.NotAfter.Before(old.NotAfter) {
+			return Certificate{}, certstore.Version{}, &ValidationError{"allowOlder", "certificate expires " + iss.NotAfter.UTC().Format(time.RFC3339) +
+				", before the current version (" + old.NotAfter.UTC().Format(time.RFC3339) + "); set allowOlder to replace it anyway"}
+		}
 	}
 	if len(iss.PrivateKeyPKCS8) == 0 && s.KeylessGrantHook != nil {
 		needsKey, err := s.KeylessGrantHook(ctx, s.Store.q.WithTx(tx), certID)

@@ -21,6 +21,7 @@ export const help = {
   },
   'login.breakGlass': { text: 'The local admin password, for when single sign-on is unavailable.' },
   'setup.adminPassword': { text: 'Break-glass login for the local admin. Use at least 12 characters.' },
+  'setup.token': { text: 'This server was started with a setup token (CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE). Enter it to claim the server.', learnMore: 'configuration.md#first-run-setup-wizard' },
   'setup.baseUrl': { text: 'The address people and agents use to reach CertForge. Links in notifications use it.' },
   'setup.kek': {
     text: 'CertForge encrypts private keys with a key from its environment. It must load before setup can finish.',
@@ -153,7 +154,7 @@ export const help = {
     learnMore: 'certificates.md#names',
   },
   'cert.ipMarker': {
-    text: 'Phase 1 cannot validate IP names (dns-01 and manual-dns only), so the certificate will fail until HTTP-01 lands.',
+    text: 'IP address names cannot be validated yet: DNS verification cannot prove an IP, so a certificate that lists one is refused.',
     learnMore: 'certificates.md#names',
   },
   // Fix round 1 (review): the list column needs its own key — `cert.names`
@@ -165,6 +166,7 @@ export const help = {
     learnMore: 'certificates.md#unmanaged-certificates',
   },
   'cert.renewUnmanaged': { text: "Managed externally, so CertForge doesn't renew or edit it. Upload a new version instead." },
+  'cert.allowOlder': { text: 'The uploaded certificate expires before the current version. Turn this on to replace it anyway, for example to roll back.' },
   'cert.uploadVersion': { text: 'Becomes the current version. Grants deploy it on their next sync.' },
   'cert.ari': {
     text: "The CA's suggested renewal window. CertForge renews inside it when that is earlier.",

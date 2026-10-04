@@ -12,10 +12,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/crypto/cryptotest"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
 )
 
@@ -414,5 +417,80 @@ func TestMarkCertificateIssuedClearsStaleARIWindow(t *testing.T) {
 	}
 	if got.AriWindowStart != nil || got.AriWindowEnd != nil || got.AriCheckedAt != nil || got.AriRetryAfter != nil {
 		t.Fatalf("stale window survived reissue: %+v", got)
+	}
+}
+
+// queryCounter wraps a DBTX and counts every statement it runs.
+type queryCounter struct {
+	sqlcgen.DBTX
+	mu   sync.Mutex
+	sqls []string
+}
+
+func (c *queryCounter) note(sql string) {
+	c.mu.Lock()
+	c.sqls = append(c.sqls, sql)
+	c.mu.Unlock()
+}
+
+func (c *queryCounter) Exec(ctx context.Context, sql string, a ...interface{}) (pgconn.CommandTag, error) {
+	c.note(sql)
+	return c.DBTX.Exec(ctx, sql, a...)
+}
+
+func (c *queryCounter) Query(ctx context.Context, sql string, a ...interface{}) (pgx.Rows, error) {
+	c.note(sql)
+	return c.DBTX.Query(ctx, sql, a...)
+}
+
+func (c *queryCounter) QueryRow(ctx context.Context, sql string, a ...interface{}) pgx.Row {
+	c.note(sql)
+	return c.DBTX.QueryRow(ctx, sql, a...)
+}
+
+// TestARIPollDueCachesPerRun (fix round 2, P4): several certificates of one
+// org that have ARI off cost a fixed number of queries, not a few per
+// certificate: one due page (with the leaf), org defaults, the CA, and one
+// batched retry bump. No per-certificate version read, and every one gets
+// its ari_retry_after bumped.
+func TestARIPollDueCachesPerRun(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	const n = 3
+	ids := make([]uuid.UUID, n)
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("off-%d.example.test", i)
+		c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+			Name: name, CommonName: name,
+			Rules: []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := newWorker(f, &fakeSigner{issued: issuedFor(t, c.Names(), now0.Add(time.Duration(i)*time.Second))})
+		if err := w.Issue(context.Background(), c.ID); err != nil {
+			t.Fatal(err)
+		}
+		ids[i] = c.ID
+	}
+	qc := &queryCounter{DBTX: f.pool}
+	f.store.q = sqlcgen.New(qc)
+	aw := NewARIPollWorker(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}))
+	aw.NewSigner = func(context.Context, CA) (signer.Signer, error) { return &windowSigner{}, nil }
+	aw.Now = time.Now
+	if err := aw.PollDue(context.Background(), 500); err != nil {
+		t.Fatal(err)
+	}
+	if len(qc.sqls) != 4 {
+		t.Fatalf("PollDue ran %d queries for %d ARI-off certificates, want 4 (due, org defaults, CA, one bump):\n%v", len(qc.sqls), n, qc.sqls)
+	}
+	for _, id := range ids {
+		got, err := f.store.GetCertificate(context.Background(), f.org, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.AriRetryAfter == nil || !got.AriRetryAfter.After(time.Now()) {
+			t.Fatalf("cert %s: ari_retry_after = %v, want a future instant", id, got.AriRetryAfter)
+		}
 	}
 }

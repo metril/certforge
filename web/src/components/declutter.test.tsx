@@ -11,7 +11,7 @@ it('PageHeader renders title, help, actions, tabs nav and filters', () => {
     <PageHeader title="Hooks" help="hook.phase" actions={<button>New</button>} tabs={<a href="#a">A</a>} tabsLabel="Delivery" filters={<input aria-label="Search" />} />,
   );
   expect(screen.getByRole('heading', { name: /Hooks/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Help' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Help/ })).toBeInTheDocument();
   expect(within(screen.getByRole('navigation', { name: 'Delivery' })).getByRole('link', { name: 'A' })).toBeInTheDocument();
 });
 

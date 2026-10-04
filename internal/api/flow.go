@@ -23,7 +23,7 @@ func (s *Server) GetFlow(ctx context.Context, r gen.GetFlowRequestObject) (gen.G
 		CAs: can(authz.ActionCAsRead), Accounts: can(authz.ActionAccountsRead), DNSCreds: can(authz.ActionDNSCredsRead),
 		Delivery: can(authz.ActionDeliveryRead), Clients: can(authz.ActionClientsRead), Alerts: can(authz.ActionAlertsRead),
 	}
-	b := flow.Builder{Q: s.queries(), Issuance: s.d.Issuance.Store, Certs: s.d.Certs}
+	b := flow.Builder{Pool: s.d.Pool, Q: s.queries(), Issuance: s.d.Issuance.Store, Certs: s.d.Certs}
 	g, err := b.Build(ctx, r.OrgId, perms)
 	if err != nil {
 		return nil, err

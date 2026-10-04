@@ -1,6 +1,7 @@
+import userEvent from '@testing-library/user-event';
 import { render, screen } from '@testing-library/react';
 import { createColumnHelper } from '@tanstack/react-table';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { DataTable } from './DataTable';
 
 const col = createColumnHelper<{ id: string; name: string }>();
@@ -17,13 +18,32 @@ const rows = [
 ];
 const cols = [col.display({ id: 'n', header: 'Name', cell: ({ row }) => row.original.name })];
 
-it('marks aria-selected on the rows of a table with a selection, true only on the selected one', () => {
+it('marks only the selected row aria-current', () => {
   render(<DataTable data={rows} columns={cols} getRowId={(r) => r.id} ariaLabel="T" selected={new Set(['2'])} onRowClick={() => {}} />);
-  expect(screen.getByRole('row', { name: 'a' })).toHaveAttribute('aria-selected', 'false');
-  expect(screen.getByRole('row', { name: 'b' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('row', { name: 'a' })).not.toHaveAttribute('aria-current');
+  expect(screen.getByRole('row', { name: 'b' })).toHaveAttribute('aria-current', 'true');
+  for (const r of screen.getAllByRole('row').slice(1)) expect(r).not.toHaveAttribute('aria-selected');
 });
 
-it('omits aria-selected on a clickable table that has no selection', () => {
-  render(<DataTable data={rows} columns={cols} getRowId={(r) => r.id} ariaLabel="T" onRowClick={() => {}} />);
-  for (const r of screen.getAllByRole('row').slice(1)) expect(r).not.toHaveAttribute('aria-selected');
+it('makes rows focusable and opens on Enter when only onRowOpen is passed', async () => {
+  const open = vi.fn();
+  const user = userEvent.setup();
+  render(<DataTable data={rows} columns={cols} getRowId={(r) => r.id} ariaLabel="T" onRowOpen={open} />);
+  screen.getByRole('row', { name: 'a' }).focus();
+  await user.keyboard('{Enter}');
+  expect(open).toHaveBeenCalledWith('1');
+});
+
+it('with only onRowOpen, a row click and Enter open it, but a click on an inner link does not', async () => {
+  const open = vi.fn();
+  const user = userEvent.setup();
+  const linkCols = [col.display({ id: 'n', header: 'Name', cell: ({ row }) => <a href="#x">{row.original.name}</a> })];
+  render(<DataTable data={rows} columns={linkCols} getRowId={(r) => r.id} ariaLabel="T" onRowOpen={open} />);
+  await user.click(screen.getByRole('link', { name: 'a' }));
+  expect(open).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('row', { name: 'a' }));
+  expect(open).toHaveBeenCalledWith('1');
+  screen.getByRole('row', { name: 'b' }).focus();
+  await user.keyboard('{Enter}');
+  expect(open).toHaveBeenCalledWith('2');
 });

@@ -1,6 +1,7 @@
 package issuance
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -113,13 +114,17 @@ func (s *Store) PutOrgDefaults(ctx context.Context, orgID uuid.UUID, d Defaults)
 	if err != nil {
 		return err
 	}
+	storedOrg, err := s.OrgDefaults(ctx, orgID)
+	if err != nil {
+		return err
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
-	if err := s.validateDefaultsTx(ctx, q, orgID, d, g.CAID, false, nil); err != nil {
+	if err := s.validateDefaultsTx(ctx, q, orgID, d, g.CAID, false, nil, &storedOrg); err != nil {
 		return err
 	}
 	b, err := json.Marshal(d)
@@ -163,11 +168,19 @@ func (s *Store) effective(ctx context.Context, orgID uuid.UUID, cert Defaults) (
 	if err != nil {
 		return Effective{}, err
 	}
+	return effectiveWith(ctx, orgID, g, o, cert, s.GetCA)
+}
+
+// effectiveWith is effective's resolution given already-read global and org
+// levels and a CA lookup, so a caller resolving many certificates (the ARI
+// poll) can cache all three instead of re-reading them per certificate.
+func effectiveWith(ctx context.Context, orgID uuid.UUID, g, o, cert Defaults,
+	getCA func(ctx context.Context, orgID, id uuid.UUID) (CA, error)) (Effective, error) {
 	eff := Resolve(g, o, cert)
 	if eff.CAID.Value == nil || eff.AccountID.Value == nil {
 		return eff, nil
 	}
-	ca, err := s.GetCA(ctx, orgID, *eff.CAID.Value)
+	ca, err := getCA(ctx, orgID, *eff.CAID.Value)
 	if err != nil {
 		return Effective{}, err
 	}
@@ -253,10 +266,47 @@ func defaultsReference(g Defaults, id uuid.UUID) bool {
 	return false
 }
 
+// validateRuleShape is the write-time check of one rule set: at most
+// MaxRules rules, each valid, with well-formed resolvers (at most
+// MaxResolvers). Stored sets over the caps still load and run; only a write
+// that changes the set is refused: stored is the set as stored (nil on
+// create), and a set equal to it skips the caps and the resolver check, so
+// an unrelated edit that sends the list back unchanged still saves. It
+// normalizes by index so the stored slice itself is cleared of a stray via
+// (see validateDefaultsShape's note).
+func validateRuleShape(rules, stored []challenge.RuleSpec) error {
+	for i := range rules {
+		rules[i].Normalize()
+		if err := rules[i].Validate(); err != nil {
+			return &ValidationError{"verificationRules", err.Error()}
+		}
+	}
+	if stored != nil && sameRules(rules, stored) {
+		return nil
+	}
+	if len(rules) > MaxRules {
+		return &ValidationError{"verificationRules", fmt.Sprintf("at most %d rules", MaxRules)}
+	}
+	for i := range rules {
+		if err := validateResolvers("verificationRules", rules[i].Resolvers); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sameRules compares two rule sets as stored (JSON, so an empty and a nil
+// field are the same, as omitempty makes them).
+func sameRules(a, b []challenge.RuleSpec) bool {
+	x, errA := json.Marshal(a)
+	y, errB := json.Marshal(b)
+	return errA == nil && errB == nil && bytes.Equal(x, y)
+}
+
 // validateDefaultsShape checks the fields of a Defaults value that do not
 // need a database lookup (used at every level: global, org and certificate
 // overrides).
-func validateDefaultsShape(d Defaults) error {
+func validateDefaultsShape(d Defaults, stored *Defaults) error {
 	if d.KeyType != nil && !d.KeyType.Valid() {
 		return &ValidationError{"keyType", "must be one of rsa2048, rsa3072, rsa4096, ec256, ec384"}
 	}
@@ -273,24 +323,54 @@ func validateDefaultsShape(d Defaults) error {
 	if d.PropagationSeconds != nil && (*d.PropagationSeconds < 0 || *d.PropagationSeconds > 3600) {
 		return &ValidationError{"propagationSeconds", "must be 0..3600"}
 	}
+	var storedRes []string
+	var storedRules []challenge.RuleSpec
+	if stored != nil {
+		if stored.Resolvers != nil {
+			storedRes = *stored.Resolvers
+		}
+		if stored.VerificationRules != nil {
+			storedRules = *stored.VerificationRules
+		}
+	}
 	if d.Resolvers != nil {
-		if err := validateResolvers("resolvers", *d.Resolvers); err != nil {
+		if err := validateResolversUpdate("resolvers", *d.Resolvers, storedRes); err != nil {
 			return err
 		}
 	}
 	if d.VerificationRules != nil {
-		rules := *d.VerificationRules
-		for i := range rules {
-			// Normalize before Validate, and by index (not range's copy),
-			// so a stray via on a non-http-01 rule (say a client that sent
-			// the OpenAPI schema's old "server" default alongside
-			// tls-alpn-01) is cleared in the stored slice itself, not just
-			// accepted.
-			rules[i].Normalize()
-			if err := rules[i].Validate(); err != nil {
-				return &ValidationError{"verificationRules", err.Error()}
-			}
+		if err := validateRuleShape(*d.VerificationRules, storedRules); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func sameCA(a, b *uuid.UUID) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
+// checkMustStaple refuses mustStaple=true on a Defaults value whose effective
+// CA (caID, nil = none known) is private: only ACME CAs honour it. A stored
+// true sent back with an unchanged effective CA (storedCA) is grandfathered,
+// like an over-cap rule list, so an older row still saves; switching the CA
+// to a private one while keeping mustStaple on is refused.
+func checkMustStaple(ctx context.Context, q *sqlcgen.Queries, d Defaults, stored *Defaults, storedCA, caID *uuid.UUID) error {
+	if d.MustStaple == nil || !*d.MustStaple || caID == nil {
+		return nil
+	}
+	if stored != nil && stored.MustStaple != nil && *stored.MustStaple && sameCA(storedCA, caID) {
+		return nil
+	}
+	row, err := q.GetCAByID(ctx, *caID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // the caId check reports a missing CA
+		}
+		return err
+	}
+	if row.Type == CATypeLocalCA || row.Type == CATypeVaultPKI {
+		return &ValidationError{"mustStaple", "only applies to ACME CAs; a private CA does not support OCSP Must-Staple"}
 	}
 	return nil
 }
@@ -314,8 +394,8 @@ func validateDefaultsShape(d Defaults) error {
 // to set, so a certificate whose accountId conflicts with an inherited CA
 // (private or otherwise) is rejected here, inside the write transaction,
 // instead of committing and only failing later on read (EffectiveFor).
-func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults, aboveCAID *uuid.UUID, renaming bool, preLocked map[uuid.UUID]sqlcgen.Client) error {
-	if err := validateDefaultsShape(d); err != nil {
+func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, d Defaults, aboveCAID *uuid.UUID, renaming bool, preLocked map[uuid.UUID]sqlcgen.Client, stored *Defaults) error {
+	if err := validateDefaultsShape(d, stored); err != nil {
 		return err
 	}
 	if d.CAID != nil {
@@ -331,6 +411,17 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 			}
 			return err
 		}
+	}
+	msCA := d.CAID
+	if msCA == nil {
+		msCA = aboveCAID
+	}
+	storedCA := aboveCAID
+	if stored != nil && stored.CAID != nil {
+		storedCA = stored.CAID
+	}
+	if err := checkMustStaple(ctx, q, d, stored, storedCA, msCA); err != nil {
+		return err
 	}
 	if d.AccountID != nil {
 		if _, err := q.LockAccountKeyShare(ctx, *d.AccountID); err != nil {
@@ -371,7 +462,11 @@ func (s *Store) validateDefaultsTx(ctx context.Context, q *sqlcgen.Queries, orgI
 // Callers (the settings write path) should run this before storing the
 // section.
 func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
-	if err := validateDefaultsShape(d); err != nil {
+	storedG, err := s.GlobalDefaults(ctx)
+	if err != nil {
+		return err
+	}
+	if err := validateDefaultsShape(d, &storedG); err != nil {
 		return err
 	}
 	if d.CAID != nil {
@@ -381,6 +476,9 @@ func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
 			}
 			return err
 		}
+	}
+	if err := checkMustStaple(ctx, s.q, d, &storedG, storedG.CAID, d.CAID); err != nil {
+		return err
 	}
 	if d.AccountID != nil {
 		a, err := s.q.GetAccountByID(ctx, *d.AccountID)
@@ -434,7 +532,11 @@ func (s *Store) ValidateGlobalDefaults(ctx context.Context, d Defaults) error {
 // and writes the section through the same transaction, so the two can't
 // interleave into a dangling reference.
 func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defaults) error {
-	if err := validateDefaultsShape(d); err != nil {
+	storedG, err := s.GlobalDefaults(ctx)
+	if err != nil {
+		return err
+	}
+	if err := validateDefaultsShape(d, &storedG); err != nil {
 		return err
 	}
 	q := s.q.WithTx(tx)
@@ -445,6 +547,9 @@ func (s *Store) ValidateGlobalDefaultsTx(ctx context.Context, tx pgx.Tx, d Defau
 			}
 			return err
 		}
+	}
+	if err := checkMustStaple(ctx, q, d, &storedG, storedG.CAID, d.CAID); err != nil {
+		return err
 	}
 	if d.AccountID != nil {
 		if _, err := q.LockAccountKeyShare(ctx, *d.AccountID); err != nil {
@@ -656,7 +761,7 @@ func checkRuleClientCapability(r challenge.RuleSpec, c sqlcgen.Client) error {
 // front avoids the lock-upgrade deadlock two concurrent renames sharing a
 // client would otherwise hit: both holding FOR KEY SHARE and then both
 // trying to upgrade to FOR UPDATE (fix round 2, finding 6).
-func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *CertInput, renaming bool) error {
+func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *CertInput, renaming bool, cur *Certificate) error {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return &ValidationError{"name", "required"}
@@ -669,11 +774,15 @@ func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uui
 	if in.Rules == nil {
 		in.Rules = []challenge.RuleSpec{}
 	}
-	for i := range in.Rules {
-		in.Rules[i].Normalize()
-		if err := in.Rules[i].Validate(); err != nil {
-			return &ValidationError{"verificationRules", err.Error()}
-		}
+	// cur is the stored certificate on update (nil on create): a list equal
+	// to the stored one is grandfathered past the write-time caps.
+	var storedRules []challenge.RuleSpec
+	var storedOver *Defaults
+	if cur != nil {
+		storedRules, storedOver = cur.Rules, &cur.Overrides
+	}
+	if err := validateRuleShape(in.Rules, storedRules); err != nil {
+		return err
 	}
 	// Lock every client either rule set (the certificate's own rules and
 	// its overrides' catch-all rules) references in one combined,
@@ -710,7 +819,7 @@ func (s *Store) prepareCertTx(ctx context.Context, q *sqlcgen.Queries, orgID uui
 	if aboveCAID == nil {
 		aboveCAID = g.CAID
 	}
-	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides, aboveCAID, renaming, clients)
+	return s.validateDefaultsTx(ctx, q, orgID, in.Overrides, aboveCAID, renaming, clients, storedOver)
 }
 
 // CreateCertificate stores a definition, due for issuance now. Runs inside
@@ -722,7 +831,7 @@ func (s *Store) CreateCertificate(ctx context.Context, orgID uuid.UUID, in CertI
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
-	if err := s.prepareCertTx(ctx, q, orgID, &in, false); err != nil {
+	if err := s.prepareCertTx(ctx, q, orgID, &in, false, nil); err != nil {
 		return Certificate{}, err
 	}
 	rules, err := json.Marshal(in.Rules)
@@ -781,7 +890,7 @@ func (s *Store) UpdateCertificate(ctx context.Context, orgID, id uuid.UUID, in C
 	// clients whenever hook is actually going to run and could upgrade one
 	// of the same rows to FOR UPDATE later in this transaction.
 	renaming := hook != nil && strings.TrimSpace(in.Name) != cur.Name
-	if err := s.prepareCertTx(ctx, q, orgID, &in, renaming); err != nil {
+	if err := s.prepareCertTx(ctx, q, orgID, &in, renaming, &cur); err != nil {
 		return Certificate{}, false, err
 	}
 	reissue = !slices.Equal(cur.Names(), append([]string{in.CommonName}, in.SANs...))

@@ -38,6 +38,9 @@ type fakeSMTPOptions struct {
 	// uses this to prove a cancelled ctx unblocks SendMail well before its
 	// configured timeout, not just before the dial.
 	hang bool
+	// failQuit answers QUIT with a 4xx instead of "221", after the message
+	// was accepted.
+	failQuit bool
 }
 
 // fakeSMTPServer is a minimal in-process SMTP server for mail_test.go: it
@@ -174,6 +177,10 @@ func (s *fakeSMTPServer) handle(conn net.Conn) {
 			s.mu.Unlock()
 			_ = tp.PrintfLine("250 OK")
 		case upper == "QUIT":
+			if s.opts.failQuit {
+				_ = tp.PrintfLine("421 shutting down")
+				return
+			}
 			_ = tp.PrintfLine("221 Bye")
 			return
 		default:

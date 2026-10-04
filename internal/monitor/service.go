@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math/rand"
 	"time"
 
@@ -58,6 +57,11 @@ func (s *Service) allowLoopback(ctx context.Context) (bool, error) {
 	}
 	return set.AllowLoopbackURLs, nil
 }
+
+// unreachableAfterFailures is how many consecutive failed checks put a
+// monitor into unreachable; fewer keep its previous state (flap suppression,
+// ADR 0017).
+const unreachableAfterFailures = 2
 
 // badStates are the states monitor.recovered may fire from (Task 9 brief:
 // "recovered fires only from mismatch/expiring/unreachable to ok").
@@ -174,6 +178,16 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 	newState := deriveState(obs, expectedFP, hasExpected, fpKnownInOrg, now)
 	metrics.MonitorChecks.WithLabelValues(newState).Inc()
 
+	// A failed check below the threshold keeps the previous state and only
+	// records the error; any successful observation resets the counter.
+	failures := 0
+	if obs.Err != nil {
+		failures = min(m.ConsecutiveFailures+1, unreachableAfterFailures)
+		if failures < unreachableAfterFailures {
+			newState = m.State
+		}
+	}
+
 	lastFP, lastIssuer, lastNotAfter, lastError := m.LastFingerprint, m.LastIssuer, m.LastNotAfter, ""
 	if obs.Err == nil {
 		lastFP = obs.Fingerprint
@@ -190,26 +204,30 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 	}
 	nextCheckAt := jitteredNextCheck(now, m.IntervalSeconds)
 
-	won, err := s.Store.TransitionState(ctx, TransitionParams{
+	// The event is emitted in the transition's own transaction: a failed
+	// emit rolls the transition back, so the next check retries both.
+	var onWin func(pgx.Tx) error
+	if shouldEmit(m.State, newState) {
+		onWin = func(tx pgx.Tx) error {
+			_, err := s.Emitter.Emit(ctx, tx, buildEvent(m, newState, obs, stateChangedAt, now))
+			return err
+		}
+	}
+	if _, err := s.Store.TransitionStateWith(ctx, TransitionParams{
 		ID: id, OldState: m.State, NewState: newState, StateChangedAt: stateChangedAt, CheckedAt: now,
 		NextCheckAt: nextCheckAt, LastFingerprint: lastFP, LastNotAfter: lastNotAfter, LastIssuer: lastIssuer, LastError: lastError,
-	})
-	if err != nil {
+		ConsecutiveFailures: failures, OldFailures: m.ConsecutiveFailures,
+	}, onWin); err != nil {
 		return Monitor{}, err
-	}
-	if won && shouldEmit(m.State, newState) {
-		s.emit(ctx, m, newState, obs, stateChangedAt)
 	}
 	return s.Store.GetByID(ctx, id)
 }
 
-// emit raises newState's event (task-9 brief: "Event details: host, port,
-// fp, notAfter, issuer, chainError, error"). A failure here is logged by
-// the caller's own river retry (a delivery worker failure never blocks the
-// state write, which has already committed) — Emit itself is best-effort
-// from Check's point of view, matching Sources.scan*'s own
-// "log and continue" convention for every other event source.
-func (s *Service) emit(ctx context.Context, m Monitor, newState string, obs Observation, stateChangedAt time.Time) {
+// buildEvent is the event raised for m's transition into newState.
+//
+// An expiring leaf already past notAfter keeps the state (and kind) expiring
+// but reads "expired" in the summary.
+func buildEvent(m Monitor, newState string, obs Observation, stateChangedAt, now time.Time) notify.Event {
 	kind := monitorEventKind(newState)
 	details := map[string]any{
 		"host": m.Host, "port": m.Port, "fp": obs.Fingerprint, "issuer": obs.Issuer, "chainError": obs.ChainError,
@@ -224,18 +242,14 @@ func (s *Service) emit(ctx context.Context, m Monitor, newState string, obs Obse
 	if newState == "ok" {
 		suffix = "recovered"
 	}
-	ev := notify.Event{
+	word := suffix
+	if newState == "expiring" && !obs.NotAfter.IsZero() && !obs.NotAfter.After(now) {
+		word = "expired"
+	}
+	return notify.Event{
 		Kind: kind, OrgID: &m.OrgID, Resource: notify.Resource{ID: m.ID.String(), Name: m.Name},
-		Summary:   fmt.Sprintf("%s (%s:%d) is %s", m.Name, m.Host, m.Port, suffix),
+		Summary:   fmt.Sprintf("%s (%s:%d) is %s", m.Name, m.Host, m.Port, word),
 		Details:   details,
 		DedupeKey: fmt.Sprintf("monitor.%s:%s:%s:%d", suffix, m.ID, obs.Fingerprint, stateChangedAt.Unix()),
-	}
-	if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-		// Service has no *slog.Logger of its own (the Shared contract's
-		// Service{Store, Emitter, Settings, Now, Dial} does not list one);
-		// slog.Default() matches every other package's own fallback
-		// (deploy.Dispatcher.log(), notify.Service.log()) when no logger is
-		// configured.
-		slog.Default().Error("monitor: event not emitted", "monitor", m.ID, "state", newState, "err", err)
 	}
 }

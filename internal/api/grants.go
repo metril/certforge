@@ -17,6 +17,7 @@ import (
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/deploy"
 )
 
 func deploymentOut(state string, versionID *uuid.UUID, expected, installed []byte, errText string, reportedAt *time.Time, updatedAt time.Time) (gen.Deployment, error) {
@@ -373,6 +374,18 @@ func (s *Server) serverTargetNeedsKey(ctx context.Context, q *sqlcgen.Queries, o
 	return s.d.Targets.NeedsKey(t.Type, t.Config)
 }
 
+// checkVaultKVLayout is B8's grant-time gate: a layout that would write two
+// files to one vault-kv document field is a 422.
+func checkVaultKVLayout(typ string, cfg []byte, files []delivery.OutputFile) error {
+	if typ != deploy.TypeVaultKV || len(files) == 0 {
+		return nil
+	}
+	if err := deploy.VaultKVLayoutCheck(cfg, files); err != nil {
+		return unprocessable("layoutId", err.Error())
+	}
+	return nil
+}
+
 // CreateServerGrant grants a certificate to a server-run deploy target.
 func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantRequestObject) (gen.CreateServerGrantResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionClientsWrite, &r.OrgId); err != nil {
@@ -388,6 +401,20 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.queries().WithTx(tx)
 
+	// Lock order is certificate, then target (a rename holds the certificate
+	// row FOR UPDATE and then locks the target, see deploy's
+	// ResyncCertificateRename). The target is taken FOR UPDATE (not just
+	// LockServerTarget's FOR SHARE) so two concurrent creates or a rename
+	// cannot both pass the vault-kv path-collision check.
+	_, certErr := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: r.Body.CertificateId, OrgID: r.OrgId})
+	if certErr != nil && !errors.Is(certErr, pgx.ErrNoRows) {
+		return nil, certErr
+	}
+	if _, err := q.DeployTargetForUpdate(ctx, sqlcgen.DeployTargetForUpdateParams{ID: r.Id, OrgID: r.OrgId}); errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("deploy target %s", r.Id)
+	} else if err != nil {
+		return nil, err
+	}
 	target, err := q.LockServerTarget(ctx, sqlcgen.LockServerTargetParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("deploy target %s", r.Id)
@@ -397,16 +424,17 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	if target.RunsOn != "server" {
 		return nil, unprocessable("deployTargetId", "this target runs on agents; pick a client")
 	}
-	if _, err := q.LockCertificateForGrant(ctx, sqlcgen.LockCertificateForGrantParams{ID: r.Body.CertificateId, OrgID: r.OrgId}); errors.Is(err, pgx.ErrNoRows) {
+	if certErr != nil {
 		return nil, unprocessable("certificateId", fmt.Sprintf("certificate %s is not in this org", r.Body.CertificateId))
-	} else if err != nil {
-		return nil, err
 	}
 	var layoutFiles []delivery.OutputFile
 	if r.Body.LayoutId != nil {
 		if layoutFiles, err = serverLayoutFiles(ctx, q, r.OrgId, *r.Body.LayoutId); err != nil {
 			return nil, err
 		}
+	}
+	if err := checkVaultKVLayout(target.Type, target.Config, layoutFiles); err != nil {
+		return nil, err
 	}
 	needsKey, err := s.d.Targets.NeedsKey(target.Type, target.Config)
 	if err != nil {
@@ -422,6 +450,9 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	}
 	if err != nil {
 		return nil, err
+	}
+	if err := deploy.CheckServerGrantPaths(ctx, q, r.OrgId, r.Id); err != nil {
+		return nil, mapErr(err)
 	}
 	versionID, err := q.CertificateCurrentVersion(ctx, r.Body.CertificateId)
 	if err != nil {
@@ -494,12 +525,24 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 			return nil, err
 		}
 	}
+	if layoutFiles != nil {
+		t, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: *g.DeployTargetID, OrgID: r.OrgId})
+		if err != nil {
+			return nil, err
+		}
+		if err := checkVaultKVLayout(t.Type, t.Config, layoutFiles); err != nil {
+			return nil, err
+		}
+	}
 	// batch-5 review: the same gate createServerGrant runs — a layout
 	// change can newly need a key even when the target's own includeKey
 	// hasn't, and this PATCH's own caller must hold keys:export too, not
 	// just whoever created the grant.
 	if err := s.requireKeyIfNeeded(ctx, q, r.OrgId, g.CertID, needsKey, layoutFiles); err != nil {
 		return nil, err
+	}
+	if err := deploy.CheckServerGrantPaths(ctx, q, r.OrgId, *g.DeployTargetID); err != nil {
+		return nil, mapErr(err)
 	}
 	if _, err := q.UpdateServerGrantLayout(ctx, sqlcgen.UpdateServerGrantLayoutParams{ID: r.Id, OutputSpecID: layoutID}); err != nil {
 		return nil, err

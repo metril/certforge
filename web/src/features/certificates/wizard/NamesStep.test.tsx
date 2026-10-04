@@ -13,7 +13,7 @@ function H() {
 it('turns a paste into zone-grouped chips with the first name as CN', async () => {
   const { user } = renderUI(<H />);
   await user.click(screen.getByLabelText('Names'));
-  await user.paste('www.example.com, *.example.com api.other.net\n10.0.0.1 bad_name.example.com');
+  await user.paste('www.example.com, *.example.com api.other.net\n10.0.0.1 bad!name.example.com');
   expect(screen.getByTestId('cn')).toHaveTextContent('www.example.com');
   const zone = screen.getByRole('region', { name: 'example.com' });
   expect(within(zone).getByText('DNS only')).toBeInTheDocument();
@@ -68,12 +68,12 @@ it('gives the wildcard marker a tooltip explaining it', async () => {
   expect(await screen.findByText(/only be proven with DNS verification/)).toBeInTheDocument();
 });
 
-it('gives the IP marker a tooltip explaining Phase 1 cannot validate it', async () => {
+it('gives the IP marker a tooltip explaining IP names cannot be validated', async () => {
   const { user } = renderUI(<H />);
   await user.click(screen.getByLabelText('Names'));
   await user.paste('10.0.0.1');
   await user.hover(screen.getByText('IP'));
-  expect(await screen.findByText(/Phase 1 cannot validate IP names \(dns-01 and manual-dns only\)/)).toBeInTheDocument();
+  expect(await screen.findByText(/IP address names cannot be validated yet/)).toBeInTheDocument();
 });
 
 // Fix round 1 (review, Take-now #3): a disabled draggable (the CN chip
@@ -84,11 +84,11 @@ it('gives the IP marker a tooltip explaining Phase 1 cannot validate it', async 
 it('does not leave a disabled chip (the CN, or an invalid name) as a dead tab stop', async () => {
   const { user } = renderUI(<H />);
   await user.click(screen.getByLabelText('Names'));
-  await user.paste('www.example.com bad_name.example.com');
+  await user.paste('www.example.com bad!name.example.com');
   const zone = screen.getByRole('region', { name: 'example.com' });
   const invalid = screen.getByRole('region', { name: 'Invalid' });
   const cnHandle = within(zone).getByText('www.example.com');
-  const invalidHandle = within(invalid).getByText('bad_name.example.com');
+  const invalidHandle = within(invalid).getByText('bad!name.example.com');
   for (const handle of [cnHandle, invalidHandle]) {
     expect(handle).not.toHaveAttribute('tabindex');
     expect(handle).not.toHaveAttribute('role', 'button');

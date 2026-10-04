@@ -199,3 +199,10 @@ func TestUpdateResetsState(t *testing.T) {
 		t.Fatalf("state after port change = %q, want unknown", updated.State)
 	}
 }
+
+// A missing org surfaces as the foreign-key violation and is a 404.
+func TestCreateMonitorMissingOrgIs404(t *testing.T) {
+	f := newMonitorFixture(t)
+	_, err := f.srv.CreateMonitor(f.as("admin"), gen.CreateMonitorRequestObject{OrgId: uuid.New(), Body: monitorInput("ghost", "ghost.example.test")})
+	wantStatus(t, err, http.StatusNotFound)
+}

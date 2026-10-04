@@ -2,7 +2,7 @@
 
 ## External monitors
 
-An external monitor polls a TLS endpoint on a schedule — independent of whether CertForge itself deployed anything there — and raises an event on `monitor.mismatch`, `monitor.unreachable`, `monitor.expiring` or `monitor.recovered` (see [notifications.md](notifications.md)). `POST/GET/PATCH/DELETE /orgs/{orgId}/monitors` needs `alerts:read` (list/get) or `alerts:write` (create/update/delete); at most 500 per org.
+An external monitor polls a TLS endpoint on a schedule — independent of whether CertForge itself deployed anything there — and raises an event on `monitor.mismatch`, `monitor.unreachable`, `monitor.expiring` or `monitor.recovered` (see [notifications.md](notifications.md)). `POST/GET/PATCH/DELETE /orgs/{orgId}/monitors` needs `alerts:read` (list/get) or `alerts:write` (create/update/delete); at most 500 per org. Deleting a certificate that a monitor expects (`expectedCertId`) is refused with 409 naming those monitors; change or delete them first.
 
 Fields (`MonitorInput`):
 
@@ -25,8 +25,8 @@ Editing `host`, `port`, `sni` or `expectedCertificateId` resets `state` to `unkn
 | `unknown` | No check has completed yet (just created, or just edited in a way that resets state — see above). |
 | `ok` | Reachable; the leaf matches `expectedCertificateId`'s current version, or — when unset — the current version of some certificate in the org; and does not expire within 14 days. |
 | `mismatch` | Reachable, but the leaf's fingerprint does not match `expectedCertificateId`'s current version, or — when unset — does not match any certificate's current version in the org. |
-| `expiring` | Reachable and matching (as `ok` defines matching), but the leaf expires within 14 days. |
-| `unreachable` | The dial or TLS handshake failed (refused, timed out, or the host policy rejected it), or no certificate was presented. |
+| `expiring` | Reachable and matching (as `ok` defines matching), but the leaf expires within 14 days, or has already expired (the state stays `expiring`; the UI chip and the event summary say "expired"). |
+| `unreachable` | Two consecutive checks failed (the dial or TLS handshake was refused, timed out or rejected by the host policy, or no certificate was presented). A single failed check keeps the previous state and only records the error. |
 
 State order on a conflict between conditions is `unreachable` > `mismatch` > `expiring` > `ok` — an unreachable host is reported as such even if it happens to also be within its expiry window from the last successful check, and a mismatch is reported ahead of an otherwise-fine expiry. An event fires only on a genuine transition (the new state differs from the old, and the write actually won a race against a concurrent check of the same monitor — see [notifications.md#dedupe](notifications.md#dedupe)); `monitor.recovered` fires only when the *previous* state was `mismatch`, `expiring` or `unreachable` and the new one is `ok` — moving from `unknown` straight to `ok` (a monitor's first-ever successful check) is not itself a "recovery" and raises no event.
 
@@ -72,6 +72,7 @@ Series with a `route` label use chi's own route pattern (`/api/v1/orgs/{orgId}/c
 | `certforge_backup_last_success_timestamp_seconds` | gauge | — | Unix time of the last successful backup; `0` if none has ever completed (Phase 6A Task 12). |
 | `certforge_kek_rewrap_remaining` | gauge | — | Sealed columns still on a non-active KEK, from the most recent rewrap run. |
 | `certforge_build_info` | gauge | `version` | Always `1`; labelled with the running server's version. |
+| `certforge_audit_head_id` | gauge | — | Id of the newest audit event written or verified by this process. Set to the real head at startup (0 only for an empty table). Alert on `resets(max(certforge_audit_head_id > 0)[1d:5m]) > 0` (the `> 0` ignores a restart's brief 0): a drop means the audit table was rolled back or truncated. |
 | `certforge_http_requests_total` | counter | `route`, `method`, `status` | HTTP requests, main listener only. |
 | `certforge_http_request_duration_seconds` | histogram | `route` | HTTP request duration, main listener only. |
 

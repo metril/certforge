@@ -1,9 +1,15 @@
 import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
-import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { useBlocker } from '@tanstack/react-router';
 import { server } from '@/test/server';
 import { authHandlers, me, meWith, org, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
+
+vi.mock('@tanstack/react-router', async (orig) => {
+  const mod = await orig<typeof import('@tanstack/react-router')>();
+  return { ...mod, useBlocker: vi.fn(mod.useBlocker) };
+});
 
 // Task 9: the global-only `issuance` settings section (CAA check + local
 // rate limits) rendered from its own JSON Schema (`issuanceSettingsSchema`,
@@ -201,13 +207,104 @@ it('a non-admin only sees their own organizations', async () => {
   expect(await screen.findAllByRole('option')).toHaveLength(2);
 });
 
-it('switching scope drops unsaved edits instead of carrying them to another organization', async () => {
+it('switching scope with an unsaved draft asks first; Cancel keeps the draft, Discard drops it', async () => {
   mockOrgDefaults();
-  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  const { user, router } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
   await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
   expect(screen.getByRole('button', { name: 'Discard changes' })).toBeInTheDocument();
   await user.click(screen.getByRole('radio', { name: 'Global' }));
+  expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+  expect(router.state.location.search).toMatchObject({ scope: 'org' });
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByRole('switch', { name: 'Override Must-Staple' })).toBeChecked();
+  await user.click(screen.getByRole('radio', { name: 'Global' }));
+  await user.click(await screen.findByRole('button', { name: 'Discard' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
   await user.click(screen.getByRole('radio', { name: 'Organization' }));
   expect(await screen.findByRole('switch', { name: 'Override Must-Staple' })).not.toBeChecked();
   expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull();
+});
+
+// The page's blocker is the one whose beforeunload option is a function of the draft state.
+function unloadWarns() {
+  const opts = vi
+    .mocked(useBlocker)
+    .mock.calls.map((c) => c[0] as { enableBeforeUnload?: unknown })
+    .filter((o) => typeof o.enableBeforeUnload === 'function')
+    .at(-1);
+  return (opts?.enableBeforeUnload as () => boolean)();
+}
+
+it('reload and tab close warn only while a draft is unsaved', async () => {
+  mockOrgDefaults();
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  const toggle = await screen.findByRole('switch', { name: 'Override Must-Staple' });
+  expect(unloadWarns()).toBe(false);
+  await user.click(toggle);
+  expect(unloadWarns()).toBe(true);
+});
+
+it('switching scope with no draft does not ask', async () => {
+  mockOrgDefaults();
+  const { user, router } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  await screen.findByRole('switch', { name: 'Override Must-Staple' });
+  await user.click(screen.getByRole('radio', { name: 'Global' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ scope: 'global' }));
+  expect(screen.queryByText('Discard changes?')).toBeNull();
+});
+
+it('a viewer gets the issuance defaults form read-only: every control disabled, no Reset section', async () => {
+  mockOrgDefaults();
+  server.use(
+    http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-7' }], manyOrgs.slice(0, 8)))),
+    http.get(url('/orgs/:orgId/issuance-defaults'), () => HttpResponse.json({ keyType: 'rsa4096', mustStaple: true, renewPolicy: { mode: 'days', value: 30, useAri: false }, preferredChain: 'X', resolvers: ['1.1.1.1:53'], propagationSeconds: 60 })),
+  );
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-7');
+  const keyType = within(await screen.findByRole('group', { name: 'Key type' }));
+  expect(keyType.getByRole('switch', { name: 'Override Key type' })).toBeDisabled();
+  for (const r of await keyType.findAllByRole('radio')) expect(r).toBeDisabled();
+  expect(await screen.findByLabelText('Days before expiry')).toBeDisabled();
+  expect(screen.getByLabelText('Propagation wait in seconds')).toBeDisabled();
+  expect(screen.getByRole('switch', { name: 'Must-Staple' })).toBeDisabled();
+  expect(screen.getByRole('switch', { name: 'ARI' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: /^Reset section/ })).toBeNull();
+  await user.hover(keyType.getByRole('switch', { name: 'Override Key type' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the certs:write permission');
+});
+
+it('the chain popover link to the other scope asks before dropping a draft', async () => {
+  mockOrgDefaults();
+  const { user, router } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  await user.click(await screen.findByRole('switch', { name: 'Override Must-Staple' }));
+  const keyType = within(screen.getByRole('group', { name: 'Key type' }));
+  await user.click(keyType.getByRole('button', { name: 'Global' }));
+  await user.click(await screen.findByRole('link', { name: 'Global' }));
+  expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+  expect(router.state.location.search).toMatchObject({ scope: 'org' });
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByRole('switch', { name: 'Override Must-Staple' })).toBeChecked();
+});
+
+it('an unsaved Checks and limits edit also asks before a scope switch', async () => {
+  const { user, router } = await openGlobalTab();
+  await user.click(screen.getByRole('switch', { name: 'Check CAA records' }));
+  await user.click(screen.getByRole('radio', { name: 'Organization' }));
+  expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+  expect(router.state.location.search).toMatchObject({ scope: 'global' });
+});
+
+it('Save is disabled with a tooltip while a number field shows an error', async () => {
+  mockOrgDefaults();
+  server.use(http.get(url('/orgs/:orgId/issuance-defaults'), () => HttpResponse.json({ propagationSeconds: 60 })));
+  const { user } = renderRoute('/settings/issuance-defaults?scope=org&org=team-1');
+  const wait = await screen.findByLabelText('Propagation wait in seconds');
+  await user.clear(wait);
+  expect(await screen.findByText(/Enter a whole number/)).toBeInTheDocument();
+  const save = screen.getByRole('button', { name: 'Save org defaults' });
+  expect(save).toBeDisabled();
+  await user.hover(save.parentElement as HTMLElement);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('invalid value');
+  await user.type(wait, '90');
+  await waitFor(() => expect(screen.queryByText(/Enter a whole number/)).toBeNull());
+  expect(screen.getByRole('button', { name: 'Save org defaults' })).toBeEnabled();
 });

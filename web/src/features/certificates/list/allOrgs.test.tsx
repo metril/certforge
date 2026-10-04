@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { makeCert, meWith, org, org2, url } from '@/test/fixtures';
+import { makeCert, meWith, org, org2, overviewOf, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 // Desktop viewport (list.test.tsx's convention): table rows and full nav
@@ -37,8 +37,8 @@ it('lists certificates across orgs, read-only', async () => {
 
 it('hides writes on the All orgs overview even for admins', async () => {
   as([{ role: 'admin', orgId: null }]);
-  server.use(http.get(url('/certificates'), () =>
-    HttpResponse.json({ items: [makeCert({ id: 'c-9', name: 'broken', status: 'failed', failureCount: 2, lastError: 'boom', orgId: org2.id })], nextCursor: null })));
+  server.use(http.get(url('/certificates/summary'), () =>
+    HttpResponse.json(overviewOf([makeCert({ id: 'c-9', name: 'broken', status: 'failed', failureCount: 2, lastError: 'boom', orgId: org2.id })]))));
   renderRoute('/o/all/overview');
   const queue = await screen.findByRole('region', { name: 'Needs attention' });
   expect(await within(queue).findByRole('link', { name: 'broken' })).toHaveAttribute('href', '/o/lab/certificates/c-9/attempts');

@@ -27,7 +27,7 @@ func fromRow(r sqlcgen.ExternalMonitor) Monitor {
 		IntervalSeconds: int(r.IntervalSeconds), ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
 		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
 		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConsecutiveFailures: int(r.ConsecutiveFailures), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
 
@@ -37,7 +37,7 @@ func fromGetRow(r sqlcgen.GetMonitorRow) Monitor {
 		IntervalSeconds: r.IntervalSeconds, ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
 		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
 		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConsecutiveFailures: r.ConsecutiveFailures, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	})
 	m.ExpectedCertificateName = r.ExpectedCertificateName
 	return m
@@ -128,7 +128,40 @@ func (s *Store) FingerprintKnownInOrg(ctx context.Context, orgID uuid.UUID, fp s
 // foreign-key violation on org_id is left to the caller (api.pgCode), the
 // same convention channels.go/delivery.go use.
 func (s *Store) Create(ctx context.Context, orgID uuid.UUID, in Input) (Monitor, error) {
-	r, err := s.Q.CreateMonitor(ctx, sqlcgen.CreateMonitorParams{
+	return s.create(ctx, s.Q, orgID, in)
+}
+
+// CreateCapped is Create under the per-org cap (S13): a per-org advisory
+// transaction lock covers the count and the insert, so
+// concurrent creates cannot go past max. ErrOverCap when the org is full.
+func (s *Store) CreateCapped(ctx context.Context, orgID uuid.UUID, in Input, max int) (Monitor, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return Monitor{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.Q.WithTx(tx)
+	// An advisory lock keyed by the org, not LockOrg's FOR UPDATE, which
+	// would serialize every unrelated child-row insert of the org.
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('cf.monitors:' || $1::text, 0))", orgID); err != nil {
+		return Monitor{}, err
+	}
+	n, err := q.CountMonitorsInOrg(ctx, orgID)
+	if err != nil {
+		return Monitor{}, err
+	}
+	if int(n) >= max {
+		return Monitor{}, ErrOverCap
+	}
+	m, err := s.create(ctx, q, orgID, in)
+	if err != nil {
+		return Monitor{}, err
+	}
+	return m, tx.Commit(ctx)
+}
+
+func (s *Store) create(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in Input) (Monitor, error) {
+	r, err := q.CreateMonitor(ctx, sqlcgen.CreateMonitorParams{
 		OrgID: orgID, Name: in.Name, Host: in.Host, Port: int32(in.Port), Sni: in.SNI,
 		IntervalSeconds: int32(in.IntervalSeconds), ExpectedCertID: in.ExpectedCertID, Enabled: in.Enabled,
 	})
@@ -137,7 +170,7 @@ func (s *Store) Create(ctx context.Context, orgID uuid.UUID, in Input) (Monitor,
 	}
 	m := fromRow(r)
 	if m.ExpectedCertID != nil {
-		if name, err := s.CertificateName(ctx, orgID, *m.ExpectedCertID); err == nil {
+		if name, err := q.CertificateNameInOrg(ctx, sqlcgen.CertificateNameInOrgParams{ID: *m.ExpectedCertID, OrgID: orgID}); err == nil {
 			m.ExpectedCertificateName = &name
 		}
 	}
@@ -197,6 +230,9 @@ type TransitionParams struct {
 	LastFingerprint           string
 	LastNotAfter              *time.Time
 	LastIssuer, LastError     string
+	ConsecutiveFailures       int
+	// OldFailures is the counter the caller read; the CAS applies only while it still holds.
+	OldFailures int
 }
 
 // TransitionState is the R5 compare-and-set: it applies only while the row
@@ -204,13 +240,38 @@ type TransitionParams struct {
 // (false: a concurrent check already moved the row on, and this call wrote
 // nothing).
 func (s *Store) TransitionState(ctx context.Context, p TransitionParams) (bool, error) {
-	n, err := s.Q.TransitionMonitorState(ctx, sqlcgen.TransitionMonitorStateParams{
+	return s.TransitionStateWith(ctx, p, nil)
+}
+
+// TransitionStateWith is TransitionState inside one transaction: when the
+// compare-and-set wins, onWin (if non-nil) runs with that transaction, and an
+// error from it rolls the transition back — a state change and its event
+// commit together or not at all.
+func (s *Store) TransitionStateWith(ctx context.Context, p TransitionParams, onWin func(tx pgx.Tx) error) (bool, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	n, err := s.Q.WithTx(tx).TransitionMonitorState(ctx, sqlcgen.TransitionMonitorStateParams{
 		ID: p.ID, OldState: p.OldState, State: p.NewState, StateChangedAt: p.StateChangedAt,
 		LastCheckedAt: &p.CheckedAt, NextCheckAt: p.NextCheckAt, LastFingerprint: p.LastFingerprint,
 		LastNotAfter: p.LastNotAfter, LastIssuer: p.LastIssuer, LastError: p.LastError,
+		ConsecutiveFailures: int32(p.ConsecutiveFailures), OldFailures: int32(p.OldFailures),
 	})
 	if err != nil {
 		return false, err
 	}
-	return n > 0, nil
+	if n == 0 {
+		return false, nil
+	}
+	if onWin != nil {
+		if err := onWin(tx); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }

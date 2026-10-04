@@ -1,6 +1,12 @@
 -- name: LastAuditHash :one
 SELECT hash FROM audit_events ORDER BY id DESC LIMIT 1;
 
+-- name: LastAuditEvent :one
+SELECT id, hash FROM audit_events ORDER BY id DESC LIMIT 1;
+
+-- name: HasAuditAnchorMarker :one
+SELECT EXISTS (SELECT 1 FROM audit_events WHERE action = 'audit.anchor_initialized');
+
 -- name: InsertAuditEvent :one
 INSERT INTO audit_events (ts, actor_type, actor_id, action, resource_type, resource_id, org_id, ip, details, prev_hash, hash, hash_alg)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -19,9 +25,9 @@ SELECT count(*) FROM audit_events WHERE hash_alg = 'sha256';
 SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
        COALESCE(u.display_name, k.name, cl.name, '')::text AS actor_name
 FROM audit_events a
-LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
-LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
-LEFT JOIN clients cl ON a.actor_type = 'agent' AND cl.id::text = a.actor_id
+LEFT JOIN users u ON u.id = CASE WHEN a.actor_type = 'user' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
+LEFT JOIN api_keys k ON k.id = CASE WHEN a.actor_type = 'apikey' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
+LEFT JOIN clients cl ON cl.id = CASE WHEN a.actor_type = 'agent' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
 WHERE (NOT sqlc.arg(has_from)::bool OR a.ts >= sqlc.arg(from_ts)::timestamptz)
   AND (NOT sqlc.arg(has_to)::bool OR a.ts < sqlc.arg(to_ts)::timestamptz)
   AND (sqlc.arg(actor)::text = '' OR a.actor_id = sqlc.arg(actor)::text)
@@ -40,9 +46,9 @@ LIMIT sqlc.arg(page_limit)::int;
 SELECT a.id, a.ts, a.actor_type, a.actor_id, a.action, a.resource_type, a.resource_id, a.org_id, a.ip, a.details,
        COALESCE(u.display_name, k.name, cl.name, '')::text AS actor_name
 FROM audit_events a
-LEFT JOIN users u ON a.actor_type = 'user' AND u.id::text = a.actor_id
-LEFT JOIN api_keys k ON a.actor_type = 'apikey' AND k.id::text = a.actor_id
-LEFT JOIN clients cl ON a.actor_type = 'agent' AND cl.id::text = a.actor_id
+LEFT JOIN users u ON u.id = CASE WHEN a.actor_type = 'user' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
+LEFT JOIN api_keys k ON k.id = CASE WHEN a.actor_type = 'apikey' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
+LEFT JOIN clients cl ON cl.id = CASE WHEN a.actor_type = 'agent' AND pg_input_is_valid(a.actor_id, 'uuid') THEN a.actor_id::uuid END
 WHERE a.id = sqlc.arg(id)::bigint;
 
 -- name: CountAuditEventsCapped :one

@@ -137,7 +137,19 @@ export function CasPage() {
                   {filtered.map((c) => {
                     const tone = c.notAfter ? caTone(c.notAfter) : 'neutral';
                     return (
-                      <TableRow key={c.id} className="cursor-pointer" onClick={() => (isPrivate(c) ? openView(c.id) : openSheet(c.id))}>
+                      <TableRow
+                        key={c.id}
+                        tabIndex={0}
+                        className="cursor-pointer"
+                        onClick={() => (isPrivate(c) ? openView(c.id) : openSheet(c.id))}
+                        onKeyDown={(e) => {
+                          // Only the row itself: Enter/Space on its Edit and Delete buttons must keep their own meaning.
+                          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+                          e.preventDefault();
+                          if (isPrivate(c)) openView(c.id);
+                          else openSheet(c.id);
+                        }}
+                      >
                         <TableCell className="py-1.5">
                           <PrimaryCell primary={c.name} meta={[KIND_LABEL[kindOf(c)], endpointOf(c), c.hasEab ? 'EAB stored' : '']} />
                         </TableCell>

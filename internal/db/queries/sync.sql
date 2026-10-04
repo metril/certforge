@@ -43,6 +43,14 @@ WHERE g.client_id = $1
 ORDER BY g.id
 FOR UPDATE OF d;
 
+-- name: ClientDeploymentsNoLock :many
+-- ClientDeployments without the row locks: Heartbeat reads with this first
+-- and takes the locked path only when a state would change.
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+WHERE g.client_id = $1
+ORDER BY g.id;
+
 -- name: SetDeploymentState :exec
 -- state_changed_at (final review fix wave, finding 1) moves only when
 -- state actually transitions — the CASE compares against the row's own

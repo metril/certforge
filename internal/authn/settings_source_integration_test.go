@@ -23,7 +23,7 @@ func TestSettingsSourceCacheExpiry(t *testing.T) {
 	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(key), key))
 	store := settings.NewStore(q, env)
 	reg := settings.NewRegistry()
-	if err := RegisterSettings(reg); err != nil {
+	if err := RegisterSettings(reg, false); err != nil {
 		t.Fatal(err)
 	}
 	src, err := NewSettingsSource(store, reg)

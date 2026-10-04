@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
-import { allCertificatesQuery, plural } from '@/api/queries/certificates';
+import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
 import { layoutsQuery } from '@/api/queries/delivery';
 import { useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
 import type { Grant, GrantUpdate } from '@/api/types';
@@ -18,7 +18,7 @@ type Props = { orgId: string; targetId: string; editing?: Grant; onBack: () => v
 const NO_LAYOUT = '__target_files__';
 
 export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Props) {
-  const certsQ = useQuery(allCertificatesQuery(orgId));
+  const certsQ = useQuery(allCertificatesPickerQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const create = useCreateServerGrant(orgId, targetId);
   const update = useUpdateGrant(orgId);

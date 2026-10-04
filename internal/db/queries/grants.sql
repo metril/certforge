@@ -112,7 +112,7 @@ SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL;
 -- LiveGrantIDsForCert.
 SELECT g.id FROM client_cert_grants g
 JOIN output_specs o ON o.id = g.output_spec_id
-WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND sqlc.arg(cert_id)::uuid = ANY(o.extra_cert_ids);
+WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND o.extra_cert_ids @> ARRAY[sqlc.arg(cert_id)::uuid];
 
 -- name: LiveGrantIDsUsingLayout :many
 -- client_id IS NOT NULL: see LiveGrantIDsForCert.
@@ -146,7 +146,7 @@ WHERE g.deploy_target_id = sqlc.arg(target_id)::uuid AND g.removed_at IS NULL AN
 -- name: LiveGrantIDsUsingHook :many
 -- client_id IS NOT NULL: see LiveGrantIDsForCert (a server grant never has
 -- hooks today, but this keeps the invariant explicit).
-SELECT id FROM client_cert_grants WHERE sqlc.arg(hook_id)::uuid = ANY(hook_ids) AND removed_at IS NULL AND client_id IS NOT NULL;
+SELECT id FROM client_cert_grants WHERE hook_ids @> ARRAY[sqlc.arg(hook_id)::uuid] AND removed_at IS NULL AND client_id IS NOT NULL;
 
 -- name: CountLiveGrantsByCert :many
 SELECT cert_id, count(*)::bigint AS grants FROM client_cert_grants
@@ -245,9 +245,14 @@ LEFT JOIN output_specs o ON o.id = g.output_spec_id
 WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND ce.current_version_id IS NOT NULL
   AND (d.version_id IS DISTINCT FROM ce.current_version_id
        OR d.extra_version_ids IS DISTINCT FROM (
-            SELECT COALESCE(array_agg(ec.current_version_id ORDER BY x.ord), '{}'::uuid[])
-            FROM unnest(COALESCE(o.extra_cert_ids, '{}'::uuid[])) WITH ORDINALITY AS x(id, ord)
-            JOIN certificates ec ON ec.id = x.id
+            -- The correlated subquery runs only for grants whose layout has
+            -- extras; every other grant (including one with no layout) takes
+            -- the cheap branch, whose value is what the subquery would give.
+            CASE WHEN cardinality(o.extra_cert_ids) > 0 THEN (
+              SELECT COALESCE(array_agg(ec.current_version_id ORDER BY x.ord), '{}'::uuid[])
+              FROM unnest(o.extra_cert_ids) WITH ORDINALITY AS x(id, ord)
+              JOIN certificates ec ON ec.id = x.id
+            ) ELSE '{}'::uuid[] END
           ));
 
 -- name: LockHooksInOrg :many

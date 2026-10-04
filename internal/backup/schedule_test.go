@@ -3,6 +3,7 @@ package backup
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -113,5 +114,44 @@ func TestRetentionKeepsAllWhenUnderLimit(t *testing.T) {
 	}
 	if len(entries) != 1 {
 		t.Fatalf("entries = %v, want 1 file kept", entries)
+	}
+}
+
+// TestPruneRemovesStaleTmp: an orphaned .cfbak.tmp older than an hour is
+// removed, a fresh one (a run in progress) is kept, and neither counts
+// toward retention.
+func TestPruneRemovesStaleTmp(t *testing.T) {
+	dir := t.TempDir()
+	stale := filepath.Join(dir, "certforge-20260101T000000Z.cfbak.tmp")
+	fresh := filepath.Join(dir, "certforge-20260102T000000Z.cfbak.tmp")
+	keep := filepath.Join(dir, "certforge-20260103T000000Z.cfbak")
+	for _, p := range []string{stale, fresh, keep} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := prune(dir, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale tmp still present: %v", err)
+	}
+	for _, p := range []string{fresh, keep} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("%s removed: %v", p, err)
+		}
+	}
+}
+
+func TestSyncDir(t *testing.T) {
+	if err := SyncDir(t.TempDir()); err != nil {
+		t.Fatalf("SyncDir: %v", err)
+	}
+	if err := SyncDir(filepath.Join(t.TempDir(), "missing")); err == nil && runtime.GOOS != "windows" {
+		t.Fatal("SyncDir of a missing dir succeeded")
 	}
 }

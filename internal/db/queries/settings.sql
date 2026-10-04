@@ -1,6 +1,11 @@
 -- name: GetSetting :one
 SELECT * FROM settings WHERE key = $1;
 
+-- name: GetSettingForUpdate :one
+-- Row-locks the setting so a read-modify-write (PutSectionTx) serializes
+-- with a concurrent PUT of the same section.
+SELECT * FROM settings WHERE key = $1 FOR UPDATE;
+
 -- name: UpsertSettingValue :exec
 INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, now())
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();

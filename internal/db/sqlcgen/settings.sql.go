@@ -25,6 +25,24 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (Setting, error) {
 	return i, err
 }
 
+const getSettingForUpdate = `-- name: GetSettingForUpdate :one
+SELECT key, value, secret, updated_at FROM settings WHERE key = $1 FOR UPDATE
+`
+
+// Row-locks the setting so a read-modify-write (PutSectionTx) serializes
+// with a concurrent PUT of the same section.
+func (q *Queries) GetSettingForUpdate(ctx context.Context, key string) (Setting, error) {
+	row := q.db.QueryRow(ctx, getSettingForUpdate, key)
+	var i Setting
+	err := row.Scan(
+		&i.Key,
+		&i.Value,
+		&i.Secret,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertSettingSecretIfAbsent = `-- name: InsertSettingSecretIfAbsent :execrows
 INSERT INTO settings (key, secret, updated_at) VALUES ($1, $2, now())
 ON CONFLICT (key) DO UPDATE SET secret = EXCLUDED.secret, updated_at = now()

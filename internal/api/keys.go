@@ -13,12 +13,18 @@ import (
 // GetKeysStatus reports the active KEK's identity, previous KEKs still
 // configured, a canary round-trip and the most recent rewrap's progress.
 func (s *Server) GetKeysStatus(ctx context.Context, _ gen.GetKeysStatusRequestObject) (gen.GetKeysStatusResponseObject, error) {
-	if _, err := authorize(ctx, authz.ActionSettingsRead, nil); err != nil {
+	p, err := authorize(ctx, authz.ActionSettingsRead, nil)
+	if err != nil {
 		return nil, err
 	}
 	st, err := s.d.Keys.Status(ctx)
 	if err != nil {
 		return nil, err
+	}
+	// The Vault address is infrastructure detail: only a principal who can
+	// change settings (global settings:write) sees it.
+	if !authz.Can(p, authz.ActionSettingsWrite, nil) {
+		st.VaultAddress = ""
 	}
 	return gen.GetKeysStatus200JSONResponse(keysStatusToGen(st)), nil
 }

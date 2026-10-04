@@ -14,7 +14,7 @@ func (c *Client) KVPut(ctx context.Context, mount, path string, data map[string]
 	if cas != nil {
 		body["options"] = map[string]any{"cas": *cas}
 	}
-	reqPath := fmt.Sprintf("/v1/%s/data/%s", mount, path)
+	reqPath := fmt.Sprintf("/v1/%s/data/%s", escapePath(mount), escapePath(path))
 	var resp struct {
 		Data struct {
 			Version int `json:"version"`

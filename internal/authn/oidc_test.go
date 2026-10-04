@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -162,5 +163,57 @@ func TestOIDCTest(t *testing.T) {
 	}
 	if _, err := o.Test(context.Background(), "http://127.0.0.1:1"); err == nil {
 		t.Fatal("unreachable issuer passed")
+	}
+}
+
+func TestClaimAt(t *testing.T) {
+	c := map[string]any{
+		"groups":       []any{"a"},
+		"a.b":          []any{"literal"},
+		"realm_access": map[string]any{"roles": []any{"admin", "ops"}},
+		"a":            map[string]any{"b": []any{"nested"}},
+	}
+	for name, want := range map[string][]string{
+		"groups":             {"a"},
+		"realm_access.roles": {"admin", "ops"},
+		"a.b":                {"literal"}, // a top-level key containing a dot wins
+		"realm_access.nope":  {},
+		"nope.deeper":        {},
+		"groups.x":           {},
+	} {
+		if got := claimGroups(claimAt(c, name)); strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestOIDCDiscoveryFailureCachedBriefly(t *testing.T) {
+	var hits atomic.Int32
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		http.Error(w, "down", http.StatusInternalServerError)
+	}))
+	t.Cleanup(idp.Close)
+	now := time.Unix(3_000_000, 0)
+	o := NewOIDC(bytes.Repeat([]byte{3}, 32), nil)
+	o.now = func() time.Time { return now }
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if _, err := o.provider(ctx, idp.URL); err == nil {
+			t.Fatal("discovery against a failing IdP succeeded")
+		}
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("hits = %d, want 1 (failure cached)", hits.Load())
+	}
+	o.Forget() // a settings change drops the cached failure
+	_, _ = o.provider(ctx, idp.URL)
+	if hits.Load() != 2 {
+		t.Fatalf("hits after Forget = %d, want 2", hits.Load())
+	}
+	now = now.Add(failureTTL)
+	_, _ = o.provider(ctx, idp.URL)
+	if hits.Load() != 3 {
+		t.Fatalf("hits after TTL = %d, want 3", hits.Load())
 	}
 }

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { help } from '@/lib/help';
+import { failedWithoutData } from '@/lib/queryState';
 import { fmtInterval, shortFp } from '@/lib/monitors';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
@@ -93,7 +94,7 @@ function monitorColumns(orgId: string) {
       id: 'state',
       header: 'State',
       meta: { className: 'w-32' },
-      cell: ({ row }) => <MonitorStateChip state={row.original.state} enabled={row.original.enabled} lastError={row.original.lastError} />,
+      cell: ({ row }) => <MonitorStateChip state={row.original.state} enabled={row.original.enabled} lastError={row.original.lastError} notAfter={row.original.lastNotAfter} />,
     }),
     col.display({
       id: 'nextCheck',
@@ -113,34 +114,32 @@ function monitorColumns(orgId: string) {
 function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: string; onOpen: () => void }) {
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        // A bubbled Enter/Space from the nested Check now button or the
-        // fingerprint CopyField must reach its own default action, not open
-        // the sheet on top of it (batch 2 review, same class as
-        // ChannelCard's own fix in batch 1) — only the card's own keydown
-        // (focused directly, e.g. via Tab) opens it.
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className="grid cursor-pointer gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle"
+      className="relative grid gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-semibold">{monitor.name}</span>
-        <CheckNowButton monitor={monitor} orgId={orgId} />
+        <button type="button" onClick={onOpen} className="truncate text-left font-semibold after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/50 focus-visible:after:rounded-md">
+          {monitor.name}
+        </button>
+        <span className="relative z-10">
+          <CheckNowButton monitor={monitor} orgId={orgId} />
+        </span>
       </div>
       <TargetCell monitor={monitor} />
       <div className="flex flex-wrap items-center gap-2">
-        <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} />
+        {/* z-10: the title's stretched overlay must not cover the chip's tooltip trigger. */}
+        <span className="relative z-10">
+          <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
+        </span>
         <span className="text-xs text-ink-muted">{fmtInterval(monitor.intervalSeconds)}</span>
       </div>
-      {monitor.lastFingerprint && <CopyField value={monitor.lastFingerprint} label="fingerprint" display={shortFp(monitor.lastFingerprint)} />}
-      <NextCheckCell monitor={monitor} />
+      {monitor.lastFingerprint && (
+        <div className="relative z-10 w-fit max-w-full">
+          <CopyField value={monitor.lastFingerprint} label="fingerprint" display={shortFp(monitor.lastFingerprint)} />
+        </div>
+      )}
+      <span className="relative z-10 w-fit">
+        <NextCheckCell monitor={monitor} />
+      </span>
     </div>
   );
 }
@@ -176,11 +175,11 @@ export function MonitorsPage() {
 
   return (
     <>
-      <AlertsHeader help="alerts.monitors" actions={q.isPending || q.isError || monitors.length === 0 ? undefined : add} />
+      <AlertsHeader help="alerts.monitors" actions={q.isPending || failedWithoutData(q) || monitors.length === 0 ? undefined : add} />
       <div className="grid gap-4">
         {q.isPending ? (
           <p className="py-10 text-center text-sm text-ink-muted">Loading…</p>
-        ) : q.isError ? (
+        ) : failedWithoutData(q) ? (
           <ErrorState message={`Couldn't load monitors. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />
         ) : monitors.length === 0 ? (
           <EmptyState message="No monitors yet.">{add}</EmptyState>

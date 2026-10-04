@@ -59,6 +59,7 @@ SET name = $3, host = $4, port = $5, sni = $6, interval_seconds = $7, expected_c
     state = CASE WHEN sqlc.arg(reset_state)::bool THEN 'unknown' ELSE state END,
     state_changed_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE state_changed_at END,
     next_check_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE next_check_at END,
+    consecutive_failures = CASE WHEN sqlc.arg(reset_state)::bool OR enabled <> $9 THEN 0 ELSE consecutive_failures END,
     updated_at = now()
 WHERE id = $1 AND org_id = $2
 RETURNING *;
@@ -93,7 +94,19 @@ LIMIT $1;
 -- of the same monitor cannot both "win" a transition — the loser's WHERE
 -- no longer matches once the winner's UPDATE has committed, and it affects
 -- zero rows (Deviations R5, Task 9 brief: "a compare-and-set on state").
+-- consecutive_failures is part of the compare: a first failure leaves state
+-- unchanged, so state alone cannot tell two racing checks apart.
 UPDATE external_monitors
 SET state = $2, state_changed_at = $3, last_checked_at = $4, next_check_at = $5,
-    last_fingerprint = $6, last_not_after = $7, last_issuer = $8, last_error = $9, updated_at = now()
-WHERE id = $1 AND state = sqlc.arg(old_state)::text;
+    last_fingerprint = $6, last_not_after = $7, last_issuer = $8, last_error = $9,
+    consecutive_failures = $10, updated_at = now()
+WHERE id = $1 AND state = sqlc.arg(old_state)::text
+  AND consecutive_failures = sqlc.arg(old_failures)::int;
+
+-- name: MonitorsExpectingCert :many
+-- Monitors (callers scope by org_id) whose expected_cert_id is cert_id;
+-- DeleteCertificate 409s naming these instead of letting ON DELETE SET NULL
+-- silently drop the expectation.
+SELECT id, name FROM external_monitors
+WHERE org_id = sqlc.arg(org_id) AND expected_cert_id = sqlc.arg(cert_id)
+ORDER BY lower(name) LIMIT 6;

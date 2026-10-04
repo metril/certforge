@@ -263,7 +263,7 @@ func (s *Service) importOne(ctx context.Context, orgID uuid.UUID, over Defaults,
 	// inherited-CA check batch-4 added for prepareCertTx does not apply
 	// here — over.CAID/AccountID, when set at all, are still checked
 	// against each other (the existing same-level check below).
-	if err := s.Store.validateDefaultsTx(ctx, s.Store.q.WithTx(tx), orgID, over, nil, false, nil); err != nil {
+	if err := s.Store.validateDefaultsTx(ctx, s.Store.q.WithTx(tx), orgID, over, nil, false, nil, nil); err != nil {
 		return ImportItem{}, err
 	}
 

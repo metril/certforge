@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -189,5 +190,74 @@ func TestUploadKeySealed(t *testing.T) {
 	}
 	if bytes.Equal(raw, pkcs8) {
 		t.Fatal("private_key stored in the clear (matches the plaintext PKCS#8 upload)")
+	}
+}
+
+// customCert builds a self-signed leaf with the given validity window.
+func customCert(t *testing.T, cn string, serial int64, notBefore, notAfter time.Time) string {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: cn},
+		NotBefore: notBefore, NotAfter: notAfter, DNSNames: []string{cn}}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pemCert(der)
+}
+
+// TestUploadCertificateNameValidation: a blank (after trim) or over-long name
+// is a 422, the same limits createCertificate documents.
+func TestUploadCertificateNameValidation(t *testing.T) {
+	f := newAPIFixture(t)
+	op := f.as("operator")
+	leafDER, _, _ := realCert(t, "name.example.test", 801)
+	body := pemCert(leafDER)
+	for _, name := range []string{"", "   ", strings.Repeat("a", 101)} {
+		_, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+			Body: &gen.CertificateUpload{Name: name, CertificatePem: &body}})
+		wantStatus(t, err, 422)
+	}
+	if _, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateUpload{Name: strings.Repeat("a", 100), CertificatePem: &body}}); err != nil {
+		t.Fatalf("100-character name: %v", err)
+	}
+}
+
+// B16: a not-yet-valid leaf is a 422; a leaf that expires before the current
+// version is a 422 naming allowOlder unless the request sets allowOlder.
+func TestUploadVersionRefusesFutureAndOlder(t *testing.T) {
+	f := newAPIFixture(t)
+	op := f.as("operator")
+	now := time.Now()
+	first := customCert(t, "roll.example.test", 901, now.Add(-time.Hour), now.Add(90*24*time.Hour))
+	res, err := f.srv.UploadCertificate(op, gen.UploadCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateUpload{Name: "roll", CertificatePem: &first}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.(gen.UploadCertificate201JSONResponse).Id
+	upload := func(pemBody string, allowOlder *bool) error {
+		_, err := f.srv.UploadCertificateVersion(op, gen.UploadCertificateVersionRequestObject{OrgId: f.org, Id: id,
+			Body: &gen.CertificateVersionUpload{CertificatePem: &pemBody, AllowOlder: allowOlder}})
+		return err
+	}
+	future := customCert(t, "roll.example.test", 902, now.Add(48*time.Hour), now.Add(200*24*time.Hour))
+	wantStatus(t, upload(future, nil), 422)
+
+	older := customCert(t, "roll.example.test", 903, now.Add(-time.Hour), now.Add(30*24*time.Hour))
+	err = upload(older, nil)
+	wantStatus(t, err, 422)
+	if !strings.Contains(err.Error(), "allowOlder") && !strings.Contains(err.Error(), "Invalid allowOlder") {
+		t.Fatalf("error does not name allowOlder: %v", err)
+	}
+	no := false
+	wantStatus(t, upload(older, &no), 422)
+	yes := true
+	if err := upload(older, &yes); err != nil {
+		t.Fatalf("allowOlder upload: %v", err)
 	}
 }

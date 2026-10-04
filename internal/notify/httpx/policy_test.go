@@ -72,3 +72,29 @@ func TestCheckHost(t *testing.T) {
 		t.Errorf("CheckHost(loopback, true) = %v, want nil", err)
 	}
 }
+
+// NAT64 and 6to4 encodings of a blocked IPv4 address are classified by the
+// embedded IPv4 address; a public embedded address stays allowed.
+func TestCheckHostUnwrapsNAT64And6to4(t *testing.T) {
+	for _, h := range []string{
+		"64:ff9b::7f00:1",    // NAT64 127.0.0.1
+		"64:ff9b::a9fe:a9fe", // NAT64 169.254.169.254
+		"2002:7f00:1::1",     // 6to4 127.0.0.1
+		"2002:a9fe:a9fe::1",  // 6to4 169.254.169.254
+		"64:ff9b::0.0.0.0",   // NAT64 unspecified
+	} {
+		if err := httpx.CheckHost(h, false); err == nil {
+			t.Errorf("CheckHost(%q, false) = nil, want error", h)
+		}
+	}
+	for _, h := range []string{"64:ff9b::a9fe:a9fe", "2002:a9fe:a9fe::1"} {
+		if err := httpx.CheckHost(h, true); err == nil {
+			t.Errorf("CheckHost(%q, true) = nil, want error (metadata)", h)
+		}
+	}
+	for _, h := range []string{"64:ff9b::808:808", "2002:808:808::1"} {
+		if err := httpx.CheckHost(h, false); err != nil {
+			t.Errorf("CheckHost(%q, false) = %v, want nil", h, err)
+		}
+	}
+}

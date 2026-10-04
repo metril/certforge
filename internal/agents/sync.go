@@ -337,6 +337,32 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 	for _, f := range hb.Installed {
 		by[f.GrantID] = append(by[f.GrantID], agentproto.FileDigest{Path: f.Path, SHA256: f.SHA256})
 	}
+	// Steady state first (fix round 2): read without locks and compare; when
+	// no deployment changes state there is nothing to write, so skip the
+	// transaction and only touch last_seen. A race with this unlocked read
+	// is decided again under lock below.
+	pre, err := s.Q.ClientDeploymentsNoLock(ctx, &c.ID)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for _, d := range pre {
+		if d.RemovedAt != nil {
+			continue
+		}
+		expected, err := specsOf(d.Expected)
+		if err != nil {
+			return err
+		}
+		if next, _, _ := HeartbeatState(d.State, expected, by[d.GrantID]); next != d.State {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		s.touch(ctx, c.ID)
+		return nil
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err

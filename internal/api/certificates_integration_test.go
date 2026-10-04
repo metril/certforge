@@ -523,6 +523,30 @@ func TestCertificateAuthorizationMatrix(t *testing.T) {
 	wantStatus(t, err, http.StatusNotFound)
 }
 
+func TestDeleteCertificateRefusedWhileMonitorExpectsIt(t *testing.T) {
+	f := newAPIFixture(t)
+	c, _ := f.issuedCert(t, "web")
+	var monID uuid.UUID
+	if err := f.pool.QueryRow(context.Background(), `INSERT INTO external_monitors (org_id, name, host, expected_cert_id) VALUES ($1, 'edge', 'example.test', $2) RETURNING id`, f.org, c.ID).Scan(&monID); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.srv.DeleteCertificate(f.as("operator"), gen.DeleteCertificateRequestObject{OrgId: f.org, Id: c.ID})
+	wantStatus(t, err, http.StatusConflict)
+	var he *HTTPError
+	if !errors.As(err, &he) || !strings.Contains(he.Detail, "edge ("+monID.String()+")") {
+		t.Fatalf("409 does not name the monitor: %v", err)
+	}
+	if _, err := f.srv.GetCertificate(f.as("operator"), gen.GetCertificateRequestObject{OrgId: f.org, Id: c.ID}); err != nil {
+		t.Fatalf("certificate was deleted: %v", err)
+	}
+	if _, err := f.pool.Exec(context.Background(), `DELETE FROM external_monitors WHERE id = $1`, monID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.srv.DeleteCertificate(f.as("operator"), gen.DeleteCertificateRequestObject{OrgId: f.org, Id: c.ID}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestConfirmManualDnsNothingWaiting(t *testing.T) {
 	f := newAPIFixture(t)
 	c, _ := f.issuedCert(t, "web")

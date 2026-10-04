@@ -24,7 +24,7 @@ type transitCiphertextResponse struct {
 func (c *Client) TransitEncrypt(ctx context.Context, mount, key string, plaintext []byte) ([]byte, error) {
 	body := map[string]string{"plaintext": base64.StdEncoding.EncodeToString(plaintext)}
 	var resp transitCiphertextResponse
-	path := fmt.Sprintf("/v1/%s/encrypt/%s", mount, key)
+	path := fmt.Sprintf("/v1/%s/encrypt/%s", escapePath(mount), escapeSegment(key))
 	if err := c.doJSON(ctx, http.MethodPost, path, body, &resp, requestOpts{}); err != nil {
 		return nil, c.Redact(err)
 	}
@@ -40,7 +40,7 @@ func (c *Client) TransitDecrypt(ctx context.Context, mount, key string, cipherte
 			Plaintext string `json:"plaintext"`
 		} `json:"data"`
 	}
-	path := fmt.Sprintf("/v1/%s/decrypt/%s", mount, key)
+	path := fmt.Sprintf("/v1/%s/decrypt/%s", escapePath(mount), escapeSegment(key))
 	if err := c.doJSON(ctx, http.MethodPost, path, body, &resp, requestOpts{}); err != nil {
 		return nil, c.Redact(err)
 	}
@@ -56,7 +56,7 @@ func (c *Client) TransitDecrypt(ctx context.Context, mount, key string, cipherte
 func (c *Client) TransitRewrap(ctx context.Context, mount, key string, ciphertext []byte) ([]byte, error) {
 	body := map[string]string{"ciphertext": string(ciphertext)}
 	var resp transitCiphertextResponse
-	path := fmt.Sprintf("/v1/%s/rewrap/%s", mount, key)
+	path := fmt.Sprintf("/v1/%s/rewrap/%s", escapePath(mount), escapeSegment(key))
 	if err := c.doJSON(ctx, http.MethodPost, path, body, &resp, requestOpts{}); err != nil {
 		return nil, c.Redact(err)
 	}
@@ -71,7 +71,7 @@ func (c *Client) TransitKeyInfo(ctx context.Context, mount, key string) (KeyInfo
 			MinDecryptionVersion int `json:"min_decryption_version"`
 		} `json:"data"`
 	}
-	path := fmt.Sprintf("/v1/%s/keys/%s", mount, key)
+	path := fmt.Sprintf("/v1/%s/keys/%s", escapePath(mount), escapeSegment(key))
 	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp, requestOpts{}); err != nil {
 		return KeyInfo{}, c.Redact(err)
 	}

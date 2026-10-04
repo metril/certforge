@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { clientQuery } from '@/api/queries/clients';
 import { grantsQuery } from '@/api/queries/grants';
+import type { Grant } from '@/api/types';
 import { sitesQuery } from '@/api/queries/sites';
 import { ErrorState } from '@/components/ErrorState';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,9 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
   const { data: sites = [] } = useQuery(sitesQuery(org.id));
   const grantsQ = useQuery(grantsQuery(org.id, id));
   const grants = grantsQ.data ?? [];
+  // The grant being edited, kept from the last poll that still had it: if it
+  // disappears while the sheet is open, the sheet says so instead of vanishing.
+  const snapshot = useRef<Grant | undefined>(undefined);
   const setGrant = (grant: string | undefined) =>
     void navigate({ to: '/o/$org/clients/$id/$tab', params: { org: org.slug, id, tab: 'certificates' }, search: (prev) => ({ ...prev, grant }), replace: grant === undefined });
   // A grant id that no longer resolves (deleted elsewhere, or hand-edited)
@@ -38,7 +42,7 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
   // say why, once the grants list has actually loaded.
   useEffect(() => {
     if (grantsQ.isPending || !search.grant || search.grant === 'new') return;
-    if (!grants.some((g) => g.id === search.grant)) {
+    if (!grants.some((g) => g.id === search.grant) && snapshot.current?.id !== search.grant) {
       setGrant(undefined);
       toast.error('Grant not found.');
     }
@@ -60,7 +64,10 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
       </Button>
     </ClientWriteTip>
   );
-  const editing = search.grant && search.grant !== 'new' ? grants.find((g) => g.id === search.grant) : undefined;
+  const found = search.grant && search.grant !== 'new' ? grants.find((g) => g.id === search.grant) : undefined;
+  if (found) snapshot.current = found;
+  const removed = !!search.grant && search.grant !== 'new' && !found && snapshot.current?.id === search.grant;
+  const editing = found ?? (removed ? snapshot.current : undefined);
 
   return (
     <div className="grid gap-6">
@@ -102,7 +109,7 @@ export function ClientDetail({ id, tab }: { id: string; tab: ClientTab }) {
         </TabsContent>
       </Tabs>
       {writable && (search.grant === 'new' || editing) && (
-        <GrantSheet key={search.grant} orgId={org.id} client={client} grants={grants} editing={editing} onOpenChange={(o) => !o && setGrant(undefined)} />
+        <GrantSheet key={search.grant} orgId={org.id} client={client} grants={grants} editing={editing} removed={removed} onOpenChange={(o) => !o && setGrant(undefined)} />
       )}
     </div>
   );

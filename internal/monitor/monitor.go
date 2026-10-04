@@ -52,6 +52,9 @@ const (
 // ErrNotFound means no such monitor in the org.
 var ErrNotFound = errors.New("monitor: not found")
 
+// ErrOverCap means the org already has its maximum number of monitors.
+var ErrOverCap = errors.New("monitor: org is at its monitor limit")
+
 // ValidationError is a 422: a bad name, host, sni, port, interval, or an
 // expectedCertificateId outside the org.
 type ValidationError struct{ Field, Msg string }
@@ -76,6 +79,7 @@ type Monitor struct {
 	LastNotAfter            *time.Time
 	LastIssuer              string
 	LastError               string
+	ConsecutiveFailures     int
 	CreatedAt, UpdatedAt    time.Time
 }
 

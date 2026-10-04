@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -29,15 +30,20 @@ const authSchema = `{
     "clientId": {"type": "string", "title": "Client ID", "description": "The client registered for CertForge at the identity provider.", "maxLength": 200, "examples": ["certforge"]},
     "clientSecret": {"type": "string", "title": "Client secret", "description": "Leave empty for a public client using PKCE only.", "secret": true, "maxLength": 1024},
     "scopes": {"type": "array", "title": "Scopes", "description": "Requested scopes; must include openid.", "items": {"type": "string"}, "default": ["openid", "profile", "email", "groups"]},
-    "groupsClaim": {"type": "string", "title": "Groups claim", "description": "ID token claim listing the user's groups; group role bindings match these.", "default": "groups", "maxLength": 128},
+    "groupsClaim": {"type": "string", "title": "Groups claim", "description": "ID token claim listing the user's groups; group role bindings match these. A dotted path (realm_access.roles) reads a nested claim.", "default": "groups", "maxLength": 128},
     "sessionTtlHours": {"type": "integer", "title": "Session lifetime (hours)", "description": "How long a sign-in lasts. Applies to new sessions.", "minimum": 1, "maximum": 720, "default": 12},
     "trustedProxies": {"type": "array", "title": "Trusted proxies", "description": "Addresses or CIDRs of reverse proxies whose X-Forwarded-For is believed.", "items": {"type": "string"}, "default": [], "examples": [["10.0.0.0/8"]]},
     "loginRatePerMinute": {"type": "integer", "title": "Login rate limit (per minute)", "description": "Login attempts allowed per client address per minute. 0 disables the limit.", "minimum": 0, "default": 10},
-    "loginBurst": {"type": "integer", "title": "Login rate limit burst", "description": "Login attempts a client may make in a single burst before the per-minute rate applies.", "minimum": 1, "default": 5}
+    "loginBurst": {"type": "integer", "title": "Login rate limit burst", "description": "Login attempts a client may make in a single burst before the per-minute rate applies.", "minimum": 1, "default": 5},
+    "apiKeyMaxLifetimeDays": {"type": "integer", "title": "API key maximum lifetime (days)", "description": "Longest lifetime a new API key may have; an expiry is then required. 0 means unlimited. Existing keys are unaffected.", "minimum": 0, "maximum": 3650, "default": 0},
+    "apiKeyMaxActivePerUser": {"type": "integer", "title": "Active API keys per user", "description": "Most active keys one user may hold; creating more is refused. 0 means unlimited.", "minimum": 0, "maximum": 100000, "default": 50}
   }
 }`
 
-const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5}`
+// DefaultAPIKeyMaxActive is the default per-user active API key cap.
+const DefaultAPIKeyMaxActive = 50
+
+const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5,"apiKeyMaxLifetimeDays":0,"apiKeyMaxActivePerUser":50}`
 
 // AuthSettings is the decoded authentication section plus its secret.
 type AuthSettings struct {
@@ -50,10 +56,14 @@ type AuthSettings struct {
 	TrustedProxies  []string `json:"trustedProxies"`
 	// LoginRatePerMinute is the per-client login attempt limit; <= 0 disables
 	// the limit (matches Limiter's own semantics).
-	LoginRatePerMinute int    `json:"loginRatePerMinute"`
-	LoginBurst         int    `json:"loginBurst"`
-	ClientSecret       string `json:"-"`
-	proxies            []netip.Prefix
+	LoginRatePerMinute int `json:"loginRatePerMinute"`
+	LoginBurst         int `json:"loginBurst"`
+	// APIKeyMaxLifetimeDays caps a new key's lifetime (0 unlimited);
+	// APIKeyMaxActivePerUser caps one user's active keys (0 unlimited).
+	APIKeyMaxLifetimeDays  int    `json:"apiKeyMaxLifetimeDays"`
+	APIKeyMaxActivePerUser int    `json:"apiKeyMaxActivePerUser"`
+	ClientSecret           string `json:"-"`
+	proxies                []netip.Prefix
 }
 
 // LogValue redacts ClientSecret so AuthSettings is safe to log.
@@ -75,19 +85,24 @@ func (s AuthSettings) String() string {
 }
 
 // RegisterSettings adds the authentication section and its extra checks.
-func RegisterSettings(r *settings.Registry) error {
+// allowInsecureIssuer (CF_OIDC_ALLOW_INSECURE_ISSUER) admits a plain http://
+// issuer on a non-loopback host; otherwise http is accepted for loopback only.
+func RegisterSettings(r *settings.Registry, allowInsecureIssuer bool) error {
 	if err := r.Register(SettingsSection, json.RawMessage(authSchema), json.RawMessage(authDefault)); err != nil {
 		return err
 	}
-	return r.AddCheck(SettingsSection, checkAuthSettings)
+	return r.AddCheck(SettingsSection, func(raw json.RawMessage) error { return checkAuthSettings(raw, allowInsecureIssuer) })
 }
 
-func checkAuthSettings(raw json.RawMessage) error {
+func checkAuthSettings(raw json.RawMessage, allowInsecureIssuer bool) error {
 	var s AuthSettings
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return err
 	}
 	if _, err := parseProxies(s.TrustedProxies); err != nil {
+		return err
+	}
+	if err := checkIssuerScheme(s.Issuer, allowInsecureIssuer); err != nil {
 		return err
 	}
 	if s.Enabled && (s.Issuer == "" || s.ClientID == "") {
@@ -97,6 +112,30 @@ func checkAuthSettings(raw json.RawMessage) error {
 		return errors.New("scopes must include openid")
 	}
 	return nil
+}
+
+// checkIssuerScheme requires an https issuer, except plain http on a
+// loopback host (localhost, 127.0.0.0/8, ::1) or when allowInsecure is set.
+func checkIssuerScheme(issuer string, allowInsecure bool) error {
+	if issuer == "" || allowInsecure {
+		return nil
+	}
+	u, err := url.Parse(issuer)
+	if err != nil {
+		return fmt.Errorf("issuer: invalid URL: %w", err)
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	host := u.Hostname()
+	if a, err := netip.ParseAddr(host); err == nil {
+		if a.Unmap().IsLoopback() {
+			return nil
+		}
+	} else if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	return errors.New("issuer: must use https unless the host is loopback")
 }
 
 func parseProxies(in []string) ([]netip.Prefix, error) {
@@ -252,7 +291,9 @@ func NewSettingsSource(store *settings.Store, reg *settings.Registry) (*Settings
 		if err != nil {
 			return AuthSettings{}, err
 		}
-		var st AuthSettings
+		// A section stored before the key cap existed has no such field;
+		// start from its default rather than reading the absence as unlimited.
+		st := AuthSettings{APIKeyMaxActivePerUser: DefaultAPIKeyMaxActive}
 		if err := json.Unmarshal(raw, &st); err != nil {
 			return AuthSettings{}, fmt.Errorf("authn: decode settings: %w", err)
 		}

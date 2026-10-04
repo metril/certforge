@@ -24,6 +24,8 @@ type DNSCredential struct {
 	CreatedAt, UpdatedAt time.Time
 }
 
+// credFromRow builds the credential with its decrypted secret map and a
+// per-row UsedBy; ListDNSCredentials uses credListEntry instead.
 func (s *Store) credFromRow(ctx context.Context, r sqlcgen.DnsProviderCredential) (DNSCredential, map[string]string, error) {
 	c := DNSCredential{ID: r.ID, OrgID: r.OrgID, Name: r.Name, ProviderCode: r.ProviderCode, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 	if err := json.Unmarshal(r.PublicCfg, &c.Public); err != nil {
@@ -49,6 +51,27 @@ func (s *Store) credFromRow(ctx context.Context, r sqlcgen.DnsProviderCredential
 	}
 	c.UsedBy = n
 	return c, secret, nil
+}
+
+// credListEntry is credFromRow for a listing: the stored secret names come
+// from the plaintext column (opening the sealed value only for a row from
+// before it existed) and UsedBy is filled in by the caller from one batched
+// count.
+func (s *Store) credListEntry(ctx context.Context, r sqlcgen.DnsProviderCredential) (DNSCredential, error) {
+	c := DNSCredential{ID: r.ID, OrgID: r.OrgID, Name: r.Name, ProviderCode: r.ProviderCode, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+	if err := json.Unmarshal(r.PublicCfg, &c.Public); err != nil {
+		return c, err
+	}
+	c.Public = challenge.CanonicalizeStored(r.ProviderCode, c.Public)
+	c.StoredSecrets = r.StoredSecretKeys
+	if len(c.StoredSecrets) == 0 && len(r.SecretCfg) > 0 {
+		var secret map[string]string
+		if err := s.openJSON(ctx, r.SecretCfg, &secret); err != nil {
+			return c, err
+		}
+		c.StoredSecrets = challenge.SecretKeys(challenge.CanonicalizeStored(r.ProviderCode, secret))
+	}
+	return c, nil
 }
 
 // splitErr maps challenge package sentinels to a 422 ValidationError by type,
@@ -90,7 +113,8 @@ func (s *Store) CreateDNSCredential(ctx context.Context, orgID uuid.UUID, name, 
 		return DNSCredential{}, err
 	}
 	row, err := s.q.CreateDNSCredential(ctx, sqlcgen.CreateDNSCredentialParams{OrgID: orgID, Name: name,
-		ProviderCode: meta.Code, PublicCfg: pubJSON, SecretCfg: sealed})
+		ProviderCode: meta.Code, PublicCfg: pubJSON, SecretCfg: sealed,
+		StoredSecretKeys: challenge.SecretKeys(challenge.CanonicalizeStored(meta.Code, sec))})
 	if err != nil {
 		return DNSCredential{}, dbErr(err, "name")
 	}
@@ -140,7 +164,8 @@ func (s *Store) UpdateDNSCredential(ctx context.Context, orgID, id uuid.UUID, na
 	if err != nil {
 		return DNSCredential{}, nil, err
 	}
-	row, err = s.q.UpdateDNSCredential(ctx, sqlcgen.UpdateDNSCredentialParams{ID: id, OrgID: orgID, Name: name, PublicCfg: pubJSON, SecretCfg: sealed})
+	row, err = s.q.UpdateDNSCredential(ctx, sqlcgen.UpdateDNSCredentialParams{ID: id, OrgID: orgID, Name: name, PublicCfg: pubJSON, SecretCfg: sealed,
+		StoredSecretKeys: challenge.SecretKeys(challenge.CanonicalizeStored(row.ProviderCode, sec))})
 	if err != nil {
 		return DNSCredential{}, nil, dbErr(err, "name")
 	}
@@ -183,11 +208,28 @@ func (s *Store) ListDNSCredentials(ctx context.Context, orgID uuid.UUID) ([]DNSC
 	if err != nil {
 		return nil, err
 	}
+	counts, err := s.q.CountDNSCredentialUsersByOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	used := make(map[uuid.UUID]int64, len(counts))
+	for _, n := range counts {
+		used[n.ID] = n.Users
+	}
+	// The global defaults are read once per call, not per row.
+	g, err := s.GlobalDefaults(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]DNSCredential, 0, len(rows))
 	for _, r := range rows {
-		c, _, err := s.credFromRow(ctx, r)
+		c, err := s.credListEntry(ctx, r)
 		if err != nil {
 			return nil, err
+		}
+		c.UsedBy = used[r.ID]
+		if defaultsReference(g, r.ID) {
+			c.UsedBy++
 		}
 		out = append(out, c)
 	}

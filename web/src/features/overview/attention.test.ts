@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import { iso, makeCert, NOW } from '@/test/fixtures';
-import { attentionItems, statusCounts, upcomingRenewals } from './attention';
+import { briefOf, iso, makeCert, NOW } from '@/test/fixtures';
+import { attentionItems, upcomingRenewals } from './attention';
 
 const v = (notAfter: string) => ({ ...makeCert().currentVersion!, notAfter });
 
@@ -13,16 +13,15 @@ it('orders by severity, then time to impact, one item per certificate', () => {
     makeCert({ id: 'manual', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'lab.local', method: 'manual-dns', via: 'server' }] }),
     makeCert({ id: 'fine' }),
   ];
-  const items = attentionItems(certs, NOW);
+  const items = attentionItems(certs.map(briefOf), NOW);
   expect(items.map((i) => i.cert.id)).toEqual(['expired', 'manual', 'failed-soon', 'failed-late', 'overdue']);
   expect(items[0]!.cause).toBe('Expired 3 d ago');
   expect(items[3]!.cause).toBe('dns: NXDOMAIN');
 });
 
-it('counts statuses and lists renewals due within 7 days', () => {
+it('lists renewals due within 7 days', () => {
   const certs = [makeCert({ id: 'a', nextRenewAt: iso(2) }), makeCert({ id: 'b', nextRenewAt: iso(9) }), makeCert({ id: 'c', status: 'failed' })];
-  expect(statusCounts(certs)).toEqual({ active: 2, pending: 0, failed: 1, expired: 0 });
-  expect(upcomingRenewals(certs, NOW).map((c) => c.id)).toEqual(['a']);
+  expect(upcomingRenewals(certs.map(briefOf), NOW).map((c) => c.id)).toEqual(['a']);
 });
 
 // Review fix: two certificates with no current version both carry
@@ -35,6 +34,6 @@ it('orders two versionless certificates of the same kind deterministically by id
     makeCert({ id: 'z-cert', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'z.example.com', method: 'manual-dns', via: 'server' }] }),
     makeCert({ id: 'a-cert', status: 'pending', currentVersion: undefined, verificationRules: [{ match: 'a.example.com', method: 'manual-dns', via: 'server' }] }),
   ];
-  const items = attentionItems(certs, NOW);
+  const items = attentionItems(certs.map(briefOf), NOW);
   expect(items.map((i) => i.cert.id)).toEqual(['a-cert', 'z-cert']);
 });

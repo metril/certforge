@@ -265,6 +265,12 @@ it('agent target id shows not found', async () => {
   expect(await screen.findByText('Deploy target not found.')).toBeInTheDocument();
 });
 
+it('a not-found ?view= replaces the history entry instead of pushing one', async () => {
+  const { router } = renderRoute('/o/acme/delivery/targets?view=t-1');
+  await screen.findByText('Deploy target not found.');
+  expect(router.history.length).toBe(1);
+});
+
 it('stops polling when settled', async () => {
   vi.useFakeTimers({ now: NOW, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
   let getCalls = 0;

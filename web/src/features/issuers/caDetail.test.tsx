@@ -154,3 +154,12 @@ it('unknown id shows not found', async () => {
   await user.click(within(dialog).getByRole('button', { name: 'Back to CAs' }));
   await waitFor(() => expect(router.state.location.search).toEqual({}));
 });
+
+it('opens the private CA detail from the keyboard on its focused row', async () => {
+  cas = [caLocal];
+  const { user } = renderRoute('/o/acme/issuers/cas');
+  const row = (await screen.findByText('Internal CA')).closest('tr')!;
+  row.focus();
+  await user.keyboard('{Enter}');
+  expect(await screen.findByRole('dialog', { name: 'Internal CA' })).toBeInTheDocument();
+});

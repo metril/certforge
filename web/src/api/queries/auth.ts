@@ -88,7 +88,7 @@ export function useCompleteSetup() {
       resetUnauthorized();
       setCsrfToken(me.csrfToken);
       qc.setQueryData(meQuery.queryKey, me);
-      qc.setQueryData(setupStatusQuery.queryKey, { needsSetup: false });
+      qc.setQueryData(setupStatusQuery.queryKey, { needsSetup: false, tokenRequired: false });
     },
   });
 }

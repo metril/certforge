@@ -76,7 +76,7 @@ FOR KEY SHARE;
 -- extra certificate; DeleteCertificate 409s naming these instead of
 -- deleting a certificate a layout still renders.
 SELECT name FROM output_specs
-WHERE org_id = sqlc.arg(org_id) AND sqlc.arg(cert_id)::uuid = ANY(extra_cert_ids)
+WHERE org_id = sqlc.arg(org_id) AND extra_cert_ids @> ARRAY[sqlc.arg(cert_id)::uuid]
 ORDER BY lower(name) LIMIT 6;
 
 -- name: ListDeployTargets :many
@@ -165,12 +165,12 @@ DELETE FROM hooks WHERE id = $1 AND org_id = $2;
 
 -- name: HookGrantCounts :many
 SELECT h.id, count(g.id)::bigint AS grants
-FROM hooks h LEFT JOIN client_cert_grants g ON h.id = ANY(g.hook_ids) AND g.removed_at IS NULL
+FROM hooks h LEFT JOIN client_cert_grants g ON g.hook_ids @> ARRAY[h.id] AND g.removed_at IS NULL
 WHERE h.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY h.id;
 
 -- name: HookDependents :many
 SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
 FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE sqlc.arg(hook_id)::uuid = ANY(g.hook_ids)
+WHERE g.hook_ids @> ARRAY[sqlc.arg(hook_id)::uuid]
   AND EXISTS (SELECT 1 FROM hooks h WHERE h.id = sqlc.arg(hook_id)::uuid AND h.org_id = sqlc.arg(org_id))
 ORDER BY c.name, ce.name LIMIT 6;

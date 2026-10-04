@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/notify/httpx"
 )
@@ -206,5 +207,46 @@ func TestCheckURLRejectedBeforeAnyRequest(t *testing.T) {
 	}
 	if _, err := c.Do(context.Background(), http.MethodGet, "http://127.0.0.1/", nil, nil); err == nil {
 		t.Fatal("Do reached a blocked host")
+	}
+}
+
+func TestRetryAfterHonouredOn429(t *testing.T) {
+	var n int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&n, 1) == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	start := time.Now()
+	if _, err := newClient(t).Do(context.Background(), http.MethodPost, srv.URL, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if el := time.Since(start); el < time.Second {
+		t.Errorf("retried after %v, want >= 1s (Retry-After)", el)
+	}
+}
+
+// A Retry-After longer than the time left returns the 429 error at once, not
+// a deadline error after sleeping.
+func TestRetryAfterBeyondDeadlineReturnsStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("slow down"))
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	status, err := newClient(t).Do(ctx, http.MethodPost, srv.URL, nil, nil)
+	if status != http.StatusTooManyRequests || err == nil || !strings.Contains(err.Error(), "status 429: slow down") {
+		t.Fatalf("status=%d err=%v", status, err)
+	}
+	if el := time.Since(start); el > 3*time.Second {
+		t.Errorf("took %v, want prompt return", el)
 	}
 }

@@ -5,13 +5,17 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
@@ -104,7 +108,7 @@ func accountFromRow(r sqlcgen.AcmeAccount) Account {
 		RegistrationURI: r.RegistrationUri, CreatedAt: r.CreatedAt}
 }
 
-func (in *CAInput) normalize() (acmesigner.Preset, error) {
+func (in *CAInput) normalize(stored []string) (acmesigner.Preset, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return acmesigner.Preset{}, &ValidationError{"name", "required"}
@@ -153,13 +157,32 @@ func (in *CAInput) normalize() (acmesigner.Preset, error) {
 	if in.Resolvers == nil {
 		in.Resolvers = []string{}
 	}
-	if err := validateResolvers("resolvers", in.Resolvers); err != nil {
+	if err := validateResolversUpdate("resolvers", in.Resolvers, stored); err != nil {
 		return p, err
 	}
 	return p, nil
 }
 
+// Write-time caps on a rule set and on one resolver list.
+const (
+	MaxRules     = 50
+	MaxResolvers = 10
+)
+
+// validateResolversUpdate is validateResolvers for an update: a list equal to
+// the stored one (order-sensitive) is grandfathered, so a CA or defaults row
+// saved before the caps still saves with the list sent back unchanged.
+func validateResolversUpdate(field string, rs, stored []string) error {
+	if stored != nil && slices.Equal(rs, stored) {
+		return nil
+	}
+	return validateResolvers(field, rs)
+}
+
 func validateResolvers(field string, rs []string) error {
+	if len(rs) > MaxResolvers {
+		return &ValidationError{field, fmt.Sprintf("at most %d resolvers", MaxResolvers)}
+	}
 	for _, r := range rs {
 		host := r
 		if h, _, err := net.SplitHostPort(r); err == nil {
@@ -181,7 +204,7 @@ func (s *Store) sealOptional(ctx context.Context, v string) ([]byte, error) {
 
 // CreateCA validates and stores a CA.
 func (s *Store) CreateCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, error) {
-	p, err := in.normalize()
+	p, err := in.normalize(nil)
 	if err != nil {
 		return CA{}, err
 	}
@@ -229,7 +252,7 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	if err != nil {
 		return CA{}, notFound(err)
 	}
-	p, err := in.normalize()
+	p, err := in.normalize(cur.Resolvers)
 	if err != nil {
 		return CA{}, err
 	}
@@ -353,10 +376,37 @@ func (s *Store) DeleteCA(ctx context.Context, orgID, id uuid.UUID) error {
 	if n > 0 {
 		return &InUseError{Users: n}
 	}
+	if live, err := s.caLiveIssued(ctx, q, id); err != nil {
+		return err
+	} else if live != nil {
+		return live
+	}
 	if _, err := q.DeleteCA(ctx, sqlcgen.DeleteCAParams{ID: id, OrgID: orgID}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// caLiveIssued returns an InUseError when a private CA (localca, vaultpki)
+// has issued versions that are neither expired nor revoked: deleting it would
+// null their ca_id and leave them unrevocable (retire, never delete). ACME
+// CAs revoke through an account, so they are not held by this rule.
+func (s *Store) caLiveIssued(ctx context.Context, q *sqlcgen.Queries, id uuid.UUID) (*InUseError, error) {
+	row, err := q.GetCAByID(ctx, id)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	if row.Type != CATypeLocalCA && row.Type != CATypeVaultPKI {
+		return nil, nil
+	}
+	n, err := q.CountCAIssuedLive(ctx, &id)
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, nil
+	}
+	return &InUseError{Users: n, Reason: fmt.Sprintf("this private CA has issued %d certificate versions that are neither expired nor revoked; revoke them or wait for them to expire first", n)}, nil
 }
 
 // CAEAB returns the decrypted EAB material, or nil when the CA has none.
@@ -726,9 +776,10 @@ func purgeExpiredRetiredSecret(in []retiredSecretKey, now time.Time) []retiredSe
 // over the issuer that actually signed it (current or, per Task 6's
 // carry-forward, a retired one found by the leaf's AuthorityKeyId), and
 // records the revocation both on the version (revoked_at) and, for localca,
-// the CA (config.revoked, crl_number++, via localca's Recorder); vaultpki
-// has no local CRL bookkeeping of its own — Revoke just calls Vault's own
-// pki/revoke. 409 if already revoked; 422 for an ACME CA or a non-issued
+// the CA (config.revoked, crl_number++, via localca's Recorder), all in one
+// transaction; vaultpki has no local CRL bookkeeping of its own — Revoke just
+// calls Vault's own pki/revoke, made outside any transaction
+// (revokeVaultVersion). 409 if already revoked; 422 for an ACME CA or a non-issued
 // version.
 func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid.UUID, reason int, baseURL func(context.Context) string) (certstore.Version, error) {
 	if _, err := s.q.GetCertificate(ctx, sqlcgen.GetCertificateParams{ID: certID, OrgID: orgID}); err != nil {
@@ -766,6 +817,15 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	if err != nil {
 		return certstore.Version{}, err
 	}
+	if caRow.Type == CATypeVaultPKI {
+		// Release the row and CA locks before the network call: Vault can
+		// be slow, and holding them would stall every certificate or CA
+		// write on this CA for the duration.
+		if err := tx.Commit(ctx); err != nil {
+			return certstore.Version{}, err
+		}
+		return s.revokeVaultVersion(ctx, sig, leaf, certID, versionID, reason)
+	}
 	if err := sig.Revoke(ctx, leaf, reason); err != nil {
 		return certstore.Version{}, err
 	}
@@ -778,9 +838,66 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	if err := tx.Commit(ctx); err != nil {
 		return certstore.Version{}, err
 	}
+	return versionFromRevoked(updated), nil
+}
+
+// RevokeRecordError means Vault revoked the certificate but the revocation
+// could not be recorded locally. Retrying the request records it: Vault's
+// pki/revoke on an already-revoked serial succeeds (it answers 200 with the
+// original revocation_time), so the retry is a no-op there.
+type RevokeRecordError struct{ Err error }
+
+func (e *RevokeRecordError) Error() string {
+	return "the CA revoked the certificate but recording it failed (" + e.Err.Error() + "); retry the request to record it"
+}
+
+func (e *RevokeRecordError) Unwrap() error { return e.Err }
+
+// revokeRecordTimeout bounds recording a revocation Vault already made.
+const revokeRecordTimeout = 15 * time.Second
+
+// revokeVaultVersion is RevokeVersion's vaultpki half, run with no
+// transaction open: the Vault call, then a retried short write of
+// revoked_at. A concurrent revoke that recorded first leaves 0 rows to
+// update (revoked_at IS NULL), reported as the usual 409.
+func (s *Store) revokeVaultVersion(ctx context.Context, sig signer.Signer, leaf *x509.Certificate, certID, versionID uuid.UUID, reason int) (certstore.Version, error) {
+	if err := sig.Revoke(ctx, leaf, reason); err != nil {
+		return certstore.Version{}, err
+	}
+	// Vault has revoked: record it even if the request is cancelled or times
+	// out meanwhile (a slow Vault is the usual reason), within its own bound.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), revokeRecordTimeout)
+	defer cancel()
+	now := time.Now()
+	var lastErr error
+	for attempt, backoff := 0, 100*time.Millisecond; attempt < 3; attempt, backoff = attempt+1, backoff*4 {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				lastErr = ctx.Err()
+			case <-time.After(backoff):
+			}
+			if ctx.Err() != nil {
+				break
+			}
+		}
+		updated, err := s.q.SetCertificateVersionRevoked(ctx, sqlcgen.SetCertificateVersionRevokedParams{ID: versionID, CertID: certID, RevokedAt: &now})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return certstore.Version{}, &ConflictError{Msg: "version is already revoked"}
+		}
+		if err == nil {
+			return versionFromRevoked(updated), nil
+		}
+		lastErr = err
+	}
+	slog.Error("vault revoked a certificate but recording the revocation failed", "version", versionID, "err", lastErr)
+	return certstore.Version{}, &RevokeRecordError{Err: lastErr}
+}
+
+func versionFromRevoked(updated sqlcgen.SetCertificateVersionRevokedRow) certstore.Version {
 	return certstore.Version{ID: updated.ID, CertID: updated.CertID, Serial: updated.Serial, NotBefore: updated.NotBefore,
 		NotAfter: updated.NotAfter, SHA256: updated.Sha256Fp, KeyType: updated.KeyType, Source: updated.Source,
-		HasKey: updated.HasKey, CAID: updated.CaID, RevokedAt: updated.RevokedAt, CreatedAt: updated.CreatedAt}, nil
+		HasKey: updated.HasKey, CAID: updated.CaID, RevokedAt: updated.RevokedAt, CreatedAt: updated.CreatedAt}
 }
 
 // revokeSigner builds the Signer RevokeVersion calls Revoke on, dispatching
@@ -854,6 +971,8 @@ func parseVaultPKIInput(raw map[string]any) (vaultPKIConfig, error) {
 	return cfg, nil
 }
 
+var vaultRoleRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
 var vaultMountRe = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$`)
 
 // validate checks cfg's shape (Shared contract VaultPkiConfig bounds).
@@ -861,8 +980,8 @@ func (cfg vaultPKIConfig) validate() error {
 	if !vaultMountRe.MatchString(cfg.Mount) {
 		return &ValidationError{"config.mount", "must match ^[A-Za-z0-9_-][A-Za-z0-9_/-]{0,127}$"}
 	}
-	if len(cfg.Role) < 1 || len(cfg.Role) > 128 {
-		return &ValidationError{"config.role", "required, 1-128 characters"}
+	if !vaultRoleRe.MatchString(cfg.Role) || strings.Contains(cfg.Role, "..") {
+		return &ValidationError{"config.role", "required, 1-128 characters from A-Z a-z 0-9 . _ - (no \"..\")"}
 	}
 	if cfg.TTL != "" {
 		d, err := time.ParseDuration(cfg.TTL)
@@ -934,18 +1053,47 @@ func (s *Store) updateVaultPKICA(ctx context.Context, orgID, id uuid.UUID, in CA
 	if err := cfg.validate(); err != nil {
 		return CA{}, err
 	}
-	cur, err := s.q.GetCA(ctx, sqlcgen.GetCAParams{ID: id, OrgID: orgID})
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return CA{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	cur, err := q.LockCA(ctx, sqlcgen.LockCAParams{ID: id, OrgID: orgID})
 	if err != nil {
 		return CA{}, notFound(err)
+	}
+	// A different mount (or role, which can pin the signing issuer) would
+	// send the revocation of an already issued version to the wrong place, so
+	// it is refused while the CA has users or live issued versions, the same
+	// rule UpdateCA applies to an ACME directoryUrl.
+	var storedRaw map[string]any
+	_ = json.Unmarshal(cur.Config, &storedRaw)
+	if old, err := parseVaultPKIInput(storedRaw); err == nil && (old.Mount != cfg.Mount || old.Role != cfg.Role) {
+		n, err := q.CountCAUsers(ctx, id)
+		if err != nil {
+			return CA{}, err
+		}
+		if live, err := s.caLiveIssued(ctx, q, id); err != nil {
+			return CA{}, err
+		} else if live != nil {
+			n += live.Users
+		}
+		if n > 0 {
+			return CA{}, &InUseError{Users: n, Reason: "the Vault mount and role cannot change while this CA has accounts, certificates, defaults or live issued versions; create a new CA instead"}
+		}
 	}
 	cfgRaw, err := json.Marshal(cfg)
 	if err != nil {
 		return CA{}, err
 	}
-	row, err := s.q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
+	row, err := q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
 		Preset: "", DirectoryUrl: "", TrustBundlePem: cur.TrustBundlePem, EabKid: "", EabHmac: nil, Resolvers: in.Resolvers})
 	if err != nil {
 		return CA{}, dbErr(err, "name")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CA{}, err
 	}
 	return caFromRow(row)
 }

@@ -33,7 +33,7 @@ it('setRules marks rulesTouched, keeping whatever per-row methods the rules alre
 
 it('blocks Next on no names, invalid names, or more than 100 names', () => {
   expect(canContinueNames(initialWizard)).toBe(false);
-  expect(canContinueNames(r(initialWizard, { type: 'addNames', names: ['bad_x.example.com'] }))).toBe(false);
+  expect(canContinueNames(r(initialWizard, { type: 'addNames', names: ['bad!x.example.com'] }))).toBe(false);
   const many = Array.from({ length: 101 }, (_, i) => `h${i}.example.com`);
   expect(canContinueNames(r(initialWizard, { type: 'addNames', names: many }))).toBe(false);
   expect(canContinueNames(r(initialWizard, { type: 'addNames', names: many.slice(0, 100) }))).toBe(true);

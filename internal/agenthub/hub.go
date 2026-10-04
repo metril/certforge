@@ -147,7 +147,9 @@ func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler 
 			h.Log.Warn("agent sent an unreadable message", "client", clientID, "err", err)
 			continue
 		}
-		replies, err := handler.OnMessage(ctx, clientID, m)
+		hctx, hcancel := h.handlerContext(ctx)
+		replies, err := handler.OnMessage(hctx, clientID, m)
+		hcancel()
 		if err != nil {
 			if isUnauthorized(err) {
 				h.Log.Warn("agent no longer authorized; closing", "client", clientID, "type", m.MsgType(), "err", err)
@@ -161,6 +163,16 @@ func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler 
 			h.enqueue(c, r)
 		}
 	}
+}
+
+// handlerContext bounds one OnMessage call to half the idle timeout: the read
+// loop cannot read pongs while a handler runs, so a handler that outlived the
+// idle timeout would get a healthy connection closed as idle.
+func (h *Hub) handlerContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if h.IdleTimeout <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, h.IdleTimeout/2)
 }
 
 func (h *Hub) write(ctx context.Context, c *conn, b []byte) error {

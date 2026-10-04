@@ -366,11 +366,12 @@ func checkBackupDirectory(raw json.RawMessage) error {
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("directory %q is not a directory", b.Directory)
 	}
-	probe := filepath.Join(b.Directory, ".certforge-write-test")
-	if err := os.WriteFile(probe, nil, 0o600); err != nil {
+	probe, err := os.CreateTemp(b.Directory, ".certforge-probe-*")
+	if err != nil {
 		return fmt.Errorf("directory %q is not writable: %w", b.Directory, err)
 	}
-	_ = os.Remove(probe)
+	_ = probe.Close()
+	_ = os.Remove(probe.Name())
 	return nil
 }
 

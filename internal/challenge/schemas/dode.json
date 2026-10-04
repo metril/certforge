@@ -42,13 +42,6 @@
         "description": "API token",
         "secret": true,
         "x-group": "credentials"
-      },
-      "DODE_TTL": {
-        "type": "string",
-        "title": "DODE_TTL",
-        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
-        "secret": false,
-        "x-group": "additional"
       }
     },
     "x-auth-methods": [

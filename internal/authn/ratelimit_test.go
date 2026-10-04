@@ -134,3 +134,25 @@ func TestLimitKey(t *testing.T) {
 		t.Fatal("IPv4 keys wrong")
 	}
 }
+
+func TestLimiterRejectedReportsFirstPerWindow(t *testing.T) {
+	now := time.Unix(3_000_000, 0)
+	l := NewLimiter(1, 1)
+	l.now = func() time.Time { return now }
+	l.Allow("k")
+	if ok, _ := l.Allow("k"); ok {
+		t.Fatal("second Allow should be limited")
+	}
+	if first, n := l.Rejected("k"); !first || n != 0 {
+		t.Fatalf("first reject: %v %d", first, n)
+	}
+	for i := 0; i < 3; i++ {
+		if first, _ := l.Rejected("k"); first {
+			t.Fatal("repeat reject within the window reported as first")
+		}
+	}
+	now = now.Add(RejectWindow)
+	if first, n := l.Rejected("k"); !first || n != 3 {
+		t.Fatalf("next window: %v %d, want true 3", first, n)
+	}
+}

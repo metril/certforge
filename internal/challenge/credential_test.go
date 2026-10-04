@@ -1,7 +1,12 @@
 package challenge
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
+	"net/netip"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -146,5 +151,174 @@ func TestMergeUpdateLegacyAliasKeyedStored(t *testing.T) {
 	got := CanonicalizeStored("cloudflare", map[string]string{"CLOUDFLARE_API_KEY": "k"})
 	if got["CF_API_KEY"] != "k" || len(got) != 1 {
 		t.Fatalf("got %v", got)
+	}
+}
+
+func TestCheckURLFields(t *testing.T) {
+	cases := []struct {
+		name  string
+		cfg   map[string]string
+		allow bool
+		bad   string
+	}{
+		{"loopback", map[string]string{"HTTPREQ_ENDPOINT": "http://127.0.0.1/"}, false, "HTTPREQ_ENDPOINT"},
+		{"loopback allowed", map[string]string{"HTTPREQ_ENDPOINT": "http://127.0.0.1/"}, true, ""},
+		{"metadata always", map[string]string{"HTTPREQ_ENDPOINT": "http://169.254.169.254/"}, true, "HTTPREQ_ENDPOINT"},
+		{"public", map[string]string{"HTTPREQ_ENDPOINT": "https://dns.example.test"}, false, ""},
+		{"rfc1918", map[string]string{"HTTPREQ_ENDPOINT": "http://10.0.0.5"}, false, ""},
+		{"unchanged skipped", map[string]string{"HTTPREQ_ENDPOINT": Unchanged}, false, ""},
+		{"non-url field skipped", map[string]string{"HTTPREQ_PASSWORD": "http://127.0.0.1"}, false, ""},
+	}
+	for _, c := range cases {
+		err := CheckURLFields(context.Background(), "httpreq", c.cfg, c.allow, stubResolver)
+		if c.bad == "" && err != nil || c.bad != "" && (err == nil || !strings.Contains(err.Error(), c.bad)) {
+			t.Errorf("%s: err = %v, want field %q", c.name, err, c.bad)
+		}
+	}
+}
+
+func TestCheckURLFieldsHostFields(t *testing.T) {
+	for _, c := range []struct{ code, field string }{
+		{"bindman", "BINDMAN_MANAGER_ADDRESS"}, {"vinyldns", "VINYLDNS_HOST"}, {"infoblox", "INFOBLOX_HOST"},
+		{"rfc2136", "RFC2136_NAMESERVER"}, {"efficientip", "EFFICIENTIP_HOSTNAME"}, {"edgedns", "AKAMAI_HOST"},
+	} {
+		for _, v := range []string{"127.0.0.1", "127.0.0.1:8080", "localhost:53", "169.254.169.254"} {
+			if err := CheckURLFields(context.Background(), c.code, map[string]string{c.field: v}, false, stubResolver); err == nil {
+				t.Errorf("%s=%q accepted", c.field, v)
+			}
+		}
+		if err := CheckURLFields(context.Background(), c.code, map[string]string{c.field: "dns.example.test:8443"}, false, stubResolver); err != nil {
+			t.Errorf("%s: public host refused: %v", c.field, err)
+		}
+	}
+	if err := CheckURLFields(context.Background(), "ovh", map[string]string{"OVH_ENDPOINT": "ovh-eu"}, false, stubResolver); err != nil {
+		t.Errorf("ovh region alias refused: %v", err)
+	}
+}
+
+// Every schema field whose name or description says URL/URI/endpoint/host/
+// address must be covered by isURLField, so a schema regeneration cannot add
+// an unchecked network field. notNetwork lists matches that are not hosts.
+func TestEveryNetworkFieldIsChecked(t *testing.T) {
+	word := regexp.MustCompile(`(?i)\b(urls?|uri|endpoints?|hosts?|hostname|address|nameserver)\b`)
+	notNetwork := map[string]bool{"PDNS_SERVER_NAME": true} // a PowerDNS server id, not a host
+	for _, m := range Providers() {
+		var s struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(m.Schema, &s); err != nil {
+			t.Fatal(err)
+		}
+		for name, p := range s.Properties {
+			hit := word.MatchString(strings.ReplaceAll(name, "_", " ")) || word.MatchString(p.Description)
+			if hit && !isURLField(name) && !notNetwork[name] {
+				t.Errorf("%s.%s (%q) looks like a network field but is not checked", m.Code, name, p.Description)
+			}
+		}
+	}
+}
+
+// mapResolver resolves names from a fixed table; any other name fails.
+type mapResolver map[string][]string
+
+func (m mapResolver) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, error) {
+	ips, ok := m[host]
+	if !ok {
+		return nil, errors.New("no such host")
+	}
+	out := make([]netip.Addr, len(ips))
+	for i, ip := range ips {
+		out[i] = netip.MustParseAddr(ip)
+	}
+	return out, nil
+}
+
+var stubResolver = mapResolver{
+	"dns.example.test": {"203.0.113.9"}, "good.example.test": {"203.0.113.9"},
+	"private.example.test": {"10.1.2.3"},
+	"127.0.0.1.nip.io":     {"127.0.0.1"},
+	"rebind.example.test":  {"203.0.113.9", "169.254.169.254"},
+	"lo.example.test":      {"::1"},
+}
+
+func TestCheckURLFieldsResolvesHostnames(t *testing.T) {
+	check := func(v string, allow bool) error {
+		return CheckURLFields(context.Background(), "httpreq", map[string]string{"HTTPREQ_ENDPOINT": v}, allow, stubResolver)
+	}
+	for _, v := range []string{
+		"https://127.0.0.1.nip.io/x", "https://rebind.example.test", "https://lo.example.test",
+		"http://metadata.google.internal/computeMetadata/v1/", "http://Metadata.Google.Internal./", "https://nxdomain.example.test",
+	} {
+		err := check(v, false)
+		if err == nil || !strings.Contains(err.Error(), "HTTPREQ_ENDPOINT") {
+			t.Errorf("%s: err = %v, want a refusal naming the field", v, err)
+		}
+	}
+	if err := check("https://127.0.0.1.nip.io/x", true); err != nil {
+		t.Errorf("loopback-resolving name with opt-out: %v", err)
+	}
+	if err := check("https://rebind.example.test", true); err == nil {
+		t.Error("metadata-resolving name accepted with opt-out")
+	}
+	if err := check("http://metadata.google.internal/", true); err == nil {
+		t.Error("metadata name accepted with opt-out")
+	}
+	if err := check("https://private.example.test", false); err != nil {
+		t.Errorf("RFC 1918 resolution refused: %v", err)
+	}
+}
+
+// An Unchanged sentinel under an alias key keeps the stored (canonical) secret.
+func TestMergeUpdateUnchangedUnderAliasKey(t *testing.T) {
+	_, sec, _, reused, err := MergeUpdate("cloudflare", nil, map[string]string{"CF_DNS_API_TOKEN": "old-token"},
+		map[string]string{"CLOUDFLARE_DNS_API_TOKEN": Unchanged})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sec["CF_DNS_API_TOKEN"] != "old-token" || len(sec) != 1 || !reused {
+		t.Fatalf("sec=%v reused=%v", sec, reused)
+	}
+}
+
+func captureWarn(t *testing.T) *strings.Builder {
+	t.Helper()
+	var buf strings.Builder
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	return &buf
+}
+
+func TestBuildDropsRetiredStoredKey(t *testing.T) {
+	buf := captureWarn(t)
+	if _, err := Build("dode", map[string]string{"DODE_TOKEN": "tok-secret", "DODE_TTL": "120"}); err != nil {
+		t.Fatalf("stored retired key must not fail the build: %v", err)
+	}
+	log := buf.String()
+	if !strings.Contains(log, "DODE_TTL") || !strings.Contains(log, "dode") || strings.Contains(log, "120") || strings.Contains(log, "tok-secret") {
+		t.Fatalf("log = %q", log)
+	}
+}
+
+func TestMergeUpdateDropsRetiredStoredKey(t *testing.T) {
+	buf := captureWarn(t)
+	pub, sec, _, _, err := MergeUpdate("dode",
+		map[string]string{"DODE_TTL": "120"}, map[string]string{"DODE_TOKEN": "old"},
+		map[string]string{"DODE_TOKEN": Unchanged})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := pub["DODE_TTL"]; ok || sec["DODE_TOKEN"] != "old" {
+		t.Fatalf("pub=%v sec=%v", pub, sec)
+	}
+	if !strings.Contains(buf.String(), "DODE_TTL") {
+		t.Fatalf("no drop log: %q", buf.String())
+	}
+	// New input carrying the retired key is still refused.
+	if _, _, _, _, err := MergeUpdate("dode", nil, map[string]string{"DODE_TOKEN": "old"},
+		map[string]string{"DODE_TOKEN": Unchanged, "DODE_TTL": "120"}); !errors.Is(err, ErrUnknownField) {
+		t.Fatalf("err = %v", err)
 	}
 }

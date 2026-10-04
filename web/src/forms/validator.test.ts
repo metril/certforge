@@ -150,6 +150,12 @@ describe('an untouched secret field (the UNCHANGED sentinel) skips its own shape
     expect(validator.isValid(schema, { name: 'ops', signingSecret: UNCHANGED }, schema)).toBe(true);
   });
 
+  it("an explicit '' (SecretInput's Remove) skips minLength; a missing key is still reported as required", () => {
+    const validator = createValidator();
+    expect(validator.validateFormData({ name: 'ops', signingSecret: '' }, schema).errors).toEqual([]);
+    expect(validator.validateFormData({ name: 'ops' }, schema).errors).toHaveLength(1);
+  });
+
   it('a genuinely short, freshly-typed value (not the sentinel) still fails', () => {
     const validator = createValidator();
     const { errors } = validator.validateFormData({ name: 'ops', signingSecret: 'short' }, schema);

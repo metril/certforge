@@ -66,9 +66,21 @@ export function Dropzone({ id, accept, maxBytes, value, onChange, error, disable
     />
   );
 
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    if (disabled) return;
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && matchesAccept(file.name, accept)) pick(file);
+  }
+
   if (value) {
     return (
       <div
+        onDragOver={(e) => {
+          if (!disabled) e.preventDefault();
+        }}
+        onDrop={onDrop}
         className={cn(
           'flex items-center justify-between gap-3 rounded-md border border-dashed p-3 text-sm',
           invalid ? 'border-failed' : 'border-border',
@@ -91,14 +103,6 @@ export function Dropzone({ id, accept, maxBytes, value, onChange, error, disable
         {input}
       </div>
     );
-  }
-
-  function onDrop(e: DragEvent<HTMLDivElement>) {
-    if (disabled) return;
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file && matchesAccept(file.name, accept)) pick(file);
   }
 
   // Fix round 1 (review, Minor): the wrapper's own onClick re-opens the

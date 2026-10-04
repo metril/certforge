@@ -26,12 +26,163 @@ type BumpARIRetryAfterParams struct {
 // Sets only ari_retry_after, leaving any cached window untouched (fix
 // round 1): used when a poll is skipped (useAri off, no CA recorded for
 // the current version) or errors before a window was actually fetched, so
-// the certificate does not occupy ListARIDue's next page, or the next
+// the certificate does not occupy ListARIDueWithLeaf's next page, or the next
 // run's first page, forever. Conditional on current_version_id, same as
 // SetARIWindow.
 func (q *Queries) BumpARIRetryAfter(ctx context.Context, arg BumpARIRetryAfterParams) error {
 	_, err := q.db.Exec(ctx, bumpARIRetryAfter, arg.ID, arg.CurrentVersionID, arg.AriRetryAfter)
 	return err
+}
+
+const bumpARIRetryAfterMany = `-- name: BumpARIRetryAfterMany :exec
+UPDATE certificates c SET ari_retry_after = b.retry_after
+FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::uuid[]) AS version_id,
+             unnest($3::timestamptz[]) AS retry_after) b
+WHERE c.id = b.id AND c.current_version_id = b.version_id
+`
+
+type BumpARIRetryAfterManyParams struct {
+	Ids         []uuid.UUID `json:"ids"`
+	VersionIds  []uuid.UUID `json:"version_ids"`
+	RetryAfters []time.Time `json:"retry_afters"`
+}
+
+// BumpARIRetryAfter for a batch (one round trip per PollDue page): three
+// parallel arrays of equal length, same current_version_id condition.
+func (q *Queries) BumpARIRetryAfterMany(ctx context.Context, arg BumpARIRetryAfterManyParams) error {
+	_, err := q.db.Exec(ctx, bumpARIRetryAfterMany, arg.Ids, arg.VersionIds, arg.RetryAfters)
+	return err
+}
+
+const certificateOverviewBriefs = `-- name: CertificateOverviewBriefs :many
+SELECT c.id, c.org_id, c.name, c.status, c.next_renew_at, c.failure_count, c.last_error,
+       c.verification_rules, c.overrides, c.ari_window_start, c.ari_window_end, c.ari_checked_at,
+       v.not_before, v.not_after,
+       COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
+        OR v.not_after < now() + interval '90 days'
+        OR c.next_renew_at < now() + interval '7 days', false)::bool AS needs_look
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.org_id = ANY($1::uuid[])
+  AND c.status <> 'revoked'
+  AND (c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
+       OR v.not_after < now() + interval '90 days'
+       OR c.next_renew_at < now() + interval '7 days'
+       OR (c.status <> 'expired'
+           AND (c.verification_rules @> '[{"method":"manual-dns"}]'::jsonb
+                OR c.overrides::text LIKE '%manual-dns%'
+                OR (c.verification_rules = '[]'::jsonb AND c.org_id = ANY($2::uuid[])))))
+ORDER BY COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0
+                  OR v.not_after < now() + interval '90 days'
+                  OR c.next_renew_at < now() + interval '7 days', false) DESC,
+         COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0 OR c.next_renew_at < now(), false) DESC,
+         v.not_after NULLS LAST, c.id
+LIMIT $3::int
+`
+
+type CertificateOverviewBriefsParams struct {
+	OrgIds      []uuid.UUID `json:"org_ids"`
+	InheritOrgs []uuid.UUID `json:"inherit_orgs"`
+	RowLimit    int32       `json:"row_limit"`
+}
+
+type CertificateOverviewBriefsRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	Name              string     `json:"name"`
+	Status            string     `json:"status"`
+	NextRenewAt       *time.Time `json:"next_renew_at"`
+	FailureCount      int32      `json:"failure_count"`
+	LastError         string     `json:"last_error"`
+	VerificationRules []byte     `json:"verification_rules"`
+	Overrides         []byte     `json:"overrides"`
+	AriWindowStart    *time.Time `json:"ari_window_start"`
+	AriWindowEnd      *time.Time `json:"ari_window_end"`
+	AriCheckedAt      *time.Time `json:"ari_checked_at"`
+	NotBefore         *time.Time `json:"not_before"`
+	NotAfter          *time.Time `json:"not_after"`
+	NeedsLook         bool       `json:"needs_look"`
+}
+
+// The non-revoked certificates the Overview needs to look at: expired,
+// pending or failed ones, any with a recorded failure, any expiring inside
+// the 90-day horizon or renewing within 7 days (this also catches overdue
+// renewals), plus rows that may be waiting on manual DNS (their own rules or
+// overrides name manual-dns, or they inherit rules from an org in
+// inherit_orgs). Attention candidates sort first so the cap never drops
+// them, then the rest by expiry, and the manual-DNS-only extras (needs_look
+// false) come last.
+func (q *Queries) CertificateOverviewBriefs(ctx context.Context, arg CertificateOverviewBriefsParams) ([]CertificateOverviewBriefsRow, error) {
+	rows, err := q.db.Query(ctx, certificateOverviewBriefs, arg.OrgIds, arg.InheritOrgs, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CertificateOverviewBriefsRow{}
+	for rows.Next() {
+		var i CertificateOverviewBriefsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.Status,
+			&i.NextRenewAt,
+			&i.FailureCount,
+			&i.LastError,
+			&i.VerificationRules,
+			&i.Overrides,
+			&i.AriWindowStart,
+			&i.AriWindowEnd,
+			&i.AriCheckedAt,
+			&i.NotBefore,
+			&i.NotAfter,
+			&i.NeedsLook,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const certificateOverviewCounts = `-- name: CertificateOverviewCounts :many
+SELECT c.status, count(*)::bigint AS n,
+       (count(*) FILTER (WHERE v.not_after > now() + interval '90 days'))::bigint AS beyond
+FROM certificates c
+LEFT JOIN certificate_versions v ON v.id = c.current_version_id
+WHERE c.org_id = ANY($1::uuid[])
+GROUP BY c.status
+`
+
+type CertificateOverviewCountsRow struct {
+	Status string `json:"status"`
+	N      int64  `json:"n"`
+	Beyond int64  `json:"beyond"`
+}
+
+// Per-status counts and, per status, how many certificates expire after the
+// 90-day horizon (the Overview's "N later"; revoked excluded by the caller).
+func (q *Queries) CertificateOverviewCounts(ctx context.Context, orgIds []uuid.UUID) ([]CertificateOverviewCountsRow, error) {
+	rows, err := q.db.Query(ctx, certificateOverviewCounts, orgIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CertificateOverviewCountsRow{}
+	for rows.Next() {
+		var i CertificateOverviewCountsRow
+		if err := rows.Scan(&i.Status, &i.N, &i.Beyond); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const certificatesUsingClient = `-- name: CertificatesUsingClient :many
@@ -386,6 +537,74 @@ func (q *Queries) GetCertificateVersion(ctx context.Context, arg GetCertificateV
 	return i, err
 }
 
+const getCertificateVersionDER = `-- name: GetCertificateVersionDER :one
+SELECT leaf_der, chain_der FROM certificate_versions WHERE id = $1 AND cert_id = $2
+`
+
+type GetCertificateVersionDERParams struct {
+	ID     uuid.UUID `json:"id"`
+	CertID uuid.UUID `json:"cert_id"`
+}
+
+type GetCertificateVersionDERRow struct {
+	LeafDer  []byte   `json:"leaf_der"`
+	ChainDer [][]byte `json:"chain_der"`
+}
+
+// Render input without the sealed key (Material withKey=false).
+func (q *Queries) GetCertificateVersionDER(ctx context.Context, arg GetCertificateVersionDERParams) (GetCertificateVersionDERRow, error) {
+	row := q.db.QueryRow(ctx, getCertificateVersionDER, arg.ID, arg.CertID)
+	var i GetCertificateVersionDERRow
+	err := row.Scan(&i.LeafDer, &i.ChainDer)
+	return i, err
+}
+
+const getCertificateVersionMeta = `-- name: GetCertificateVersionMeta :one
+SELECT id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
+FROM certificate_versions WHERE id = $1 AND cert_id = $2
+`
+
+type GetCertificateVersionMetaParams struct {
+	ID     uuid.UUID `json:"id"`
+	CertID uuid.UUID `json:"cert_id"`
+}
+
+type GetCertificateVersionMetaRow struct {
+	ID        uuid.UUID  `json:"id"`
+	CertID    uuid.UUID  `json:"cert_id"`
+	Serial    string     `json:"serial"`
+	NotBefore time.Time  `json:"not_before"`
+	NotAfter  time.Time  `json:"not_after"`
+	Sha256Fp  string     `json:"sha256_fp"`
+	KeyType   string     `json:"key_type"`
+	Source    string     `json:"source"`
+	CaID      *uuid.UUID `json:"ca_id"`
+	HasKey    bool       `json:"has_key"`
+	RevokedAt *time.Time `json:"revoked_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// Metadata only: no DER, no sealed key (has_key is computed).
+func (q *Queries) GetCertificateVersionMeta(ctx context.Context, arg GetCertificateVersionMetaParams) (GetCertificateVersionMetaRow, error) {
+	row := q.db.QueryRow(ctx, getCertificateVersionMeta, arg.ID, arg.CertID)
+	var i GetCertificateVersionMetaRow
+	err := row.Scan(
+		&i.ID,
+		&i.CertID,
+		&i.Serial,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.Sha256Fp,
+		&i.KeyType,
+		&i.Source,
+		&i.CaID,
+		&i.HasKey,
+		&i.RevokedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getOrgIssuanceDefaults = `-- name: GetOrgIssuanceDefaults :one
 SELECT config FROM issuance_defaults WHERE org_id = $1
 `
@@ -467,19 +686,27 @@ func (q *Queries) InsertCertificateVersion(ctx context.Context, arg InsertCertif
 	return i, err
 }
 
-const listARIDue = `-- name: ListARIDue :many
-SELECT id, org_id, name, common_name, sans, verification_rules, overrides, status, current_version_id, next_renew_at, failure_count, last_error, created_at, updated_at, managed, ari_window_start, ari_window_end, ari_checked_at, ari_retry_after FROM certificates
-WHERE managed AND current_version_id IS NOT NULL AND status = 'active'
-  AND (ari_retry_after IS NULL OR ari_retry_after <= now())
-  AND (NOT $1::bool OR id > $2::uuid)
-ORDER BY id
+const listARIDueWithLeaf = `-- name: ListARIDueWithLeaf :many
+SELECT c.id, c.org_id, c.name, c.common_name, c.sans, c.verification_rules, c.overrides, c.status, c.current_version_id, c.next_renew_at, c.failure_count, c.last_error, c.created_at, c.updated_at, c.managed, c.ari_window_start, c.ari_window_end, c.ari_checked_at, c.ari_retry_after, v.ca_id AS version_ca_id, v.leaf_der AS version_leaf_der
+FROM certificates c
+JOIN certificate_versions v ON v.id = c.current_version_id AND v.cert_id = c.id
+WHERE c.managed AND c.current_version_id IS NOT NULL AND c.status = 'active'
+  AND (c.ari_retry_after IS NULL OR c.ari_retry_after <= now())
+  AND (NOT $1::bool OR c.id > $2::uuid)
+ORDER BY c.id
 LIMIT $3::int
 `
 
-type ListARIDueParams struct {
+type ListARIDueWithLeafParams struct {
 	HasCursor bool      `json:"has_cursor"`
 	LastID    uuid.UUID `json:"last_id"`
 	PageLimit int32     `json:"page_limit"`
+}
+
+type ListARIDueWithLeafRow struct {
+	Certificate    Certificate `json:"certificate"`
+	VersionCaID    *uuid.UUID  `json:"version_ca_id"`
+	VersionLeafDer []byte      `json:"version_leaf_der"`
 }
 
 // Certificates due for an ACME Renewal Information poll (ARIPollWorker):
@@ -491,36 +718,40 @@ type ListARIDueParams struct {
 // cannot crowd out certificates ordered after it on the next page, or on
 // the next run. Whether the certificate's effective renewPolicy.useAri is
 // actually set is resolved separately in Go (Store.EffectiveFor merges
-// three JSON levels, not expressible here).
-func (q *Queries) ListARIDue(ctx context.Context, arg ListARIDueParams) ([]Certificate, error) {
-	rows, err := q.db.Query(ctx, listARIDue, arg.HasCursor, arg.LastID, arg.PageLimit)
+// three JSON levels, not expressible here). Also returns the current
+// version's ca_id and leaf_der (never the sealed private key), so the poll
+// needs no per-certificate version read.
+func (q *Queries) ListARIDueWithLeaf(ctx context.Context, arg ListARIDueWithLeafParams) ([]ListARIDueWithLeafRow, error) {
+	rows, err := q.db.Query(ctx, listARIDueWithLeaf, arg.HasCursor, arg.LastID, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Certificate{}
+	items := []ListARIDueWithLeafRow{}
 	for rows.Next() {
-		var i Certificate
+		var i ListARIDueWithLeafRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.OrgID,
-			&i.Name,
-			&i.CommonName,
-			&i.Sans,
-			&i.VerificationRules,
-			&i.Overrides,
-			&i.Status,
-			&i.CurrentVersionID,
-			&i.NextRenewAt,
-			&i.FailureCount,
-			&i.LastError,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Managed,
-			&i.AriWindowStart,
-			&i.AriWindowEnd,
-			&i.AriCheckedAt,
-			&i.AriRetryAfter,
+			&i.Certificate.ID,
+			&i.Certificate.OrgID,
+			&i.Certificate.Name,
+			&i.Certificate.CommonName,
+			&i.Certificate.Sans,
+			&i.Certificate.VerificationRules,
+			&i.Certificate.Overrides,
+			&i.Certificate.Status,
+			&i.Certificate.CurrentVersionID,
+			&i.Certificate.NextRenewAt,
+			&i.Certificate.FailureCount,
+			&i.Certificate.LastError,
+			&i.Certificate.CreatedAt,
+			&i.Certificate.UpdatedAt,
+			&i.Certificate.Managed,
+			&i.Certificate.AriWindowStart,
+			&i.Certificate.AriWindowEnd,
+			&i.Certificate.AriCheckedAt,
+			&i.Certificate.AriRetryAfter,
+			&i.VersionCaID,
+			&i.VersionLeafDer,
 		); err != nil {
 			return nil, err
 		}
@@ -1667,7 +1898,7 @@ func (q *Queries) SetARIWindow(ctx context.Context, arg SetARIWindowParams) erro
 
 const setCertificateVersionRevoked = `-- name: SetCertificateVersionRevoked :one
 UPDATE certificate_versions SET revoked_at = $3
-WHERE id = $1 AND cert_id = $2
+WHERE id = $1 AND cert_id = $2 AND revoked_at IS NULL
 RETURNING id, cert_id, serial, not_before, not_after, sha256_fp, key_type, source, ca_id, (private_key IS NOT NULL)::boolean AS has_key, revoked_at, created_at
 `
 

@@ -56,8 +56,8 @@ export function MultiCombobox({ id, value, onChange, options, placeholder, empty
             <CommandInput placeholder="Search" />
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>
-              {groups.map((g) => (
-                <CommandGroup key={g.label ?? ''} heading={g.label}>
+              {groups.map((g, gi) => (
+                <CommandGroup key={gi} heading={g.label}>
                 {g.options.map((o) => (
                   <OptionWithHint key={o.value} disabled={o.disabled} hint={o.hint}>
                     <CommandItem

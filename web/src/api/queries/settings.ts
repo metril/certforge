@@ -34,6 +34,8 @@ export function useSaveSettings(section: SectionId, opts: { silent?: boolean } =
   return useMutation({
     mutationFn: (value: Record<string, unknown>) => call(api.PUT('/settings/{section}', { params: { path: { section } }, body: value })),
     meta: { silent: opts.silent, success: 'Settings saved' },
+    // Secret-bearing variables must not linger in the MutationCache.
+    gcTime: 0,
     // Review fix round 1 (#6): awaited, like useSaveOrgDefaults's own
     // onSuccess, so the mutation stays "pending" through the refetch and a
     // caller that awaits mutateAsync doesn't see a flash of the old value

@@ -4,8 +4,11 @@ package issuance
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/signer"
@@ -210,5 +213,198 @@ func TestLedgerPrune(t *testing.T) {
 	}
 	if got := f.ledgerCount(t, kindNewOrder); got != 1 {
 		t.Fatalf("remaining new_order rows = %d, want 1", got)
+	}
+}
+
+// reserveN runs n concurrent ReserveLedger calls (distinct attempts, one
+// shared name set) and returns how many were admitted.
+func reserveN(t *testing.T, f *fixture, n int, names []string, limits RateLimits) int {
+	t.Helper()
+	ctx := context.Background()
+	c := f.cert(t, names, nil)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	admitted := 0
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, uuid.New(), names, limits, now0, true)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if exceeded == nil {
+				mu.Lock()
+				admitted++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	return admitted
+}
+
+// TestReserveLedgerAtomic: N concurrent attempts against a limit of 3 admit
+// exactly 3, whichever limit is the binding one.
+func TestReserveLedgerAtomic(t *testing.T) {
+	names := []string{"atomic.example.test"}
+	for name, limits := range map[string]RateLimits{
+		"newOrders":      {NewOrdersPer3Hours: 3},
+		"certsPerDomain": {CertsPerRegisteredDomainPerWeek: 3},
+		"duplicateCerts": {DuplicateCertsPerWeek: 3},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			if got := reserveN(t, f, 8, names, limits); got != 3 {
+				t.Fatalf("admitted %d, want 3", got)
+			}
+		})
+	}
+}
+
+func TestReserveLedgerIdempotentPerAttempt(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	names := []string{"idem.example.test"}
+	c := f.cert(t, names, nil)
+	attempt := uuid.New()
+	for i := 0; i < 2; i++ {
+		if exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, attempt, names, RateLimits{NewOrdersPer3Hours: 1}, now0, true); err != nil || exceeded != nil {
+			t.Fatalf("call %d: exceeded = %+v, err = %v", i, exceeded, err)
+		}
+	}
+	if f.ledgerCount(t, kindNewOrder) != 1 || f.ledgerCount(t, kindCertIssued) != 1 {
+		t.Fatalf("new_order = %d, cert_issued = %d, want 1, 1", f.ledgerCount(t, kindNewOrder), f.ledgerCount(t, kindCertIssued))
+	}
+}
+
+func TestReserveLedgerExpiredStopsCounting(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	names := []string{"expire.example.test"}
+	c := f.cert(t, names, nil)
+	limits := RateLimits{CertsPerRegisteredDomainPerWeek: 1}
+	if exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, uuid.New(), names, limits, now0, true); err != nil || exceeded != nil {
+		t.Fatalf("first: %+v, %v", exceeded, err)
+	}
+	if exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, uuid.New(), names, limits, now0, true); err != nil || exceeded == nil {
+		t.Fatalf("second while reserved: %+v, %v, want exceeded", exceeded, err)
+	}
+	later := now0.Add(reservationTTL + time.Minute)
+	if exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, uuid.New(), names, limits, later, true); err != nil || exceeded != nil {
+		t.Fatalf("after expiry: %+v, %v, want admitted", exceeded, err)
+	}
+}
+
+// TestReserveLedgerConfirmAndRelease: confirm keeps the count (and clears
+// the reservation); release drops cert_issued but keeps new_order.
+func TestReserveLedgerConfirmAndRelease(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	names := []string{"cr.example.test"}
+	c := f.cert(t, names, nil)
+	ok, failed := uuid.New(), uuid.New()
+	for _, a := range []uuid.UUID{ok, failed} {
+		if exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, a, names, RateLimits{}, now0, true); err != nil || exceeded != nil {
+			t.Fatalf("reserve: %+v, %v", exceeded, err)
+		}
+	}
+	tx, err := f.store.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.ConfirmCertIssued(ctx, tx, f.ca.ID, c.ID, ok, names, now0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.ReleaseReservation(ctx, failed); err != nil {
+		t.Fatal(err)
+	}
+	var reserved int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM rate_ledger WHERE reserved_until IS NOT NULL`).Scan(&reserved); err != nil {
+		t.Fatal(err)
+	}
+	if reserved != 0 || f.ledgerCount(t, kindCertIssued) != 1 || f.ledgerCount(t, kindNewOrder) != 2 {
+		t.Fatalf("reserved = %d, cert_issued = %d, new_order = %d, want 0, 1, 2", reserved, f.ledgerCount(t, kindCertIssued), f.ledgerCount(t, kindNewOrder))
+	}
+	// Confirm with nothing reserved (private CA) falls back to an insert.
+	tx, err = f.store.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.ConfirmCertIssued(ctx, tx, f.ca.ID, c.ID, uuid.New(), names, now0); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if f.ledgerCount(t, kindCertIssued) != 2 {
+		t.Fatalf("cert_issued = %d, want 2", f.ledgerCount(t, kindCertIssued))
+	}
+}
+
+func TestReserveLedgerNotEnforcedRecordsOnly(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	names := []string{"noenf.example.test"}
+	c := f.cert(t, names, nil)
+	for i := 0; i < 3; i++ {
+		if exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, uuid.New(), names, RateLimits{NewOrdersPer3Hours: 1}, now0, false); err != nil || exceeded != nil {
+			t.Fatalf("%d: %+v, %v", i, exceeded, err)
+		}
+	}
+	if f.ledgerCount(t, kindNewOrder) != 3 {
+		t.Fatalf("new_order = %d, want 3", f.ledgerCount(t, kindNewOrder))
+	}
+}
+
+func TestPruneLedgerDropsExpiredReservations(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	names := []string{"prune.example.test"}
+	c := f.cert(t, names, nil)
+	if _, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, uuid.New(), names, RateLimits{}, now0, true); err != nil {
+		t.Fatal(err)
+	}
+	// now0 is long past, so the reservation is expired against the DB clock;
+	// a cutoff before the row's own timestamp leaves only expiry to prune it.
+	if _, err := f.store.PruneLedger(ctx, now0.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if f.ledgerCount(t, kindCertIssued) != 0 || f.ledgerCount(t, kindNewOrder) != 1 {
+		t.Fatalf("cert_issued = %d, new_order = %d, want 0, 1", f.ledgerCount(t, kindCertIssued), f.ledgerCount(t, kindNewOrder))
+	}
+}
+
+// TestLedgerSucceedFailureStaysCounted: when storing the issued certificate
+// fails after the CA already issued it, the issuance stays counted (a
+// following reserve at the limit is refused), not released.
+func TestLedgerSucceedFailureStaysCounted(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	cred := f.credential(t, "cf")
+	names := []string{"stored.example.test"}
+	c := f.cert(t, names, []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}})
+	for _, stmt := range []string{
+		`CREATE FUNCTION cf_block_version() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'blocked'; END $$ LANGUAGE plpgsql`,
+		`CREATE TRIGGER cf_block_version BEFORE INSERT ON certificate_versions FOR EACH ROW EXECUTE FUNCTION cf_block_version()`,
+	} {
+		if _, err := f.pool.Exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fs := &fakeSigner{issued: issuedFor(t, names, now0)}
+	if err := newWorker(f, fs).Issue(ctx, c.ID); err == nil {
+		t.Fatal("want the store failure")
+	}
+	exceeded, err := f.store.ReserveLedger(ctx, f.ca.ID, c.ID, uuid.New(), names, RateLimits{CertsPerRegisteredDomainPerWeek: 1}, now0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exceeded == nil {
+		t.Fatal("issuance that the CA completed was released from the ledger")
 	}
 }

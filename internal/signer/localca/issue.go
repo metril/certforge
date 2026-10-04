@@ -38,7 +38,7 @@ type Opts struct {
 // Recorder persists a revocation so BuildCRL can include it (Task 7: backed
 // by the certificate_versions table and the CA's crl_number column).
 type Recorder interface {
-	Revoke(ctx context.Context, serial, issuerSerial string, reason int, at time.Time) error
+	Revoke(ctx context.Context, serial, issuerSerial string, reason int, at, notAfter time.Time) error
 }
 
 // Signer implements signer.Signer over Material. It holds only Issuing's
@@ -158,7 +158,7 @@ func (s *Signer) Revoke(ctx context.Context, cert *x509.Certificate, reason int)
 	}
 	issuerSerial := s.mat.Issuing.SerialNumber.Text(16)
 	serial := fmt.Sprintf("%x", cert.SerialNumber)
-	return s.rec.Revoke(ctx, serial, issuerSerial, reason, s.opts.Now())
+	return s.rec.Revoke(ctx, serial, issuerSerial, reason, s.opts.Now(), cert.NotAfter)
 }
 
 // RenewalInfo is not implemented: localca has no ACME ARI to poll.

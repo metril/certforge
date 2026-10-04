@@ -60,6 +60,7 @@ func (s *Server) UploadCertificateVersion(ctx context.Context, r gen.UploadCerti
 		return nil, err
 	}
 	in := uploadInputFrom(r.Body.CertificatePem, r.Body.PrivateKeyPem, r.Body.Pkcs12Base64, r.Body.Password)
+	in.AllowOlder = r.Body.AllowOlder != nil && *r.Body.AllowOlder
 	_, v, err := s.d.Issuance.UploadVersion(ctx, r.OrgId, r.Id, in)
 	if err != nil {
 		return nil, mapErr(err)

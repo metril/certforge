@@ -874,3 +874,74 @@ func TestRenderOpensOnlyWhatItNeeds(t *testing.T) {
 		t.Fatalf("Assignments opened the shared target %d times, want 1", n)
 	}
 }
+
+// TestHeartbeatSteadyStateTakesNoLock (fix round 2, P5): a heartbeat that
+// changes no deployment state neither opens a write transaction nor locks
+// the client row (it returns while another transaction holds that lock),
+// while a drift transition still takes the lock, audits and records the
+// state.
+func TestHeartbeatSteadyStateTakesNoLock(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-hb")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := asg.Grants[0].Files[0]
+	if err := f.svc.Report(ctx, cl, agentproto.Report{Revision: asg.Revision, Results: []agentproto.GrantResult{
+		{GrantID: gid, State: agentproto.StateOK, Installed: []agentproto.FileDigest{{Path: file.Path, SHA256: file.SHA256}}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	good := agentproto.Heartbeat{Installed: []agentproto.InstalledFile{{GrantID: gid, Path: file.Path, SHA256: file.SHA256}}}
+	bad := agentproto.Heartbeat{Installed: []agentproto.InstalledFile{{GrantID: gid, Path: file.Path, SHA256: "0000"}}}
+	// Prime the last_seen throttle so the steady heartbeat writes nothing.
+	if err := f.svc.Heartbeat(ctx, cl, good); err != nil {
+		t.Fatal(err)
+	}
+
+	hold, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hold.Rollback(ctx) }()
+	if _, err := hold.Exec(ctx, `SELECT 1 FROM clients WHERE id = $1 FOR UPDATE`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	steady, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := f.svc.Heartbeat(steady, cl, good); err != nil {
+		t.Fatalf("steady-state heartbeat blocked or failed while the client row was locked: %v", err)
+	}
+	if got := f.state(t, gid); got != "ok" {
+		t.Fatalf("state = %q, want ok", got)
+	}
+
+	drift, cancel2 := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel2()
+	if err := f.svc.Heartbeat(drift, cl, bad); err == nil {
+		t.Fatal("a drifting heartbeat must take the client lock and so block here")
+	}
+	if err := hold.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.Heartbeat(ctx, cl, bad); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.state(t, gid); got != "drift" {
+		t.Fatalf("state after a mismatched heartbeat = %q, want drift", got)
+	}
+}

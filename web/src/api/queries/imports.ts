@@ -32,11 +32,11 @@ export function useImportCertificates(orgId: string) {
     // useSaveCa's own EAB-HMAC exposure fix.
     gcTime: 0,
     onSuccess: (_data, vars) => {
-      if (!vars.dryRun) qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      if (!vars.dryRun) void qc.invalidateQueries({ queryKey: ['certs', orgId] });
     },
     // A real import that fails partway has still created certificates.
     onError: (_e, vars) => {
-      if (!vars.dryRun) qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      if (!vars.dryRun) void qc.invalidateQueries({ queryKey: ['certs', orgId] });
     },
   });
 }

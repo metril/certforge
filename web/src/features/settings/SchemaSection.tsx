@@ -1,5 +1,5 @@
 import { Card, CardBody, CardHeader } from '@/components/Card';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
@@ -44,6 +44,7 @@ export function SchemaSection({
   mapSaveError,
   prepareBody,
   onSaved,
+  onDirtyChange,
 }: {
   section: SectionId;
   title?: string;
@@ -87,6 +88,8 @@ export function SchemaSection({
   /** Runs after a successful save, direct or mutation (Task 6, for Task 7's
    * later use) — after the draft and any save error are cleared. */
   onSaved?: () => void;
+  /** Reports whether an unsaved draft exists (for a caller's leave-page guard). */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const me = useMe();
   const qc = useQueryClient();
@@ -97,6 +100,8 @@ export function SchemaSection({
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
   const [saveError, setSaveError] = useState<ErrorSchema | null>(null);
   const canWrite = can(me, 'settings:write');
+  const hasDraft = draft !== null;
+  useEffect(() => onDirtyChange?.(hasDraft), [hasDraft, onDirtyChange]);
 
   const heading = title && (
     <CardHeader
@@ -173,7 +178,12 @@ export function SchemaSection({
                       setSavingDirect(false);
                     }
                   } else {
-                    await save.mutateAsync(body);
+                    try {
+                      await save.mutateAsync(body);
+                    } finally {
+                      // Drop the typed body (it may hold a secret) from the mutation's state.
+                      save.reset();
+                    }
                   }
                   setDraft(null);
                   setSaveError(null);

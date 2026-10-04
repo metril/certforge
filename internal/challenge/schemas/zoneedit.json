@@ -1,0 +1,59 @@
+{
+  "code": "zoneedit",
+  "name": "ZoneEdit",
+  "url": "https://www.zoneedit.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ZoneEdit",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ZONEEDIT_AUTH_TOKEN": {
+        "type": "string",
+        "title": "ZONEEDIT_AUTH_TOKEN",
+        "description": "Authentication token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ZONEEDIT_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ZONEEDIT_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ZONEEDIT_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ZONEEDIT_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ZONEEDIT_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ZONEEDIT_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ZONEEDIT_USER": {
+        "type": "string",
+        "title": "ZONEEDIT_USER",
+        "description": "User ID",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "user-auth-token",
+        "label": "User + Auth token",
+        "fields": [
+          "ZONEEDIT_USER",
+          "ZONEEDIT_AUTH_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

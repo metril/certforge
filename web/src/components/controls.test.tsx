@@ -310,6 +310,23 @@ it('confirm destructive requires the exact text and shows server errors inline',
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('CA is used by 2 certificates');
 });
 
+it('confirm destructive submits on Enter once the text matches, and never with empty confirm text', async () => {
+  const onConfirm = vi.fn().mockResolvedValue(undefined);
+  const { user } = renderUI(
+    <ConfirmDestructive open onOpenChange={() => {}} title="Delete" consequence="x" confirmText="abc" actionLabel="Delete" onConfirm={onConfirm} />,
+  );
+  const input = screen.getByRole('textbox');
+  await user.type(input, 'ab{Enter}');
+  expect(onConfirm).not.toHaveBeenCalled();
+  await user.type(input, 'c{Enter}');
+  await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+});
+
+it('confirm destructive keeps the action disabled when there is no confirm text (closing animation)', () => {
+  renderUI(<ConfirmDestructive open onOpenChange={() => {}} title="Delete" consequence="x" confirmText="" actionLabel="Delete" onConfirm={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+});
+
 // Reveal: the stored value is fetched on demand and never kept after hide.
 function RevealHarness({ onReveal, reason }: { onReveal?: () => Promise<string>; reason?: string }) {
   const [v, setV] = useState<string | undefined>(undefined);
@@ -373,4 +390,43 @@ it('secret reveal: with a disabled reason the button is disabled and never calls
 it('secret reveal: no reveal button without onReveal', () => {
   renderUI(<RevealHarness />);
   expect(screen.queryByRole('button', { name: /^Reveal / })).toBeNull();
+});
+
+// W2: a Discard or Save in the parent resets the value to the sentinel from
+// outside; the control must return to "Stored" with no stale Remove/Replace mode.
+function ResettableHarness() {
+  const [v, setV] = useState<string | undefined>(UNCHANGED);
+  return (
+    <>
+      <SecretInput id="token" label="Recovery token" stored value={v} onChange={setV} />
+      <output data-testid="value">{String(v)}</output>
+      <button type="button" onClick={() => setV(UNCHANGED)}>
+        External reset
+      </button>
+    </>
+  );
+}
+
+it('secret: Discard after Remove restores Stored, and a later type-then-clear sends the sentinel, never an empty string', async () => {
+  const { user } = renderUI(<ResettableHarness />);
+  await user.click(screen.getByRole('button', { name: 'Remove Recovery token' }));
+  expect(screen.getByTestId('value').textContent).toBe('');
+  await user.click(screen.getByRole('button', { name: 'External reset' }));
+  expect(screen.getByText('Stored')).toBeInTheDocument();
+  expect(screen.getByTestId('value')).toHaveTextContent(UNCHANGED);
+  await user.click(screen.getByRole('button', { name: 'Replace Recovery token' }));
+  const input = screen.getByLabelText('Recovery token');
+  await user.type(input, 'x');
+  await user.clear(input);
+  expect(screen.getByTestId('value')).toHaveTextContent(UNCHANGED);
+});
+
+it('secret: after a replaced value is saved (reset to the sentinel) the field returns to Stored', async () => {
+  const { user } = renderUI(<ResettableHarness />);
+  await user.click(screen.getByRole('button', { name: 'Replace Recovery token' }));
+  await user.type(screen.getByLabelText('Recovery token'), 'new-token');
+  expect(screen.getByTestId('value')).toHaveTextContent('new-token');
+  await user.click(screen.getByRole('button', { name: 'External reset' }));
+  expect(screen.getByText('Stored')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Recovery token')).toBeNull();
 });

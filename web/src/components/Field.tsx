@@ -36,7 +36,7 @@ export function Field({ id, label, help, helpText, optional, error, children, cl
       <div className="flex items-center gap-1.5">
         <Label htmlFor={id}>{label}</Label>
         {optional && <span className="text-xs text-ink-muted">Optional</span>}
-        {(help || helpText) && <HelpTip id={help} text={helpText} />}
+        {(help || helpText) && <HelpTip id={help} text={helpText} label={typeof label === 'string' ? label : undefined} />}
       </div>
       {content}
       {error && (

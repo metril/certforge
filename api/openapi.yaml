@@ -1030,6 +1030,38 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /certificates/summary:
+    get:
+      operationId: getAllCertificateOverview
+      tags: [certificates]
+      summary: Overview summary across orgs
+      description: Like getCertificateOverview, over every org where the caller has certs:read. 403 when there is none.
+      responses:
+        "200":
+          description: Status counts and the certificates that need a look.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateOverview"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/certificates/summary:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: getCertificateOverview
+      tags: [certificates]
+      summary: Overview summary
+      description: Needs certs:read. Status counts plus one brief per non-revoked certificate that is expired, pending, failed, has a recorded failure, expires within 90 days or renews within 7 days, or may be waiting on manual DNS. Capped at 2000 briefs (truncated).
+      responses:
+        "200":
+          description: Status counts and the certificates that need a look.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CertificateOverview"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/certificates:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -1249,7 +1281,8 @@ paths:
       tags: [certificates]
       summary: Add an uploaded version to an unmanaged certificate
       description: >-
-        Needs certs:write. 409 when the certificate is managed. Recorded as
+        Needs certs:write. 409 when the certificate is managed. 422 when the leaf is not valid yet,
+        or expires before the current version unless allowOlder is true. Recorded as
         certificate.version_uploaded in the audit log.
       requestBody:
         required: true
@@ -3015,11 +3048,12 @@ components:
     Site:
       type: object
       description: A location within an org, used as a filter.
-      required: [id, orgId, name, createdAt]
+      required: [id, orgId, name, clientCount, createdAt]
       properties:
         id: {type: string, format: uuid, description: Site id.}
         orgId: {type: string, format: uuid, description: Owning org.}
         name: {type: string, description: Name, unique in the org.}
+        clientCount: {type: integer, format: int64, minimum: 0, description: Clients at this site; deleting the site detaches them.}
         createdAt: {type: string, format: date-time, description: Creation time.}
     SiteInput:
       type: object
@@ -3265,7 +3299,7 @@ components:
       properties:
         kind: {$ref: "#/components/schemas/KekKind"}
         kekId: {type: string, description: Opaque id of the active KEK.}
-        vaultAddress: {type: string, format: uri, description: Vault address in use; present only when kind is vault-transit.}
+        vaultAddress: {type: string, format: uri, description: Vault address in use; present only when kind is vault-transit and the caller holds global settings write.}
         previous: {type: array, items: {$ref: "#/components/schemas/KekRef"}, description: Previous KEKs still configured to decrypt old data.}
         canaryOk: {type: boolean, description: A round-trip encrypt/decrypt against the active KEK just succeeded.}
         rewrap:
@@ -3276,11 +3310,14 @@ components:
     SetupStatus:
       type: object
       description: First-run state.
-      required: [needsSetup]
+      required: [needsSetup, tokenRequired]
       properties:
         needsSetup:
           type: boolean
           description: True until POST /setup/complete succeeds.
+        tokenRequired:
+          type: boolean
+          description: True when the server was started with a setup token, which POST /setup/complete must then carry in setupToken.
     SetupRequest:
       type: object
       description: First-run wizard input.
@@ -3303,6 +3340,11 @@ components:
         baseUrl:
           type: string
           description: Public URL of this CertForge instance, for example https://certs.example.com.
+        setupToken:
+          type: string
+          format: password
+          maxLength: 256
+          description: The server's setup token (CF_SETUP_TOKEN or CF_SETUP_TOKEN_FILE). Required only when status.tokenRequired is true; a missing or wrong token gives 401.
     CAPresetCode:
       type: string
       description: CA preset code; custom takes any directory URL.
@@ -3412,7 +3454,7 @@ components:
         trustBundlePem: {type: string, description: Extra PEM roots; acme only.}
         eabKid: {type: string, description: "EAB key id; acme only, 422 on a private kind."}
         eabHmac: {type: string, nullable: true, writeOnly: true, description: "EAB HMAC key (base64url); acme only, 422 on a private kind. Write-only: on update null or __unchanged__ keeps it, empty string removes it."}
-        resolvers: {type: array, items: {type: string}, description: DNS resolvers for propagation checks; acme only.}
+        resolvers: {type: array, maxItems: 10, items: {type: string}, description: DNS resolvers for propagation checks; acme only.}
         config:
           type: object
           additionalProperties: true
@@ -3525,7 +3567,7 @@ components:
         method: {type: string, enum: [dns-01, manual-dns, http-01, tls-alpn-01], description: Verification method.}
         dnsCredentialId: {type: string, format: uuid, description: DNS credential; required for dns-01.}
         propagationSeconds: {type: integer, minimum: 0, maximum: 3600, description: Propagation timeout override.}
-        resolvers: {type: array, items: {type: string}, description: Resolvers for propagation checks.}
+        resolvers: {type: array, maxItems: 10, items: {type: string}, description: Resolvers for propagation checks.}
         cnameAliasZone: {type: string, description: Zone that _acme-challenge is CNAMEd into; checked before validation.}
         via: {allOf: [{$ref: "#/components/schemas/ChallengeVia"}], description: "http-01 only; default server. Ignored (cleared) for any other method."}
         clientId: {type: string, format: uuid, description: "Client that serves the challenge; required for tls-alpn-01, or for http-01 with via agent."}
@@ -3541,9 +3583,9 @@ components:
         preferredChain: {type: string, nullable: true, description: Issuer common name of the preferred alternate chain.}
         reuseKey: {type: boolean, nullable: true, description: Keep the private key across renewals.}
         mustStaple: {type: boolean, nullable: true, description: Request OCSP must-staple.}
-        verificationRules: {type: array, nullable: true, items: {$ref: "#/components/schemas/VerificationRule"}, description: Catch-all rules checked after a certificate's own rules.}
+        verificationRules: {type: array, nullable: true, maxItems: 50, items: {$ref: "#/components/schemas/VerificationRule"}, description: Catch-all rules checked after a certificate's own rules.}
         propagationSeconds: {type: integer, nullable: true, minimum: 0, maximum: 3600, description: Propagation timeout in seconds.}
-        resolvers: {type: array, nullable: true, items: {type: string}, description: Resolvers for propagation checks.}
+        resolvers: {type: array, nullable: true, maxItems: 10, items: {type: string}, description: Resolvers for propagation checks.}
     Source:
       type: string
       description: Level an effective value came from; default means the built-in value.
@@ -3728,6 +3770,7 @@ components:
         verificationRules:
           type: array
           description: Certificate rules, checked before the inherited catch-all rules.
+          maxItems: 50
           items: {$ref: "#/components/schemas/VerificationRule"}
         overrides:
           description: Per-certificate overrides of issuance settings.
@@ -3766,6 +3809,7 @@ components:
         verificationRules:
           type: array
           description: Ordered rules.
+          maxItems: 50
           items: {$ref: "#/components/schemas/VerificationRule"}
         overrides:
           description: Per-certificate overrides of issuance settings.
@@ -3781,6 +3825,44 @@ components:
           description: Certificates.
           items: {$ref: "#/components/schemas/Certificate"}
         nextCursor: {type: string, nullable: true, description: Cursor for the next page; null on the last page.}
+    CertificateBrief:
+      type: object
+      description: The few fields of a certificate the Overview needs.
+      required: [id, orgId, name, status, failureCount, manualDns]
+      properties:
+        id: {type: string, format: uuid, description: Certificate id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Certificate name.}
+        status: {type: string, enum: [pending, active, failed, expired, revoked], description: Certificate status.}
+        notBefore: {type: string, format: date-time, nullable: true, description: Current version start; null when none.}
+        notAfter: {type: string, format: date-time, nullable: true, description: Current version expiry; null when none.}
+        nextRenewAt: {type: string, format: date-time, nullable: true, description: When the next renewal is due.}
+        failureCount: {type: integer, description: Consecutive failed attempts.}
+        lastErrorLine: {type: string, nullable: true, description: First line of the last error, at most 140 characters.}
+        manualDns: {type: boolean, description: Waiting on manual DNS (the effective rules use manual-dns).}
+        ariWindow: {allOf: [{$ref: "#/components/schemas/AriWindow"}], nullable: true, description: Cached ARI window, if any.}
+    CertificateOverview:
+      type: object
+      description: Overview numbers and the certificates that need a look.
+      required: [counts, items, beyond, truncated]
+      properties:
+        counts:
+          type: object
+          description: Certificates per status over the whole scope.
+          required: [active, pending, failed, expired, revoked, total]
+          properties:
+            active: {type: integer, description: Active certificates.}
+            pending: {type: integer, description: Pending certificates.}
+            failed: {type: integer, description: Failed certificates.}
+            expired: {type: integer, description: Expired certificates.}
+            revoked: {type: integer, description: Revoked certificates.}
+            total: {type: integer, description: All certificates.}
+        items:
+          type: array
+          description: Briefs of the certificates that need a look.
+          items: {$ref: "#/components/schemas/CertificateBrief"}
+        beyond: {type: integer, description: Non-revoked certificates expiring after the 90-day horizon.}
+        truncated: {type: boolean, description: True when more than 2000 certificates qualified and items was cut.}
     AttemptStep:
       type: object
       description: One step of an attempt.
@@ -3855,7 +3937,7 @@ components:
         in the audit log.
       required: [name]
       properties:
-        name: {type: string, description: Unique name in the org.}
+        name: {type: string, minLength: 1, maxLength: 100, description: Unique name in the org.}
         certificatePem: {type: string, description: "PEM leaf certificate, optionally followed by its chain."}
         privateKeyPem: {type: string, writeOnly: true, description: PEM private key matching certificatePem; omit for a keyless certificate.}
         pkcs12Base64: {type: string, writeOnly: true, format: byte, description: "Base64 PKCS#12 bundle (certificate, chain and optionally a key)."}
@@ -3868,6 +3950,7 @@ components:
         privateKeyPem: {type: string, writeOnly: true, description: PEM private key matching certificatePem; omit for a keyless version.}
         pkcs12Base64: {type: string, writeOnly: true, format: byte, description: "Base64 PKCS#12 bundle (certificate, chain and optionally a key)."}
         password: {type: string, writeOnly: true, description: Password for pkcs12Base64; omit if it has none.}
+        allowOlder: {type: boolean, description: "Accept a leaf that expires before the current version (a rollback). Without it such an upload is a 422 naming allowOlder."}
     ImportSource:
       type: string
       enum: [acmesh, certbot]
@@ -3955,9 +4038,10 @@ components:
     UserList:
       type: object
       description: All users.
-      required: [items]
+      required: [items, limited]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/UserDetail"}, description: Users sorted by display name.}
+        limited: {type: boolean, description: "True when the caller lacks global users:read: other users show only name, email, status and creation time (issuer, subject, groups and last login are withheld); the caller's own row stays complete."}
     UserUpdate:
       type: object
       description: Changes to a user.
@@ -4003,9 +4087,20 @@ components:
     ApiKeyList:
       type: object
       description: API keys.
-      required: [items]
+      required: [items, policy]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/ApiKey"}, description: Keys, newest first.}
+        policy:
+          description: The server's key policy, so a creator without settings access can still honour it.
+          allOf:
+            - $ref: "#/components/schemas/ApiKeyPolicy"
+    ApiKeyPolicy:
+      type: object
+      description: Limits enforced when an API key is created (Settings, Authentication).
+      required: [maxLifetimeDays, maxActivePerUser]
+      properties:
+        maxLifetimeDays: {type: integer, minimum: 0, description: Longest allowed key lifetime in days; 0 means unlimited, and an expiry is then optional.}
+        maxActivePerUser: {type: integer, minimum: 0, description: Most active (not revoked, not expired) keys one user may hold; 0 means unlimited.}
     SubjectType:
       type: string
       enum: [user, oidc_group, apikey]
@@ -4073,6 +4168,17 @@ components:
         brokenAtId: {type: integer, format: int64, nullable: true, description: First row that failed; null when ok.}
         checkedAt: {type: string, format: date-time, description: When the walk ran (results are cached 60 s).}
         headHash: {type: string, description: Hex hash of the last verified row.}
+        reason:
+          type: string
+          nullable: true
+          enum: [row_mismatch, downgrade, anchor_missing, anchor_invalid, anchor_mismatch, tail_truncated]
+          description: >-
+            Why the chain failed; null when ok. row_mismatch is a row that does not verify,
+            downgrade a legacy-hash row after the chain was keyed, anchor_missing a keyed chain with no head anchor,
+            anchor_invalid a head anchor whose MAC fails, anchor_mismatch a row at the anchor id that differs from it
+            and tail_truncated a chain that ends before the anchor (newest rows removed).
+        headId: {type: integer, format: int64, nullable: true, description: Id of the last verified row; null when the chain is empty.}
+        anchorId: {type: integer, format: int64, nullable: true, description: Id the stored head anchor points at; null when there is none.}
     ClientStatus:
       type: string
       enum: [pending, active, revoked]

@@ -6,7 +6,9 @@ import type { ApiKeyInput } from '../types';
 export const apiKeysQuery = (orgId?: string) =>
   queryOptions({
     queryKey: ['api-keys', orgId ?? 'all'],
-    queryFn: async () => (await call(api.GET('/api-keys', { params: { query: orgId ? { orgId } : {} } }))).items,
+    queryFn: () => call(api.GET('/api-keys', { params: { query: orgId ? { orgId } : {} } })),
+    // The list and the creation policy share one response; consumers pick a part.
+    select: (d) => d.items,
     refetchInterval: POLL.list,
   });
 
@@ -29,3 +31,6 @@ export function useRevokeApiKey() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
   });
 }
+
+/** The server's key limits, from the same cached response as the key list. */
+export const apiKeyPolicyQuery = () => queryOptions({ ...apiKeysQuery(), select: (d) => d.policy });
