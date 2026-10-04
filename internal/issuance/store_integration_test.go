@@ -705,7 +705,7 @@ func TestRuleShapeCapsAndResolvers(t *testing.T) {
 	}
 }
 
-// TestOverCapListsAreGrandfathered: a certificate, org defaults and CA stored
+// TestOverCapListsAreGrandfathered: a certificate, org and global defaults and CA stored
 // with lists the write-time caps would now refuse (seeded past validation)
 // still save when the list is sent back unchanged, but not when it changes;
 // a create over the cap is always refused.
@@ -759,6 +759,26 @@ func TestOverCapListsAreGrandfathered(t *testing.T) {
 	d.Resolvers = &more
 	if err := f.store.PutOrgDefaults(ctx, f.org, d); !errors.As(err, &ve) {
 		t.Fatalf("org defaults changed resolvers over the cap: %v", err)
+	}
+
+	// Global defaults (both the plain and the transactional validator).
+	f.store.global = fakeGlobal{d: Defaults{VerificationRules: &rules, Resolvers: &resolvers}}
+	gtx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = gtx.Rollback(ctx) }()
+	validate := map[string]func(Defaults) error{
+		"plain": func(d Defaults) error { return f.store.ValidateGlobalDefaults(ctx, d) },
+		"tx":    func(d Defaults) error { return f.store.ValidateGlobalDefaultsTx(ctx, gtx, d) },
+	}
+	for name, v := range validate {
+		if err := v(Defaults{VerificationRules: &rules, Resolvers: &resolvers}); err != nil {
+			t.Fatalf("global defaults %s unchanged lists: %v", name, err)
+		}
+		if err := v(Defaults{VerificationRules: &rules, Resolvers: &more}); !errors.As(err, &ve) {
+			t.Fatalf("global defaults %s changed resolvers over the cap: %v", name, err)
+		}
 	}
 
 	// CA.
