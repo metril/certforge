@@ -126,6 +126,16 @@ func TestRewrittenGrantQueries00018(t *testing.T) {
 	// a grant on the extras layout whose deployment recorded no extras yet
 	c6 := cl("c6")
 	grant(c6, b, l1, []uuid.UUID{}, false, bv, []uuid.UUID{})
+	// empty-extras layout, current version, but stale recorded extras: still stale
+	c7 := cl("c7")
+	grant(c7, a, l0, []uuid.UUID{}, false, av, []uuid.UUID{bv})
+	// no layout at all (NULL output_spec_id), current version, stale recorded extras: still stale
+	c8 := cl("c8")
+	tgt := mustID(`INSERT INTO deploy_targets (org_id, name, type) VALUES ($1, 't', 'traefik') RETURNING id`, org)
+	g8 := mustID(`INSERT INTO client_cert_grants (client_id, cert_id, deploy_target_id) VALUES ($1, $2, $3) RETURNING id`, c8, a, tgt)
+	if _, err := pool.Exec(ctx, `INSERT INTO deployments (grant_id, version_id, extra_version_ids) VALUES ($1, $2, $3)`, g8, av, []uuid.UUID{bv}); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := q.LiveGrantIDsForExtraCert(ctx, b)
 	if err != nil {
@@ -199,8 +209,8 @@ func TestRewrittenGrantQueries00018(t *testing.T) {
 		            FROM unnest(COALESCE(o.extra_cert_ids, '{}'::uuid[])) WITH ORDINALITY AS x(id, ord)
 		            JOIN certificates ec ON ec.id = x.id))`)
 	same(t, "StaleDeploymentGrantIDs", uuidStrings(stale), want)
-	if len(want) != 3 { // c2 (version), c4 (extras), c6 (no extras recorded)
-		t.Fatalf("fixture drifted: %d stale grants, want 3", len(want))
+	if len(want) != 5 { // c2 (version), c4 (extras), c6 (no extras recorded), c7, c8 (stale extras on a layout-less or extras-less grant)
+		t.Fatalf("fixture drifted: %d stale grants, want 5", len(want))
 	}
 }
 
