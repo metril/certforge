@@ -2,7 +2,7 @@
 /bin/
 /dist/
 web/dist/
-web/node_modules/
+web/node_modules
 
 # Local data
 /data/
