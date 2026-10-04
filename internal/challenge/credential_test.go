@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/netip"
 	"regexp"
 	"strings"
@@ -278,5 +279,46 @@ func TestMergeUpdateUnchangedUnderAliasKey(t *testing.T) {
 	}
 	if sec["CF_DNS_API_TOKEN"] != "old-token" || len(sec) != 1 || !reused {
 		t.Fatalf("sec=%v reused=%v", sec, reused)
+	}
+}
+
+func captureWarn(t *testing.T) *strings.Builder {
+	t.Helper()
+	var buf strings.Builder
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	return &buf
+}
+
+func TestBuildDropsRetiredStoredKey(t *testing.T) {
+	buf := captureWarn(t)
+	if _, err := Build("dode", map[string]string{"DODE_TOKEN": "tok-secret", "DODE_TTL": "120"}); err != nil {
+		t.Fatalf("stored retired key must not fail the build: %v", err)
+	}
+	log := buf.String()
+	if !strings.Contains(log, "DODE_TTL") || !strings.Contains(log, "dode") || strings.Contains(log, "120") || strings.Contains(log, "tok-secret") {
+		t.Fatalf("log = %q", log)
+	}
+}
+
+func TestMergeUpdateDropsRetiredStoredKey(t *testing.T) {
+	buf := captureWarn(t)
+	pub, sec, _, _, err := MergeUpdate("dode",
+		map[string]string{"DODE_TTL": "120"}, map[string]string{"DODE_TOKEN": "old"},
+		map[string]string{"DODE_TOKEN": Unchanged})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := pub["DODE_TTL"]; ok || sec["DODE_TOKEN"] != "old" {
+		t.Fatalf("pub=%v sec=%v", pub, sec)
+	}
+	if !strings.Contains(buf.String(), "DODE_TTL") {
+		t.Fatalf("no drop log: %q", buf.String())
+	}
+	// New input carrying the retired key is still refused.
+	if _, _, _, _, err := MergeUpdate("dode", nil, map[string]string{"DODE_TOKEN": "old"},
+		map[string]string{"DODE_TOKEN": Unchanged, "DODE_TTL": "120"}); !errors.Is(err, ErrUnknownField) {
+		t.Fatalf("err = %v", err)
 	}
 }

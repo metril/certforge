@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"net/url"
@@ -98,6 +99,34 @@ func CanonicalizeStored(code string, cfg map[string]string) map[string]string {
 	if err != nil {
 		return cfg
 	}
+	return dropRetired(e, out, false)
+}
+
+// dropRetired returns cfg without keys the provider schema no longer defines
+// (a schema regeneration can retire a field that older stored credentials
+// still carry). Only stored config goes through here; API input keeps being
+// rejected with ErrUnknownField. With warn, one line per dropped key names the
+// provider and key, never the value.
+func dropRetired(e *entry, cfg map[string]string, warn bool) map[string]string {
+	var out map[string]string
+	for k := range cfg {
+		if _, known := e.secret[k]; known {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string, len(cfg))
+			for k2, v := range cfg {
+				out[k2] = v
+			}
+		}
+		delete(out, k)
+		if warn {
+			slog.Warn("dropping stored DNS credential key the provider schema no longer defines", "provider", e.meta.Code, "key", k)
+		}
+	}
+	if out == nil {
+		return cfg
+	}
 	return out
 }
 
@@ -182,6 +211,7 @@ func MergeUpdate(code string, oldPublic, oldSecret, in map[string]string) (publi
 	if !ok {
 		return nil, nil, nil, false, fmt.Errorf("%w %q", ErrUnknownProvider, code)
 	}
+	oldPublic, oldSecret = dropRetired(e, oldPublic, true), dropRetired(e, oldSecret, true)
 	oldPublic, oldSecret = CanonicalizeStored(code, oldPublic), CanonicalizeStored(code, oldSecret)
 	resolved := make(map[string]string, len(in))
 	for k, v := range in {

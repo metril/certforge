@@ -25,10 +25,10 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown DNS provider %q", code)
 	}
+	// cfg is a stored credential: keys a schema update retired are dropped
+	// (with a warning) rather than failing every issuance and renewal.
+	cfg = dropRetired(e, cfg, true)
 	for k, v := range cfg {
-		if _, known := e.secret[k]; !known {
-			return nil, fmt.Errorf("%w %q for provider %s", ErrUnknownField, k, e.meta.Code)
-		}
 		// Belt and suspenders: SplitConfig already refuses to store a
 		// serverPath value, but a credential created before that check
 		// existed could still have one persisted, so Build refuses to use
