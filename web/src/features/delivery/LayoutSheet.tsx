@@ -2,7 +2,7 @@ import { useDirty } from '@/lib/useDirty';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Check, CircleAlert, Copy, Eye, EyeOff, Plus, TriangleAlert, X } from 'lucide-react';
-import { allCertificatesQuery } from '@/api/queries/certificates';
+import { allCertificatesPickerQuery } from '@/api/queries/certificates';
 import { useSaveLayout } from '@/api/queries/delivery';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { UNCHANGED } from '@/api/types';
@@ -59,7 +59,7 @@ type Props = { orgId: string; layout?: Layout; readOnly: boolean; onOpenChange: 
 export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
   const guard = useSheetGuard(onOpenChange);
   const save = useSaveLayout(orgId);
-  const { data: allCerts = [] } = useQuery(allCertificatesQuery(orgId));
+  const { data: allCerts = [] } = useQuery(allCertificatesPickerQuery(orgId));
   const [name, setName] = useState(layout?.name ?? '');
   const [rows, setRows] = useState<Row[]>(() => (layout?.files ?? [emptyFile()]).map(makeRow));
   const [extraCertificateIds, setExtraCertificateIds] = useState<string[]>(layout?.extraCertificateIds ?? []);

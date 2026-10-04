@@ -5,7 +5,7 @@ import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
-import { allCertificatesQuery } from '@/api/queries/certificates';
+import { allCertificatesPickerQuery } from '@/api/queries/certificates';
 import { useCheckMonitor, useCreateMonitor, useDeleteMonitor, useUpdateMonitor } from '@/api/queries/monitors';
 import type { Monitor, MonitorInput } from '@/api/types';
 import { Combobox, type ComboOption } from '@/components/Combobox';
@@ -89,7 +89,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
   const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
-  const { data: allCerts = [] } = useQuery(allCertificatesQuery(orgId));
+  const { data: allCerts = [] } = useQuery(allCertificatesPickerQuery(orgId));
   const [draft, setDraft] = useState<Draft>(() => initialDraft(monitor));
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);

@@ -65,6 +65,10 @@ export async function fetchAllCertificates(orgId: string): Promise<Certificate[]
 export const allCertificatesQuery = (orgId: string) =>
   queryOptions({ queryKey: ['certs', orgId, 'all'], queryFn: () => fetchAllCertificates(orgId), refetchInterval: POLL.list });
 
+/** The same walk for pickers: fetched when the picker mounts, never polled. */
+export const allCertificatesPickerQuery = (orgId: string) =>
+  queryOptions({ queryKey: ['certs', orgId, 'all'], queryFn: () => fetchAllCertificates(orgId) });
+
 /** The Overview's server-side summary (counts plus the briefs that need a look)
  * for one org, or for every readable org when orgId is 'all'. */
 export const certificateOverviewQuery = (orgId: string | 'all') =>

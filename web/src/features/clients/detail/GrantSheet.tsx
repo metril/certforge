@@ -4,7 +4,7 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
-import { allCertificatesQuery, plural } from '@/api/queries/certificates';
+import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
 import { deployTargetsQuery, hooksQuery, layoutsQuery } from '@/api/queries/delivery';
 import { metaSchemasQuery } from '@/api/queries/dns';
 import { useCreateGrants, useUpdateGrant, type GrantBatchResult } from '@/api/queries/grants';
@@ -50,7 +50,7 @@ const fileHasKey = (f: { format: string; parts?: string[] }) =>
 
 export function GrantSheet({ orgId, client, grants, editing, removed = false, onOpenChange }: Props) {
   const guard = useSheetGuard(onOpenChange);
-  const certs = useQuery(allCertificatesQuery(orgId));
+  const certs = useQuery(allCertificatesPickerQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const targetsQ = useQuery(deployTargetsQuery(orgId));
   const hooksQ = useQuery(hooksQuery(orgId));
