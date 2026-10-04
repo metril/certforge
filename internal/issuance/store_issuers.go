@@ -1053,18 +1053,47 @@ func (s *Store) updateVaultPKICA(ctx context.Context, orgID, id uuid.UUID, in CA
 	if err := cfg.validate(); err != nil {
 		return CA{}, err
 	}
-	cur, err := s.q.GetCA(ctx, sqlcgen.GetCAParams{ID: id, OrgID: orgID})
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return CA{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	cur, err := q.LockCA(ctx, sqlcgen.LockCAParams{ID: id, OrgID: orgID})
 	if err != nil {
 		return CA{}, notFound(err)
+	}
+	// A different mount (or role, which can pin the signing issuer) would
+	// send the revocation of an already issued version to the wrong place, so
+	// it is refused while the CA has users or live issued versions, the same
+	// rule UpdateCA applies to an ACME directoryUrl.
+	var storedRaw map[string]any
+	_ = json.Unmarshal(cur.Config, &storedRaw)
+	if old, err := parseVaultPKIInput(storedRaw); err == nil && (old.Mount != cfg.Mount || old.Role != cfg.Role) {
+		n, err := q.CountCAUsers(ctx, id)
+		if err != nil {
+			return CA{}, err
+		}
+		if live, err := s.caLiveIssued(ctx, q, id); err != nil {
+			return CA{}, err
+		} else if live != nil {
+			n += live.Users
+		}
+		if n > 0 {
+			return CA{}, &InUseError{Users: n, Reason: "the Vault mount and role cannot change while this CA has accounts, certificates, defaults or live issued versions; create a new CA instead"}
+		}
 	}
 	cfgRaw, err := json.Marshal(cfg)
 	if err != nil {
 		return CA{}, err
 	}
-	row, err := s.q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
+	row, err := q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
 		Preset: "", DirectoryUrl: "", TrustBundlePem: cur.TrustBundlePem, EabKid: "", EabHmac: nil, Resolvers: in.Resolvers})
 	if err != nil {
 		return CA{}, dbErr(err, "name")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CA{}, err
 	}
 	return caFromRow(row)
 }
