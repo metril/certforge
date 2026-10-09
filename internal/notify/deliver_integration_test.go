@@ -334,3 +334,41 @@ func TestDeliverRetriesMarkDeliveredNotSend(t *testing.T) {
 		t.Errorf("status = %q, want delivered", status)
 	}
 }
+
+// A delivery whose send never runs (channel secrets cannot be opened) must
+// still be recorded: failed once the job's last attempt has run.
+func TestDeliverPreSendFailureIsRecorded(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, typ: "webhook", secretCfg: []byte("not-sealed")})
+
+	ins := &fakeInserter{}
+	e := &notify.Emitter{Pool: pool, River: ins}
+	if _, err := e.Emit(ctx, nil, newEvent(&org, "cert.issued", "cert.issued:"+uuid.NewString())); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	args := ins.first(t)
+
+	notifier := &fakeNotifier{typ: "webhook"}
+	reg := notify.NewRegistry()
+	reg.Register(notifier)
+	w := &notify.DeliverWorker{Q: sqlcgen.New(pool), Box: cryptotest.PrefixBox{}, Registry: reg}
+
+	if err := w.Work(ctx, deliverJob(args, 1, 2)); err == nil {
+		t.Fatal("Work = nil, want an error so river retries")
+	}
+	if _, status, _ := deliveryRow(t, pool, args); status != "pending" {
+		t.Errorf("status after a non-final attempt = %q, want pending", status)
+	}
+	if err := w.Work(ctx, deliverJob(args, 2, 2)); err == nil {
+		t.Fatal("Work = nil on the final attempt, want an error")
+	}
+	attempts, status, lastError := deliveryRow(t, pool, args)
+	if status != "failed" || attempts != 2 || lastError == "" {
+		t.Errorf("after final attempt: attempts=%d status=%q last_error=%q, want 2/failed/non-empty", attempts, status, lastError)
+	}
+	if got := notifier.sendCount(); got != 0 {
+		t.Errorf("Send called %d times, want 0", got)
+	}
+}
