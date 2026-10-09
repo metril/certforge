@@ -1866,6 +1866,24 @@ func (q *Queries) MarkExpiredCertificates(ctx context.Context) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
+const renewNowIfCurrentVersion = `-- name: RenewNowIfCurrentVersion :exec
+UPDATE certificates SET next_renew_at = now(), updated_at = now()
+WHERE id = $1 AND current_version_id = $2 AND managed AND status = 'active'
+`
+
+type RenewNowIfCurrentVersionParams struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+}
+
+// Makes a managed, active certificate due immediately when versionID is its
+// current version (used after that version is revoked, so the scheduler
+// replaces the revoked leaf).
+func (q *Queries) RenewNowIfCurrentVersion(ctx context.Context, arg RenewNowIfCurrentVersionParams) error {
+	_, err := q.db.Exec(ctx, renewNowIfCurrentVersion, arg.ID, arg.CurrentVersionID)
+	return err
+}
+
 const setARIWindow = `-- name: SetARIWindow :exec
 UPDATE certificates SET ari_window_start = $3, ari_window_end = $4, ari_checked_at = $5, ari_retry_after = $6
 WHERE id = $1 AND current_version_id = $2

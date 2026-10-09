@@ -1,6 +1,7 @@
 package issuance
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"errors"
@@ -374,19 +375,46 @@ func (w *IssueWorker) runPrivate(ctx context.Context, cert Certificate, ca CA, s
 // eff.ReuseKey asks for it and its key type still matches, else nil (a
 // fresh key is generated); shared by the ACME and private-CA paths.
 func (w *IssueWorker) reuseKeyPKCS8(ctx context.Context, cert Certificate, eff Effective, tl *Timeline) []byte {
+	return reuseKey(ctx, w.Certs, cert, eff, tl)
+}
+
+// keySource is the slice of certstore.Store reuseKey needs.
+type keySource interface {
+	PrivateKey(ctx context.Context, certID, versionID uuid.UUID) ([]byte, string, error)
+	List(ctx context.Context, certID uuid.UUID) ([]certstore.Version, error)
+}
+
+// reuseKey never reuses a key that any revoked version of the certificate
+// shares: a revoked key is compromised by definition.
+func reuseKey(ctx context.Context, src keySource, cert Certificate, eff Effective, tl *Timeline) []byte {
 	if !eff.ReuseKey.Value || cert.CurrentVersionID == nil {
 		return nil
 	}
-	key, kt, err := w.Certs.PrivateKey(ctx, cert.ID, *cert.CurrentVersionID)
-	switch {
-	case err == nil && kt == string(eff.KeyType.Value):
-		return key
-	case err == nil:
-		tl.Logf("reuseKey requested but the stored key is %s, not %s; generating a fresh key", kt, eff.KeyType.Value)
-	default:
+	key, kt, err := src.PrivateKey(ctx, cert.ID, *cert.CurrentVersionID)
+	if err != nil {
 		tl.Logf("reuseKey requested but the stored key could not be read (%v); generating a fresh key", err)
+		return nil
 	}
-	return nil
+	if kt != string(eff.KeyType.Value) {
+		tl.Logf("reuseKey requested but the stored key is %s, not %s; generating a fresh key", kt, eff.KeyType.Value)
+		return nil
+	}
+	versions, err := src.List(ctx, cert.ID)
+	if err != nil {
+		tl.Logf("reuseKey requested but versions could not be listed (%v); generating a fresh key", err)
+		return nil
+	}
+	for _, v := range versions {
+		if v.RevokedAt == nil || !v.HasKey {
+			continue
+		}
+		rk, _, err := src.PrivateKey(ctx, cert.ID, v.ID)
+		if err == nil && bytes.Equal(rk, key) {
+			tl.Logf("reuseKey requested but the stored key belongs to revoked version %s; generating a fresh key", v.ID)
+			return nil
+		}
+	}
+	return key
 }
 
 // issuanceSettings loads the global "issuance" section through w.Settings,

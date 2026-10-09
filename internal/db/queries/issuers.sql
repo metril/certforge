@@ -96,3 +96,9 @@ SELECT (
     (SELECT count(*) FROM certificates c WHERE c.overrides->>'accountId' = sqlc.arg(id)::uuid::text)
   + (SELECT count(*) FROM issuance_defaults d WHERE d.config->>'accountId' = sqlc.arg(id)::uuid::text)
 )::bigint AS users;
+
+-- name: BumpCACRLNumber :one
+-- Atomically takes the next crl_number for a freshly signed CRL (RFC 5280
+-- 5.2.3) and returns the CA row as of that bump, so the CRL is built from
+-- config.revoked consistent with the number.
+UPDATE cas SET crl_number = crl_number + 1 WHERE id = $1 RETURNING *;
