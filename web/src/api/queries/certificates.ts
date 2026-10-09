@@ -268,6 +268,10 @@ export function useRevokeVersion(orgId: string, certId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['versions', orgId, certId] });
       void qc.invalidateQueries({ queryKey: ['cas', orgId] });
+      // Revoking the current version schedules a renewal server-side, so the
+      // certificate (header, status, lists) and its attempts go stale too.
+      void qc.invalidateQueries({ queryKey: ['certs', orgId] });
+      void qc.invalidateQueries({ queryKey: ['attempts', orgId, certId] });
     },
   });
 }
