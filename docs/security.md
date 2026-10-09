@@ -75,6 +75,10 @@ DNS credential secrets are write-only everywhere except `POST /orgs/{orgId}/dns-
 
 Trade-off: a global admin session, or an API key with `dnscreds:reveal` or `admin`, can now extract DNS provider tokens in plaintext, where before a database and KEK compromise was needed. Issue such keys sparingly and watch the audit log for this event.
 
+## DNS credentials using the server's cloud identity {#dns-ambient}
+
+Providers with an ambient auth method (`route53`, `lightsail`, `gcloud`, `azuredns`, `azure`) fall back to the server's own identity (instance role, ADC, managed identity) when no keys are given, and `AWS_ASSUME_ROLE_ARN`, `AWS_PROFILE` and `AZURE_AUTH_METHOD` delegate through it even with keys. Letting an org-scoped `dnscreds:write` user pick these would let one tenant act as the deployment's cloud identity. Creating or updating a credential that relies on ambient auth or sets those fields therefore needs global `settings:write` (`admin`); anyone else gets 422. Explicit keys work for every role with `dnscreds:write`.
+
 ## Metrics token
 
 `GET /metrics` (Settings → Prometheus) is gated by a bearer token (16–256 characters), required whenever the section is enabled — the same "required when enabled" rule Settings → SMTP applies to its password. The token is stored sealed (a secret settings property, like every other section's secrets), never echoed back on read, and a request's `Authorization: Bearer <token>` header is compared against it with `subtle.ConstantTimeCompare`. A missing or wrong token gets 401 with an empty body (never a hint about which part was wrong) and `WWW-Authenticate: Bearer`; the section disabled gets 404 instead, so an unauthenticated prober cannot tell "wrong token" from "not exposed at all". See [monitoring.md#prometheus](monitoring.md#prometheus).
