@@ -2,6 +2,32 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.7.1](https://github.com/metril/certforge/compare/v0.7.0...v0.7.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **agents:** read CA and material through the open transaction and bound OnVersion ([c851946](https://github.com/metril/certforge/commit/c85194696386b6cc77ac24fe6dd3cd8160a3e0cf))
+* **api:** require keys:export to re-enrol a client holding key-bearing grants ([4dd3f88](https://github.com/metril/certforge/commit/4dd3f8878ee46247db2ad48ae389d944c348a20a))
+* **backup:** include ca_crls in the backup manifest ([8d5295d](https://github.com/metril/certforge/commit/8d5295d1ed35c27c21d0579e05ac15fb42e0a1f3))
+* **challenge:** keep legacy rfc2136 and oraclecloud field names after lego bump ([adcb741](https://github.com/metril/certforge/commit/adcb74198c4b77704f052dd8494bcafd11331bf6))
+* **crl:** persist signed CRLs and re-sign only on revocation or near expiry ([e984191](https://github.com/metril/certforge/commit/e98419112c96cfcf006bb82463f71719ea914d7a))
+* **crl:** take a fresh crl_number for every signed CRL ([806ac8c](https://github.com/metril/certforge/commit/806ac8cac2c74d27c3f6a874b7bac6a1a297d6ff))
+* **db:** make ca_crls foreign key deferrable ([3f785bd](https://github.com/metril/certforge/commit/3f785bd9e6502b58a4121b425f5748088ff954a5))
+* **deploy:** per-row deploy_seq so a re-armed server deployment is not dropped or overwritten by a stale job ([866e724](https://github.com/metril/certforge/commit/866e724f4939d10b068f26e11dc35217991d206d))
+* **dnscreds:** allow only AZURE_AUTH_METHOD=env for non-admins and force it on build ([159a460](https://github.com/metril/certforge/commit/159a4604a78a3ef1cc01a5d2f3bb00502da7b2ca))
+* **dnscreds:** restrict ambient cloud identity to global settings:write ([ab17286](https://github.com/metril/certforge/commit/ab1728621f022a374c38611a208db759c1a2779e))
+* **issuance:** never reuse a private key shared with a revoked version ([44d3c89](https://github.com/metril/certforge/commit/44d3c89f1b1589741aded26455e5c63776af4350))
+* **issuance:** record vault revocation and renewal trigger atomically ([0e2959b](https://github.com/metril/certforge/commit/0e2959bf5e709048fdab39e49b27f048df59337e))
+* **issuance:** renew a managed certificate immediately when its current version is revoked ([dcb9e6d](https://github.com/metril/certforge/commit/dcb9e6dfe01878440179f482ce6bc4cfbce433cf))
+* **monitor:** scale expiring threshold to short-lived leaf lifetime ([3e83e6c](https://github.com/metril/certforge/commit/3e83e6c96d1fa28ccf1ca09bd99bbc623151af30))
+* **notify:** record a delivery as failed when its send never runs on the final attempt ([b5b9f8c](https://github.com/metril/certforge/commit/b5b9f8ce7d2061b5ff8be017723f739d68a13902))
+* review round 3 (Go, security, certificates, web) ([a829cbe](https://github.com/metril/certforge/commit/a829cbe938136f242d223cfd5a740727550360d6))
+* **web:** add IconButton so every icon-only button has a tooltip ([d6e2e51](https://github.com/metril/certforge/commit/d6e2e511394d512d13b08de60c6a78c502748ae2))
+* **web:** Enter on a DataTable row falls back to onRowClick ([492e82c](https://github.com/metril/certforge/commit/492e82ca066d1aef90b8e370ab1322d69e572657))
+* **web:** keep download sheet open after a generated-password export ([e3ea881](https://github.com/metril/certforge/commit/e3ea8812d09df1dffb40ed1a521761af9e4232ae))
+* **web:** single tooltip for disabled row Delete; clear download notice on password change ([177bb8a](https://github.com/metril/certforge/commit/177bb8a484ec5666e1b2ec55092015cbfb27dbaa))
+
 ## [0.7.0](https://github.com/metril/certforge/compare/v0.6.0...v0.7.0) (2026-10-04)
 
 
