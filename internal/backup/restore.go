@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -311,15 +310,31 @@ func loadError(table string, err, readErr error) error {
 	return fmt.Errorf("backup: load %s: %w", table, err)
 }
 
-// verifyManifest checks that the archive covers exactly this binary's
-// Manifest, that every table was present in the tar, and that each one's
+// verifyManifest checks that the archive covers an ordered subset of this
+// binary's Manifest, that every listed table was present in the tar, and that each one's
 // hash (and, except for goose_db_version whose row count Restore never
 // itself counts, row count) matches manifest.json.
 func verifyManifest(headerTables []string, seen, manifestSums map[string]TableSum) error {
-	if !slices.Equal(headerTables, Manifest) {
-		return fmt.Errorf("%w: archive's table list does not match this build's manifest", ErrTampered)
+	// The header may list an ordered subset of Manifest: an archive from an
+	// older build predates later tables, which simply stay empty after the
+	// truncate. Unknown tables or a different order are rejected.
+	if len(headerTables) == 0 {
+		return fmt.Errorf("%w: archive lists no tables", ErrTampered)
 	}
-	for _, t := range Manifest {
+	i := 0
+	for _, t := range headerTables {
+		for i < len(Manifest) && Manifest[i] != t {
+			i++
+		}
+		if i == len(Manifest) {
+			return fmt.Errorf("%w: archive's table list is not an ordered subset of this build's manifest (at %q)", ErrTampered, t)
+		}
+		i++
+	}
+	if len(seen) != len(headerTables) {
+		return fmt.Errorf("%w: archive holds %d tables, header lists %d", ErrTampered, len(seen), len(headerTables))
+	}
+	for _, t := range headerTables {
 		s, ok := seen[t]
 		if !ok {
 			return fmt.Errorf("%w: archive is missing table %s", ErrTampered, t)
