@@ -69,6 +69,7 @@ func Build(code string, cfg map[string]string) (legochallenge.Provider, error) {
 		}
 		return p, nil
 	}
+	buildCfg = forceAzureEnvAuth(e.meta.Code, buildCfg)
 	envMu.Lock()
 	defer envMu.Unlock()
 	restore := isolateEnv(e.secret, buildCfg)
