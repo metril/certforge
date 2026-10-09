@@ -35,6 +35,10 @@ const maxLastError = 1000
 type DeployArgs struct {
 	GrantID   uuid.UUID `json:"grant_id"`
 	VersionID uuid.UUID `json:"version_id"`
+	// Seq is server_deployments.deploy_seq at enqueue time: it keeps a
+	// re-enqueue of the same version from being dropped as a duplicate of a
+	// running (stale) job, and lets that stale job be recognised.
+	Seq int64 `json:"seq"`
 }
 
 // Kind implements river.JobArgs.
@@ -243,13 +247,14 @@ func (d *Dispatcher) enqueueTx(ctx context.Context, grantID uuid.UUID, versionID
 // (internal/api/grants.go) call this from their own transactions so the
 // grant write and the enqueue commit together.
 func (d *Dispatcher) EnqueueTx(ctx context.Context, tx pgx.Tx, q *sqlcgen.Queries, grantID uuid.UUID, versionID *uuid.UUID) error {
-	if err := q.UpsertServerDeploymentPending(ctx, sqlcgen.UpsertServerDeploymentPendingParams{GrantID: grantID, VersionID: versionID}); err != nil {
+	seq, err := q.UpsertServerDeploymentPending(ctx, sqlcgen.UpsertServerDeploymentPendingParams{GrantID: grantID, VersionID: versionID})
+	if err != nil {
 		return err
 	}
 	if versionID == nil {
 		return nil
 	}
-	_, err := d.River.InsertTx(ctx, tx, DeployArgs{GrantID: grantID, VersionID: *versionID}, nil)
+	_, err = d.River.InsertTx(ctx, tx, DeployArgs{GrantID: grantID, VersionID: *versionID, Seq: seq}, nil)
 	return err
 }
 
@@ -269,7 +274,7 @@ func (w *DeployWorker) Timeout(*river.Job[DeployArgs]) time.Duration { return de
 
 // Work implements river.Worker.
 func (w *DeployWorker) Work(ctx context.Context, job *river.Job[DeployArgs]) error {
-	return w.D.Deploy(ctx, job.Args.GrantID, job.Args.VersionID)
+	return w.D.deploy(ctx, job.Args.GrantID, job.Args.VersionID, &job.Args.Seq)
 }
 
 // RegisterRiver is an issuance.RiverExtra: DeployWorker, no periodic job.
@@ -293,6 +298,13 @@ func (d *Dispatcher) RegisterRiver(workers *river.Workers) []*river.PeriodicJob 
 // exported for a test to run one deploy attempt directly, without a live
 // river client.
 func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) error {
+	return d.deploy(ctx, grantID, versionID, nil)
+}
+
+// deploy is Deploy with the job's deploy_seq: wantSeq non-nil must equal the
+// row's current deploy_seq, else the job is stale (the row was re-armed
+// since it was enqueued) and does nothing; nil adopts the row's own.
+func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, wantSeq *int64) error {
 	row, err := d.Q.ServerDeployGrant(ctx, grantID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
@@ -300,12 +312,16 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 	if err != nil {
 		return err
 	}
-	if row.PendingVersionID == nil || *row.PendingVersionID != versionID {
+	if row.PendingVersionID == nil || *row.PendingVersionID != versionID || row.PendingDeploySeq == nil {
+		return nil
+	}
+	seq := *row.PendingDeploySeq
+	if wantSeq != nil && *wantSeq != seq {
 		return nil
 	}
 	target, ok := d.Reg.Get(row.TargetType)
 	if !ok {
-		return d.fail(ctx, row, versionID, nil, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
+		return d.fail(ctx, row, versionID, seq, nil, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
 	}
 	// A client-less grant may only ever be created on a target whose
 	// resolved side is server (API's validTarget/CreateServerGrant path);
@@ -313,32 +329,32 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 	// target drifting apart (a type re-registered as agent-only), not the
 	// only guard.
 	if target.RunsOn() == targets.Agent {
-		return d.fail(ctx, row, versionID, nil, fmt.Errorf("deploy: %s runs on an agent, not the server", row.TargetName))
+		return d.fail(ctx, row, versionID, seq, nil, fmt.Errorf("deploy: %s runs on an agent, not the server", row.TargetName))
 	}
 
 	secrets, err := d.openTargetSecrets(ctx, row.TargetSecretCfg)
 	if err != nil {
-		return d.fail(ctx, row, versionID, nil, err)
+		return d.fail(ctx, row, versionID, seq, nil, err)
 	}
 
 	needsKey, err := d.Reg.NeedsKey(row.TargetType, row.TargetConfig)
 	if err != nil {
-		return d.fail(ctx, row, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, seq, secrets, err)
 	}
 
 	m, err := d.Certs.Material(ctx, row.CertID, versionID, needsKey)
 	if err != nil {
-		return d.fail(ctx, row, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, seq, secrets, err)
 	}
 
 	files, err := d.renderFiles(ctx, row, m, needsKey)
 	if err != nil {
-		return d.fail(ctx, row, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, seq, secrets, err)
 	}
 
 	config, err := targets.Merge(row.TargetConfig, secrets)
 	if err != nil {
-		return d.fail(ctx, row, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, seq, secrets, err)
 	}
 
 	req := targets.Request{
@@ -355,9 +371,9 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 		HTTP:        d.HTTP(ctx),
 	}
 	if _, err := target.Deploy(ctx, req); err != nil {
-		return d.fail(ctx, row, versionID, secrets, err)
+		return d.fail(ctx, row, versionID, seq, secrets, err)
 	}
-	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID})
+	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq})
 }
 
 // openTargetSecrets opens sealed (a deploy target's secret_cfg; nil/empty
@@ -468,10 +484,10 @@ func toRenderFiles(dfiles []delivery.File, specs []delivery.OutputFile) []render
 // already fetched (every call site has it in scope): its ID/OrgID/
 // CertificateName/TargetName feed the immediate deploy.failed emit below,
 // so fail takes it instead of a bare grantID.
-func (d *Dispatcher) fail(ctx context.Context, row sqlcgen.ServerDeployGrantRow, versionID uuid.UUID, secrets map[string]string, cause error) error {
+func (d *Dispatcher) fail(ctx context.Context, row sqlcgen.ServerDeployGrantRow, versionID uuid.UUID, seq int64, secrets map[string]string, cause error) error {
 	msg := targets.Redact(cause, secrets, maxLastError)
 	if err := d.Q.MarkServerDeploymentFailed(ctx, sqlcgen.MarkServerDeploymentFailedParams{
-		GrantID: row.ID, VersionID: &versionID, LastError: msg}); err != nil {
+		GrantID: row.ID, VersionID: &versionID, DeploySeq: seq, LastError: msg}); err != nil {
 		d.log().Error("deploy: server deployment failure not recorded", "grant", row.ID, "err", err)
 	}
 	// The immediate emit (task-7 brief, Deviations R7) uses the exact same
