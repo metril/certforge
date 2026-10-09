@@ -24,6 +24,7 @@ import { relTime } from '@/lib/time';
 import { CaDetailSheet } from './CaDetailSheet';
 import { CaSheet } from './CaSheet';
 import { IssuersHeader } from './IssuersLayout';
+import { IconButton } from '@/components/IconButton';
 
 const EXPIRY_ICON: Partial<Record<Tone, LucideIcon>> = { valid: CircleCheck, expiring: Clock, expired: CircleX };
 
@@ -157,30 +158,26 @@ export function CasPage() {
                           {c.notAfter ? <ToneChip tone={tone} icon={EXPIRY_ICON[tone] ?? CircleCheck} label={relTime(c.notAfter)} /> : '–'}
                         </TableCell>
                         <TableCell className="py-1 text-right" onClick={(e) => e.stopPropagation()}>
-                          <PermissionTip allowed={canWrite} action="cas:write" side="left">
-                            <Button
+                          <IconButton tip={canWrite ? undefined : `Needs the cas:write permission`}
                               variant="ghost"
                               size="icon-sm"
                               className="size-7"
                               disabled={!canWrite}
-                              aria-label={`Edit ${c.name}`}
+                              label={`Edit ${c.name}`}
                               onClick={() => openSheet(c.id)}
                             >
                               <Pencil className="size-3.5" aria-hidden />
-                            </Button>
-                          </PermissionTip>
-                          <PermissionTip allowed={canWrite} action="cas:write" side="left">
-                            <Button
+                            </IconButton>
+                          <IconButton tip={canWrite ? undefined : `Needs the cas:write permission`}
                               variant="ghost"
                               size="icon-sm"
                               className="size-7"
                               disabled={!canWrite}
-                              aria-label={`Delete ${c.name}`}
+                              label={`Delete ${c.name}`}
                               onClick={() => setDeleting(c)}
                             >
                               <Trash2 className="size-3.5" aria-hidden />
-                            </Button>
-                          </PermissionTip>
+                            </IconButton>
                         </TableCell>
                       </TableRow>
                     );

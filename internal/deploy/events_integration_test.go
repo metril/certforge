@@ -156,7 +156,7 @@ func (f *eventsFixture) grant(t *testing.T, certID, targetID uuid.UUID) uuid.UUI
 
 func (f *eventsFixture) pending(t *testing.T, grantID, versionID uuid.UUID) {
 	t.Helper()
-	if err := f.q.UpsertServerDeploymentPending(context.Background(), sqlcgen.UpsertServerDeploymentPendingParams{GrantID: grantID, VersionID: &versionID}); err != nil {
+	if _, err := f.q.UpsertServerDeploymentPending(context.Background(), sqlcgen.UpsertServerDeploymentPendingParams{GrantID: grantID, VersionID: &versionID}); err != nil {
 		t.Fatal(err)
 	}
 }

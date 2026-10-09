@@ -398,3 +398,54 @@ func checkResolved(ctx context.Context, host string, allowLoopback bool, r HostR
 	}
 	return nil
 }
+
+// ErrAmbientCredentials is returned for a config that would authenticate as
+// the CertForge server's own cloud identity (instance role, ADC, managed
+// identity, a server-side profile) instead of keys the caller supplied.
+var ErrAmbientCredentials = errors.New("uses the server's own cloud identity; only a global administrator (settings:write) may configure this")
+
+// ambientFields name settings that select the server's own identity or
+// delegate through it even when keys are supplied.
+var ambientFields = []string{"AWS_ASSUME_ROLE_ARN", "AWS_PROFILE"}
+
+// CheckNoAmbient rejects a split config that relies on ambient (server
+// environment) credentials: the provider's no-field auth method being the
+// only one satisfied, or any of ambientFields being set. Callers apply it to
+// everyone but a global settings:write holder, so an org-scoped user cannot
+// borrow the deployment's cloud identity.
+func CheckNoAmbient(code string, public, secret map[string]string) error {
+	e, ok := lookupEntry(code)
+	if !ok {
+		return nil
+	}
+	for _, f := range ambientFields {
+		if public[f] != "" || secret[f] != "" {
+			return fmt.Errorf("%w: %s", ErrAmbientCredentials, f)
+		}
+	}
+	// AZURE_AUTH_METHOD: only "env" (the supplied client secret) is safe;
+	// msi/cli/wli use the server's identity. Build forces env when the
+	// client-secret fields are complete (see forceAzureEnvAuth).
+	if m := public["AZURE_AUTH_METHOD"] + secret["AZURE_AUTH_METHOD"]; m != "" && !strings.EqualFold(m, "env") {
+		return fmt.Errorf("%w: AZURE_AUTH_METHOD=%s", ErrAmbientCredentials, m)
+	}
+	hasAmbient, hasKeyed := false, false
+	for _, m := range e.meta.AuthMethods {
+		if len(m.Fields) == 0 {
+			hasAmbient = true
+			continue
+		}
+		ok := true
+		for _, f := range m.Fields {
+			if public[f] == "" && secret[f] == "" {
+				ok = false
+				break
+			}
+		}
+		hasKeyed = hasKeyed || ok
+	}
+	if hasAmbient && !hasKeyed {
+		return fmt.Errorf("%w: no explicit credentials supplied", ErrAmbientCredentials)
+	}
+	return nil
+}

@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { help } from '@/lib/help';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { relDays } from '@/lib/time';
+import { IconButton } from '@/components/IconButton';
 
 type Props = {
   cert: Certificate;
@@ -117,9 +118,9 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, c
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="More actions">
+              <IconButton variant="ghost" size="icon" label="More actions">
                 <MoreHorizontal className="size-4" aria-hidden />
-              </Button>
+              </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {(() => {

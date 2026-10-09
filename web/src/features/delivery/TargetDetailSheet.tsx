@@ -26,6 +26,7 @@ import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { ServerGrantForm } from './ServerGrantForm';
 import { failedWithoutData } from '@/lib/queryState';
+import { IconButton } from '@/components/IconButton';
 
 type Props = { orgId: string; orgSlug: string; target: DeployTarget; types: ProviderSchema[]; onEdit: () => void; onOpenChange: (open: boolean) => void };
 
@@ -72,39 +73,33 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
 
   const actions = (g: Grant) => (
     <span className="inline-flex">
-      <PermissionTip allowed={canWrite} action="clients:write" side="left">
-        <Button
+      <IconButton tip={canWrite ? undefined : `Needs the clients:write permission`}
           variant="ghost"
           size="icon-sm"
           className="size-7"
           disabled={!canWrite || redeploying(g)}
-          aria-label={`Redeploy ${g.certificateName}`}
+          label={`Redeploy ${g.certificateName}`}
           onClick={() => redeploy.mutate(g.id)}
         >
           <RotateCw className="size-3.5" aria-hidden />
-        </Button>
-      </PermissionTip>
+        </IconButton>
       {/* Batch 4 review: updateServerGrant's own requireKeyIfNeeded gate
           means an includeKey target's grants need keys:export to edit at
           all, not just clients:write — same reasoning as newGrantAllowed
           above, reused here rather than only checking clients:write. */}
-      <PermissionTip allowed={newGrantAllowed} action={newGrantReason} side="left">
-        <Button
+      <IconButton tip={newGrantAllowed ? undefined : `Needs the ${newGrantReason} permission`}
           variant="ghost"
           size="icon-sm"
           className="size-7"
           disabled={!newGrantAllowed}
-          aria-label={`Edit layout for ${g.certificateName}`}
+          label={`Edit layout for ${g.certificateName}`}
           onClick={() => openForm(g)}
         >
           <Pencil className="size-3.5" aria-hidden />
-        </Button>
-      </PermissionTip>
-      <PermissionTip allowed={canWrite} action="clients:write" side="left">
-        <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} aria-label={`Remove ${g.certificateName}`} onClick={() => setRemoving(g)}>
+        </IconButton>
+      <IconButton tip={canWrite ? undefined : `Needs the clients:write permission`} variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} label={`Remove ${g.certificateName}`} onClick={() => setRemoving(g)}>
           <Trash2 className="size-3.5" aria-hidden />
-        </Button>
-      </PermissionTip>
+        </IconButton>
     </span>
   );
 

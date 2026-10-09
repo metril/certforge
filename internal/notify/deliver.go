@@ -155,23 +155,23 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 	if len(channel.SecretCfg) > 0 {
 		pt, err := w.Box.Open(ctx, channel.SecretCfg)
 		if err != nil {
-			return fmt.Errorf("notify: open channel secrets: %w", err)
+			return w.recordFailure(ctx, job, fmt.Errorf("notify: open channel secrets: %w", err), nil)
 		}
 		if err := json.Unmarshal(pt, &secrets); err != nil {
-			return fmt.Errorf("notify: decode channel secrets: %w", err)
+			return w.recordFailure(ctx, job, fmt.Errorf("notify: decode channel secrets: %w", err), nil)
 		}
 	}
 
 	var cfg map[string]any
 	if len(channel.Config) > 0 {
 		if err := json.Unmarshal(channel.Config, &cfg); err != nil {
-			return fmt.Errorf("notify: decode channel config: %w", err)
+			return w.recordFailure(ctx, job, fmt.Errorf("notify: decode channel config: %w", err), nil)
 		}
 	}
 
 	target, err := w.target(ctx, eventRow.OrgID)
 	if err != nil {
-		return fmt.Errorf("notify: resolve org for delivery: %w", err)
+		return w.recordFailure(ctx, job, fmt.Errorf("notify: resolve org for delivery: %w", err), secrets)
 	}
 
 	sendCtx, cancel := context.WithTimeout(ctx, deliverTimeout)

@@ -3,6 +3,7 @@ import { Plus, X } from 'lucide-react';
 import type { FieldProps } from '@rjsf/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { IconButton } from '@/components/IconButton';
 
 const MAX_HEADERS = 20;
 
@@ -78,16 +79,16 @@ export function HeadersField({ fieldPathId, formData, onChange, disabled, readon
             disabled={off}
             onChange={(e) => commit(rows.map((row) => (row.id === r.id ? { ...row, value: e.target.value } : row)))}
           />
-          <Button
+          <IconButton
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={`Remove header ${i + 1}`}
+            label={`Remove header ${i + 1}`}
             disabled={off}
             onClick={() => commit(rows.filter((row) => row.id !== r.id))}
           >
             <X className="size-3.5" aria-hidden />
-          </Button>
+          </IconButton>
         </div>
       ))}
       <Button

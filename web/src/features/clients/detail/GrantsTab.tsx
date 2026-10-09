@@ -25,9 +25,10 @@ import { relTime } from '@/lib/time';
 import { usePendingIds } from '@/lib/usePendingIds';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
-import { ClientWriteTip } from './ClientWriteTip';
+import { ClientWriteTip, clientWriteReason } from './ClientWriteTip';
 import { FileCompare } from './FileCompare';
 import { failedWithoutData } from '@/lib/queryState';
+import { IconButton } from '@/components/IconButton';
 
 type Props = {
   client: Client;
@@ -150,47 +151,42 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
     setRemoving(g);
   };
 
+  const writeReason = clientWriteReason(canWrite, client.status === 'revoked');
   const actions = (g: Grant) => (
     <span className="inline-flex">
       {onEdit && (
-        <ClientWriteTip canWrite={canWrite} revoked={client.status === 'revoked'} side="left">
-          <Button variant="ghost" size="icon-sm" className="size-7" disabled={!writable} aria-label={`Edit ${g.certificateName}`} onClick={() => onEdit(g)}>
+          <IconButton tip={writeReason} variant="ghost" size="icon-sm" className="size-7" disabled={!writable} label={`Edit ${g.certificateName}`} onClick={() => onEdit(g)}>
             <Pencil className="size-3.5" aria-hidden />
-          </Button>
-        </ClientWriteTip>
+          </IconButton>
       )}
-      <ClientWriteTip canWrite={canWrite} revoked={client.status === 'revoked'} side="left">
-        <Button
+        <IconButton tip={writeReason}
           variant="ghost"
           size="icon-sm"
           className="size-7"
           disabled={!writable || redeploying(g)}
-          aria-label={`Redeploy ${g.certificateName}`}
+          label={`Redeploy ${g.certificateName}`}
           onClick={() => redeployRow(g)}
         >
           <RotateCw className="size-3.5" aria-hidden />
-        </Button>
-      </ClientWriteTip>
-      <ClientWriteTip canWrite={canWrite} revoked={client.status === 'revoked'} side="left">
-        <Button variant="ghost" size="icon-sm" className="size-7" disabled={!writable} aria-label={`Remove ${g.certificateName}`} onClick={() => startRemoving(g)}>
+        </IconButton>
+        <IconButton tip={writeReason} variant="ghost" size="icon-sm" className="size-7" disabled={!writable} label={`Remove ${g.certificateName}`} onClick={() => startRemoving(g)}>
           <Trash2 className="size-3.5" aria-hidden />
-        </Button>
-      </ClientWriteTip>
+        </IconButton>
     </span>
   );
 
   const toggleButton = (g: Grant) => (
-    <Button
+    <IconButton
       variant="ghost"
       size="icon-sm"
       className={cn('size-7', attention(g) && 'text-primary')}
       aria-expanded={open === g.id}
       aria-controls={`grant-${g.id}`}
-      aria-label={`Files for ${g.certificateName}`}
+      label={`Files for ${g.certificateName}`}
       onClick={() => toggle(g)}
     >
       <ChevronDown className={cn('size-4 transition-transform', open === g.id && 'rotate-180')} aria-hidden />
-    </Button>
+    </IconButton>
   );
 
   const detail = (g: Grant) => (

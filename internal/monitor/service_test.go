@@ -18,6 +18,18 @@ import (
 // (fpKnownInOrg) — "against no version in the org" was the wrong reading
 // (it used to mean "skip the check"), not "there is nothing to mismatch
 // against".
+func TestStateDerivationShortLived(t *testing.T) {
+	now := time.Now()
+	fresh := Observation{Fingerprint: "a", NotBefore: now.Add(-time.Hour), NotAfter: now.Add(7*24*time.Hour - time.Hour)}
+	if got := deriveState(fresh, "a", true, false, now); got != "ok" {
+		t.Errorf("fresh 7d leaf = %s, want ok", got)
+	}
+	old := Observation{Fingerprint: "a", NotBefore: now.Add(-6 * 24 * time.Hour), NotAfter: now.Add(24 * time.Hour)}
+	if got := deriveState(old, "a", true, false, now); got != "expiring" {
+		t.Errorf("old 7d leaf = %s, want expiring", got)
+	}
+}
+
 func TestStateDerivation(t *testing.T) {
 	now := time.Now()
 	soon := now.Add(7 * 24 * time.Hour) // inside ExpiringWithin (14d)

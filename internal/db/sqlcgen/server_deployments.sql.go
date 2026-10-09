@@ -78,12 +78,13 @@ func (q *Queries) LiveServerGrantsForExtraCert(ctx context.Context, certID uuid.
 const markServerDeploymentDeployed = `-- name: MarkServerDeploymentDeployed :exec
 UPDATE server_deployments SET status = 'deployed', deployed_at = now(), last_error = '', updated_at = now(),
        state_changed_at = CASE WHEN status IS DISTINCT FROM 'deployed' THEN now() ELSE state_changed_at END
-WHERE grant_id = $1 AND version_id = $2
+WHERE grant_id = $1 AND version_id = $2 AND deploy_seq = $3
 `
 
 type MarkServerDeploymentDeployedParams struct {
 	GrantID   uuid.UUID  `json:"grant_id"`
 	VersionID *uuid.UUID `json:"version_id"`
+	DeploySeq int64      `json:"deploy_seq"`
 }
 
 // version_id is additionally checked (batch-5 review): a job for an older
@@ -93,20 +94,21 @@ type MarkServerDeploymentDeployedParams struct {
 // condition here is defense in depth against the same race, not the only
 // guard. state_changed_at: same CASE convention as UpsertServerDeploymentPending.
 func (q *Queries) MarkServerDeploymentDeployed(ctx context.Context, arg MarkServerDeploymentDeployedParams) error {
-	_, err := q.db.Exec(ctx, markServerDeploymentDeployed, arg.GrantID, arg.VersionID)
+	_, err := q.db.Exec(ctx, markServerDeploymentDeployed, arg.GrantID, arg.VersionID, arg.DeploySeq)
 	return err
 }
 
 const markServerDeploymentFailed = `-- name: MarkServerDeploymentFailed :exec
 UPDATE server_deployments SET status = 'failed', last_error = $1, updated_at = now(),
        state_changed_at = CASE WHEN status IS DISTINCT FROM 'failed' THEN now() ELSE state_changed_at END
-WHERE grant_id = $2 AND version_id = $3
+WHERE grant_id = $2 AND version_id = $3 AND deploy_seq = $4
 `
 
 type MarkServerDeploymentFailedParams struct {
 	LastError string     `json:"last_error"`
 	GrantID   uuid.UUID  `json:"grant_id"`
 	VersionID *uuid.UUID `json:"version_id"`
+	DeploySeq int64      `json:"deploy_seq"`
 }
 
 // last_error is the caller's own redacted, truncated (<=1000 chars) text
@@ -118,7 +120,12 @@ type MarkServerDeploymentFailedParams struct {
 // ScanFailedServerDeployments needs to age a persistently-failing
 // deployment out of the retention window instead of re-emitting forever.
 func (q *Queries) MarkServerDeploymentFailed(ctx context.Context, arg MarkServerDeploymentFailedParams) error {
-	_, err := q.db.Exec(ctx, markServerDeploymentFailed, arg.LastError, arg.GrantID, arg.VersionID)
+	_, err := q.db.Exec(ctx, markServerDeploymentFailed,
+		arg.LastError,
+		arg.GrantID,
+		arg.VersionID,
+		arg.DeploySeq,
+	)
 	return err
 }
 
@@ -127,7 +134,7 @@ SELECT g.id, g.cert_id, g.deploy_target_id, t.org_id, o.slug AS org_slug, t.type
        t.secret_cfg AS target_secret_cfg, t.name AS target_name,
        ce.name AS certificate_name, ce.common_name AS certificate_common_name, ce.sans AS certificate_sans,
        ce.current_version_id, ol.files AS layout_files, ol.password AS layout_password, ol.extra_cert_ids AS layout_extra_cert_ids,
-       sd.version_id AS pending_version_id
+       sd.version_id AS pending_version_id, sd.deploy_seq AS pending_deploy_seq
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN orgs o ON o.id = t.org_id
@@ -155,6 +162,7 @@ type ServerDeployGrantRow struct {
 	LayoutPassword        []byte      `json:"layout_password"`
 	LayoutExtraCertIds    []uuid.UUID `json:"layout_extra_cert_ids"`
 	PendingVersionID      *uuid.UUID  `json:"pending_version_id"`
+	PendingDeploySeq      *int64      `json:"pending_deploy_seq"`
 }
 
 // Everything DeployWorker needs for one grant_id, in a single round trip:
@@ -191,17 +199,19 @@ func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDe
 		&i.LayoutPassword,
 		&i.LayoutExtraCertIds,
 		&i.PendingVersionID,
+		&i.PendingDeploySeq,
 	)
 	return i, err
 }
 
-const upsertServerDeploymentPending = `-- name: UpsertServerDeploymentPending :exec
+const upsertServerDeploymentPending = `-- name: UpsertServerDeploymentPending :one
 
-INSERT INTO server_deployments (grant_id, version_id, status, last_error, updated_at, state_changed_at)
-VALUES ($1, $2, 'pending', '', now(), now())
+INSERT INTO server_deployments (grant_id, version_id, status, last_error, updated_at, state_changed_at, deploy_seq)
+VALUES ($1, $2, 'pending', '', now(), now(), 1)
 ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, status = 'pending',
-       last_error = '', updated_at = now(),
+       last_error = '', updated_at = now(), deploy_seq = server_deployments.deploy_seq + 1,
        state_changed_at = CASE WHEN server_deployments.status IS DISTINCT FROM 'pending' THEN now() ELSE server_deployments.state_changed_at END
+RETURNING deploy_seq
 `
 
 type UpsertServerDeploymentPendingParams struct {
@@ -221,7 +231,12 @@ type UpsertServerDeploymentPendingParams struct {
 // the same way deployments.state_changed_at does — CASE against the row's
 // own pre-update status, so a redeploy onto the same still-pending status
 // (an OnVersion for a version that never got picked up) does not reset it.
-func (q *Queries) UpsertServerDeploymentPending(ctx context.Context, arg UpsertServerDeploymentPendingParams) error {
-	_, err := q.db.Exec(ctx, upsertServerDeploymentPending, arg.GrantID, arg.VersionID)
-	return err
+// deploy_seq is bumped on every call and returned: it rides in the job args
+// (making a re-enqueue of the same version distinct from a running job) and
+// guards both Mark* queries against a stale job.
+func (q *Queries) UpsertServerDeploymentPending(ctx context.Context, arg UpsertServerDeploymentPendingParams) (int64, error) {
+	row := q.db.QueryRow(ctx, upsertServerDeploymentPending, arg.GrantID, arg.VersionID)
+	var deploy_seq int64
+	err := row.Scan(&deploy_seq)
+	return deploy_seq, err
 }

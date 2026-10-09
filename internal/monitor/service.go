@@ -91,10 +91,20 @@ func deriveState(obs Observation, expectedFingerprint string, hasExpected, fpKno
 	case !hasExpected && !fpKnownInOrg:
 		return "mismatch"
 	}
-	if !obs.NotAfter.After(now.Add(ExpiringWithin)) {
+	if !obs.NotAfter.After(now.Add(expiringThreshold(obs))) {
 		return "expiring"
 	}
 	return "ok"
+}
+
+// expiringThreshold is min(ExpiringWithin, lifetime/3): a short-lived leaf
+// (e.g. 7 days) would otherwise be permanently "expiring". A zero NotBefore
+// (unknown lifetime) keeps the fixed ExpiringWithin.
+func expiringThreshold(obs Observation) time.Duration {
+	if obs.NotBefore.IsZero() || !obs.NotAfter.After(obs.NotBefore) {
+		return ExpiringWithin
+	}
+	return min(ExpiringWithin, obs.NotAfter.Sub(obs.NotBefore)/3)
 }
 
 // shouldEmit reports whether a check-driven state change from old to

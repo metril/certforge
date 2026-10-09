@@ -398,3 +398,80 @@ func TestCRLDropsExpiredLeaves(t *testing.T) {
 		t.Fatalf("stored revoked entries = %d, want 3 (expired one pruned)", n)
 	}
 }
+
+// Revoking a managed certificate's current version must pull next_renew_at
+// forward so the scheduler replaces the revoked leaf.
+func TestRevokeCurrentVersionTriggersRenewal(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "RenewCA", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := res.(gen.CreateCa201JSONResponse)
+	_, v := issueLocalLeaf(t, f, ca.Id, "renew-me.example.test")
+	ctx := context.Background()
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET current_version_id = $2, managed = true, status = 'active', next_renew_at = now() + interval '30 days' WHERE id = $1`, v.CertID, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.srv.RevokeCertificateVersion(f.as("operator"), gen.RevokeCertificateVersionRequestObject{
+		OrgId: f.org, Id: v.CertID, Vid: v.ID, Body: &gen.RevokeCertificateVersionJSONRequestBody{Reason: ptrT(gen.KeyCompromise)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var due bool
+	if err := f.pool.QueryRow(ctx, `SELECT next_renew_at <= now() FROM certificates WHERE id = $1`, v.CertID).Scan(&due); err != nil {
+		t.Fatal(err)
+	}
+	if !due {
+		t.Fatal("next_renew_at not pulled forward after revoking the current version")
+	}
+}
+
+// RFC 5280 5.2.3: a stored CRL is served unchanged (same number, same
+// ThisUpdate) until the revoked set changes or it nears NextUpdate; each
+// re-signing takes a greater cRLNumber.
+func TestCRLStoredAndRenumberedOnChange(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "NumCA", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := res.(gen.CreateCa201JSONResponse)
+	ctx := context.Background()
+	get := func() *x509.RevocationList {
+		der, err := f.store.CRL(ctx, ca.Id, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		crl, err := x509.ParseRevocationList(der)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return crl
+	}
+	a, b := get(), get()
+	if a.Number.Cmp(b.Number) != 0 || !a.ThisUpdate.Equal(b.ThisUpdate) {
+		t.Fatalf("unchanged CRL re-signed: %v/%v vs %v/%v", a.Number, a.ThisUpdate, b.Number, b.ThisUpdate)
+	}
+	_, v := issueLocalLeaf(t, f, ca.Id, "num.example.test")
+	if _, err := f.srv.RevokeCertificateVersion(f.as("operator"), gen.RevokeCertificateVersionRequestObject{
+		OrgId: f.org, Id: v.CertID, Vid: v.ID, Body: &gen.RevokeCertificateVersionJSONRequestBody{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := get()
+	if c.Number.Cmp(b.Number) <= 0 || len(c.RevokedCertificateEntries) != 1 {
+		t.Fatalf("after revoke: number %v (was %v), entries %d", c.Number, b.Number, len(c.RevokedCertificateEntries))
+	}
+	// Near expiry: age the stored CRL past half its validity.
+	if _, err := f.pool.Exec(ctx, `UPDATE ca_crls SET this_update = this_update - interval '5 days', next_update = next_update - interval '5 days'`); err != nil {
+		t.Fatal(err)
+	}
+	if d := get(); d.Number.Cmp(c.Number) <= 0 {
+		t.Fatalf("near-expiry CRL not re-signed: %v", d.Number)
+	}
+}

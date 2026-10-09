@@ -15,6 +15,7 @@ import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { OrgSheet } from './OrgSheet';
 import { SitesSheet } from './SitesSheet';
+import { IconButton } from '@/components/IconButton';
 
 /** Organizations and their sites for Settings → General. */
 export function OrgsList() {
@@ -69,12 +70,12 @@ export function OrgsList() {
               )}
               {canWrite && (
                 <>
-                  <Button variant="ghost" size="icon" aria-label={`Rename ${o.name}`} onClick={() => setEditing(o)}>
+                  <IconButton variant="ghost" size="icon" label={`Rename ${o.name}`} onClick={() => setEditing(o)}>
                     <Pencil className="size-4" aria-hidden />
-                  </Button>
-                  <Button variant="ghost" size="icon" aria-label={`Delete ${o.name}`} onClick={() => setDeleting(o)}>
+                  </IconButton>
+                  <IconButton variant="ghost" size="icon" label={`Delete ${o.name}`} onClick={() => setDeleting(o)}>
                     <Trash2 className="size-4" aria-hidden />
-                  </Button>
+                  </IconButton>
                 </>
               )}
             </span>

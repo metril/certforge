@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
+import { IconButton } from '@/components/IconButton';
 
 export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => void }) {
   const me = useMe();
@@ -91,12 +92,12 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
                   <span className="truncate">{s.name}</span>
                   {canWrite && (
                     <span className="ml-auto flex">
-                      <Button variant="ghost" size="icon" aria-label={`Rename ${s.name}`} onClick={() => setRenaming({ id: s.id, name: s.name })}>
+                      <IconButton variant="ghost" size="icon" label={`Rename ${s.name}`} onClick={() => setRenaming({ id: s.id, name: s.name })}>
                         <Pencil className="size-4" aria-hidden />
-                      </Button>
-                      <Button variant="ghost" size="icon" aria-label={`Delete ${s.name}`} onClick={() => setDeleting(s)}>
+                      </IconButton>
+                      <IconButton variant="ghost" size="icon" label={`Delete ${s.name}`} onClick={() => setDeleting(s)}>
                         <Trash2 className="size-4" aria-hidden />
-                      </Button>
+                      </IconButton>
                     </span>
                   )}
                 </>

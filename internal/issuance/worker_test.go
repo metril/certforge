@@ -233,3 +233,39 @@ func TestReplacesEligible(t *testing.T) {
 		}
 	}
 }
+
+type fakeKeySource struct {
+	keys     map[uuid.UUID][]byte
+	versions []certstore.Version
+}
+
+func (f fakeKeySource) PrivateKey(_ context.Context, _, v uuid.UUID) ([]byte, string, error) {
+	return f.keys[v], "ec-p256", nil
+}
+func (f fakeKeySource) List(context.Context, uuid.UUID) ([]certstore.Version, error) {
+	return f.versions, nil
+}
+
+func TestReuseKeyRefusesRevokedKey(t *testing.T) {
+	cur, old := uuid.New(), uuid.New()
+	now := time.Now()
+	cert := Certificate{ID: uuid.New(), CurrentVersionID: &cur}
+	var eff Effective
+	eff.ReuseKey.Value = true
+	eff.KeyType.Value = "ec-p256"
+	tl := NewTimeline(time.Now, nil)
+	src := fakeKeySource{keys: map[uuid.UUID][]byte{cur: []byte("k"), old: []byte("k")},
+		versions: []certstore.Version{{ID: cur, HasKey: true}, {ID: old, HasKey: true, RevokedAt: &now}}}
+	if got := reuseKey(context.Background(), src, cert, eff, tl); got != nil {
+		t.Fatalf("reused a key shared with a revoked version")
+	}
+	src.versions = []certstore.Version{{ID: cur, HasKey: true}}
+	if got := reuseKey(context.Background(), src, cert, eff, tl); string(got) != "k" {
+		t.Fatalf("expected reuse, got %q", got)
+	}
+	src.keys[old] = []byte("other")
+	src.versions = []certstore.Version{{ID: cur, HasKey: true}, {ID: old, HasKey: true, RevokedAt: &now}}
+	if got := reuseKey(context.Background(), src, cert, eff, tl); string(got) != "k" {
+		t.Fatalf("revoked version with a different key must not block reuse")
+	}
+}

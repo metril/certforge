@@ -335,6 +335,9 @@ func (s *Server) ReenrollClient(ctx context.Context, r gen.ReenrollClientRequest
 	if _, err := authorize(ctx, authz.ActionClientsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
+	if err := s.requireKeysExportIfKeyGrants(ctx, r.OrgId, r.Id); err != nil {
+		return nil, err
+	}
 	e, err := s.d.Agents.ReenrollClient(ctx, r.OrgId, r.Id)
 	if err != nil {
 		return nil, mapAgentErr(err)

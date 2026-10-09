@@ -22,6 +22,7 @@ import (
 type Observation struct {
 	Fingerprint string
 	Issuer      string
+	NotBefore   time.Time
 	NotAfter    time.Time
 	ChainError  string
 	Err         error
@@ -66,6 +67,7 @@ func Observe(host string, port int, sni string, allowLoopback bool) Observation 
 	obs := Observation{
 		Fingerprint: hex.EncodeToString(fp[:]),
 		Issuer:      leaf.Issuer.String(),
+		NotBefore:   leaf.NotBefore,
 		NotAfter:    leaf.NotAfter,
 	}
 

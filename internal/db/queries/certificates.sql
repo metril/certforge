@@ -409,3 +409,10 @@ ORDER BY COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_coun
          COALESCE(c.status IN ('expired', 'pending', 'failed') OR c.failure_count > 0 OR c.next_renew_at < now(), false) DESC,
          v.not_after NULLS LAST, c.id
 LIMIT sqlc.arg(row_limit)::int;
+
+-- name: RenewNowIfCurrentVersion :exec
+-- Makes a managed, active certificate due immediately when versionID is its
+-- current version (used after that version is revoked, so the scheduler
+-- replaces the revoked leaf).
+UPDATE certificates SET next_renew_at = now(), updated_at = now()
+WHERE id = $1 AND current_version_id = $2 AND managed AND status = 'active';

@@ -835,6 +835,9 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	if err != nil {
 		return certstore.Version{}, err
 	}
+	if err := q.RenewNowIfCurrentVersion(ctx, sqlcgen.RenewNowIfCurrentVersionParams{ID: certID, CurrentVersionID: &versionID}); err != nil {
+		return certstore.Version{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return certstore.Version{}, err
 	}
@@ -881,7 +884,7 @@ func (s *Store) revokeVaultVersion(ctx context.Context, sig signer.Signer, leaf 
 				break
 			}
 		}
-		updated, err := s.q.SetCertificateVersionRevoked(ctx, sqlcgen.SetCertificateVersionRevokedParams{ID: versionID, CertID: certID, RevokedAt: &now})
+		updated, err := s.recordVaultRevocation(ctx, certID, versionID, now)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return certstore.Version{}, &ConflictError{Msg: "version is already revoked"}
 		}
@@ -892,6 +895,25 @@ func (s *Store) revokeVaultVersion(ctx context.Context, sig signer.Signer, leaf 
 	}
 	slog.Error("vault revoked a certificate but recording the revocation failed", "version", versionID, "err", lastErr)
 	return certstore.Version{}, &RevokeRecordError{Err: lastErr}
+}
+
+// recordVaultRevocation writes revoked_at and, for a current version, makes
+// the certificate due for renewal, in one transaction.
+func (s *Store) recordVaultRevocation(ctx context.Context, certID, versionID uuid.UUID, now time.Time) (sqlcgen.SetCertificateVersionRevokedRow, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return sqlcgen.SetCertificateVersionRevokedRow{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	updated, err := q.SetCertificateVersionRevoked(ctx, sqlcgen.SetCertificateVersionRevokedParams{ID: versionID, CertID: certID, RevokedAt: &now})
+	if err != nil {
+		return updated, err
+	}
+	if err := q.RenewNowIfCurrentVersion(ctx, sqlcgen.RenewNowIfCurrentVersionParams{ID: certID, CurrentVersionID: &versionID}); err != nil {
+		return updated, err
+	}
+	return updated, tx.Commit(ctx)
 }
 
 func versionFromRevoked(updated sqlcgen.SetCertificateVersionRevokedRow) certstore.Version {

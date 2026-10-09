@@ -15,6 +15,9 @@ type Revoked struct {
 	ReasonCode int
 }
 
+// CRLValidity is how long a built CRL is valid (NextUpdate - ThisUpdate).
+const CRLValidity = 7 * 24 * time.Hour
+
 // BuildCRL signs a new CRL for issuer/key, numbered number, listing
 // revoked. ThisUpdate is now; NextUpdate is now + 7 days (the public CRL
 // routes' Cache-Control: max-age=600 keeps clients refreshing well before
@@ -31,7 +34,7 @@ func BuildCRL(issuer *x509.Certificate, key crypto.Signer, revoked []Revoked, nu
 	tmpl := &x509.RevocationList{
 		Number:                    number,
 		ThisUpdate:                now,
-		NextUpdate:                now.Add(7 * 24 * time.Hour),
+		NextUpdate:                now.Add(CRLValidity),
 		RevokedCertificateEntries: entries,
 	}
 	return x509.CreateRevocationList(rand.Reader, tmpl, issuer, key)

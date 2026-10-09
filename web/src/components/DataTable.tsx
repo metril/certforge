@@ -108,7 +108,10 @@ export function DataTable<T extends RowData>({ data, columns, getRowId, ariaLabe
                     if (e.key === ' ') {
                       e.preventDefault();
                       onRowClick?.(row.id, e);
-                    } else if (e.key === 'Enter') onRowOpen?.(row.id);
+                    } else if (e.key === 'Enter') {
+                      if (onRowOpen) onRowOpen(row.id);
+                      else onRowClick?.(row.id, e);
+                    }
                   }}
                 >
                   {row.getAllCells().map((c) => (

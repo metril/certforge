@@ -72,6 +72,7 @@ func (s *Server) CreateDNSCredential(ctx context.Context, r gen.CreateDNSCredent
 	if _, err := authorize(ctx, authz.ActionDNSCredsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
+	ctx = s.ambientCtx(ctx)
 	if err := s.checkDNSCredURLs(ctx, r.Body.ProviderCode, r.Body.Config); err != nil {
 		return nil, err
 	}
@@ -155,6 +156,7 @@ func (s *Server) UpdateDNSCredential(ctx context.Context, r gen.UpdateDNSCredent
 	if _, err := authorize(ctx, authz.ActionDNSCredsWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
+	ctx = s.ambientCtx(ctx)
 	existing, err := s.d.Issuance.Store.GetDNSCredential(ctx, r.OrgId, r.Id)
 	if err != nil {
 		return nil, mapErr(err)
@@ -257,4 +259,14 @@ func (s *Server) TestDNSCredential(ctx context.Context, r gen.TestDNSCredentialR
 	s.audit(ctx, audit.Event{Action: "dns_credential.test", ResourceType: "dns_credential", ResourceID: r.Id.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"zone": r.Body.Zone, "ok": res.Ok}})
 	return gen.TestDNSCredential200JSONResponse(res), nil
+}
+
+// ambientCtx lets a caller holding global settings:write store credentials
+// that use the server's own cloud identity; everyone else is rejected by the
+// store (confused-deputy guard).
+func (s *Server) ambientCtx(ctx context.Context) context.Context {
+	if _, err := authorize(ctx, authz.ActionSettingsWrite, nil); err == nil {
+		return issuance.WithAmbientCredentials(ctx)
+	}
+	return ctx
 }

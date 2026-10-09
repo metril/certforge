@@ -13,6 +13,7 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can, canAnywhere } from '@/lib/permissions';
 import { BindingSheet, ROLE_LABEL } from './access/BindingSheet';
+import { IconButton } from '@/components/IconButton';
 
 // D1 ruling: group mappings are oidc_group role bindings, reusing Task 4's
 // binding sheet/mutations with fixedType so this stays the single source of
@@ -46,9 +47,9 @@ export function GroupMappings() {
             <span>{ROLE_LABEL[b.role]}</span>
             <span className="text-ink-muted">{scopeLabel(me, b.orgId)}</span>
             {canWrite && (
-              <Button variant="ghost" size="icon" className="ml-auto" aria-label={`Remove ${b.subject} ${b.role}`} onClick={() => setRemoving(b)}>
+              <IconButton variant="ghost" size="icon" className="ml-auto" label={`Remove ${b.subject} ${b.role}`} onClick={() => setRemoving(b)}>
                 <Trash2 className="size-4" aria-hidden />
-              </Button>
+              </IconButton>
             )}
           </li>
         ))}

@@ -17,6 +17,7 @@ import { help } from '@/lib/help';
 import { fmtDateTime, fmtDuration, relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { failedWithoutData } from '@/lib/queryState';
+import { IconButton } from '@/components/IconButton';
 
 const COLS = 'md:grid-cols-[96px_minmax(0,140px)_96px_minmax(0,1fr)_80px_72px_28px]';
 
@@ -115,16 +116,16 @@ export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: st
                 </Tooltip>
                 <ExitChip code={r.exitCode} stderr={r.stderr} />
                 <span className="text-xs tabular-nums">{fmtDuration(r.durationMs)}</span>
-                <Button
+                <IconButton
                   variant="ghost"
                   size="icon-sm"
                   className="size-7"
                   aria-expanded={open === r.id}
-                  aria-label={`Output of ${name}`}
+                  label={`Output of ${name}`}
                   onClick={() => setOpen(open === r.id ? null : r.id)}
                 >
                   <ChevronDown className={cn('size-4 transition-transform', open === r.id && 'rotate-180')} aria-hidden />
-                </Button>
+                </IconButton>
               </div>
               {open === r.id && <Output run={r} />}
             </li>
