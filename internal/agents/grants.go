@@ -489,7 +489,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 		if m, ok := materials[k]; ok {
 			return m, nil
 		}
-		m, err := s.Certs.Material(ctx, certID, versionID, withKey)
+		m, err := s.Certs.WithQueries(q).Material(ctx, certID, versionID, withKey)
 		if err != nil {
 			return render.Material{}, err
 		}
@@ -938,9 +938,16 @@ func (s *Service) ResyncCertificateRename(ctx context.Context, q *sqlcgen.Querie
 	return s.resyncTx(ctx, q, ids, true)
 }
 
+// onVersionTimeout bounds one OnVersion call.
+const onVersionTimeout = 2 * time.Minute
+
 // OnVersion implements issuance.VersionListener: every live grant of the
 // certificate gets the new version's digests and its agent a nudge.
 func (s *Service) OnVersion(ctx context.Context, certID, versionID uuid.UUID) {
+	// Bounded: the caller's context may be detached (context.WithoutCancel),
+	// and a wedged render must not hold a pool connection forever.
+	ctx, cancel := context.WithTimeout(ctx, onVersionTimeout)
+	defer cancel()
 	ids, err := s.Q.LiveGrantIDsForCert(ctx, certID)
 	if err == nil {
 		var extraIDs []uuid.UUID
