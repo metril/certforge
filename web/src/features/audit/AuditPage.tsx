@@ -198,18 +198,18 @@ export function AuditPage() {
             </FilterField>
             <FilterField label="Action">
               <div className="w-48">
-                <Combobox aria-label="Action" value={search.action} onChange={(v) => set({ action: v })} options={actionOptions()} placeholder="Any action" emptyText="No action matches." mono />
+                <Combobox clearable aria-label="Action" value={search.action} onChange={(v) => set({ action: v })} options={actionOptions()} placeholder="Any action" emptyText="No action matches." mono />
               </div>
             </FilterField>
             <FilterField label="Resource">
               <div className="w-48">
-                <Combobox aria-label="Resource type" value={search.resourceType} onChange={(v) => set({ resourceType: v })} options={AUDIT_RESOURCE_TYPES.map((t) => ({ value: t, label: t }))} placeholder="Any resource" emptyText="No type matches." mono />
+                <Combobox clearable aria-label="Resource type" value={search.resourceType} onChange={(v) => set({ resourceType: v })} options={AUDIT_RESOURCE_TYPES.map((t) => ({ value: t, label: t }))} placeholder="Any resource" emptyText="No type matches." mono />
               </div>
             </FilterField>
             {users.data && (
               <FilterField label="Actor">
                 <div className="w-48">
-                  <Combobox aria-label="Actor" value={search.actor} onChange={(v) => set({ actor: v })} options={users.data.map((u) => ({ value: u.id, label: u.displayName, hint: u.email ?? undefined }))} placeholder="Any actor" emptyText="No user matches." />
+                  <Combobox clearable aria-label="Actor" value={search.actor} onChange={(v) => set({ actor: v })} options={users.data.map((u) => ({ value: u.id, label: u.displayName, hint: u.email ?? undefined }))} placeholder="Any actor" emptyText="No user matches." />
                 </div>
               </FilterField>
             )}

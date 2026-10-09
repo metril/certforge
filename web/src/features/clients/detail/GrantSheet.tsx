@@ -178,6 +178,7 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
               <Combobox
                 id="grant-layout"
                 aria-label="Layout"
+                clearable
                 value={layoutId}
                 onChange={(v) => {
                   setLayoutId(v);
@@ -194,6 +195,7 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
               <Combobox
                 id="grant-target"
                 aria-label="Deploy target"
+                clearable
                 value={targetId}
                 onChange={(v) => {
                   setTargetId(v);

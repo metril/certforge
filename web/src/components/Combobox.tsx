@@ -36,12 +36,12 @@ type Props = {
   footer?: ReactNode;
   disabled?: boolean;
   mono?: boolean;
-  /** Show the trailing clear button when a value is picked (default true). */
+  /** Show the trailing clear button when a value is picked (default false; opt in for truly optional values). */
   clearable?: boolean;
   'aria-label'?: string;
 };
 
-export function Combobox({ id, value, onChange, options, placeholder, emptyText, footer, disabled, mono, clearable = true, ...rest }: Props) {
+export function Combobox({ id, value, onChange, options, placeholder, emptyText, footer, disabled, mono, clearable = false, ...rest }: Props) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.value === value);
   return (
