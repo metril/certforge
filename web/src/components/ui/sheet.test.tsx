@@ -14,6 +14,7 @@ import {
 import { makeQueryClient } from '@/lib/queryClient';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { TooltipProvider } from './tooltip';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, useSheetGuard } from './sheet';
 
 function Harness({ form, dirty }: { form?: boolean; dirty?: boolean }) {
@@ -36,28 +37,28 @@ function Harness({ form, dirty }: { form?: boolean; dirty?: boolean }) {
 describe('Sheet guard', () => {
   it('form sheet ignores outside clicks', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    render(<Harness form />);
+    render(<TooltipProvider><Harness form /></TooltipProvider>);
     await user.click(document.body);
     expect(screen.getByText('Panel')).toBeInTheDocument();
   });
 
   it('read-only sheet still closes on outside click', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    render(<Harness />);
+    render(<TooltipProvider><Harness /></TooltipProvider>);
     await user.click(document.body);
     expect(screen.queryByText('Panel')).not.toBeInTheDocument();
   });
 
   it('clean form closes on Escape', async () => {
     const user = userEvent.setup();
-    render(<Harness form dirty={false} />);
+    render(<TooltipProvider><Harness form dirty={false} /></TooltipProvider>);
     await user.keyboard('{Escape}');
     expect(screen.queryByText('Panel')).not.toBeInTheDocument();
   });
 
   it('dirty form prompts; Cancel keeps it open', async () => {
     const user = userEvent.setup();
-    render(<Harness form dirty />);
+    render(<TooltipProvider><Harness form dirty /></TooltipProvider>);
     await user.keyboard('{Escape}');
     expect(screen.getByText('Discard changes?')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -67,7 +68,7 @@ describe('Sheet guard', () => {
 
   it('dirty form closes on Discard', async () => {
     const user = userEvent.setup();
-    render(<Harness form dirty />);
+    render(<TooltipProvider><Harness form dirty /></TooltipProvider>);
     await user.click(screen.getByRole('button', { name: 'Close' }));
     await user.click(screen.getByRole('button', { name: 'Discard' }));
     expect(screen.queryByText('Panel')).not.toBeInTheDocument();
@@ -116,7 +117,9 @@ async function mountNav(form: boolean, dirty: boolean) {
   const queryClient = makeQueryClient({ test: true });
   render(
     <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
       <RouterProvider router={router} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
   await screen.findByText('Panel');

@@ -89,9 +89,9 @@ function RuleRow({ id, index, rule, credentials, clients, agentModes, onUpdate, 
       className={cn('grid gap-2 border-b border-border py-2 last:border-b-0 max-md:rounded-md max-md:border max-md:p-2', isDragging && 'bg-subtle')}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-label={`Reorder rule ${n}`} {...attributes} {...listeners} className="cursor-grab rounded-sm p-1 text-ink-muted hover:text-ink">
+        <IconButton type="button" variant="ghost" size="icon-xs" {...attributes} {...listeners} label={`Reorder rule ${n}`} className="size-auto cursor-grab rounded-sm p-1 text-ink-muted hover:bg-transparent hover:text-ink">
           <GripVertical className="size-4" aria-hidden />
-        </button>
+        </IconButton>
         <div className="flex flex-col">
           <IconButton type="button" variant="ghost" size="icon-sm" label={`Move rule ${n} up`} disabled={!canMoveUp} onClick={() => onMove(-1)}>
             <ChevronUp className="size-4" aria-hidden />

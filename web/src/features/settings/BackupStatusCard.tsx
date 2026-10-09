@@ -7,6 +7,7 @@ import type { BackupStatus } from '@/api/types';
 import { Card, CardBody, CardHeader } from '@/components/Card';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
+import { IconButton } from '@/components/IconButton';
 import { ToneChip } from '@/components/StatusChip';
 import { help } from '@/lib/help';
 import { fmtBytes } from '@/lib/files';
@@ -41,10 +42,12 @@ function KeyReminder() {
     <div role="status" aria-label="Encryption key reminder" className="flex min-h-8 items-center gap-2 border-b border-border pb-3 text-sm text-ink-muted">
       <Info className="size-4 shrink-0" aria-hidden />
       <span>{help['backup.keyReminder'].text}</span>
-      <button
+      <IconButton
         type="button"
-        aria-label="Dismiss"
-        className="ml-auto inline-flex size-6 shrink-0 items-center justify-center rounded-sm hover:bg-subtle hover:text-ink"
+        variant="ghost"
+        size="icon-xs"
+        label="Dismiss"
+        className="ml-auto shrink-0 rounded-sm hover:bg-subtle hover:text-ink"
         onClick={() => {
           setDismissed(true);
           try {
@@ -55,7 +58,7 @@ function KeyReminder() {
         }}
       >
         <X className="size-4" aria-hidden />
-      </button>
+      </IconButton>
     </div>
   );
 }
