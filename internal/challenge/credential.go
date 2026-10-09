@@ -406,7 +406,7 @@ var ErrAmbientCredentials = errors.New("uses the server's own cloud identity; on
 
 // ambientFields name settings that select the server's own identity or
 // delegate through it even when keys are supplied.
-var ambientFields = []string{"AWS_ASSUME_ROLE_ARN", "AWS_PROFILE", "AZURE_AUTH_METHOD"}
+var ambientFields = []string{"AWS_ASSUME_ROLE_ARN", "AWS_PROFILE"}
 
 // CheckNoAmbient rejects a split config that relies on ambient (server
 // environment) credentials: the provider's no-field auth method being the
@@ -422,6 +422,12 @@ func CheckNoAmbient(code string, public, secret map[string]string) error {
 		if public[f] != "" || secret[f] != "" {
 			return fmt.Errorf("%w: %s", ErrAmbientCredentials, f)
 		}
+	}
+	// AZURE_AUTH_METHOD: only "env" (the supplied client secret) is safe;
+	// msi/cli/wli use the server's identity. Build forces env when the
+	// client-secret fields are complete (see forceAzureEnvAuth).
+	if m := public["AZURE_AUTH_METHOD"] + secret["AZURE_AUTH_METHOD"]; m != "" && !strings.EqualFold(m, "env") {
+		return fmt.Errorf("%w: AZURE_AUTH_METHOD=%s", ErrAmbientCredentials, m)
 	}
 	hasAmbient, hasKeyed := false, false
 	for _, m := range e.meta.AuthMethods {
