@@ -835,6 +835,9 @@ func (s *Store) RevokeVersion(ctx context.Context, orgID, certID, versionID uuid
 	if err != nil {
 		return certstore.Version{}, err
 	}
+	if err := q.RenewNowIfCurrentVersion(ctx, sqlcgen.RenewNowIfCurrentVersionParams{ID: certID, CurrentVersionID: &versionID}); err != nil {
+		return certstore.Version{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return certstore.Version{}, err
 	}
@@ -886,6 +889,9 @@ func (s *Store) revokeVaultVersion(ctx context.Context, sig signer.Signer, leaf 
 			return certstore.Version{}, &ConflictError{Msg: "version is already revoked"}
 		}
 		if err == nil {
+			if rerr := s.q.RenewNowIfCurrentVersion(ctx, sqlcgen.RenewNowIfCurrentVersionParams{ID: certID, CurrentVersionID: &versionID}); rerr != nil {
+				slog.Error("revoked current version but scheduling its renewal failed", "version", versionID, "err", rerr)
+			}
 			return versionFromRevoked(updated), nil
 		}
 		lastErr = err
