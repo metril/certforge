@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/metril/certforge/internal/notify/httpx"
 )
@@ -333,6 +334,9 @@ func CheckURLFields(ctx context.Context, code string, cfg map[string]string, all
 	if c, err := canonicalize(e, cfg); err == nil {
 		cfg = c
 	}
+	if err := checkComposedHost(ctx, code, cfg, allowLoopback, r); err != nil {
+		return err
+	}
 	keys := make([]string, 0, len(cfg))
 	for k := range cfg {
 		keys = append(keys, k)
@@ -357,6 +361,56 @@ func CheckURLFields(ctx context.Context, code string, cfg map[string]string, all
 		if err := checkResolved(ctx, u.Hostname(), allowLoopback, r); err != nil {
 			return fmt.Errorf("%s: %w", k, err)
 		}
+	}
+	return nil
+}
+
+// composedHost describes a provider whose library joins config fields into
+// a request host (lego f5xc: https://<tenant>.<server>). Each field must be
+// a bare DNS-name fragment, and the composed host is run through the same
+// SSRF policy as a URL field.
+type composedHost struct {
+	fields   []string // in host order
+	defaults map[string]string
+}
+
+var composedHosts = map[string]composedHost{
+	"f5xc": {fields: []string{"F5XC_TENANT_NAME", "F5XC_SERVER"}, defaults: map[string]string{"F5XC_SERVER": "console.ves.volterra.io"}},
+}
+
+// hostFragmentForbidden are characters that would let a field change the
+// authority, path or query of the host it is spliced into.
+const hostFragmentForbidden = "@/#?:\\"
+
+func checkComposedHost(ctx context.Context, code string, cfg map[string]string, allowLoopback bool, r HostResolver) error {
+	ch, ok := composedHosts[code]
+	if !ok {
+		return nil
+	}
+	parts := make([]string, 0, len(ch.fields))
+	for _, f := range ch.fields {
+		v := strings.TrimSpace(cfg[f])
+		if v == Unchanged {
+			return nil // the stored value was checked when it was saved
+		}
+		if v == "" {
+			v = ch.defaults[f]
+		}
+		if v == "" {
+			return nil // required-field validation reports the gap
+		}
+		if strings.ContainsAny(v, hostFragmentForbidden) || strings.IndexFunc(v, unicode.IsSpace) >= 0 {
+			return fmt.Errorf("%s: must be a plain host name part (no @ / # ? : \\ or whitespace)", f)
+		}
+		parts = append(parts, v)
+	}
+	host := strings.Join(parts, ".")
+	last := ch.fields[len(ch.fields)-1]
+	if err := httpx.CheckURL("https://"+host, allowLoopback); err != nil {
+		return fmt.Errorf("%s: %w", last, err)
+	}
+	if err := checkResolved(ctx, host, allowLoopback, r); err != nil {
+		return fmt.Errorf("%s: %w", last, err)
 	}
 	return nil
 }
