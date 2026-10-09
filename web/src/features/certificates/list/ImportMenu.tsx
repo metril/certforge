@@ -3,6 +3,7 @@ import { ChevronDown, FolderInput, Import, Upload } from 'lucide-react';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 type Props = { orgSlug: string; canWrite: boolean };
@@ -37,7 +38,12 @@ export function ImportMenu({ orgSlug, canWrite }: Props) {
   return (
     <div className="flex items-center gap-1">
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+        <Tooltip>
+          <DropdownMenuTrigger asChild>
+            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          </DropdownMenuTrigger>
+          <TooltipContent>Import</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent align="end">
           <DropdownMenuItem asChild>
             <Link to="/o/$org/certificates/import" params={{ org: orgSlug }} className="flex items-center gap-2">
