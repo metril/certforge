@@ -104,9 +104,11 @@ func crlHandler(store *issuance.Store, cache *crlCache) http.HandlerFunc {
 		der, ok := cache.get(key)
 		if key == "" || !ok {
 			build := func() (any, error) {
-				d, err := store.CRL(r.Context(), caID, issuerSerial)
-				if err == nil && key != "" {
-					cache.put(key, d)
+				d, n, err := store.CRLNumbered(r.Context(), caID, issuerSerial)
+				if err == nil {
+					// Keyed by the number this signing took, so the next
+					// request (which reads that number) hits the cache.
+					cache.put(caID.String()+"/"+issuerSerial+"/"+strconv.FormatInt(n, 10), d)
 				}
 				return d, err
 			}

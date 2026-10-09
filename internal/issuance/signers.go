@@ -439,26 +439,50 @@ func (s *Store) CACRLNumber(ctx context.Context, caID uuid.UUID) (int64, error) 
 // false, unknown issuer serial) — the route never distinguishes them, so a
 // probing client learns nothing.
 func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([]byte, error) {
+	der, _, err := s.CRLNumbered(ctx, caID, issuerSerial)
+	return der, err
+}
+
+// CRLNumbered is CRL, also returning the crl_number the CRL was signed
+// under. Every signing takes a fresh number (RFC 5280 5.2.3: a new
+// ThisUpdate/NextUpdate needs a new cRLNumber).
+func (s *Store) CRLNumbered(ctx context.Context, caID uuid.UUID, issuerSerial string) ([]byte, int64, error) {
+	der, n, err := s.crl(ctx, caID, issuerSerial)
+	if err != nil {
+		return nil, 0, err
+	}
+	return der, n, nil
+}
+
+func (s *Store) crl(ctx context.Context, caID uuid.UUID, issuerSerial string) ([]byte, int64, error) {
 	row, err := s.q.GetCAByID(ctx, caID)
 	if err != nil {
-		return nil, ErrNotFound
+		return nil, 0, ErrNotFound
 	}
 	if row.Type != CATypeLocalCA {
-		return nil, ErrNotFound
+		return nil, 0, ErrNotFound
 	}
 	var cfg localCAConfig
 	if err := json.Unmarshal(row.Config, &cfg); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if !cfg.CRL {
-		return nil, ErrNotFound
+		return nil, 0, ErrNotFound
 	}
 
 	// An unauthenticated caller can name any serial: reject an unknown one
 	// from the public config before CASecret unseals the CA key (a KEK
 	// unwrap, a Vault call with Transit).
 	if !knownIssuerSerial(cfg, issuerSerial) {
-		return nil, ErrNotFound
+		return nil, 0, ErrNotFound
+	}
+
+	row, err = s.q.BumpCACRLNumber(ctx, caID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := json.Unmarshal(row.Config, &cfg); err != nil {
+		return nil, 0, err
 	}
 
 	mat, _, err := s.CASecret(ctx, row, issuerSerial)
@@ -467,7 +491,7 @@ func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 		// unknown issuerSerial (retiredMaterial's
 		// ValidationError) and a corrupt stored certificate/key alike:
 		// the route never distinguishes reasons for its 404.
-		return nil, ErrNotFound
+		return nil, 0, ErrNotFound
 	}
 
 	issuerHex := mat.Issuing.SerialNumber.Text(16)
@@ -483,7 +507,11 @@ func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 		}
 		revoked = append(revoked, localca.Revoked{Serial: sn, RevokedAt: re.At, ReasonCode: re.Reason})
 	}
-	return localca.BuildCRL(mat.Issuing, mat.IssuingKey, revoked, big.NewInt(row.CrlNumber), now)
+	der, err := localca.BuildCRL(mat.Issuing, mat.IssuingKey, revoked, big.NewInt(row.CrlNumber), now)
+	if err != nil {
+		return nil, 0, err
+	}
+	return der, row.CrlNumber, nil
 }
 
 // issuerSerialForLeaf decides which of cfg's issuers signed leaf, by

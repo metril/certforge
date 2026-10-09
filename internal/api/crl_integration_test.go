@@ -428,3 +428,31 @@ func TestRevokeCurrentVersionTriggersRenewal(t *testing.T) {
 		t.Fatal("next_renew_at not pulled forward after revoking the current version")
 	}
 }
+
+// RFC 5280 5.2.3: every freshly signed CRL needs a distinct, increasing cRLNumber.
+func TestCRLNumberIncreasesOnEachSigning(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
+		Name: "NumCA", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := res.(gen.CreateCa201JSONResponse)
+	var last int64 = -1
+	for i := 0; i < 3; i++ {
+		der, err := f.store.CRL(context.Background(), ca.Id, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		crl, err := x509.ParseRevocationList(der)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := crl.Number.Int64()
+		if n <= last {
+			t.Fatalf("signing %d: cRLNumber %d not greater than %d", i, n, last)
+		}
+		last = n
+	}
+}

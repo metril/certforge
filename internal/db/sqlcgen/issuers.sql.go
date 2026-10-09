@@ -28,6 +28,39 @@ func (q *Queries) AccountExistsByEmail(ctx context.Context, arg AccountExistsByE
 	return exists, err
 }
 
+const bumpCACRLNumber = `-- name: BumpCACRLNumber :one
+UPDATE cas SET crl_number = crl_number + 1 WHERE id = $1 RETURNING id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number
+`
+
+// Atomically takes the next crl_number for a freshly signed CRL (RFC 5280
+// 5.2.3) and returns the CA row as of that bump, so the CRL is built from
+// config.revoked consistent with the number.
+func (q *Queries) BumpCACRLNumber(ctx context.Context, id uuid.UUID) (Ca, error) {
+	row := q.db.QueryRow(ctx, bumpCACRLNumber, id)
+	var i Ca
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Preset,
+		&i.DirectoryUrl,
+		&i.TrustBundlePem,
+		&i.EabKid,
+		&i.EabHmac,
+		&i.Resolvers,
+		&i.Shared,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Config,
+		&i.SecretCfg,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CrlNumber,
+	)
+	return i, err
+}
+
 const countAccountUsers = `-- name: CountAccountUsers :one
 SELECT (
     (SELECT count(*) FROM certificates c WHERE c.overrides->>'accountId' = $1::uuid::text)
