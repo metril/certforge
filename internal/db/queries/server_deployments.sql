@@ -94,7 +94,7 @@ WHERE g.removed_at IS NULL AND g.client_id IS NULL AND sqlc.arg(cert_id)::uuid =
 -- Dispatcher.SweepDeployments' safety net: live server grants whose
 -- deployment is missing or not on the certificate's current version, or
 -- that sit pending for over 15 minutes (a dropped river job) or failed for
-// over 6 hours (so a permanently failing target is not re-armed every cycle). Bounded.
+-- over 6 hours (so a permanently failing target is not re-armed every cycle). Bounded.
 SELECT g.id, ce.current_version_id FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN server_deployments sd ON sd.grant_id = g.id

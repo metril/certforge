@@ -204,43 +204,6 @@ func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDe
 	return i, err
 }
 
-const upsertServerDeploymentPending = `-- name: UpsertServerDeploymentPending :one
-
-INSERT INTO server_deployments (grant_id, version_id, status, last_error, updated_at, state_changed_at, deploy_seq)
-VALUES ($1, $2, 'pending', '', now(), now(), 1)
-ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, status = 'pending',
-       last_error = '', updated_at = now(), deploy_seq = server_deployments.deploy_seq + 1,
-       state_changed_at = CASE WHEN server_deployments.status IS DISTINCT FROM 'pending' THEN now() ELSE server_deployments.state_changed_at END
-RETURNING deploy_seq
-`
-
-type UpsertServerDeploymentPendingParams struct {
-	GrantID   uuid.UUID  `json:"grant_id"`
-	VersionID *uuid.UUID `json:"version_id"`
-}
-
-// server_deployments: a server grant's own deploy state (Task 11), the
-// way deployments/agent reports do for an agent-run grant.
-// Called whenever a server grant's target version changes (create, a new
-// certificate version via Dispatcher.OnVersion, or an explicit redeploy):
-// version_id is the version about to be deployed (nil for a certificate
-// with no version yet, C3), status resets to pending and any previous
-// error is cleared. deployed_at is left untouched (ON CONFLICT's SET list
-// omits it): the last successful deploy time survives a new pending cycle.
-// state_changed_at (final review fix wave, finding 1) moves with status
-// the same way deployments.state_changed_at does — CASE against the row's
-// own pre-update status, so a redeploy onto the same still-pending status
-// (an OnVersion for a version that never got picked up) does not reset it.
-// deploy_seq is bumped on every call and returned: it rides in the job args
-// (making a re-enqueue of the same version distinct from a running job) and
-// guards both Mark* queries against a stale job.
-func (q *Queries) UpsertServerDeploymentPending(ctx context.Context, arg UpsertServerDeploymentPendingParams) (int64, error) {
-	row := q.db.QueryRow(ctx, upsertServerDeploymentPending, arg.GrantID, arg.VersionID)
-	var deploy_seq int64
-	err := row.Scan(&deploy_seq)
-	return deploy_seq, err
-}
-
 const staleServerDeployments = `-- name: StaleServerDeployments :many
 SELECT g.id, ce.current_version_id FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
@@ -281,4 +244,41 @@ func (q *Queries) StaleServerDeployments(ctx context.Context) ([]StaleServerDepl
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertServerDeploymentPending = `-- name: UpsertServerDeploymentPending :one
+
+INSERT INTO server_deployments (grant_id, version_id, status, last_error, updated_at, state_changed_at, deploy_seq)
+VALUES ($1, $2, 'pending', '', now(), now(), 1)
+ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, status = 'pending',
+       last_error = '', updated_at = now(), deploy_seq = server_deployments.deploy_seq + 1,
+       state_changed_at = CASE WHEN server_deployments.status IS DISTINCT FROM 'pending' THEN now() ELSE server_deployments.state_changed_at END
+RETURNING deploy_seq
+`
+
+type UpsertServerDeploymentPendingParams struct {
+	GrantID   uuid.UUID  `json:"grant_id"`
+	VersionID *uuid.UUID `json:"version_id"`
+}
+
+// server_deployments: a server grant's own deploy state (Task 11), the
+// way deployments/agent reports do for an agent-run grant.
+// Called whenever a server grant's target version changes (create, a new
+// certificate version via Dispatcher.OnVersion, or an explicit redeploy):
+// version_id is the version about to be deployed (nil for a certificate
+// with no version yet, C3), status resets to pending and any previous
+// error is cleared. deployed_at is left untouched (ON CONFLICT's SET list
+// omits it): the last successful deploy time survives a new pending cycle.
+// state_changed_at (final review fix wave, finding 1) moves with status
+// the same way deployments.state_changed_at does — CASE against the row's
+// own pre-update status, so a redeploy onto the same still-pending status
+// (an OnVersion for a version that never got picked up) does not reset it.
+// deploy_seq is bumped on every call and returned: it rides in the job args
+// (making a re-enqueue of the same version distinct from a running job) and
+// guards both Mark* queries against a stale job.
+func (q *Queries) UpsertServerDeploymentPending(ctx context.Context, arg UpsertServerDeploymentPendingParams) (int64, error) {
+	row := q.db.QueryRow(ctx, upsertServerDeploymentPending, arg.GrantID, arg.VersionID)
+	var deploy_seq int64
+	err := row.Scan(&deploy_seq)
+	return deploy_seq, err
 }
