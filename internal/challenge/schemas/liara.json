@@ -36,6 +36,13 @@
         "secret": false,
         "x-group": "additional"
       },
+      "LIARA_TEAM_ID": {
+        "type": "string",
+        "title": "LIARA_TEAM_ID",
+        "description": "The team ID to access services in a team",
+        "secret": false,
+        "x-group": "additional"
+      },
       "LIARA_TTL": {
         "type": "string",
         "title": "LIARA_TTL",

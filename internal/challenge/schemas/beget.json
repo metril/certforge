@@ -1,0 +1,66 @@
+{
+  "code": "beget",
+  "name": "Beget.com",
+  "url": "https://beget.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Beget.com",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "BEGET_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "BEGET_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BEGET_PASSWORD": {
+        "type": "string",
+        "title": "BEGET_PASSWORD",
+        "description": "API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "BEGET_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "BEGET_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BEGET_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "BEGET_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BEGET_TTL": {
+        "type": "string",
+        "title": "BEGET_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BEGET_USERNAME": {
+        "type": "string",
+        "title": "BEGET_USERNAME",
+        "description": "API username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password",
+        "label": "Username + Password",
+        "fields": [
+          "BEGET_USERNAME",
+          "BEGET_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

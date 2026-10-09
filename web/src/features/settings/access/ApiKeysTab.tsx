@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { createColumnHelper } from '@tanstack/react-table';
 import { Ban, CircleCheck, CircleX, Plus, Search } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { apiKeysQuery, useRevokeApiKey } from '@/api/queries/apiKeys';
 import type { ApiKey, ApiKeyCreated } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
-import { DataTable } from '@/components/DataTable';
+import { columnHelper, DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { SavedViews } from '@/components/SavedViews';
@@ -78,7 +77,7 @@ function KeyCardSkeleton() {
   );
 }
 
-const col = createColumnHelper<ApiKey>();
+const col = columnHelper<ApiKey>();
 
 export function ApiKeysTab() {
   const me = useMe();

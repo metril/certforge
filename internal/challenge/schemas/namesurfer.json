@@ -1,0 +1,88 @@
+{
+  "code": "namesurfer",
+  "name": "FusionLayer NameSurfer",
+  "url": "https://www.fusionlayer.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "FusionLayer NameSurfer",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NAMESURFER_API_KEY": {
+        "type": "string",
+        "title": "NAMESURFER_API_KEY",
+        "description": "API key name",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NAMESURFER_API_SECRET": {
+        "type": "string",
+        "title": "NAMESURFER_API_SECRET",
+        "description": "API secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NAMESURFER_BASE_URL": {
+        "type": "string",
+        "title": "NAMESURFER_BASE_URL",
+        "description": "The base URL of NameSurfer API (jsonrpc10) endpoint URL (e.g., https://foo.example.com:8443/API/NSService_10)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "NAMESURFER_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NAMESURFER_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMESURFER_INSECURE_SKIP_VERIFY": {
+        "type": "string",
+        "title": "NAMESURFER_INSECURE_SKIP_VERIFY",
+        "description": "Whether to verify the API certificate",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMESURFER_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NAMESURFER_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMESURFER_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NAMESURFER_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMESURFER_TTL": {
+        "type": "string",
+        "title": "NAMESURFER_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NAMESURFER_VIEW": {
+        "type": "string",
+        "title": "NAMESURFER_VIEW",
+        "description": "DNS view name (optional, default: empty string)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "base-url-api-key-api-secret",
+        "label": "Base URL + API key + API secret",
+        "fields": [
+          "NAMESURFER_BASE_URL",
+          "NAMESURFER_API_KEY",
+          "NAMESURFER_API_SECRET"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "code": "uniteddomains",
+  "name": "United-Domains",
+  "url": "https://www.united-domains.de/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "United-Domains",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "UNITEDDOMAINS_API_KEY": {
+        "type": "string",
+        "title": "UNITEDDOMAINS_API_KEY",
+        "description": "API key `\u003cprefix\u003e.\u003csecret\u003e` https://www.united-domains.de/help/faq-article/getting-started-with-the-united-domains-dns-api/",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "UNITEDDOMAINS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "UNITEDDOMAINS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "UNITEDDOMAINS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "UNITEDDOMAINS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "UNITEDDOMAINS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "UNITEDDOMAINS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 900)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "UNITEDDOMAINS_TTL": {
+        "type": "string",
+        "title": "UNITEDDOMAINS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key",
+        "label": "API key",
+        "fields": [
+          "UNITEDDOMAINS_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

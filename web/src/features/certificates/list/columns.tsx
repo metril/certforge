@@ -1,4 +1,4 @@
-import { createColumnHelper } from '@tanstack/react-table';
+import { columnHelper } from '@/components/DataTable';
 import { plural } from '@/api/queries/certificates';
 import type { Certificate } from '@/api/types';
 import { PrimaryCell } from '@/components/PrimaryCell';
@@ -6,7 +6,7 @@ import { StatusChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
 import { relDays } from '@/lib/time';
 
-const col = createColumnHelper<Certificate>();
+const col = columnHelper<Certificate>();
 
 // Matches the CasPage/CredentialsPage convention: the leading column stays
 // in view while a narrow table scrolls horizontally.

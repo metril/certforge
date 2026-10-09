@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { createColumnHelper } from '@tanstack/react-table';
 import { KeyRound, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { apiKeysQuery } from '@/api/queries/apiKeys';
@@ -11,7 +10,7 @@ import type { ApiKey, Me, RoleBinding, SubjectType, UserDetail } from '@/api/typ
 import { usersQuery } from '@/api/queries/users';
 import { Combobox } from '@/components/Combobox';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
-import { DataTable } from '@/components/DataTable';
+import { columnHelper, DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { SavedViews } from '@/components/SavedViews';
@@ -28,7 +27,7 @@ import { useUrlText } from '@/lib/useUrlText';
 import { cn } from '@/lib/utils';
 import { BindingSheet, ROLE_LABEL } from './BindingSheet';
 
-const col = createColumnHelper<RoleBinding>();
+const col = columnHelper<RoleBinding>();
 const TYPE_ICON = { user: User, oidc_group: Users, apikey: KeyRound } as const;
 type TypeFilter = 'all' | SubjectType;
 

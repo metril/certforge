@@ -1,0 +1,66 @@
+{
+  "code": "eurodns",
+  "name": "EuroDNS",
+  "url": "https://www.eurodns.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "EuroDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "EURODNS_API_KEY": {
+        "type": "string",
+        "title": "EURODNS_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EURODNS_APP_ID": {
+        "type": "string",
+        "title": "EURODNS_APP_ID",
+        "description": "Application ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "EURODNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "EURODNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EURODNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "EURODNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EURODNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "EURODNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EURODNS_TTL": {
+        "type": "string",
+        "title": "EURODNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "app-id-api-key",
+        "label": "App ID + API key",
+        "fields": [
+          "EURODNS_APP_ID",
+          "EURODNS_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

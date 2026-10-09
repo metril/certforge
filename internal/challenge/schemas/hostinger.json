@@ -1,0 +1,58 @@
+{
+  "code": "hostinger",
+  "name": "Hostinger",
+  "url": "https://www.hostinger.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Hostinger",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "HOSTINGER_API_TOKEN": {
+        "type": "string",
+        "title": "HOSTINGER_API_TOKEN",
+        "description": "API Token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "HOSTINGER_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "HOSTINGER_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HOSTINGER_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "HOSTINGER_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HOSTINGER_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "HOSTINGER_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "HOSTINGER_TTL": {
+        "type": "string",
+        "title": "HOSTINGER_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-token",
+        "label": "API token",
+        "fields": [
+          "HOSTINGER_API_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

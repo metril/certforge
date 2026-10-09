@@ -8,10 +8,10 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "HETZNER_API_KEY": {
+      "HETZNER_API_TOKEN": {
         "type": "string",
-        "title": "HETZNER_API_KEY",
-        "description": "API key",
+        "title": "HETZNER_API_TOKEN",
+        "description": "API token",
         "secret": true,
         "x-group": "credentials"
       },
@@ -32,24 +32,24 @@
       "HETZNER_PROPAGATION_TIMEOUT": {
         "type": "string",
         "title": "HETZNER_PROPAGATION_TIMEOUT",
-        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
       },
       "HETZNER_TTL": {
         "type": "string",
         "title": "HETZNER_TTL",
-        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
       }
     },
     "x-auth-methods": [
       {
-        "id": "api-key",
-        "label": "API key",
+        "id": "api-token",
+        "label": "API token",
         "fields": [
-          "HETZNER_API_KEY"
+          "HETZNER_API_TOKEN"
         ],
         "optional": []
       }

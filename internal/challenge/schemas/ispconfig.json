@@ -1,0 +1,81 @@
+{
+  "code": "ispconfig",
+  "name": "ISPConfig 3",
+  "url": "https://www.ispconfig.org/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ISPConfig 3",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ISPCONFIG_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ISPCONFIG_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ISPCONFIG_INSECURE_SKIP_VERIFY": {
+        "type": "string",
+        "title": "ISPCONFIG_INSECURE_SKIP_VERIFY",
+        "description": "Whether to verify the API certificate",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ISPCONFIG_PASSWORD": {
+        "type": "string",
+        "title": "ISPCONFIG_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ISPCONFIG_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ISPCONFIG_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ISPCONFIG_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ISPCONFIG_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ISPCONFIG_SERVER_URL": {
+        "type": "string",
+        "title": "ISPCONFIG_SERVER_URL",
+        "description": "Server URL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "ISPCONFIG_TTL": {
+        "type": "string",
+        "title": "ISPCONFIG_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ISPCONFIG_USERNAME": {
+        "type": "string",
+        "title": "ISPCONFIG_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "server-url-username-password",
+        "label": "Server URL + Username + Password",
+        "fields": [
+          "ISPCONFIG_SERVER_URL",
+          "ISPCONFIG_USERNAME",
+          "ISPCONFIG_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

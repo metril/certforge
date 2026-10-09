@@ -1,8 +1,7 @@
 import { Link } from '@tanstack/react-router';
-import { createColumnHelper } from '@tanstack/react-table';
 import { CircleMinus, KeyRound, Plus, ShieldOff } from 'lucide-react';
 import type { ImportItem, ImportSource } from '@/api/types';
-import { DataTable } from '@/components/DataTable';
+import { columnHelper, DataTable } from '@/components/DataTable';
 import { ToneChip } from '@/components/StatusChip';
 import { daysUntil, fmtDate } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -40,7 +39,7 @@ function NameCell({ item, orgSlug }: { item: ImportItem; orgSlug: string }) {
   return <span className="block truncate font-mono text-xs">{item.name}</span>;
 }
 
-const col = createColumnHelper<Row>();
+const col = columnHelper<Row>();
 
 // Task 10 fix: every text cell needs `block` on its `truncate` span (an
 // inline element's overflow-hidden doesn't clip against the table's own

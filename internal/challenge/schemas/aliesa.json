@@ -1,0 +1,92 @@
+{
+  "code": "aliesa",
+  "name": "AlibabaCloud ESA",
+  "url": "https://www.alibabacloud.com/en/product/esa",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AlibabaCloud ESA",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ALIESA_ACCESS_KEY": {
+        "type": "string",
+        "title": "ALIESA_ACCESS_KEY",
+        "description": "Access key ID",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ALIESA_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ALIESA_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ALIESA_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ALIESA_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ALIESA_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ALIESA_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ALIESA_RAM_ROLE": {
+        "type": "string",
+        "title": "ALIESA_RAM_ROLE",
+        "description": "Your instance RAM role (https://www.alibabacloud.com/help/en/ecs/user-guide/attach-an-instance-ram-role-to-an-ecs-instance)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "ALIESA_SECRET_KEY": {
+        "type": "string",
+        "title": "ALIESA_SECRET_KEY",
+        "description": "Access Key secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ALIESA_SECURITY_TOKEN": {
+        "type": "string",
+        "title": "ALIESA_SECURITY_TOKEN",
+        "description": "STS Security Token (optional)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ALIESA_TTL": {
+        "type": "string",
+        "title": "ALIESA_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "ram-role",
+        "label": "RAM role",
+        "fields": [
+          "ALIESA_RAM_ROLE"
+        ],
+        "optional": [
+          "ALIESA_SECURITY_TOKEN"
+        ]
+      },
+      {
+        "id": "access-key-secret-key",
+        "label": "Access key + Secret key",
+        "fields": [
+          "ALIESA_ACCESS_KEY",
+          "ALIESA_SECRET_KEY"
+        ],
+        "optional": [
+          "ALIESA_SECURITY_TOKEN"
+        ]
+      }
+    ]
+  }
+}

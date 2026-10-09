@@ -1,5 +1,5 @@
+import { columnHelper } from '@/components/DataTable';
 import type { ReactNode } from 'react';
-import { createColumnHelper } from '@tanstack/react-table';
 import { plural } from '@/api/queries/certificates';
 import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
@@ -9,7 +9,7 @@ import { help } from '@/lib/help';
 import { CLIENT_STATUS_META } from '@/lib/clientStatus';
 import { fmtDateTime, relTime } from '@/lib/time';
 
-const col = createColumnHelper<Client>();
+const col = columnHelper<Client>();
 /** Muted second line of the Name cell (also the mobile card's): hostname,
  * site, agent version, grants, and drift/failed counts as plain text. */
 export function clientMeta(c: Client, site?: string): string[] {

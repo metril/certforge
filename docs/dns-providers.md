@@ -53,9 +53,28 @@ Auth methods (one is required): **RAM role** (`ALICLOUD_RAM_ROLE`); **Access key
 | `ALICLOUD_SECRET_KEY` | credentials | yes | Access Key secret |
 | `ALICLOUD_SECURITY_TOKEN` | credentials | yes | STS Security Token (optional) |
 | `ALICLOUD_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 10) |
+| `ALICLOUD_LINE` | additional | no | Line (Default: default) |
 | `ALICLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `ALICLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `ALICLOUD_REGION_ID` | additional | no | Region ID (Default: cn-hangzhou) |
 | `ALICLOUD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 600) |
+
+## AlibabaCloud ESA
+
+Code: `aliesa`. Website: <https://www.alibabacloud.com/en/product/esa>
+
+Auth methods (one is required): **RAM role** (`ALIESA_RAM_ROLE`); **Access key + Secret key** (`ALIESA_ACCESS_KEY`, `ALIESA_SECRET_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ALIESA_ACCESS_KEY` | credentials | yes | Access key ID |
+| `ALIESA_RAM_ROLE` | credentials | no | Your instance RAM role (https://www.alibabacloud.com/help/en/ecs/user-guide/attach-an-instance-ram-role-to-an-ecs-instance) |
+| `ALIESA_SECRET_KEY` | credentials | yes | Access Key secret |
+| `ALIESA_SECURITY_TOKEN` | credentials | yes | STS Security Token (optional) |
+| `ALIESA_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ALIESA_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `ALIESA_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `ALIESA_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## all-inkl
 
@@ -70,6 +89,51 @@ Auth methods (one is required): **Login + Password** (`ALL_INKL_LOGIN`, `ALL_INK
 | `ALL_INKL_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `ALL_INKL_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `ALL_INKL_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+
+## Alwaysdata
+
+Code: `alwaysdata`. Website: <https://alwaysdata.com/>
+
+Auth methods (one is required): **API key** (`ALWAYSDATA_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ALWAYSDATA_API_KEY` | credentials | yes | API Key |
+| `ALWAYSDATA_ACCOUNT` | additional | no | Account name |
+| `ALWAYSDATA_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ALWAYSDATA_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `ALWAYSDATA_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `ALWAYSDATA_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## Anexia CloudDNS
+
+Code: `anexia`. Website: <https://www.anexia-it.com/>
+
+Auth methods (one is required): **Token** (`ANEXIA_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ANEXIA_TOKEN` | credentials | yes | API token for Anexia Engine |
+| `ANEXIA_API_URL` | additional | no | API endpoint URL (default: https://engine.anexia-it.com) |
+| `ANEXIA_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ANEXIA_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `ANEXIA_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 300) |
+| `ANEXIA_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
+
+## ArtFiles
+
+Code: `artfiles`. Website: <https://www.artfiles.de/extras/domains/>
+
+Auth methods (one is required): **Username + Password** (`ARTFILES_USERNAME`, `ARTFILES_PASSWORD`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ARTFILES_PASSWORD` | credentials | yes | API password |
+| `ARTFILES_USERNAME` | credentials | no | API username |
+| `ARTFILES_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ARTFILES_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `ARTFILES_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 360) |
+| `ARTFILES_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## ArvanCloud
 
@@ -204,7 +268,36 @@ Auth methods (one is required): **Access key ID + Secret access key** (`BAIDUCLO
 | `BAIDUCLOUD_SECRET_ACCESS_KEY` | credentials | yes | Secret access key |
 | `BAIDUCLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `BAIDUCLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
-| `BAIDUCLOUD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+| `BAIDUCLOUD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
+
+## Beget.com
+
+Code: `beget`. Website: <https://beget.com/>
+
+Auth methods (one is required): **Username + Password** (`BEGET_USERNAME`, `BEGET_PASSWORD`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `BEGET_PASSWORD` | credentials | yes | API password |
+| `BEGET_USERNAME` | credentials | no | API username |
+| `BEGET_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `BEGET_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 30) |
+| `BEGET_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 300) |
+| `BEGET_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## Binary Lane
+
+Code: `binarylane`. Website: <https://www.binarylane.com.au/>
+
+Auth methods (one is required): **API token** (`BINARYLANE_API_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `BINARYLANE_API_TOKEN` | credentials | yes | API token |
+| `BINARYLANE_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `BINARYLANE_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `BINARYLANE_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `BINARYLANE_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Bindman
 
@@ -237,6 +330,25 @@ Auth methods (one is required): **Server URL + User name + Password + Config nam
 | `BLUECAT_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `BLUECAT_SKIP_DEPLOY` | additional | no | Skip deployements |
 | `BLUECAT_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## Bluecat v2
+
+Code: `bluecatv2`. Website: <https://www.bluecatnetworks.com>
+
+Auth methods (one is required): **Server URL + Username + Password + Config name + View name** (`BLUECATV2_SERVER_URL`, `BLUECATV2_USERNAME`, `BLUECATV2_PASSWORD`, `BLUECATV2_CONFIG_NAME`, `BLUECATV2_VIEW_NAME`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `BLUECATV2_CONFIG_NAME` | credentials | no | Configuration name |
+| `BLUECATV2_PASSWORD` | credentials | yes | API password |
+| `BLUECATV2_SERVER_URL` | credentials | no | The server URL: it should have a scheme, hostname, and port (if required) of the authoritative Bluecat BAM serve |
+| `BLUECATV2_USERNAME` | credentials | no | API username |
+| `BLUECATV2_VIEW_NAME` | credentials | no | DNS View Name |
+| `BLUECATV2_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `BLUECATV2_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `BLUECATV2_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `BLUECATV2_SKIP_DEPLOY` | additional | no | Skip quick deployements |
+| `BLUECATV2_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## BookMyName
 
@@ -277,6 +389,7 @@ Auth methods (one is required): **API key** (`BUNNY_API_KEY`).
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `BUNNY_API_KEY` | credentials | yes | API key |
+| `BUNNY_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `BUNNY_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `BUNNY_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 | `BUNNY_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 60) |
@@ -395,6 +508,21 @@ Auth methods (one is required): **API key + secret key** (`CLOUDXNS_API_KEY`, `C
 | `CLOUDXNS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: ) |
 | `CLOUDXNS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: ) |
 
+## 35.com/三五互联
+
+Code: `com35`. Website: <https://www.35.cn/>
+
+Auth methods (one is required): **Username + Password** (`COM35_USERNAME`, `COM35_PASSWORD`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `COM35_PASSWORD` | credentials | yes | API password |
+| `COM35_USERNAME` | credentials | no | Username |
+| `COM35_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `COM35_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
+| `COM35_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
+| `COM35_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 60) |
+
 ## ConoHa v2
 
 Code: `conoha`. Website: <https://www.conoha.jp/>
@@ -476,6 +604,35 @@ Auth methods (one is required): **Username + Token + Base URL** (`CPANEL_USERNAM
 | `CPANEL_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `CPANEL_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 | `CPANEL_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
+
+## Czechia
+
+Code: `czechia`. Website: <https://www.czechia.com/>
+
+Auth methods (one is required): **Token** (`CZECHIA_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `CZECHIA_TOKEN` | credentials | yes | Authorization token |
+| `CZECHIA_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `CZECHIA_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `CZECHIA_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `CZECHIA_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## DDnss (DynDNS Service)
+
+Code: `ddnss`. Website: <https://ddnss.de/>
+
+Auth methods (one is required): **Key** (`DDNSS_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `DDNSS_KEY` | credentials | yes | Update key |
+| `DDNSS_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `DDNSS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `DDNSS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `DDNSS_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 60) |
+| `DDNSS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Derak Cloud
 
@@ -561,6 +718,20 @@ Auth methods (one is required): **API URL + Username + Password** (`DIRECTADMIN_
 | `DIRECTADMIN_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `DIRECTADMIN_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 30) |
 | `DIRECTADMIN_ZONE_NAME` | additional | no | Zone name used to add the TXT record |
+
+## DNSExit
+
+Code: `dnsexit`. Website: <https://dnsexit.com>
+
+Auth methods (one is required): **API key** (`DNSEXIT_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `DNSEXIT_API_KEY` | credentials | yes | API key |
+| `DNSEXIT_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `DNSEXIT_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
+| `DNSEXIT_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 300) |
+| `DNSEXIT_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## dnsHome.de
 
@@ -736,6 +907,20 @@ Auth methods (one is required): **Token + Key** (`EASYDNS_TOKEN`, `EASYDNS_KEY`)
 | `EASYDNS_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 60) |
 | `EASYDNS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
+## EdgeCenter
+
+Code: `edgecenter`. Website: <https://edgecenter.ru/dns>
+
+Auth methods (one is required): **Permanent API token** (`EDGECENTER_PERMANENT_API_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `EDGECENTER_PERMANENT_API_TOKEN` | credentials | yes | Permanent API token (https://edgecenter.ru/blog/permanent-api-token-explained/) |
+| `EDGECENTER_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 10) |
+| `EDGECENTER_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 20) |
+| `EDGECENTER_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 360) |
+| `EDGECENTER_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
 ## Akamai EdgeDNS
 
 Code: `edgedns` (aliases: `fastdns`). Website: <https://www.akamai.com/us/en/products/security/edge-dns.jsp>
@@ -754,6 +939,24 @@ Auth methods (one is required): **EdgeGrid credentials** (`AKAMAI_HOST`, `AKAMAI
 | `AKAMAI_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 15) |
 | `AKAMAI_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 180) |
 | `AKAMAI_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## Tencent EdgeOne
+
+Code: `edgeone`. Website: <https://edgeone.ai>
+
+Auth methods (one is required): **ID + Key** (`EDGEONE_SECRET_ID`, `EDGEONE_SECRET_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `EDGEONE_SECRET_ID` | credentials | yes | Access key ID |
+| `EDGEONE_SECRET_KEY` | credentials | yes | Access Key secret |
+| `EDGEONE_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `EDGEONE_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 30) |
+| `EDGEONE_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 1200) |
+| `EDGEONE_REGION` | additional | no | Region |
+| `EDGEONE_SESSION_TOKEN` | additional | yes | Access Key token |
+| `EDGEONE_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 60) |
+| `EDGEONE_ZONES_MAPPING` | additional | no | Mapping between DNS zones and site IDs. (ex: 'example.org:id1,example.com:id2') |
 
 ## Efficient IP
 
@@ -787,6 +990,36 @@ Auth methods (one is required): **Signature** (`EPIK_SIGNATURE`).
 | `EPIK_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `EPIK_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600) |
 
+## EuroDNS
+
+Code: `eurodns`. Website: <https://www.eurodns.com/>
+
+Auth methods (one is required): **App ID + API key** (`EURODNS_APP_ID`, `EURODNS_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `EURODNS_API_KEY` | credentials | yes | API key |
+| `EURODNS_APP_ID` | credentials | no | Application ID |
+| `EURODNS_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `EURODNS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `EURODNS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `EURODNS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 600) |
+
+## Excedo
+
+Code: `excedo`. Website: <https://excedo.se/>
+
+Auth methods (one is required): **URL + Key** (`EXCEDO_API_URL`, `EXCEDO_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `EXCEDO_API_KEY` | credentials | yes | API key |
+| `EXCEDO_API_URL` | credentials | no | API base URL |
+| `EXCEDO_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `EXCEDO_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
+| `EXCEDO_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 300) |
+| `EXCEDO_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 60) |
+
 ## Exoscale
 
 Code: `exoscale`. Website: <https://www.exoscale.com/>
@@ -817,6 +1050,7 @@ Auth methods (one is required): **API token + Tenant name + Group name** (`F5XC_
 | `F5XC_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `F5XC_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `F5XC_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `F5XC_SERVER` | additional | no | Server domain (Default: console.ves.volterra.io) |
 | `F5XC_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## freemyip.com
@@ -895,6 +1129,22 @@ Auth methods (one is required): **Permanent API token** (`GCORE_PERMANENT_API_TO
 | `GCORE_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 360) |
 | `GCORE_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
+## Gigahost.no
+
+Code: `gigahostno`. Website: <https://gigahost.no/>
+
+Auth methods (one is required): **Username + Password** (`GIGAHOSTNO_USERNAME`, `GIGAHOSTNO_PASSWORD`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `GIGAHOSTNO_PASSWORD` | credentials | yes | Password |
+| `GIGAHOSTNO_USERNAME` | credentials | no | Username |
+| `GIGAHOSTNO_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `GIGAHOSTNO_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `GIGAHOSTNO_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `GIGAHOSTNO_SECRET` | additional | yes | TOTP secret |
+| `GIGAHOSTNO_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
 ## Glesys
 
 Code: `glesys`. Website: <https://glesys.com/>
@@ -938,19 +1188,35 @@ Auth methods (one is required): **Access token** (`GOOGLE_DOMAINS_ACCESS_TOKEN`)
 | `GOOGLE_DOMAINS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `GOOGLE_DOMAINS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 
+## Gravity
+
+Code: `gravity`. Website: <https://gravity.beryju.io/>
+
+Auth methods (one is required): **Username + Password + Server URL** (`GRAVITY_USERNAME`, `GRAVITY_PASSWORD`, `GRAVITY_SERVER_URL`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `GRAVITY_PASSWORD` | credentials | yes | Password |
+| `GRAVITY_SERVER_URL` | credentials | no | URL of the server |
+| `GRAVITY_USERNAME` | credentials | no | Username |
+| `GRAVITY_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `GRAVITY_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `GRAVITY_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `GRAVITY_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 1) |
+
 ## Hetzner
 
 Code: `hetzner`. Website: <https://hetzner.com>
 
-Auth methods (one is required): **API key** (`HETZNER_API_KEY`).
+Auth methods (one is required): **API token** (`HETZNER_API_TOKEN`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `HETZNER_API_KEY` | credentials | yes | API key |
+| `HETZNER_API_TOKEN` | credentials | yes | API token |
 | `HETZNER_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `HETZNER_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
-| `HETZNER_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
-| `HETZNER_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 60) |
+| `HETZNER_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `HETZNER_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Hosting.de
 
@@ -966,6 +1232,34 @@ Auth methods (one is required): **API key** (`HOSTINGDE_API_KEY`).
 | `HOSTINGDE_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 | `HOSTINGDE_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 | `HOSTINGDE_ZONE_NAME` | additional | no | Zone name in ACE format |
+
+## Hostinger
+
+Code: `hostinger`. Website: <https://www.hostinger.com/>
+
+Auth methods (one is required): **API token** (`HOSTINGER_API_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `HOSTINGER_API_TOKEN` | credentials | yes | API Token |
+| `HOSTINGER_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `HOSTINGER_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `HOSTINGER_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `HOSTINGER_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## Hosting.nl
+
+Code: `hostingnl`. Website: <https://hosting.nl>
+
+Auth methods (one is required): **API key** (`HOSTINGNL_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `HOSTINGNL_API_KEY` | credentials | yes | The API key |
+| `HOSTINGNL_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 10) |
+| `HOSTINGNL_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `HOSTINGNL_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
+| `HOSTINGNL_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Hosttech
 
@@ -1069,7 +1363,7 @@ Auth methods (one is required): **Username + API key** (`SOFTLAYER_USERNAME`, `S
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `SOFTLAYER_API_KEY` | credentials | yes | Classic Infrastructure API key |
-| `SOFTLAYER_USERNAME` | credentials | no | Username (IBM Cloud is <accountID>_<emailAddress>) |
+| `SOFTLAYER_USERNAME` | credentials | no | Username (IBM Cloud is {accountID}_{emailAddress}) |
 | `SOFTLAYER_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `SOFTLAYER_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `SOFTLAYER_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
@@ -1186,6 +1480,20 @@ Auth methods (one is required): **API key** (`IONOS_API_KEY`).
 | `IONOS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 900) |
 | `IONOS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
 
+## Ionos Cloud
+
+Code: `ionoscloud`. Website: <https://cloud.ionos.de/network/cloud-dns>
+
+Auth methods (one is required): **API token** (`IONOSCLOUD_API_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `IONOSCLOUD_API_TOKEN` | credentials | yes | API token |
+| `IONOSCLOUD_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `IONOSCLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `IONOSCLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
+| `IONOSCLOUD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
 ## IPv64
 
 Code: `ipv64`. Website: <https://ipv64.net/>
@@ -1199,7 +1507,39 @@ Auth methods (one is required): **API key** (`IPV64_API_KEY`).
 | `IPV64_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `IPV64_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 
-## iwantmyname
+## ISPConfig 3
+
+Code: `ispconfig`. Website: <https://www.ispconfig.org/>
+
+Auth methods (one is required): **Server URL + Username + Password** (`ISPCONFIG_SERVER_URL`, `ISPCONFIG_USERNAME`, `ISPCONFIG_PASSWORD`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ISPCONFIG_PASSWORD` | credentials | yes | Password |
+| `ISPCONFIG_SERVER_URL` | credentials | no | Server URL |
+| `ISPCONFIG_USERNAME` | credentials | no | Username |
+| `ISPCONFIG_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ISPCONFIG_INSECURE_SKIP_VERIFY` | additional | no | Whether to verify the API certificate |
+| `ISPCONFIG_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `ISPCONFIG_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `ISPCONFIG_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## ISPConfig 3 - Dynamic DNS (DDNS) Module
+
+Code: `ispconfigddns`. Website: <https://www.ispconfig.org/>
+
+Auth methods (one is required): **Server URL + Token** (`ISPCONFIG_DDNS_SERVER_URL`, `ISPCONFIG_DDNS_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ISPCONFIG_DDNS_SERVER_URL` | credentials | no | API server URL (ex: https://panel.example.com:8080) |
+| `ISPCONFIG_DDNS_TOKEN` | credentials | yes | DDNS API token |
+| `ISPCONFIG_DDNS_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ISPCONFIG_DDNS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `ISPCONFIG_DDNS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `ISPCONFIG_DDNS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600) |
+
+## iwantmyname (Deprecated)
 
 Code: `iwantmyname`. Website: <https://iwantmyname.com>
 
@@ -1213,6 +1553,22 @@ Auth methods (one is required): **Username + Password** (`IWANTMYNAME_USERNAME`,
 | `IWANTMYNAME_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `IWANTMYNAME_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `IWANTMYNAME_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## JD Cloud
+
+Code: `jdcloud`. Website: <https://www.jdcloud.com/>
+
+Auth methods (one is required): **ID + Secret** (`JDCLOUD_ACCESS_KEY_ID`, `JDCLOUD_ACCESS_KEY_SECRET`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `JDCLOUD_ACCESS_KEY_ID` | credentials | no | Access key ID |
+| `JDCLOUD_ACCESS_KEY_SECRET` | credentials | yes | Access key secret |
+| `JDCLOUD_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `JDCLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `JDCLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `JDCLOUD_REGION_ID` | additional | no | Region ID (Default: cn-north-1) |
+| `JDCLOUD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Joker
 
@@ -1232,6 +1588,35 @@ Auth methods (one is required): **Username + password** (`JOKER_USERNAME`, `JOKE
 | `JOKER_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 60), only with 'SVC' mode |
 | `JOKER_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
+## KeyHelp
+
+Code: `keyhelp`. Website: <https://www.keyweb.de/en/keyhelp/keyhelp/>
+
+Auth methods (one is required): **Base URL + API key** (`KEYHELP_BASE_URL`, `KEYHELP_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `KEYHELP_API_KEY` | credentials | yes | API key |
+| `KEYHELP_BASE_URL` | credentials | yes | Server URL |
+| `KEYHELP_HTTP_TIMEOUT` | additional | yes | API request timeout in seconds (Default: 30) |
+| `KEYHELP_POLLING_INTERVAL` | additional | yes | Time between DNS propagation check in seconds (Default: 2) |
+| `KEYHELP_PROPAGATION_TIMEOUT` | additional | yes | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `KEYHELP_TTL` | additional | yes | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## Leaseweb
+
+Code: `leaseweb`. Website: <https://www.leaseweb.com/en/>
+
+Auth methods (one is required): **API key** (`LEASEWEB_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `LEASEWEB_API_KEY` | credentials | yes | API key |
+| `LEASEWEB_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `LEASEWEB_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `LEASEWEB_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `LEASEWEB_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
 ## Liara
 
 Code: `liara`. Website: <https://liara.ir>
@@ -1244,6 +1629,7 @@ Auth methods (one is required): **API key** (`LIARA_API_KEY`).
 | `LIARA_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `LIARA_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `LIARA_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `LIARA_TEAM_ID` | additional | no | The team ID to access services in a team |
 | `LIARA_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600) |
 
 ## Amazon Lightsail
@@ -1349,6 +1735,7 @@ Auth methods (one is required): **Base URL + Email + Password** (`MAILINABOX_BAS
 | `MAILINABOX_BASE_URL` | credentials | no | Base API URL (ex: https://box.example.com) |
 | `MAILINABOX_EMAIL` | credentials | no | User email |
 | `MAILINABOX_PASSWORD` | credentials | yes | User password |
+| `MAILINABOX_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `MAILINABOX_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 4) |
 | `MAILINABOX_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 
@@ -1514,6 +1901,24 @@ Auth methods (one is required): **API key** (`NAMESILO_API_KEY`).
 | `NAMESILO_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60), it is better to set larger than 15 minutes |
 | `NAMESILO_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600), should be in [3600, 2592000] |
 
+## FusionLayer NameSurfer
+
+Code: `namesurfer`. Website: <https://www.fusionlayer.com/>
+
+Auth methods (one is required): **Base URL + API key + API secret** (`NAMESURFER_BASE_URL`, `NAMESURFER_API_KEY`, `NAMESURFER_API_SECRET`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `NAMESURFER_API_KEY` | credentials | yes | API key name |
+| `NAMESURFER_API_SECRET` | credentials | yes | API secret |
+| `NAMESURFER_BASE_URL` | credentials | no | The base URL of NameSurfer API (jsonrpc10) endpoint URL (e.g., https://foo.example.com:8443/API/NSService_10) |
+| `NAMESURFER_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `NAMESURFER_INSECURE_SKIP_VERIFY` | additional | no | Whether to verify the API certificate |
+| `NAMESURFER_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `NAMESURFER_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
+| `NAMESURFER_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
+| `NAMESURFER_VIEW` | additional | no | DNS view name (optional, default: empty string) |
+
 ## NearlyFreeSpeech.NET
 
 Code: `nearlyfreespeech`. Website: <https://nearlyfreespeech.net/>
@@ -1529,6 +1934,20 @@ Auth methods (one is required): **API key + Login** (`NEARLYFREESPEECH_API_KEY`,
 | `NEARLYFREESPEECH_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `NEARLYFREESPEECH_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 60) |
 | `NEARLYFREESPEECH_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600) |
+
+## Neodigit
+
+Code: `neodigit`. Website: <https://www.neodigit.net>
+
+Auth methods (one is required): **Token** (`NEODIGIT_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `NEODIGIT_TOKEN` | credentials | yes | API token |
+| `NEODIGIT_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `NEODIGIT_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
+| `NEODIGIT_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 300) |
+| `NEODIGIT_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Netcup
 
@@ -1558,6 +1977,20 @@ Auth methods (one is required): **Token** (`NETLIFY_TOKEN`).
 | `NETLIFY_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `NETLIFY_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `NETLIFY_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
+
+## Netnod
+
+Code: `netnod`. Website: <https://www.netnod.se/dns/>
+
+Auth methods (one is required): **Token** (`NETNOD_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `NETNOD_TOKEN` | credentials | yes | API token |
+| `NETNOD_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `NETNOD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `NETNOD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `NETNOD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Nicmanager
 
@@ -1652,24 +2085,69 @@ Auth methods (one is required): **API key** (`NS1_API_KEY`).
 | `NS1_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `NS1_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
+## Octenium
+
+Code: `octenium`. Website: <https://octenium.com/>
+
+Auth methods (one is required): **API key** (`OCTENIUM_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `OCTENIUM_API_KEY` | credentials | yes | API key |
+| `OCTENIUM_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `OCTENIUM_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `OCTENIUM_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `OCTENIUM_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## 1cloud.ru
+
+Code: `onecloudru`. Website: <https://1cloud.ru/>
+
+Auth methods (one is required): **Token** (`ONECLOUDRU_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ONECLOUDRU_TOKEN` | credentials | yes | API token |
+| `ONECLOUDRU_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ONECLOUDRU_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `ONECLOUDRU_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `ONECLOUDRU_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
+
+## Online.net
+
+Code: `onlinenet`. Website: <https://online.net/>
+
+Auth methods (one is required): **API token** (`ONLINENET_API_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `ONLINENET_API_TOKEN` | credentials | yes | API token |
+| `ONLINENET_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `ONLINENET_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 15) |
+| `ONLINENET_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 240) |
+| `ONLINENET_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
 ## Oracle Cloud
 
 Code: `oraclecloud`. Website: <https://cloud.oracle.com/home>
 
-Auth methods (one is required): **API signing key** (`OCI_PRIVKEY`, `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_PUBKEY_FINGERPRINT`, `OCI_REGION`, `OCI_COMPARTMENT_OCID`).
+Auth methods (one is required): **Compartment OCID** (`OCI_COMPARTMENT_OCID`); **Compartment OCID + Profile** (`OCI_COMPARTMENT_OCID`, `OCI_PROFILE`); **Compartment OCID** (`OCI_COMPARTMENT_OCID`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `OCI_COMPARTMENT_OCID` | credentials | no | Compartment OCID |
 | `OCI_PRIVKEY` | credentials | yes | Base64-encoded PEM private key (base64 of the whole PEM file), inline; alternative to OCI_PRIVKEY_FILE |
-| `OCI_PRIVKEY_FILE` | credentials | no | Private key file |
-| `OCI_PRIVKEY_PASS` | credentials | yes | Private key password |
-| `OCI_PUBKEY_FINGERPRINT` | credentials | no | Public key fingerprint |
-| `OCI_REGION` | credentials | no | Region |
-| `OCI_TENANCY_OCID` | credentials | no | Tenancy OCID |
-| `OCI_USER_OCID` | credentials | no | User OCID |
+| `OCI_PRIVKEY_FILE` | credentials | no | Private key file (ignored if `OCI_AUTH_TYPE` is not empty) |
+| `OCI_PRIVKEY_PASS` | credentials | yes | Private key password (ignored if `OCI_AUTH_TYPE` is not empty) |
+| `OCI_PUBKEY_FINGERPRINT` | credentials | no | Public key fingerprint (ignored if `OCI_AUTH_TYPE` is not empty) |
+| `OCI_REGION` | credentials | no | Region (it can be empty if `OCI_AUTH_TYPE` is not empty). |
+| `OCI_TENANCY_OCID` | credentials | no | Tenancy OCID (ignored if `OCI_AUTH_TYPE` is not empty) |
+| `OCI_USER_OCID` | credentials | no | User OCID (ignored if `OCI_AUTH_TYPE` is not empty) |
+| `OCI_AUTH_TYPE` | additional | no | Authorization type. Possible values: 'instance_principal', 'user_principal', ''. (Default: '') |
+| `OCI_CONFIG_FILE` | additional | no | Path to the configuration file. (only for `OCI_AUTH_TYPE=user_principal`) |
 | `OCI_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 60) |
 | `OCI_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `OCI_PROFILE` | additional | no | Profile name. (only for `OCI_AUTH_TYPE=user_principal`) |
 | `OCI_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `OCI_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
@@ -1682,12 +2160,13 @@ Auth methods (one is required): **Domain name + User name + Password + Project n
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `OTC_DOMAIN_NAME` | credentials | no | Domain name |
-| `OTC_IDENTITY_ENDPOINT` | credentials | no | Identity endpoint URL |
 | `OTC_PASSWORD` | credentials | yes | Password |
 | `OTC_PROJECT_NAME` | credentials | no | Project name |
 | `OTC_USER_NAME` | credentials | no | User name |
 | `OTC_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 10) |
+| `OTC_IDENTITY_ENDPOINT` | additional | no | Identity endpoint URL (default: https://iam.eu-de.otc.t-systems.com:443/v3/auth/tokens) |
 | `OTC_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `OTC_PRIVATE_ZONE` | additional | no | Set to true to use private zones only (default: use public zones only) |
 | `OTC_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `OTC_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 60) |
 | `OTC_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
@@ -1834,24 +2313,29 @@ Auth methods (one is required): **Username + Password** (`REGRU_USERNAME`, `REGR
 | `REGRU_TLS_KEY` | additional | yes | authentication private key |
 | `REGRU_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
 
-## RFC2136
+## DNS Update (RFC2136)
 
-Code: `rfc2136`. Website: <https://www.rfc-editor.org/rfc/rfc2136.html>
+Code: `rfc2136` (aliases: `dnsupdate`). Website: <https://www.rfc-editor.org/rfc/rfc2136.html>
 
-Auth methods (one is required): **Nameserver** (`RFC2136_NAMESERVER`).
+Auth methods (one is required): **Nameserver (optional TSIG)** (`RFC2136_NAMESERVER`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `RFC2136_NAMESERVER` | credentials | no | Network address in the form "host" or "host:port" |
-| `RFC2136_TSIG_ALGORITHM` | credentials | no | TSIG algorithm. See [miekg/dns#tsig.go](https://github.com/miekg/dns/blob/master/tsig.go) for supported values. To disable TSIG authentication, leave the `RFC2136_TSIG_KEY` or `RFC2136_TSIG_SECRET` variables unset. |
-| `RFC2136_TSIG_KEY` | credentials | no | Name of the secret key as defined in DNS server configuration. To disable TSIG authentication, leave the `RFC2136_TSIG_KEY` variable unset. |
-| `RFC2136_TSIG_SECRET` | credentials | yes | Secret key payload. To disable TSIG authentication, leave the `RFC2136_TSIG_SECRET` variable unset. |
 | `RFC2136_DNS_TIMEOUT` | additional | no | API request timeout in seconds (Default: 10) |
 | `RFC2136_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `RFC2136_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `RFC2136_SEQUENCE_INTERVAL` | additional | no | Time between sequential requests in seconds (Default: 60) |
+| `RFC2136_TSIG_ALGORITHM` | additional | no | TSIG algorithm. See [miekg/dns#tsig.go](https://github.com/miekg/dns/blob/master/tsig.go) for supported values. To disable TSIG authentication, leave the `DNSUPDATE_TSIG_KEY` or `DNSUPDATE_TSIG_SECRET` variables unset. |
 | `RFC2136_TSIG_FILE` | additional | no | Path to a key file generated by tsig-keygen |
+| `RFC2136_TSIG_GSS_KEYTAB_FILE` | additional | no | Path to Kerberos keytab file. The TSIG algorithm must be `gss-tsig.`. |
+| `RFC2136_TSIG_GSS_PASSWORD` | additional | yes | Kerberos password. The TSIG algorithm must be `gss-tsig.`. |
+| `RFC2136_TSIG_GSS_REALM` | additional | no | Kerberos realm. The TSIG algorithm must be `gss-tsig.`. |
+| `RFC2136_TSIG_GSS_USERNAME` | additional | no | Kerberos username. The TSIG algorithm must be `gss-tsig.`. |
+| `RFC2136_TSIG_KEY` | additional | no | Name of the secret key as defined in DNS server configuration. To disable TSIG authentication, leave the `DNSUPDATE_TSIG_KEY` variable unset. |
+| `RFC2136_TSIG_SECRET` | additional | yes | Secret key payload. To disable TSIG authentication, leave the `DNSUPDATE_TSIG_SECRET` variable unset. |
 | `RFC2136_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+| `RFC2136_ZONES` | additional | no | List of potential zones (separated by commas) |
 
 ## RimuHosting
 
@@ -1891,9 +2375,9 @@ Auth methods (one is required): **Access key** (`AWS_ACCESS_KEY_ID`, `AWS_SECRET
 | `AWS_SHARED_CREDENTIALS_FILE` | additional | no | Managed by the AWS client. Shared credentials file. |
 | `AWS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 10) |
 
-## UKFast SafeDNS
+## ANS SafeDNS
 
-Code: `safedns`. Website: <https://www.ukfast.co.uk/dns-hosting.html>
+Code: `safedns`. Website: <https://www.ans.co.uk/>
 
 Auth methods (one is required): **Auth token** (`SAFEDNS_AUTH_TOKEN`).
 
@@ -1931,6 +2415,7 @@ Auth methods (one is required): **Secret key** (`SCW_SECRET_KEY`).
 | `SCW_PROJECT_ID` | credentials | no | Project to use (optional) |
 | `SCW_SECRET_KEY` | credentials | yes | Secret key |
 | `SCW_ACCESS_KEY` | additional | no | Access key |
+| `SCW_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `SCW_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
 | `SCW_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 | `SCW_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 60) |
@@ -1962,11 +2447,14 @@ Auth methods (one is required): **Username + Password + Account ID + Project ID*
 | `SELECTELV2_PASSWORD` | credentials | yes | Openstack username's password |
 | `SELECTELV2_PROJECT_ID` | credentials | no | Cloud project ID (UUID) |
 | `SELECTELV2_USERNAME` | credentials | no | Openstack username |
+| `SELECTELV2_AUTH_REGION` | additional | no | Location for auth endpoint like ResellAPI or Keystone (default: 'ru-1') |
+| `SELECTELV2_AUTH_URL` | additional | no | Identity endpoint (defaul: 'https://cloud.api.selcloud.ru/identity/v3/') |
 | `SELECTELV2_BASE_URL` | additional | no | API endpoint URL |
 | `SELECTELV2_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `SELECTELV2_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 5) |
 | `SELECTELV2_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 | `SELECTELV2_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 60) |
+| `SELECTELV2_USER_DOMAIN_NAME` | additional | no | To specify the domain name (account ID) where the user is located. (default: SELECTELV2_ACCOUNT_ID) |
 
 ## SelfHost.(de|eu)
 
@@ -2075,6 +2563,20 @@ Auth methods (one is required): **Client ID + Client secret + Stack ID** (`STACK
 | `STACKPATH_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `STACKPATH_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
+## Syse
+
+Code: `syse`. Website: <https://www.syse.no/>
+
+Auth methods (one is required): **Credentials** (`SYSE_CREDENTIALS`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `SYSE_CREDENTIALS` | credentials | no | Comma-separated list of `zone:password` credential pairs |
+| `SYSE_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `SYSE_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
+| `SYSE_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 1200) |
+| `SYSE_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
 ## Technitium
 
 Code: `technitium`. Website: <https://technitium.com/>
@@ -2092,7 +2594,7 @@ Auth methods (one is required): **Server base URL + API token** (`TECHNITIUM_SER
 
 ## Tencent Cloud DNS
 
-Code: `tencentcloud`. Website: <https://cloud.tencent.com/product/cns>
+Code: `tencentcloud`. Website: <https://cloud.tencent.com/product/dns>
 
 Auth methods (one is required): **ID + Key** (`TENCENTCLOUD_SECRET_ID`, `TENCENTCLOUD_SECRET_KEY`).
 
@@ -2120,6 +2622,21 @@ Auth methods (one is required): **Auth token** (`TIMEWEBCLOUD_AUTH_TOKEN`).
 | `TIMEWEBCLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
 | `TIMEWEBCLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 
+## TodayNIC/时代互联
+
+Code: `todaynic`. Website: <https://www.todaynic.com/>
+
+Auth methods (one is required): **Auth user ID + API key** (`TODAYNIC_AUTH_USER_ID`, `TODAYNIC_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `TODAYNIC_API_KEY` | credentials | yes | API key |
+| `TODAYNIC_AUTH_USER_ID` | credentials | no | account ID |
+| `TODAYNIC_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `TODAYNIC_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `TODAYNIC_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `TODAYNIC_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 600) |
+
 ## TransIP
 
 Code: `transip`. Website: <https://www.transip.nl/>
@@ -2131,9 +2648,27 @@ Auth methods (one is required): **Account name + Private key** (`TRANSIP_ACCOUNT
 | `TRANSIP_ACCOUNT_NAME` | credentials | no | Account name |
 | `TRANSIP_PRIVATE_KEY` | credentials | yes | PEM-encoded private key, inline; alternative to TRANSIP_PRIVATE_KEY_PATH |
 | `TRANSIP_PRIVATE_KEY_PATH` | credentials | no | Private key path |
+| `TRANSIP_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `TRANSIP_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
 | `TRANSIP_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 600) |
 | `TRANSIP_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 10) |
+
+## UCloud
+
+Code: `ucloud`. Website: <https://www.ucloud.cn/>
+
+Auth methods (one is required): **Public key + Private key** (`UCLOUD_PUBLIC_KEY`, `UCLOUD_PRIVATE_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `UCLOUD_PRIVATE_KEY` | credentials | yes | Private key |
+| `UCLOUD_PUBLIC_KEY` | credentials | yes | Public key |
+| `UCLOUD_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `UCLOUD_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `UCLOUD_PROJECT_ID` | additional | no | Project ID |
+| `UCLOUD_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `UCLOUD_REGION` | additional | no | Region |
+| `UCLOUD_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 600) |
 
 ## Ultradns
 
@@ -2149,6 +2684,20 @@ Auth methods (one is required): **Username + Password** (`ULTRADNS_USERNAME`, `U
 | `ULTRADNS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 4) |
 | `ULTRADNS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 | `ULTRADNS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
+
+## United-Domains
+
+Code: `uniteddomains`. Website: <https://www.united-domains.de/>
+
+Auth methods (one is required): **API key** (`UNITEDDOMAINS_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `UNITEDDOMAINS_API_KEY` | credentials | yes | API key `<prefix>.<secret>` https://www.united-domains.de/help/faq-article/getting-started-with-the-united-domains-dns-api/ |
+| `UNITEDDOMAINS_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `UNITEDDOMAINS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `UNITEDDOMAINS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 900) |
+| `UNITEDDOMAINS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 300) |
 
 ## Variomedia
 
@@ -2223,10 +2772,25 @@ Auth methods (one is required): **Access key + Secret key + Host** (`VINYLDNS_AC
 | `VINYLDNS_ACCESS_KEY` | credentials | yes | The VinylDNS API key |
 | `VINYLDNS_HOST` | credentials | no | The VinylDNS API URL |
 | `VINYLDNS_SECRET_KEY` | credentials | yes | The VinylDNS API Secret key |
+| `VINYLDNS_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
 | `VINYLDNS_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 4) |
 | `VINYLDNS_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 120) |
 | `VINYLDNS_QUOTE_VALUE` | additional | no | Adds quotes around the TXT record value (Default: false) |
 | `VINYLDNS_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 30) |
+
+## Virtualname
+
+Code: `virtualname`. Website: <https://www.virtualname.es/>
+
+Auth methods (one is required): **Token** (`VIRTUALNAME_TOKEN`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `VIRTUALNAME_TOKEN` | credentials | yes | API token |
+| `VIRTUALNAME_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `VIRTUALNAME_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 10) |
+| `VIRTUALNAME_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 300) |
+| `VIRTUALNAME_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## VK Cloud
 
@@ -2293,18 +2857,33 @@ Auth methods (one is required): **API key** (`VULTR_API_KEY`).
 | `VULTR_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
 | `VULTR_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
-## Webnames
+## webnames.ru
 
-Code: `webnames`. Website: <https://www.webnames.ru/>
+Code: `webnames` (aliases: `webnamesru`). Website: <https://www.webnames.ru/>
 
-Auth methods (one is required): **API key** (`WEBNAMES_API_KEY`).
+Auth methods (one is required): **API key** (`WEBNAMESRU_API_KEY`).
 
 | Field | Group | Secret | Description |
 |---|---|---|---|
-| `WEBNAMES_API_KEY` | credentials | yes | Domain API key |
-| `WEBNAMES_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
-| `WEBNAMES_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
-| `WEBNAMES_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `WEBNAMESRU_API_KEY` | credentials | yes | Domain API key |
+| `WEBNAMESRU_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `WEBNAMESRU_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `WEBNAMESRU_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+
+## webnames.ca
+
+Code: `webnamesca`. Website: <https://www.webnames.ca/>
+
+Auth methods (one is required): **User + Key** (`WEBNAMESCA_API_USER`, `WEBNAMESCA_API_KEY`).
+
+| Field | Group | Secret | Description |
+|---|---|---|---|
+| `WEBNAMESCA_API_KEY` | credentials | yes | API key |
+| `WEBNAMESCA_API_USER` | credentials | no | API username |
+| `WEBNAMESCA_HTTP_TIMEOUT` | additional | no | API request timeout in seconds (Default: 30) |
+| `WEBNAMESCA_POLLING_INTERVAL` | additional | no | Time between DNS propagation check in seconds (Default: 2) |
+| `WEBNAMESCA_PROPAGATION_TIMEOUT` | additional | no | Maximum waiting time for DNS propagation in seconds (Default: 60) |
+| `WEBNAMESCA_TTL` | additional | no | The TTL of the TXT record used for the DNS challenge in seconds (Default: 120) |
 
 ## Websupport
 

@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.25 (go.mod sets 1.25.14; the go command downloads that toolchain itself when the installed one is older)
+- Go 1.26 (go.mod sets 1.26.0; the go command downloads that toolchain itself when the installed one is older)
 - Docker: integration tests use testcontainers, e2e uses compose
 - A C compiler (gcc or clang): `make generate` builds sqlc, which needs cgo
 - GNU make and curl
@@ -203,7 +203,7 @@ One-time GitHub settings, needed before the first release PR merges:
 - Recommended: add a fine-grained PAT (Contents + Pull requests read/write on `metril/certforge`) as the repo secret `RELEASE_PLEASE_TOKEN`. Without it, the release PR opens with `GITHUB_TOKEN` and gets no `ci.yml` run (GitHub does not run workflows off PRs opened by the default token) — enable Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" instead if you skip the PAT.
 - After the first image publish, set both GHCR packages (`certforge`, `certforge-agent`) to public.
 
-The Go builder image (`golang:1.25-alpine` in both Dockerfiles) is a floating tag; pin image tags to digests before the first release PR is merged.
+The Go builder image (`golang:1.26-alpine` in both Dockerfiles) is a floating tag; pin image tags to digests before the first release PR is merged.
 
 ## Adding a settings section
 

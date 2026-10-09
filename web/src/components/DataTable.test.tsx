@@ -1,10 +1,9 @@
 import userEvent from '@testing-library/user-event';
 import { render, screen } from '@testing-library/react';
-import { createColumnHelper } from '@tanstack/react-table';
 import { expect, it, vi } from 'vitest';
-import { DataTable } from './DataTable';
+import { columnHelper, DataTable } from './DataTable';
 
-const col = createColumnHelper<{ id: string; name: string }>();
+const col = columnHelper<{ id: string; name: string }>();
 
 it('clips every header and body cell so content cannot widen the fixed layout', () => {
   render(<DataTable data={[{ id: '1', name: 'a' }]} columns={[col.display({ id: 'n', header: 'Name', cell: ({ row }) => row.original.name })]} getRowId={(r) => r.id} ariaLabel="T" />);

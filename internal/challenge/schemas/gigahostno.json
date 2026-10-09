@@ -1,0 +1,73 @@
+{
+  "code": "gigahostno",
+  "name": "Gigahost.no",
+  "url": "https://gigahost.no/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Gigahost.no",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "GIGAHOSTNO_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "GIGAHOSTNO_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GIGAHOSTNO_PASSWORD": {
+        "type": "string",
+        "title": "GIGAHOSTNO_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "GIGAHOSTNO_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "GIGAHOSTNO_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GIGAHOSTNO_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "GIGAHOSTNO_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GIGAHOSTNO_SECRET": {
+        "type": "string",
+        "title": "GIGAHOSTNO_SECRET",
+        "description": "TOTP secret",
+        "secret": true,
+        "x-group": "additional"
+      },
+      "GIGAHOSTNO_TTL": {
+        "type": "string",
+        "title": "GIGAHOSTNO_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GIGAHOSTNO_USERNAME": {
+        "type": "string",
+        "title": "GIGAHOSTNO_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password",
+        "label": "Username + Password",
+        "fields": [
+          "GIGAHOSTNO_USERNAME",
+          "GIGAHOSTNO_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

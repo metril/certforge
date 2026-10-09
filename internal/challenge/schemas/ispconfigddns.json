@@ -1,0 +1,66 @@
+{
+  "code": "ispconfigddns",
+  "name": "ISPConfig 3 - Dynamic DNS (DDNS) Module",
+  "url": "https://www.ispconfig.org/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ISPConfig 3 - Dynamic DNS (DDNS) Module",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ISPCONFIG_DDNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ISPCONFIG_DDNS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ISPCONFIG_DDNS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ISPCONFIG_DDNS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ISPCONFIG_DDNS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ISPCONFIG_DDNS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ISPCONFIG_DDNS_SERVER_URL": {
+        "type": "string",
+        "title": "ISPCONFIG_DDNS_SERVER_URL",
+        "description": "API server URL (ex: https://panel.example.com:8080)",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "ISPCONFIG_DDNS_TOKEN": {
+        "type": "string",
+        "title": "ISPCONFIG_DDNS_TOKEN",
+        "description": "DDNS API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ISPCONFIG_DDNS_TTL": {
+        "type": "string",
+        "title": "ISPCONFIG_DDNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 3600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "server-url-token",
+        "label": "Server URL + Token",
+        "fields": [
+          "ISPCONFIG_DDNS_SERVER_URL",
+          "ISPCONFIG_DDNS_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

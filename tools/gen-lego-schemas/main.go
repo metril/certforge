@@ -180,7 +180,7 @@ var skipped = map[string]bool{"manual": true, "exec": true}
 // (forceSecret, forceNonSecret) were reviewed against. Bumping lego's
 // go.mod pin requires bumping this constant and reviewing the regenerated
 // schema diff for new or renamed fields the overrides above should cover.
-const legoVersion = "v4.25.2"
+const legoVersion = "v4.35.2"
 
 func main() {
 	legoDir := flag.String("lego-dir", "", "lego module dir (default: resolved via go mod download)")
@@ -285,6 +285,7 @@ func generate(legoDir, outDir, docsPath string) error {
 }
 
 func convert(pkgDir string, t providerTOML) (providerFile, error) {
+	renameLegacy(&t)
 	props := map[string]property{}
 	for k, d := range t.Configuration.Credentials {
 		if !validKey.MatchString(k) {
@@ -399,4 +400,34 @@ func renderDocs(files []providerFile) []byte {
 		b.WriteString("\n")
 	}
 	return b.Bytes()
+}
+
+// legacyEnvNames keeps providers' historic field names where newer lego
+// documents different canonical ones but still reads the old spellings as the
+// primary or alias env vars (rfc2136.altEnvNames, oraclecloud.EnvPubKeyFingerprint
+// and friends), so credentials stored under the old names stay valid.
+var legacyEnvNames = map[string]map[string]string{
+	"oraclecloud": {
+		"OCI_PRIVATE_KEY_PATH":     "OCI_PRIVKEY_FILE",
+		"OCI_PRIVATE_KEY_PASSWORD": "OCI_PRIVKEY_PASS",
+		"OCI_FINGERPRINT":          "OCI_PUBKEY_FINGERPRINT",
+	},
+}
+
+func renameLegacy(t *providerTOML) {
+	re := func(m map[string]string) map[string]string {
+		out := make(map[string]string, len(m))
+		for k, v := range m {
+			if t.Code == "rfc2136" {
+				k = strings.Replace(k, "DNSUPDATE_", "RFC2136_", 1)
+			}
+			if n, ok := legacyEnvNames[t.Code][k]; ok {
+				k = n
+			}
+			out[k] = v
+		}
+		return out
+	}
+	t.Configuration.Credentials = re(t.Configuration.Credentials)
+	t.Configuration.Additional = re(t.Configuration.Additional)
 }

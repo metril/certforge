@@ -1,0 +1,58 @@
+{
+  "code": "dnsexit",
+  "name": "DNSExit",
+  "url": "https://dnsexit.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DNSExit",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DNSEXIT_API_KEY": {
+        "type": "string",
+        "title": "DNSEXIT_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DNSEXIT_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DNSEXIT_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSEXIT_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DNSEXIT_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSEXIT_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DNSEXIT_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DNSEXIT_TTL": {
+        "type": "string",
+        "title": "DNSEXIT_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-key",
+        "label": "API key",
+        "fields": [
+          "DNSEXIT_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

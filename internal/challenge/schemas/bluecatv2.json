@@ -1,0 +1,97 @@
+{
+  "code": "bluecatv2",
+  "name": "Bluecat v2",
+  "url": "https://www.bluecatnetworks.com",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Bluecat v2",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "BLUECATV2_CONFIG_NAME": {
+        "type": "string",
+        "title": "BLUECATV2_CONFIG_NAME",
+        "description": "Configuration name",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "BLUECATV2_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "BLUECATV2_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECATV2_PASSWORD": {
+        "type": "string",
+        "title": "BLUECATV2_PASSWORD",
+        "description": "API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "BLUECATV2_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "BLUECATV2_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECATV2_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "BLUECATV2_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECATV2_SERVER_URL": {
+        "type": "string",
+        "title": "BLUECATV2_SERVER_URL",
+        "description": "The server URL: it should have a scheme, hostname, and port (if required) of the authoritative Bluecat BAM serve",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "BLUECATV2_SKIP_DEPLOY": {
+        "type": "string",
+        "title": "BLUECATV2_SKIP_DEPLOY",
+        "description": "Skip quick deployements",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECATV2_TTL": {
+        "type": "string",
+        "title": "BLUECATV2_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "BLUECATV2_USERNAME": {
+        "type": "string",
+        "title": "BLUECATV2_USERNAME",
+        "description": "API username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "BLUECATV2_VIEW_NAME": {
+        "type": "string",
+        "title": "BLUECATV2_VIEW_NAME",
+        "description": "DNS View Name",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "server-url-username-password-config-name-view-name",
+        "label": "Server URL + Username + Password + Config name + View name",
+        "fields": [
+          "BLUECATV2_SERVER_URL",
+          "BLUECATV2_USERNAME",
+          "BLUECATV2_PASSWORD",
+          "BLUECATV2_CONFIG_NAME",
+          "BLUECATV2_VIEW_NAME"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

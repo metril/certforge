@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { createColumnHelper } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { channelsQuery, updateChannel } from '@/api/queries/channels';
 import type { Channel, Me, Org, Severity } from '@/api/types';
-import { DataTable } from '@/components/DataTable';
+import { columnHelper, DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -27,7 +26,7 @@ import { AlertsHeader } from './AlertsLayout';
 import { ChannelSheet } from './ChannelSheet';
 import { DeliveryChip } from './DeliveryChip';
 
-const col = createColumnHelper<Channel>();
+const col = columnHelper<Channel>();
 const CHANNEL_LIMIT = 50;
 // UI conventions: the severity chip that follows the kind chips, only shown
 // above info (Events column, Deviations "event severity chips").
