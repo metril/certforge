@@ -686,6 +686,15 @@ func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Eff
 }
 
 func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, iss *signer.Issued, eff Effective, start time.Time) error {
+	// Checked before the tx opens: reading through the pool while tx holds a
+	// connection and row locks risks the deadlock described below.
+	var revoked *uuid.UUID
+	if len(iss.PrivateKeyPKCS8) > 0 {
+		var err error
+		if revoked, err = revokedVersionWithKey(ctx, w.Certs, cert.ID, iss.PrivateKeyPKCS8); err != nil {
+			return err
+		}
+	}
 	tx, err := w.Store.Begin(ctx)
 	if err != nil {
 		return err
@@ -723,28 +732,18 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 	if err != nil {
 		return err
 	}
-	if len(iss.PrivateKeyPKCS8) > 0 {
-		// A revoke can land while this attempt waits on DNS: reuseKey only
-		// checked at the start. Keep the version but make the cert due now,
-		// so the next attempt (whose reuseKey sees the revocation) rekeys.
-		revoked, err := revokedVersionWithKey(ctx, w.Certs, cert.ID, iss.PrivateKeyPKCS8)
-		if err != nil {
-			return err
-		}
-		if revoked != nil {
-			w.Log.Warn("issued key matches a revoked version; scheduling an immediate reissue", "cert", cert.ID, "revokedVersion", *revoked)
-			tl.Logf("issued key belongs to revoked version %s; scheduling an immediate reissue with a fresh key", *revoked)
-			if err := w.Store.q.WithTx(tx).RenewNowIfCurrentVersion(ctx, sqlcgen.RenewNowIfCurrentVersionParams{ID: cert.ID, CurrentVersionID: &v.ID}); err != nil {
-				return err
-			}
-			actualNext = &time.Time{}
-			*actualNext = w.Now()
-		}
-	}
 	if actualNext != nil && !actualNext.Equal(next) {
 		tl.Logf("names changed while this attempt was running; scheduling an immediate reissue at %s instead of the normal renewal date %s",
 			actualNext.UTC().Format(time.RFC3339), next.UTC().Format(time.RFC3339))
 		next = *actualNext
+	}
+	if revoked != nil {
+		w.Log.Warn("issued key matches a revoked version; scheduling an immediate reissue", "cert", cert.ID, "revokedVersion", *revoked)
+		tl.Logf("issued key belongs to revoked version %s; scheduling an immediate reissue with a fresh key", *revoked)
+		if err := w.Store.q.WithTx(tx).RenewNowIfCurrentVersion(ctx, sqlcgen.RenewNowIfCurrentVersionParams{ID: cert.ID, CurrentVersionID: &v.ID}); err != nil {
+			return err
+		}
+		next = w.Now()
 	}
 	tl.Step("store", challenge.StepSuccess, "version "+v.ID.String())
 	tl.Logf("issued serial %s valid until %s; next renewal %s", iss.Serial, iss.NotAfter.UTC().Format(time.RFC3339), next.UTC().Format(time.RFC3339))

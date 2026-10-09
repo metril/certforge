@@ -766,4 +766,7 @@ func TestSucceedRenewsNowWhenKeyRevokedMidAttempt(t *testing.T) {
 	if !due {
 		t.Fatal("next_renew_at was not reset to now after the key was revoked mid-attempt")
 	}
+	if a := lastAttempt(t, f, c.ID); strings.Contains(a.Log, "names changed") {
+		t.Fatalf("attempt log wrongly says names changed: %q", a.Log)
+	}
 }

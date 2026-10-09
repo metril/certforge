@@ -248,7 +248,8 @@ LEFT JOIN server_deployments sd ON sd.grant_id = g.id
 WHERE g.removed_at IS NULL AND g.client_id IS NULL AND ce.current_version_id IS NOT NULL
   AND (sd.grant_id IS NULL
        OR sd.version_id IS DISTINCT FROM ce.current_version_id
-       OR (sd.status IN ('pending', 'failed') AND sd.updated_at < now() - interval '15 minutes'))
+       OR (sd.status = 'pending' AND sd.updated_at < now() - interval '15 minutes')
+       OR (sd.status = 'failed' AND sd.updated_at < now() - interval '6 hours'))
 ORDER BY sd.updated_at NULLS FIRST
 LIMIT 200
 `
@@ -260,7 +261,8 @@ type StaleServerDeploymentsRow struct {
 
 // Dispatcher.SweepDeployments' safety net: live server grants whose
 // deployment is missing or not on the certificate's current version, or
-// that sit pending/failed for over 15 minutes (a dropped river job). Bounded.
+// that sit pending for over 15 minutes (a dropped river job) or failed for
+// over 6 hours (so a permanently failing target is not re-armed every cycle). Bounded.
 func (q *Queries) StaleServerDeployments(ctx context.Context) ([]StaleServerDeploymentsRow, error) {
 	rows, err := q.db.Query(ctx, staleServerDeployments)
 	if err != nil {
