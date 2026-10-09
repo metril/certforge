@@ -105,3 +105,21 @@ WHERE g.removed_at IS NULL AND g.client_id IS NULL AND ce.current_version_id IS 
        OR (sd.status = 'failed' AND sd.updated_at < now() - interval '6 hours'))
 ORDER BY sd.updated_at NULLS FIRST
 LIMIT 200;
+
+-- name: LockServerGrantForSweep :one
+-- SweepDeployments' per-grant re-check, inside its enqueue transaction: locks
+-- the grant's certificate row (so a concurrent version cannot move
+-- current_version_id under it) and returns the version as of now plus
+-- whether the grant is still stale by StaleServerDeployments' own rule.
+-- No row: the grant was removed (or is client-owned) since the stale read.
+SELECT ce.current_version_id,
+       (ce.current_version_id IS NOT NULL
+        AND (sd.grant_id IS NULL
+             OR sd.version_id IS DISTINCT FROM ce.current_version_id
+             OR (sd.status = 'pending' AND sd.updated_at < now() - interval '15 minutes')
+             OR (sd.status = 'failed' AND sd.updated_at < now() - interval '6 hours')))::boolean AS stale
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN server_deployments sd ON sd.grant_id = g.id
+WHERE g.id = sqlc.arg(grant_id) AND g.removed_at IS NULL AND g.client_id IS NULL
+FOR UPDATE OF ce;
