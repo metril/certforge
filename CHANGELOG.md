@@ -2,6 +2,20 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.7.2](https://github.com/metril/certforge/compare/v0.7.1...v0.7.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **db:** use an SQL comment in StaleServerDeployments so sqlc generates it ([21c7f05](https://github.com/metril/certforge/commit/21c7f056c060cac31da36fab0177331c67e56be0))
+* **deploy,issuance:** sweep failed rows every 6h; revoked-key check outside the tx ([9383729](https://github.com/metril/certforge/commit/93837295d850e1b40fed40a7dea0cdd2bde0f87c))
+* **deploy:** confine vault-kv mount to a single segment for non-global writers ([96e5d9f](https://github.com/metril/certforge/commit/96e5d9fb76162b331d84b0d1a6f47681d46ef9ec))
+* review round 4 (deploy sweep, revoked key, vault-kv mount, web) ([e892fcd](https://github.com/metril/certforge/commit/e892fcdfc70f1a5e1fd21b846328d4da921d727a))
+* **web:** keep disabled IconButton one stable aria-disabled element ([570da76](https://github.com/metril/certforge/commit/570da76af4c7e8e9c0cffcea992b8e444cad7b6e))
+* **web:** let optional schema pickers be cleared ([a215aae](https://github.com/metril/certforge/commit/a215aaeade709501d12dbf1d7c0f2e6c7ceefde0))
+* **web:** make Combobox non-clearable by default, opt in for optional pickers ([9ed696a](https://github.com/metril/certforge/commit/9ed696aa28d7ee5ee579578b65a654d6cb8c9e93))
+* **web:** refresh certificate and attempts after revoking a version ([bc7f188](https://github.com/metril/certforge/commit/bc7f188b6de1f11ac0e7c789f62faf4ab0fa379b))
+
 ## [0.7.1](https://github.com/metril/certforge/compare/v0.7.0...v0.7.1) (2026-10-09)
 
 
