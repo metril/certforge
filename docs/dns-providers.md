@@ -2136,10 +2136,10 @@ Auth methods (one is required): **Compartment OCID** (`OCI_COMPARTMENT_OCID`); *
 | Field | Group | Secret | Description |
 |---|---|---|---|
 | `OCI_COMPARTMENT_OCID` | credentials | no | Compartment OCID |
-| `OCI_FINGERPRINT` | credentials | no | Public key fingerprint (ignored if `OCI_AUTH_TYPE` is not empty) |
-| `OCI_PRIVATE_KEY_PASSWORD` | credentials | yes | Private key password (ignored if `OCI_AUTH_TYPE` is not empty) |
-| `OCI_PRIVATE_KEY_PATH` | credentials | no | Private key file (ignored if `OCI_AUTH_TYPE` is not empty) |
 | `OCI_PRIVKEY` | credentials | yes | Base64-encoded PEM private key (base64 of the whole PEM file), inline; alternative to OCI_PRIVKEY_FILE |
+| `OCI_PRIVKEY_FILE` | credentials | no | Private key file (ignored if `OCI_AUTH_TYPE` is not empty) |
+| `OCI_PRIVKEY_PASS` | credentials | yes | Private key password (ignored if `OCI_AUTH_TYPE` is not empty) |
+| `OCI_PUBKEY_FINGERPRINT` | credentials | no | Public key fingerprint (ignored if `OCI_AUTH_TYPE` is not empty) |
 | `OCI_REGION` | credentials | no | Region (it can be empty if `OCI_AUTH_TYPE` is not empty). |
 | `OCI_TENANCY_OCID` | credentials | no | Tenancy OCID (ignored if `OCI_AUTH_TYPE` is not empty) |
 | `OCI_USER_OCID` | credentials | no | User OCID (ignored if `OCI_AUTH_TYPE` is not empty) |

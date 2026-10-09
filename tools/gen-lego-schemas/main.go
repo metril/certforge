@@ -285,9 +285,7 @@ func generate(legoDir, outDir, docsPath string) error {
 }
 
 func convert(pkgDir string, t providerTOML) (providerFile, error) {
-	if t.Code == "rfc2136" {
-		renameDNSUpdate(&t)
-	}
+	renameLegacy(&t)
 	props := map[string]property{}
 	for k, d := range t.Configuration.Credentials {
 		if !validKey.MatchString(k) {
@@ -404,14 +402,29 @@ func renderDocs(files []providerFile) []byte {
 	return b.Bytes()
 }
 
-// renameDNSUpdate keeps rfc2136's historic RFC2136_* field names. Newer lego
-// documents DNSUPDATE_* as canonical but still reads RFC2136_* as an alias
-// (rfc2136.altEnvNames), so credentials stored under the old names stay valid.
-func renameDNSUpdate(t *providerTOML) {
+// legacyEnvNames keeps providers' historic field names where newer lego
+// documents different canonical ones but still reads the old spellings as the
+// primary or alias env vars (rfc2136.altEnvNames, oraclecloud.EnvPubKeyFingerprint
+// and friends), so credentials stored under the old names stay valid.
+var legacyEnvNames = map[string]map[string]string{
+	"oraclecloud": {
+		"OCI_PRIVATE_KEY_PATH":     "OCI_PRIVKEY_FILE",
+		"OCI_PRIVATE_KEY_PASSWORD": "OCI_PRIVKEY_PASS",
+		"OCI_FINGERPRINT":          "OCI_PUBKEY_FINGERPRINT",
+	},
+}
+
+func renameLegacy(t *providerTOML) {
 	re := func(m map[string]string) map[string]string {
 		out := make(map[string]string, len(m))
 		for k, v := range m {
-			out[strings.Replace(k, "DNSUPDATE_", "RFC2136_", 1)] = v
+			if t.Code == "rfc2136" {
+				k = strings.Replace(k, "DNSUPDATE_", "RFC2136_", 1)
+			}
+			if n, ok := legacyEnvNames[t.Code][k]; ok {
+				k = n
+			}
+			out[k] = v
 		}
 		return out
 	}

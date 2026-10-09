@@ -30,13 +30,6 @@
         "serverPath": true,
         "x-group": "additional"
       },
-      "OCI_FINGERPRINT": {
-        "type": "string",
-        "title": "OCI_FINGERPRINT",
-        "description": "Public key fingerprint (ignored if `OCI_AUTH_TYPE` is not empty)",
-        "secret": false,
-        "x-group": "credentials"
-      },
       "OCI_HTTP_TIMEOUT": {
         "type": "string",
         "title": "OCI_HTTP_TIMEOUT",
@@ -51,25 +44,25 @@
         "secret": false,
         "x-group": "additional"
       },
-      "OCI_PRIVATE_KEY_PASSWORD": {
+      "OCI_PRIVKEY": {
         "type": "string",
-        "title": "OCI_PRIVATE_KEY_PASSWORD",
-        "description": "Private key password (ignored if `OCI_AUTH_TYPE` is not empty)",
+        "title": "OCI_PRIVKEY",
+        "description": "Base64-encoded PEM private key (base64 of the whole PEM file), inline; alternative to OCI_PRIVKEY_FILE",
         "secret": true,
         "x-group": "credentials"
       },
-      "OCI_PRIVATE_KEY_PATH": {
+      "OCI_PRIVKEY_FILE": {
         "type": "string",
-        "title": "OCI_PRIVATE_KEY_PATH",
+        "title": "OCI_PRIVKEY_FILE",
         "description": "Private key file (ignored if `OCI_AUTH_TYPE` is not empty)",
         "secret": false,
         "serverPath": true,
         "x-group": "credentials"
       },
-      "OCI_PRIVKEY": {
+      "OCI_PRIVKEY_PASS": {
         "type": "string",
-        "title": "OCI_PRIVKEY",
-        "description": "Base64-encoded PEM private key (base64 of the whole PEM file), inline; alternative to OCI_PRIVKEY_FILE",
+        "title": "OCI_PRIVKEY_PASS",
+        "description": "Private key password (ignored if `OCI_AUTH_TYPE` is not empty)",
         "secret": true,
         "x-group": "credentials"
       },
@@ -86,6 +79,13 @@
         "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
+      },
+      "OCI_PUBKEY_FINGERPRINT": {
+        "type": "string",
+        "title": "OCI_PUBKEY_FINGERPRINT",
+        "description": "Public key fingerprint (ignored if `OCI_AUTH_TYPE` is not empty)",
+        "secret": false,
+        "x-group": "credentials"
       },
       "OCI_REGION": {
         "type": "string",
@@ -124,9 +124,9 @@
           "OCI_COMPARTMENT_OCID"
         ],
         "optional": [
-          "OCI_FINGERPRINT",
-          "OCI_PRIVATE_KEY_PASSWORD",
           "OCI_PRIVKEY",
+          "OCI_PRIVKEY_PASS",
+          "OCI_PUBKEY_FINGERPRINT",
           "OCI_REGION",
           "OCI_TENANCY_OCID",
           "OCI_USER_OCID"
@@ -140,9 +140,9 @@
           "OCI_PROFILE"
         ],
         "optional": [
-          "OCI_FINGERPRINT",
-          "OCI_PRIVATE_KEY_PASSWORD",
           "OCI_PRIVKEY",
+          "OCI_PRIVKEY_PASS",
+          "OCI_PUBKEY_FINGERPRINT",
           "OCI_REGION",
           "OCI_TENANCY_OCID",
           "OCI_USER_OCID"
@@ -155,9 +155,9 @@
           "OCI_COMPARTMENT_OCID"
         ],
         "optional": [
-          "OCI_FINGERPRINT",
-          "OCI_PRIVATE_KEY_PASSWORD",
           "OCI_PRIVKEY",
+          "OCI_PRIVKEY_PASS",
+          "OCI_PUBKEY_FINGERPRINT",
           "OCI_REGION",
           "OCI_TENANCY_OCID",
           "OCI_USER_OCID"

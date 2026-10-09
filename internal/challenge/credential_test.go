@@ -201,7 +201,7 @@ func TestCheckURLFieldsHostFields(t *testing.T) {
 // an unchecked network field. notNetwork lists matches that are not hosts.
 func TestEveryNetworkFieldIsChecked(t *testing.T) {
 	word := regexp.MustCompile(`(?i)\b(urls?|uri|endpoints?|hosts?|hostname|address|nameserver)\b`)
-	notNetwork := map[string]bool{"PDNS_SERVER_NAME": true} // a PowerDNS server id, not a host
+	notNetwork := map[string]bool{"PDNS_SERVER_NAME": true, "SELECTELV2_AUTH_REGION": true} // a PowerDNS server id / a Selectel region name, not hosts
 	for _, m := range Providers() {
 		var s struct {
 			Properties map[string]struct {
