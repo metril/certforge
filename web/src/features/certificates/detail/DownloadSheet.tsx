@@ -18,6 +18,7 @@ import { help } from '@/lib/help';
 import { generatePassword } from '@/lib/password';
 import { fmtDate } from '@/lib/time';
 import { useCopy } from '@/lib/useCopy';
+import { IconButton } from '@/components/IconButton';
 
 type Format = 'pem' | 'der' | ExportFormat;
 type Props = { orgId: string; cert: Certificate; initialVersionId?: string; canExportKey: boolean; onOpenChange: (open: boolean) => void };
@@ -204,33 +205,33 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
                         setServerError(null);
                       }}
                     />
-                    <Button
+                    <IconButton
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label={reveal ? 'Hide password' : 'Show password'}
+                      label={reveal ? 'Hide password' : 'Show password'}
                       onClick={() => setReveal((r) => !r)}
                     >
                       {reveal ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
-                    </Button>
+                    </IconButton>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <Input id="dl-password" type="text" readOnly aria-label="Generated password" className="font-mono text-xs" value={password} />
-                    <Button type="button" variant="ghost" size="icon" aria-label="Copy password" onClick={() => void copy()}>
+                    <IconButton type="button" variant="ghost" size="icon" label="Copy password" onClick={() => void copy()}>
                       {copyStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
                       {copyStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
                       {copyStatus === 'idle' && <Copy className="size-4" aria-hidden />}
-                    </Button>
-                    <Button
+                    </IconButton>
+                    <IconButton
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label="Regenerate password"
+                      label="Regenerate password"
                       onClick={() => setPassword(generatePassword())}
                     >
                       <RefreshCw className="size-4" aria-hidden />
-                    </Button>
+                    </IconButton>
                   </div>
                 )}
               </Field>

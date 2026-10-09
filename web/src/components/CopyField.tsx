@@ -1,8 +1,8 @@
 import { Check, Copy, TriangleAlert } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useCopy } from '@/lib/useCopy';
+import { IconButton } from '@/components/IconButton';
 
 export function CopyField({ value, label, display, className }: { value: string; label: string; display?: string; className?: string }) {
   const { status, copy } = useCopy(value);
@@ -22,12 +22,12 @@ export function CopyField({ value, label, display, className }: { value: string;
           {value}
         </TooltipContent>
       </Tooltip>
-      <Button
+      <IconButton
         type="button"
         variant="ghost"
         size="icon"
         className="size-7 shrink-0"
-        aria-label={`Copy ${label}`}
+        label={`Copy ${label}`}
         onClick={(e) => {
           e.stopPropagation();
           void copy();
@@ -36,7 +36,7 @@ export function CopyField({ value, label, display, className }: { value: string;
         {status === 'copied' && <Check className="size-3.5 text-valid" aria-hidden />}
         {status === 'failed' && <TriangleAlert className="size-3.5 text-failed" aria-hidden />}
         {status === 'idle' && <Copy className="size-3.5" aria-hidden />}
-      </Button>
+      </IconButton>
       <span aria-live="polite" className="sr-only">
         {status === 'copied' && 'Copied'}
         {status === 'failed' && 'Copy failed'}

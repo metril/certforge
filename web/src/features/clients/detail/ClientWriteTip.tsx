@@ -27,3 +27,9 @@ export function ClientWriteTip({ canWrite, revoked, side, children }: { canWrite
     </Tooltip>
   );
 }
+
+/** Denial reason for a disabled grant write control, or undefined when allowed. */
+export function clientWriteReason(canWrite: boolean, revoked: boolean): string | undefined {
+  if (!canWrite) return 'Needs the clients:write permission';
+  return revoked ? 'The client is revoked' : undefined;
+}

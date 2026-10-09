@@ -15,6 +15,7 @@ import { matchError } from '@/lib/coverage';
 import { help } from '@/lib/help';
 import { cleanWebroot, clientOptions, webrootError, withMethod, withVia } from '@/lib/rules';
 import { cn } from '@/lib/utils';
+import { IconButton } from '@/components/IconButton';
 
 let seq = 0;
 const newKey = () => `rule-${++seq}`;
@@ -92,12 +93,12 @@ function RuleRow({ id, index, rule, credentials, clients, agentModes, onUpdate, 
           <GripVertical className="size-4" aria-hidden />
         </button>
         <div className="flex flex-col">
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move rule ${n} up`} disabled={!canMoveUp} onClick={() => onMove(-1)}>
+          <IconButton type="button" variant="ghost" size="icon-sm" label={`Move rule ${n} up`} disabled={!canMoveUp} onClick={() => onMove(-1)}>
             <ChevronUp className="size-4" aria-hidden />
-          </Button>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move rule ${n} down`} disabled={!canMoveDown} onClick={() => onMove(1)}>
+          </IconButton>
+          <IconButton type="button" variant="ghost" size="icon-sm" label={`Move rule ${n} down`} disabled={!canMoveDown} onClick={() => onMove(1)}>
             <ChevronDown className="size-4" aria-hidden />
-          </Button>
+          </IconButton>
         </div>
         <span className="w-4 text-xs tabular-nums text-ink-muted">{n}</span>
         <Input
@@ -161,9 +162,9 @@ function RuleRow({ id, index, rule, credentials, clients, agentModes, onUpdate, 
             Advanced
           </Button>
         )}
-        <Button type="button" variant="ghost" size="icon" aria-label={`Remove rule ${n}`} onClick={onRemove}>
+        <IconButton type="button" variant="ghost" size="icon" label={`Remove rule ${n}`} onClick={onRemove}>
           <X className="size-4" aria-hidden />
-        </Button>
+        </IconButton>
       </div>
       {matchErr && (
         <p id={errorId} role="alert" className="flex items-center gap-1 pl-11 text-xs">

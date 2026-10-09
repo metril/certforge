@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from '@tanstack/react-router';
 import { Menu, Search } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ALL_ORGS_SLUG, useActiveOrgSlug } from '@/lib/org';
 import { useShortcuts } from '@/lib/shortcuts';
@@ -11,6 +10,7 @@ import { CommandPalette } from './CommandPalette';
 import { ReadOnlyBanner } from './ReadOnlyBanner';
 import { Sidebar } from './Sidebar';
 import { Wordmark } from './Wordmark';
+import { IconButton } from '@/components/IconButton';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const wide = useMediaQuery('(min-width: 1280px)');
@@ -63,9 +63,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="flex h-12 items-center gap-2 border-b border-border px-4 md:hidden">
           <Sheet open={drawer} onOpenChange={setDrawer}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Open navigation">
+              <IconButton variant="ghost" size="icon" label="Open navigation">
                 <Menu className="size-5" aria-hidden />
-              </Button>
+              </IconButton>
             </SheetTrigger>
             <SheetContent side="left" className="w-64 border-r border-border bg-sidebar p-0">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
@@ -73,9 +73,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </SheetContent>
           </Sheet>
           <Wordmark />
-          <Button variant="ghost" size="icon" className="ml-auto" aria-label="Search" onClick={openPalette}>
+          <IconButton variant="ghost" size="icon" className="ml-auto" label="Search" onClick={openPalette}>
             <Search className="size-5" aria-hidden />
-          </Button>
+          </IconButton>
         </header>
         <main id="content" className="flex-1 px-4 py-6 md:px-8">
           {org === ALL_ORGS_SLUG && <ReadOnlyBanner />}

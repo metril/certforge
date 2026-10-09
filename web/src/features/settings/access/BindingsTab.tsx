@@ -26,6 +26,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useUrlText } from '@/lib/useUrlText';
 import { cn } from '@/lib/utils';
 import { BindingSheet, ROLE_LABEL } from './BindingSheet';
+import { IconButton } from '@/components/IconButton';
 
 const col = columnHelper<RoleBinding>();
 const TYPE_ICON = { user: User, oidc_group: Users, apikey: KeyRound } as const;
@@ -85,9 +86,9 @@ function BindingCard({ b, me, resolved, onRemove }: { b: RoleBinding; me: Me; re
       <div className="flex items-center justify-between gap-2">
         <SubjectDisplay type={b.subjectType} resolved={resolved} />
         {canManage(me, b) && (
-          <Button variant="ghost" size="icon" aria-label={`Remove ${b.subjectLabel} ${b.role}`} onClick={onRemove}>
+          <IconButton variant="ghost" size="icon" label={`Remove ${b.subjectLabel} ${b.role}`} onClick={onRemove}>
             <Trash2 className="size-4" aria-hidden />
-          </Button>
+          </IconButton>
         )}
       </div>
       <div className="flex items-center justify-between text-xs text-ink-muted">
@@ -158,17 +159,17 @@ export function BindingsTab() {
         header: '',
         cell: ({ row }) =>
           canManage(me, row.original) && (
-            <Button
+            <IconButton
               variant="ghost"
               size="icon"
-              aria-label={`Remove ${row.original.subjectLabel} ${row.original.role}`}
+              label={`Remove ${row.original.subjectLabel} ${row.original.role}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setRemoving(row.original);
               }}
             >
               <Trash2 className="size-4" aria-hidden />
-            </Button>
+            </IconButton>
           ),
       }),
     ],

@@ -12,13 +12,13 @@ import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ProviderPicker } from '@/forms/ProviderPicker';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { IssuersHeader } from './IssuersLayout';
 import { CredentialSheet } from './CredentialSheet';
 import { TestCredentialDialog } from './TestCredentialDialog';
+import { IconButton } from '@/components/IconButton';
 
 type SheetState = { provider: ProviderSchema; credential?: DnsCredential } | null;
 
@@ -113,71 +113,51 @@ export function CredentialsPage() {
                       </TableCell>
                       <TableCell className="py-1">{`Used by ${usedBy}`}</TableCell>
                       <TableCell className="py-1 text-right whitespace-nowrap">
-                        <PermissionTip allowed={canWrite} action="dnscreds:write" side="left">
-                          <Button
+                        <IconButton tip={canWrite ? undefined : `Needs the dnscreds:write permission`}
                             variant="ghost"
                             size="icon-sm"
                             className="size-7"
                             disabled={!canWrite}
-                            aria-label={`Test ${c.name}`}
+                            label={`Test ${c.name}`}
                             onClick={() => setTesting(c)}
                           >
                             <FlaskConical className="size-3.5" aria-hidden />
-                          </Button>
-                        </PermissionTip>
+                          </IconButton>
                         {!canWrite ? (
-                          <PermissionTip allowed={false} action="dnscreds:write" side="left">
-                            <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Edit ${c.name}`} disabled>
+                          <IconButton tip={`Needs the dnscreds:write permission`} variant="ghost" size="icon-sm" className="size-7" label={`Edit ${c.name}`} disabled>
                               <Pencil className="size-3.5" aria-hidden />
-                            </Button>
-                          </PermissionTip>
+                            </IconButton>
                         ) : provider ? (
-                          <Button
+                          <IconButton
                             variant="ghost"
                             size="icon-sm"
                             className="size-7"
-                            aria-label={`Edit ${c.name}`}
+                            label={`Edit ${c.name}`}
                             onClick={() => setSheet({ provider, credential: c })}
                           >
                             <Pencil className="size-3.5" aria-hidden />
-                          </Button>
+                          </IconButton>
                         ) : (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span tabIndex={0} className="inline-flex">
-                                <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Edit ${c.name}`} disabled>
+                          <IconButton tip={<>{editReason}</>} variant="ghost" size="icon-sm" className="size-7" label={`Edit ${c.name}`} disabled>
                                   <Pencil className="size-3.5" aria-hidden />
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>{editReason}</TooltipContent>
-                          </Tooltip>
+                                </IconButton>
                         )}
                         {/* D13: proactively disable rather than rely only on a
                           409 after the operator types the confirmation text —
                           the 409 path (ConfirmDestructive's inline alert)
                           still covers a usedBy that went stale after load. */}
                         {!canWrite ? (
-                          <PermissionTip allowed={false} action="dnscreds:write" side="left">
-                            <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Delete ${c.name}`} disabled>
+                          <IconButton tip={`Needs the dnscreds:write permission`} variant="ghost" size="icon-sm" className="size-7" label={`Delete ${c.name}`} disabled>
                               <Trash2 className="size-3.5" aria-hidden />
-                            </Button>
-                          </PermissionTip>
+                            </IconButton>
                         ) : usedBy > 0 ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span tabIndex={0} className="inline-flex">
-                                <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Delete ${c.name}`} disabled>
+                          <IconButton tip={<>Used by {usedBy}; remove those references first.</>} variant="ghost" size="icon-sm" className="size-7" label={`Delete ${c.name}`} disabled>
                                   <Trash2 className="size-3.5" aria-hidden />
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>Used by {usedBy}; remove those references first.</TooltipContent>
-                          </Tooltip>
+                                </IconButton>
                         ) : (
-                          <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
+                          <IconButton variant="ghost" size="icon-sm" className="size-7" label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
                             <Trash2 className="size-3.5" aria-hidden />
-                          </Button>
+                          </IconButton>
                         )}
                       </TableCell>
                     </TableRow>

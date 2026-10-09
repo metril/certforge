@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { fmtDateTime } from '@/lib/time';
+import { IconButton } from '@/components/IconButton';
 
 const fqdn = (n: string) => (n.endsWith('.') ? n : `${n}.`);
 
@@ -47,18 +48,18 @@ function RecordValue({ value, label }: { value: string; label: string }) {
   return (
     <span className="inline-flex min-w-0 items-start gap-1">
       <code className="min-w-0 break-all font-mono text-xs">{value}</code>
-      <Button
+      <IconButton
         type="button"
         variant="ghost"
         size="icon"
         className="size-7 shrink-0"
-        aria-label={`Copy ${label}`}
+        label={`Copy ${label}`}
         onClick={() => void copy(value)}
       >
         {status === 'copied' && <Check className="size-3.5 text-valid" aria-hidden />}
         {status === 'failed' && <TriangleAlert className="size-3.5 text-failed" aria-hidden />}
         {status === 'idle' && <Copy className="size-3.5" aria-hidden />}
-      </Button>
+      </IconButton>
       <span aria-live="polite" className="sr-only">
         {status === 'copied' && 'Copied'}
         {status === 'failed' && 'Copy failed'}
