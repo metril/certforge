@@ -3,7 +3,7 @@
 -- DER and only re-signs (taking a new cRLNumber) when the revoked set
 -- changed (revision = cas.crl_number at signing) or next_update nears.
 CREATE TABLE ca_crls (
-    ca_id         uuid        NOT NULL REFERENCES cas(id) ON DELETE CASCADE,
+    ca_id         uuid        NOT NULL REFERENCES cas(id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE,
     issuer_serial text        NOT NULL,
     crl_number    bigint      NOT NULL,
     revision      bigint      NOT NULL,
