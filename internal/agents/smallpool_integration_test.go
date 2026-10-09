@@ -28,12 +28,8 @@ func onePool(t *testing.T, f *syncFixture) *Service {
 		t.Fatal(err)
 	}
 	t.Cleanup(p.Close)
-	svc := *f.svc
-	svc.Pool = p
-	svc.Q = sqlcgen.New(p)
-	svc.CA = agentca.NewStore(p, f.box)
-	svc.Certs = certstore.New(p, f.box)
-	return &svc
+	svc := &Service{Pool: p, Q: sqlcgen.New(p), CA: agentca.NewStore(p, f.box), Certs: certstore.New(p, f.box), Box: f.box, Log: f.svc.Log, Reg: f.svc.Reg, Settings: f.svc.Settings}
+	return svc
 }
 
 func TestOnVersionDoesNotNeedSecondConnection(t *testing.T) {
