@@ -77,6 +77,10 @@ type IssueWorker struct {
 	// cmd/certforge/serve.go.
 	OnFailure FailureListener
 
+	// beforeSucceedTx, when set, runs at the start of succeed (test seam for
+	// the revoke-vs-commit race).
+	beforeSucceedTx func()
+
 	// HTTPTokens backs a server http-01 rule (via: server, the default):
 	// nil means server http-01 is not wired up, so such a rule fails.
 	// Shared with api.Deps.HTTPTokens; see cmd/certforge/serve.go.
@@ -686,20 +690,23 @@ func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Eff
 }
 
 func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, iss *signer.Issued, eff Effective, start time.Time) error {
-	// Checked before the tx opens: reading through the pool while tx holds a
-	// connection and row locks risks the deadlock described below.
-	var revoked *uuid.UUID
-	if len(iss.PrivateKeyPKCS8) > 0 {
-		var err error
-		if revoked, err = revokedVersionWithKey(ctx, w.Certs, cert.ID, iss.PrivateKeyPKCS8); err != nil {
-			return err
-		}
+	if w.beforeSucceedTx != nil {
+		w.beforeSucceedTx()
 	}
 	tx, err := w.Store.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // no-op after commit
+	// Checked inside the tx through its own queries (no second pool
+	// connection while tx holds row locks), so a revoke committed before
+	// this point is always seen.
+	var revoked *uuid.UUID
+	if len(iss.PrivateKeyPKCS8) > 0 {
+		if revoked, err = revokedVersionWithKey(ctx, w.Certs.WithQueries(w.Store.q.WithTx(tx)), cert.ID, iss.PrivateKeyPKCS8); err != nil {
+			return err
+		}
+	}
 	// Any Timeline save triggered below (tl.Step/tl.Logf) must not go
 	// through the store's own connection pool while this transaction holds a
 	// row lock on issuance_attempts: a pool-based UPDATE of the same row
