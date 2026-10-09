@@ -15,6 +15,13 @@
         "secret": false,
         "x-group": "credentials"
       },
+      "TRANSIP_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "TRANSIP_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
       "TRANSIP_POLLING_INTERVAL": {
         "type": "string",
         "title": "TRANSIP_POLLING_INTERVAL",

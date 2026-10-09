@@ -8,10 +8,32 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "OCI_AUTH_TYPE": {
+        "type": "string",
+        "title": "OCI_AUTH_TYPE",
+        "description": "Authorization type. Possible values: 'instance_principal', 'user_principal', ''. (Default: '')",
+        "secret": false,
+        "x-group": "additional"
+      },
       "OCI_COMPARTMENT_OCID": {
         "type": "string",
         "title": "OCI_COMPARTMENT_OCID",
         "description": "Compartment OCID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "OCI_CONFIG_FILE": {
+        "type": "string",
+        "title": "OCI_CONFIG_FILE",
+        "description": "Path to the configuration file. (only for `OCI_AUTH_TYPE=user_principal`)",
+        "secret": false,
+        "serverPath": true,
+        "x-group": "additional"
+      },
+      "OCI_FINGERPRINT": {
+        "type": "string",
+        "title": "OCI_FINGERPRINT",
+        "description": "Public key fingerprint (ignored if `OCI_AUTH_TYPE` is not empty)",
         "secret": false,
         "x-group": "credentials"
       },
@@ -29,6 +51,21 @@
         "secret": false,
         "x-group": "additional"
       },
+      "OCI_PRIVATE_KEY_PASSWORD": {
+        "type": "string",
+        "title": "OCI_PRIVATE_KEY_PASSWORD",
+        "description": "Private key password (ignored if `OCI_AUTH_TYPE` is not empty)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "OCI_PRIVATE_KEY_PATH": {
+        "type": "string",
+        "title": "OCI_PRIVATE_KEY_PATH",
+        "description": "Private key file (ignored if `OCI_AUTH_TYPE` is not empty)",
+        "secret": false,
+        "serverPath": true,
+        "x-group": "credentials"
+      },
       "OCI_PRIVKEY": {
         "type": "string",
         "title": "OCI_PRIVKEY",
@@ -36,20 +73,12 @@
         "secret": true,
         "x-group": "credentials"
       },
-      "OCI_PRIVKEY_FILE": {
+      "OCI_PROFILE": {
         "type": "string",
-        "title": "OCI_PRIVKEY_FILE",
-        "description": "Private key file",
+        "title": "OCI_PROFILE",
+        "description": "Profile name. (only for `OCI_AUTH_TYPE=user_principal`)",
         "secret": false,
-        "serverPath": true,
-        "x-group": "credentials"
-      },
-      "OCI_PRIVKEY_PASS": {
-        "type": "string",
-        "title": "OCI_PRIVKEY_PASS",
-        "description": "Private key password",
-        "secret": true,
-        "x-group": "credentials"
+        "x-group": "additional"
       },
       "OCI_PROPAGATION_TIMEOUT": {
         "type": "string",
@@ -58,24 +87,17 @@
         "secret": false,
         "x-group": "additional"
       },
-      "OCI_PUBKEY_FINGERPRINT": {
-        "type": "string",
-        "title": "OCI_PUBKEY_FINGERPRINT",
-        "description": "Public key fingerprint",
-        "secret": false,
-        "x-group": "credentials"
-      },
       "OCI_REGION": {
         "type": "string",
         "title": "OCI_REGION",
-        "description": "Region",
+        "description": "Region (it can be empty if `OCI_AUTH_TYPE` is not empty).",
         "secret": false,
         "x-group": "credentials"
       },
       "OCI_TENANCY_OCID": {
         "type": "string",
         "title": "OCI_TENANCY_OCID",
-        "description": "Tenancy OCID",
+        "description": "Tenancy OCID (ignored if `OCI_AUTH_TYPE` is not empty)",
         "secret": false,
         "x-group": "credentials"
       },
@@ -89,25 +111,56 @@
       "OCI_USER_OCID": {
         "type": "string",
         "title": "OCI_USER_OCID",
-        "description": "User OCID",
+        "description": "User OCID (ignored if `OCI_AUTH_TYPE` is not empty)",
         "secret": false,
         "x-group": "credentials"
       }
     },
     "x-auth-methods": [
       {
-        "id": "api-signing-key",
-        "label": "API signing key",
+        "id": "compartment-ocid",
+        "label": "Compartment OCID",
         "fields": [
-          "OCI_PRIVKEY",
-          "OCI_TENANCY_OCID",
-          "OCI_USER_OCID",
-          "OCI_PUBKEY_FINGERPRINT",
-          "OCI_REGION",
           "OCI_COMPARTMENT_OCID"
         ],
         "optional": [
-          "OCI_PRIVKEY_PASS"
+          "OCI_FINGERPRINT",
+          "OCI_PRIVATE_KEY_PASSWORD",
+          "OCI_PRIVKEY",
+          "OCI_REGION",
+          "OCI_TENANCY_OCID",
+          "OCI_USER_OCID"
+        ]
+      },
+      {
+        "id": "compartment-ocid-profile",
+        "label": "Compartment OCID + Profile",
+        "fields": [
+          "OCI_COMPARTMENT_OCID",
+          "OCI_PROFILE"
+        ],
+        "optional": [
+          "OCI_FINGERPRINT",
+          "OCI_PRIVATE_KEY_PASSWORD",
+          "OCI_PRIVKEY",
+          "OCI_REGION",
+          "OCI_TENANCY_OCID",
+          "OCI_USER_OCID"
+        ]
+      },
+      {
+        "id": "compartment-ocid-2",
+        "label": "Compartment OCID",
+        "fields": [
+          "OCI_COMPARTMENT_OCID"
+        ],
+        "optional": [
+          "OCI_FINGERPRINT",
+          "OCI_PRIVATE_KEY_PASSWORD",
+          "OCI_PRIVKEY",
+          "OCI_REGION",
+          "OCI_TENANCY_OCID",
+          "OCI_USER_OCID"
         ]
       }
     ]

@@ -1,45 +1,45 @@
 {
-  "code": "bunny",
-  "name": "Bunny",
-  "url": "https://bunny.net",
+  "code": "octenium",
+  "name": "Octenium",
+  "url": "https://octenium.com/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "Bunny",
+    "title": "Octenium",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "BUNNY_API_KEY": {
+      "OCTENIUM_API_KEY": {
         "type": "string",
-        "title": "BUNNY_API_KEY",
+        "title": "OCTENIUM_API_KEY",
         "description": "API key",
         "secret": true,
         "x-group": "credentials"
       },
-      "BUNNY_HTTP_TIMEOUT": {
+      "OCTENIUM_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "BUNNY_HTTP_TIMEOUT",
+        "title": "OCTENIUM_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "BUNNY_POLLING_INTERVAL": {
+      "OCTENIUM_POLLING_INTERVAL": {
         "type": "string",
-        "title": "BUNNY_POLLING_INTERVAL",
+        "title": "OCTENIUM_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
         "secret": false,
         "x-group": "additional"
       },
-      "BUNNY_PROPAGATION_TIMEOUT": {
+      "OCTENIUM_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "BUNNY_PROPAGATION_TIMEOUT",
-        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "title": "OCTENIUM_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
       },
-      "BUNNY_TTL": {
+      "OCTENIUM_TTL": {
         "type": "string",
-        "title": "BUNNY_TTL",
-        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "title": "OCTENIUM_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
       }
@@ -49,7 +49,7 @@
         "id": "api-key",
         "label": "API key",
         "fields": [
-          "BUNNY_API_KEY"
+          "OCTENIUM_API_KEY"
         ],
         "optional": []
       }

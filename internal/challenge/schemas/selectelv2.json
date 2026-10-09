@@ -15,6 +15,20 @@
         "secret": false,
         "x-group": "credentials"
       },
+      "SELECTELV2_AUTH_REGION": {
+        "type": "string",
+        "title": "SELECTELV2_AUTH_REGION",
+        "description": "Location for auth endpoint like ResellAPI or Keystone (default: 'ru-1')",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "SELECTELV2_AUTH_URL": {
+        "type": "string",
+        "title": "SELECTELV2_AUTH_URL",
+        "description": "Identity endpoint (defaul: 'https://cloud.api.selcloud.ru/identity/v3/')",
+        "secret": false,
+        "x-group": "additional"
+      },
       "SELECTELV2_BASE_URL": {
         "type": "string",
         "title": "SELECTELV2_BASE_URL",
@@ -70,6 +84,13 @@
         "description": "Openstack username",
         "secret": false,
         "x-group": "credentials"
+      },
+      "SELECTELV2_USER_DOMAIN_NAME": {
+        "type": "string",
+        "title": "SELECTELV2_USER_DOMAIN_NAME",
+        "description": "To specify the domain name (account ID) where the user is located. (default: SELECTELV2_ACCOUNT_ID)",
+        "secret": false,
+        "x-group": "additional"
       }
     },
     "x-auth-methods": [

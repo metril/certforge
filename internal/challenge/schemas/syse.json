@@ -1,44 +1,44 @@
 {
-  "code": "safedns",
-  "name": "ANS SafeDNS",
-  "url": "https://www.ans.co.uk/",
+  "code": "syse",
+  "name": "Syse",
+  "url": "https://www.syse.no/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "ANS SafeDNS",
+    "title": "Syse",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "SAFEDNS_AUTH_TOKEN": {
+      "SYSE_CREDENTIALS": {
         "type": "string",
-        "title": "SAFEDNS_AUTH_TOKEN",
-        "description": "Authentication token",
-        "secret": true,
+        "title": "SYSE_CREDENTIALS",
+        "description": "Comma-separated list of `zone:password` credential pairs",
+        "secret": false,
         "x-group": "credentials"
       },
-      "SAFEDNS_HTTP_TIMEOUT": {
+      "SYSE_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_HTTP_TIMEOUT",
+        "title": "SYSE_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_POLLING_INTERVAL": {
+      "SYSE_POLLING_INTERVAL": {
         "type": "string",
-        "title": "SAFEDNS_POLLING_INTERVAL",
-        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "title": "SYSE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_PROPAGATION_TIMEOUT": {
+      "SYSE_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_PROPAGATION_TIMEOUT",
-        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "title": "SYSE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 1200)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_TTL": {
+      "SYSE_TTL": {
         "type": "string",
-        "title": "SAFEDNS_TTL",
+        "title": "SYSE_TTL",
         "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
@@ -46,10 +46,10 @@
     },
     "x-auth-methods": [
       {
-        "id": "auth-token",
-        "label": "Auth token",
+        "id": "credentials",
+        "label": "Credentials",
         "fields": [
-          "SAFEDNS_AUTH_TOKEN"
+          "SYSE_CREDENTIALS"
         ],
         "optional": []
       }

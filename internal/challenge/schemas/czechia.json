@@ -1,44 +1,44 @@
 {
-  "code": "safedns",
-  "name": "ANS SafeDNS",
-  "url": "https://www.ans.co.uk/",
+  "code": "czechia",
+  "name": "Czechia",
+  "url": "https://www.czechia.com/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "ANS SafeDNS",
+    "title": "Czechia",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "SAFEDNS_AUTH_TOKEN": {
+      "CZECHIA_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_AUTH_TOKEN",
-        "description": "Authentication token",
-        "secret": true,
-        "x-group": "credentials"
-      },
-      "SAFEDNS_HTTP_TIMEOUT": {
-        "type": "string",
-        "title": "SAFEDNS_HTTP_TIMEOUT",
+        "title": "CZECHIA_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_POLLING_INTERVAL": {
+      "CZECHIA_POLLING_INTERVAL": {
         "type": "string",
-        "title": "SAFEDNS_POLLING_INTERVAL",
+        "title": "CZECHIA_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_PROPAGATION_TIMEOUT": {
+      "CZECHIA_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_PROPAGATION_TIMEOUT",
+        "title": "CZECHIA_PROPAGATION_TIMEOUT",
         "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_TTL": {
+      "CZECHIA_TOKEN": {
         "type": "string",
-        "title": "SAFEDNS_TTL",
+        "title": "CZECHIA_TOKEN",
+        "description": "Authorization token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "CZECHIA_TTL": {
+        "type": "string",
+        "title": "CZECHIA_TTL",
         "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
@@ -46,10 +46,10 @@
     },
     "x-auth-methods": [
       {
-        "id": "auth-token",
-        "label": "Auth token",
+        "id": "token",
+        "label": "Token",
         "fields": [
-          "SAFEDNS_AUTH_TOKEN"
+          "CZECHIA_TOKEN"
         ],
         "optional": []
       }

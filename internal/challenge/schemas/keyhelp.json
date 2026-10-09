@@ -1,55 +1,63 @@
 {
-  "code": "safedns",
-  "name": "ANS SafeDNS",
-  "url": "https://www.ans.co.uk/",
+  "code": "keyhelp",
+  "name": "KeyHelp",
+  "url": "https://www.keyweb.de/en/keyhelp/keyhelp/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "ANS SafeDNS",
+    "title": "KeyHelp",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "SAFEDNS_AUTH_TOKEN": {
+      "KEYHELP_API_KEY": {
         "type": "string",
-        "title": "SAFEDNS_AUTH_TOKEN",
-        "description": "Authentication token",
+        "title": "KEYHELP_API_KEY",
+        "description": "API key",
         "secret": true,
         "x-group": "credentials"
       },
-      "SAFEDNS_HTTP_TIMEOUT": {
+      "KEYHELP_BASE_URL": {
         "type": "string",
-        "title": "SAFEDNS_HTTP_TIMEOUT",
+        "title": "KEYHELP_BASE_URL",
+        "description": "Server URL",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "KEYHELP_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "KEYHELP_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       },
-      "SAFEDNS_POLLING_INTERVAL": {
+      "KEYHELP_POLLING_INTERVAL": {
         "type": "string",
-        "title": "SAFEDNS_POLLING_INTERVAL",
+        "title": "KEYHELP_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       },
-      "SAFEDNS_PROPAGATION_TIMEOUT": {
+      "KEYHELP_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_PROPAGATION_TIMEOUT",
+        "title": "KEYHELP_PROPAGATION_TIMEOUT",
         "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       },
-      "SAFEDNS_TTL": {
+      "KEYHELP_TTL": {
         "type": "string",
-        "title": "SAFEDNS_TTL",
+        "title": "KEYHELP_TTL",
         "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
-        "secret": false,
+        "secret": true,
         "x-group": "additional"
       }
     },
     "x-auth-methods": [
       {
-        "id": "auth-token",
-        "label": "Auth token",
+        "id": "base-url-api-key",
+        "label": "Base URL + API key",
         "fields": [
-          "SAFEDNS_AUTH_TOKEN"
+          "KEYHELP_BASE_URL",
+          "KEYHELP_API_KEY"
         ],
         "optional": []
       }

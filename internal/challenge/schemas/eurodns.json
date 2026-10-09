@@ -1,55 +1,63 @@
 {
-  "code": "safedns",
-  "name": "ANS SafeDNS",
-  "url": "https://www.ans.co.uk/",
+  "code": "eurodns",
+  "name": "EuroDNS",
+  "url": "https://www.eurodns.com/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "ANS SafeDNS",
+    "title": "EuroDNS",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "SAFEDNS_AUTH_TOKEN": {
+      "EURODNS_API_KEY": {
         "type": "string",
-        "title": "SAFEDNS_AUTH_TOKEN",
-        "description": "Authentication token",
+        "title": "EURODNS_API_KEY",
+        "description": "API key",
         "secret": true,
         "x-group": "credentials"
       },
-      "SAFEDNS_HTTP_TIMEOUT": {
+      "EURODNS_APP_ID": {
         "type": "string",
-        "title": "SAFEDNS_HTTP_TIMEOUT",
+        "title": "EURODNS_APP_ID",
+        "description": "Application ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "EURODNS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "EURODNS_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_POLLING_INTERVAL": {
+      "EURODNS_POLLING_INTERVAL": {
         "type": "string",
-        "title": "SAFEDNS_POLLING_INTERVAL",
+        "title": "EURODNS_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_PROPAGATION_TIMEOUT": {
+      "EURODNS_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_PROPAGATION_TIMEOUT",
+        "title": "EURODNS_PROPAGATION_TIMEOUT",
         "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_TTL": {
+      "EURODNS_TTL": {
         "type": "string",
-        "title": "SAFEDNS_TTL",
-        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "title": "EURODNS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
         "secret": false,
         "x-group": "additional"
       }
     },
     "x-auth-methods": [
       {
-        "id": "auth-token",
-        "label": "Auth token",
+        "id": "app-id-api-key",
+        "label": "App ID + API key",
         "fields": [
-          "SAFEDNS_AUTH_TOKEN"
+          "EURODNS_APP_ID",
+          "EURODNS_API_KEY"
         ],
         "optional": []
       }

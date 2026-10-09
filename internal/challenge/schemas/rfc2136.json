@@ -1,10 +1,13 @@
 {
   "code": "rfc2136",
-  "name": "RFC2136",
+  "name": "DNS Update (RFC2136)",
   "url": "https://www.rfc-editor.org/rfc/rfc2136.html",
+  "aliases": [
+    "dnsupdate"
+  ],
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "RFC2136",
+    "title": "DNS Update (RFC2136)",
     "type": "object",
     "additionalProperties": false,
     "properties": {
@@ -46,9 +49,9 @@
       "RFC2136_TSIG_ALGORITHM": {
         "type": "string",
         "title": "RFC2136_TSIG_ALGORITHM",
-        "description": "TSIG algorithm. See [miekg/dns#tsig.go](https://github.com/miekg/dns/blob/master/tsig.go) for supported values. To disable TSIG authentication, leave the `RFC2136_TSIG_KEY` or `RFC2136_TSIG_SECRET` variables unset.",
+        "description": "TSIG algorithm. See [miekg/dns#tsig.go](https://github.com/miekg/dns/blob/master/tsig.go) for supported values. To disable TSIG authentication, leave the `DNSUPDATE_TSIG_KEY` or `DNSUPDATE_TSIG_SECRET` variables unset.",
         "secret": false,
-        "x-group": "credentials"
+        "x-group": "additional"
       },
       "RFC2136_TSIG_FILE": {
         "type": "string",
@@ -58,19 +61,48 @@
         "serverPath": true,
         "x-group": "additional"
       },
+      "RFC2136_TSIG_GSS_KEYTAB_FILE": {
+        "type": "string",
+        "title": "RFC2136_TSIG_GSS_KEYTAB_FILE",
+        "description": "Path to Kerberos keytab file. The TSIG algorithm must be `gss-tsig.`.",
+        "secret": false,
+        "serverPath": true,
+        "x-group": "additional"
+      },
+      "RFC2136_TSIG_GSS_PASSWORD": {
+        "type": "string",
+        "title": "RFC2136_TSIG_GSS_PASSWORD",
+        "description": "Kerberos password. The TSIG algorithm must be `gss-tsig.`.",
+        "secret": true,
+        "x-group": "additional"
+      },
+      "RFC2136_TSIG_GSS_REALM": {
+        "type": "string",
+        "title": "RFC2136_TSIG_GSS_REALM",
+        "description": "Kerberos realm. The TSIG algorithm must be `gss-tsig.`.",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "RFC2136_TSIG_GSS_USERNAME": {
+        "type": "string",
+        "title": "RFC2136_TSIG_GSS_USERNAME",
+        "description": "Kerberos username. The TSIG algorithm must be `gss-tsig.`.",
+        "secret": false,
+        "x-group": "additional"
+      },
       "RFC2136_TSIG_KEY": {
         "type": "string",
         "title": "RFC2136_TSIG_KEY",
-        "description": "Name of the secret key as defined in DNS server configuration. To disable TSIG authentication, leave the `RFC2136_TSIG_KEY` variable unset.",
+        "description": "Name of the secret key as defined in DNS server configuration. To disable TSIG authentication, leave the `DNSUPDATE_TSIG_KEY` variable unset.",
         "secret": false,
-        "x-group": "credentials"
+        "x-group": "additional"
       },
       "RFC2136_TSIG_SECRET": {
         "type": "string",
         "title": "RFC2136_TSIG_SECRET",
-        "description": "Secret key payload. To disable TSIG authentication, leave the `RFC2136_TSIG_SECRET` variable unset.",
+        "description": "Secret key payload. To disable TSIG authentication, leave the `DNSUPDATE_TSIG_SECRET` variable unset.",
         "secret": true,
-        "x-group": "credentials"
+        "x-group": "additional"
       },
       "RFC2136_TTL": {
         "type": "string",
@@ -78,19 +110,26 @@
         "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
+      },
+      "RFC2136_ZONES": {
+        "type": "string",
+        "title": "RFC2136_ZONES",
+        "description": "List of potential zones (separated by commas)",
+        "secret": false,
+        "x-group": "additional"
       }
     },
     "x-auth-methods": [
       {
-        "id": "nameserver",
-        "label": "Nameserver",
+        "id": "tsig",
+        "label": "Nameserver (optional TSIG)",
         "fields": [
           "RFC2136_NAMESERVER"
         ],
         "optional": [
-          "RFC2136_TSIG_ALGORITHM",
           "RFC2136_TSIG_KEY",
-          "RFC2136_TSIG_SECRET"
+          "RFC2136_TSIG_SECRET",
+          "RFC2136_TSIG_ALGORITHM"
         ]
       }
     ]

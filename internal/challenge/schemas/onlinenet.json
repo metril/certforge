@@ -1,44 +1,44 @@
 {
-  "code": "safedns",
-  "name": "ANS SafeDNS",
-  "url": "https://www.ans.co.uk/",
+  "code": "onlinenet",
+  "name": "Online.net",
+  "url": "https://online.net/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "ANS SafeDNS",
+    "title": "Online.net",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "SAFEDNS_AUTH_TOKEN": {
+      "ONLINENET_API_TOKEN": {
         "type": "string",
-        "title": "SAFEDNS_AUTH_TOKEN",
-        "description": "Authentication token",
+        "title": "ONLINENET_API_TOKEN",
+        "description": "API token",
         "secret": true,
         "x-group": "credentials"
       },
-      "SAFEDNS_HTTP_TIMEOUT": {
+      "ONLINENET_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_HTTP_TIMEOUT",
+        "title": "ONLINENET_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_POLLING_INTERVAL": {
+      "ONLINENET_POLLING_INTERVAL": {
         "type": "string",
-        "title": "SAFEDNS_POLLING_INTERVAL",
-        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "title": "ONLINENET_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 15)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_PROPAGATION_TIMEOUT": {
+      "ONLINENET_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_PROPAGATION_TIMEOUT",
-        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "title": "ONLINENET_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 240)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_TTL": {
+      "ONLINENET_TTL": {
         "type": "string",
-        "title": "SAFEDNS_TTL",
+        "title": "ONLINENET_TTL",
         "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
@@ -46,10 +46,10 @@
     },
     "x-auth-methods": [
       {
-        "id": "auth-token",
-        "label": "Auth token",
+        "id": "api-token",
+        "label": "API token",
         "fields": [
-          "SAFEDNS_AUTH_TOKEN"
+          "ONLINENET_API_TOKEN"
         ],
         "optional": []
       }

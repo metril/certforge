@@ -1,44 +1,51 @@
 {
-  "code": "safedns",
-  "name": "ANS SafeDNS",
-  "url": "https://www.ans.co.uk/",
+  "code": "webnamesca",
+  "name": "webnames.ca",
+  "url": "https://www.webnames.ca/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "ANS SafeDNS",
+    "title": "webnames.ca",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "SAFEDNS_AUTH_TOKEN": {
+      "WEBNAMESCA_API_KEY": {
         "type": "string",
-        "title": "SAFEDNS_AUTH_TOKEN",
-        "description": "Authentication token",
+        "title": "WEBNAMESCA_API_KEY",
+        "description": "API key",
         "secret": true,
         "x-group": "credentials"
       },
-      "SAFEDNS_HTTP_TIMEOUT": {
+      "WEBNAMESCA_API_USER": {
         "type": "string",
-        "title": "SAFEDNS_HTTP_TIMEOUT",
+        "title": "WEBNAMESCA_API_USER",
+        "description": "API username",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "WEBNAMESCA_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "WEBNAMESCA_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_POLLING_INTERVAL": {
+      "WEBNAMESCA_POLLING_INTERVAL": {
         "type": "string",
-        "title": "SAFEDNS_POLLING_INTERVAL",
+        "title": "WEBNAMESCA_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_PROPAGATION_TIMEOUT": {
+      "WEBNAMESCA_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "SAFEDNS_PROPAGATION_TIMEOUT",
+        "title": "WEBNAMESCA_PROPAGATION_TIMEOUT",
         "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
       },
-      "SAFEDNS_TTL": {
+      "WEBNAMESCA_TTL": {
         "type": "string",
-        "title": "SAFEDNS_TTL",
+        "title": "WEBNAMESCA_TTL",
         "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
@@ -46,10 +53,11 @@
     },
     "x-auth-methods": [
       {
-        "id": "auth-token",
-        "label": "Auth token",
+        "id": "user-key",
+        "label": "User + Key",
         "fields": [
-          "SAFEDNS_AUTH_TOKEN"
+          "WEBNAMESCA_API_USER",
+          "WEBNAMESCA_API_KEY"
         ],
         "optional": []
       }

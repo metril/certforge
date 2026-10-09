@@ -1,51 +1,51 @@
 {
-  "code": "iwantmyname",
-  "name": "iwantmyname (Deprecated)",
-  "url": "https://iwantmyname.com",
+  "code": "artfiles",
+  "name": "ArtFiles",
+  "url": "https://www.artfiles.de/extras/domains/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "iwantmyname (Deprecated)",
+    "title": "ArtFiles",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "IWANTMYNAME_HTTP_TIMEOUT": {
+      "ARTFILES_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "IWANTMYNAME_HTTP_TIMEOUT",
+        "title": "ARTFILES_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "IWANTMYNAME_PASSWORD": {
+      "ARTFILES_PASSWORD": {
         "type": "string",
-        "title": "IWANTMYNAME_PASSWORD",
+        "title": "ARTFILES_PASSWORD",
         "description": "API password",
         "secret": true,
         "x-group": "credentials"
       },
-      "IWANTMYNAME_POLLING_INTERVAL": {
+      "ARTFILES_POLLING_INTERVAL": {
         "type": "string",
-        "title": "IWANTMYNAME_POLLING_INTERVAL",
+        "title": "ARTFILES_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
         "secret": false,
         "x-group": "additional"
       },
-      "IWANTMYNAME_PROPAGATION_TIMEOUT": {
+      "ARTFILES_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "IWANTMYNAME_PROPAGATION_TIMEOUT",
-        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "title": "ARTFILES_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 360)",
         "secret": false,
         "x-group": "additional"
       },
-      "IWANTMYNAME_TTL": {
+      "ARTFILES_TTL": {
         "type": "string",
-        "title": "IWANTMYNAME_TTL",
+        "title": "ARTFILES_TTL",
         "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
       },
-      "IWANTMYNAME_USERNAME": {
+      "ARTFILES_USERNAME": {
         "type": "string",
-        "title": "IWANTMYNAME_USERNAME",
+        "title": "ARTFILES_USERNAME",
         "description": "API username",
         "secret": false,
         "x-group": "credentials"
@@ -56,8 +56,8 @@
         "id": "username-password",
         "label": "Username + Password",
         "fields": [
-          "IWANTMYNAME_USERNAME",
-          "IWANTMYNAME_PASSWORD"
+          "ARTFILES_USERNAME",
+          "ARTFILES_PASSWORD"
         ],
         "optional": []
       }

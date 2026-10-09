@@ -25,9 +25,9 @@
       "OTC_IDENTITY_ENDPOINT": {
         "type": "string",
         "title": "OTC_IDENTITY_ENDPOINT",
-        "description": "Identity endpoint URL",
+        "description": "Identity endpoint URL (default: https://iam.eu-de.otc.t-systems.com:443/v3/auth/tokens)",
         "secret": false,
-        "x-group": "credentials"
+        "x-group": "additional"
       },
       "OTC_PASSWORD": {
         "type": "string",
@@ -40,6 +40,13 @@
         "type": "string",
         "title": "OTC_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "OTC_PRIVATE_ZONE": {
+        "type": "string",
+        "title": "OTC_PRIVATE_ZONE",
+        "description": "Set to true to use private zones only (default: use public zones only)",
         "secret": false,
         "x-group": "additional"
       },
@@ -89,9 +96,7 @@
           "OTC_PASSWORD",
           "OTC_PROJECT_NAME"
         ],
-        "optional": [
-          "OTC_IDENTITY_ENDPOINT"
-        ]
+        "optional": []
       }
     ]
   }

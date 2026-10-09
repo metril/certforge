@@ -1,37 +1,40 @@
 {
   "code": "webnames",
-  "name": "Webnames",
+  "name": "webnames.ru",
   "url": "https://www.webnames.ru/",
+  "aliases": [
+    "webnamesru"
+  ],
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "Webnames",
+    "title": "webnames.ru",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "WEBNAMES_API_KEY": {
+      "WEBNAMESRU_API_KEY": {
         "type": "string",
-        "title": "WEBNAMES_API_KEY",
+        "title": "WEBNAMESRU_API_KEY",
         "description": "Domain API key",
         "secret": true,
         "x-group": "credentials"
       },
-      "WEBNAMES_HTTP_TIMEOUT": {
+      "WEBNAMESRU_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "WEBNAMES_HTTP_TIMEOUT",
+        "title": "WEBNAMESRU_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "WEBNAMES_POLLING_INTERVAL": {
+      "WEBNAMESRU_POLLING_INTERVAL": {
         "type": "string",
-        "title": "WEBNAMES_POLLING_INTERVAL",
+        "title": "WEBNAMESRU_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
         "secret": false,
         "x-group": "additional"
       },
-      "WEBNAMES_PROPAGATION_TIMEOUT": {
+      "WEBNAMESRU_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "WEBNAMES_PROPAGATION_TIMEOUT",
+        "title": "WEBNAMESRU_PROPAGATION_TIMEOUT",
         "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
@@ -42,7 +45,7 @@
         "id": "api-key",
         "label": "API key",
         "fields": [
-          "WEBNAMES_API_KEY"
+          "WEBNAMESRU_API_KEY"
         ],
         "optional": []
       }

@@ -1,52 +1,52 @@
 {
-  "code": "iwantmyname",
-  "name": "iwantmyname (Deprecated)",
-  "url": "https://iwantmyname.com",
+  "code": "com35",
+  "name": "35.com/三五互联",
+  "url": "https://www.35.cn/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "iwantmyname (Deprecated)",
+    "title": "35.com/三五互联",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "IWANTMYNAME_HTTP_TIMEOUT": {
+      "COM35_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "IWANTMYNAME_HTTP_TIMEOUT",
+        "title": "COM35_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "IWANTMYNAME_PASSWORD": {
+      "COM35_PASSWORD": {
         "type": "string",
-        "title": "IWANTMYNAME_PASSWORD",
+        "title": "COM35_PASSWORD",
         "description": "API password",
         "secret": true,
         "x-group": "credentials"
       },
-      "IWANTMYNAME_POLLING_INTERVAL": {
+      "COM35_POLLING_INTERVAL": {
         "type": "string",
-        "title": "IWANTMYNAME_POLLING_INTERVAL",
-        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "title": "COM35_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
         "secret": false,
         "x-group": "additional"
       },
-      "IWANTMYNAME_PROPAGATION_TIMEOUT": {
+      "COM35_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "IWANTMYNAME_PROPAGATION_TIMEOUT",
-        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "title": "COM35_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
       },
-      "IWANTMYNAME_TTL": {
+      "COM35_TTL": {
         "type": "string",
-        "title": "IWANTMYNAME_TTL",
-        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "title": "COM35_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
       },
-      "IWANTMYNAME_USERNAME": {
+      "COM35_USERNAME": {
         "type": "string",
-        "title": "IWANTMYNAME_USERNAME",
-        "description": "API username",
+        "title": "COM35_USERNAME",
+        "description": "Username",
         "secret": false,
         "x-group": "credentials"
       }
@@ -56,8 +56,8 @@
         "id": "username-password",
         "label": "Username + Password",
         "fields": [
-          "IWANTMYNAME_USERNAME",
-          "IWANTMYNAME_PASSWORD"
+          "COM35_USERNAME",
+          "COM35_PASSWORD"
         ],
         "optional": []
       }

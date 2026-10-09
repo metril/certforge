@@ -1,0 +1,65 @@
+{
+  "code": "anexia",
+  "name": "Anexia CloudDNS",
+  "url": "https://www.anexia-it.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Anexia CloudDNS",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ANEXIA_API_URL": {
+        "type": "string",
+        "title": "ANEXIA_API_URL",
+        "description": "API endpoint URL (default: https://engine.anexia-it.com)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ANEXIA_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ANEXIA_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ANEXIA_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ANEXIA_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ANEXIA_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ANEXIA_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ANEXIA_TOKEN": {
+        "type": "string",
+        "title": "ANEXIA_TOKEN",
+        "description": "API token for Anexia Engine",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ANEXIA_TTL": {
+        "type": "string",
+        "title": "ANEXIA_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token",
+        "label": "Token",
+        "fields": [
+          "ANEXIA_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

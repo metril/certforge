@@ -180,7 +180,7 @@ var skipped = map[string]bool{"manual": true, "exec": true}
 // (forceSecret, forceNonSecret) were reviewed against. Bumping lego's
 // go.mod pin requires bumping this constant and reviewing the regenerated
 // schema diff for new or renamed fields the overrides above should cover.
-const legoVersion = "v4.25.2"
+const legoVersion = "v4.35.2"
 
 func main() {
 	legoDir := flag.String("lego-dir", "", "lego module dir (default: resolved via go mod download)")
@@ -285,6 +285,9 @@ func generate(legoDir, outDir, docsPath string) error {
 }
 
 func convert(pkgDir string, t providerTOML) (providerFile, error) {
+	if t.Code == "rfc2136" {
+		renameDNSUpdate(&t)
+	}
 	props := map[string]property{}
 	for k, d := range t.Configuration.Credentials {
 		if !validKey.MatchString(k) {
@@ -399,4 +402,19 @@ func renderDocs(files []providerFile) []byte {
 		b.WriteString("\n")
 	}
 	return b.Bytes()
+}
+
+// renameDNSUpdate keeps rfc2136's historic RFC2136_* field names. Newer lego
+// documents DNSUPDATE_* as canonical but still reads RFC2136_* as an alias
+// (rfc2136.altEnvNames), so credentials stored under the old names stay valid.
+func renameDNSUpdate(t *providerTOML) {
+	re := func(m map[string]string) map[string]string {
+		out := make(map[string]string, len(m))
+		for k, v := range m {
+			out[strings.Replace(k, "DNSUPDATE_", "RFC2136_", 1)] = v
+		}
+		return out
+	}
+	t.Configuration.Credentials = re(t.Configuration.Credentials)
+	t.Configuration.Additional = re(t.Configuration.Additional)
 }

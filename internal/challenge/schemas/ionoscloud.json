@@ -1,55 +1,55 @@
 {
-  "code": "bunny",
-  "name": "Bunny",
-  "url": "https://bunny.net",
+  "code": "ionoscloud",
+  "name": "Ionos Cloud",
+  "url": "https://cloud.ionos.de/network/cloud-dns",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "Bunny",
+    "title": "Ionos Cloud",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "BUNNY_API_KEY": {
+      "IONOSCLOUD_API_TOKEN": {
         "type": "string",
-        "title": "BUNNY_API_KEY",
-        "description": "API key",
+        "title": "IONOSCLOUD_API_TOKEN",
+        "description": "API token",
         "secret": true,
         "x-group": "credentials"
       },
-      "BUNNY_HTTP_TIMEOUT": {
+      "IONOSCLOUD_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "BUNNY_HTTP_TIMEOUT",
+        "title": "IONOSCLOUD_HTTP_TIMEOUT",
         "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
         "x-group": "additional"
       },
-      "BUNNY_POLLING_INTERVAL": {
+      "IONOSCLOUD_POLLING_INTERVAL": {
         "type": "string",
-        "title": "BUNNY_POLLING_INTERVAL",
+        "title": "IONOSCLOUD_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
         "secret": false,
         "x-group": "additional"
       },
-      "BUNNY_PROPAGATION_TIMEOUT": {
+      "IONOSCLOUD_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "BUNNY_PROPAGATION_TIMEOUT",
+        "title": "IONOSCLOUD_PROPAGATION_TIMEOUT",
         "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
       },
-      "BUNNY_TTL": {
+      "IONOSCLOUD_TTL": {
         "type": "string",
-        "title": "BUNNY_TTL",
-        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "title": "IONOSCLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
         "secret": false,
         "x-group": "additional"
       }
     },
     "x-auth-methods": [
       {
-        "id": "api-key",
-        "label": "API key",
+        "id": "api-token",
+        "label": "API token",
         "fields": [
-          "BUNNY_API_KEY"
+          "IONOSCLOUD_API_TOKEN"
         ],
         "optional": []
       }

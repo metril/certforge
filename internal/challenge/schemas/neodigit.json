@@ -1,0 +1,58 @@
+{
+  "code": "neodigit",
+  "name": "Neodigit",
+  "url": "https://www.neodigit.net",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Neodigit",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "NEODIGIT_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "NEODIGIT_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NEODIGIT_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "NEODIGIT_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NEODIGIT_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "NEODIGIT_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "NEODIGIT_TOKEN": {
+        "type": "string",
+        "title": "NEODIGIT_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "NEODIGIT_TTL": {
+        "type": "string",
+        "title": "NEODIGIT_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token",
+        "label": "Token",
+        "fields": [
+          "NEODIGIT_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

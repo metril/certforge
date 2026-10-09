@@ -1,44 +1,44 @@
 {
-  "code": "baiducloud",
-  "name": "Baidu Cloud",
-  "url": "https://cloud.baidu.com",
+  "code": "onecloudru",
+  "name": "1cloud.ru",
+  "url": "https://1cloud.ru/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "Baidu Cloud",
+    "title": "1cloud.ru",
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "BAIDUCLOUD_ACCESS_KEY_ID": {
+      "ONECLOUDRU_HTTP_TIMEOUT": {
         "type": "string",
-        "title": "BAIDUCLOUD_ACCESS_KEY_ID",
-        "description": "Access key",
+        "title": "ONECLOUDRU_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
         "secret": false,
-        "x-group": "credentials"
+        "x-group": "additional"
       },
-      "BAIDUCLOUD_POLLING_INTERVAL": {
+      "ONECLOUDRU_POLLING_INTERVAL": {
         "type": "string",
-        "title": "BAIDUCLOUD_POLLING_INTERVAL",
+        "title": "ONECLOUDRU_POLLING_INTERVAL",
         "description": "Time between DNS propagation check in seconds (Default: 2)",
         "secret": false,
         "x-group": "additional"
       },
-      "BAIDUCLOUD_PROPAGATION_TIMEOUT": {
+      "ONECLOUDRU_PROPAGATION_TIMEOUT": {
         "type": "string",
-        "title": "BAIDUCLOUD_PROPAGATION_TIMEOUT",
+        "title": "ONECLOUDRU_PROPAGATION_TIMEOUT",
         "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
         "secret": false,
         "x-group": "additional"
       },
-      "BAIDUCLOUD_SECRET_ACCESS_KEY": {
+      "ONECLOUDRU_TOKEN": {
         "type": "string",
-        "title": "BAIDUCLOUD_SECRET_ACCESS_KEY",
-        "description": "Secret access key",
+        "title": "ONECLOUDRU_TOKEN",
+        "description": "API token",
         "secret": true,
         "x-group": "credentials"
       },
-      "BAIDUCLOUD_TTL": {
+      "ONECLOUDRU_TTL": {
         "type": "string",
-        "title": "BAIDUCLOUD_TTL",
+        "title": "ONECLOUDRU_TTL",
         "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
         "secret": false,
         "x-group": "additional"
@@ -46,11 +46,10 @@
     },
     "x-auth-methods": [
       {
-        "id": "access-key-id-secret-access-key",
-        "label": "Access key ID + Secret access key",
+        "id": "token",
+        "label": "Token",
         "fields": [
-          "BAIDUCLOUD_ACCESS_KEY_ID",
-          "BAIDUCLOUD_SECRET_ACCESS_KEY"
+          "ONECLOUDRU_TOKEN"
         ],
         "optional": []
       }
