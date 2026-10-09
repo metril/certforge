@@ -1,7 +1,7 @@
 -- server_deployments: a server grant's own deploy state (Task 11), the
 -- way deployments/agent reports do for an agent-run grant.
 
--- name: UpsertServerDeploymentPending :exec
+-- name: UpsertServerDeploymentPending :one
 -- Called whenever a server grant's target version changes (create, a new
 -- certificate version via Dispatcher.OnVersion, or an explicit redeploy):
 -- version_id is the version about to be deployed (nil for a certificate
@@ -12,11 +12,15 @@
 -- the same way deployments.state_changed_at does — CASE against the row's
 -- own pre-update status, so a redeploy onto the same still-pending status
 -- (an OnVersion for a version that never got picked up) does not reset it.
-INSERT INTO server_deployments (grant_id, version_id, status, last_error, updated_at, state_changed_at)
-VALUES (sqlc.arg(grant_id), sqlc.narg(version_id), 'pending', '', now(), now())
+-- deploy_seq is bumped on every call and returned: it rides in the job args
+-- (making a re-enqueue of the same version distinct from a running job) and
+-- guards both Mark* queries against a stale job.
+INSERT INTO server_deployments (grant_id, version_id, status, last_error, updated_at, state_changed_at, deploy_seq)
+VALUES (sqlc.arg(grant_id), sqlc.narg(version_id), 'pending', '', now(), now(), 1)
 ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, status = 'pending',
-       last_error = '', updated_at = now(),
-       state_changed_at = CASE WHEN server_deployments.status IS DISTINCT FROM 'pending' THEN now() ELSE server_deployments.state_changed_at END;
+       last_error = '', updated_at = now(), deploy_seq = server_deployments.deploy_seq + 1,
+       state_changed_at = CASE WHEN server_deployments.status IS DISTINCT FROM 'pending' THEN now() ELSE server_deployments.state_changed_at END
+RETURNING deploy_seq;
 
 -- name: MarkServerDeploymentDeployed :exec
 -- version_id is additionally checked (batch-5 review): a job for an older
@@ -27,7 +31,7 @@ ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, status = 
 -- guard. state_changed_at: same CASE convention as UpsertServerDeploymentPending.
 UPDATE server_deployments SET status = 'deployed', deployed_at = now(), last_error = '', updated_at = now(),
        state_changed_at = CASE WHEN status IS DISTINCT FROM 'deployed' THEN now() ELSE state_changed_at END
-WHERE grant_id = sqlc.arg(grant_id) AND version_id = sqlc.arg(version_id);
+WHERE grant_id = sqlc.arg(grant_id) AND version_id = sqlc.arg(version_id) AND deploy_seq = sqlc.arg(deploy_seq);
 
 -- name: MarkServerDeploymentFailed :exec
 -- last_error is the caller's own redacted, truncated (<=1000 chars) text
@@ -40,7 +44,7 @@ WHERE grant_id = sqlc.arg(grant_id) AND version_id = sqlc.arg(version_id);
 -- deployment out of the retention window instead of re-emitting forever.
 UPDATE server_deployments SET status = 'failed', last_error = sqlc.arg(last_error), updated_at = now(),
        state_changed_at = CASE WHEN status IS DISTINCT FROM 'failed' THEN now() ELSE state_changed_at END
-WHERE grant_id = sqlc.arg(grant_id) AND version_id = sqlc.arg(version_id);
+WHERE grant_id = sqlc.arg(grant_id) AND version_id = sqlc.arg(version_id) AND deploy_seq = sqlc.arg(deploy_seq);
 
 -- name: ServerDeployGrant :one
 -- Everything DeployWorker needs for one grant_id, in a single round trip:
@@ -60,7 +64,7 @@ SELECT g.id, g.cert_id, g.deploy_target_id, t.org_id, o.slug AS org_slug, t.type
        t.secret_cfg AS target_secret_cfg, t.name AS target_name,
        ce.name AS certificate_name, ce.common_name AS certificate_common_name, ce.sans AS certificate_sans,
        ce.current_version_id, ol.files AS layout_files, ol.password AS layout_password, ol.extra_cert_ids AS layout_extra_cert_ids,
-       sd.version_id AS pending_version_id
+       sd.version_id AS pending_version_id, sd.deploy_seq AS pending_deploy_seq
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN orgs o ON o.id = t.org_id

@@ -49,6 +49,11 @@ type Store struct {
 	box crypto.Box
 }
 
+// WithQueries returns a Store reading through q (a transaction's queries).
+func (s *Store) WithQueries(q *sqlcgen.Queries) *Store {
+	return &Store{q: q, box: s.box}
+}
+
 // WithTx returns a Store whose queries run in tx.
 func (s *Store) WithTx(tx pgx.Tx) *Store {
 	return &Store{q: s.q.WithTx(tx), box: s.box}

@@ -75,6 +75,14 @@ func (s *Store) decode(ctx context.Context, row sqlcgen.AgentCa) (*CA, error) {
 	return &CA{ID: row.ID, Status: row.Status, Cert: cert, Key: key, CreatedAt: row.CreatedAt}, nil
 }
 
+// WithQueries returns a Store reading through q (a transaction's queries),
+// so a read inside an open transaction does not take a second pool connection.
+func (s *Store) WithQueries(q *sqlcgen.Queries) *Store {
+	c := *s
+	c.q = q
+	return &c
+}
+
 // Active returns the active CA, or ErrNoActive.
 func (s *Store) Active(ctx context.Context) (*CA, error) {
 	row, err := s.q.GetActiveAgentCA(ctx)

@@ -106,7 +106,7 @@ func (s *Service) Enroll(ctx context.Context, req agentproto.EnrollRequest) (age
 	if cur.Status != "pending" {
 		return agentproto.EnrollResponse{}, conflict("This client is %s; re-enrol it for a new token.", cur.Status)
 	}
-	ca, err := s.CA.Active(ctx)
+	ca, err := s.CA.WithQueries(q).Active(ctx)
 	if err != nil {
 		return agentproto.EnrollResponse{}, err
 	}
@@ -125,7 +125,7 @@ func (s *Service) Enroll(ctx context.Context, req agentproto.EnrollRequest) (age
 	if err != nil {
 		return agentproto.EnrollResponse{}, err
 	}
-	trusted, err = s.CA.Trusted(ctx)
+	trusted, err = s.CA.WithQueries(q).Trusted(ctx)
 	if err != nil {
 		return agentproto.EnrollResponse{}, err
 	}
@@ -196,7 +196,7 @@ func (s *Service) Renew(ctx context.Context, c sqlcgen.Client, csrPEM string) (a
 	if err != nil {
 		return agentproto.RenewResponse{}, err
 	}
-	trusted, err := s.CA.Trusted(ctx)
+	trusted, err := s.CA.WithQueries(q).Trusted(ctx)
 	if err != nil {
 		return agentproto.RenewResponse{}, err
 	}

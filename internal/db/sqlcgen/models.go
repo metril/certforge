@@ -374,6 +374,7 @@ type ServerDeployment struct {
 	DeployedAt     *time.Time `json:"deployed_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 	StateChangedAt time.Time  `json:"state_changed_at"`
+	DeploySeq      int64      `json:"deploy_seq"`
 }
 
 type Session struct {
