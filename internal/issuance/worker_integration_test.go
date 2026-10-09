@@ -14,6 +14,7 @@ import (
 
 	legochallenge "github.com/go-acme/lego/v4/challenge"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
@@ -711,5 +712,61 @@ func TestSucceedAppendsARIPollErrorToAttemptLog(t *testing.T) {
 	}
 	if !strings.Contains(a.Log, "ari boom") {
 		t.Fatalf("attempt log = %q, want it to mention the ari poll error", a.Log)
+	}
+}
+
+// revokingSigner revokes the cert's current version mid-attempt (as a
+// revoke request landing while DNS propagation is in flight) and then
+// returns the issued material.
+type revokingSigner struct {
+	fakeSigner
+	pool   *pgxpool.Pool
+	certID uuid.UUID
+}
+
+func (r *revokingSigner) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Issued, error) {
+	iss, err := r.fakeSigner.Issue(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := r.pool.Exec(ctx, `UPDATE certificate_versions SET revoked_at = now() WHERE cert_id = $1`, r.certID); err != nil {
+		return nil, err
+	}
+	return iss, nil
+}
+
+// A key revoked mid-attempt must not leave the new version scheduled for a
+// normal renewal: succeed keeps the version but makes the cert due now.
+func TestSucceedRenewsNowWhenKeyRevokedMidAttempt(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+		Name: "revoke-mid", CommonName: "revoke-mid.example.test",
+		Rules: []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := issuedFor(t, c.Names(), now0)
+	w := newWorker(f, &fakeSigner{issued: first})
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	second := *first
+	second.Serial = "02"
+	rs := &revokingSigner{fakeSigner: fakeSigner{issued: &second}, pool: f.pool, certID: c.ID}
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return rs, nil }
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	var due bool
+	if err := f.pool.QueryRow(context.Background(), `SELECT next_renew_at <= now() + interval '1 minute' FROM certificates WHERE id = $1`, c.ID).Scan(&due); err != nil {
+		t.Fatal(err)
+	}
+	if !due {
+		t.Fatal("next_renew_at was not reset to now after the key was revoked mid-attempt")
+	}
+	if a := lastAttempt(t, f, c.ID); strings.Contains(a.Log, "names changed") {
+		t.Fatalf("attempt log wrongly says names changed: %q", a.Log)
 	}
 }

@@ -133,7 +133,7 @@ it('check now needs alerts:write', async () => {
   const { user } = renderRoute('/o/acme/alerts/monitors');
   const table = await screen.findByRole('table', { name: 'Monitors' });
   const btn = within(table).getByRole('button', { name: 'Check edge now' });
-  expect(btn).toBeDisabled();
+  expect(btn).toHaveAttribute('aria-disabled', 'true');
   await user.hover(btn);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the alerts:write permission');
 });

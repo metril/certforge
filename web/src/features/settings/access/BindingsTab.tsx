@@ -201,6 +201,7 @@ export function BindingsTab() {
         />
         <Combobox
           aria-label="Org"
+          clearable
           value={search.orgId}
           onChange={(v) => void navigate({ search: (prev) => ({ ...prev, orgId: v }), replace: true })}
           options={orgOptions}

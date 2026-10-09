@@ -399,22 +399,36 @@ func reuseKey(ctx context.Context, src keySource, cert Certificate, eff Effectiv
 		tl.Logf("reuseKey requested but the stored key is %s, not %s; generating a fresh key", kt, eff.KeyType.Value)
 		return nil
 	}
-	versions, err := src.List(ctx, cert.ID)
+	revoked, err := revokedVersionWithKey(ctx, src, cert.ID, key)
 	if err != nil {
 		tl.Logf("reuseKey requested but versions could not be listed (%v); generating a fresh key", err)
 		return nil
+	}
+	if revoked != nil {
+		tl.Logf("reuseKey requested but the stored key belongs to revoked version %s; generating a fresh key", *revoked)
+		return nil
+	}
+	return key
+}
+
+// revokedVersionWithKey returns the ID of a revoked version of certID whose
+// private key equals key, or nil when none does.
+func revokedVersionWithKey(ctx context.Context, src keySource, certID uuid.UUID, key []byte) (*uuid.UUID, error) {
+	versions, err := src.List(ctx, certID)
+	if err != nil {
+		return nil, err
 	}
 	for _, v := range versions {
 		if v.RevokedAt == nil || !v.HasKey {
 			continue
 		}
-		rk, _, err := src.PrivateKey(ctx, cert.ID, v.ID)
+		rk, _, err := src.PrivateKey(ctx, certID, v.ID)
 		if err == nil && bytes.Equal(rk, key) {
-			tl.Logf("reuseKey requested but the stored key belongs to revoked version %s; generating a fresh key", v.ID)
-			return nil
+			id := v.ID
+			return &id, nil
 		}
 	}
-	return key
+	return nil, nil
 }
 
 // issuanceSettings loads the global "issuance" section through w.Settings,
@@ -672,6 +686,15 @@ func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Eff
 }
 
 func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, iss *signer.Issued, eff Effective, start time.Time) error {
+	// Checked before the tx opens: reading through the pool while tx holds a
+	// connection and row locks risks the deadlock described below.
+	var revoked *uuid.UUID
+	if len(iss.PrivateKeyPKCS8) > 0 {
+		var err error
+		if revoked, err = revokedVersionWithKey(ctx, w.Certs, cert.ID, iss.PrivateKeyPKCS8); err != nil {
+			return err
+		}
+	}
 	tx, err := w.Store.Begin(ctx)
 	if err != nil {
 		return err
@@ -713,6 +736,14 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 		tl.Logf("names changed while this attempt was running; scheduling an immediate reissue at %s instead of the normal renewal date %s",
 			actualNext.UTC().Format(time.RFC3339), next.UTC().Format(time.RFC3339))
 		next = *actualNext
+	}
+	if revoked != nil {
+		w.Log.Warn("issued key matches a revoked version; scheduling an immediate reissue", "cert", cert.ID, "revokedVersion", *revoked)
+		tl.Logf("issued key belongs to revoked version %s; scheduling an immediate reissue with a fresh key", *revoked)
+		if err := w.Store.q.WithTx(tx).RenewNowIfCurrentVersion(ctx, sqlcgen.RenewNowIfCurrentVersionParams{ID: cert.ID, CurrentVersionID: &v.ID}); err != nil {
+			return err
+		}
+		next = w.Now()
 	}
 	tl.Step("store", challenge.StepSuccess, "version "+v.ID.String())
 	tl.Logf("issued serial %s valid until %s; next renewal %s", iss.Serial, iss.NotAfter.UTC().Format(time.RFC3339), next.UTC().Format(time.RFC3339))

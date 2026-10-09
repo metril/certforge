@@ -109,6 +109,7 @@ export function EnrolPage() {
             <Combobox
               id="client-site"
               aria-label="Site"
+              clearable
               value={siteId}
               onChange={setSiteId}
               options={sites.map((s) => ({ value: s.id, label: s.name }))}

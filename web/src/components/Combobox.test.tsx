@@ -21,6 +21,16 @@ function Harness() {
   );
 }
 
+it('has no clear button by default, and shows one only when clearable', () => {
+  const opts = [{ value: 'a', label: 'Alpha' }];
+  const props = { 'aria-label': 'X', value: 'a', onChange: () => {}, options: opts, placeholder: 'p', emptyText: 'e' };
+  const first = renderUI(<Combobox {...props} />);
+  expect(screen.queryByRole('button', { name: 'Clear X' })).toBeNull();
+  first.unmount();
+  renderUI(<Combobox {...props} clearable />);
+  expect(screen.getByRole('button', { name: 'Clear X' })).toBeInTheDocument();
+});
+
 // Review fix round 1 (B4 shared with MultiCombobox): a disabled option shows
 // its hint as a tooltip and cannot be picked.
 it('a disabled option shows its hint and cannot be picked', async () => {

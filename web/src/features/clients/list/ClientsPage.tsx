@@ -169,6 +169,7 @@ export function ClientsPage() {
                   <div className="w-full md:w-40">
                     <Combobox
                       aria-label="Site"
+                      clearable
                       value={search.site}
                       onChange={(v) => setSearch({ site: v })}
                       options={sites.map((s) => ({ value: s.id, label: s.name }))}

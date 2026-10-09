@@ -106,13 +106,13 @@ it('keeps every in-flight redeploy disabled until its own request settles', asyn
   await user.click(btn('www'));
   await user.click(btn('mail'));
   await waitFor(() => expect(Object.keys(hold)).toHaveLength(2));
-  expect(btn('www')).toBeDisabled();
-  expect(btn('mail')).toBeDisabled();
+  expect(btn('www')).toHaveAttribute('aria-disabled', 'true');
+  expect(btn('mail')).toHaveAttribute('aria-disabled', 'true');
   hold['g-3']!();
-  await waitFor(() => expect(btn('mail')).toBeEnabled());
-  expect(btn('www')).toBeDisabled();
+  await waitFor(() => expect(btn('mail')).not.toHaveAttribute('aria-disabled'));
+  expect(btn('www')).toHaveAttribute('aria-disabled', 'true');
   hold['g-1']!();
-  await waitFor(() => expect(btn('www')).toBeEnabled());
+  await waitFor(() => expect(btn('www')).not.toHaveAttribute('aria-disabled'));
 });
 
 it('shows the agent error of a failed deployment and toggles rows through the URL', async () => {
@@ -152,8 +152,8 @@ it('disables writes for a viewer', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
   renderRoute('/o/acme/clients/cl-1/certificates');
   await findLoadedTable();
-  expect(screen.getByRole('button', { name: 'Redeploy www' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Remove www' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Redeploy www' })).toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('button', { name: 'Remove www' })).toHaveAttribute('aria-disabled', 'true');
 });
 
 it('explains disabled writes on a revoked client without blaming permissions', async () => {
@@ -161,8 +161,8 @@ it('explains disabled writes on a revoked client without blaming permissions', a
   renderRoute('/o/acme/clients/cl-1/certificates');
   await findLoadedTable();
   const remove = screen.getByRole('button', { name: 'Remove www' });
-  expect(remove).toBeDisabled();
-  act(() => (remove.parentElement as HTMLElement).focus());
+  expect(remove).toHaveAttribute('aria-disabled', 'true');
+  act(() => remove.focus());
   expect(await screen.findByRole('tooltip')).toHaveTextContent('The client is revoked');
 });
 
@@ -207,9 +207,9 @@ it('only disables the row being redeployed', async () => {
   const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
   await findLoadedTable();
   await user.click(screen.getByRole('button', { name: 'Redeploy www' }));
-  expect(screen.getByRole('button', { name: 'Redeploy www' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Redeploy api' })).toBeEnabled();
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Redeploy www' })).toBeEnabled());
+  expect(screen.getByRole('button', { name: 'Redeploy www' })).toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('button', { name: 'Redeploy api' })).not.toHaveAttribute('aria-disabled');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Redeploy www' })).not.toHaveAttribute('aria-disabled'));
 });
 
 it('shows a toast when redeploy fails', async () => {

@@ -97,7 +97,7 @@ it('refuses a relative directory before sending', async () => {
 it('blocks deleting a target in use and deletes an unused one by name', async () => {
   const { user } = renderRoute('/o/acme/delivery/targets');
   await screen.findByRole('table', { name: 'Deploy targets' });
-  expect(screen.getByRole('button', { name: 'Delete edge traefik' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Delete edge traefik' })).toHaveAttribute('aria-disabled', 'true');
   await user.click(screen.getByRole('button', { name: 'Delete spare' }));
   await user.type(screen.getByLabelText(/to confirm/), 'spare');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));

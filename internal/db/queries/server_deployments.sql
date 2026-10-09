@@ -89,3 +89,19 @@ SELECT g.id, ce.current_version_id FROM client_cert_grants g
 JOIN output_specs o ON o.id = g.output_spec_id
 JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.removed_at IS NULL AND g.client_id IS NULL AND sqlc.arg(cert_id)::uuid = ANY(o.extra_cert_ids);
+
+-- name: StaleServerDeployments :many
+-- Dispatcher.SweepDeployments' safety net: live server grants whose
+-- deployment is missing or not on the certificate's current version, or
+-- that sit pending for over 15 minutes (a dropped river job) or failed for
+-- over 6 hours (so a permanently failing target is not re-armed every cycle). Bounded.
+SELECT g.id, ce.current_version_id FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN server_deployments sd ON sd.grant_id = g.id
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND ce.current_version_id IS NOT NULL
+  AND (sd.grant_id IS NULL
+       OR sd.version_id IS DISTINCT FROM ce.current_version_id
+       OR (sd.status = 'pending' AND sd.updated_at < now() - interval '15 minutes')
+       OR (sd.status = 'failed' AND sd.updated_at < now() - interval '6 hours'))
+ORDER BY sd.updated_at NULLS FIRST
+LIMIT 200;

@@ -6,14 +6,14 @@ import { RowActions } from './RowActions';
 it.each([
   { canWrite: false, grantCount: 0 },
   { canWrite: true, grantCount: 2 },
-])('disabled Delete has a single tab-stop wrapper ($canWrite, $grantCount)', ({ canWrite, grantCount }) => {
+])('disabled Delete has a single tab-stop ($canWrite, $grantCount)', ({ canWrite, grantCount }) => {
   render(
     <TooltipProvider>
       <RowActions name="x" grantCount={grantCount} canWrite={canWrite} onOpen={() => {}} onDelete={() => {}} />
     </TooltipProvider>,
   );
   const btn = screen.getByRole('button', { name: 'Delete x' });
-  expect(btn).toBeDisabled();
-  expect(btn.parentElement).toHaveAttribute('tabindex', '0');
-  expect(btn.parentElement!.parentElement).not.toHaveAttribute('tabindex');
+  expect(btn).toHaveAttribute('aria-disabled', 'true');
+  expect(btn).not.toHaveAttribute('tabindex', '-1');
+  expect(btn.parentElement).not.toHaveAttribute('tabindex');
 });
