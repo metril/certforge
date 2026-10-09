@@ -51,6 +51,7 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
   const [alias, setAlias] = useState('');
   const [serverError, setServerError] = useState<{ field: string; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const { status: copyStatus, copy } = useCopy(password);
 
   // Reads hasKey from versionsQuery (not cert.currentVersion), since the
@@ -87,7 +88,10 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
         if (format === 'jks' && alias) body.alias = alias;
         await exportVersion(orgId, cert.id, versionId, body, cert.name);
       }
-      onOpenChange(false);
+      // A generated password lives only in this sheet's state: keep the sheet
+      // open (password still copyable) and close on user action.
+      if ((format === 'p12' || format === 'jks') && !own) setDone(true);
+      else onOpenChange(false);
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
         const field = fieldOfTitle(e.problem.title);
@@ -278,9 +282,19 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
               <HelpTip id="download.key" />
             </div>
           )}
+          {done && (
+            <p role="status" className="text-sm text-valid">
+              Downloaded. Copy the password now; it is not shown again once this sheet closes.
+            </p>
+          )}
           <Button disabled={disabled} onClick={() => void run()}>
             {label}
           </Button>
+          {done && (
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Done
+            </Button>
+          )}
         </div>
       </SheetContent>
     </Sheet>
