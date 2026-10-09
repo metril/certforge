@@ -64,6 +64,7 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
 
   function changeFormat(f: Format) {
     setFormat(f);
+    setDone(false);
     setServerError(null);
     if (f === 'pem') setParts(['fullchain']);
     else if (f === 'der') setParts(['cert']);
@@ -228,7 +229,10 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
                       variant="ghost"
                       size="icon"
                       label="Regenerate password"
-                      onClick={() => setPassword(generatePassword())}
+                      onClick={() => {
+                        setPassword(generatePassword());
+                        setDone(false);
+                      }}
                     >
                       <RefreshCw className="size-4" aria-hidden />
                     </IconButton>
@@ -242,6 +246,7 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
                 checked={own}
                 onCheckedChange={(v) => {
                   setOwn(v);
+                  setDone(false);
                   setServerError(null);
                 }}
                 onText="Own"
