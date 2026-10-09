@@ -770,3 +770,40 @@ func TestSucceedRenewsNowWhenKeyRevokedMidAttempt(t *testing.T) {
 		t.Fatalf("attempt log wrongly says names changed: %q", a.Log)
 	}
 }
+
+// A revoke committed after the issuer finished but before succeed's
+// transaction must still be seen: the revoked-key check runs inside the tx.
+func TestSucceedRenewsNowWhenKeyRevokedBeforeTx(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+		Name: "revoke-pre-tx", CommonName: "revoke-pre-tx.example.test",
+		Rules: []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := issuedFor(t, c.Names(), now0)
+	w := newWorker(f, &fakeSigner{issued: first})
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	second := *first
+	second.Serial = "02"
+	w.NewSigner = func(context.Context, CA) (signer.Signer, error) { return &fakeSigner{issued: &second}, nil }
+	w.beforeSucceedTx = func() {
+		if _, err := f.pool.Exec(context.Background(), `UPDATE certificate_versions SET revoked_at = now() WHERE cert_id = $1`, c.ID); err != nil {
+			t.Error(err)
+		}
+	}
+	if err := w.Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	var due bool
+	if err := f.pool.QueryRow(context.Background(), `SELECT next_renew_at <= now() + interval '1 minute' FROM certificates WHERE id = $1`, c.ID).Scan(&due); err != nil {
+		t.Fatal(err)
+	}
+	if !due {
+		t.Fatal("next_renew_at was not reset to now after the key was revoked before the tx")
+	}
+}

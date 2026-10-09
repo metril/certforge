@@ -12,6 +12,7 @@ import {
 import { CircleAlert, Crown, Globe, ShieldAlert, X } from 'lucide-react';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
+import { IconButton } from '@/components/IconButton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Textarea } from '@/components/ui/textarea';
 import { help, type HelpKey } from '@/lib/help';
@@ -126,23 +127,27 @@ const NameChip = memo(function NameChip({
         </>
       )}
       {!isCn && !bad && (
-        <button
+        <IconButton
           type="button"
-          aria-label={`Make ${name.value} the common name`}
+          variant="ghost"
+          size="icon-xs"
+          label={`Make ${name.value} the common name`}
           onClick={() => dispatch({ type: 'setCn', name: name.value })}
-          className="rounded-sm p-1 text-ink-muted hover:text-ink"
+          className="size-auto rounded-sm p-1 text-ink-muted hover:bg-transparent hover:text-ink"
         >
           <Crown className="size-3.5" aria-hidden />
-        </button>
+        </IconButton>
       )}
-      <button
+      <IconButton
         type="button"
-        aria-label={`Remove ${name.value}`}
+        variant="ghost"
+        size="icon-xs"
+        label={`Remove ${name.value}`}
         onClick={() => dispatch({ type: 'removeName', name: name.value })}
-        className="rounded-sm p-1 text-ink-muted hover:text-ink"
+        className="size-auto rounded-sm p-1 text-ink-muted hover:bg-transparent hover:text-ink"
       >
         <X className="size-3.5" aria-hidden />
-      </button>
+      </IconButton>
     </span>
   );
 });

@@ -295,7 +295,7 @@ export function UsersTab() {
               list="users"
               current={{ q: search.q }}
               onApply={(s) =>
-                void navigate({ search: (prev) => ({ ...prev, ...s }) })
+                void navigate({ search: (prev) => ({ ...prev, q: undefined, ...s }) })
               }
             />
           </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Bookmark, X } from 'lucide-react';
+import { IconButton } from '@/components/IconButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -39,9 +40,9 @@ export function SavedViews({ list, current, onApply }: Props) {
       {views.map((v) => (
         <span key={v.name} className="inline-flex h-7 items-center rounded-sm border border-border text-sm">
           <button type="button" className="px-2.5 hover:bg-subtle" onClick={() => onApply(v.search)}>{v.name}</button>
-          <button type="button" aria-label={`Delete view ${v.name}`} className="px-1 hover:bg-subtle" onClick={() => update(views.filter((x) => x.name !== v.name))}>
+          <IconButton type="button" variant="ghost" size="icon-xs" label={`Delete view ${v.name}`} className="h-full w-auto rounded-none px-1 hover:bg-subtle" onClick={() => update(views.filter((x) => x.name !== v.name))}>
             <X className="size-3.5" aria-hidden />
-          </button>
+          </IconButton>
         </span>
       ))}
       <Popover open={open} onOpenChange={setOpen}>

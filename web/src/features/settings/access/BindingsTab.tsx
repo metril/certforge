@@ -215,7 +215,7 @@ export function BindingsTab() {
           <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
           <Input aria-label="Search bindings" className="pl-8" placeholder="Ann" value={text} onChange={(e) => setText(e.target.value)} />
         </div>
-        <SavedViews list="bindings" current={{ q: search.q, type: search.type, orgId: search.orgId }} onApply={(s) => void navigate({ search: (prev) => ({ ...prev, ...s }) })} />
+        <SavedViews list="bindings" current={{ q: search.q, type: search.type, orgId: search.orgId }} onApply={(s) => void navigate({ search: (prev) => ({ ...prev, q: undefined, type: undefined, orgId: undefined, ...s }) })} />
       </div>
       {failedWithoutData(q) ? (
         <ErrorState message={`Couldn't load bindings. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />

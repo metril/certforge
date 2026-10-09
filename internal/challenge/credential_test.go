@@ -322,3 +322,33 @@ func TestMergeUpdateDropsRetiredStoredKey(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// lego's f5xc builds https://<tenant>.<server>; both fields end up inside a
+// host, so they must not carry URL syntax and the composed host is checked.
+func TestCheckURLFieldsF5XCComposedHost(t *testing.T) {
+	r := mapResolver{
+		"acme.console.ves.volterra.io": {"203.0.113.9"},
+		"acme.dns.example.test":        {"203.0.113.9"},
+		"acme.lo.example.test":         {"::1"},
+	}
+	cases := []struct {
+		name string
+		cfg  map[string]string
+		bad  string
+	}{
+		{"tenant injects authority", map[string]string{"F5XC_TENANT_NAME": "@127.0.0.1:8200/#"}, "F5XC_TENANT_NAME"},
+		{"tenant with slash", map[string]string{"F5XC_TENANT_NAME": "a/b"}, "F5XC_TENANT_NAME"},
+		{"tenant with space", map[string]string{"F5XC_TENANT_NAME": "a b"}, "F5XC_TENANT_NAME"},
+		{"server injects path", map[string]string{"F5XC_TENANT_NAME": "acme", "F5XC_SERVER": "dns.example.test/#"}, "F5XC_SERVER"},
+		{"server with port", map[string]string{"F5XC_TENANT_NAME": "acme", "F5XC_SERVER": "dns.example.test:8443"}, "F5XC_SERVER"},
+		{"composed host loopback", map[string]string{"F5XC_TENANT_NAME": "acme", "F5XC_SERVER": "lo.example.test"}, "F5XC_SERVER"},
+		{"default server ok", map[string]string{"F5XC_TENANT_NAME": "acme"}, ""},
+		{"custom server ok", map[string]string{"F5XC_TENANT_NAME": "acme", "F5XC_SERVER": "dns.example.test"}, ""},
+	}
+	for _, c := range cases {
+		err := CheckURLFields(context.Background(), "f5xc", c.cfg, false, r)
+		if c.bad == "" && err != nil || c.bad != "" && (err == nil || !strings.Contains(err.Error(), c.bad)) {
+			t.Errorf("%s: err = %v, want field %q", c.name, err, c.bad)
+		}
+	}
+}

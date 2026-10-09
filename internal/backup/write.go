@@ -115,6 +115,12 @@ func readRootSealed(ctx context.Context, tx pgx.Tx) ([]byte, error) {
 // restoreLoad's own root check is real defense in depth, not merely an
 // assumption Write happens to uphold.
 func writeTx(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSealed []byte) (Summary, error) {
+	return writeTxTables(ctx, tx, w, opts, rootSealed, Manifest)
+}
+
+// writeTxTables is writeTx over an explicit table list (always Manifest
+// outside tests; a prefix simulates an older build's archive).
+func writeTxTables(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSealed []byte, tables []string) (Summary, error) {
 	version, err := snapshotVersion(ctx, tx)
 	if err != nil {
 		return Summary{}, err
@@ -135,7 +141,7 @@ func writeTx(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSe
 		PreviousKEKIDs:   opts.PreviousKEKIDs,
 		RootSealed:       rootSealed,
 		Salt:             salt,
-		Tables:           Manifest,
+		Tables:           tables,
 	}
 	hjson, err := json.Marshal(header)
 	if err != nil {
@@ -173,8 +179,8 @@ func writeTx(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSe
 		defer spool.close()
 	}
 
-	sums := make([]TableSum, 0, len(Manifest))
-	for _, table := range Manifest {
+	sums := make([]TableSum, 0, len(tables))
+	for _, table := range tables {
 		sum, err := dumpTable(ctx, tx, tw, spool, table)
 		if err != nil {
 			return Summary{}, err
