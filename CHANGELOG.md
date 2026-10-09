@@ -2,6 +2,17 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.7.3](https://github.com/metril/certforge/compare/v0.7.2...v0.7.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* **challenge:** validate host-composing credential fields for f5xc ([3757222](https://github.com/metril/certforge/commit/3757222f9bf96329a40d07d3089cd0c45b55548a))
+* **issuance:** re-check revoked key inside the success transaction ([b85f803](https://github.com/metril/certforge/commit/b85f803120424cdd943fe0fd1b7c89018c818db5))
+* review round 5 (backup compatibility, sweep and revoke races, f5xc host, web tooltips) ([eb07b83](https://github.com/metril/certforge/commit/eb07b836d255fe5f199f981d34665077b7a90527))
+* **web:** saved views clear the list's other filters on apply ([42f7495](https://github.com/metril/certforge/commit/42f7495ad38269080b1aea04509470a2f70ceac6))
+* **web:** tooltips on icon-only close and remove buttons ([8f7c170](https://github.com/metril/certforge/commit/8f7c170c819b23498ea9e4fd7cc51f3afa8634a5))
+
 ## [0.7.2](https://github.com/metril/certforge/compare/v0.7.1...v0.7.2) (2026-10-09)
 
 
