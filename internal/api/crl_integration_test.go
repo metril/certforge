@@ -429,8 +429,10 @@ func TestRevokeCurrentVersionTriggersRenewal(t *testing.T) {
 	}
 }
 
-// RFC 5280 5.2.3: every freshly signed CRL needs a distinct, increasing cRLNumber.
-func TestCRLNumberIncreasesOnEachSigning(t *testing.T) {
+// RFC 5280 5.2.3: a stored CRL is served unchanged (same number, same
+// ThisUpdate) until the revoked set changes or it nears NextUpdate; each
+// re-signing takes a greater cRLNumber.
+func TestCRLStoredAndRenumberedOnChange(t *testing.T) {
 	f := newAPIFixture(t)
 	res, err := f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org, Body: &gen.CAInput{
 		Name: "NumCA", Type: ptrT(gen.Localca), Config: ptrT(localCASubjectConfig()),
@@ -439,9 +441,9 @@ func TestCRLNumberIncreasesOnEachSigning(t *testing.T) {
 		t.Fatal(err)
 	}
 	ca := res.(gen.CreateCa201JSONResponse)
-	var last int64 = -1
-	for i := 0; i < 3; i++ {
-		der, err := f.store.CRL(context.Background(), ca.Id, "")
+	ctx := context.Background()
+	get := func() *x509.RevocationList {
+		der, err := f.store.CRL(ctx, ca.Id, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -449,10 +451,27 @@ func TestCRLNumberIncreasesOnEachSigning(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		n := crl.Number.Int64()
-		if n <= last {
-			t.Fatalf("signing %d: cRLNumber %d not greater than %d", i, n, last)
-		}
-		last = n
+		return crl
+	}
+	a, b := get(), get()
+	if a.Number.Cmp(b.Number) != 0 || !a.ThisUpdate.Equal(b.ThisUpdate) {
+		t.Fatalf("unchanged CRL re-signed: %v/%v vs %v/%v", a.Number, a.ThisUpdate, b.Number, b.ThisUpdate)
+	}
+	_, v := issueLocalLeaf(t, f, ca.Id, "num.example.test")
+	if _, err := f.srv.RevokeCertificateVersion(f.as("operator"), gen.RevokeCertificateVersionRequestObject{
+		OrgId: f.org, Id: v.CertID, Vid: v.ID, Body: &gen.RevokeCertificateVersionJSONRequestBody{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := get()
+	if c.Number.Cmp(b.Number) <= 0 || len(c.RevokedCertificateEntries) != 1 {
+		t.Fatalf("after revoke: number %v (was %v), entries %d", c.Number, b.Number, len(c.RevokedCertificateEntries))
+	}
+	// Near expiry: age the stored CRL past half its validity.
+	if _, err := f.pool.Exec(ctx, `UPDATE ca_crls SET this_update = this_update - interval '5 days', next_update = next_update - interval '5 days'`); err != nil {
+		t.Fatal(err)
+	}
+	if d := get(); d.Number.Cmp(c.Number) <= 0 {
+		t.Fatalf("near-expiry CRL not re-signed: %v", d.Number)
 	}
 }
