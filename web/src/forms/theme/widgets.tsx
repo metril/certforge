@@ -78,6 +78,7 @@ function SelectWidget(props: WidgetProps) {
       aria-label={label}
       value={current}
       onChange={(i) => (i === undefined ? onChange(options.emptyValue) : chooseByIndex(i))}
+      clearable={!props.required}
       options={enumOptions.map((o, i) => ({ value: String(i), label: o.label }))}
       placeholder="Choose"
       emptyText="No match"
