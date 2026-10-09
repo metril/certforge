@@ -850,7 +850,7 @@ func (s *Server) checkVaultKVOrgPath(ctx context.Context, orgID uuid.UUID, publi
 		return err
 	}
 	if err := deploy.CheckOrgPath(public, org.Slug); err != nil {
-		return &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "config.path: " + err.Error()}
+		return &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "config: " + err.Error()}
 	}
 	return nil
 }

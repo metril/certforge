@@ -36,6 +36,9 @@ func CheckOrgPath(raw json.RawMessage, slug string) error {
 	if _, err := renderPath(cfg.Path, slug, "00000000-0000-0000-0000-000000000000", "name"); err != nil {
 		return err
 	}
+	if strings.Contains(cfg.Mount, "/") {
+		return fmt.Errorf("mount must be a single segment (no /) unless you hold global delivery write")
+	}
 	segs := strings.Split(cfg.Path, "/")
 	ok := len(segs) >= 3 && segs[0] == "certforge" && (segs[1] == slug || segs[1] == "{org}")
 	for _, seg := range segs {

@@ -227,3 +227,24 @@ func TestCheckOrgPath(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckOrgPathMount: a non-global writer may not escape its org's KV
+// namespace through a multi-segment mount.
+func TestCheckOrgPathMount(t *testing.T) {
+	cases := []struct {
+		mount string
+		ok    bool
+	}{
+		{"", true},
+		{"secret", true},
+		{"kv-2", true},
+		{"secret/data/certforge/orgb", false},
+		{"a/b", false},
+	}
+	for _, c := range cases {
+		b, _ := json.Marshal(map[string]string{"mount": c.mount, "path": "certforge/orga/{name}"})
+		if err := CheckOrgPath(b, "orga"); (err == nil) != c.ok {
+			t.Errorf("mount %q: err=%v want ok=%v", c.mount, err, c.ok)
+		}
+	}
+}
