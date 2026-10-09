@@ -29,6 +29,7 @@ it('lists certificates across orgs, read-only', async () => {
   as([{ role: 'admin', orgId: null }]);
   renderRoute('/o/all/certificates');
   const table = await screen.findByRole('table', { name: 'Certificates' });
+  await within(table).findByRole('link', { name: 'db' });
   expect(within(table).getByText(/Lab/)).toBeInTheDocument();
   expect(within(table).getByRole('link', { name: 'db' })).toHaveAttribute('href', '/o/lab/certificates/c-2/overview');
   expect(screen.getByRole('status', { name: 'Read-only view' })).toHaveTextContent('All orgs');

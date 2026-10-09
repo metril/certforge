@@ -1,14 +1,13 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { createColumnHelper } from '@tanstack/react-table';
 import { Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { useCheckMonitor, monitorsQuery } from '@/api/queries/monitors';
 import type { Monitor } from '@/api/types';
 import { CopyField } from '@/components/CopyField';
-import { DataTable } from '@/components/DataTable';
+import { columnHelper, DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { PrimaryCell } from '@/components/PrimaryCell';
@@ -27,7 +26,7 @@ import { AlertsHeader } from './AlertsLayout';
 import { MonitorSheet } from './MonitorSheet';
 import { MonitorStateChip } from './MonitorStateChip';
 
-const col = createColumnHelper<Monitor>();
+const col = columnHelper<Monitor>();
 const MONITOR_LIMIT = 500;
 
 function CheckNowButton({ monitor, orgId }: { monitor: Monitor; orgId: string }) {

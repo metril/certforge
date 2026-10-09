@@ -50,7 +50,7 @@ function isPalette(target: EventTarget | null): boolean {
  */
 export function useShortcuts(chords: ChordMap, onOpenPalette?: () => void): void {
   const pendingKey = useRef<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const chordsRef = useRef(chords);
   chordsRef.current = chords;
   const paletteRef = useRef(onOpenPalette);

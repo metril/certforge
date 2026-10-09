@@ -1,14 +1,13 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { createColumnHelper } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { errorMessage } from "@/api/errors";
 import { usersQuery, useUpdateUser } from "@/api/queries/users";
 import type { UserDetail } from "@/api/types";
 import { ConfirmDestructive } from "@/components/ConfirmDestructive";
-import { DataTable } from "@/components/DataTable";
+import { columnHelper, DataTable } from '@/components/DataTable';
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { SavedViews } from "@/components/SavedViews";
@@ -29,7 +28,7 @@ import { can } from "@/lib/permissions";
 import { fmtDateTime } from "@/lib/time";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 
-const col = createColumnHelper<UserDetail>();
+const col = columnHelper<UserDetail>();
 
 function issuerHost(u: UserDetail): string {
   if (u.localAdmin || !u.oidcIssuer) return "Local";

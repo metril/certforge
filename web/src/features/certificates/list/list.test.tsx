@@ -364,6 +364,6 @@ it('shows how many clients hold each certificate', async () => {
   all = [makeCert({ id: 'c-1', name: 'www', grantCount: 3 }), makeCert({ id: 'c-2', name: 'api' })];
   renderRoute('/o/acme/certificates');
   const table = await screen.findByRole('table', { name: 'Certificates' });
-  const www = within(table).getByRole('link', { name: 'www' }).closest('tr')!;
+  const www = (await within(table).findByRole('link', { name: 'www' })).closest('tr')!;
   expect(within(www).getByText(/3 grants/)).toBeInTheDocument();
 });
