@@ -148,6 +148,8 @@ func seedAllTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) { //no
 	exec(`INSERT INTO deployments (grant_id) VALUES ($1)`, grant)
 	exec(`INSERT INTO hook_runs (client_id, phase, exit_code) VALUES ($1, 'pre_deploy', 0)`, client)
 
+	exec(`INSERT INTO ca_crls (ca_id, issuer_serial, crl_number, revision, der, this_update, next_update)
+		VALUES ($1, 'aa', 1, 0, E'\\x00', now(), now() + interval '7 days')`, ca)
 	exec(`INSERT INTO rate_ledger (ca_id, kind) VALUES ($1, 'new_order')`, ca)
 
 	serverGrant := scanID(`INSERT INTO client_cert_grants (deploy_target_id, cert_id) VALUES ($1, $2) RETURNING id`, target, cert)
@@ -329,7 +331,7 @@ func TestWriteUnusableSpoolFallsBackToMemory(t *testing.T) {
 func TestRestoreLoadsAtMaxVersion(t *testing.T) {
 	ctx := context.Background()
 	srcPool := dbtest.Empty(t)
-	if err := db.MigrateTo(ctx, srcPool, 13); err != nil {
+	if err := db.Migrate(ctx, srcPool); err != nil {
 		t.Fatal(err)
 	}
 	srcQ := sqlcgen.New(srcPool)
@@ -337,7 +339,7 @@ func TestRestoreLoadsAtMaxVersion(t *testing.T) {
 	be := newBackupEnv(srcQ, testKey(2))
 	opts := be.writeOpts(ctx, t)
 
-	if _, err := srcPool.Exec(ctx, `UPDATE goose_db_version SET is_applied = false WHERE version_id = 13`); err != nil {
+	if _, err := srcPool.Exec(ctx, `UPDATE goose_db_version SET is_applied = false WHERE version_id >= 13`); err != nil {
 		t.Fatal(err)
 	}
 
