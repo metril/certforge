@@ -82,6 +82,16 @@ type Ca struct {
 	CrlNumber      int64      `json:"crl_number"`
 }
 
+type CaCrl struct {
+	CaID         uuid.UUID `json:"ca_id"`
+	IssuerSerial string    `json:"issuer_serial"`
+	CrlNumber    int64     `json:"crl_number"`
+	Revision     int64     `json:"revision"`
+	Der          []byte    `json:"der"`
+	ThisUpdate   time.Time `json:"this_update"`
+	NextUpdate   time.Time `json:"next_update"`
+}
+
 type Certificate struct {
 	ID                uuid.UUID  `json:"id"`
 	OrgID             uuid.UUID  `json:"org_id"`

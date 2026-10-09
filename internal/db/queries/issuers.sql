@@ -97,8 +97,16 @@ SELECT (
   + (SELECT count(*) FROM issuance_defaults d WHERE d.config->>'accountId' = sqlc.arg(id)::uuid::text)
 )::bigint AS users;
 
--- name: BumpCACRLNumber :one
--- Atomically takes the next crl_number for a freshly signed CRL (RFC 5280
--- 5.2.3) and returns the CA row as of that bump, so the CRL is built from
--- config.revoked consistent with the number.
-UPDATE cas SET crl_number = crl_number + 1 WHERE id = $1 RETURNING *;
+-- name: LockCAByID :one
+-- Serialises CRL signing for one CA (and with RevokeVersion's LockCA).
+SELECT * FROM cas WHERE id = $1 FOR UPDATE;
+
+-- name: GetCACRL :one
+SELECT * FROM ca_crls WHERE ca_id = $1 AND issuer_serial = $2;
+
+-- name: UpsertCACRL :exec
+INSERT INTO ca_crls (ca_id, issuer_serial, crl_number, revision, der, this_update, next_update)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (ca_id, issuer_serial) DO UPDATE
+SET crl_number = EXCLUDED.crl_number, revision = EXCLUDED.revision, der = EXCLUDED.der,
+    this_update = EXCLUDED.this_update, next_update = EXCLUDED.next_update;

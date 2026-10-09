@@ -439,64 +439,69 @@ func (s *Store) CACRLNumber(ctx context.Context, caID uuid.UUID) (int64, error) 
 // false, unknown issuer serial) — the route never distinguishes them, so a
 // probing client learns nothing.
 func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([]byte, error) {
-	der, _, err := s.CRLNumbered(ctx, caID, issuerSerial)
-	return der, err
-}
-
-// CRLNumbered is CRL, also returning the crl_number the CRL was signed
-// under. Every signing takes a fresh number (RFC 5280 5.2.3: a new
-// ThisUpdate/NextUpdate needs a new cRLNumber).
-func (s *Store) CRLNumbered(ctx context.Context, caID uuid.UUID, issuerSerial string) ([]byte, int64, error) {
-	der, n, err := s.crl(ctx, caID, issuerSerial)
-	if err != nil {
-		return nil, 0, err
-	}
-	return der, n, nil
-}
-
-func (s *Store) crl(ctx context.Context, caID uuid.UUID, issuerSerial string) ([]byte, int64, error) {
 	row, err := s.q.GetCAByID(ctx, caID)
 	if err != nil {
-		return nil, 0, ErrNotFound
+		return nil, ErrNotFound
 	}
 	if row.Type != CATypeLocalCA {
-		return nil, 0, ErrNotFound
+		return nil, ErrNotFound
 	}
 	var cfg localCAConfig
 	if err := json.Unmarshal(row.Config, &cfg); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	if !cfg.CRL {
-		return nil, 0, ErrNotFound
+		return nil, ErrNotFound
 	}
 
 	// An unauthenticated caller can name any serial: reject an unknown one
-	// from the public config before CASecret unseals the CA key (a KEK
-	// unwrap, a Vault call with Transit).
+	// from the public config before anything is unsealed or written.
 	if !knownIssuerSerial(cfg, issuerSerial) {
-		return nil, 0, ErrNotFound
+		return nil, ErrNotFound
+	}
+	key := issuerSerial
+	if key == "" {
+		key = currentIssuerSerial(cfg)
 	}
 
-	row, err = s.q.BumpCACRLNumber(ctx, caID)
+	// Fast path: the stored CRL, while the revoked set is unchanged and it
+	// is still in the first half of its validity.
+	if stored, err := s.q.GetCACRL(ctx, sqlcgen.GetCACRLParams{CaID: caID, IssuerSerial: key}); err == nil && crlFresh(stored, row.CrlNumber, time.Now()) {
+		return stored.Der, nil
+	}
+
+	// Slow path: serialise signers on the CA row (and with revocations),
+	// re-check, then sign with the next cRLNumber (RFC 5280 5.2.3).
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+	row, err = q.LockCAByID(ctx, caID)
+	if err != nil {
+		return nil, ErrNotFound
 	}
 	if err := json.Unmarshal(row.Config, &cfg); err != nil {
-		return nil, 0, err
+		return nil, err
+	}
+	now := time.Now()
+	number := row.CrlNumber + 1 // above any number served before CRLs were stored
+	if stored, err := q.GetCACRL(ctx, sqlcgen.GetCACRLParams{CaID: caID, IssuerSerial: key}); err == nil {
+		if crlFresh(stored, row.CrlNumber, now) {
+			return stored.Der, nil
+		}
+		number = max(number, stored.CrlNumber+1)
 	}
 
 	mat, _, err := s.CASecret(ctx, row, issuerSerial)
 	if err != nil {
 		// Covers a corrupt stored certificate/key (and, as a backstop, an
-		// unknown issuerSerial (retiredMaterial's
-		// ValidationError) and a corrupt stored certificate/key alike:
-		// the route never distinguishes reasons for its 404.
-		return nil, 0, ErrNotFound
+		// unknown issuerSerial): the route never distinguishes reasons.
+		return nil, ErrNotFound
 	}
-
 	issuerHex := mat.Issuing.SerialNumber.Text(16)
 	var revoked []localca.Revoked
-	now := time.Now()
 	for _, re := range cfg.Revoked {
 		if re.IssuerSerial != issuerHex || revokedExpired(re, now) {
 			continue
@@ -507,11 +512,24 @@ func (s *Store) crl(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 		}
 		revoked = append(revoked, localca.Revoked{Serial: sn, RevokedAt: re.At, ReasonCode: re.Reason})
 	}
-	der, err := localca.BuildCRL(mat.Issuing, mat.IssuingKey, revoked, big.NewInt(row.CrlNumber), now)
+	der, err := localca.BuildCRL(mat.Issuing, mat.IssuingKey, revoked, big.NewInt(number), now)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	return der, row.CrlNumber, nil
+	if err := q.UpsertCACRL(ctx, sqlcgen.UpsertCACRLParams{CaID: caID, IssuerSerial: key, CrlNumber: number,
+		Revision: row.CrlNumber, Der: der, ThisUpdate: now, NextUpdate: now.Add(localca.CRLValidity)}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return der, nil
+}
+
+// crlFresh reports whether a stored CRL still reflects the CA's revoked set
+// (revision) and has more than half of its validity left.
+func crlFresh(c sqlcgen.CaCrl, revision int64, now time.Time) bool {
+	return c.Revision == revision && now.Before(c.ThisUpdate.Add(c.NextUpdate.Sub(c.ThisUpdate)/2))
 }
 
 // issuerSerialForLeaf decides which of cfg's issuers signed leaf, by

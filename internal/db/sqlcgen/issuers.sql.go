@@ -28,39 +28,6 @@ func (q *Queries) AccountExistsByEmail(ctx context.Context, arg AccountExistsByE
 	return exists, err
 }
 
-const bumpCACRLNumber = `-- name: BumpCACRLNumber :one
-UPDATE cas SET crl_number = crl_number + 1 WHERE id = $1 RETURNING id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number
-`
-
-// Atomically takes the next crl_number for a freshly signed CRL (RFC 5280
-// 5.2.3) and returns the CA row as of that bump, so the CRL is built from
-// config.revoked consistent with the number.
-func (q *Queries) BumpCACRLNumber(ctx context.Context, id uuid.UUID) (Ca, error) {
-	row := q.db.QueryRow(ctx, bumpCACRLNumber, id)
-	var i Ca
-	err := row.Scan(
-		&i.ID,
-		&i.OrgID,
-		&i.Name,
-		&i.Type,
-		&i.Preset,
-		&i.DirectoryUrl,
-		&i.TrustBundlePem,
-		&i.EabKid,
-		&i.EabHmac,
-		&i.Resolvers,
-		&i.Shared,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Config,
-		&i.SecretCfg,
-		&i.NotBefore,
-		&i.NotAfter,
-		&i.CrlNumber,
-	)
-	return i, err
-}
-
 const countAccountUsers = `-- name: CountAccountUsers :one
 SELECT (
     (SELECT count(*) FROM certificates c WHERE c.overrides->>'accountId' = $1::uuid::text)
@@ -351,6 +318,30 @@ func (q *Queries) GetCAByID(ctx context.Context, id uuid.UUID) (Ca, error) {
 	return i, err
 }
 
+const getCACRL = `-- name: GetCACRL :one
+SELECT ca_id, issuer_serial, crl_number, revision, der, this_update, next_update FROM ca_crls WHERE ca_id = $1 AND issuer_serial = $2
+`
+
+type GetCACRLParams struct {
+	CaID         uuid.UUID `json:"ca_id"`
+	IssuerSerial string    `json:"issuer_serial"`
+}
+
+func (q *Queries) GetCACRL(ctx context.Context, arg GetCACRLParams) (CaCrl, error) {
+	row := q.db.QueryRow(ctx, getCACRL, arg.CaID, arg.IssuerSerial)
+	var i CaCrl
+	err := row.Scan(
+		&i.CaID,
+		&i.IssuerSerial,
+		&i.CrlNumber,
+		&i.Revision,
+		&i.Der,
+		&i.ThisUpdate,
+		&i.NextUpdate,
+	)
+	return i, err
+}
+
 const listAccounts = `-- name: ListAccounts :many
 SELECT id, org_id, ca_id, email, account_key, registration_uri, status, created_at FROM acme_accounts WHERE org_id = $1 ORDER BY email
 `
@@ -502,6 +493,37 @@ func (q *Queries) LockCA(ctx context.Context, arg LockCAParams) (Ca, error) {
 	return i, err
 }
 
+const lockCAByID = `-- name: LockCAByID :one
+SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number FROM cas WHERE id = $1 FOR UPDATE
+`
+
+// Serialises CRL signing for one CA (and with RevokeVersion's LockCA).
+func (q *Queries) LockCAByID(ctx context.Context, id uuid.UUID) (Ca, error) {
+	row := q.db.QueryRow(ctx, lockCAByID, id)
+	var i Ca
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Type,
+		&i.Preset,
+		&i.DirectoryUrl,
+		&i.TrustBundlePem,
+		&i.EabKid,
+		&i.EabHmac,
+		&i.Resolvers,
+		&i.Shared,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Config,
+		&i.SecretCfg,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CrlNumber,
+	)
+	return i, err
+}
+
 const lockCAKeyShare = `-- name: LockCAKeyShare :one
 SELECT id FROM cas WHERE id = $1 FOR KEY SHARE
 `
@@ -629,4 +651,35 @@ func (q *Queries) UpdateCACrypto(ctx context.Context, arg UpdateCACryptoParams) 
 		&i.CrlNumber,
 	)
 	return i, err
+}
+
+const upsertCACRL = `-- name: UpsertCACRL :exec
+INSERT INTO ca_crls (ca_id, issuer_serial, crl_number, revision, der, this_update, next_update)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (ca_id, issuer_serial) DO UPDATE
+SET crl_number = EXCLUDED.crl_number, revision = EXCLUDED.revision, der = EXCLUDED.der,
+    this_update = EXCLUDED.this_update, next_update = EXCLUDED.next_update
+`
+
+type UpsertCACRLParams struct {
+	CaID         uuid.UUID `json:"ca_id"`
+	IssuerSerial string    `json:"issuer_serial"`
+	CrlNumber    int64     `json:"crl_number"`
+	Revision     int64     `json:"revision"`
+	Der          []byte    `json:"der"`
+	ThisUpdate   time.Time `json:"this_update"`
+	NextUpdate   time.Time `json:"next_update"`
+}
+
+func (q *Queries) UpsertCACRL(ctx context.Context, arg UpsertCACRLParams) error {
+	_, err := q.db.Exec(ctx, upsertCACRL,
+		arg.CaID,
+		arg.IssuerSerial,
+		arg.CrlNumber,
+		arg.Revision,
+		arg.Der,
+		arg.ThisUpdate,
+		arg.NextUpdate,
+	)
+	return err
 }
