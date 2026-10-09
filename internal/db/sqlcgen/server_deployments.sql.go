@@ -240,3 +240,43 @@ func (q *Queries) UpsertServerDeploymentPending(ctx context.Context, arg UpsertS
 	err := row.Scan(&deploy_seq)
 	return deploy_seq, err
 }
+
+const staleServerDeployments = `-- name: StaleServerDeployments :many
+SELECT g.id, ce.current_version_id FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN server_deployments sd ON sd.grant_id = g.id
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND ce.current_version_id IS NOT NULL
+  AND (sd.grant_id IS NULL
+       OR sd.version_id IS DISTINCT FROM ce.current_version_id
+       OR (sd.status IN ('pending', 'failed') AND sd.updated_at < now() - interval '15 minutes'))
+ORDER BY sd.updated_at NULLS FIRST
+LIMIT 200
+`
+
+type StaleServerDeploymentsRow struct {
+	ID               uuid.UUID  `json:"id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+}
+
+// Dispatcher.SweepDeployments' safety net: live server grants whose
+// deployment is missing or not on the certificate's current version, or
+// that sit pending/failed for over 15 minutes (a dropped river job). Bounded.
+func (q *Queries) StaleServerDeployments(ctx context.Context) ([]StaleServerDeploymentsRow, error) {
+	rows, err := q.db.Query(ctx, staleServerDeployments)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StaleServerDeploymentsRow{}
+	for rows.Next() {
+		var i StaleServerDeploymentsRow
+		if err := rows.Scan(&i.ID, &i.CurrentVersionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
