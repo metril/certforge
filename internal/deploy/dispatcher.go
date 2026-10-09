@@ -111,6 +111,10 @@ type Dispatcher struct {
 	Events Events
 	River  Inserter
 	Log    *slog.Logger
+
+	// afterStaleRead, when set, runs in SweepDeployments right after the
+	// stale list is read (test seam for the read-then-enqueue race).
+	afterStaleRead func()
 }
 
 func (d *Dispatcher) log() *slog.Logger {
@@ -287,12 +291,15 @@ func (d *Dispatcher) SweepDeployments(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if d.afterStaleRead != nil {
+		d.afterStaleRead()
+	}
 	if len(rows) > 0 {
 		d.log().Info("deploy: re-enqueueing stale server deployments", "grants", len(rows))
 	}
 	var first error
 	for _, r := range rows {
-		if err := d.enqueueTx(ctx, r.ID, r.CurrentVersionID); err != nil {
+		if err := d.sweepOne(ctx, r.ID); err != nil {
 			d.log().Error("deploy: stale server grant not enqueued", "grant", r.ID, "err", err)
 			if first == nil {
 				first = err
@@ -300,6 +307,34 @@ func (d *Dispatcher) SweepDeployments(ctx context.Context) error {
 		}
 	}
 	return first
+}
+
+// sweepOne re-arms one stale grant inside a single transaction that first
+// locks the certificate row and re-reads current_version_id: the stale list
+// was read earlier, so a version that landed since must be deployed (not the
+// old one the list saw), and a grant OnVersion has already put on it is left
+// alone.
+func (d *Dispatcher) sweepOne(ctx context.Context, grantID uuid.UUID) error {
+	tx, err := d.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := d.Q.WithTx(tx)
+	st, err := q.LockServerGrantForSweep(ctx, grantID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !st.Stale {
+		return nil
+	}
+	if err := d.EnqueueTx(ctx, tx, q, grantID, st.CurrentVersionID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // SweepArgs is the periodic river job that runs SweepDeployments.

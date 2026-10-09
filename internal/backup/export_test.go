@@ -19,3 +19,9 @@ import (
 func WriteWithRootForTest(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSealed []byte) (Summary, error) {
 	return writeTx(ctx, tx, w, opts, rootSealed)
 }
+
+// WriteWithTablesForTest writes an archive covering only tables, as an
+// older build with a shorter Manifest would have.
+func WriteWithTablesForTest(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSealed []byte, tables []string) (Summary, error) {
+	return writeTxTables(ctx, tx, w, opts, rootSealed, tables)
+}

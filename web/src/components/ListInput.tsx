@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { CircleAlert, X } from 'lucide-react';
+import { IconButton } from '@/components/IconButton';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -43,14 +44,16 @@ export function ListInput({ id, value, onChange, placeholder, validate, disabled
           <span key={v} className="inline-flex h-6 items-center gap-1 rounded-sm bg-subtle pl-2 pr-1 font-mono text-xs">
             {v}
             {!disabled && (
-              <button
+              <IconButton
                 type="button"
-                aria-label={`Remove ${v}`}
+                variant="ghost"
+                size="icon-xs"
+                label={`Remove ${v}`}
                 onClick={() => onChange(value.filter((x) => x !== v))}
-                className="rounded-sm p-0.5 hover:bg-border"
+                className="size-auto rounded-sm p-0.5 hover:bg-border"
               >
                 <X className="size-3" aria-hidden />
-              </button>
+              </IconButton>
             )}
           </span>
         ))}

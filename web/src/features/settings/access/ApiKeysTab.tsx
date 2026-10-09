@@ -176,7 +176,7 @@ export function ApiKeysTab() {
           <Search className="absolute left-2 top-2.5 size-4 text-ink-muted" aria-hidden />
           <Input aria-label="Search API keys" className="pl-8" placeholder="deploy" value={text} onChange={(e) => setText(e.target.value)} />
         </div>
-        <SavedViews list="apikeys" current={{ q: search.q, state: search.state }} onApply={(s) => void navigate({ search: (prev) => ({ ...prev, ...s }) })} />
+        <SavedViews list="apikeys" current={{ q: search.q, state: search.state }} onApply={(s) => void navigate({ search: (prev) => ({ ...prev, q: undefined, state: undefined, ...s }) })} />
       </div>
       {failedWithoutData(q) ? (
         <ErrorState message={`Couldn't load API keys. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />

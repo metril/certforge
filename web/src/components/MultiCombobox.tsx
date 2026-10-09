@@ -1,3 +1,4 @@
+import { IconButton } from '@/components/IconButton';
 import { useState } from 'react';
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -87,15 +88,17 @@ export function MultiCombobox({ id, value, onChange, options, placeholder, empty
             <li key={v} className="inline-flex h-7 items-center gap-1 rounded-sm border border-primary bg-primary pl-2 pr-0.5 text-sm text-on-primary">
               <Check className="size-3.5" aria-hidden />
               <span className="max-w-48 truncate">{labelOf(v)}</span>
-              <button
+              <IconButton
                 type="button"
-                aria-label={`Remove ${labelOf(v)}`}
+                variant="ghost"
+                size="icon-xs"
+                label={`Remove ${labelOf(v)}`}
                 disabled={disabled}
-                className="inline-flex size-6 items-center justify-center rounded-sm hover:bg-on-primary/20"
+                className="size-6 rounded-sm hover:bg-on-primary/20 hover:text-current"
                 onClick={() => onChange(value.filter((x) => x !== v))}
               >
                 <X className="size-3.5" aria-hidden />
-              </button>
+              </IconButton>
             </li>
           ))}
         </ul>

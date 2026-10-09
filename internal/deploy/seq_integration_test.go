@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -129,5 +130,55 @@ func TestSweepDeploymentsFailedRowsWaitSixHours(t *testing.T) {
 		if len(ins.args) != c.want {
 			t.Fatalf("failed %s ago: enqueued %d, want %d", c.age, len(ins.args), c.want)
 		}
+	}
+}
+
+// A new version landing between the sweep's stale read and its enqueue must
+// not make the sweep enqueue the old version.
+func TestSweepDeploymentsRereadsCurrentVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		pendingNew bool
+		want       int
+	}{{"new version not yet enqueued", false, 1}, {"new version already pending", true, 0}} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newDispatcherFixture(t)
+			ins := &captureInserter{}
+			f.disp.River = ins
+			ctx := context.Background()
+			certID := f.cert(t, "sweep-race")
+			v1 := f.version(t, certID, "1", false)
+			targetID, _ := f.target(t, "sweep-race-target", targets.Server, targets.Never,
+				map[string]any{"url": "https://example.test/hook", "token": "tok-sr"})
+			grantID := f.grant(t, certID, targetID)
+			f.pending(t, grantID, v1)
+			if _, err := f.pool.Exec(ctx, `UPDATE certificates SET current_version_id = $1 WHERE id = $2`, v1, certID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.pool.Exec(ctx, `UPDATE server_deployments SET updated_at = now() - interval '1 hour'`); err != nil {
+				t.Fatal(err)
+			}
+			var v2 uuid.UUID
+			f.disp.afterStaleRead = func() {
+				v2 = f.version(t, certID, "2", false)
+				if _, err := f.pool.Exec(ctx, `UPDATE certificates SET current_version_id = $1 WHERE id = $2`, v2, certID); err != nil {
+					t.Error(err)
+				}
+				if tc.pendingNew {
+					f.pending(t, grantID, v2)
+				}
+			}
+			if err := f.disp.SweepDeployments(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if len(ins.args) != tc.want {
+				t.Fatalf("enqueued %+v, want %d", ins.args, tc.want)
+			}
+			for _, a := range ins.args {
+				if a.VersionID != v2 {
+					t.Fatalf("enqueued version %s, want current %s", a.VersionID, v2)
+				}
+			}
+		})
 	}
 }
