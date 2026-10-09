@@ -1,0 +1,58 @@
+{
+  "code": "virtualname",
+  "name": "Virtualname",
+  "url": "https://www.virtualname.es/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Virtualname",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "VIRTUALNAME_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "VIRTUALNAME_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VIRTUALNAME_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "VIRTUALNAME_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VIRTUALNAME_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "VIRTUALNAME_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "VIRTUALNAME_TOKEN": {
+        "type": "string",
+        "title": "VIRTUALNAME_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "VIRTUALNAME_TTL": {
+        "type": "string",
+        "title": "VIRTUALNAME_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "token",
+        "label": "Token",
+        "fields": [
+          "VIRTUALNAME_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

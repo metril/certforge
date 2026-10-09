@@ -39,7 +39,7 @@
       "BAIDUCLOUD_TTL": {
         "type": "string",
         "title": "BAIDUCLOUD_TTL",
-        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 300)",
         "secret": false,
         "x-group": "additional"
       }

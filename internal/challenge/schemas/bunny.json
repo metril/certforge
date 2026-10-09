@@ -15,6 +15,13 @@
         "secret": true,
         "x-group": "credentials"
       },
+      "BUNNY_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "BUNNY_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
       "BUNNY_POLLING_INTERVAL": {
         "type": "string",
         "title": "BUNNY_POLLING_INTERVAL",

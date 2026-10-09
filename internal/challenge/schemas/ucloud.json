@@ -1,0 +1,80 @@
+{
+  "code": "ucloud",
+  "name": "UCloud",
+  "url": "https://www.ucloud.cn/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "UCloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "UCLOUD_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "UCLOUD_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "UCLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "UCLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "UCLOUD_PRIVATE_KEY": {
+        "type": "string",
+        "title": "UCLOUD_PRIVATE_KEY",
+        "description": "Private key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "UCLOUD_PROJECT_ID": {
+        "type": "string",
+        "title": "UCLOUD_PROJECT_ID",
+        "description": "Project ID",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "UCLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "UCLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "UCLOUD_PUBLIC_KEY": {
+        "type": "string",
+        "title": "UCLOUD_PUBLIC_KEY",
+        "description": "Public key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "UCLOUD_REGION": {
+        "type": "string",
+        "title": "UCLOUD_REGION",
+        "description": "Region",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "UCLOUD_TTL": {
+        "type": "string",
+        "title": "UCLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "public-key-private-key",
+        "label": "Public key + Private key",
+        "fields": [
+          "UCLOUD_PUBLIC_KEY",
+          "UCLOUD_PRIVATE_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

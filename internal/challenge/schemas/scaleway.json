@@ -15,6 +15,13 @@
         "secret": false,
         "x-group": "additional"
       },
+      "SCW_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "SCW_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
       "SCW_POLLING_INTERVAL": {
         "type": "string",
         "title": "SCW_POLLING_INTERVAL",

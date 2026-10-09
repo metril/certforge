@@ -1,0 +1,66 @@
+{
+  "code": "todaynic",
+  "name": "TodayNIC/时代互联",
+  "url": "https://www.todaynic.com/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "TodayNIC/时代互联",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "TODAYNIC_API_KEY": {
+        "type": "string",
+        "title": "TODAYNIC_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "TODAYNIC_AUTH_USER_ID": {
+        "type": "string",
+        "title": "TODAYNIC_AUTH_USER_ID",
+        "description": "account ID",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "TODAYNIC_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "TODAYNIC_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TODAYNIC_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "TODAYNIC_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TODAYNIC_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "TODAYNIC_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "TODAYNIC_TTL": {
+        "type": "string",
+        "title": "TODAYNIC_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 600)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "auth-user-id-api-key",
+        "label": "Auth user ID + API key",
+        "fields": [
+          "TODAYNIC_AUTH_USER_ID",
+          "TODAYNIC_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "code": "artfiles",
+  "name": "ArtFiles",
+  "url": "https://www.artfiles.de/extras/domains/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ArtFiles",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ARTFILES_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "ARTFILES_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ARTFILES_PASSWORD": {
+        "type": "string",
+        "title": "ARTFILES_PASSWORD",
+        "description": "API password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "ARTFILES_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "ARTFILES_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ARTFILES_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "ARTFILES_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 360)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ARTFILES_TTL": {
+        "type": "string",
+        "title": "ARTFILES_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "ARTFILES_USERNAME": {
+        "type": "string",
+        "title": "ARTFILES_USERNAME",
+        "description": "API username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password",
+        "label": "Username + Password",
+        "fields": [
+          "ARTFILES_USERNAME",
+          "ARTFILES_PASSWORD"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

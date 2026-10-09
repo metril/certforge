@@ -1,7 +1,7 @@
 {
   "code": "tencentcloud",
   "name": "Tencent Cloud DNS",
-  "url": "https://cloud.tencent.com/product/cns",
+  "url": "https://cloud.tencent.com/product/dns",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "Tencent Cloud DNS",

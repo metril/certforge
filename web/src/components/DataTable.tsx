@@ -1,5 +1,5 @@
 import type { KeyboardEvent, MouseEvent } from 'react';
-import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type RowData } from '@tanstack/react-table';
+import { createColumnHelper, flexRender, tableFeatures, useTable, type CellData, type ColumnDef, type RowData, type TableFeatures } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { HelpKey } from '@/lib/help';
@@ -7,9 +7,16 @@ import { cn } from '@/lib/utils';
 import { HelpTip } from './HelpTip';
 import { HintLabel } from './HintLabel';
 
+// Core-only table (sorting is server-side), so no optional features are enabled.
+const features = tableFeatures({});
+type Features = typeof features;
+
+/** Typed column helper bound to this table's (empty) feature set. */
+export const columnHelper = <T extends RowData>() => createColumnHelper<Features, T>();
+
 declare module '@tanstack/react-table' {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  interface ColumnMeta<TData extends RowData, TValue> {
+  interface ColumnMeta<TFeatures extends TableFeatures, TData extends RowData, TValue extends CellData = CellData> {
     sortKey?: string;
     help?: HelpKey;
     /** Help copy shown as a tooltip on the header label (no icon). */
@@ -18,10 +25,10 @@ declare module '@tanstack/react-table' {
   }
 }
 
-type Props<T> = {
+type Props<T extends RowData> = {
   data: T[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  columns: ColumnDef<T, any>[];
+  columns: ColumnDef<Features, T, any>[];
   getRowId: (row: T) => string;
   ariaLabel: string;
   sort?: string;
@@ -35,8 +42,8 @@ type Props<T> = {
   skeletonRows?: number;
 };
 
-export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort, selected, onRowClick, onRowOpen, skeletonRows }: Props<T>) {
-  const table = useReactTable({ data, columns, getRowId: (r) => getRowId(r), getCoreRowModel: getCoreRowModel(), manualSorting: true });
+export function DataTable<T extends RowData>({ data, columns, getRowId, ariaLabel, sort, onSort, selected, onRowClick, onRowOpen, skeletonRows }: Props<T>) {
+  const table = useTable<Features, T>({ features, data, columns, getRowId: (r) => getRowId(r) });
   return (
     <Table aria-label={ariaLabel} aria-busy={!!skeletonRows} className="table-fixed">
       <TableHeader>
@@ -104,7 +111,7 @@ export function DataTable<T>({ data, columns, getRowId, ariaLabel, sort, onSort,
                     } else if (e.key === 'Enter') onRowOpen?.(row.id);
                   }}
                 >
-                  {row.getVisibleCells().map((c) => (
+                  {row.getAllCells().map((c) => (
                     // Fix round 1 (review): the sticky Name cell's own
                     // opaque `bg-panel` (needed so scrolled-under cells
                     // don't show through it) otherwise paints over the

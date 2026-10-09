@@ -1,0 +1,66 @@
+{
+  "code": "keyhelp",
+  "name": "KeyHelp",
+  "url": "https://www.keyweb.de/en/keyhelp/keyhelp/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "KeyHelp",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "KEYHELP_API_KEY": {
+        "type": "string",
+        "title": "KEYHELP_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "KEYHELP_BASE_URL": {
+        "type": "string",
+        "title": "KEYHELP_BASE_URL",
+        "description": "Server URL",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "KEYHELP_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "KEYHELP_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": true,
+        "x-group": "additional"
+      },
+      "KEYHELP_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "KEYHELP_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": true,
+        "x-group": "additional"
+      },
+      "KEYHELP_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "KEYHELP_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": true,
+        "x-group": "additional"
+      },
+      "KEYHELP_TTL": {
+        "type": "string",
+        "title": "KEYHELP_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": true,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "base-url-api-key",
+        "label": "Base URL + API key",
+        "fields": [
+          "KEYHELP_BASE_URL",
+          "KEYHELP_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

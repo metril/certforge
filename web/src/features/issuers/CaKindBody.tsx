@@ -50,7 +50,7 @@ type Props = {
   submitted: boolean;
   serverError: { field: ServerField; message: string } | null;
   extraErrors?: ErrorSchema;
-  formRef: RefObject<SchemaFormHandle>;
+  formRef: RefObject<SchemaFormHandle | null>;
   /** Whether the operator has typed into the shared Name field themselves —
    * a fresh preset pick auto-fills Name only while it's still untouched (or
    * whatever a previous preset set it to). Owned by CaSheet, since Name
@@ -230,7 +230,7 @@ function LocalCaBody({
   ca?: CA;
   signers: ProviderSchema[];
   extraErrors?: ErrorSchema;
-  formRef: RefObject<SchemaFormHandle>;
+  formRef: RefObject<SchemaFormHandle | null>;
 }) {
   const editing = !!ca;
   const { config, importing } = draft.localca;
@@ -321,7 +321,7 @@ function VaultPkiBody({
   setDraft: Dispatch<SetStateAction<CaDraft>>;
   signers: ProviderSchema[];
   extraErrors?: ErrorSchema;
-  formRef: RefObject<SchemaFormHandle>;
+  formRef: RefObject<SchemaFormHandle | null>;
 }) {
   const me = useMe();
   const canReadSettings = can(me, 'settings:read', null);

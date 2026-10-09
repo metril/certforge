@@ -38,6 +38,12 @@ var authOverrides = map[string][]authMethod{
 	"cloudxns": {
 		{ID: "api-key", Label: "API key + secret key", Fields: []string{"CLOUDXNS_API_KEY", "CLOUDXNS_SECRET_KEY"}, Optional: []string{}},
 	},
+	"hetzner": {
+		{ID: "api-token", Label: "API token", Fields: []string{"HETZNER_API_TOKEN"}, Optional: []string{}},
+	},
+	"rfc2136": {
+		{ID: "tsig", Label: "Nameserver (optional TSIG)", Fields: []string{"RFC2136_NAMESERVER"}, Optional: []string{"RFC2136_TSIG_KEY", "RFC2136_TSIG_SECRET", "RFC2136_TSIG_ALGORITHM"}},
+	},
 	"designate": {
 		{ID: "password", Label: "Username + password", Fields: []string{"OS_AUTH_URL", "OS_USERNAME", "OS_PASSWORD"}, Optional: []string{"OS_USER_ID", "OS_PROJECT_NAME", "OS_REGION_NAME"}},
 		{ID: "app-credential", Label: "Application credential", Fields: []string{"OS_AUTH_URL", "OS_APPLICATION_CREDENTIAL_ID", "OS_APPLICATION_CREDENTIAL_SECRET"}, Optional: []string{"OS_APPLICATION_CREDENTIAL_NAME", "OS_USER_ID", "OS_REGION_NAME"}},

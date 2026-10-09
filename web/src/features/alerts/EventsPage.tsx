@@ -1,13 +1,12 @@
 import { useMemo } from 'react';
 import { Globe } from 'lucide-react';
-import { createColumnHelper } from '@tanstack/react-table';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { eventsQuery } from '@/api/queries/events';
 import { errorMessage } from '@/api/errors';
 import type { EventKind, NotifyEvent } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
-import { DataTable } from '@/components/DataTable';
+import { columnHelper, DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { FilterChips } from '@/components/FilterChips';
@@ -38,7 +37,7 @@ const ALL_KINDS = KIND_OPTIONS.map((o) => o.value as EventKind);
 /** "All kinds" when empty, the label for one, "N kinds" otherwise. */
 const kindSummary = (kinds: readonly string[]) => (kinds.length === 0 ? 'All kinds' : kinds.length === 1 ? KIND_LABEL[kinds[0] as EventKind] : `${kinds.length} kinds`);
 
-const col = createColumnHelper<NotifyEvent>();
+const col = columnHelper<NotifyEvent>();
 
 function columns(org: string) {
   return [

@@ -1,8 +1,8 @@
-import { createColumnHelper } from '@tanstack/react-table';
+import { columnHelper } from '@/components/DataTable';
 import type { AuditEvent } from '@/api/types';
 import { fmtDateTime } from '@/lib/time';
 
-const col = createColumnHelper<AuditEvent>();
+const col = columnHelper<AuditEvent>();
 
 export function auditColumns(orgName?: (id: string | null) => string) {
   return [

@@ -1,0 +1,87 @@
+{
+  "code": "edgeone",
+  "name": "Tencent EdgeOne",
+  "url": "https://edgeone.ai",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Tencent EdgeOne",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "EDGEONE_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "EDGEONE_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EDGEONE_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "EDGEONE_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EDGEONE_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "EDGEONE_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 1200)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EDGEONE_REGION": {
+        "type": "string",
+        "title": "EDGEONE_REGION",
+        "description": "Region",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EDGEONE_SECRET_ID": {
+        "type": "string",
+        "title": "EDGEONE_SECRET_ID",
+        "description": "Access key ID",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EDGEONE_SECRET_KEY": {
+        "type": "string",
+        "title": "EDGEONE_SECRET_KEY",
+        "description": "Access Key secret",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EDGEONE_SESSION_TOKEN": {
+        "type": "string",
+        "title": "EDGEONE_SESSION_TOKEN",
+        "description": "Access Key token",
+        "secret": true,
+        "x-group": "additional"
+      },
+      "EDGEONE_TTL": {
+        "type": "string",
+        "title": "EDGEONE_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EDGEONE_ZONES_MAPPING": {
+        "type": "string",
+        "title": "EDGEONE_ZONES_MAPPING",
+        "description": "Mapping between DNS zones and site IDs. (ex: 'example.org:id1,example.com:id2')",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "id-key",
+        "label": "ID + Key",
+        "fields": [
+          "EDGEONE_SECRET_ID",
+          "EDGEONE_SECRET_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

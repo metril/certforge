@@ -1,0 +1,65 @@
+{
+  "code": "ddnss",
+  "name": "DDnss (DynDNS Service)",
+  "url": "https://ddnss.de/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DDnss (DynDNS Service)",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "DDNSS_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "DDNSS_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DDNSS_KEY": {
+        "type": "string",
+        "title": "DDNSS_KEY",
+        "description": "Update key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "DDNSS_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "DDNSS_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DDNSS_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "DDNSS_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DDNSS_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "DDNSS_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "DDNSS_TTL": {
+        "type": "string",
+        "title": "DDNSS_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "key",
+        "label": "Key",
+        "fields": [
+          "DDNSS_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

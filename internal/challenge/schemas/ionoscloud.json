@@ -1,0 +1,58 @@
+{
+  "code": "ionoscloud",
+  "name": "Ionos Cloud",
+  "url": "https://cloud.ionos.de/network/cloud-dns",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Ionos Cloud",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "IONOSCLOUD_API_TOKEN": {
+        "type": "string",
+        "title": "IONOSCLOUD_API_TOKEN",
+        "description": "API token",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "IONOSCLOUD_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "IONOSCLOUD_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IONOSCLOUD_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "IONOSCLOUD_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IONOSCLOUD_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "IONOSCLOUD_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "IONOSCLOUD_TTL": {
+        "type": "string",
+        "title": "IONOSCLOUD_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "api-token",
+        "label": "API token",
+        "fields": [
+          "IONOSCLOUD_API_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

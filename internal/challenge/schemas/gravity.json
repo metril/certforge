@@ -1,0 +1,74 @@
+{
+  "code": "gravity",
+  "name": "Gravity",
+  "url": "https://gravity.beryju.io/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Gravity",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "GRAVITY_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "GRAVITY_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GRAVITY_PASSWORD": {
+        "type": "string",
+        "title": "GRAVITY_PASSWORD",
+        "description": "Password",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "GRAVITY_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "GRAVITY_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 2)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GRAVITY_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "GRAVITY_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GRAVITY_SEQUENCE_INTERVAL": {
+        "type": "string",
+        "title": "GRAVITY_SEQUENCE_INTERVAL",
+        "description": "Time between sequential requests in seconds (Default: 1)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "GRAVITY_SERVER_URL": {
+        "type": "string",
+        "title": "GRAVITY_SERVER_URL",
+        "description": "URL of the server",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "GRAVITY_USERNAME": {
+        "type": "string",
+        "title": "GRAVITY_USERNAME",
+        "description": "Username",
+        "secret": false,
+        "x-group": "credentials"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "username-password-server-url",
+        "label": "Username + Password + Server URL",
+        "fields": [
+          "GRAVITY_USERNAME",
+          "GRAVITY_PASSWORD",
+          "GRAVITY_SERVER_URL"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

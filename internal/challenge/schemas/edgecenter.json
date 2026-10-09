@@ -1,0 +1,58 @@
+{
+  "code": "edgecenter",
+  "name": "EdgeCenter",
+  "url": "https://edgecenter.ru/dns",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "EdgeCenter",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "EDGECENTER_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "EDGECENTER_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EDGECENTER_PERMANENT_API_TOKEN": {
+        "type": "string",
+        "title": "EDGECENTER_PERMANENT_API_TOKEN",
+        "description": "Permanent API token (https://edgecenter.ru/blog/permanent-api-token-explained/)",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EDGECENTER_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "EDGECENTER_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 20)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EDGECENTER_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "EDGECENTER_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 360)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EDGECENTER_TTL": {
+        "type": "string",
+        "title": "EDGECENTER_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "permanent-api-token",
+        "label": "Permanent API token",
+        "fields": [
+          "EDGECENTER_PERMANENT_API_TOKEN"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

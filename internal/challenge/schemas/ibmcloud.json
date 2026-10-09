@@ -46,7 +46,7 @@
       "SOFTLAYER_USERNAME": {
         "type": "string",
         "title": "SOFTLAYER_USERNAME",
-        "description": "Username (IBM Cloud is \u003caccountID\u003e_\u003cemailAddress\u003e)",
+        "description": "Username (IBM Cloud is {accountID}_{emailAddress})",
         "secret": false,
         "x-group": "credentials"
       }

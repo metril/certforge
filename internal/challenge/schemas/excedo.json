@@ -1,0 +1,66 @@
+{
+  "code": "excedo",
+  "name": "Excedo",
+  "url": "https://excedo.se/",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Excedo",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "EXCEDO_API_KEY": {
+        "type": "string",
+        "title": "EXCEDO_API_KEY",
+        "description": "API key",
+        "secret": true,
+        "x-group": "credentials"
+      },
+      "EXCEDO_API_URL": {
+        "type": "string",
+        "title": "EXCEDO_API_URL",
+        "description": "API base URL",
+        "secret": false,
+        "x-group": "credentials"
+      },
+      "EXCEDO_HTTP_TIMEOUT": {
+        "type": "string",
+        "title": "EXCEDO_HTTP_TIMEOUT",
+        "description": "API request timeout in seconds (Default: 30)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EXCEDO_POLLING_INTERVAL": {
+        "type": "string",
+        "title": "EXCEDO_POLLING_INTERVAL",
+        "description": "Time between DNS propagation check in seconds (Default: 10)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EXCEDO_PROPAGATION_TIMEOUT": {
+        "type": "string",
+        "title": "EXCEDO_PROPAGATION_TIMEOUT",
+        "description": "Maximum waiting time for DNS propagation in seconds (Default: 300)",
+        "secret": false,
+        "x-group": "additional"
+      },
+      "EXCEDO_TTL": {
+        "type": "string",
+        "title": "EXCEDO_TTL",
+        "description": "The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)",
+        "secret": false,
+        "x-group": "additional"
+      }
+    },
+    "x-auth-methods": [
+      {
+        "id": "url-key",
+        "label": "URL + Key",
+        "fields": [
+          "EXCEDO_API_URL",
+          "EXCEDO_API_KEY"
+        ],
+        "optional": []
+      }
+    ]
+  }
+}

@@ -43,6 +43,13 @@
         "secret": false,
         "x-group": "additional"
       },
+      "F5XC_SERVER": {
+        "type": "string",
+        "title": "F5XC_SERVER",
+        "description": "Server domain (Default: console.ves.volterra.io)",
+        "secret": false,
+        "x-group": "additional"
+      },
       "F5XC_TENANT_NAME": {
         "type": "string",
         "title": "F5XC_TENANT_NAME",

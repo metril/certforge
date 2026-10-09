@@ -1,10 +1,10 @@
 {
   "code": "safedns",
-  "name": "UKFast SafeDNS",
-  "url": "https://www.ukfast.co.uk/dns-hosting.html",
+  "name": "ANS SafeDNS",
+  "url": "https://www.ans.co.uk/",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "UKFast SafeDNS",
+    "title": "ANS SafeDNS",
     "type": "object",
     "additionalProperties": false,
     "properties": {

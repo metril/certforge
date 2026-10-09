@@ -1,10 +1,10 @@
 {
   "code": "iwantmyname",
-  "name": "iwantmyname",
+  "name": "iwantmyname (Deprecated)",
   "url": "https://iwantmyname.com",
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "iwantmyname",
+    "title": "iwantmyname (Deprecated)",
     "type": "object",
     "additionalProperties": false,
     "properties": {
