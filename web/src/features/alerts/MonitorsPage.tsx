@@ -25,6 +25,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { AlertsHeader } from './AlertsLayout';
 import { MonitorSheet } from './MonitorSheet';
 import { MonitorStateChip } from './MonitorStateChip';
+import { IconButton } from '@/components/IconButton';
 
 const col = columnHelper<Monitor>();
 const MONITOR_LIMIT = 500;
@@ -34,12 +35,11 @@ function CheckNowButton({ monitor, orgId }: { monitor: Monitor; orgId: string })
   const check = useCheckMonitor(orgId);
   const allowed = can(me, 'alerts:write', orgId);
   return (
-    <PermissionTip allowed={allowed} action="alerts:write">
-      <Button
+    <IconButton tip={allowed ? undefined : `Needs the alerts:write permission`}
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label={`Check ${monitor.name} now`}
+        label={`Check ${monitor.name} now`}
         disabled={!allowed || check.isPending}
         onClick={(e) => {
           e.stopPropagation();
@@ -49,8 +49,7 @@ function CheckNowButton({ monitor, orgId }: { monitor: Monitor; orgId: string })
         }}
       >
         <RefreshCw className={check.isPending ? 'size-4 animate-spin' : 'size-4'} aria-hidden />
-      </Button>
-    </PermissionTip>
+      </IconButton>
   );
 }
 

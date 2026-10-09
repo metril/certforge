@@ -7,7 +7,6 @@ import type { Certificate, CertificateVersion } from '@/api/types';
 import { CopyField } from '@/components/CopyField';
 import { EmptyState } from '@/components/EmptyState';
 import { HelpTip } from '@/components/HelpTip';
-import { PermissionTip } from '@/components/PermissionTip';
 import { ToneChip } from '@/components/StatusChip';
 import { ValidityBar } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,7 @@ import { isPrivate } from '@/lib/caKinds';
 import { certTone } from '@/lib/status';
 import { fmtDate, relTime } from '@/lib/time';
 import { RevokeVersionDialog } from './RevokeVersionDialog';
+import { IconButton } from '@/components/IconButton';
 
 // Serial is pinned (`sticky left-0`, like DataTable's own Name column) so it
 // stays visible while the rest of the row scrolls horizontally at 375px —
@@ -106,26 +106,24 @@ export function VersionsTab({
                 </TableCell>
                 <TableCell>
                   <span className="inline-flex items-center gap-1">
-                    <Button variant="ghost" size="icon" aria-label={`Download version ${v.serial}`} onClick={() => onDownload(v.id)}>
+                    <IconButton variant="ghost" size="icon" label={`Download version ${v.serial}`} onClick={() => onDownload(v.id)}>
                       <Download className="size-4" aria-hidden />
-                    </Button>
+                    </IconButton>
                     {privateCa &&
                       v.source === 'issued' &&
                       (v.revokedAt ? (
                         <ToneChip tone="failed" icon={Ban} label="Revoked" title={relTime(v.revokedAt)} />
                       ) : (
                         <>
-                          <PermissionTip allowed={canRevoke} action="certs:issue">
-                            <Button
+                          <IconButton tip={canRevoke ? undefined : `Needs the certs:issue permission`}
                               variant="ghost"
                               size="icon"
-                              aria-label={`Revoke version ${v.serial}`}
+                              label={`Revoke version ${v.serial}`}
                               disabled={!canRevoke}
                               onClick={() => setRevoking(v)}
                             >
                               <Ban className="size-4" aria-hidden />
-                            </Button>
-                          </PermissionTip>
+                            </IconButton>
                           <HelpTip id="version.revoke" />
                         </>
                       ))}

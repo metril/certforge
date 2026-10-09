@@ -2,10 +2,10 @@ import { createContext, useContext } from 'react';
 import { ArrowDown, ArrowUp, CircleAlert, Copy, Plus, X, type LucideIcon } from 'lucide-react';
 import { getInputProps, type BaseInputTemplateProps, type FieldTemplateProps, type IconButtonProps, type ObjectFieldTemplateProps, type TemplatesType } from '@rjsf/utils';
 import { HelpTip } from '@/components/HelpTip';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { IconButton } from '@/components/IconButton';
 
 // B5: RJSF's own SchemaField consumes a field's `ui:classNames` before it
 // ever reaches that field's `uiSchema` prop further down (its comment: "Don't
@@ -124,9 +124,9 @@ function BaseInputTemplate(props: BaseInputTemplateProps) {
 function iconButton(label: string, Icon: LucideIcon) {
   return function IconBtn({ onClick, disabled }: IconButtonProps) {
     return (
-      <Button type="button" variant="ghost" size="icon" aria-label={label} onClick={onClick} disabled={disabled}>
+      <IconButton type="button" variant="ghost" size="icon" label={label} onClick={onClick} disabled={disabled}>
         <Icon className="size-4" aria-hidden />
-      </Button>
+      </IconButton>
     );
   };
 }

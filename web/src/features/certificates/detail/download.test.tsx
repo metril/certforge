@@ -156,6 +156,7 @@ it('export password stays out of caches, the mutation cache, and localStorage', 
   const sheet = await screen.findByRole('dialog', { name: 'Download' });
   await user.click(within(sheet).getByRole('radio', { name: 'PKCS#12' }));
   await user.click(within(sheet).getByRole('button', { name: 'Download PKCS#12' }));
+  await user.click(await within(sheet).findByRole('button', { name: 'Done' }));
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   expect(capturedPassword).toHaveLength(24);
   // Global constraint: "passwords are dropped when the sheet unmounts" — the
@@ -210,4 +211,22 @@ it('server 422 on password shows inline', async () => {
   await user.click(within(sheet).getByRole('radio', { name: 'JKS' }));
   await user.click(within(sheet).getByRole('button', { name: 'Download JKS' }));
   expect(await within(sheet).findByText('password must be at least 6 characters for jks')).toBeInTheDocument();
+});
+
+it('generated password: sheet stays open after download with the password still copyable; PEM closes immediately', async () => {
+  server.use(
+    http.post(url('/orgs/org-1/certificates/c-1/versions/v-1/export'), () =>
+      new HttpResponse('PK', { headers: { 'Content-Type': 'application/x-pkcs12', 'Content-Disposition': 'attachment; filename="www.p12"' } }),
+    ),
+  );
+  const { user, onOpenChange } = setup();
+  const sheet = await screen.findByRole('dialog', { name: 'Download' });
+  await user.click(within(sheet).getByRole('radio', { name: 'PKCS#12' }));
+  const pw = (within(sheet).getByLabelText('Generated password') as HTMLInputElement).value;
+  await user.click(within(sheet).getByRole('button', { name: 'Download PKCS#12' }));
+  expect(await within(sheet).findByText(/Downloaded/)).toBeInTheDocument();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect((within(sheet).getByLabelText('Generated password') as HTMLInputElement).value).toBe(pw);
+  await user.click(within(sheet).getByRole('button', { name: 'Copy password' }));
+  expect(await navigator.clipboard.readText()).toBe(pw);
 });

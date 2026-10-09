@@ -36,6 +36,7 @@ import {
   withFormat,
   type FileErrors,
 } from './layoutFiles';
+import { IconButton } from '@/components/IconButton';
 
 const MAX_FILES = 20;
 const MAX_EXTRAS = 10;
@@ -219,22 +220,22 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                     </Field>
                     {!readOnly && (
                       <div className="flex pt-6">
-                        <Button variant="ghost" size="icon-sm" className="size-9" aria-label={`Move file ${n} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                        <IconButton variant="ghost" size="icon-sm" className="size-9" label={`Move file ${n} up`} disabled={i === 0} onClick={() => move(i, -1)}>
                           <ArrowUp className="size-4" aria-hidden />
-                        </Button>
-                        <Button variant="ghost" size="icon-sm" className="size-9" aria-label={`Move file ${n} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
+                        </IconButton>
+                        <IconButton variant="ghost" size="icon-sm" className="size-9" label={`Move file ${n} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
                           <ArrowDown className="size-4" aria-hidden />
-                        </Button>
-                        <Button
+                        </IconButton>
+                        <IconButton
                           variant="ghost"
                           size="icon-sm"
                           className="size-9"
-                          aria-label={`Remove file ${n}`}
+                          label={`Remove file ${n}`}
                           disabled={rows.length === 1}
                           onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
                         >
                           <X className="size-4" aria-hidden />
-                        </Button>
+                        </IconButton>
                       </div>
                     )}
                   </div>
@@ -373,14 +374,14 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
                   />
                   {!readOnly && (
                     <>
-                      <Button type="button" variant="ghost" size="icon" aria-label={reveal ? 'Hide password' : 'Show password'} onClick={() => setReveal((r) => !r)}>
+                      <IconButton type="button" variant="ghost" size="icon" label={reveal ? 'Hide password' : 'Show password'} onClick={() => setReveal((r) => !r)}>
                         {reveal ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
-                      </Button>
-                      <Button type="button" variant="ghost" size="icon" aria-label="Copy password" onClick={() => void copy()}>
+                      </IconButton>
+                      <IconButton type="button" variant="ghost" size="icon" label="Copy password" onClick={() => void copy()}>
                         {copyStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
                         {copyStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
                         {copyStatus === 'idle' && <Copy className="size-4" aria-hidden />}
-                      </Button>
+                      </IconButton>
                       <Button type="button" variant="ghost" size="sm" onClick={() => setNewPassword(generatePassword())}>
                         Generate
                       </Button>

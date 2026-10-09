@@ -4,6 +4,7 @@ import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { IconButton } from '@/components/IconButton';
 
 const MAX_ARGV = 64;
 const MAX_ARG_BYTES = 4096;
@@ -109,15 +110,15 @@ export function ArgvField({ id, value, onChange, errors = [], disabled = false }
                 />
                 {i > 0 && !disabled && (
                   <>
-                    <Button type="button" variant="ghost" size="icon-sm" className="size-7" aria-label={`Move argument ${i} up`} disabled={i === 1} onClick={() => move(i, -1)}>
+                    <IconButton type="button" variant="ghost" size="icon-sm" className="size-7" label={`Move argument ${i} up`} disabled={i === 1} onClick={() => move(i, -1)}>
                       <ArrowUp className="size-3.5" aria-hidden />
-                    </Button>
-                    <Button type="button" variant="ghost" size="icon-sm" className="size-7" aria-label={`Move argument ${i} down`} disabled={i === argv.length - 1} onClick={() => move(i, 1)}>
+                    </IconButton>
+                    <IconButton type="button" variant="ghost" size="icon-sm" className="size-7" label={`Move argument ${i} down`} disabled={i === argv.length - 1} onClick={() => move(i, 1)}>
                       <ArrowDown className="size-3.5" aria-hidden />
-                    </Button>
-                    <Button type="button" variant="ghost" size="icon-sm" className="size-7" aria-label={`Remove argument ${i}`} onClick={() => remove(i)}>
+                    </IconButton>
+                    <IconButton type="button" variant="ghost" size="icon-sm" className="size-7" label={`Remove argument ${i}`} onClick={() => remove(i)}>
                       <X className="size-3.5" aria-hidden />
-                    </Button>
+                    </IconButton>
                   </>
                 )}
               </div>

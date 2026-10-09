@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight, Copy, Check, TriangleAlert } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/IconButton';
 
 type CopyStatus = 'idle' | 'copied' | 'failed';
 
@@ -69,18 +69,18 @@ function Json({ value, label }: { value: Obj; label: string }) {
       {open && (
         <div className="relative">
           <pre className="max-h-80 overflow-auto rounded-md border border-border bg-surface p-3 pr-9 font-mono text-xs">{text}</pre>
-          <Button
+          <IconButton
             type="button"
             variant="ghost"
             size="icon-sm"
             className="absolute right-1 top-1"
-            aria-label="Copy JSON"
+            label="Copy JSON"
             onClick={() => void copy(text)}
           >
             {status === 'copied' && <Check className="size-3.5 text-valid" aria-hidden />}
             {status === 'failed' && <TriangleAlert className="size-3.5 text-failed" aria-hidden />}
             {status === 'idle' && <Copy className="size-3.5" aria-hidden />}
-          </Button>
+          </IconButton>
           <span aria-live="polite" className="sr-only">
             {status === 'copied' && 'Copied'}
             {status === 'failed' && 'Copy failed'}

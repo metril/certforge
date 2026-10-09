@@ -5,6 +5,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn, keywordFilter } from '@/lib/utils';
+import { IconButton } from '@/components/IconButton';
 
 export type ComboOption = { value: string; label: string; hint?: string; keywords?: string[]; disabled?: boolean; /** MultiCombobox only: options sharing a group render under one heading. */ group?: string };
 
@@ -96,16 +97,16 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
         </PopoverContent>
       </Popover>
       {clearable && selected && !disabled && (
-        <Button
+        <IconButton
           type="button"
           variant="ghost"
           size="icon-sm"
           className="shrink-0"
-          aria-label={`Clear ${rest['aria-label'] ?? placeholder}`}
+          label={`Clear ${rest['aria-label'] ?? placeholder}`}
           onClick={() => onChange(undefined)}
         >
           <X className="size-4" aria-hidden />
-        </Button>
+        </IconButton>
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import { UNCHANGED } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/IconButton';
 
 type Props = {
   id: string;
@@ -141,16 +142,9 @@ export function SecretInput({ id, label, value, onChange: onChangeProp, stored, 
       <Eye className="size-4" aria-hidden />
     );
   const revealButton = revealDisabledReason ? (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span tabIndex={0} className="inline-flex">
-          <Button type="button" variant="ghost" size="icon" className="size-8 text-ink-muted hover:text-ink" aria-label={`Reveal ${label}`} disabled>
+    <IconButton tip={<>{revealDisabledReason}</>} type="button" variant="ghost" size="icon" className="size-8 text-ink-muted hover:text-ink" label={`Reveal ${label}`} disabled>
             <Eye className="size-4" aria-hidden />
-          </Button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{revealDisabledReason}</TooltipContent>
-    </Tooltip>
+          </IconButton>
   ) : (
     <Tooltip>
       <TooltipTrigger asChild>

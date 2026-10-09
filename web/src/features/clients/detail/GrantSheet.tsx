@@ -24,6 +24,7 @@ import { PHASE_LABEL } from '@/lib/clientStatus';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
+import { IconButton } from '@/components/IconButton';
 
 type Props = { orgId: string; client: Client; grants: Grant[]; editing?: Grant; /** The grant vanished from the poll while the sheet was open: show the snapshot's name and a removed notice, no form. */ removed?: boolean; onOpenChange: (open: boolean) => void };
 
@@ -230,19 +231,19 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
                               <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
                               <span className="min-w-0 flex-1 truncate">{name}</span>
                               {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
-                              <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
+                              <IconButton variant="ghost" size="icon-sm" className="size-7" label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
                                 <ArrowUp className="size-3.5" aria-hidden />
-                              </Button>
-                              <Button
+                              </IconButton>
+                              <IconButton
                                 variant="ghost"
                                 size="icon-sm"
                                 className="size-7"
-                                aria-label={`Move ${name} down`}
+                                label={`Move ${name} down`}
                                 disabled={i === hookIds.length - 1}
                                 onClick={() => moveHook(i, 1)}
                               >
                                 <ArrowDown className="size-3.5" aria-hidden />
-                              </Button>
+                              </IconButton>
                             </li>
                           );
                         })}

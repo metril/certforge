@@ -46,3 +46,12 @@ it('with only onRowOpen, a row click and Enter open it, but a click on an inner 
   await user.keyboard('{Enter}');
   expect(open).toHaveBeenCalledWith('2');
 });
+
+it('Enter on a focused row falls back to onRowClick when onRowOpen is absent', async () => {
+  const click = vi.fn();
+  const user = userEvent.setup();
+  render(<DataTable data={rows} columns={cols} getRowId={(r) => r.id} ariaLabel="T" onRowClick={click} />);
+  screen.getByRole('row', { name: 'a' }).focus();
+  await user.keyboard('{Enter}');
+  expect(click).toHaveBeenCalledWith('1', expect.anything());
+});

@@ -22,6 +22,7 @@ import { kindOf } from '@/lib/caKinds';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { IssuersHeader } from './IssuersLayout';
+import { IconButton } from '@/components/IconButton';
 
 
 function RegisterDialog({ orgId, open, onOpenChange }: { orgId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
@@ -162,18 +163,16 @@ export function AccountsPage() {
                       {a.registrationUri && <CopyField value={a.registrationUri} label="registration URI" className="min-w-0" />}
                     </TableCell>
                     <TableCell className="py-1 text-right">
-                      <PermissionTip allowed={canWrite} action="accounts:write" side="left">
-                        <Button
+                      <IconButton tip={canWrite ? undefined : `Needs the accounts:write permission`}
                           variant="ghost"
                           size="icon-sm"
                           className="size-7"
                           disabled={!canWrite}
-                          aria-label={`Delete ${a.email}`}
+                          label={`Delete ${a.email}`}
                           onClick={() => setDeleting(a)}
                         >
                           <Trash2 className="size-3.5" aria-hidden />
-                        </Button>
-                      </PermissionTip>
+                        </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}

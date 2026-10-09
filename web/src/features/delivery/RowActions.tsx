@@ -1,8 +1,8 @@
 import { Eye, Pencil, Send, Trash2 } from 'lucide-react';
 import { plural } from '@/api/queries/certificates';
 import { PermissionTip } from '@/components/PermissionTip';
-import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/IconButton';
 
 type Props = {
   name: string;
@@ -19,19 +19,19 @@ type Props = {
 export function RowActions({ name, grantCount, canWrite, onOpen, onDelete, onGrants }: Props) {
   const blocked = grantCount > 0;
   const del = (
-    <Button variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite || blocked} aria-label={`Delete ${name}`} onClick={onDelete}>
+    <IconButton variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite || blocked} label={`Delete ${name}`} onClick={onDelete}>
       <Trash2 className="size-3.5" aria-hidden />
-    </Button>
+    </IconButton>
   );
   return (
     <span className="inline-flex justify-end">
-      <Button variant="ghost" size="icon-sm" className="size-7" aria-label={canWrite ? `Edit ${name}` : `View ${name}`} onClick={onOpen}>
+      <IconButton variant="ghost" size="icon-sm" className="size-7" label={canWrite ? `Edit ${name}` : `View ${name}`} onClick={onOpen}>
         {canWrite ? <Pencil className="size-3.5" aria-hidden /> : <Eye className="size-3.5" aria-hidden />}
-      </Button>
+      </IconButton>
       {onGrants && (
-        <Button variant="ghost" size="icon-sm" className="size-7" aria-label={`Grants ${name}`} onClick={onGrants}>
+        <IconButton variant="ghost" size="icon-sm" className="size-7" label={`Grants ${name}`} onClick={onGrants}>
           <Send className="size-3.5" aria-hidden />
-        </Button>
+        </IconButton>
       )}
       {!canWrite ? (
         <PermissionTip allowed={false} action="delivery:write" side="left">
