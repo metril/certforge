@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 ARG WITH_WEB=1
 
-FROM --platform=$BUILDPLATFORM node:24-alpine AS webbuild
+FROM --platform=$BUILDPLATFORM node:26-alpine AS webbuild
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
