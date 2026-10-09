@@ -97,7 +97,7 @@ it('disables Register account and Delete for a viewer', async () => {
   );
   renderRoute('/o/acme/issuers/accounts');
   expect(await screen.findByRole('button', { name: 'Register account' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: `Delete ${account.email}` })).toBeDisabled();
+  expect(screen.getByRole('button', { name: `Delete ${account.email}` })).toHaveAttribute('aria-disabled', 'true');
 });
 
 it('offers only ACME CAs when registering an account', async () => {

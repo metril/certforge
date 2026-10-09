@@ -199,7 +199,7 @@ it('edit layout needs keys:export on an includeKey target', async () => {
   const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
   const table = await within(dialog).findByRole('table', { name: 'Grants' });
   const editBtn = within(table).getByRole('button', { name: 'Edit layout for www' });
-  expect(editBtn).toBeDisabled();
+  expect(editBtn).toHaveAttribute('aria-disabled', 'true');
   await user.hover(editBtn);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the keys:export permission');
 });
@@ -253,7 +253,7 @@ it('needs clients:write', async () => {
   const table = await within(dialog).findByRole('table', { name: 'Grants' });
   const row = within(table).getByText('www').closest('tr')!;
   const redeployBtn = within(row).getByRole('button', { name: 'Redeploy www' });
-  expect(redeployBtn).toBeDisabled();
+  expect(redeployBtn).toHaveAttribute('aria-disabled', 'true');
   await user.hover(redeployBtn);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the clients:write permission');
 });

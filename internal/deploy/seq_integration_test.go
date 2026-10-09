@@ -56,3 +56,78 @@ func TestEnqueueSameVersionTwiceStaleJobIsNoop(t *testing.T) {
 		t.Fatalf("current job status = %q, want deployed", got)
 	}
 }
+
+// SweepDeployments re-enqueues server grants behind the cert's current
+// version, and leaves up-to-date ones alone.
+func TestSweepDeploymentsReenqueuesStale(t *testing.T) {
+	f := newDispatcherFixture(t)
+	ins := &captureInserter{}
+	f.disp.River = ins
+	ctx := context.Background()
+	certID := f.cert(t, "sweep")
+	v1 := f.version(t, certID, "1", false)
+	targetID, _ := f.target(t, "sweep-target", targets.Server, targets.Never,
+		map[string]any{"url": "https://example.test/hook", "token": "tok-sw"})
+	grantID := f.grant(t, certID, targetID)
+	f.pending(t, grantID, v1)
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET current_version_id = $1 WHERE id = $2`, v1, certID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.disp.SweepDeployments(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(ins.args) != 0 {
+		t.Fatalf("fresh pending row swept: %+v", ins.args)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE server_deployments SET updated_at = now() - interval '1 hour'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.disp.SweepDeployments(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(ins.args) != 1 || ins.args[0].GrantID != grantID || ins.args[0].VersionID != v1 {
+		t.Fatalf("old pending row: args = %+v", ins.args)
+	}
+	v2 := f.version(t, certID, "2", false)
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET current_version_id = $1 WHERE id = $2`, v2, certID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.disp.SweepDeployments(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(ins.args) != 2 || ins.args[1].VersionID != v2 {
+		t.Fatalf("lagging row: args = %+v", ins.args)
+	}
+}
+
+// A failed row is only re-armed after 6 hours, so a permanently failing
+// target is not reset every sweep.
+func TestSweepDeploymentsFailedRowsWaitSixHours(t *testing.T) {
+	f := newDispatcherFixture(t)
+	ins := &captureInserter{}
+	f.disp.River = ins
+	ctx := context.Background()
+	certID := f.cert(t, "sweep-failed")
+	v1 := f.version(t, certID, "1", false)
+	targetID, _ := f.target(t, "sweep-failed-target", targets.Server, targets.Never,
+		map[string]any{"url": "https://example.test/hook", "token": "tok-sf"})
+	grantID := f.grant(t, certID, targetID)
+	f.pending(t, grantID, v1)
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET current_version_id = $1 WHERE id = $2`, v1, certID); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		age  string
+		want int
+	}{{"1 hour", 0}, {"7 hours", 1}} {
+		if _, err := f.pool.Exec(ctx, `UPDATE server_deployments SET status = 'failed', updated_at = now() - $1::interval`, c.age); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.disp.SweepDeployments(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if len(ins.args) != c.want {
+			t.Fatalf("failed %s ago: enqueued %d, want %d", c.age, len(ins.args), c.want)
+		}
+	}
+}

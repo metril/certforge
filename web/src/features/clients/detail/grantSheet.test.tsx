@@ -168,7 +168,7 @@ it('shows hooks in run order and saves the reordered list', async () => {
   await within(sheet).findByRole('list', { name: 'Hook run order' });
   const order = () => within(within(sheet).getByRole('list', { name: 'Hook run order' })).getAllByRole('listitem').map((li) => li.textContent);
   expect(order()).toEqual([expect.stringMatching(/^1\.reload nginx/), expect.stringMatching(/^2\.notify/)]);
-  expect(within(sheet).getByRole('button', { name: 'Move reload nginx up' })).toBeDisabled();
+  expect(within(sheet).getByRole('button', { name: 'Move reload nginx up' })).toHaveAttribute('aria-disabled', 'true');
   await user.click(within(sheet).getByRole('button', { name: 'Move notify up' }));
   expect(order()).toEqual([expect.stringMatching(/^1\.notify/), expect.stringMatching(/^2\.reload nginx/)]);
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));

@@ -140,6 +140,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
         <Combobox
           id={id}
           aria-label="Certificate authority"
+          clearable
           value={v}
           onChange={(x) => set(x ?? null)}
           options={c.cas.map((x) => ({ value: x.id, label: x.name, hint: KIND_LABEL[x.type] }))}
@@ -162,6 +163,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
         <Combobox
           id={id}
           aria-label="ACME account"
+          clearable
           mono
           value={v}
           onChange={(x) => set(x ?? null)}

@@ -30,7 +30,7 @@ beforeEach(() => {
 
 it('private issued version shows revoke', async () => {
   setup();
-  expect(await screen.findByRole('button', { name: `Revoke version ${serial}` })).toBeEnabled();
+  expect(await screen.findByRole('button', { name: `Revoke version ${serial}` })).not.toHaveAttribute('aria-disabled');
 });
 
 it('acme has no revoke', async () => {
@@ -128,5 +128,5 @@ it('409 also refreshes the CAs list', async () => {
 it('needs certs:issue', async () => {
   const canRevoke = can(meWith([{ role: 'viewer', orgId: org.id }]), 'certs:issue', org.id);
   setup({ canRevoke });
-  expect(await screen.findByRole('button', { name: `Revoke version ${serial}` })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: `Revoke version ${serial}` })).toHaveAttribute('aria-disabled', 'true');
 });

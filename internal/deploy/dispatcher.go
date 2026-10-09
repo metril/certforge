@@ -277,10 +277,55 @@ func (w *DeployWorker) Work(ctx context.Context, job *river.Job[DeployArgs]) err
 	return w.D.deploy(ctx, job.Args.GrantID, job.Args.VersionID, &job.Args.Seq)
 }
 
-// RegisterRiver is an issuance.RiverExtra: DeployWorker, no periodic job.
+// SweepDeployments re-enqueues every live server grant that is missing a
+// deployment, lags its certificate's current version, or has sat
+// pending/failed for over 15 minutes (a river job dropped after
+// MaxAttempts, lost to a crash before the enqueue, or truncated by a backup
+// restore). Bounded per run by the query; the next run takes the rest.
+func (d *Dispatcher) SweepDeployments(ctx context.Context) error {
+	rows, err := d.Q.StaleServerDeployments(ctx)
+	if err != nil {
+		return err
+	}
+	if len(rows) > 0 {
+		d.log().Info("deploy: re-enqueueing stale server deployments", "grants", len(rows))
+	}
+	var first error
+	for _, r := range rows {
+		if err := d.enqueueTx(ctx, r.ID, r.CurrentVersionID); err != nil {
+			d.log().Error("deploy: stale server grant not enqueued", "grant", r.ID, "err", err)
+			if first == nil {
+				first = err
+			}
+		}
+	}
+	return first
+}
+
+// SweepArgs is the periodic river job that runs SweepDeployments.
+type SweepArgs struct{}
+
+// Kind is the river job kind.
+func (SweepArgs) Kind() string { return "certforge_server_deployment_sweep" }
+
+// SweepWorker runs SweepArgs.
+type SweepWorker struct {
+	river.WorkerDefaults[SweepArgs]
+	D *Dispatcher
+}
+
+// Work runs one sweep.
+func (w *SweepWorker) Work(ctx context.Context, _ *river.Job[SweepArgs]) error {
+	return w.D.SweepDeployments(ctx)
+}
+
+// RegisterRiver is an issuance.RiverExtra: DeployWorker, plus SweepWorker
+// and its periodic job (every 15 minutes).
 func (d *Dispatcher) RegisterRiver(workers *river.Workers) []*river.PeriodicJob {
 	river.AddWorker(workers, &DeployWorker{D: d})
-	return nil
+	river.AddWorker(workers, &SweepWorker{D: d})
+	return []*river.PeriodicJob{river.NewPeriodicJob(river.PeriodicInterval(15*time.Minute),
+		func() (river.JobArgs, *river.InsertOpts) { return SweepArgs{}, nil }, nil)}
 }
 
 // Deploy renders grantID's certificate material at versionID and writes it

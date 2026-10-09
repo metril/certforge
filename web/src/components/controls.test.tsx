@@ -216,7 +216,7 @@ it('combobox closes on Escape', async () => {
 it('combobox: clear action unsets an optional lookup', async () => {
   const onChange = vi.fn();
   const { user } = renderUI(
-    <Combobox aria-label="CA" value="b" onChange={onChange} placeholder="Choose CA" emptyText="No CA" options={[{ value: 'a', label: "Let's Encrypt" }, { value: 'b', label: 'ZeroSSL' }]} />,
+    <Combobox clearable aria-label="CA" value="b" onChange={onChange} placeholder="Choose CA" emptyText="No CA" options={[{ value: 'a', label: "Let's Encrypt" }, { value: 'b', label: 'ZeroSSL' }]} />,
   );
   await user.click(screen.getByRole('button', { name: 'Clear CA' }));
   expect(onChange).toHaveBeenCalledWith(undefined);
@@ -360,7 +360,7 @@ it('secret reveal: an error keeps the chip, and the next click retries', async (
   const onReveal = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce('second-try');
   const { user } = renderUI(<RevealHarness onReveal={onReveal} />);
   await user.click(screen.getByRole('button', { name: 'Reveal Recovery token' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Reveal Recovery token' })).not.toBeDisabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Reveal Recovery token' })).not.toHaveAttribute('aria-disabled'));
   expect(screen.getByText('Stored')).toBeInTheDocument();
   await user.unhover(screen.getByRole('button', { name: 'Reveal Recovery token' }));
   await user.hover(screen.getByRole('button', { name: 'Reveal Recovery token' }));
@@ -382,7 +382,7 @@ it('secret reveal: with a disabled reason the button is disabled and never calls
   const onReveal = vi.fn();
   const { user } = renderUI(<RevealHarness onReveal={onReveal} reason="Needs a global admin" />);
   const btn = screen.getByRole('button', { name: 'Reveal Recovery token' });
-  expect(btn).toBeDisabled();
+  expect(btn).toHaveAttribute('aria-disabled', 'true');
   await user.click(btn);
   expect(onReveal).not.toHaveBeenCalled();
 });
