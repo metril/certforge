@@ -229,4 +229,6 @@ it('generated password: sheet stays open after download with the password still 
   expect((within(sheet).getByLabelText('Generated password') as HTMLInputElement).value).toBe(pw);
   await user.click(within(sheet).getByRole('button', { name: 'Copy password' }));
   expect(await navigator.clipboard.readText()).toBe(pw);
+  await user.click(within(sheet).getByRole('button', { name: 'Regenerate password' }));
+  expect(within(sheet).queryByText(/Downloaded/)).not.toBeInTheDocument();
 });
