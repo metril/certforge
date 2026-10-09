@@ -177,7 +177,7 @@ it('disables Delete and explains why while the credential is still referenced', 
   creds = [cred];
   const { user } = renderRoute('/o/acme/issuers/dns');
   const del = await screen.findByRole('button', { name: 'Delete Cloudflare prod' });
-  expect(del).toBeDisabled();
+  expect(del).toHaveAttribute('aria-disabled', 'true');
   await user.hover(del);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Used by 2');
 });
@@ -278,7 +278,7 @@ it('disables Edit with a tooltip for a credential whose provider is unknown', as
   creds = [{ ...cred, providerCode: 'not-a-real-provider' }];
   const { user } = renderRoute('/o/acme/issuers/dns');
   const edit = await screen.findByRole('button', { name: 'Edit Cloudflare prod' });
-  expect(edit).toBeDisabled();
+  expect(edit).toHaveAttribute('aria-disabled', 'true');
   await user.hover(edit);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Unknown provider "not-a-real-provider"');
 });
@@ -291,9 +291,9 @@ it('disables Add/Test/Edit/Delete for a viewer', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
   renderRoute('/o/acme/issuers/dns');
   expect(await screen.findByRole('button', { name: 'Add credential' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: `Test ${cred.name}` })).toBeDisabled();
-  expect(screen.getByRole('button', { name: `Edit ${cred.name}` })).toBeDisabled();
-  expect(screen.getByRole('button', { name: `Delete ${cred.name}` })).toBeDisabled();
+  expect(screen.getByRole('button', { name: `Test ${cred.name}` })).toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('button', { name: `Edit ${cred.name}` })).toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('button', { name: `Delete ${cred.name}` })).toHaveAttribute('aria-disabled', 'true');
 });
 
 async function openAddCloudflare() {
@@ -414,7 +414,7 @@ it('shows a disabled reveal button for a non-global-admin', async () => {
   await user.click(await screen.findByRole('button', { name: 'Edit Cloudflare prod' }));
   const sheet = await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' });
   const btn = await within(sheet).findByRole('button', { name: 'Reveal CF_DNS_API_TOKEN' });
-  expect(btn).toBeDisabled();
+  expect(btn).toHaveAttribute('aria-disabled', 'true');
   await user.click(btn);
   expect(revealed).toBeUndefined();
 });

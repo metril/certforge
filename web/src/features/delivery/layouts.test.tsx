@@ -132,7 +132,7 @@ it('lists layouts with files and use', async () => {
   const row = within(table).getByText('nginx').closest('tr')!;
   expect(within(row).getByText(/www\.pem · \+2 extra · password set/)).toBeInTheDocument();
   expect(within(row).getByText('1 grant')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Delete nginx' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Delete nginx' })).toHaveAttribute('aria-disabled', 'true');
   expect(screen.getByRole('link', { name: 'File layouts' })).toHaveAttribute('aria-current', 'page');
 });
 
@@ -199,7 +199,7 @@ it('edits a layout with a PATCH carrying name and files', async () => {
 it('blocks deleting a layout in use and deletes an unused one by name', async () => {
   const { user } = renderRoute('/o/acme/delivery/layouts');
   await screen.findByRole('table', { name: 'File layouts' });
-  expect(screen.getByRole('button', { name: 'Delete nginx' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Delete nginx' })).toHaveAttribute('aria-disabled', 'true');
   await user.click(screen.getByRole('button', { name: 'Delete spare' }));
   await user.type(screen.getByLabelText(/to confirm/), 'spare');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));

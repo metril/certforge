@@ -211,8 +211,8 @@ it('disables Add/Edit/Delete CA for an org-admin (cas:write is global-only)', as
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }]))));
   renderRoute('/o/acme/issuers/cas');
   expect(await screen.findByRole('button', { name: 'Add CA' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: "Edit Let's Encrypt" })).toBeDisabled();
-  expect(screen.getByRole('button', { name: "Delete Let's Encrypt" })).toBeDisabled();
+  expect(screen.getByRole('button', { name: "Edit Let's Encrypt" })).toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('button', { name: "Delete Let's Encrypt" })).toHaveAttribute('aria-disabled', 'true');
 });
 
 // Task 2: CA types with built-in and Vault PKI forms.
