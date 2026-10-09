@@ -104,6 +104,9 @@ func (s *Store) CreateDNSCredential(ctx context.Context, orgID uuid.UUID, name, 
 	if err != nil {
 		return DNSCredential{}, splitErr(err)
 	}
+	if err := checkAmbient(ctx, meta.Code, pub, sec); err != nil {
+		return DNSCredential{}, err
+	}
 	pubJSON, err := json.Marshal(pub)
 	if err != nil {
 		return DNSCredential{}, err
@@ -149,6 +152,9 @@ func (s *Store) UpdateDNSCredential(ctx context.Context, orgID, id uuid.UUID, na
 	pub, sec, changedPublic, reusedSecret, err := challenge.MergeUpdate(row.ProviderCode, oldPublic, oldSecret, cfg)
 	if err != nil {
 		return DNSCredential{}, nil, splitErr(err)
+	}
+	if err := checkAmbient(ctx, row.ProviderCode, pub, sec); err != nil {
+		return DNSCredential{}, nil, err
 	}
 	if len(changedPublic) > 0 && reusedSecret {
 		return DNSCredential{}, nil, &ValidationError{Field: "config", Msg: "secrets must be re-entered when connection settings change"}
@@ -296,4 +302,24 @@ func (s *Store) DNSCredentialConfig(ctx context.Context, orgID, id uuid.UUID) (D
 		cfg[k] = v
 	}
 	return c, cfg, nil
+}
+
+type ambientKey struct{}
+
+// WithAmbientCredentials marks ctx as belonging to a caller allowed to store
+// DNS credentials that use the server's own cloud identity (ambient auth,
+// AWS_ASSUME_ROLE_ARN, AWS_PROFILE): a global settings:write holder. Without
+// it Create/UpdateDNSCredential reject such configs.
+func WithAmbientCredentials(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ambientKey{}, true)
+}
+
+func checkAmbient(ctx context.Context, code string, pub, sec map[string]string) error {
+	if ok, _ := ctx.Value(ambientKey{}).(bool); ok {
+		return nil
+	}
+	if err := challenge.CheckNoAmbient(code, pub, sec); err != nil {
+		return &ValidationError{Field: "config", Msg: err.Error()}
+	}
+	return nil
 }
