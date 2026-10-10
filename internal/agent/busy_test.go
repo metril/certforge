@@ -75,8 +75,11 @@ func TestFailedReconcileIsRetried(t *testing.T) {
 		}
 	})
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	go func() { _ = a.session(ctx, nil) }()
+	done := make(chan struct{})
+	go func() { defer close(done); _ = a.session(ctx, nil) }()
+	// Stop the session and wait for it (and its reconcile worker) before the
+	// TempDir cleanup runs.
+	defer func() { cancel(); <-done }()
 	for ctx.Err() == nil {
 		var hits int
 		f.with(func() { hits = f.assignHits })

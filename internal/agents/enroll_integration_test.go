@@ -70,6 +70,7 @@ func kindOf(err error) Kind {
 
 type enrolEnv struct {
 	*syncFixture
+	mu      sync.Mutex
 	now     time.Time
 	pending []PendingApproval
 }
@@ -78,8 +79,12 @@ func newEnrolEnv(t *testing.T, st Settings) *enrolEnv {
 	t.Helper()
 	e := &enrolEnv{syncFixture: newSyncFixture(t), now: time.Now().UTC().Truncate(time.Second)}
 	e.svc.Settings = StaticSettings(st, "https://cf.example.test")
-	e.svc.Now = func() time.Time { return e.now }
-	e.svc.OnPendingApproval = func(_ context.Context, p PendingApproval) { e.pending = append(e.pending, p) }
+	e.svc.Now = func() time.Time { e.mu.Lock(); defer e.mu.Unlock(); return e.now }
+	e.svc.OnPendingApproval = func(_ context.Context, p PendingApproval) {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		e.pending = append(e.pending, p)
+	}
 	return e
 }
 
