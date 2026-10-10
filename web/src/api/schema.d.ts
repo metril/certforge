@@ -429,7 +429,7 @@ export interface paths {
         put?: never;
         /**
          * Start rewrapping secrets under the active KEK
-         * @description Needs global settings:write. Starts, in the background, re-encrypting every secret under the active KEK, table by table in order (settings; cas, covering eab_hmac and secret_cfg together; acme_accounts; dns_provider_credentials; output_specs; agent_cas; certificate_versions); 409 while a rewrap is already running. Recorded as kek.rewrap_started (activeKekId) when it starts and kek.rewrap_finished (rewrapped, remaining; system actor) when it completes.
+         * @description Needs global settings:write. Starts, in the background, re-encrypting every secret under the active KEK, table by table in order (settings; cas, covering eab_hmac and secret_cfg together; acme_accounts; dns_provider_credentials; output_specs; agent_cas; certificate_versions; notification_channels; deploy_targets); 409 while a rewrap is already running. Recorded as kek.rewrap_started (activeKekId) when it starts and kek.rewrap_finished (rewrapped, remaining; system actor) when it completes.
          */
         post: operations["startRewrap"];
         delete?: never;
@@ -2262,7 +2262,7 @@ export interface paths {
         };
         /**
          * List events
-         * @description The org's own events plus global (orgId null) events, newest first, keyset paginated. Needs alerts:read. Duplicate conditions are suppressed at emission time, not here, so every event returned already passed the server's own dedupe rule (see docs/notifications.md#dedupe); this endpoint never de-duplicates on its own.
+         * @description The org's own events plus global (orgId null) events, newest first, keyset paginated. Needs alerts:read. Duplicate conditions are suppressed at emission time, not here, so every event returned already passed the server's own dedupe rule (see docs/reference/events.md#dedupe); this endpoint never de-duplicates on its own.
          */
         get: operations["listEvents"];
         put?: never;
@@ -2284,7 +2284,7 @@ export interface paths {
         put?: never;
         /**
          * Create and download a backup
-         * @description Needs settings:write. Streams an encrypted archive of the whole database, table by table, as it is written. Recorded as backup.created {sizeBytes} once streaming completes, or backup.failed {error} (system actor) if it fails partway through. Restoring is CLI-only: no restore over HTTP; see operations.md#restore.
+         * @description Needs settings:write. Streams an encrypted archive of the whole database, table by table, as it is written. Recorded as backup.created {sizeBytes} once streaming completes, or backup.failed {error} (system actor) if it fails partway through. Restoring is CLI-only: no restore over HTTP; see docs/guide/backup.md#restore.
          */
         post: operations["createBackup"];
         delete?: never;
@@ -2569,7 +2569,7 @@ export interface components {
             kekId: string;
         };
         /**
-         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
+         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
          * @enum {string}
          */
         RewrapTable: "settings" | "cas" | "acme_accounts" | "dns_provider_credentials" | "output_specs" | "agent_cas" | "certificate_versions" | "notification_channels" | "deploy_targets";
@@ -2740,7 +2740,7 @@ export interface components {
              */
             ttl?: string;
         };
-        /** @description A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for. */
+        /** @description A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for. */
         CA: {
             /**
              * Format: uuid
@@ -2764,9 +2764,9 @@ export interface components {
             eabKid: string;
             /** @description An EAB HMAC is stored (it is never returned). */
             hasEab: boolean;
-            /** @description DNS resolvers (host or host:port) for propagation checks. */
+            /** @description DNS resolvers for propagation checks: host, host:port or a DNS-over-HTTPS URL. */
             resolvers: string[];
-            /** @description Reserved for Phase 2 global CAs; false in Phase 1. */
+            /** @description Reserved for global CAs shared across organizations. */
             shared: boolean;
             type: components["schemas"]["CaType"];
             /** @description Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki. */
@@ -4716,7 +4716,7 @@ export interface components {
             durationMs: number;
         };
         /**
-         * @description What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+         * @description What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
          * @enum {string}
          */
         EventKind: "cert.issued" | "cert.renewal_failed" | "cert.expiring" | "cert.expired" | "deploy.failed" | "deploy.drift" | "client.offline" | "agent.cert_expiring" | "client.pending_approval" | "monitor.mismatch" | "monitor.unreachable" | "monitor.expiring" | "monitor.recovered" | "backup.completed" | "backup.failed" | "test";
@@ -4758,7 +4758,7 @@ export interface components {
              */
             deliveredAt: string | null;
         };
-        /** @description One notification event (Shared contracts, Other operations and Dedupe keys rows). Duplicate conditions are suppressed once at emission time (docs/notifications.md#dedupe); every event on this feed already passed that check. */
+        /** @description One notification event. Duplicate conditions are suppressed once at emission time (docs/reference/events.md#dedupe); every event on this feed already passed that check. */
         Event: {
             /**
              * Format: uuid
@@ -4823,7 +4823,7 @@ export interface components {
             intervalSeconds: number;
             /**
              * Format: uuid
-             * @description A CertForge certificate the observed leaf is compared against; null skips the mismatch check.
+             * @description A CertForge certificate the observed leaf is compared against; null means the leaf must match the current version of some certificate in the org
              */
             expectedCertificateId: string | null;
             /** @description That certificate's name */
@@ -4883,7 +4883,7 @@ export interface components {
             intervalSeconds: number;
             /**
              * Format: uuid
-             * @description A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null skips the mismatch check.
+             * @description A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null means the leaf must match the current version of some certificate in the org
              */
             expectedCertificateId?: string | null;
             /**

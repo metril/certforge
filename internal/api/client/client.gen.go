@@ -793,7 +793,7 @@ type BackupStatus struct {
 	Schedule BackupSchedule `json:"schedule"`
 }
 
-// CA A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for.
+// CA A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for.
 type CA struct {
 	// Config Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki.
 	Config map[string]interface{} `json:"config"`
@@ -831,10 +831,10 @@ type CA struct {
 	// Preset Preset code; absent for a private CA (localca, vaultpki), which has none.
 	Preset *CAPresetCode `json:"preset,omitempty"`
 
-	// Resolvers DNS resolvers (host or host:port) for propagation checks.
+	// Resolvers DNS resolvers for propagation checks: host, host:port or a DNS-over-HTTPS URL.
 	Resolvers []string `json:"resolvers"`
 
-	// Shared Reserved for Phase 2 global CAs; false in Phase 1.
+	// Shared Reserved for global CAs shared across organizations.
 	Shared bool `json:"shared"`
 
 	// StoredSecrets Secret config fields held for this CA, for example importKeyPem.
@@ -1714,7 +1714,7 @@ type EnrollmentRequestList struct {
 	Items []EnrollmentRequest `json:"items"`
 }
 
-// Event One notification event (Shared contracts, Other operations and Dedupe keys rows). Duplicate conditions are suppressed once at emission time (docs/notifications.md#dedupe); every event on this feed already passed that check.
+// Event One notification event. Duplicate conditions are suppressed once at emission time (docs/reference/events.md#dedupe); every event on this feed already passed that check.
 type Event struct {
 	// At When it happened.
 	At time.Time `json:"at"`
@@ -1728,7 +1728,7 @@ type Event struct {
 	// Id Event id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Kind What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+	// Kind What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
 	Kind EventKind `json:"kind"`
 
 	// OrgId Owning org; null for a global event
@@ -1765,7 +1765,7 @@ type EventDelivery struct {
 	Status DeliveryStatus `json:"status"`
 }
 
-// EventKind What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+// EventKind What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
 type EventKind string
 
 // EventPage One page of events (Shared contracts, Other operations row).
@@ -2436,7 +2436,7 @@ type Monitor struct {
 	// Enabled Checked on the scan schedule and countable toward the org's monitor limit.
 	Enabled bool `json:"enabled"`
 
-	// ExpectedCertificateId A CertForge certificate the observed leaf is compared against; null skips the mismatch check.
+	// ExpectedCertificateId A CertForge certificate the observed leaf is compared against; null means the leaf must match the current version of some certificate in the org
 	ExpectedCertificateId *openapi_types.UUID `json:"expectedCertificateId"`
 
 	// ExpectedCertificateName That certificate's name
@@ -2493,7 +2493,7 @@ type MonitorInput struct {
 	// Enabled Checked on the scan schedule. Default true.
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// ExpectedCertificateId A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null skips the mismatch check.
+	// ExpectedCertificateId A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null means the leaf must match the current version of some certificate in the org
 	ExpectedCertificateId *openapi_types.UUID `json:"expectedCertificateId"`
 
 	// Host Hostname or IP address to connect to.
@@ -2749,7 +2749,7 @@ type RewrapStatus struct {
 	Tables []RewrapTableStatus `json:"tables"`
 }
 
-// RewrapTable A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
+// RewrapTable A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
 type RewrapTable string
 
 // RewrapTableStatus Rewrap progress for one table.
@@ -2763,7 +2763,7 @@ type RewrapTableStatus struct {
 	// Scanned Rows scanned so far.
 	Scanned int64 `json:"scanned"`
 
-	// Table A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
+	// Table A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
 	Table RewrapTable `json:"table"`
 }
 

@@ -15,7 +15,7 @@ info:
     identity provider), 503 (busy, with Retry-After).
 
     Agents do not use this API: certforge-agent talks to /agent/v1/* on the separate
-    mTLS agent listener (CF_LISTEN_AGENT), described in docs/architecture.md.
+    agent listener (CF_LISTEN_AGENT) or the HTTP port, described in docs/internals/architecture.md.
 servers:
   - url: /api/v1
 security:
@@ -47,11 +47,11 @@ tags:
   - name: agents
     description: The internal agent CA and the agent listener.
   - name: notifications
-    description: Notification channels and the event feed (Phase 6A).
+    description: Notification channels and the event feed.
   - name: monitoring
-    description: External TLS endpoint monitors (Phase 6A).
+    description: External TLS endpoint monitors.
   - name: backup
-    description: Encrypted database backup (Phase 6A).
+    description: Encrypted database backup.
   - name: server
     description: Server-wide status.
 paths:
@@ -562,7 +562,7 @@ paths:
         Needs global settings:write. Starts, in the background, re-encrypting every secret under
         the active KEK, table by table in order (settings; cas, covering eab_hmac and secret_cfg
         together; acme_accounts; dns_provider_credentials; output_specs; agent_cas;
-        certificate_versions); 409 while a rewrap is already running. Recorded as
+        certificate_versions; notification_channels; deploy_targets); 409 while a rewrap is already running. Recorded as
         kek.rewrap_started (activeKekId) when it starts and kek.rewrap_finished (rewrapped,
         remaining; system actor) when it completes.
       responses:
@@ -2831,7 +2831,7 @@ paths:
         The org's own events plus global (orgId null) events, newest first, keyset paginated.
         Needs alerts:read. Duplicate conditions are suppressed at emission time, not here, so
         every event returned already passed the server's own dedupe rule (see
-        docs/notifications.md#dedupe); this endpoint never de-duplicates on its own.
+        docs/reference/events.md#dedupe); this endpoint never de-duplicates on its own.
       parameters:
         - {$ref: "#/components/parameters/EventKindFilter"}
         - {$ref: "#/components/parameters/EventSeverityFilter"}
@@ -2857,7 +2857,7 @@ paths:
         Needs settings:write. Streams an encrypted archive of the whole database, table by table,
         as it is written. Recorded as backup.created {sizeBytes} once streaming
         completes, or backup.failed {error} (system actor) if it fails partway through. Restoring
-        is CLI-only: no restore over HTTP; see operations.md#restore.
+        is CLI-only: no restore over HTTP; see docs/guide/backup.md#restore.
       responses:
         "200":
           description: The backup archive.
@@ -3329,7 +3329,7 @@ components:
     RewrapTable:
       type: string
       enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions, notification_channels, deploy_targets]
-      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
+      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
     RewrapTableStatus:
       type: object
       description: Rewrap progress for one table.
@@ -3459,7 +3459,7 @@ components:
         ttl: {type: string, example: 2160h, description: "Go duration string for issued leaf validity, 1h to 19800h (825 days); Vault's own role or mount ceiling still applies."}
     CA:
       type: object
-      description: A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for.
+      description: A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for.
       required: [id, orgId, name, directoryUrl, trustBundlePem, eabKid, hasEab, resolvers, shared, type, config, storedSecrets, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: CA id.}
@@ -3478,8 +3478,8 @@ components:
             certificate of importPem; for vaultpki the CA certificate read from Vault at create.
         eabKid: {type: string, description: EAB key id; empty when unused.}
         hasEab: {type: boolean, description: An EAB HMAC is stored (it is never returned).}
-        resolvers: {type: array, items: {type: string}, description: DNS resolvers (host or host:port) for propagation checks.}
-        shared: {type: boolean, description: Reserved for Phase 2 global CAs; false in Phase 1.}
+        resolvers: {type: array, items: {type: string}, description: "DNS resolvers for propagation checks: host, host:port or a DNS-over-HTTPS URL."}
+        shared: {type: boolean, description: Reserved for global CAs shared across organizations.}
         type: {$ref: "#/components/schemas/CaType"}
         config:
           type: object
@@ -4791,7 +4791,7 @@ components:
     EventKind:
       type: string
       enum: [cert.issued, cert.renewal_failed, cert.expiring, cert.expired, deploy.failed, deploy.drift, client.offline, agent.cert_expiring, client.pending_approval, monitor.mismatch, monitor.unreachable, monitor.expiring, monitor.recovered, backup.completed, backup.failed, test]
-      description: What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+      description: What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
     Severity:
       type: string
       enum: [info, warning, critical]
@@ -4821,7 +4821,7 @@ components:
         deliveredAt: {type: string, format: date-time, nullable: true, description: When delivery succeeded; null while pending or failed.}
     Event:
       type: object
-      description: One notification event (Shared contracts, Other operations and Dedupe keys rows). Duplicate conditions are suppressed once at emission time (docs/notifications.md#dedupe); every event on this feed already passed that check.
+      description: One notification event. Duplicate conditions are suppressed once at emission time (docs/reference/events.md#dedupe); every event on this feed already passed that check.
       required: [id, kind, at, orgId, severity, resource, summary, details, deliveries]
       properties:
         id: {type: string, format: uuid, description: Event id.}
@@ -4859,7 +4859,7 @@ components:
         port: {type: integer, minimum: 1, maximum: 65535, description: TCP port to connect to.}
         sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; null uses host.}
         intervalSeconds: {type: integer, minimum: 300, maximum: 86400, description: Seconds between scheduled checks.}
-        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A CertForge certificate the observed leaf is compared against; null skips the mismatch check.}
+        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A CertForge certificate the observed leaf is compared against; null means the leaf must match the current version of some certificate in the org, otherwise the state is mismatch.}
         expectedCertificateName: {type: string, nullable: true, description: That certificate's name, for display; null when expectedCertificateId is null.}
         enabled: {type: boolean, description: Checked on the scan schedule and countable toward the org's monitor limit.}
         state: {$ref: "#/components/schemas/MonitorState"}
@@ -4881,7 +4881,7 @@ components:
         port: {type: integer, minimum: 1, maximum: 65535, default: 443, description: TCP port to connect to. Default 443.}
         sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; omitted or null uses host.}
         intervalSeconds: {type: integer, minimum: 300, maximum: 86400, default: 3600, description: Seconds between scheduled checks. Default 3600.}
-        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null skips the mismatch check.}
+        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null means the leaf must match the current version of some certificate in the org, otherwise the state is mismatch.}
         enabled: {type: boolean, default: true, description: Checked on the scan schedule. Default true.}
     BackupSchedule:
       type: string
