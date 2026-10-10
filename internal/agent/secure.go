@@ -227,6 +227,11 @@ func (t *secureTransport) exchange(req *http.Request, body []byte, au string, cs
 		return nil, false, err
 	}
 	code := hr.Header.Get(agentproto.HeaderError)
+	// An unsigned 429 or 503 is the server shedding load. It says nothing about
+	// the client, so it is only a hint to retry later.
+	if (hr.StatusCode == http.StatusTooManyRequests || hr.StatusCode == http.StatusServiceUnavailable) && hr.Header.Get(agentproto.HeaderSignerCert) == "" {
+		return nil, false, errBusy
+	}
 	if err := t.verifyResponse(hr, raw, nonce); err != nil {
 		// An unverifiable "session" refusal (the server cannot sign for a
 		// session it does not know) only buys one fresh handshake; it never
@@ -266,6 +271,9 @@ func readResponse(resp *http.Response) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// errBusy is an unsigned 429 or 503: retry after a pause.
+var errBusy = errors.New("agent: the server is busy")
 
 // refusal turns a verified, bodyless refusal into the error callers handle.
 // Only a response whose signature covers Cf-Error and binds this request's

@@ -26,12 +26,16 @@ type agentAPI struct {
 	httpPort bool // mounted on the HTTP router: the base URL host is also a valid @authority
 	nonces   NonceStore
 	sessions agentSessions
-	sessLim  *authn.Limiter
+	sessLim  *authn.Limiter // per client address: handshakes, polls, sockets
+	reqLim   *authn.Limiter // per client id: signed REST requests (a fleet behind one proxy shares an address)
 	hellos   enrollHellos
 	// refreshing is set while a late responder renewal runs.
 	refreshing atomic.Bool
 	now        func() time.Time // nil: time.Now
 }
+
+// Signed REST requests allowed per client; vars so tests can lower them.
+var agentReqPerMinute, agentReqBurst = 600, 120
 
 func newAgentAPI(d Deps, httpPort bool) *agentAPI {
 	if d.Log == nil {
@@ -40,7 +44,7 @@ func newAgentAPI(d Deps, httpPort bool) *agentAPI {
 	if d.EnrollLimiter == nil {
 		d.EnrollLimiter = authn.NewLimiter(authn.DefaultLoginPerMinute, authn.DefaultLoginBurst)
 	}
-	a := &agentAPI{d: d, httpPort: httpPort, nonces: d.AgentNonces, sessLim: authn.NewLimiter(600, 120)}
+	a := &agentAPI{d: d, httpPort: httpPort, nonces: d.AgentNonces, sessLim: authn.NewLimiter(600, 120), reqLim: authn.NewLimiter(agentReqPerMinute, agentReqBurst)}
 	if a.nonces == nil {
 		a.nonces = newMemNonces()
 	}
@@ -77,7 +81,7 @@ func (a *agentAPI) routes(v1 chi.Router) {
 	v1.With(a.limitSession).Post("/session", a.session)
 	v1.With(a.limitSession).Get("/ws", a.ws)
 	v1.Group(func(g chi.Router) {
-		g.Use(a.limitSession, a.secure)
+		g.Use(a.secure)
 		g.Post("/renew", a.renew)
 		g.Get("/assignments", a.assignments)
 		g.Get("/grants/{id}/bundle", a.bundle)

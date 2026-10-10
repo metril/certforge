@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -458,6 +459,13 @@ func (a *agentAPI) secure(next http.Handler) http.Handler {
 		sess := a.sessions.get(r.Header.Get(agentproto.HeaderEphemeral), now)
 		if sess == nil {
 			a.reject(w, http.StatusUnauthorized, agentproto.ErrCodeSession)
+			return
+		}
+		// Per client, not per address: a fleet behind one proxy shares an
+		// address. 600 a minute is ten times the busiest agent's rate.
+		if ok, wait := a.reqLim.Allow(sess.clientID.String()); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+			Write(w, http.StatusTooManyRequests, "Too many requests", "Wait before sending more requests.")
 			return
 		}
 		body, ok := a.readBody(w, r, agentproto.MaxMessage+1024)

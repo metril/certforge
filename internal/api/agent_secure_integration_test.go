@@ -543,3 +543,33 @@ func TestAgentNonceCacheFull(t *testing.T) {
 		t.Fatalf("full cache answered %d", resp.StatusCode)
 	}
 }
+
+// The REST limit is per client: one client over it gets an unsigned 429 while
+// another client behind the same address is unaffected.
+func TestAgentRequestLimitPerClient(t *testing.T) {
+	oldRate, oldBurst := agentReqPerMinute, agentReqBurst
+	agentReqPerMinute, agentReqBurst = 1, 3
+	t.Cleanup(func() { agentReqPerMinute, agentReqBurst = oldRate, oldBurst })
+	e := newAgentEnv(t)
+	certA, _, _ := e.enrolledWithGrant(t, "lim-a", false)
+	certB, _, _ := e.enrolledWithGrant(t, "lim-b", false)
+	get := func(hc *http.Client) error {
+		_, err := doAgent(hc, http.MethodGet, e.ts.URL+"/agent/v1/assignments", nil, &agentproto.Assignments{})
+		return err
+	}
+	a := secureClient(e.identity(t, certA), e.httpClient(t, nil).Transport)
+	b := secureClient(e.identity(t, certB), e.httpClient(t, nil).Transport)
+	for i := range 3 {
+		if err := get(a); err != nil {
+			t.Fatalf("request %d within the burst: %v", i, err)
+		}
+	}
+	if err := get(a); err == nil || !strings.Contains(err.Error(), "busy") {
+		t.Fatalf("a client over its limit must be told to wait: %v", err)
+	}
+	for i := range 3 {
+		if err := get(b); err != nil {
+			t.Fatalf("another client on the same address was throttled at request %d: %v", i, err)
+		}
+	}
+}

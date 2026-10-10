@@ -129,20 +129,45 @@ func verifyServerTLS(mode string, cs tls.ConnectionState, pin, roots *x509.CertP
 	return verify(roots, cs.ServerName)
 }
 
+// busyBackoff is the first pause after the server answers 429 or 503; it
+// doubles for each of busyRetries retries. A var so tests can shorten it.
+var busyBackoff = time.Second
+
+const busyRetries = 4
+
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
-	var rdr io.Reader
+	var b []byte
 	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if b, err = json.Marshal(body); err != nil {
 			return err
 		}
+	}
+	wait := busyBackoff
+	for attempt := 0; ; attempt++ {
+		err := c.doOnce(ctx, method, path, b, body != nil, out)
+		if !errors.Is(err, errBusy) || attempt >= busyRetries {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+		wait *= 2
+	}
+}
+
+func (c *Client) doOnce(ctx context.Context, method, path string, b []byte, hasBody bool, out any) error {
+	var rdr io.Reader
+	if hasBody {
 		rdr = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, rdr)
 	if err != nil {
 		return err
 	}
-	if body != nil {
+	if hasBody {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.hc.Do(req)
