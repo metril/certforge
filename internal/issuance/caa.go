@@ -12,6 +12,7 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/signer"
 )
 
@@ -96,7 +97,16 @@ func caaFromAnswer(rrs []dns.RR) []CAARecord {
 
 // effectiveDNSServers normalises servers to host:port form, or reads
 // /etc/resolv.conf when servers is empty.
+// DoH (https://) entries are skipped, falling back to the system resolvers
+// when nothing else remains: CAA lookups are advisory (the CA re-checks).
 func effectiveDNSServers(servers []string) ([]string, error) {
+	plain := make([]string, 0, len(servers))
+	for _, s := range servers {
+		if !challenge.IsDoH(s) {
+			plain = append(plain, s)
+		}
+	}
+	servers = plain
 	if len(servers) == 0 {
 		cfg, err := dns.ClientConfigFromFile("/etc/resolv.conf")
 		if err != nil {

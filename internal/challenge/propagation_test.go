@@ -2,7 +2,10 @@ package challenge
 
 import (
 	"context"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 
@@ -55,5 +58,42 @@ func TestCheckTXTRetriesTruncatedOverTCP(t *testing.T) {
 	}
 	if !sawEDNS.Load() {
 		t.Error("UDP query carried no EDNS0 OPT record")
+	}
+}
+
+func TestCheckTXTDoH(t *testing.T) {
+	var gotCT, gotAccept, gotMethod string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCT, gotAccept, gotMethod = r.Header.Get("Content-Type"), r.Header.Get("Accept"), r.Method
+		body, _ := io.ReadAll(r.Body)
+		q := new(dns.Msg)
+		if err := q.Unpack(body); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		resp := new(dns.Msg)
+		resp.SetReply(q)
+		resp.Answer = append(resp.Answer, &dns.TXT{Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypeTXT, Class: dns.ClassINET}, Txt: []string{"tok"}})
+		wire, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(wire)
+	}))
+	defer srv.Close()
+	old := dohClient
+	dohClient = srv.Client()
+	t.Cleanup(func() { dohClient = old })
+
+	ok, err := CheckTXT(context.Background(), []string{srv.URL}, "_acme-challenge.example.com", "tok")
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if gotMethod != "POST" || gotCT != "application/dns-message" || gotAccept != "application/dns-message" {
+		t.Errorf("request %q %q %q", gotMethod, gotCT, gotAccept)
+	}
+	if ok, _ := CheckTXT(context.Background(), []string{srv.URL}, "_acme-challenge.example.com", "other"); ok {
+		t.Error("mismatched value reported visible")
+	}
+	if _, err := CheckTXT(context.Background(), []string{"https://127.0.0.1:1/dns-query"}, "x.example.com", "tok"); err == nil {
+		t.Error("expected error from unreachable DoH endpoint")
 	}
 }

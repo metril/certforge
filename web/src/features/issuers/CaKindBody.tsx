@@ -32,6 +32,7 @@ const isHttps = (v: string) => {
 // address, or `host[:port]` (a trailing dot is fine); the port, when given,
 // must be 1-65535. Never stricter than the server's validateResolvers.
 export const hostPort = (v: string) => {
+  if (/^https:\/\/[^\s/]+\S*$/i.test(v)) return null; // DNS-over-HTTPS endpoint
   const bad = `${v} is not host or host:port`;
   if (/^[0-9a-fA-F:.]+$/.test(v) && /[0-9a-fA-F]/.test(v) && !v.includes(":::") && (v.match(/:/g) ?? []).length >= 2) return null;
   const m = /^\[[0-9a-fA-F:.]+(?:%[A-Za-z0-9_.-]+)?\](?::(\d{1,5}))?$/.exec(v) ?? /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\.?(?::(\d{1,5}))?$/.exec(v);
