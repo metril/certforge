@@ -51,7 +51,7 @@ it('lists the request on Clients and shows the nav badge', async () => {
   expect(within(card).getByText(/Token for edge-1/)).toBeInTheDocument();
   // The code is not on the row: the comparison happens in the dialog.
   expect(within(card).queryByText('ABCD-EFGH')).toBeNull();
-  expect(await screen.findByRole('link', { name: /Clients, 1 awaiting approval/ })).toBeInTheDocument();
+  expect(await screen.findByRole('link', { name: /^Clients, 1 awaiting approval$/ })).toBeInTheDocument();
 });
 
 it('renders no queue and no badge when nothing is waiting', async () => {

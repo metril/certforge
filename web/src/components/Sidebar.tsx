@@ -195,7 +195,6 @@ function NavRow({
           {badge}
         </span>
       )}
-      {!compact && badge > 0 && <span className="sr-only">, {badge} awaiting approval</span>}
     </>
   );
   const cls = cn(rowClass, compact && 'justify-center px-0');
@@ -205,7 +204,7 @@ function NavRow({
       target={item.target}
       org={org}
       active={active}
-      label={compact ? (badge > 0 ? `${item.label}, ${badge} awaiting approval` : item.label) : undefined}
+      label={badge > 0 ? `${item.label}, ${badge} awaiting approval` : compact ? item.label : undefined}
       onNavigate={onNavigate}
       className={cn(cls, active && activeClass)}
     >
