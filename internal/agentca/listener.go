@@ -23,12 +23,12 @@ import (
 // Source is what the listener reads from the CA store.
 type Source interface {
 	Oldest(ctx context.Context) (*CA, error)
-	Trusted(ctx context.Context) ([]*x509.Certificate, error)
 }
 
-// Listener holds the agent listener's in-memory server certificate and
-// client trust pool; TLSConfig reads them on every handshake, so Reload
-// takes effect without a restart.
+// Listener holds the agent listener's in-memory server certificate and the
+// responder identity; TLSConfig reads the certificate on every handshake, so
+// Reload takes effect without a restart. The listener asks for no client
+// certificate: agents authenticate in the application layer (signed requests).
 type Listener struct {
 	Source Source
 	Names  func(ctx context.Context) ([]string, error)
@@ -55,7 +55,6 @@ var ErrNoNames = errors.New("agentca: no listener names configured")
 type listenerState struct {
 	cert  tls.Certificate
 	leaf  *x509.Certificate
-	pool  *x509.CertPool
 	caID  uuid.UUID
 	names []string
 }
@@ -123,10 +122,6 @@ func (l *Listener) Reload(ctx context.Context) error {
 	if err := l.reloadResponder(ca); err != nil {
 		return err
 	}
-	trusted, err := l.Source.Trusted(ctx)
-	if err != nil {
-		return err
-	}
 	names, err := l.Names(ctx)
 	if err != nil {
 		return err
@@ -134,11 +129,7 @@ func (l *Listener) Reload(ctx context.Context) error {
 	if len(names) == 0 {
 		return ErrNoNames
 	}
-	pool := x509.NewCertPool()
-	for _, c := range trusted {
-		pool.AddCert(c)
-	}
-	next := &listenerState{pool: pool, caID: ca.ID, names: slices.Clone(names)}
+	next := &listenerState{caID: ca.ID, names: slices.Clone(names)}
 	cur := l.state.Load()
 	if cur != nil && cur.caID == ca.ID && slices.Equal(cur.names, names) &&
 		!agentproto.RenewDue(cur.leaf.NotBefore, cur.leaf.NotAfter, l.now()) {
@@ -160,9 +151,8 @@ func (l *Listener) Reload(ctx context.Context) error {
 	return nil
 }
 
-// TLSConfig verifies client certificates when given (enrolment has none)
-// against every trusted agent CA. HTTP/2 is not offered: the WebSocket
-// upgrade needs HTTP/1.1.
+// TLSConfig serves the listener certificate and requests no client
+// certificate. HTTP/2 is not offered: the WebSocket upgrade needs HTTP/1.1.
 func (l *Listener) TLSConfig() *tls.Config {
 	return &tls.Config{
 		MinVersion: tls.VersionTLS12,
@@ -172,7 +162,7 @@ func (l *Listener) TLSConfig() *tls.Config {
 				return nil, errors.New("agentca: listener certificate not loaded")
 			}
 			return &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{st.cert},
-				ClientAuth: tls.VerifyClientCertIfGiven, ClientCAs: st.pool, NextProtos: []string{"http/1.1"}}, nil
+				NextProtos: []string{"http/1.1"}}, nil
 		},
 	}
 }

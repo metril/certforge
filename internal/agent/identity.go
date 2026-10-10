@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
@@ -326,12 +325,6 @@ func (id *Identity) current() (*x509.Certificate, *x509.CertPool) {
 	id.mu.Lock()
 	defer id.mu.Unlock()
 	return id.Cert, id.CAs
-}
-
-// TLSCertificate is the client certificate presented to the server.
-func (id *Identity) TLSCertificate() tls.Certificate {
-	cert, _ := id.current()
-	return tls.Certificate{Certificate: [][]byte{cert.Raw}, PrivateKey: id.Key, Leaf: cert}
 }
 
 // SaveState writes state.json (0600).

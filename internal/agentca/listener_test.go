@@ -64,7 +64,9 @@ func TestReloadIssuesAndKeepsServerCert(t *testing.T) {
 	}
 }
 
-func TestTLSConfigVerifiesClientCerts(t *testing.T) {
+// The listener asks for no client certificate: agents authenticate in the
+// application layer, so a presented one (trusted or not) changes nothing.
+func TestTLSConfigIgnoresClientCerts(t *testing.T) {
 	ctx := context.Background()
 	fresh, freshKey, err := NewCA(time.Now()) // real time: the handshake checks validity against the clock
 	if err != nil {
@@ -108,15 +110,15 @@ func TestTLSConfigVerifiesClientCerts(t *testing.T) {
 		<-done
 		return n, err
 	}
-	if n, err := handshake([]tls.Certificate{clientCert(ca)}); err != nil || n != 1 {
+	if n, err := handshake([]tls.Certificate{clientCert(ca)}); err != nil || n != 0 {
 		t.Fatalf("trusted client: %v chains %d", err, n)
 	}
 	if n, err := handshake(nil); err != nil || n != 0 {
 		t.Fatalf("no client cert: %v chains %d", err, n)
 	}
 	foreignCert, foreignKey, _ := NewCA(time.Now())
-	if _, err := handshake([]tls.Certificate{clientCert(&CA{Cert: foreignCert, Key: foreignKey})}); err == nil {
-		t.Fatal("foreign client certificate accepted")
+	if _, err := handshake([]tls.Certificate{clientCert(&CA{Cert: foreignCert, Key: foreignKey})}); err != nil {
+		t.Fatalf("a foreign client certificate must be ignored, not fail the handshake: %v", err)
 	}
 }
 

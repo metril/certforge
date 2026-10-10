@@ -3,7 +3,6 @@ package agent
 import (
 	"bytes"
 	"crypto/ecdh"
-	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
@@ -39,9 +38,6 @@ type secureTransport struct {
 
 	mu       sync.Mutex                // guards sessions, and serialises handshakes
 	sessions map[string]*clientSession // by authority
-
-	sigMu   sync.Mutex                  // guards signers
-	signers map[string]*ecdsa.PublicKey // verified responder keys by DER
 }
 
 type clientSession struct {
@@ -54,7 +50,7 @@ type clientSession struct {
 // NewSecureTransport wraps base, which must already do TLS the way the
 // deployment needs (system roots or the agent CA pin).
 func NewSecureTransport(id *Identity, base http.RoundTripper) http.RoundTripper {
-	return &secureTransport{id: id, base: base, now: time.Now, sessions: map[string]*clientSession{}, signers: map[string]*ecdsa.PublicKey{}}
+	return &secureTransport{id: id, base: base, now: time.Now, sessions: map[string]*clientSession{}}
 }
 
 func (t *secureTransport) keyID() (string, error) {
@@ -295,24 +291,16 @@ func (t *secureTransport) verifyResponse(resp *http.Response, raw []byte, nonce 
 		return ErrUnsigned
 	}
 	now := t.now()
-	t.sigMu.Lock()
-	pub := t.signers[string(der)]
-	t.sigMu.Unlock()
-	if pub == nil {
-		leaf, err := x509.ParseCertificate(der)
-		if err != nil {
-			return ErrUnsigned
-		}
-		_, pool := t.id.current()
-		if pub, err = agentproto.VerifyResponder(leaf, pool, now); err != nil {
-			return fmt.Errorf("%w: %w", ErrUnsigned, err)
-		}
-		t.sigMu.Lock()
-		if len(t.signers) > 8 {
-			t.signers = map[string]*ecdsa.PublicKey{}
-		}
-		t.signers[string(der)] = pub
-		t.sigMu.Unlock()
+	// Verified on every response, never cached: the responder certificate
+	// expires in 24 h and the CA bundle can shrink under a long-lived client.
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		return ErrUnsigned
+	}
+	_, pool := t.id.current()
+	pub, err := agentproto.VerifyResponder(leaf, pool, now)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrUnsigned, err)
 	}
 	if _, err := agentproto.VerifyResponse(resp.Header, resp.StatusCode, raw, nonce, now, pub); err != nil {
 		return fmt.Errorf("%w: %w", ErrUnsigned, err)
