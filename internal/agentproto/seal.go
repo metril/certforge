@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 // Directions label each half of a session; they feed both the HKDF info and
@@ -53,12 +54,35 @@ func HPKEOpen(priv *ecdh.PrivateKey, info, sealed []byte) ([]byte, error) {
 	return pt, nil
 }
 
+// SessionMaxMessages caps each direction of a session; with the 10 minute
+// lifetime it bounds how much one key protects, and keeps seq far from wrapping.
+const SessionMaxMessages = 1000
+
+// replayWindow is how far behind the highest seq an out-of-order message is
+// still accepted.
+const replayWindow = 64
+
+// Errors.
+var (
+	ErrSessionExhausted = errors.New("agentproto: session message limit reached")
+	ErrReplay           = errors.New("agentproto: replayed, reordered or out-of-window message")
+)
+
 // Session holds the two per-direction AES-256-GCM keys of one handshake. The
 // keys come from ECDH between two ephemeral P-256 keys, so discarding them at
 // session end gives forward secrecy; the callers' static keys only sign.
+// The session owns the send counter (so a nonce is never reused) and tracks
+// received seqs (so a frame is never accepted twice).
 type Session struct {
 	sendDir, recvDir string
 	send, recv       cipher.AEAD
+
+	mu       sync.Mutex
+	sendSeq  uint64
+	recvNext uint64 // OpenInOrder: the only seq accepted next
+	recvHi   uint64 // OpenWindow: highest authenticated seq
+	recvBits uint64 // bit i set: seq recvHi-i was seen
+	recvAny  bool
 }
 
 // NewSession derives a session from the local ephemeral private key, the
@@ -89,9 +113,9 @@ func NewSession(local *ecdh.PrivateKey, peer *ecdh.PublicKey, nonce []byte, clie
 		return nil, err
 	}
 	if client {
-		return &Session{DirC2S, DirS2C, c2s, s2c}, nil
+		return &Session{sendDir: DirC2S, recvDir: DirS2C, send: c2s, recv: s2c}, nil
 	}
-	return &Session{DirS2C, DirC2S, s2c, c2s}, nil
+	return &Session{sendDir: DirS2C, recvDir: DirC2S, send: s2c, recv: c2s}, nil
 }
 
 func seqNonce(seq uint64) []byte {
@@ -106,17 +130,74 @@ func aad(dir string, seq uint64, extra []byte) []byte {
 	return append(a, extra...)
 }
 
-// Seal encrypts plaintext for the peer. Each seq may be used once per
-// direction; extra is additional authenticated data (path, request nonce...).
-func (s *Session) Seal(seq uint64, plaintext, extra []byte) []byte {
-	return s.send.Seal(nil, seqNonce(seq), plaintext, aad(s.sendDir, seq, extra))
+// Seal encrypts plaintext for the peer under the next seq, which it returns
+// for the peer's nonce and AAD. extra is additional authenticated data (path,
+// request nonce...). It fails with ErrSessionExhausted after
+// SessionMaxMessages messages: the caller must start a new session.
+func (s *Session) Seal(plaintext, extra []byte) (uint64, []byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sendSeq >= SessionMaxMessages {
+		return 0, nil, ErrSessionExhausted
+	}
+	seq := s.sendSeq
+	s.sendSeq++
+	return seq, s.send.Seal(nil, seqNonce(seq), plaintext, aad(s.sendDir, seq, extra)), nil
 }
 
-// Open decrypts a message the peer sealed with the same seq and extra.
-func (s *Session) Open(seq uint64, ciphertext, extra []byte) ([]byte, error) {
-	pt, err := s.recv.Open(nil, seqNonce(seq), ciphertext, aad(s.recvDir, seq, extra))
+func (s *Session) open(seq uint64, ct, extra []byte) ([]byte, error) {
+	pt, err := s.recv.Open(nil, seqNonce(seq), ct, aad(s.recvDir, seq, extra))
 	if err != nil {
 		return nil, ErrSeal
+	}
+	return pt, nil
+}
+
+// OpenInOrder decrypts the next message of a strictly ordered stream (the
+// WebSocket): seq must be exactly one past the last accepted one.
+func (s *Session) OpenInOrder(seq uint64, ct, extra []byte) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if seq != s.recvNext || seq >= SessionMaxMessages {
+		return nil, ErrReplay
+	}
+	pt, err := s.open(seq, ct, extra)
+	if err == nil {
+		s.recvNext++
+	}
+	return pt, err
+}
+
+// OpenWindow decrypts a message that may arrive out of order (concurrent
+// REST requests): a seq already seen, or more than 64 behind the highest
+// authenticated one, is refused. Only messages that authenticate are recorded.
+func (s *Session) OpenWindow(seq uint64, ct, extra []byte) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if seq >= SessionMaxMessages {
+		return nil, ErrReplay
+	}
+	if s.recvAny && seq <= s.recvHi {
+		if d := s.recvHi - seq; d >= replayWindow || s.recvBits&(1<<d) != 0 {
+			return nil, ErrReplay
+		}
+	}
+	pt, err := s.open(seq, ct, extra)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case !s.recvAny:
+		s.recvHi, s.recvBits, s.recvAny = seq, 1, true
+	case seq > s.recvHi:
+		if d := seq - s.recvHi; d >= replayWindow {
+			s.recvBits = 1
+		} else {
+			s.recvBits = s.recvBits<<d | 1
+		}
+		s.recvHi = seq
+	default:
+		s.recvBits |= 1 << (s.recvHi - seq)
 	}
 	return pt, nil
 }

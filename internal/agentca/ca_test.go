@@ -143,8 +143,9 @@ func TestSignResponderHasOnlyResponderEKU(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.ExtKeyUsage) != 0 || len(c.UnknownExtKeyUsage) != 1 || !c.UnknownExtKeyUsage[0].Equal(ResponderEKU) {
-		t.Fatalf("eku %v %v", c.ExtKeyUsage, c.UnknownExtKeyUsage)
+	if len(c.ExtKeyUsage) != 1 || c.ExtKeyUsage[0] != x509.ExtKeyUsageOCSPSigning || len(c.UnknownExtKeyUsage) != 0 ||
+		len(c.Subject.OrganizationalUnit) != 1 || c.Subject.OrganizationalUnit[0] != ResponderMarker {
+		t.Fatalf("eku %v %v ou %v", c.ExtKeyUsage, c.UnknownExtKeyUsage, c.Subject.OrganizationalUnit)
 	}
 	if d := c.NotAfter.Sub(now0); d != ResponderLifetime {
 		t.Fatalf("lifetime %v", d)
@@ -153,6 +154,11 @@ func TestSignResponderHasOnlyResponderEKU(t *testing.T) {
 	roots.AddCert(ca.Cert)
 	if _, err := VerifyResponder(c, roots, now0); err != nil {
 		t.Fatal(err)
+	}
+	for _, u := range []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth} {
+		if _, err := c.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: now0, KeyUsages: []x509.ExtKeyUsage{u}}); err == nil {
+			t.Errorf("responder certificate valid for TLS usage %v", u)
+		}
 	}
 	if _, err := VerifyResponder(c, roots, now0.Add(25*time.Hour)); err == nil {
 		t.Error("expired responder accepted")

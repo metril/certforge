@@ -14,7 +14,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -199,10 +198,12 @@ func SignServer(ca *CA, pub crypto.PublicKey, names []string, now time.Time) (*x
 	return x509.ParseCertificate(der)
 }
 
-// ResponderEKU is the custom extended key usage of the responder
-// certificate. It carries no serverAuth or clientAuth, so a TLS certificate
-// from this CA cannot stand in for it, nor the reverse.
-var ResponderEKU = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 59000, 1, 1}
+// ResponderMarker is the OU of a responder certificate (an RFC 4122 UUID
+// arc OID). Go's x509 cannot parse a certificate carrying an OID arc this
+// large, so it cannot be the EKU itself. The EKU is OCSPSigning, which no TLS
+// stack accepts for serverAuth or clientAuth; the marker tells responder
+// certificates apart from other OCSPSigning ones.
+const ResponderMarker = "2.25.284011506363329835389774668932300182646"
 
 // SignResponder issues the certificate whose key signs the server's agent
 // protocol responses. It is a signing key only: message encryption uses
@@ -213,12 +214,12 @@ func SignResponder(ca *CA, pub crypto.PublicKey, now time.Time) (*x509.Certifica
 		return nil, err
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber:       serial,
-		Subject:            pkix.Name{CommonName: "CertForge agent responder", Organization: []string{"CertForge agent responder"}},
-		NotBefore:          now.Add(-clockSkew),
-		NotAfter:           capped(ca, now.Add(ResponderLifetime)),
-		KeyUsage:           x509.KeyUsageDigitalSignature,
-		UnknownExtKeyUsage: []asn1.ObjectIdentifier{ResponderEKU},
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "CertForge agent responder", Organization: []string{"CertForge"}, OrganizationalUnit: []string{ResponderMarker}},
+		NotBefore:    now.Add(-clockSkew),
+		NotAfter:     capped(ca, now.Add(ResponderLifetime)),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.Cert, pub, ca.Key)
 	if err != nil {
@@ -227,10 +228,11 @@ func SignResponder(ca *CA, pub crypto.PublicKey, now time.Time) (*x509.Certifica
 	return x509.ParseCertificate(der)
 }
 
-// VerifyResponder checks that leaf chains to roots and carries ResponderEKU
-// only; it returns the leaf's ECDSA public key.
+// VerifyResponder checks that leaf chains to roots and carries the responder EKU and
+// marker only; it returns the leaf's ECDSA public key.
 func VerifyResponder(leaf *x509.Certificate, roots *x509.CertPool, now time.Time) (*ecdsa.PublicKey, error) {
-	if len(leaf.ExtKeyUsage) != 0 || len(leaf.UnknownExtKeyUsage) != 1 || !leaf.UnknownExtKeyUsage[0].Equal(ResponderEKU) {
+	if len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != x509.ExtKeyUsageOCSPSigning || len(leaf.UnknownExtKeyUsage) != 0 ||
+		len(leaf.Subject.OrganizationalUnit) != 1 || leaf.Subject.OrganizationalUnit[0] != ResponderMarker {
 		return nil, errors.New("agentca: not a responder certificate")
 	}
 	if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {

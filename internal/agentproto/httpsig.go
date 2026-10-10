@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -18,7 +19,7 @@ import (
 // A pure subset of RFC 9421 HTTP message signatures with one fixed shape per
 // message kind; verifiers rebuild the canonical Signature-Input from the
 // parsed values and require an exact match. Signatures are ECDSA P-256 over
-// SHA-256 and DER-encoded (not the raw r||s of RFC 9421).
+// SHA-256 as raw r||s (RFC 9421 ecdsa-p256-sha256).
 
 // Header names.
 const (
@@ -111,10 +112,13 @@ func respBase(status int, p RespParams, digest string) []byte {
 
 func sign(key *ecdsa.PrivateKey, base []byte) (string, error) {
 	h := sha256.Sum256(base)
-	sig, err := ecdsa.SignASN1(rand.Reader, key, h[:])
+	r, ss, err := ecdsa.Sign(rand.Reader, key, h[:])
 	if err != nil {
 		return "", err
 	}
+	sig := make([]byte, 64) // RFC 9421 ecdsa-p256-sha256: fixed-width r || s
+	r.FillBytes(sig[:32])
+	ss.FillBytes(sig[32:])
 	return sigLabel + "=:" + base64.StdEncoding.EncodeToString(sig) + ":", nil
 }
 
@@ -127,8 +131,11 @@ func verify(pub *ecdsa.PublicKey, h http.Header, base []byte) error {
 	if err != nil {
 		return fmt.Errorf("%w: malformed signature", ErrSig)
 	}
+	if len(sig) != 64 {
+		return fmt.Errorf("%w: malformed signature", ErrSig)
+	}
 	hash := sha256.Sum256(base)
-	if !ecdsa.VerifyASN1(pub, hash[:], sig) {
+	if !ecdsa.Verify(pub, hash[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
 		return ErrSig
 	}
 	return nil
