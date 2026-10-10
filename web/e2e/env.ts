@@ -15,7 +15,7 @@ export const E2E = {
   // file the compose agent waits for, ssl/ is its /etc/ssl/certforge.
   agentDir: process.env.CF_E2E_AGENT_DIR ?? '../.e2e',
   // Where agents reach the server on the compose network.
-  agentUrl: process.env.CF_E2E_AGENT_URL ?? 'https://certforge:8443',
+  agentUrl: process.env.CF_E2E_AGENT_URL ?? 'https://caddy:9443',
   // 5B: Vault, always up in the compose `e2e` profile (Makefile's e2e-web
   // target exports both; pre-flight ruling: the Vault spec asserts
   // "Connected" unconditionally, not gated on these being set).

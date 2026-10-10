@@ -48,7 +48,7 @@ deploy/secrets/kek:
 	chmod 0644 $@
 
 e2e: deploy/secrets/kek
-	rm -rf .e2e && mkdir -p .e2e/agent-data .e2e/traefik .e2e/ssl .e2e/vault && chmod 0777 .e2e/vault
+	rm -rf .e2e && mkdir -p .e2e/caddy .e2e/agent-data .e2e/traefik .e2e/ssl .e2e/vault && chmod 0777 .e2e/vault
 	export CF_E2E_UID=$$(id -u) CF_E2E_GID=$$(id -g) CF_VAULT_PORT=$${CF_VAULT_PORT:-8200} CF_E2E_VAULT_TOKEN=$${CF_E2E_VAULT_TOKEN:-certforge-e2e-root} CF_MAILPIT_PORT=$${CF_MAILPIT_PORT:-18025} CF_E2E_SINK_PORT=$${CF_E2E_SINK_PORT:-18090}; \
 	$(COMPOSE_TEST) --profile e2e up -d --build --wait; up_status=$$?; \
 	if [ $$up_status -ne 0 ]; then \
@@ -89,7 +89,7 @@ e2e: deploy/secrets/kek
 # reads them), the same convention CF_E2E_VAULT_ADDR/CF_E2E_VAULT_TOKEN
 # already use.
 e2e-web: deploy/secrets/kek
-	rm -rf .e2e && mkdir -p .e2e/agent-data .e2e/traefik .e2e/ssl .e2e/vault && chmod 0777 .e2e/vault
+	rm -rf .e2e && mkdir -p .e2e/caddy .e2e/agent-data .e2e/traefik .e2e/ssl .e2e/vault && chmod 0777 .e2e/vault
 	export CF_E2E_UID=$$(id -u) CF_E2E_GID=$$(id -g) CF_VAULT_PORT=$${CF_VAULT_PORT:-8200} CF_E2E_VAULT_TOKEN=$${CF_E2E_VAULT_TOKEN:-certforge-e2e-root} CF_MAILPIT_PORT=$${CF_MAILPIT_PORT:-18025} CF_E2E_SINK_PORT=$${CF_E2E_SINK_PORT:-18090}; \
 	$(COMPOSE_TEST) --profile e2e up -d --build --wait; up_status=$$?; \
 	if [ $$up_status -ne 0 ]; then \

@@ -1,0 +1,19 @@
+# e2e only: a TLS-terminating reverse proxy in front of the HTTP port, with
+# Caddy's own internal CA. The e2e agent's agentUrl names this proxy, so every
+# enrolment, REST call and WebSocket of the agent crosses a hop that sees (and
+# could tamper with) the plaintext HTTP. The access log is what the e2e test
+# reads to prove the agent's traffic went through it.
+{
+	skip_install_trust
+	auto_https disable_redirects
+	admin off
+}
+
+https://caddy:9443 {
+	tls internal
+	log {
+		output file /data/access.log
+		format json
+	}
+	reverse_proxy certforge:8080
+}

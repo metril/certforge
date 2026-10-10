@@ -104,6 +104,29 @@ services:
       - --entrypoints.websecure.http.tls=true
     volumes:
       - ../.e2e/traefik:/etc/traefik/dynamic:ro
+  # A real TLS-terminating proxy for the agent protocol: the agent's agentUrl
+  # is https://caddy:9443, Caddy terminates TLS with its internal CA and
+  # forwards plain HTTP to the server's HTTP port (never the agent port). The
+  # agent trusts Caddy's root through SSL_CERT_FILE (the system-roots path).
+  caddy:
+    profiles: [e2e]
+    image: caddy:2.8.4-alpine
+    user: "${CF_E2E_UID:-0}:${CF_E2E_GID:-0}"
+    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    environment:
+      XDG_DATA_HOME: /data
+      XDG_CONFIG_HOME: /data/config
+    volumes:
+      - ./e2e/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../.e2e/caddy:/data
+    depends_on:
+      certforge:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /data/caddy/pki/authorities/local/root.crt"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
   agent:
     # Only started for `make e2e` (which passes --profile e2e): the dev
     # Playwright stack brings up this same compose.test.yaml file without
@@ -135,12 +158,18 @@ services:
       # deploy/e2e/pebble-config.json's tlsPort) itself.
       CF_AGENT_HTTP01_LISTEN: ":8080"
       CF_AGENT_TLSALPN_LISTEN: ":5001"
+      # Caddy's internal root is the only root the agent needs, to reach the
+      # proxy; it is not part of the agent CA bundle.
+      SSL_CERT_FILE: /caddy/caddy/pki/authorities/local/root.crt
     volumes:
+      - ../.e2e/caddy:/caddy:ro
       - ../.e2e/agent-data:/data
       - ../.e2e/traefik:/etc/traefik/dynamic
       - ../.e2e/ssl:/etc/ssl/certforge
     depends_on:
       certforge:
+        condition: service_healthy
+      caddy:
         condition: service_healthy
       # Not because the agent needs it — it doesn't — but because
       # `docker compose up --wait` otherwise treats vault-init's own

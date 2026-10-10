@@ -237,7 +237,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			bo.reset()
 		}
 		wait := bo.next()
-		if errors.Is(err, errReconnect) {
+		if errors.Is(err, errReconnect) || errors.Is(err, errRekey) {
 			wait = 0
 		}
 		log.Warn("agent connection ended; reconnecting", "err", err, "in", wait.Round(time.Millisecond))
