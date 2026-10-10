@@ -135,3 +135,56 @@ func TestClientIDFromCertRejectsNonCanonicalUUID(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestSignResponderHasOnlyResponderEKU(t *testing.T) {
+	ca := testCA(t)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	c, err := SignResponder(ca, &key.PublicKey, now0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.ExtKeyUsage) != 1 || c.ExtKeyUsage[0] != x509.ExtKeyUsageOCSPSigning || len(c.UnknownExtKeyUsage) != 0 ||
+		len(c.Subject.OrganizationalUnit) != 1 || c.Subject.OrganizationalUnit[0] != ResponderMarker {
+		t.Fatalf("eku %v %v ou %v", c.ExtKeyUsage, c.UnknownExtKeyUsage, c.Subject.OrganizationalUnit)
+	}
+	if d := c.NotAfter.Sub(now0); d != ResponderLifetime {
+		t.Fatalf("lifetime %v", d)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(ca.Cert)
+	if _, err := VerifyResponder(c, roots, now0); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth} {
+		if _, err := c.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: now0, KeyUsages: []x509.ExtKeyUsage{u}}); err == nil {
+			t.Errorf("responder certificate valid for TLS usage %v", u)
+		}
+	}
+	if _, err := VerifyResponder(c, roots, now0.Add(25*time.Hour)); err == nil {
+		t.Error("expired responder accepted")
+	}
+	if _, err := VerifyResponder(c, x509.NewCertPool(), now0); err == nil {
+		t.Error("untrusted responder accepted")
+	}
+	other := testCA(t)
+	otherRoots := x509.NewCertPool()
+	otherRoots.AddCert(other.Cert)
+	if _, err := VerifyResponder(c, otherRoots, now0); err == nil {
+		t.Error("responder from another CA accepted")
+	}
+	// A TLS server or client certificate must not pass as a responder.
+	srv, err := SignServer(ca, &key.PublicKey, []string{"a.test"}, now0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr, _ := ParseCSR(csrFor(t, key))
+	cli, err := SignClient(ca, csr, uuid.New(), time.Hour, now0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, cert := range map[string]*x509.Certificate{"server": srv, "client": cli} {
+		if _, err := VerifyResponder(cert, roots, now0); err == nil {
+			t.Errorf("%s certificate accepted as responder", name)
+		}
+	}
+}

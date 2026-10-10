@@ -1,8 +1,9 @@
+import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
-import { snap } from './screens';
+import { setTheme, snap } from './screens';
 
 const PEM = `${E2E.certName}-pw.pem`;
 
@@ -13,12 +14,13 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
   await signInLocal(page);
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
-  // 1. The token embeds the agent URL, so point it at the compose name first.
+  // 1. The token embeds the agent URL, so point it at the Caddy proxy (the
+  // agent reaches the server through a TLS-terminating hop) first.
   await page.goto('/settings/agents');
   await page.getByLabel('Agent URL').fill(E2E.agentUrl);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Listener names' })).toContainText('certforge');
+  await expect(page.getByRole('list', { name: 'Listener names' })).toContainText('caddy');
   await snap(page, 'settings-agents');
 
   // 2. A layout writing the fullchain into the bind-mounted ssl directory.
@@ -48,6 +50,34 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
   await expect(connection).toContainText('Waiting for agent');
   await snap(page, 'enrol-waiting');
   await writeFile(resolve(E2E.agentDir, 'agent-data', 'token'), token, { mode: 0o600 });
+  // The agent proves the token, then waits for an administrator.
+  await expect(connection.getByText('Agent enrolled. Awaiting approval.')).toBeVisible({ timeout: 90_000 });
+  await snap(page, 'enrol-awaiting');
+  await expect(page.getByRole('link', { name: /^Clients, 1 awaiting approval/ })).toBeVisible();
+  await connection.getByRole('button', { name: 'Review' }).click();
+  const approve = page.getByRole('dialog', { name: /Approve agent/ });
+  await expect(approve.getByTestId('verify-code')).toHaveText(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+  // The code is also in the agent log; the two must match.
+  const code = ((await approve.getByTestId('verify-code').textContent()) ?? '').trim();
+  const compose = ['compose', '-p', 'certforge-e2e', '-f', resolve(E2E.agentDir, '..', 'deploy', 'compose.yaml'), '-f', resolve(E2E.agentDir, '..', 'deploy', 'compose.test.yaml')];
+  const logs = spawnSync('docker', [...compose, '--profile', 'e2e', 'logs', 'agent'], { encoding: 'utf8' });
+  expect(logs.status, logs.stderr).toBe(0);
+  expect(logs.stdout + logs.stderr).toContain(code);
+  // Approve stays blocked until the code is confirmed.
+  const approveBtn = approve.getByRole('button', { name: 'Approve' });
+  await expect(approveBtn).toHaveAttribute('aria-disabled', 'true');
+  await snap(page, 'approve-dialog');
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await setTheme(page, 'dark');
+  await snap(page, 'approve-dialog-dark-375');
+  await setTheme(page, 'light');
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await approve.getByRole('switch', { name: /Code matches/ }).click();
+  await expect(approveBtn).not.toHaveAttribute('aria-disabled', 'true');
+  await approveBtn.click();
+  await expect(approve).toBeHidden();
+  await expect(page.getByRole('link', { name: /awaiting approval/ })).toBeHidden();
   await expect(connection.getByText('Online')).toBeVisible({ timeout: 90_000 });
   await snap(page, 'enrol-online');
 

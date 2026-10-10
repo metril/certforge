@@ -45,6 +45,10 @@ type Service struct {
 	Log      *slog.Logger
 	Now      func() time.Time
 
+	// OnPendingApproval, when set, is told about each enrolment request that
+	// starts waiting for an administrator (the client.pending_approval event).
+	OnPendingApproval func(ctx context.Context, e PendingApproval)
+
 	// Reg is the shared deploy target registry (traefik, vault-kv):
 	// grantPaths/render use it to render a grant's target files and list
 	// the paths it writes, and LiveGrantsNeedKeyTx uses it (via

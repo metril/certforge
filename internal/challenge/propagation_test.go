@@ -17,14 +17,20 @@ import (
 // startSplitDNS serves h on the same port over UDP and TCP and returns host:port.
 func startSplitDNS(t *testing.T, udp, tcp dns.HandlerFunc) string {
 	t.Helper()
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ln, err := net.Listen("tcp", pc.LocalAddr().String())
-	if err != nil {
-		_ = pc.Close()
-		t.Fatal(err)
+	var pc net.PacketConn
+	var ln net.Listener
+	for i := 0; ; i++ {
+		var err error
+		if pc, err = net.ListenPacket("udp", "127.0.0.1:0"); err != nil {
+			t.Fatal(err)
+		}
+		if ln, err = net.Listen("tcp", pc.LocalAddr().String()); err == nil {
+			break
+		}
+		_ = pc.Close() // the TCP port was taken; try another UDP port
+		if i >= 20 {
+			t.Fatal(err)
+		}
 	}
 	for _, s := range []*dns.Server{
 		{PacketConn: pc, Handler: udp},

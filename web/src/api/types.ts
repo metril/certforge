@@ -87,6 +87,7 @@ export type ClientInput = S['ClientInput'];
 export type ClientUpdate = S['ClientUpdate'];
 export type ClientCreated = S['ClientCreated'];
 export type ClientStatus = S['ClientStatus'];
+export type EnrollmentRequest = S['EnrollmentRequest'];
 export type Grant = S['Grant'];
 export type GrantInput = S['GrantInput'];
 export type GrantUpdate = S['GrantUpdate'];

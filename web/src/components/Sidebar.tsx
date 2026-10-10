@@ -1,6 +1,8 @@
 import { forwardRef, type ComponentPropsWithoutRef, type MouseEvent, type ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
+import { usePendingApprovals } from '@/api/queries/enrollments';
+import { live } from '@/features/clients/approval/ApprovalQueue';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ALL_ORGS_ONLY_ONE,
@@ -16,7 +18,7 @@ import {
   type NavTarget,
 } from '@/lib/nav';
 import { ALL_ORGS_SLUG, useActiveOrgSlug, useMe } from '@/lib/org';
-import { canAnywhere } from '@/lib/permissions';
+import { can, canAnywhere } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { OrgSwitcher } from './OrgSwitcher';
 import { UserMenu } from './UserMenu';
@@ -171,6 +173,8 @@ function NavRow({
   onNavigate?: () => void;
 }) {
   const me = useMe();
+  const orgId = me.orgs.find((o) => o.slug === org)?.id ?? '';
+  const badge = live(usePendingApprovals(orgId, item.target === 'clients' && orgId !== '' && can(me, 'clients:write', orgId))).length;
   if (!item.target) return <DisabledRow item={item} compact={compact} reason={LATER} />;
   if (targetNeedsOrg(item.target) && !org) return <DisabledRow item={item} compact={compact} reason={NO_ORG} />;
   if (item.target && org === ALL_ORGS_SLUG && !ALL_ORGS_TARGETS.has(item.target)) {
@@ -181,8 +185,16 @@ function NavRow({
   const Icon = item.icon;
   const body = (
     <>
-      <Icon className="size-4 shrink-0" aria-hidden />
+      <span className="relative inline-flex">
+        <Icon className="size-4 shrink-0" aria-hidden />
+        {compact && badge > 0 && <span aria-hidden data-testid="nav-dot" className="absolute -right-1 -top-1 size-1.5 rounded-full bg-pending" />}
+      </span>
       {!compact && <span className="truncate">{item.label}</span>}
+      {!compact && badge > 0 && (
+        <span aria-hidden className="ml-auto rounded-full bg-pending/15 px-1.5 text-xs tabular-nums text-pending">
+          {badge}
+        </span>
+      )}
     </>
   );
   const cls = cn(rowClass, compact && 'justify-center px-0');
@@ -192,7 +204,7 @@ function NavRow({
       target={item.target}
       org={org}
       active={active}
-      label={compact ? item.label : undefined}
+      label={badge > 0 ? `${item.label}, ${badge} awaiting approval` : compact ? item.label : undefined}
       onNavigate={onNavigate}
       className={cn(cls, active && activeClass)}
     >
@@ -203,7 +215,7 @@ function NavRow({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{link}</TooltipTrigger>
-      <TooltipContent side="right">{item.label}</TooltipContent>
+      <TooltipContent side="right">{badge > 0 ? `${item.label} · ${badge} awaiting approval` : item.label}</TooltipContent>
     </Tooltip>
   );
 }

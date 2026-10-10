@@ -96,7 +96,7 @@ func TestAgentCARotateRetire(t *testing.T) {
 	if info, _ := e.listener.Info(); info.CAID != next.Id {
 		t.Fatal("listener not re-issued by the new CA after retire")
 	}
-	// The retired CA is gone from ClientCAs: its certificate fails the handshake.
+	// The retired CA is no longer trusted: its certificate fails the signed handshake.
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, e.ts.URL+"/agent/v1/renew", nil)
 	if resp, err := e.httpClient(t, &cert).Do(req); err == nil {
 		resp.Body.Close()
@@ -119,7 +119,7 @@ func TestAgentCARotateRetire(t *testing.T) {
 // coverage above with an agent that holds an open WebSocket over a real
 // agenthub.Hub (TestAgentCARotateRetire uses a fake hub that only records
 // broadcasts), through the whole rotate → renew → retire chain: the live
-// socket receives the trust_bundle_update on rotate; docs/agent.md says a
+// socket receives the trust_bundle_update on rotate; docs/guide/agents.md says a
 // connected agent renews immediately on that message, which this test does
 // over REST with the old certificate (still trusted; only the listener's
 // own signing identity waits for retire) — after which the client's
@@ -197,7 +197,7 @@ func TestAgentCARotateRetireWithLiveAgent(t *testing.T) {
 	// normally against the now-switched listener chain.
 	ws2 := dialWS(ctx, t, e, renewedCert)
 	sendWS(ctx, t, ws2, agentproto.Hello{AgentVersion: "1.0", Hostname: "h", OS: "linux", Arch: "amd64"})
-	if m := recvWS(ctx, t, ws2); m != agentproto.Message(agentproto.HelloAck{HeartbeatSeconds: 60, Revision: 0}) {
+	if m := recvWS(ctx, t, ws2); m != agentproto.Message(agentproto.Welcome{HeartbeatSeconds: 60, Revision: 0}) {
 		t.Fatalf("live agent could not reconnect after the chain switch: %#v", m)
 	}
 }
@@ -280,5 +280,53 @@ func TestRotateCAReloadFailureStillBroadcasts(t *testing.T) {
 	}
 	if f.auditCount(t, "agent_ca.rotate") != 1 {
 		t.Fatal("the rotate audit event should still be recorded")
+	}
+}
+
+// After rotate, renew and retire, an agent holding the updated bundle still
+// verifies the signed REST responses and the sealed hello_ack: the responder
+// identity now chains to the new CA only.
+func TestAgentCARotationKeepsSignedProtocolVerifying(t *testing.T) {
+	hub := agenthub.New(slog.Default())
+	t.Cleanup(hub.Shutdown)
+	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
+	e.svc.Hub = hub
+	admin := e.as("admin")
+	cert, _, _ := e.enrolledWithGrant(t, "rot-1", false)
+
+	res, err := e.srv.ListAgentCAs(e.as("viewer"), gen.ListAgentCAsRequestObject{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldID := res.(gen.ListAgentCAs200JSONResponse).Items[0].Id
+	if _, err := e.srv.RotateAgentCA(admin, gen.RotateAgentCARequestObject{}); err != nil {
+		t.Fatal(err)
+	}
+	var rr agentproto.RenewResponse
+	if code := e.post(t, e.httpClient(t, &cert), "/agent/v1/renew",
+		agentproto.RenewRequest{CSR: csrPEM(t, cert.PrivateKey.(crypto.Signer))}, &rr); code != http.StatusOK {
+		t.Fatalf("renew %d", code)
+	}
+	blk, _ := pem.Decode([]byte(rr.Certificate))
+	renewed, _ := x509.ParseCertificate(blk.Bytes)
+	renewedCert := tls.Certificate{Certificate: [][]byte{renewed.Raw}, PrivateKey: cert.PrivateKey, Leaf: renewed}
+	if _, err := e.srv.RetireAgentCA(admin, gen.RetireAgentCARequestObject{Id: oldID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.listener.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// e.identity reads the CA bundle as it is now: the new CA alone.
+	hc := secureClient(e.identity(t, renewedCert), e.httpClient(t, nil).Transport)
+	if code, err := doAgent(hc, http.MethodGet, e.ts.URL+"/agent/v1/assignments", nil, &agentproto.Assignments{}); err != nil || code != http.StatusOK {
+		t.Fatalf("signed REST after rotation: %d %v", code, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ws := dialWS(ctx, t, e, renewedCert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1.0", Hostname: "h", OS: "linux", Arch: "amd64"})
+	if _, ok := recvWS(ctx, t, ws).(agentproto.Welcome); !ok {
+		t.Fatal("hello_ack did not verify after rotation")
 	}
 }

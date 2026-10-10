@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, CircleCheck, CircleX, Clock, FileDiff, Hourglass, Radar, WifiOff, type LucideIcon } from 'lucide-react';
 import { allClientsQuery } from '@/api/queries/clients';
+import { usePendingApprovals } from '@/api/queries/enrollments';
 import { monitorsQuery, useCheckMonitor } from '@/api/queries/monitors';
 import { useRenewCertificates } from '@/api/queries/certificates';
 import { errorMessage } from '@/api/errors';
@@ -35,6 +36,7 @@ const CLIENT_KIND: Record<ClientAttentionKind, { tone: Tone; icon: LucideIcon; l
   drift: { tone: 'drift', icon: FileDiff, label: 'Drift', tab: 'certificates', fix: 'Review' },
   offline: { tone: 'neutral', icon: WifiOff, label: 'Offline', tab: 'certificates', fix: 'Open' },
   'agent-cert': { tone: 'expiring', icon: Clock, label: 'Agent certificate', tab: 'settings', fix: 'Re-enrol' },
+  'awaiting-approval': { tone: 'pending', icon: Hourglass, label: 'Awaiting approval', tab: 'certificates', fix: 'Review' },
 };
 // Deviations "Overview rows": only mismatch and unreachable, single-org only.
 const MONITOR_KIND: Record<MonitorAttentionKind, { tone: Tone; label: string }> = {
@@ -79,7 +81,8 @@ export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number
   // The `manual-dns` *attention item* stays `pending`-only, so the count
   // doesn't double-count a cert this section already surfaces its own way.
   const manualDnsCerts = certs.filter((c) => c.status !== 'revoked' && c.status !== 'expired' && c.manualDns);
-  const clientItems = clientAttentionItems(clients.data?.items ?? [], now);
+  const approvals = usePendingApprovals(org.id, !allOrgs && can(me, 'clients:write', org.id));
+  const clientItems = clientAttentionItems(clients.data?.items ?? [], now, approvals);
   const monitorItems = canMonitors ? monitorAttentionItems(monitors.data ?? []) : [];
   const queue = attentionQueue(others, clientItems, monitorItems);
   const clientSlug = (c: Client) => (allOrgs ? slugOf(c.orgId) : org.slug);
@@ -103,6 +106,16 @@ export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number
                   const { client: c, cause, kind } = q.item;
                   const k = CLIENT_KIND[kind];
                   const params = { org: clientSlug(c), id: c.id, tab: k.tab };
+                  const fixLink =
+                    kind === 'awaiting-approval' ? (
+                      <Link to="/o/$org/clients" params={{ org: clientSlug(c) }} hash="approvals">
+                        {k.fix}
+                      </Link>
+                    ) : (
+                      <Link to="/o/$org/clients/$id/$tab" params={params}>
+                        {k.fix}
+                      </Link>
+                    );
                   return (
                     <li key={`${kind}-${c.id}`} className={row}>
                       <ToneChip tone={k.tone} icon={k.icon} label={k.label} />
@@ -112,9 +125,7 @@ export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number
                       <span className="truncate text-ink-muted">{cause}</span>
                       {can(me, 'clients:write', c.orgId) && (
                         <Button size="sm" variant="outline" asChild>
-                          <Link to="/o/$org/clients/$id/$tab" params={params}>
-                            {k.fix}
-                          </Link>
+                          {fixLink}
                         </Button>
                       )}
                     </li>

@@ -15,7 +15,7 @@ info:
     identity provider), 503 (busy, with Retry-After).
 
     Agents do not use this API: certforge-agent talks to /agent/v1/* on the separate
-    mTLS agent listener (CF_LISTEN_AGENT), described in docs/architecture.md.
+    agent listener (CF_LISTEN_AGENT) or the HTTP port, described in docs/internals/architecture.md.
 servers:
   - url: /api/v1
 security:
@@ -47,11 +47,11 @@ tags:
   - name: agents
     description: The internal agent CA and the agent listener.
   - name: notifications
-    description: Notification channels and the event feed (Phase 6A).
+    description: Notification channels and the event feed.
   - name: monitoring
-    description: External TLS endpoint monitors (Phase 6A).
+    description: External TLS endpoint monitors.
   - name: backup
-    description: Encrypted database backup (Phase 6A).
+    description: Encrypted database backup.
   - name: server
     description: Server-wide status.
 paths:
@@ -562,7 +562,7 @@ paths:
         Needs global settings:write. Starts, in the background, re-encrypting every secret under
         the active KEK, table by table in order (settings; cas, covering eab_hmac and secret_cfg
         together; acme_accounts; dns_provider_credentials; output_specs; agent_cas;
-        certificate_versions); 409 while a rewrap is already running. Recorded as
+        certificate_versions; notification_channels; deploy_targets); 409 while a rewrap is already running. Recorded as
         kek.rewrap_started (activeKekId) when it starts and kek.rewrap_finished (rewrapped,
         remaining; system actor) when it completes.
       responses:
@@ -1552,6 +1552,66 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /enrollment-requests:
+    get:
+      operationId: listAllEnrollmentRequests
+      tags: [clients]
+      summary: List enrolment requests waiting for approval across orgs
+      description: Like listEnrollmentRequests, over every org where the caller has clients:read. 403 when there is none. Items carry orgId.
+      responses:
+        "200":
+          description: The waiting requests, oldest first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EnrollmentRequestList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/enrollment-requests:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listEnrollmentRequests
+      tags: [clients]
+      summary: List enrolment requests waiting for approval
+      description: Needs clients:read. An agent that presents a valid one-time token waits here (Settings → Agents → requireApproval) until an administrator compares its verification code with the one the agent logged and approves or rejects it. Expired requests are not listed. Not paginated; at most 50 wait per org.
+      responses:
+        "200":
+          description: The waiting requests, oldest first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EnrollmentRequestList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/enrollment-requests/{id}/approve:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: approveEnrollmentRequest
+      tags: [clients]
+      summary: Approve an enrolment request
+      description: Needs clients:write. The waiting agent receives its certificate at its next poll and the client becomes active. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_approved.
+      responses:
+        "204": {description: Approved.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/enrollment-requests/{id}/reject:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: rejectEnrollmentRequest
+      tags: [clients]
+      summary: Reject an enrolment request
+      description: Needs clients:write. The agent is told its request was rejected and stops. The token stays used; re-enrol the client for a new one. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_rejected.
+      responses:
+        "204": {description: Rejected.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
   /clients:
     get:
@@ -2771,7 +2831,7 @@ paths:
         The org's own events plus global (orgId null) events, newest first, keyset paginated.
         Needs alerts:read. Duplicate conditions are suppressed at emission time, not here, so
         every event returned already passed the server's own dedupe rule (see
-        docs/notifications.md#dedupe); this endpoint never de-duplicates on its own.
+        docs/reference/events.md#dedupe); this endpoint never de-duplicates on its own.
       parameters:
         - {$ref: "#/components/parameters/EventKindFilter"}
         - {$ref: "#/components/parameters/EventSeverityFilter"}
@@ -2797,7 +2857,7 @@ paths:
         Needs settings:write. Streams an encrypted archive of the whole database, table by table,
         as it is written. Recorded as backup.created {sizeBytes} once streaming
         completes, or backup.failed {error} (system actor) if it fails partway through. Restoring
-        is CLI-only: no restore over HTTP; see operations.md#restore.
+        is CLI-only: no restore over HTTP; see docs/guide/backup.md#restore.
       responses:
         "200":
           description: The backup archive.
@@ -3269,7 +3329,7 @@ components:
     RewrapTable:
       type: string
       enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions, notification_channels, deploy_targets]
-      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
+      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
     RewrapTableStatus:
       type: object
       description: Rewrap progress for one table.
@@ -3399,7 +3459,7 @@ components:
         ttl: {type: string, example: 2160h, description: "Go duration string for issued leaf validity, 1h to 19800h (825 days); Vault's own role or mount ceiling still applies."}
     CA:
       type: object
-      description: A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for.
+      description: A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for.
       required: [id, orgId, name, directoryUrl, trustBundlePem, eabKid, hasEab, resolvers, shared, type, config, storedSecrets, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: CA id.}
@@ -3418,8 +3478,8 @@ components:
             certificate of importPem; for vaultpki the CA certificate read from Vault at create.
         eabKid: {type: string, description: EAB key id; empty when unused.}
         hasEab: {type: boolean, description: An EAB HMAC is stored (it is never returned).}
-        resolvers: {type: array, items: {type: string}, description: DNS resolvers (host or host:port) for propagation checks.}
-        shared: {type: boolean, description: Reserved for Phase 2 global CAs; false in Phase 1.}
+        resolvers: {type: array, items: {type: string}, description: "DNS resolvers for propagation checks: host, host:port or a DNS-over-HTTPS URL."}
+        shared: {type: boolean, description: Reserved for global CAs shared across organizations.}
         type: {$ref: "#/components/schemas/CaType"}
         config:
           type: object
@@ -4240,6 +4300,31 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Client"}, description: Clients.}
         nextCursor: {type: string, nullable: true, description: Cursor for the next page; null on the last page.}
+    EnrollmentRequest:
+      type: object
+      description: An agent that redeemed a client's one-time token and waits for an administrator to approve it.
+      required: [id, orgId, clientId, clientName, siteId, verifyCode, keyFingerprint, hostname, os, arch, agentVersion, sourceIp, createdAt, expiresAt]
+      properties:
+        id: {type: string, format: uuid, description: Request id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        clientId: {type: string, format: uuid, description: The pending client the token belongs to; it becomes active on approval.}
+        clientName: {type: string, description: Name of that client.}
+        siteId: {type: string, format: uuid, nullable: true, description: Site of that client.}
+        verifyCode: {type: string, description: "Eight characters, base32 of sha256(agent public key || CA fingerprint), for example ABCDEFGH. The agent logs it as ABCD-EFGH; approve only when both match. A different code means the agent saw a different CA or key than this server holds."}
+        keyFingerprint: {type: string, description: Lowercase hex SHA-256 of the agent's public key (SPKI DER).}
+        hostname: {type: string, description: Hostname the agent reported; self-reported, so not proof of identity.}
+        os: {type: string, description: Operating system the agent reported.}
+        arch: {type: string, description: CPU architecture the agent reported.}
+        agentVersion: {type: string, description: certforge-agent version.}
+        sourceIp: {type: string, description: Address the request came from, after trusted-proxy handling.}
+        createdAt: {type: string, format: date-time, description: When the token was redeemed.}
+        expiresAt: {type: string, format: date-time, description: Deadline for a decision (Settings → Agents → pendingTtlHours after creation); after it the request is no longer listed and the agent is told it expired.}
+    EnrollmentRequestList:
+      type: object
+      description: Enrolment requests waiting for approval.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/EnrollmentRequest"}, description: Requests, oldest first.}
     AgentCAStatus:
       type: string
       enum: [active, retiring, retired]
@@ -4705,8 +4790,8 @@ components:
         durationMs: {type: integer, description: Wall time the attempt took, in milliseconds.}
     EventKind:
       type: string
-      enum: [cert.issued, cert.renewal_failed, cert.expiring, cert.expired, deploy.failed, deploy.drift, client.offline, agent.cert_expiring, monitor.mismatch, monitor.unreachable, monitor.expiring, monitor.recovered, backup.completed, backup.failed, test]
-      description: What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+      enum: [cert.issued, cert.renewal_failed, cert.expiring, cert.expired, deploy.failed, deploy.drift, client.offline, agent.cert_expiring, client.pending_approval, monitor.mismatch, monitor.unreachable, monitor.expiring, monitor.recovered, backup.completed, backup.failed, test]
+      description: What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
     Severity:
       type: string
       enum: [info, warning, critical]
@@ -4736,7 +4821,7 @@ components:
         deliveredAt: {type: string, format: date-time, nullable: true, description: When delivery succeeded; null while pending or failed.}
     Event:
       type: object
-      description: One notification event (Shared contracts, Other operations and Dedupe keys rows). Duplicate conditions are suppressed once at emission time (docs/notifications.md#dedupe); every event on this feed already passed that check.
+      description: One notification event. Duplicate conditions are suppressed once at emission time (docs/reference/events.md#dedupe); every event on this feed already passed that check.
       required: [id, kind, at, orgId, severity, resource, summary, details, deliveries]
       properties:
         id: {type: string, format: uuid, description: Event id.}
@@ -4774,7 +4859,7 @@ components:
         port: {type: integer, minimum: 1, maximum: 65535, description: TCP port to connect to.}
         sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; null uses host.}
         intervalSeconds: {type: integer, minimum: 300, maximum: 86400, description: Seconds between scheduled checks.}
-        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A CertForge certificate the observed leaf is compared against; null skips the mismatch check.}
+        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A CertForge certificate the observed leaf is compared against; null means the leaf must match the current version of some certificate in the org, otherwise the state is mismatch.}
         expectedCertificateName: {type: string, nullable: true, description: That certificate's name, for display; null when expectedCertificateId is null.}
         enabled: {type: boolean, description: Checked on the scan schedule and countable toward the org's monitor limit.}
         state: {$ref: "#/components/schemas/MonitorState"}
@@ -4796,7 +4881,7 @@ components:
         port: {type: integer, minimum: 1, maximum: 65535, default: 443, description: TCP port to connect to. Default 443.}
         sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; omitted or null uses host.}
         intervalSeconds: {type: integer, minimum: 300, maximum: 86400, default: 3600, description: Seconds between scheduled checks. Default 3600.}
-        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null skips the mismatch check.}
+        expectedCertificateId: {type: string, format: uuid, nullable: true, description: A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null means the leaf must match the current version of some certificate in the org, otherwise the state is mismatch.}
         enabled: {type: boolean, default: true, description: Checked on the scan schedule. Default true.}
     BackupSchedule:
       type: string

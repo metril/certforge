@@ -41,7 +41,7 @@ it('handles a paste of 200 names and blocks with a clear limit', async () => {
   expect(screen.getByText('200 names')).toBeInTheDocument();
 });
 
-// Controller ruling (docs/design.md "Certificate create wizard" step 1): the
+// Controller ruling (docs/internals/history/design.md "Certificate create wizard" step 1): the
 // chip grid must wrap, not scroll, at 375px with a 16px gutter. jsdom has no
 // layout engine, so the closest automatable proxy is asserting the chip
 // container keeps Tailwind's `flex-wrap` (the mechanism that makes wrapping

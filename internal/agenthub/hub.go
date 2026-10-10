@@ -67,6 +67,7 @@ type conn struct {
 	done       chan struct{}
 	writerDone chan struct{} // closed once the writer has flushed and called s.Close
 	once       sync.Once
+	nearCap    atomic.Bool // the session is nearly out of messages: queue nothing more
 	code       int
 	reason     string
 }
@@ -109,6 +110,14 @@ func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler 
 	ctx, cancel := context.WithCancel(ctx)
 	var last atomic.Int64
 	last.Store(time.Now().UnixNano())
+	// A sealed socket asks to be recycled before its session runs out of
+	// messages; the agent reconnects with fresh keys.
+	if n, ok := s.(interface{ SetOnNearCap(func()) }); ok {
+		n.SetOnNearCap(func() {
+			c.nearCap.Store(true)
+			c.close(agentproto.CloseRekey, "session message limit reached; reconnect")
+		})
+	}
 	go func() {
 		defer close(c.writerDone)
 		h.writer(ctx, c)
@@ -238,6 +247,9 @@ func (h *Hub) enqueue(c *conn, m agentproto.Message) bool {
 	if err != nil {
 		h.Log.Error("agent message not encodable", "type", m.MsgType(), "err", err)
 		return false
+	}
+	if c.nearCap.Load() {
+		return false // a message past the cap would be unsendable; the agent resyncs after reconnecting
 	}
 	select {
 	case <-c.done:

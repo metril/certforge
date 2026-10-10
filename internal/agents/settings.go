@@ -46,11 +46,13 @@ const settingsSchema = `{
     "tokenTtlHours": {"type": "integer", "title": "Enrolment token lifetime (hours)", "description": "How long a new client's one-time token stays usable.", "minimum": 1, "maximum": 720, "default": 24},
     "agentCertDays": {"type": "integer", "title": "Agent certificate lifetime (days)", "description": "Lifetime of the client certificate an agent gets at enrolment; agents renew at two thirds.", "minimum": 7, "maximum": 365, "default": 90},
     "heartbeatSeconds": {"type": "integer", "title": "Heartbeat interval (seconds)", "description": "How often agents report installed files for drift detection.", "minimum": 15, "maximum": 3600, "default": 60},
-    "offlineAfterSeconds": {"type": "integer", "title": "Offline after (seconds)", "description": "A client not seen for this long shows as offline.", "minimum": 30, "maximum": 86400, "default": 180}
+    "offlineAfterSeconds": {"type": "integer", "title": "Offline after (seconds)", "description": "A client not seen for this long shows as offline.", "minimum": 30, "maximum": 86400, "default": 180},
+    "requireApproval": {"type": "boolean", "title": "Require approval", "description": "An agent that presents a valid token waits for an administrator to approve its verification code before it receives a certificate. Turn off only if a token alone should be enough.", "default": true},
+    "pendingTtlHours": {"type": "integer", "title": "Approval window (hours)", "description": "How long a pending request waits for approval, and how long an approved agent has to collect its certificate.", "minimum": 1, "maximum": 168, "default": 24}
   }
 }`
 
-const settingsDefault = `{"agentUrl":"","listenerNames":[],"tokenTtlHours":24,"agentCertDays":90,"heartbeatSeconds":60,"offlineAfterSeconds":180}`
+const settingsDefault = `{"agentUrl":"","listenerNames":[],"tokenTtlHours":24,"agentCertDays":90,"heartbeatSeconds":60,"offlineAfterSeconds":180,"requireApproval":true,"pendingTtlHours":24}`
 
 // Settings is the agents section. Get and Resolve return it with defaults filled.
 type Settings struct {
@@ -60,6 +62,10 @@ type Settings struct {
 	AgentCertDays       int      `json:"agentCertDays"`
 	HeartbeatSeconds    int      `json:"heartbeatSeconds"`
 	OfflineAfterSeconds int      `json:"offlineAfterSeconds"`
+	// RequireApproval is a pointer so that a stored section without the field
+	// (written before it existed) still resolves to the safe default, true.
+	RequireApproval *bool `json:"requireApproval"`
+	PendingTTLHours int   `json:"pendingTtlHours"`
 }
 
 // RegisterSettings adds the agents section and its extra checks.
@@ -136,6 +142,13 @@ func Resolve(s Settings, baseURL string) Settings {
 	if s.OfflineAfterSeconds <= 0 {
 		s.OfflineAfterSeconds = 180
 	}
+	if s.RequireApproval == nil {
+		t := true
+		s.RequireApproval = &t
+	}
+	if s.PendingTTLHours <= 0 {
+		s.PendingTTLHours = 24
+	}
 	return s
 }
 
@@ -162,6 +175,13 @@ func (s Settings) Names() []string {
 
 // TokenTTL is the enrolment token lifetime.
 func (s Settings) TokenTTL() time.Duration { return time.Duration(s.TokenTTLHours) * time.Hour }
+
+// ApprovalRequired reports whether a redeemed token waits for an administrator.
+func (s Settings) ApprovalRequired() bool { return s.RequireApproval == nil || *s.RequireApproval }
+
+// PendingTTL is how long an enrolment request waits for approval, and then
+// for collection.
+func (s Settings) PendingTTL() time.Duration { return time.Duration(s.PendingTTLHours) * time.Hour }
 
 // AgentCertLifetime is the lifetime of an agent client certificate.
 func (s Settings) AgentCertLifetime() time.Duration {

@@ -52,6 +52,9 @@ func TestSettingsSectionValidates(t *testing.T) {
 		"offline <= hb":          `{"heartbeatSeconds":60,"offlineAfterSeconds":60}`,
 		"offline defaults <= hb": `{"heartbeatSeconds":600}`, // offlineAfterSeconds is absent, so it resolves to 180 (< 600)
 		"unknown":                `{"nope":1}`,
+		"ttl zero":               `{"pendingTtlHours":0}`,
+		"ttl huge":               `{"pendingTtlHours":1000}`,
+		"approval not boolean":   `{"requireApproval":"yes"}`,
 	} {
 		if err := sec.Validate([]byte(raw)); !errors.Is(err, settings.ErrInvalid) {
 			t.Errorf("%s: err = %v", name, err)
@@ -137,5 +140,33 @@ func TestSettingsSourceStaleServeWaitsTTL(t *testing.T) {
 	_, _ = src.Get(context.Background())
 	if calls != 3 {
 		t.Fatalf("calls %d, want 3 after the TTL elapsed", calls)
+	}
+}
+
+func TestApprovalSettingsDefaultToRequired(t *testing.T) {
+	r := Resolve(Settings{}, "")
+	if !r.ApprovalRequired() || r.PendingTTLHours != 24 || r.PendingTTL() != 24*time.Hour {
+		t.Fatalf("defaults %+v", r)
+	}
+	// A section stored before the field existed has no requireApproval: it must
+	// not read as false.
+	var legacy Settings
+	if err := json.Unmarshal([]byte(`{"agentUrl":"","tokenTtlHours":24}`), &legacy); err != nil || !Resolve(legacy, "").ApprovalRequired() {
+		t.Fatalf("legacy section: %+v %v", legacy, err)
+	}
+	var off Settings
+	if err := json.Unmarshal([]byte(`{"requireApproval":false,"pendingTtlHours":3}`), &off); err != nil {
+		t.Fatal(err)
+	}
+	if o := Resolve(off, ""); o.ApprovalRequired() || o.PendingTTL() != 3*time.Hour {
+		t.Fatalf("explicit off %+v", o)
+	}
+	reg := settings.NewRegistry()
+	if err := RegisterSettings(reg); err != nil {
+		t.Fatal(err)
+	}
+	sec, _ := reg.Section(SettingsSection)
+	if err := sec.Validate([]byte(`{"requireApproval":false,"pendingTtlHours":168}`)); err != nil {
+		t.Fatalf("valid approval settings rejected: %v", err)
 	}
 }

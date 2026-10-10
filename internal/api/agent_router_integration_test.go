@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/metril/certforge/internal/agent"
 	"github.com/metril/certforge/internal/agentca"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/authn"
@@ -57,14 +58,19 @@ func newAgentEnv(t *testing.T, opts ...func(*Deps)) *agentEnv {
 	for _, o := range opts {
 		o(&d)
 	}
-	srv := httptest.NewUnstartedServer(NewAgentRouter(d))
+	srv := httptest.NewUnstartedServer(nil)
+	d.AgentAuthorities = []string{srv.Listener.Addr().String()}
+	srv.Config.Handler = NewAgentRouter(d)
 	srv.TLS = l.TLSConfig()
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 	return &agentEnv{agentFixture: f, ts: srv, listener: l}
 }
 
-// httpClient trusts the current agent CA bundle and presents cert if set.
+// httpClient trusts the current agent CA bundle. With cert it speaks the
+// signed, sealed session protocol as that agent (the certificate also goes
+// out as the TLS client certificate, which the server must not rely on);
+// without, it is a bare TLS client (enrolment, unauthenticated probes).
 func (e *agentEnv) httpClient(t *testing.T, cert *tls.Certificate) *http.Client {
 	t.Helper()
 	trusted, err := e.ca.Trusted(context.Background())
@@ -79,7 +85,23 @@ func (e *agentEnv) httpClient(t *testing.T, cert *tls.Certificate) *http.Client 
 	if cert != nil {
 		cfg.Certificates = []tls.Certificate{*cert}
 	}
-	return &http.Client{Transport: &http.Transport{TLSClientConfig: cfg}, Timeout: 10 * time.Second}
+	var rt http.RoundTripper = &http.Transport{TLSClientConfig: cfg}
+	if cert != nil {
+		leaf := cert.Leaf
+		if leaf == nil {
+			leaf, _ = x509.ParseCertificate(cert.Certificate[0])
+		}
+		rt = agent.NewSecureTransport(&agent.Identity{Key: cert.PrivateKey.(*ecdsa.PrivateKey), Cert: leaf, CAs: pool}, rt)
+	}
+	return &http.Client{Transport: rt, Timeout: 10 * time.Second}
+}
+
+// plainClient is httpClient's bare TLS client presenting cert, never signing.
+func (e *agentEnv) plainClient(t *testing.T, cert *tls.Certificate) *http.Client {
+	t.Helper()
+	hc := e.httpClient(t, nil)
+	hc.Transport.(*http.Transport).TLSClientConfig.Certificates = []tls.Certificate{*cert}
+	return hc
 }
 
 func doAgent(hc *http.Client, method, url string, body, out any) (int, error) {
@@ -137,38 +159,12 @@ func csrPEM(t *testing.T, key crypto.Signer) string {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}))
 }
 
-func (e *agentEnv) enrollRaw(hc *http.Client, token, csr string) (int, agentproto.EnrollResponse, error) {
-	var resp agentproto.EnrollResponse
-	code, err := doAgent(hc, http.MethodPost, e.ts.URL+"/agent/v1/enroll", agentproto.EnrollRequest{Token: token, CSR: csr,
-		Facts: agentproto.Facts{Hostname: "host-1", OS: "linux", Arch: "amd64", AgentVersion: "test"}}, &resp)
-	return code, resp, err
-}
-
-// enroll enrols with token and returns the agent's TLS identity.
-func (e *agentEnv) enroll(t *testing.T, token string) (tls.Certificate, agentproto.EnrollResponse, int) {
-	t.Helper()
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	code, resp, err := e.enrollRaw(e.httpClient(t, nil), token, csrPEM(t, key))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if code != http.StatusOK {
-		return tls.Certificate{}, resp, code
-	}
-	blk, _ := pem.Decode([]byte(resp.Certificate))
-	leaf, err := x509.ParseCertificate(blk.Bytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tls.Certificate{Certificate: [][]byte{blk.Bytes}, PrivateKey: key, Leaf: leaf}, resp, code
-}
-
 func TestEnrollAndRenew(t *testing.T) {
 	e := newAgentEnv(t)
 	ctx := context.Background()
 	en := e.newClient(t, "web-1")
 	cert, resp, code := e.enroll(t, en.Token)
-	if code != http.StatusOK || resp.ClientID != en.Client.ID || resp.AgentURL != "https://cf.example.test:8443" ||
+	if code != http.StatusOK || resp.Status != agentproto.EnrollApproved || resp.ClientID != en.Client.ID || resp.AgentURL != "https://cf.example.test:8443" ||
 		!strings.Contains(resp.TrustBundle, "BEGIN CERTIFICATE") {
 		t.Fatalf("enroll %d %+v", code, resp)
 	}
@@ -205,7 +201,7 @@ func TestEnrollTokenSingleUse(t *testing.T) {
 		key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		csr := csrPEM(t, key)
 		go func() {
-			code, _, _ := e.enrollRaw(hc, en.Token, csr)
+			code, _, _ := e.enrollRaw(t, hc, en.Token, csr)
 			codes <- code
 		}()
 	}
@@ -213,6 +209,10 @@ func TestEnrollTokenSingleUse(t *testing.T) {
 	slices.Sort(got)
 	if !slices.Equal(got, []int{http.StatusOK, http.StatusUnauthorized}) {
 		t.Fatalf("concurrent enrolments %v", got)
+	}
+	var requests int
+	if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM enrollment_requests WHERE client_id = $1`, en.Client.ID).Scan(&requests); err != nil || requests != 1 {
+		t.Fatalf("%d requests for one token (%v)", requests, err)
 	}
 	en2 := e.newClient(t, "web-2")
 	if _, err := e.pool.Exec(ctx, `UPDATE enrollment_tokens SET expires_at = now() - interval '1 minute' WHERE client_id = $1`, en2.Client.ID); err != nil {
@@ -240,16 +240,6 @@ func TestEnrollTokenSingleUse(t *testing.T) {
 	}
 	if leaf, _ := x509.ParseCertificate(cert3.Certificate[0]); leaf == nil || leaf.CheckSignatureFrom(next.Cert) != nil {
 		t.Fatal("enrolled certificate not signed by the new active CA")
-	}
-	en4 := e.newClient(t, "web-4")
-	parts := strings.Split(en4.Token, ".")
-	parts[2] = strings.Repeat("0", 64)
-	if _, _, code := e.enroll(t, strings.Join(parts, ".")); code != http.StatusConflict {
-		t.Fatalf("token pinned to another CA %d", code)
-	}
-	var used *time.Time
-	if err := e.pool.QueryRow(ctx, `SELECT used_at FROM enrollment_tokens WHERE client_id = $1`, en4.Client.ID).Scan(&used); err != nil || used != nil {
-		t.Fatalf("refused token consumed: %v %v", used, err)
 	}
 }
 
@@ -291,7 +281,7 @@ func TestAgentAuthRejectsStaleSerial(t *testing.T) {
 }
 
 // A certificate from a trusted agent CA that carries no client URI SAN
-// passes the handshake but is refused by requireAgent.
+// passes the TLS handshake but is refused by the session handshake.
 func TestAgentAuthRejectsCertWithoutClientURI(t *testing.T) {
 	e := newAgentEnv(t)
 	ca, err := e.ca.Active(context.Background())
@@ -307,13 +297,16 @@ func TestAgentAuthRejectsCertWithoutClientURI(t *testing.T) {
 		t.Fatal(err)
 	}
 	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
-	if code := e.post(t, e.httpClient(t, &cert), "/agent/v1/renew", agentproto.RenewRequest{CSR: csrPEM(t, key)}, nil); code != http.StatusUnauthorized {
-		t.Fatalf("certificate without a client URI: %d", code)
+	resp := e.rawHandshake(t, cert, e.ts.Listener.Addr().String(), e.ts.URL, time.Now(), "")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("certificate without a client URI: %d", resp.StatusCode)
 	}
 }
 
 func TestEnrollRateLimited(t *testing.T) {
-	e := newAgentEnv(t, func(d *Deps) { d.EnrollLimiter = authn.NewLimiter(1, 1) })
+	// Hello and the sealed exchange each count: two requests make one attempt.
+	e := newAgentEnv(t, func(d *Deps) { d.EnrollLimiter = authn.NewLimiter(1, 2) })
 	if _, _, code := e.enroll(t, "cf1.nope"); code != http.StatusUnauthorized {
 		t.Fatalf("first %d", code)
 	}
@@ -367,17 +360,21 @@ func TestEnrollBlocksOnConcurrentRetire(t *testing.T) {
 	if _, err := tx.Exec(ctx, `SELECT * FROM agent_cas WHERE id = $1 FOR UPDATE`, active.ID); err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan struct{ code int }, 1)
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	csr := csrPEM(t, key)
+	hc := e.httpClient(t, nil)
+	code, acc, err := e.enrollRaw(t, hc, en.Token, csrPEM(t, key))
+	if err != nil || code != http.StatusOK {
+		t.Fatalf("submit %d %v", code, err)
+	}
+	if err := e.svc.ApproveEnrollment(ctx, e.org, acc.ID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{ code int }, 1)
 	go func() {
-		code, _, err := e.enrollRaw(e.httpClient(t, nil), en.Token, csr)
-		if err != nil {
-			t.Error(err)
-		}
+		code, _ := e.pollOnce(t, hc, key, acc)
 		done <- struct{ code int }{code}
 	}()
-	waitForLockWait(ctx, t, e.pool) // let enroll's tx block on the CA row lock
+	waitForLockWait(ctx, t, e.pool) // let the issuing poll's tx block on the CA row lock
 	if _, err := tx.Exec(ctx, `UPDATE agent_cas SET status = 'retired' WHERE id = $1`, active.ID); err != nil {
 		t.Fatal(err)
 	}

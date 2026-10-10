@@ -1,5 +1,5 @@
 // Command certforge-agent installs CertForge certificates on a host; see
-// docs/agent.md.
+// docs/reference/agent.md.
 package main
 
 import (
@@ -54,7 +54,7 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 			fmt.Fprintln(stderr, "enroll: --token is required")
 			return 2
 		}
-		id, err := agent.Enroll(ctx, cfg.DataDir, tok, agent.Facts(version))
+		id, err := agent.EnrollWith(ctx, agent.EnrollOptions{Log: log}, cfg.DataDir, tok, agent.Facts(version))
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1

@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -55,10 +56,10 @@ var (
 func enrolledAgent(ctx context.Context, t *testing.T, c *apiClient, orgID string) uuid.UUID {
 	t.Helper()
 	agentOnce.Do(func() {
-		// Agents reach the server as certforge:8443 on the compose network;
-		// the listener certificate gains that name when the section is saved.
+		// Agents reach the server through Caddy, a TLS-terminating proxy in
+		// front of the HTTP port (deploy/e2e/Caddyfile), not the agent port.
 		c.call(ctx, t, http.MethodPut, "/api/v1/settings/agents", map[string]any{
-			"agentUrl": "https://certforge:8443", "heartbeatSeconds": 15, "offlineAfterSeconds": 60}, nil)
+			"agentUrl": "https://caddy:9443", "heartbeatSeconds": 15, "offlineAfterSeconds": 60}, nil)
 
 		var existing struct {
 			Items []clientOut `json:"items"`
@@ -94,6 +95,20 @@ func enrolledAgent(ctx context.Context, t *testing.T, c *apiClient, orgID string
 	}
 	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + agentClientID.String()
 	waitFor(ctx, t, "client active and connected", func() (clientOut, bool) {
+		// The agent enrols, then waits for an administrator: approve its
+		// request as soon as it appears (requireApproval defaults to on).
+		var reqs struct {
+			Items []struct {
+				ID       string `json:"id"`
+				ClientID string `json:"clientId"`
+			} `json:"items"`
+		}
+		c.call(ctx, t, http.MethodGet, "/api/v1/orgs/"+orgID+"/enrollment-requests", nil, &reqs)
+		for _, r := range reqs.Items {
+			if r.ClientID == agentClientID.String() {
+				c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/enrollment-requests/"+r.ID+"/approve", nil, nil)
+			}
+		}
 		var cl clientOut
 		c.call(ctx, t, http.MethodGet, clientPath, nil, &cl)
 		return cl, cl.Status == "active" && cl.Connected
@@ -214,6 +229,8 @@ func TestAgentAgainstCompose(t *testing.T) {
 		t.Fatal("traefik fullchain differs from the layout fullchain")
 	}
 
+	assertAgentViaCaddy(t, dir)
+
 	// 3. Tamper → drift → auto-remediation restores the file.
 	if err := os.WriteFile(pemPath, []byte("tampered\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -274,5 +291,22 @@ func TestAgentAgainstCompose(t *testing.T) {
 	})
 	if _, err := os.Stat(filepath.Join(dir, "traefik", "certs", "agent-e2e")); err == nil {
 		t.Fatal("traefik certs/agent-e2e directory left behind")
+	}
+}
+
+// assertAgentViaCaddy proves the agent's protocol traffic crossed the
+// terminating proxy: Caddy's access log holds the handshake, enrolment and
+// signed REST calls. (The WebSocket is logged only when it closes; that the
+// agent is "connected" with an agentUrl that names only Caddy shows it too.)
+func assertAgentViaCaddy(t *testing.T, dir string) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, "caddy", "access.log"))
+	if err != nil {
+		t.Fatalf("caddy access log: %v", err)
+	}
+	for _, want := range []string{"/agent/v1/enroll/hello", "/agent/v1/session", "/agent/v1/assignments"} {
+		if !bytes.Contains(b, []byte(`"uri":"`+want)) {
+			t.Fatalf("no %s request in Caddy's access log: the agent bypassed the proxy", want)
+		}
 	}
 }

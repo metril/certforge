@@ -5,7 +5,7 @@ import { CHANNEL_KINDS, KIND_GROUPS, KIND_LABEL, KIND_SHORT, SEVERITY_META, seve
 const ALL_KINDS: EventKind[] = [
   'cert.issued', 'cert.renewal_failed', 'cert.expiring', 'cert.expired',
   'deploy.failed', 'deploy.drift',
-  'client.offline', 'agent.cert_expiring',
+  'client.offline', 'agent.cert_expiring', 'client.pending_approval',
   'monitor.mismatch', 'monitor.unreachable', 'monitor.expiring', 'monitor.recovered',
   'backup.completed', 'backup.failed',
   'test',

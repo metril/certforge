@@ -167,21 +167,22 @@ const (
 
 // Defines values for EventKind.
 const (
-	AgentCertExpiring  EventKind = "agent.cert_expiring"
-	BackupCompleted    EventKind = "backup.completed"
-	BackupFailed       EventKind = "backup.failed"
-	CertExpired        EventKind = "cert.expired"
-	CertExpiring       EventKind = "cert.expiring"
-	CertIssued         EventKind = "cert.issued"
-	CertRenewalFailed  EventKind = "cert.renewal_failed"
-	ClientOffline      EventKind = "client.offline"
-	DeployDrift        EventKind = "deploy.drift"
-	DeployFailed       EventKind = "deploy.failed"
-	MonitorExpiring    EventKind = "monitor.expiring"
-	MonitorMismatch    EventKind = "monitor.mismatch"
-	MonitorRecovered   EventKind = "monitor.recovered"
-	MonitorUnreachable EventKind = "monitor.unreachable"
-	Test               EventKind = "test"
+	AgentCertExpiring     EventKind = "agent.cert_expiring"
+	BackupCompleted       EventKind = "backup.completed"
+	BackupFailed          EventKind = "backup.failed"
+	CertExpired           EventKind = "cert.expired"
+	CertExpiring          EventKind = "cert.expiring"
+	CertIssued            EventKind = "cert.issued"
+	CertRenewalFailed     EventKind = "cert.renewal_failed"
+	ClientOffline         EventKind = "client.offline"
+	ClientPendingApproval EventKind = "client.pending_approval"
+	DeployDrift           EventKind = "deploy.drift"
+	DeployFailed          EventKind = "deploy.failed"
+	MonitorExpiring       EventKind = "monitor.expiring"
+	MonitorMismatch       EventKind = "monitor.mismatch"
+	MonitorRecovered      EventKind = "monitor.recovered"
+	MonitorUnreachable    EventKind = "monitor.unreachable"
+	Test                  EventKind = "test"
 )
 
 // Defines values for EventResourceType.
@@ -792,7 +793,7 @@ type BackupStatus struct {
 	Schedule BackupSchedule `json:"schedule"`
 }
 
-// CA A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for.
+// CA A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for.
 type CA struct {
 	// Config Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki.
 	Config map[string]interface{} `json:"config"`
@@ -830,10 +831,10 @@ type CA struct {
 	// Preset Preset code; absent for a private CA (localca, vaultpki), which has none.
 	Preset *CAPresetCode `json:"preset,omitempty"`
 
-	// Resolvers DNS resolvers (host or host:port) for propagation checks.
+	// Resolvers DNS resolvers for propagation checks: host, host:port or a DNS-over-HTTPS URL.
 	Resolvers []string `json:"resolvers"`
 
-	// Shared Reserved for Phase 2 global CAs; false in Phase 1.
+	// Shared Reserved for global CAs shared across organizations.
 	Shared bool `json:"shared"`
 
 	// StoredSecrets Secret config fields held for this CA, for example importKeyPem.
@@ -1662,7 +1663,58 @@ type EffectiveUuid struct {
 	Value *openapi_types.UUID `json:"value"`
 }
 
-// Event One notification event (Shared contracts, Other operations and Dedupe keys rows). Duplicate conditions are suppressed once at emission time (docs/notifications.md#dedupe); every event on this feed already passed that check.
+// EnrollmentRequest An agent that redeemed a client's one-time token and waits for an administrator to approve it.
+type EnrollmentRequest struct {
+	// AgentVersion certforge-agent version.
+	AgentVersion string `json:"agentVersion"`
+
+	// Arch CPU architecture the agent reported.
+	Arch string `json:"arch"`
+
+	// ClientId The pending client the token belongs to; it becomes active on approval.
+	ClientId openapi_types.UUID `json:"clientId"`
+
+	// ClientName Name of that client.
+	ClientName string `json:"clientName"`
+
+	// CreatedAt When the token was redeemed.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// ExpiresAt Deadline for a decision (Settings → Agents → pendingTtlHours after creation); after it the request is no longer listed and the agent is told it expired.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Hostname Hostname the agent reported; self-reported
+	Hostname string `json:"hostname"`
+
+	// Id Request id.
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyFingerprint Lowercase hex SHA-256 of the agent's public key (SPKI DER).
+	KeyFingerprint string `json:"keyFingerprint"`
+
+	// OrgId Owning org.
+	OrgId openapi_types.UUID `json:"orgId"`
+
+	// Os Operating system the agent reported.
+	Os string `json:"os"`
+
+	// SiteId Site of that client.
+	SiteId *openapi_types.UUID `json:"siteId"`
+
+	// SourceIp Address the request came from
+	SourceIp string `json:"sourceIp"`
+
+	// VerifyCode Eight characters, base32 of sha256(agent public key || CA fingerprint), for example ABCDEFGH. The agent logs it as ABCD-EFGH; approve only when both match. A different code means the agent saw a different CA or key than this server holds.
+	VerifyCode string `json:"verifyCode"`
+}
+
+// EnrollmentRequestList Enrolment requests waiting for approval.
+type EnrollmentRequestList struct {
+	// Items Requests
+	Items []EnrollmentRequest `json:"items"`
+}
+
+// Event One notification event. Duplicate conditions are suppressed once at emission time (docs/reference/events.md#dedupe); every event on this feed already passed that check.
 type Event struct {
 	// At When it happened.
 	At time.Time `json:"at"`
@@ -1676,7 +1728,7 @@ type Event struct {
 	// Id Event id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Kind What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+	// Kind What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
 	Kind EventKind `json:"kind"`
 
 	// OrgId Owning org; null for a global event
@@ -1713,7 +1765,7 @@ type EventDelivery struct {
 	Status DeliveryStatus `json:"status"`
 }
 
-// EventKind What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+// EventKind What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
 type EventKind string
 
 // EventPage One page of events (Shared contracts, Other operations row).
@@ -2384,7 +2436,7 @@ type Monitor struct {
 	// Enabled Checked on the scan schedule and countable toward the org's monitor limit.
 	Enabled bool `json:"enabled"`
 
-	// ExpectedCertificateId A CertForge certificate the observed leaf is compared against; null skips the mismatch check.
+	// ExpectedCertificateId A CertForge certificate the observed leaf is compared against; null means the leaf must match the current version of some certificate in the org
 	ExpectedCertificateId *openapi_types.UUID `json:"expectedCertificateId"`
 
 	// ExpectedCertificateName That certificate's name
@@ -2441,7 +2493,7 @@ type MonitorInput struct {
 	// Enabled Checked on the scan schedule. Default true.
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// ExpectedCertificateId A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null skips the mismatch check.
+	// ExpectedCertificateId A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null means the leaf must match the current version of some certificate in the org
 	ExpectedCertificateId *openapi_types.UUID `json:"expectedCertificateId"`
 
 	// Host Hostname or IP address to connect to.
@@ -2697,7 +2749,7 @@ type RewrapStatus struct {
 	Tables []RewrapTableStatus `json:"tables"`
 }
 
-// RewrapTable A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
+// RewrapTable A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
 type RewrapTable string
 
 // RewrapTableStatus Rewrap progress for one table.
@@ -2711,7 +2763,7 @@ type RewrapTableStatus struct {
 	// Scanned Rows scanned so far.
 	Scanned int64 `json:"scanned"`
 
-	// Table A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
+	// Table A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
 	Table RewrapTable `json:"table"`
 }
 
@@ -3704,6 +3756,9 @@ type ClientInterface interface {
 	// ListAllClients request
 	ListAllClients(ctx context.Context, params *ListAllClientsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAllEnrollmentRequests request
+	ListAllEnrollmentRequests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// StartRewrap request
 	StartRewrap(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3950,6 +4005,15 @@ type ClientInterface interface {
 	TestDNSCredentialWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TestDNSCredential(ctx context.Context, orgId OrgId, id Id, body TestDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListEnrollmentRequests request
+	ListEnrollmentRequests(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApproveEnrollmentRequest request
+	ApproveEnrollmentRequest(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RejectEnrollmentRequest request
+	RejectEnrollmentRequest(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListEvents request
 	ListEvents(ctx context.Context, orgId OrgId, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4378,6 +4442,18 @@ func (c *APIClient) GetAllCertificateOverview(ctx context.Context, reqEditors ..
 
 func (c *APIClient) ListAllClients(ctx context.Context, params *ListAllClientsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAllClientsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ListAllEnrollmentRequests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAllEnrollmentRequestsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -5458,6 +5534,42 @@ func (c *APIClient) TestDNSCredentialWithBody(ctx context.Context, orgId OrgId, 
 
 func (c *APIClient) TestDNSCredential(ctx context.Context, orgId OrgId, id Id, body TestDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestDNSCredentialRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ListEnrollmentRequests(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListEnrollmentRequestsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ApproveEnrollmentRequest(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveEnrollmentRequestRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) RejectEnrollmentRequest(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRejectEnrollmentRequestRequest(c.Server, orgId, id)
 	if err != nil {
 		return nil, err
 	}
@@ -7382,6 +7494,33 @@ func NewListAllClientsRequest(server string, params *ListAllClientsParams) (*htt
 		}
 
 		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAllEnrollmentRequestsRequest generates requests for ListAllEnrollmentRequests
+func NewListAllEnrollmentRequestsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/enrollment-requests")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -10533,6 +10672,122 @@ func NewTestDNSCredentialRequestWithBody(server string, orgId OrgId, id Id, cont
 	return req, nil
 }
 
+// NewListEnrollmentRequestsRequest generates requests for ListEnrollmentRequests
+func NewListEnrollmentRequestsRequest(server string, orgId OrgId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/enrollment-requests", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApproveEnrollmentRequestRequest generates requests for ApproveEnrollmentRequest
+func NewApproveEnrollmentRequestRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/enrollment-requests/%s/approve", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRejectEnrollmentRequestRequest generates requests for RejectEnrollmentRequest
+func NewRejectEnrollmentRequestRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/enrollment-requests/%s/reject", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListEventsRequest generates requests for ListEvents
 func NewListEventsRequest(server string, orgId OrgId, params *ListEventsParams) (*http.Request, error) {
 	var err error
@@ -12498,6 +12753,9 @@ type ClientWithResponsesInterface interface {
 	// ListAllClientsWithResponse request
 	ListAllClientsWithResponse(ctx context.Context, params *ListAllClientsParams, reqEditors ...RequestEditorFn) (*ListAllClientsResponse, error)
 
+	// ListAllEnrollmentRequestsWithResponse request
+	ListAllEnrollmentRequestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAllEnrollmentRequestsResponse, error)
+
 	// StartRewrapWithResponse request
 	StartRewrapWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*StartRewrapResponse, error)
 
@@ -12744,6 +13002,15 @@ type ClientWithResponsesInterface interface {
 	TestDNSCredentialWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestDNSCredentialResponse, error)
 
 	TestDNSCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, body TestDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*TestDNSCredentialResponse, error)
+
+	// ListEnrollmentRequestsWithResponse request
+	ListEnrollmentRequestsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListEnrollmentRequestsResponse, error)
+
+	// ApproveEnrollmentRequestWithResponse request
+	ApproveEnrollmentRequestWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*ApproveEnrollmentRequestResponse, error)
+
+	// RejectEnrollmentRequestWithResponse request
+	RejectEnrollmentRequestWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*RejectEnrollmentRequestResponse, error)
 
 	// ListEventsWithResponse request
 	ListEventsWithResponse(ctx context.Context, orgId OrgId, params *ListEventsParams, reqEditors ...RequestEditorFn) (*ListEventsResponse, error)
@@ -13436,6 +13703,31 @@ func (r ListAllClientsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListAllClientsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAllEnrollmentRequestsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *EnrollmentRequestList
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAllEnrollmentRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAllEnrollmentRequestsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -15306,6 +15598,84 @@ func (r TestDNSCredentialResponse) StatusCode() int {
 	return 0
 }
 
+type ListEnrollmentRequestsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *EnrollmentRequestList
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListEnrollmentRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListEnrollmentRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ApproveEnrollmentRequestResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ApproveEnrollmentRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApproveEnrollmentRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RejectEnrollmentRequestResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r RejectEnrollmentRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RejectEnrollmentRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListEventsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -16672,6 +17042,15 @@ func (c *ClientWithResponses) ListAllClientsWithResponse(ctx context.Context, pa
 	return ParseListAllClientsResponse(rsp)
 }
 
+// ListAllEnrollmentRequestsWithResponse request returning *ListAllEnrollmentRequestsResponse
+func (c *ClientWithResponses) ListAllEnrollmentRequestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAllEnrollmentRequestsResponse, error) {
+	rsp, err := c.ListAllEnrollmentRequests(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAllEnrollmentRequestsResponse(rsp)
+}
+
 // StartRewrapWithResponse request returning *StartRewrapResponse
 func (c *ClientWithResponses) StartRewrapWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*StartRewrapResponse, error) {
 	rsp, err := c.StartRewrap(ctx, reqEditors...)
@@ -17457,6 +17836,33 @@ func (c *ClientWithResponses) TestDNSCredentialWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseTestDNSCredentialResponse(rsp)
+}
+
+// ListEnrollmentRequestsWithResponse request returning *ListEnrollmentRequestsResponse
+func (c *ClientWithResponses) ListEnrollmentRequestsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListEnrollmentRequestsResponse, error) {
+	rsp, err := c.ListEnrollmentRequests(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListEnrollmentRequestsResponse(rsp)
+}
+
+// ApproveEnrollmentRequestWithResponse request returning *ApproveEnrollmentRequestResponse
+func (c *ClientWithResponses) ApproveEnrollmentRequestWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*ApproveEnrollmentRequestResponse, error) {
+	rsp, err := c.ApproveEnrollmentRequest(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveEnrollmentRequestResponse(rsp)
+}
+
+// RejectEnrollmentRequestWithResponse request returning *RejectEnrollmentRequestResponse
+func (c *ClientWithResponses) RejectEnrollmentRequestWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*RejectEnrollmentRequestResponse, error) {
+	rsp, err := c.RejectEnrollmentRequest(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRejectEnrollmentRequestResponse(rsp)
 }
 
 // ListEventsWithResponse request returning *ListEventsResponse
@@ -19024,6 +19430,53 @@ func ParseListAllClientsResponse(rsp *http.Response) (*ListAllClientsResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAllEnrollmentRequestsResponse parses an HTTP response from a ListAllEnrollmentRequestsWithResponse call
+func ParseListAllEnrollmentRequestsResponse(rsp *http.Response) (*ListAllEnrollmentRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAllEnrollmentRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EnrollmentRequestList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError
@@ -23503,6 +23956,168 @@ func ParseTestDNSCredentialResponse(rsp *http.Response) (*TestDNSCredentialRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListEnrollmentRequestsResponse parses an HTTP response from a ListEnrollmentRequestsWithResponse call
+func ParseListEnrollmentRequestsResponse(rsp *http.Response) (*ListEnrollmentRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListEnrollmentRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EnrollmentRequestList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApproveEnrollmentRequestResponse parses an HTTP response from a ApproveEnrollmentRequestWithResponse call
+func ParseApproveEnrollmentRequestResponse(rsp *http.Response) (*ApproveEnrollmentRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApproveEnrollmentRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRejectEnrollmentRequestResponse parses an HTTP response from a RejectEnrollmentRequestWithResponse call
+func ParseRejectEnrollmentRequestResponse(rsp *http.Response) (*RejectEnrollmentRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RejectEnrollmentRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

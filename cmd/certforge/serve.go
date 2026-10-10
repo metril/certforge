@@ -212,6 +212,16 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		return st.Names(), err
 	}}
 	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Box: box, Auditor: aud, Settings: agentSettings, Log: log, Reg: targetsReg}
+	agentSvc.OnPendingApproval = func(ctx context.Context, e agents.PendingApproval) {
+		_, err := notifyEmitter.Emit(ctx, nil, notify.Event{Kind: "client.pending_approval", OrgID: &e.OrgID,
+			Resource:  notify.Resource{ID: e.ClientID.String(), Name: e.ClientName},
+			Summary:   fmt.Sprintf("%s is waiting for enrolment approval", e.ClientName),
+			Details:   map[string]any{"verifyCode": e.VerifyCode, "hostname": e.Hostname, "expiresAt": e.ExpiresAt},
+			DedupeKey: "client.pending_approval:" + e.RequestID.String()})
+		if err != nil {
+			log.Error("notify: client.pending_approval emit failed", "err", err)
+		}
+	}
 	issueWorker := issuance.NewIssueWorker(issuanceStore, certStore)
 	issueWorker.Log = log
 	issueWorker.Listeners = append(issueWorker.Listeners, agentSvc, dispatcher, notifySources)
@@ -340,7 +350,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Targets: targetsReg, Dispatcher: dispatcher,
 		KEKHealth: kekHealth, Version: version, Metrics: metrics.Handler(store, sections), Backup: backupSvc,
-		Notify: notifySvc, Monitors: monitorSvc,
+		Notify: notifySvc, Monitors: monitorSvc, AgentNonces: api.NewAgentNonces(),
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

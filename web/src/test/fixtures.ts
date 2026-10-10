@@ -16,6 +16,7 @@ import type {
   Client,
   Deployment,
   DeployTarget,
+  EnrollmentRequest,
   Grant,
   Hook,
   HookRun,
@@ -439,7 +440,7 @@ export const metaSigners: ProviderSchema[] = [
 // render against; it no longer mirrors the real hyperone.json (5a-facts.md:
 // hyperone is supported as of 5A Task 12, with an inline HYPERONE_PASSPORT
 // secret field, the same file-backed shape transip already has — see
-// `dns-providers.md#file-backed-credentials`).
+// `reference/dns-providers.md`).
 // Fix round 1 (preflight A12): every real provider config property is
 // `type: 'string'` (the API's DNSCredential.config is `{[key: string]: string}`);
 // an `integer` field here (the original `ttl` fixture) is a shape the API
@@ -512,6 +513,14 @@ export function makeClient(p: Partial<Client> = {}): Client {
     os: 'linux', arch: 'amd64', agentVersion: '0.3.0', capabilities: ['traefik', 'hooks'], lastSeen: iso(0),
     agentCertNotAfter: iso(60), agentCaId: 'aca-1', desiredRevision: 3, appliedRevision: 3, grantCount: 1, driftCount: 0, failedCount: 0,
     tokenExpiresAt: null, createdAt: iso(-10), ...p,
+  };
+}
+
+export function makeEnrollmentRequest(p: Partial<EnrollmentRequest> = {}): EnrollmentRequest {
+  return {
+    id: 'er-1', orgId: org.id, clientId: 'cl-9', clientName: 'edge-1', siteId: null, verifyCode: 'ABCDEFGH', keyFingerprint: 'ab'.repeat(32),
+    hostname: 'edge-1.lan', os: 'linux', arch: 'amd64', agentVersion: '0.7.0', sourceIp: '10.0.0.5', createdAt: new Date(Date.now() - 240_000).toISOString(),
+    expiresAt: new Date(Date.now() + 3 * 3_600_000).toISOString(), ...p,
   };
 }
 

@@ -108,19 +108,6 @@ func (q *Queries) ClientCounts(ctx context.Context, ids []uuid.UUID) ([]ClientCo
 	return items, nil
 }
 
-const consumeEnrollmentToken = `-- name: ConsumeEnrollmentToken :one
-UPDATE enrollment_tokens SET used_at = now()
-WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
-RETURNING client_id
-`
-
-func (q *Queries) ConsumeEnrollmentToken(ctx context.Context, tokenHash []byte) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, consumeEnrollmentToken, tokenHash)
-	var client_id uuid.UUID
-	err := row.Scan(&client_id)
-	return client_id, err
-}
-
 const createClient = `-- name: CreateClient :one
 INSERT INTO clients (org_id, site_id, name) VALUES ($1, $2, $3) RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at
 `
@@ -246,12 +233,13 @@ func (q *Queries) GetClientByID(ctx context.Context, id uuid.UUID) (Client, erro
 }
 
 const insertEnrollmentToken = `-- name: InsertEnrollmentToken :exec
-INSERT INTO enrollment_tokens (client_id, token_hash, expires_at, created_by) VALUES ($1, $2, $3, $4)
+INSERT INTO enrollment_tokens (client_id, token_hash, lookup_id, expires_at, created_by) VALUES ($1, $2, $3, $4, $5)
 `
 
 type InsertEnrollmentTokenParams struct {
 	ClientID  uuid.UUID `json:"client_id"`
 	TokenHash []byte    `json:"token_hash"`
+	LookupID  []byte    `json:"lookup_id"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedBy string    `json:"created_by"`
 }
@@ -260,6 +248,7 @@ func (q *Queries) InsertEnrollmentToken(ctx context.Context, arg InsertEnrollmen
 	_, err := q.db.Exec(ctx, insertEnrollmentToken,
 		arg.ClientID,
 		arg.TokenHash,
+		arg.LookupID,
 		arg.ExpiresAt,
 		arg.CreatedBy,
 	)

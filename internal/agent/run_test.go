@@ -152,7 +152,7 @@ func TestSessionAnswersChallengeDuringReconcile(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	f.with(func() {
-		f.onWS = func(ctx context.Context, c *websocket.Conn) {
+		f.onWS = func(ctx context.Context, c *fakeWS) {
 			var out outcome
 			defer func() { done <- out }()
 			send := func(m agentproto.Message) {
@@ -223,7 +223,7 @@ func TestSessionDropMidReconcileLetsReconcileFinish(t *testing.T) {
 	gate := make(chan struct{})
 	f.with(func() {
 		f.assignGate = gate
-		f.onWS = func(ctx context.Context, c *websocket.Conn) {
+		f.onWS = func(ctx context.Context, c *fakeWS) {
 			b, _ := agentproto.Marshal(agentproto.Sync{})
 			_ = c.Write(ctx, websocket.MessageText, b)
 			for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {

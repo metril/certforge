@@ -10,6 +10,7 @@ import (
 const (
 	TypeHello             = "hello"
 	TypeHelloAck          = "hello_ack"
+	TypeWelcome           = "welcome"
 	TypeSync              = "sync"
 	TypeTrustBundleUpdate = "trust_bundle_update"
 	TypeRevoked           = "revoked"
@@ -25,6 +26,7 @@ const (
 	CloseReplaced = 4000 // a newer connection for the same client took over
 	CloseRevoked  = 4001 // the client was revoked or re-enrolled
 	CloseIdle     = 4002 // no message or pong within the idle timeout
+	CloseRekey    = 4003 // the session's message limit is near: reconnect for fresh keys
 )
 
 // Deployment result states an agent reports.
@@ -48,8 +50,22 @@ type Hello struct {
 	Capabilities []string `json:"capabilities"`
 }
 
-// HelloAck answers Hello with the heartbeat interval and desired revision.
+// HelloAck is the first frame of a socket, the only one sent in the clear:
+// the server's ephemeral key, the session id (the HKDF salt) and the responder
+// certificate chain (base64 DER, leaf first), signed by the responder over
+// both ephemeral keys, the session id and the upgrade request's nonce (see
+// SignHelloAck). Every frame after it is sealed under the session it opens.
 type HelloAck struct {
+	Ephemeral      string   `json:"ephemeral"`
+	Session        string   `json:"session"`
+	Chain          []string `json:"chain"`
+	SignatureInput string   `json:"signatureInput"`
+	Signature      string   `json:"signature"`
+}
+
+// Welcome answers Hello (inside the sealed channel) with the heartbeat
+// interval and desired revision.
+type Welcome struct {
 	HeartbeatSeconds int   `json:"heartbeatSeconds"`
 	Revision         int64 `json:"revision"`
 }
@@ -104,6 +120,7 @@ type ChallengeReady struct {
 // MsgType implementations.
 func (Hello) MsgType() string             { return TypeHello }
 func (HelloAck) MsgType() string          { return TypeHelloAck }
+func (Welcome) MsgType() string           { return TypeWelcome }
 func (Sync) MsgType() string              { return TypeSync }
 func (TrustBundleUpdate) MsgType() string { return TypeTrustBundleUpdate }
 func (Revoked) MsgType() string           { return TypeRevoked }
@@ -145,6 +162,8 @@ func Unmarshal(b []byte) (Message, error) {
 		return decode[Hello](b)
 	case TypeHelloAck:
 		return decode[HelloAck](b)
+	case TypeWelcome:
+		return decode[Welcome](b)
 	case TypeSync:
 		return decode[Sync](b)
 	case TypeTrustBundleUpdate:

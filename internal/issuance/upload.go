@@ -103,7 +103,7 @@ func ParseUpload(in UploadInput) (*signer.Issued, signer.KeyType, error) {
 		// go-pkcs12's DecodeChain errors "private key missing" whenever the
 		// bundle has none, so key is never nil here on a nil error: a
 		// PKCS#12 upload always carries a key (documented in
-		// docs/certificates.md#upload); there is no keyless PKCS#12 branch
+		// docs/guide/certificates.md#upload); there is no keyless PKCS#12 branch
 		// to handle.
 		key, cert, caCerts, err := pkcs12.DecodeChain(in.PKCS12, in.Password)
 		if err != nil {
@@ -245,7 +245,7 @@ func publicKeysEqual(a, b crypto.PublicKey) bool {
 // (CertificateUpload/CertificateVersionUpload carry no such fields). Only
 // the DNS SANs are considered — a leaf with IP SANs but no DNS SAN at all
 // (leaf.DNSNames empty) is rejected outright, since CertForge's own
-// certificate model is DNS-name-based throughout (docs/certificates.md#upload
+// certificate model is DNS-name-based throughout (docs/guide/certificates.md#upload
 // documents this). When the leaf's subject CN is itself one of the DNS
 // SANs, it is moved first (matching how an ordinary CertForge-issued
 // certificate is always named after its own CommonName); otherwise the

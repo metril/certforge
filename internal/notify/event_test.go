@@ -11,25 +11,26 @@ func TestKindsAndSeverities(t *testing.T) {
 		severity string
 		resource string
 	}{
-		"cert.issued":         {"info", "certificate"},
-		"cert.renewal_failed": {"warning", "certificate"},
-		"cert.expiring":       {"warning", "certificate"},
-		"cert.expired":        {"critical", "certificate"},
-		"deploy.failed":       {"warning", "grant"},
-		"deploy.drift":        {"warning", "grant"},
-		"client.offline":      {"warning", "client"},
-		"agent.cert_expiring": {"warning", "client"},
-		"monitor.mismatch":    {"critical", "monitor"},
-		"monitor.unreachable": {"warning", "monitor"},
-		"monitor.expiring":    {"warning", "monitor"},
-		"monitor.recovered":   {"info", "monitor"},
-		"backup.completed":    {"info", "backup"},
-		"backup.failed":       {"critical", "backup"},
-		"test":                {"info", "channel"},
+		"cert.issued":             {"info", "certificate"},
+		"cert.renewal_failed":     {"warning", "certificate"},
+		"cert.expiring":           {"warning", "certificate"},
+		"cert.expired":            {"critical", "certificate"},
+		"deploy.failed":           {"warning", "grant"},
+		"deploy.drift":            {"warning", "grant"},
+		"client.offline":          {"warning", "client"},
+		"agent.cert_expiring":     {"warning", "client"},
+		"client.pending_approval": {"warning", "client"},
+		"monitor.mismatch":        {"critical", "monitor"},
+		"monitor.unreachable":     {"warning", "monitor"},
+		"monitor.expiring":        {"warning", "monitor"},
+		"monitor.recovered":       {"info", "monitor"},
+		"backup.completed":        {"info", "backup"},
+		"backup.failed":           {"critical", "backup"},
+		"test":                    {"info", "channel"},
 	}
 
-	if len(notify.Kinds) != 15 {
-		t.Fatalf("len(Kinds) = %d, want 15", len(notify.Kinds))
+	if len(notify.Kinds) != 16 {
+		t.Fatalf("len(Kinds) = %d, want 16", len(notify.Kinds))
 	}
 	seen := map[string]bool{}
 	for _, k := range notify.Kinds {

@@ -37,6 +37,7 @@ func TestAgentRunEndToEnd(t *testing.T) {
 	e.svc.Hub = hub
 	e.svc.Settings = agents.StaticSettings(agents.Settings{AgentURL: e.ts.URL, HeartbeatSeconds: 1}, "")
 	en := e.newClient(t, "web-1")
+	fastEnrolPolls(t)
 	dir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -45,6 +46,11 @@ func TestAgentRunEndToEnd(t *testing.T) {
 		runErr <- agent.Run(ctx, agent.Config{DataDir: filepath.Join(dir, "data"), Token: en.Token, Version: "it",
 			WriteAllow: []string{dir}}, slog.Default())
 	}()
+	// The agent waits for approval first: an administrator approves its request.
+	req := waitPending(t, e, en.Client.ID)
+	if err := e.svc.ApproveEnrollment(e.as("operator"), e.org, req.ID); err != nil {
+		t.Fatal(err)
+	}
 	waitUntil(ctx, t, "agent connected", func() bool { return hub.Connected(en.Client.ID) })
 	certID, _ := e.currentCert(t, "web")
 	out := filepath.Join(dir, "ssl", "web.pem")

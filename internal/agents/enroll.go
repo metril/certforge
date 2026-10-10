@@ -2,6 +2,8 @@ package agents
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/x509"
 	"errors"
 	"strings"
@@ -62,90 +64,10 @@ func lockSigningCA(ctx context.Context, q *sqlcgen.Queries, id uuid.UUID) error 
 	return nil
 }
 
-// Enroll consumes a token atomically and signs the agent's first certificate.
-func (s *Service) Enroll(ctx context.Context, req agentproto.EnrollRequest) (agentproto.EnrollResponse, error) {
-	tok, err := agentproto.ParseToken(req.Token)
-	if err != nil {
-		return agentproto.EnrollResponse{}, unauthorized(badToken)
-	}
-	// The pin check reads certificates only; the active CA's key is
-	// decrypted below, after the token is consumed, so a bad token never
-	// reaches CA material.
-	trusted, err := s.CA.Trusted(ctx)
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	if len(trusted) == 0 {
-		return agentproto.EnrollResponse{}, agentca.ErrNoActive
-	}
-	if tok.CAFingerprint != agentca.Fingerprint(trusted[0].Raw) {
-		return agentproto.EnrollResponse{}, conflict("This token pins an agent CA that no longer signs the listener certificate; re-enrol the client for a new token.")
-	}
-	csr, err := agentca.ParseCSR([]byte(req.CSR))
-	if err != nil {
-		return agentproto.EnrollResponse{}, invalid("csr", "%v", err)
-	}
-	st := s.CurrentSettings(ctx)
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := s.Q.WithTx(tx)
-	clientID, err := q.ConsumeEnrollmentToken(ctx, agentproto.TokenHash(req.Token))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return agentproto.EnrollResponse{}, unauthorized(badToken)
-	}
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	cur, err := q.LockClientByID(ctx, clientID)
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	if cur.Status != "pending" {
-		return agentproto.EnrollResponse{}, conflict("This client is %s; re-enrol it for a new token.", cur.Status)
-	}
-	ca, err := s.CA.WithQueries(q).Active(ctx)
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	cert, err := agentca.SignClient(ca, csr, clientID, st.AgentCertLifetime(), s.now())
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	// Re-check under a row lock, in this transaction, that ca is still
-	// trusted: see lockSigningCA.
-	if err := lockSigningCA(ctx, q, ca.ID); err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	c, err := q.ActivateClient(ctx, sqlcgen.ActivateClientParams{ID: clientID, AgentCertSerial: agentca.SerialHex(cert),
-		AgentCertNotAfter: &cert.NotAfter, AgentCaID: &ca.ID, Hostname: clip(req.Facts.Hostname, 253),
-		Os: clip(req.Facts.OS, 32), Arch: clip(req.Facts.Arch, 32), AgentVersion: clip(req.Facts.AgentVersion, 64)})
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	trusted, err = s.CA.WithQueries(q).Trusted(ctx)
-	if err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return agentproto.EnrollResponse{}, err
-	}
-	s.audit(authn.WithPrincipal(ctx, AgentPrincipal(c)), audit.Event{Action: "client.enrolled", ResourceType: "client",
-		ResourceID: c.ID.String(), OrgID: &c.OrgID, Details: map[string]any{"serial": c.AgentCertSerial,
-			"hostname": c.Hostname, "agentVersion": c.AgentVersion, "notAfter": cert.NotAfter}})
-	return agentproto.EnrollResponse{Certificate: string(agentca.CertPEM(cert.Raw)), TrustBundle: string(agentca.BundlePEM(trusted)),
-		AgentURL: st.AgentURL, ClientID: c.ID}, nil
-}
-
-// Authenticate maps a verified client certificate to its active client and
-// refuses any certificate but the newest one issued to it.
-func (s *Service) Authenticate(ctx context.Context, leaf *x509.Certificate) (sqlcgen.Client, error) {
-	id, err := agentca.ClientIDFromCert(leaf)
-	if err != nil {
-		return sqlcgen.Client{}, unauthorized("This is not a CertForge agent certificate.")
-	}
+// AuthenticateKey maps a client id and the serial of the certificate it signs
+// with (the signed keyid of the agent protocol) to its active client: it must
+// exist, be active and hold serial as its newest.
+func (s *Service) AuthenticateKey(ctx context.Context, id uuid.UUID, serial string) (sqlcgen.Client, error) {
 	c, err := s.Q.GetClientByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, unauthorized("This client no longer exists.")
@@ -156,10 +78,38 @@ func (s *Service) Authenticate(ctx context.Context, leaf *x509.Certificate) (sql
 	if c.Status != "active" {
 		return c, unauthorized("This client is %s; enrol the agent again with a new token.", c.Status)
 	}
-	if c.AgentCertSerial != agentca.SerialHex(leaf) {
+	if c.AgentCertSerial != serial {
 		return c, unauthorized("This agent certificate was replaced; use the newest certificate or enrol again.")
 	}
 	return c, nil
+}
+
+// VerifyAgentCert checks that der is an agent client certificate issued by a
+// trusted agent CA and unexpired, and returns the client id, certificate
+// serial and signing key it proves. It does not check the client's state:
+// follow with AuthenticateKey.
+func (s *Service) VerifyAgentCert(ctx context.Context, der []byte) (uuid.UUID, string, *ecdsa.PublicKey, error) {
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		return uuid.Nil, "", nil, unauthorized("This is not a CertForge agent certificate.")
+	}
+	trusted, err := s.CA.Trusted(ctx)
+	if err != nil {
+		return uuid.Nil, "", nil, err
+	}
+	roots := x509.NewCertPool()
+	for _, c := range trusted {
+		roots.AddCert(c)
+	}
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: s.now(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+		return uuid.Nil, "", nil, unauthorized("This agent certificate is not trusted or has expired.")
+	}
+	id, err := agentca.ClientIDFromCert(leaf)
+	pub, ok := leaf.PublicKey.(*ecdsa.PublicKey)
+	if err != nil || !ok || pub.Curve != elliptic.P256() {
+		return uuid.Nil, "", nil, unauthorized("This is not a CertForge agent certificate.")
+	}
+	return id, agentca.SerialHex(leaf), pub, nil
 }
 
 // Renew signs a fresh certificate for an authenticated agent.

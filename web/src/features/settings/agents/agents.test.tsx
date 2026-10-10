@@ -177,3 +177,30 @@ it('warns that the Agent URL only reaches new enrolments', async () => {
   await user.hover(within(field).getByRole('button', { name: /^Help/ }));
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Only new enrolments pick up a changed URL');
 });
+
+it('greys out the approval window while approval is off, and shows tooltips', async () => {
+  server.use(
+    http.get(url('/settings/agents'), () =>
+      HttpResponse.json({
+        section: 'agents',
+        schema: {
+          type: 'object',
+          properties: {
+            requireApproval: { type: 'boolean', title: 'Require approval', default: true },
+            pendingTtlHours: { type: 'integer', title: 'Approval window (hours)', minimum: 1, maximum: 168, default: 24 },
+          },
+        },
+        value: { requireApproval: true, pendingTtlHours: 24 },
+        stored: null,
+        storedSecrets: [],
+      }),
+    ),
+  );
+  const { user } = renderRoute('/settings/agents');
+  const window = await screen.findByLabelText('Approval window (hours)');
+  expect(window).toBeEnabled();
+  await user.click(screen.getByRole('switch', { name: /Require approval/ }));
+  expect(window).toBeDisabled();
+  await user.click(screen.getByRole('switch', { name: /Require approval/ }));
+  expect(window).toBeEnabled();
+});

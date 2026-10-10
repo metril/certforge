@@ -84,7 +84,7 @@ var viewerActions = []Action{
 	ActionDeliveryRead, ActionAlertsRead,
 }
 
-// APIKeyScopes are the scopes an API key may carry (docs/design.md, plus
+// APIKeyScopes are the scopes an API key may carry (docs/internals/history/design.md, plus
 // Phase 3's clients:read and delivery scopes, and Phase 6A's alerts scopes).
 var APIKeyScopes = []string{"certs:read", "certs:write", "certs:issue", "keys:export", "dnscreds:reveal",
 	"clients:read", "clients:write", "delivery:read", "delivery:write",

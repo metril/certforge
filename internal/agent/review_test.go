@@ -132,7 +132,7 @@ func TestDialReadsMessageOverOneMiB(t *testing.T) {
 	f := newFakeServer(t)
 	big := bytes.Repeat([]byte("x"), 2<<20)
 	f.with(func() {
-		f.onWS = func(ctx context.Context, c *websocket.Conn) { _ = c.Write(ctx, websocket.MessageText, big) }
+		f.onWS = func(ctx context.Context, c *fakeWS) { _ = c.Write(ctx, websocket.MessageText, big) }
 	})
 	id, err := Enroll(context.Background(), t.TempDir(), f.token(t), facts)
 	if err != nil {
@@ -144,11 +144,11 @@ func TestDialReadsMessageOverOneMiB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.CloseNow()                                                        //nolint:errcheck // best-effort test cleanup
-	if err := conn.Write(ctx, websocket.MessageText, []byte("{}")); err != nil { // hello
+	defer conn.CloseNow()                                    //nolint:errcheck // best-effort test cleanup
+	if err := conn.WriteMsg(ctx, []byte("{}")); err != nil { // hello
 		t.Fatal(err)
 	}
-	_, got, err := conn.Read(ctx)
+	got, err := conn.ReadMsg(ctx)
 	if err != nil || len(got) != len(big) {
 		t.Fatalf("read %d bytes, err %v", len(got), err)
 	}

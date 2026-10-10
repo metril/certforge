@@ -3,10 +3,16 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,6 +43,7 @@ type fakeServer struct {
 	srv      *httptest.Server
 	ca       *agentca.CA
 	clientID uuid.UUID
+	proto    *fakeProtocol
 
 	mu         sync.Mutex
 	bundle     string // trust bundle returned by enrol and renew
@@ -45,10 +52,28 @@ type fakeServer struct {
 	reports    []agentproto.Report
 	heartbeats int
 	wsConns    int
-	wsStatus   int                                          // non-zero: refuse the upgrade with this status
-	onWS       func(ctx context.Context, c *websocket.Conn) // runs after the agent's hello
-	assignGate chan struct{}                                // non-nil: GET assignments blocks until it is closed
-	assignHits int                                          // GET assignments requests served or blocked
+	wsUnsigned bool                                 // wsStatus 401 is answered without a signature
+	wsStatus   int                                  // non-zero: refuse the upgrade with this status
+	onWS       func(ctx context.Context, c *fakeWS) // runs after the agent's hello
+	assignGate chan struct{}                        // non-nil: GET assignments blocks until it is closed
+	assignFail int                                  // the next GET assignments requests fail with 500
+	assignHits int                                  // GET assignments requests served or blocked
+	deny       bool                                 // GET assignments answers 401 "no client certificate"
+
+	tokens      map[string][]byte // lookup id -> token hash, for tokens f.token issued
+	hellos      map[string]*ecdh.PrivateKey
+	reqs        map[string]*fakeEnrolReq
+	pendingFor  int    // polls answered "pending" before approval
+	outcome     string // non-empty: the status every poll reports (rejected, expired)
+	wrongCode   bool   // answer enrolment with a verification code the agent will not recognise
+	unsignedHel bool   // answer hello without a signature
+}
+
+type fakeEnrolReq struct {
+	pub    *ecdsa.PublicKey
+	csr    string
+	secret string
+	polls  int
 }
 
 // with runs fn under the server's lock.
@@ -61,8 +86,8 @@ func (f *fakeServer) with(fn func()) {
 // sendAndWait writes m and keeps the socket open until the agent closes it.
 //
 //nolint:unused // used by a later task's WebSocket tests in this package
-func sendAndWait(m agentproto.Message) func(context.Context, *websocket.Conn) {
-	return func(ctx context.Context, c *websocket.Conn) {
+func sendAndWait(m agentproto.Message) func(context.Context, *fakeWS) {
+	return func(ctx context.Context, c *fakeWS) {
 		b, _ := agentproto.Marshal(m)
 		_ = c.Write(ctx, websocket.MessageText, b)
 		for {
@@ -79,7 +104,8 @@ func newFakeServer(t *testing.T) *fakeServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeServer{ca: &agentca.CA{ID: uuid.New(), Cert: caCert, Key: caKey}, clientID: uuid.New(), bundle: string(agentca.CertPEM(caCert.Raw))}
+	f := &fakeServer{ca: &agentca.CA{ID: uuid.New(), Cert: caCert, Key: caKey}, clientID: uuid.New(), bundle: string(agentca.CertPEM(caCert.Raw)),
+		tokens: map[string][]byte{}, hellos: map[string]*ecdh.PrivateKey{}, reqs: map[string]*fakeEnrolReq{}}
 	l := &agentca.Listener{Source: staticSource{f.ca}, Names: func(context.Context) ([]string, error) { return []string{"127.0.0.1"}, nil }}
 	if err := l.Reload(context.Background()); err != nil {
 		t.Fatal(err)
@@ -94,27 +120,7 @@ func newFakeServer(t *testing.T) *fakeServer {
 		return cert
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /agent/v1/enroll", func(w http.ResponseWriter, r *http.Request) {
-		var req agentproto.EnrollRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		if cert := sign(w, req.CSR); cert != nil {
-			var bundle string
-			agentURL := f.srv.URL
-			f.with(func() {
-				bundle = f.bundle
-				if f.agentURL != "" {
-					agentURL = f.agentURL
-				}
-			})
-			_ = json.NewEncoder(w).Encode(agentproto.EnrollResponse{Certificate: string(agentca.CertPEM(cert.Raw)),
-				TrustBundle: bundle, AgentURL: agentURL, ClientID: f.clientID})
-		}
-	})
 	mux.HandleFunc("POST /agent/v1/renew", func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
 		var req agentproto.RenewRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		if cert := sign(w, req.CSR); cert != nil {
@@ -135,14 +141,19 @@ func newFakeServer(t *testing.T) *fakeServer {
 	})
 	mux.HandleFunc("GET /agent/v1/ws", func(w http.ResponseWriter, r *http.Request) {
 		var status int
-		var onWS func(context.Context, *websocket.Conn)
-		f.with(func() { f.wsConns++; status, onWS = f.wsStatus, f.onWS })
+		var onWS func(context.Context, *fakeWS)
+		var unsigned bool
+		f.with(func() { f.wsConns++; status, onWS, unsigned = f.wsStatus, f.onWS, f.wsUnsigned })
+		if status == http.StatusUnauthorized && !unsigned { // a signed refusal: revoked
+			f.proto.wsRefuse(w, r, status)
+			return
+		}
 		if status != 0 {
 			w.WriteHeader(status)
 			return
 		}
-		c, err := websocket.Accept(w, r, nil)
-		if err != nil {
+		c := f.proto.wsUpgrade(w, r)
+		if c == nil {
 			return
 		}
 		defer c.CloseNow()                                //nolint:errcheck // best-effort test cleanup
@@ -154,14 +165,28 @@ func newFakeServer(t *testing.T) *fakeServer {
 		}
 	})
 	mux.HandleFunc("GET /agent/v1/assignments", func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
+		var deny bool
+		f.with(func() { deny = f.deny })
+		if deny {
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"title":"Unauthorized","detail":"no client certificate"}`))
 			return
 		}
 		var gate chan struct{}
-		f.with(func() { f.assignHits++; gate = f.assignGate })
+		var fail bool
+		f.with(func() {
+			f.assignHits++
+			gate = f.assignGate
+			if f.assignFail > 0 {
+				f.assignFail--
+				fail = true
+			}
+		})
+		if fail {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
 		if gate != nil {
 			select {
 			case <-gate:
@@ -171,7 +196,10 @@ func newFakeServer(t *testing.T) *fakeServer {
 		}
 		_ = json.NewEncoder(w).Encode(agentproto.Assignments{Revision: 7})
 	})
-	f.srv = httptest.NewUnstartedServer(mux)
+	f.proto = &fakeProtocol{l: l, sessions: map[string]*fakeSession{}, enrol: f.serveEnrol}
+	f.srv = httptest.NewUnstartedServer(nil)
+	f.proto.au = f.srv.Listener.Addr().String()
+	f.srv.Config.Handler = f.proto.handler(mux)
 	f.srv.TLS = l.TLSConfig()
 	f.srv.StartTLS()
 	t.Cleanup(f.srv.Close)
@@ -184,7 +212,134 @@ func (f *fakeServer) token(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.with(func() {
+		f.tokens[string(agentproto.LookupIDBytes(agentproto.TokenHash(tok)))] = agentproto.TokenHash(tok)
+	})
 	return tok
+}
+
+func (f *fakeServer) respond(w http.ResponseWriter, status int, nonce string, body []byte) {
+	sg, _ := f.proto.l.Responder()
+	_ = agentproto.SignResponse(w.Header(), status, body, sg.Key, agentproto.RespParams{KeyID: "responder", ReqNonce: nonce, Created: time.Now()})
+	w.Header().Set(agentproto.HeaderSignerCert, base64.StdEncoding.EncodeToString(sg.Chain[0].Raw))
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+func (f *fakeServer) sealed(w http.ResponseWriter, status int, path, nonce string, to string, v any) {
+	raw, _ := base64.StdEncoding.DecodeString(to)
+	pub, _ := ecdh.P256().NewPublicKey(raw)
+	pt, _ := json.Marshal(v)
+	ct, _ := agentproto.HPKESeal(pub, agentproto.SealInfo(agentproto.DirS2C, path, nonce), pt)
+	f.respond(w, status, nonce, ct)
+}
+
+// serveEnrol is the server half of the enrolment exchange.
+func (f *fakeServer) serveEnrol(w http.ResponseWriter, r *http.Request) {
+	au := f.proto.au
+	switch {
+	case r.Method == http.MethodGet && r.URL.Path == agentproto.PathEnrollHello:
+		priv, _ := ecdh.P256().GenerateKey(rand.Reader)
+		idRaw := make([]byte, 16)
+		_, _ = rand.Read(idRaw)
+		id := base64.RawURLEncoding.EncodeToString(idRaw)
+		f.with(func() { f.hellos[id] = priv })
+		sg, _ := f.proto.l.Responder()
+		out, _ := json.Marshal(agentproto.EnrollHello{ID: id, Ephemeral: base64.StdEncoding.EncodeToString(priv.PublicKey().Bytes()),
+			Chain: []string{base64.StdEncoding.EncodeToString(sg.Chain[1].Raw)}, ExpiresIn: 120})
+		var unsigned bool
+		f.with(func() { unsigned = f.unsignedHel })
+		if unsigned {
+			_, _ = w.Write(out)
+			return
+		}
+		f.respond(w, http.StatusOK, r.URL.Query().Get("nonce"), out)
+	case r.Method == http.MethodPost && r.URL.Path == agentproto.PathEnroll:
+		helloID := r.Header.Get(agentproto.HeaderEnrollHello)
+		var priv *ecdh.PrivateKey
+		f.with(func() { priv = f.hellos[helloID]; delete(f.hellos, helloID) })
+		body, _ := io.ReadAll(r.Body)
+		pt, err := agentproto.HPKEOpen(priv, agentproto.SealInfo(agentproto.DirC2S, agentproto.PathEnroll, helloID), body)
+		if priv == nil || err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var sub agentproto.EnrollSubmit
+		_ = json.Unmarshal(pt, &sub)
+		lookup, _ := base64.RawURLEncoding.DecodeString(sub.LookupID)
+		var th []byte
+		f.with(func() { th = f.tokens[string(lookup)] })
+		der, _ := agentproto.CSRDER(sub.CSR)
+		if th == nil || !agentproto.VerifyPop(sub.Pop, th, der, au, sub.Created, sub.Nonce, sub.Reply) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		csr, err := agentca.ParseCSR([]byte(sub.CSR))
+		if err != nil {
+			f.sealed(w, http.StatusUnprocessableEntity, agentproto.PathEnroll, helloID, sub.Reply, map[string]any{"title": "Invalid", "detail": err.Error()})
+			return
+		}
+		secretRaw := make([]byte, 16)
+		_, _ = rand.Read(secretRaw)
+		id := uuid.New()
+		rq := &fakeEnrolReq{pub: csr.PublicKey.(*ecdsa.PublicKey), csr: sub.CSR, secret: base64.RawURLEncoding.EncodeToString(secretRaw)}
+		var wrong bool
+		status := agentproto.EnrollApproved
+		f.with(func() {
+			f.reqs[id.String()] = rq
+			wrong = f.wrongCode
+			if f.pendingFor > 0 || f.outcome != "" {
+				status = agentproto.EnrollPending
+			}
+		})
+		code := agentproto.VerifyCode(csr.RawSubjectPublicKeyInfo, agentca.Fingerprint(f.ca.Cert.Raw))
+		if wrong {
+			code = "AAAAAAAA"
+		}
+		f.sealed(w, http.StatusOK, agentproto.PathEnroll, helloID, sub.Reply, agentproto.EnrollAccepted{ID: id, PollSecret: rq.secret,
+			VerifyCode: code, Status: status, ExpiresAt: time.Now().Add(time.Hour)})
+	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, agentproto.PathEnroll+"/"):
+		var rq *fakeEnrolReq
+		f.with(func() { rq = f.reqs[strings.TrimPrefix(r.URL.Path, agentproto.PathEnroll+"/")] })
+		body, _ := io.ReadAll(r.Body)
+		if rq == nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		rp, err := agentproto.VerifyRequest(r, body, au, time.Now(), func(string) (*ecdsa.PublicKey, error) { return rq.pub, nil })
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var pr agentproto.EnrollPollRequest
+		_ = json.Unmarshal(body, &pr)
+		if pr.PollSecret != rq.secret {
+			f.sealed(w, http.StatusUnauthorized, r.URL.Path, rp.Nonce, rp.Ephemeral, map[string]any{"title": "Unauthorized", "detail": "The poll secret is wrong."})
+			return
+		}
+		var outcome, bundle, agentURL string
+		var pending int
+		f.with(func() {
+			rq.polls++
+			outcome, pending, bundle, agentURL = f.outcome, f.pendingFor, f.bundle, f.agentURL
+			if agentURL == "" {
+				agentURL = f.srv.URL
+			}
+		})
+		out := agentproto.EnrollPoll{Status: agentproto.EnrollPending, ExpiresAt: time.Now().Add(time.Hour)}
+		switch {
+		case outcome != "":
+			out.Status = outcome
+		case rq.polls > pending:
+			csr, _ := agentca.ParseCSR([]byte(rq.csr))
+			cert, _ := agentca.SignClient(f.ca, csr, f.clientID, 90*24*time.Hour, time.Now())
+			out = agentproto.EnrollPoll{Status: agentproto.EnrollApproved, Certificate: string(agentca.CertPEM(cert.Raw)),
+				TrustBundle: bundle, AgentURL: agentURL, ClientID: f.clientID}
+		}
+		f.sealed(w, http.StatusOK, r.URL.Path, rp.Nonce, rp.Ephemeral, out)
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
 }
 
 var facts = agentproto.Facts{Hostname: "h", OS: "linux", Arch: "amd64", AgentVersion: "test"}
@@ -223,6 +378,101 @@ func TestEnrollPinsCAFingerprint(t *testing.T) {
 	}
 }
 
+func quickPolls(t *testing.T) {
+	t.Helper()
+	oldMin, oldMax := EnrollPollMin, EnrollPollMax
+	EnrollPollMin, EnrollPollMax = time.Millisecond, 5*time.Millisecond
+	t.Cleanup(func() { EnrollPollMin, EnrollPollMax = oldMin, oldMax })
+}
+
+type logSink struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *logSink) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *logSink) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+func TestEnrollWaitsForApprovalAndLogsCode(t *testing.T) {
+	quickPolls(t)
+	f := newFakeServer(t)
+	f.with(func() { f.pendingFor = 3 })
+	sink := &logSink{}
+	dir := t.TempDir()
+	id, err := EnrollWith(context.Background(), EnrollOptions{Log: slog.New(slog.NewTextHandler(sink, nil))}, dir, f.token(t), facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := loadOrCreateKey(dir)
+	der, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	code := agentproto.FormatVerifyCode(agentproto.VerifyCode(der, agentca.Fingerprint(f.ca.Cert.Raw)))
+	if !strings.Contains(sink.String(), "WAITING FOR APPROVAL") || !strings.Contains(sink.String(), code) {
+		t.Fatalf("code %s not logged prominently: %s", code, sink.String())
+	}
+	var polls int
+	for _, r := range f.reqs {
+		polls = r.polls
+	}
+	if polls != 4 || id.State.ClientID != f.clientID {
+		t.Fatalf("polls %d state %+v", polls, id.State)
+	}
+}
+
+func TestEnrollRejectedExpiredAndStopped(t *testing.T) {
+	quickPolls(t)
+	for outcome, want := range map[string]string{agentproto.EnrollRejected: "rejected", agentproto.EnrollExpired: "expired"} {
+		f := newFakeServer(t)
+		f.with(func() { f.outcome = outcome })
+		dir := t.TempDir()
+		if _, err := Enroll(context.Background(), dir, f.token(t), facts); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("%s: err = %v", outcome, err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "agent.crt")); err == nil {
+			t.Fatalf("%s: certificate written", outcome)
+		}
+	}
+	f := newFakeServer(t)
+	f.with(func() { f.pendingFor = 1 << 30 })
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, err := Enroll(ctx, t.TempDir(), f.token(t), facts); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancelled wait: %v", err)
+	}
+}
+
+func TestEnrollRefusesUnverifiedServer(t *testing.T) {
+	quickPolls(t)
+	f := newFakeServer(t)
+	f.with(func() { f.unsignedHel = true })
+	if _, err := Enroll(context.Background(), t.TempDir(), f.token(t), facts); err == nil || !strings.Contains(err.Error(), "not signed") {
+		t.Fatalf("unsigned hello: %v", err)
+	}
+	f = newFakeServer(t)
+	f.with(func() { f.wrongCode = true })
+	if _, err := Enroll(context.Background(), t.TempDir(), f.token(t), facts); err == nil || !strings.Contains(err.Error(), "verification code") {
+		t.Fatalf("wrong code: %v", err)
+	}
+	// A token the server never issued gets an unsigned refusal: an error, no state.
+	f = newFakeServer(t)
+	stranger, _ := agentproto.NewToken(f.srv.URL, agentca.Fingerprint(f.ca.Cert.Raw))
+	dir := t.TempDir()
+	if _, err := Enroll(context.Background(), dir, stranger, facts); err == nil || !strings.Contains(err.Error(), "not signed") {
+		t.Fatalf("unknown token: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "state.json")); err == nil {
+		t.Fatal("state written for a refused enrolment")
+	}
+}
+
 func TestLoadIdentityNotEnrolled(t *testing.T) {
 	if _, err := LoadIdentity(t.TempDir()); !errors.Is(err, ErrNotEnrolled) {
 		t.Fatalf("err = %v", err)
@@ -253,7 +503,7 @@ func TestUnauthorizedIsReported(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl := NewClient(id)
-	cl.tr.TLSClientConfig.GetClientCertificate = nil // present no certificate
+	f.with(func() { f.deny = true })
 	if _, err := cl.Assignments(context.Background()); !IsUnauthorized(err) || !strings.Contains(err.Error(), "no client certificate") {
 		t.Fatalf("err = %v", err)
 	}

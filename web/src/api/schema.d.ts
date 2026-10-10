@@ -429,7 +429,7 @@ export interface paths {
         put?: never;
         /**
          * Start rewrapping secrets under the active KEK
-         * @description Needs global settings:write. Starts, in the background, re-encrypting every secret under the active KEK, table by table in order (settings; cas, covering eab_hmac and secret_cfg together; acme_accounts; dns_provider_credentials; output_specs; agent_cas; certificate_versions); 409 while a rewrap is already running. Recorded as kek.rewrap_started (activeKekId) when it starts and kek.rewrap_finished (rewrapped, remaining; system actor) when it completes.
+         * @description Needs global settings:write. Starts, in the background, re-encrypting every secret under the active KEK, table by table in order (settings; cas, covering eab_hmac and secret_cfg together; acme_accounts; dns_provider_credentials; output_specs; agent_cas; certificate_versions; notification_channels; deploy_targets); 409 while a rewrap is already running. Recorded as kek.rewrap_started (activeKekId) when it starts and kek.rewrap_finished (rewrapped, remaining; system actor) when it completes.
          */
         post: operations["startRewrap"];
         delete?: never;
@@ -1228,6 +1228,99 @@ export interface paths {
         get: operations["getRateLedger"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/enrollment-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List enrolment requests waiting for approval across orgs
+         * @description Like listEnrollmentRequests, over every org where the caller has clients:read. 403 when there is none. Items carry orgId.
+         */
+        get: operations["listAllEnrollmentRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/enrollment-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List enrolment requests waiting for approval
+         * @description Needs clients:read. An agent that presents a valid one-time token waits here (Settings → Agents → requireApproval) until an administrator compares its verification code with the one the agent logged and approves or rejects it. Expired requests are not listed. Not paginated; at most 50 wait per org.
+         */
+        get: operations["listEnrollmentRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/enrollment-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an enrolment request
+         * @description Needs clients:write. The waiting agent receives its certificate at its next poll and the client becomes active. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_approved.
+         */
+        post: operations["approveEnrollmentRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/enrollment-requests/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject an enrolment request
+         * @description Needs clients:write. The agent is told its request was rejected and stops. The token stays used; re-enrol the client for a new one. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_rejected.
+         */
+        post: operations["rejectEnrollmentRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2169,7 +2262,7 @@ export interface paths {
         };
         /**
          * List events
-         * @description The org's own events plus global (orgId null) events, newest first, keyset paginated. Needs alerts:read. Duplicate conditions are suppressed at emission time, not here, so every event returned already passed the server's own dedupe rule (see docs/notifications.md#dedupe); this endpoint never de-duplicates on its own.
+         * @description The org's own events plus global (orgId null) events, newest first, keyset paginated. Needs alerts:read. Duplicate conditions are suppressed at emission time, not here, so every event returned already passed the server's own dedupe rule (see docs/reference/events.md#dedupe); this endpoint never de-duplicates on its own.
          */
         get: operations["listEvents"];
         put?: never;
@@ -2191,7 +2284,7 @@ export interface paths {
         put?: never;
         /**
          * Create and download a backup
-         * @description Needs settings:write. Streams an encrypted archive of the whole database, table by table, as it is written. Recorded as backup.created {sizeBytes} once streaming completes, or backup.failed {error} (system actor) if it fails partway through. Restoring is CLI-only: no restore over HTTP; see operations.md#restore.
+         * @description Needs settings:write. Streams an encrypted archive of the whole database, table by table, as it is written. Recorded as backup.created {sizeBytes} once streaming completes, or backup.failed {error} (system actor) if it fails partway through. Restoring is CLI-only: no restore over HTTP; see docs/guide/backup.md#restore.
          */
         post: operations["createBackup"];
         delete?: never;
@@ -2476,7 +2569,7 @@ export interface components {
             kekId: string;
         };
         /**
-         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels (Phase 6A) covers secret_cfg and is walked before deploy_targets; deploy_targets (Phase 7A) covers its own secret_cfg and is walked last.
+         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
          * @enum {string}
          */
         RewrapTable: "settings" | "cas" | "acme_accounts" | "dns_provider_credentials" | "output_specs" | "agent_cas" | "certificate_versions" | "notification_channels" | "deploy_targets";
@@ -2647,7 +2740,7 @@ export interface components {
              */
             ttl?: string;
         };
-        /** @description A certificate authority — an external ACME directory, or (Phase 5A) a private CA CertForge holds the key material for. */
+        /** @description A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for. */
         CA: {
             /**
              * Format: uuid
@@ -2671,9 +2764,9 @@ export interface components {
             eabKid: string;
             /** @description An EAB HMAC is stored (it is never returned). */
             hasEab: boolean;
-            /** @description DNS resolvers (host or host:port) for propagation checks. */
+            /** @description DNS resolvers for propagation checks: host, host:port or a DNS-over-HTTPS URL. */
             resolvers: string[];
-            /** @description Reserved for Phase 2 global CAs; false in Phase 1. */
+            /** @description Reserved for global CAs shared across organizations. */
             shared: boolean;
             type: components["schemas"]["CaType"];
             /** @description Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki. */
@@ -3860,6 +3953,60 @@ export interface components {
             /** @description Cursor for the next page; null on the last page. */
             nextCursor?: string | null;
         };
+        /** @description An agent that redeemed a client's one-time token and waits for an administrator to approve it. */
+        EnrollmentRequest: {
+            /**
+             * Format: uuid
+             * @description Request id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /**
+             * Format: uuid
+             * @description The pending client the token belongs to; it becomes active on approval.
+             */
+            clientId: string;
+            /** @description Name of that client. */
+            clientName: string;
+            /**
+             * Format: uuid
+             * @description Site of that client.
+             */
+            siteId: string | null;
+            /** @description Eight characters, base32 of sha256(agent public key || CA fingerprint), for example ABCDEFGH. The agent logs it as ABCD-EFGH; approve only when both match. A different code means the agent saw a different CA or key than this server holds. */
+            verifyCode: string;
+            /** @description Lowercase hex SHA-256 of the agent's public key (SPKI DER). */
+            keyFingerprint: string;
+            /** @description Hostname the agent reported; self-reported */
+            hostname: string;
+            /** @description Operating system the agent reported. */
+            os: string;
+            /** @description CPU architecture the agent reported. */
+            arch: string;
+            /** @description certforge-agent version. */
+            agentVersion: string;
+            /** @description Address the request came from */
+            sourceIp: string;
+            /**
+             * Format: date-time
+             * @description When the token was redeemed.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Deadline for a decision (Settings → Agents → pendingTtlHours after creation); after it the request is no longer listed and the agent is told it expired.
+             */
+            expiresAt: string;
+        };
+        /** @description Enrolment requests waiting for approval. */
+        EnrollmentRequestList: {
+            /** @description Requests */
+            items: components["schemas"]["EnrollmentRequest"][];
+        };
         /**
          * @description active signs new agent certificates; retiring is still trusted; retired is not.
          * @enum {string}
@@ -4569,10 +4716,10 @@ export interface components {
             durationMs: number;
         };
         /**
-         * @description What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
+         * @description What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
          * @enum {string}
          */
-        EventKind: "cert.issued" | "cert.renewal_failed" | "cert.expiring" | "cert.expired" | "deploy.failed" | "deploy.drift" | "client.offline" | "agent.cert_expiring" | "monitor.mismatch" | "monitor.unreachable" | "monitor.expiring" | "monitor.recovered" | "backup.completed" | "backup.failed" | "test";
+        EventKind: "cert.issued" | "cert.renewal_failed" | "cert.expiring" | "cert.expired" | "deploy.failed" | "deploy.drift" | "client.offline" | "agent.cert_expiring" | "client.pending_approval" | "monitor.mismatch" | "monitor.unreachable" | "monitor.expiring" | "monitor.recovered" | "backup.completed" | "backup.failed" | "test";
         /**
          * @description How serious an event is.
          * @enum {string}
@@ -4611,7 +4758,7 @@ export interface components {
              */
             deliveredAt: string | null;
         };
-        /** @description One notification event (Shared contracts, Other operations and Dedupe keys rows). Duplicate conditions are suppressed once at emission time (docs/notifications.md#dedupe); every event on this feed already passed that check. */
+        /** @description One notification event. Duplicate conditions are suppressed once at emission time (docs/reference/events.md#dedupe); every event on this feed already passed that check. */
         Event: {
             /**
              * Format: uuid
@@ -4676,7 +4823,7 @@ export interface components {
             intervalSeconds: number;
             /**
              * Format: uuid
-             * @description A CertForge certificate the observed leaf is compared against; null skips the mismatch check.
+             * @description A CertForge certificate the observed leaf is compared against; null means the leaf must match the current version of some certificate in the org
              */
             expectedCertificateId: string | null;
             /** @description That certificate's name */
@@ -4736,7 +4883,7 @@ export interface components {
             intervalSeconds: number;
             /**
              * Format: uuid
-             * @description A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null skips the mismatch check.
+             * @description A certificate in this org to compare the observed leaf against; a certificate in another org is 422. Omitted or null means the leaf must match the current version of some certificate in the org
              */
             expectedCertificateId?: string | null;
             /**
@@ -7077,6 +7224,112 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAllEnrollmentRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The waiting requests, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentRequestList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listEnrollmentRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The waiting requests, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentRequestList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    approveEnrollmentRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    rejectEnrollmentRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };

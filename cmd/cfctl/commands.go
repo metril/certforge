@@ -130,7 +130,7 @@ func insecureURLWarning(raw string) string {
 // The generated client (api/oapi-codegen.client.yaml) builds every request
 // path relative to the server argument it is given, exactly as declared
 // under the spec's own `servers: [{url: /api/v1}]` entry — it never adds
-// that prefix itself (docs/cfctl.md documents --url/CFCTL_URL as the
+// that prefix itself (docs/reference/cfctl.md documents --url/CFCTL_URL as the
 // server's bare base URL, for example "https://certforge.example.com",
 // the same address the web UI's own origin uses), so apiBase appends it
 // here, once, for both clients.
@@ -206,7 +206,8 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, "  audit list")
 	fmt.Fprintln(w, "  version                   Print cfctl's own build version")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Config: CFCTL_URL/CFCTL_TOKEN env vars, or $XDG_CONFIG_HOME/cfctl/config.json (mode 0600). See docs/cfctl.md.")
+	fmt.Fprintln(w, "Global flags go before the command; a command's own flags go before its <id>.")
+	fmt.Fprintln(w, "Config: CFCTL_URL/CFCTL_TOKEN env vars, or $XDG_CONFIG_HOME/cfctl/config.json (mode 0600). See docs/reference/cfctl.md.")
 }
 
 // resolveOrg resolves --org to an org id: a value that parses as a UUID is

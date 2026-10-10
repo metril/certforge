@@ -76,7 +76,7 @@ func TestPhase3OperationsDeclared(t *testing.T) {
 		"listClientHookRuns", "listCertificateDeployments", "listLayouts", "createLayout", "getLayout", "updateLayout",
 		"deleteLayout", "listDeployTargets", "createDeployTarget", "getDeployTarget", "updateDeployTarget",
 		"deleteDeployTarget", "listHooks", "createHook", "getHook", "updateHook", "deleteHook", "listAgentCAs",
-		"rotateAgentCA", "retireAgentCA"} {
+		"rotateAgentCA", "retireAgentCA", "listEnrollmentRequests", "listAllEnrollmentRequests", "approveEnrollmentRequest", "rejectEnrollmentRequest"} {
 		want[id] = false
 	}
 	// oapi-codegen's embedded spec normalizes operationId to its generated Go
@@ -224,7 +224,7 @@ func TestPhase6OperationsDeclared(t *testing.T) {
 	}
 	wantEventKinds := []string{
 		"cert.issued", "cert.renewal_failed", "cert.expiring", "cert.expired",
-		"deploy.failed", "deploy.drift", "client.offline", "agent.cert_expiring",
+		"deploy.failed", "deploy.drift", "client.offline", "agent.cert_expiring", "client.pending_approval",
 		"monitor.mismatch", "monitor.unreachable", "monitor.expiring", "monitor.recovered",
 		"backup.completed", "backup.failed", "test",
 	}

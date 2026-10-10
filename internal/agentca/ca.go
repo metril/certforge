@@ -30,10 +30,11 @@ import (
 
 // Lifetimes.
 const (
-	CALifetime       = 10 * 365 * 24 * time.Hour
-	ListenerLifetime = 365 * 24 * time.Hour
-	clockSkew        = 5 * time.Minute
-	clientURIPrefix  = "urn:certforge:client:"
+	CALifetime        = 10 * 365 * 24 * time.Hour
+	ListenerLifetime  = 365 * 24 * time.Hour
+	ResponderLifetime = 24 * time.Hour
+	clockSkew         = 5 * time.Minute
+	clientURIPrefix   = "urn:certforge:client:"
 )
 
 // Errors.
@@ -195,6 +196,38 @@ func SignServer(ca *CA, pub crypto.PublicKey, names []string, now time.Time) (*x
 		return nil, err
 	}
 	return x509.ParseCertificate(der)
+}
+
+// ResponderMarker is the OU of a responder certificate; see agentproto.ResponderMarker.
+const ResponderMarker = agentproto.ResponderMarker
+
+// SignResponder issues the certificate whose key signs the server's agent
+// protocol responses. It is a signing key only: message encryption uses
+// per-session ephemeral keys.
+func SignResponder(ca *CA, pub crypto.PublicKey, now time.Time) (*x509.Certificate, error) {
+	serial, err := randomSerial()
+	if err != nil {
+		return nil, err
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "CertForge agent responder", Organization: []string{"CertForge"}, OrganizationalUnit: []string{ResponderMarker}},
+		NotBefore:    now.Add(-clockSkew),
+		NotAfter:     capped(ca, now.Add(ResponderLifetime)),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.Cert, pub, ca.Key)
+	if err != nil {
+		return nil, err
+	}
+	return x509.ParseCertificate(der)
+}
+
+// VerifyResponder checks that leaf chains to roots and carries the responder EKU and
+// marker only; it returns the leaf's ECDSA public key.
+func VerifyResponder(leaf *x509.Certificate, roots *x509.CertPool, now time.Time) (*ecdsa.PublicKey, error) {
+	return agentproto.VerifyResponder(leaf, roots, now)
 }
 
 // CertPEM encodes one DER certificate.

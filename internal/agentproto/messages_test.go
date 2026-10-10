@@ -13,7 +13,7 @@ func TestMarshalRoundTrip(t *testing.T) {
 	id := uuid.New()
 	for _, m := range []Message{
 		Hello{AgentVersion: "1.0.0", Hostname: "web-1", OS: "linux", Arch: "amd64", Capabilities: []string{"traefik"}},
-		HelloAck{HeartbeatSeconds: 60, Revision: 3},
+		Welcome{HeartbeatSeconds: 60, Revision: 3},
 		Sync{Revision: 4},
 		TrustBundleUpdate{Bundle: "-----BEGIN CERTIFICATE-----\n"},
 		Revoked{},

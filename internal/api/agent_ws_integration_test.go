@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/tls"
+	"crypto/x509"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/metril/certforge/internal/agent"
 	"github.com/metril/certforge/internal/agenthub"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/agents"
@@ -33,7 +35,7 @@ func TestWebSocketHelloSyncRevoke(t *testing.T) {
 	defer cancel()
 	ws := dialWS(ctx, t, e, cert)
 	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1.2.3", Hostname: "host-9", OS: "linux", Arch: "arm64", Capabilities: []string{"traefik"}})
-	if m := recvWS(ctx, t, ws); m != agentproto.Message(agentproto.HelloAck{HeartbeatSeconds: 60, Revision: 0}) {
+	if m := recvWS(ctx, t, ws); m != agentproto.Message(agentproto.Welcome{HeartbeatSeconds: 60, Revision: 0}) {
 		t.Fatalf("hello_ack %#v", m)
 	}
 	cl, _ := e.q.GetClientByID(ctx, en.Client.ID)
@@ -106,17 +108,26 @@ func TestWebSocketRejectsStaleCertificateAfterRenew(t *testing.T) {
 	}
 }
 
-func dialWS(ctx context.Context, t *testing.T, e *agentEnv, cert tls.Certificate) agentproto.WS {
+// wsClient is the real agent client for cert's identity, talking to base.
+func (e *agentEnv) wsClient(t *testing.T, cert tls.Certificate, base, mode string, roots *x509.CertPool) *agent.Client {
 	t.Helper()
-	c, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(e.ts.URL, "https")+"/agent/v1/ws", //nolint:bodyclose // coder/websocket owns resp.Body
-		&websocket.DialOptions{HTTPClient: e.httpClient(t, &cert)})
+	id := e.identity(t, cert)
+	id.State.AgentURL = base
+	return agent.NewClientWith(id, agent.ClientOptions{Mode: mode, Roots: roots})
+}
+
+// dialWS opens the sealed socket on the agent port the way the agent does.
+func dialWS(ctx context.Context, t *testing.T, e *agentEnv, cert tls.Certificate) *agentproto.SealedWS {
+	t.Helper()
+	ws, err := e.wsClient(t, cert, e.ts.URL, agent.TransportMTLS, nil).Dial(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return agentproto.WS{C: c}
+	t.Cleanup(func() { _ = ws.CloseNow() })
+	return ws
 }
 
-func sendWS(ctx context.Context, t *testing.T, ws agentproto.WS, m agentproto.Message) {
+func sendWS(ctx context.Context, t *testing.T, ws *agentproto.SealedWS, m agentproto.Message) {
 	t.Helper()
 	b, _ := agentproto.Marshal(m)
 	if err := ws.WriteMsg(ctx, b); err != nil {
@@ -124,7 +135,7 @@ func sendWS(ctx context.Context, t *testing.T, ws agentproto.WS, m agentproto.Me
 	}
 }
 
-func recvWS(ctx context.Context, t *testing.T, ws agentproto.WS) agentproto.Message {
+func recvWS(ctx context.Context, t *testing.T, ws *agentproto.SealedWS) agentproto.Message {
 	t.Helper()
 	b, err := ws.ReadMsg(ctx)
 	if err != nil {
@@ -160,7 +171,7 @@ func TestWebSocketHeartbeatAndDeployResult(t *testing.T) {
 	defer cancel()
 	ws := dialWS(ctx, t, e, cert)
 	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1"})
-	if _, ok := recvWS(ctx, t, ws).(agentproto.HelloAck); !ok {
+	if _, ok := recvWS(ctx, t, ws).(agentproto.Welcome); !ok {
 		t.Fatal("expected hello_ack")
 	}
 	hc := e.httpClient(t, &cert)
@@ -260,7 +271,7 @@ func TestAgentChallengeOverWebSocket(t *testing.T) {
 	defer cancel()
 	ws := dialWS(ctx, t, e, cert)
 	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1", Capabilities: []string{"tls-alpn-01"}})
-	if _, ok := recvWS(ctx, t, ws).(agentproto.HelloAck); !ok {
+	if _, ok := recvWS(ctx, t, ws).(agentproto.Welcome); !ok {
 		t.Fatal("expected hello_ack")
 	}
 
@@ -295,7 +306,7 @@ func TestWebSocketAcceptsLargeAgentMessage(t *testing.T) {
 	defer cancel()
 	ws := dialWS(ctx, t, e, cert)
 	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: strings.Repeat("v", 2<<20)})
-	if _, ok := recvWS(ctx, t, ws).(agentproto.HelloAck); !ok {
+	if _, ok := recvWS(ctx, t, ws).(agentproto.Welcome); !ok {
 		t.Fatal("expected hello_ack for a 2 MiB hello")
 	}
 }

@@ -1,16 +1,20 @@
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { CircleX, LoaderCircle } from 'lucide-react';
+import { CircleX, Hourglass, LoaderCircle } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { clientQuery } from '@/api/queries/clients';
+import { pendingEnrollmentsQuery } from '@/api/queries/enrollments';
 import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { HelpTip } from '@/components/HelpTip';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
+import { useMe } from '@/lib/org';
+import { can } from '@/lib/permissions';
 import { livePoll } from '@/lib/polling';
 import { cn } from '@/lib/utils';
+import { isExpired as requestExpired, useApprovalFlow } from '../approval/ApprovalQueue';
 
 type Props = { orgId: string; orgSlug: string; clientId: string; expiresAt: string; renewing: boolean; onNewToken: () => void };
 
@@ -22,16 +26,30 @@ function isExpired(c: Pick<Client, 'status' | 'online'> | undefined, expiresAt: 
 /** Live "waiting for agent": polls every 2 s until the client is active and
  * online (connected, or pulled recently), then offers the next step. */
 export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, onNewToken }: Props) {
+  // Set below each render; read by the poll interval so an approval made after the token's expiry still shows Online.
+  const hasRequest = useRef(false);
   const q = useQuery({
     ...clientQuery(orgId, clientId),
     refetchInterval: (query) => {
       const c = query.state.data;
       // Expiry is evaluated fresh (Date.now()) on every poll, so it stops
       // as soon as the token passes, without waiting on a separate ticker.
-      if (isExpired(c, expiresAt)) return false;
+      if (isExpired(c, expiresAt) && !hasRequest.current) return false;
       return livePoll(!(c?.status === 'active' && c.online));
     },
   });
+  // An enrolled agent waiting for an administrator: polled at 2 s until it
+  // appears, so the Review button shows without a manual refresh.
+  const me = useMe();
+  const canWrite = can(me, 'clients:write', orgId);
+  const approvals = useQuery({
+    ...pendingEnrollmentsQuery(orgId),
+    enabled: canWrite && q.data?.status !== 'active',
+    refetchInterval: livePoll(true),
+  });
+  const request = approvals.data?.find((r) => r.clientId === clientId && !requestExpired(r));
+  if (request) hasRequest.current = true; // sticky: also covers the poll after an approval
+  const flow = useApprovalFlow(orgId);
   // Nothing about the query changes at the exact moment the token expires,
   // so a single timeout forces one more render then, to flip the border
   // and stop the "Waiting for agent" spinner without a repeating ticker.
@@ -44,15 +62,22 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
   }, [expiresAt]);
   const c = q.data;
   const online = c?.status === 'active' && c.online;
-  const expired = isExpired(c, expiresAt);
+  const expired = isExpired(c, expiresAt) && !hasRequest.current;
 
   return (
     <section
       aria-label="Agent connection"
       aria-live="polite"
-      className={cn('grid gap-3 rounded-md border bg-panel p-4', online ? 'border-valid' : expired ? 'border-failed' : 'border-dashed border-pending')}
+      className={cn('grid gap-3 rounded-md border bg-panel p-4', online ? 'border-valid' : expired && !request ? 'border-failed' : 'border-dashed border-pending')}
     >
-      {online ? (
+      {!online && request ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Hourglass className="size-4 text-pending" aria-hidden />
+          <span className="text-sm">Agent enrolled. Awaiting approval.</span>
+          <HelpTip id="enrol.awaiting" />
+          <Button onClick={() => flow.review(request)}>Review</Button>
+        </div>
+      ) : online ? (
         <>
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <ConnectionDot client={c} />
@@ -87,6 +112,7 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
           <HelpTip id="client.waiting" />
         </p>
       )}
+      {flow.dialogs()}
       {q.isError && (
         <p role="alert" className="text-sm">
           {errorMessage(q.error)}

@@ -69,6 +69,12 @@ type Deps struct {
 	AgentSettings *agents.SettingsSource // agents settings section; PUT invalidates it
 	Hub           *agenthub.Hub          // agent WebSockets (nil: /agent/v1/ws answers 503)
 	AgentListener *agentca.Listener      // agent listener certificate (nil when not running)
+	// AgentNonces is the request replay cache of the agent protocol; nil is
+	// an in-memory store per router. AgentAuthorities, when set, replaces the
+	// hosts derived from the agent URL and base URL that signed requests are
+	// verified against (tests, unusual proxies).
+	AgentNonces      NonceStore
+	AgentAuthorities []string
 
 	// Keys reports the active KEK's status and starts its rewrap job
 	// (Task 5: GET/POST /keys/*).
