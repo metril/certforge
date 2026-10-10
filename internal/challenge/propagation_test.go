@@ -2,10 +2,12 @@ package challenge
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -95,5 +97,56 @@ func TestCheckTXTDoH(t *testing.T) {
 	}
 	if _, err := CheckTXT(context.Background(), []string{"https://127.0.0.1:1/dns-query"}, "x.example.com", "tok"); err == nil {
 		t.Error("expected error from unreachable DoH endpoint")
+	}
+}
+
+func TestCheckTXTFailureRcodeIsError(t *testing.T) {
+	addr := startSplitDNS(t, func(w dns.ResponseWriter, r *dns.Msg) {
+		m := new(dns.Msg)
+		m.SetRcode(r, dns.RcodeRefused)
+		_ = w.WriteMsg(m)
+	}, func(w dns.ResponseWriter, r *dns.Msg) {})
+	ok, err := CheckTXT(context.Background(), []string{addr}, "_acme-challenge.example.com", "v")
+	if ok || err == nil || !strings.Contains(err.Error(), "returned REFUSED") {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		q := new(dns.Msg)
+		_ = q.Unpack(body)
+		m := new(dns.Msg)
+		m.SetRcode(q, dns.RcodeServerFailure)
+		wire, _ := m.Pack()
+		_, _ = w.Write(wire)
+	}))
+	defer srv.Close()
+	old := dohClient
+	dohClient = srv.Client()
+	t.Cleanup(func() { dohClient = old })
+	if _, err := CheckTXT(context.Background(), []string{srv.URL}, "x.example.com", "v"); err == nil || !strings.Contains(err.Error(), "SERVFAIL") {
+		t.Fatalf("doh err=%v", err)
+	}
+}
+
+func TestDoHRefusesRedirects(t *testing.T) {
+	if err := dohClient.CheckRedirect(nil, nil); err != http.ErrUseLastResponse {
+		t.Fatalf("CheckRedirect = %v", err)
+	}
+}
+
+func TestRouterHintRefusedFromConfiguredResolvers(t *testing.T) {
+	setSettle(t, 0)
+	addr := startSplitDNS(t, func(w dns.ResponseWriter, r *dns.Msg) {
+		m := new(dns.Msg)
+		m.SetRcode(r, dns.RcodeRefused)
+		_ = w.WriteMsg(m)
+	}, func(w dns.ResponseWriter, r *dns.Msg) {})
+	ru := rule(t, "example.com", &recProvider{})
+	ru.Resolvers = []string{addr}
+	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, nil)
+	_, _ = r.PreCheck("example.com", "_acme-challenge.example.com.", "v", nil)
+	if h := r.Hint(errors.New("x")); !strings.Contains(h, "intercept DNS") {
+		t.Fatalf("hint = %q", h)
 	}
 }

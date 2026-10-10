@@ -551,7 +551,9 @@ func (r *Router) preCheck(name string, rule *Rule, fqdn, value string, check fun
 		r.mu.Lock()
 		r.usedResolv = true
 		r.mu.Unlock()
-		return CheckTXT(r.ctx, rule.Resolvers, fqdn, value)
+		ok, err := CheckTXT(r.ctx, rule.Resolvers, fqdn, value)
+		r.noteCheckErr(err)
+		return ok, err
 	}
 	ok, err := check(fqdn, value)
 	r.noteCheckErr(err)

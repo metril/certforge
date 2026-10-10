@@ -31,6 +31,9 @@ func CheckTXT(ctx context.Context, resolvers []string, fqdn, value string) (bool
 			if err != nil {
 				return false, fmt.Errorf("query %s at %s: %w", fqdn, r, err)
 			}
+			if err := rcodeErr(r, fqdn, in); err != nil {
+				return false, err
+			}
 			if !hasTXT(in, value) {
 				return false, nil
 			}
@@ -47,11 +50,23 @@ func CheckTXT(ctx context.Context, resolvers []string, fqdn, value string) (bool
 		if err != nil {
 			return false, fmt.Errorf("query %s at %s: %w", fqdn, addr, err)
 		}
+		if err := rcodeErr(addr, fqdn, in); err != nil {
+			return false, err
+		}
 		if !hasTXT(in, value) {
 			return false, nil
 		}
 	}
 	return true, nil
+}
+
+// rcodeErr turns a failure rcode (REFUSED, SERVFAIL, ...) into an error
+// instead of letting it read as "record not found".
+func rcodeErr(resolver, fqdn string, in *dns.Msg) error {
+	if in.Rcode == dns.RcodeSuccess || in.Rcode == dns.RcodeNameError {
+		return nil
+	}
+	return fmt.Errorf("resolver %s returned %s for %s", resolver, dns.RcodeToString[in.Rcode], fqdn)
 }
 
 func hasTXT(in *dns.Msg, value string) bool {
@@ -72,7 +87,10 @@ func ValidDoHURL(r string) bool {
 	return err == nil && u.Scheme == "https" && u.Host != "" && !strings.ContainsAny(r, " ")
 }
 
-var dohClient = &http.Client{Timeout: 5 * time.Second}
+var dohClient = &http.Client{
+	Timeout:       5 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 // queryDoH sends m to a DoH endpoint per RFC 8484 (POST, wire format).
 func queryDoH(ctx context.Context, endpoint string, m *dns.Msg) (*dns.Msg, error) {
