@@ -34,7 +34,7 @@ CertForge stores everything in Postgres and encrypts private keys and secrets wi
    Or run a published image. Pin a version in production:
 
    ```bash
-   CF_VERSION=0.8.0 docker compose -f deploy/compose.release.yaml up -d  # x-release-please-version
+   CF_VERSION=0.9.0 docker compose -f deploy/compose.release.yaml up -d  # x-release-please-version
    ```
 
 4. Check that the server is ready:
