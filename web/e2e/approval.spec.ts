@@ -36,6 +36,7 @@ test('settings: the approval window greys out while approval is off', async ({ p
 test('clients: no queue and no badge when nothing awaits approval', async ({ page }) => {
   await page.goto('/login');
   await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
   await page.goto(`/o/${E2E.orgSlug}/clients`);
   await expect(page.getByRole('heading', { name: /^Clients$/ })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Awaiting approval' })).toBeHidden();

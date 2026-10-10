@@ -14,12 +14,13 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
   await signInLocal(page);
   await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
 
-  // 1. The token embeds the agent URL, so point it at the compose name first.
+  // 1. The token embeds the agent URL, so point it at the Caddy proxy (the
+  // agent reaches the server through a TLS-terminating hop) first.
   await page.goto('/settings/agents');
   await page.getByLabel('Agent URL').fill(E2E.agentUrl);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Listener names' })).toContainText('certforge');
+  await expect(page.getByRole('list', { name: 'Listener names' })).toContainText('caddy');
   await snap(page, 'settings-agents');
 
   // 2. A layout writing the fullchain into the bind-mounted ssl directory.
