@@ -160,7 +160,7 @@ export function AgentCaPanel() {
         open={retireTarget !== null}
         onOpenChange={(o) => !o && setRetireTarget(null)}
         title="Retire agent CA"
-        consequence="The listener certificate switches to the next CA, and enrolment tokens pinned to this one are refused."
+        consequence="The listener certificate switches to the next CA, and agents enrolling with tokens pinned to this one will refuse to connect."
         help="agents.retire"
         confirmText="retire"
         actionLabel="Retire"

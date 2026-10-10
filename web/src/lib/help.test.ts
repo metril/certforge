@@ -17,9 +17,13 @@ describe('help copy', () => {
     const [file, anchor] = ref.split('#');
     const md = readFileSync(resolve(docs, file!), 'utf8');
     const anchors = [...md.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => githubSlug(m[1]!));
-    const explicit = [...md.matchAll(/\{#([\w-]+)\}/g)].map((m) => m[1]);
-    return anchors.includes(anchor!) || explicit.includes(anchor);
+    return anchors.includes(anchor!);
   };
+  it('docs use no {#id} anchors, which GitHub does not support', () => {
+    for (const f of ['operations/security-model.md', 'internals/architecture.md']) {
+      expect(readFileSync(resolve(docs, f), 'utf8')).not.toContain('{#');
+    }
+  });
   it.each(entries.filter(([, h]) => h.learnMore))('%s links to an existing doc heading', (_, h) => {
     expect(hasAnchor(h.learnMore!)).toBe(true);
   });
