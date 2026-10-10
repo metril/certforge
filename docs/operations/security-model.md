@@ -36,7 +36,7 @@ Agents work through a proxy that terminates TLS, so nothing depends on TLS to be
 - Enrolment sends no token: the agent proves it holds it. New clients wait for an administrator to approve them after comparing a verification code.
 - A client certificate alone admits nothing. The server checks on every request and WebSocket message that the client is active and the certificate is its newest one, so revocation takes effect at once without a CRL.
 - Protocol: [Architecture](../internals/architecture.md#agent-protocol). Threat model and reasons: [ADR 0020](../internals/adr/0020-agent-protocol-through-proxy.md).
-- Clocks: agents and server must agree within 60 s. Request nonces are kept in memory, in one cache shared by both ports, which is why CertForge runs a single replica. The cache holds at most 200,000 nonces; when full the server answers an unsigned `503` and logs it. Signed agent requests are rate limited per client address (600 a minute, burst 120), and a request naming no live session is refused before its body is read.
+- Clocks: agents and server must agree within 60 s. Request nonces are kept in memory, in one cache shared by both ports, which is why CertForge runs a single replica. The cache holds at most 200,000 nonces; when full the server answers an unsigned `503` and logs it. Handshakes and sockets are rate limited per client address and signed REST requests per agent (600 a minute, burst 120 each), and a request naming no live session is refused before its body is read.
 
 Enrolment tokens are single use, stored only as a SHA-256 hash, and pin the agent CA fingerprint. Enrolment endpoints are rate limited per client address, separately from login.
 

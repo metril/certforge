@@ -66,7 +66,7 @@ Enrolment accepts either a chain containing the token's CA or a system-trusted c
 |---|---|
 | Clock difference accepted by the server | 60 seconds. Beyond it the agent reports that the system clocks differ. |
 | Replay protection | Each nonce is remembered for 120 seconds, in the server's memory, in one cache shared by the HTTP port and the agent listener. A restart forgets them. At 200,000 remembered nonces the server answers an unsigned `503` with `Retry-After` and logs an error until entries expire. |
-| Request rate | Session, WebSocket, poll and every signed request: 600 a minute per client address (burst 120), checked before the body is read or any signature verified. A request naming no live session is refused before its body is read. |
+| Request rate | Sessions, WebSocket upgrades and enrolment polls: 600 a minute per client address (burst 120). Signed REST requests: 600 a minute per agent (burst 120), checked after the session lookup and before the body is read. Over the limit the server answers an unsigned `429`, and the agent retries with backoff (1, 2, 4 and 8 seconds). A request naming no live session is refused before its body is read. Fleets behind a proxy should set **Trusted proxies** so each agent has its own address. |
 | Session lifetime | 10 minutes; the agent starts a new session after 9. |
 | Sessions per client | 16. The oldest is dropped. |
 | Messages per session | 1000 each way. The WebSocket reconnects shortly before the limit (close code 4003) for fresh keys. |

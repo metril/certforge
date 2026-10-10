@@ -109,7 +109,7 @@ http:
 
 Traefik forwards `Host` and WebSockets by default.
 
-To record real client addresses in the audit log and rate limiters, add the proxy to **Settings → Authentication → Trusted proxies**. See [Security model](security-model.md#client-addresses).
+To record real client addresses in the audit log and rate limiters (a fleet of agents behind one proxy otherwise shares one address and one handshake limit), add the proxy to **Settings → Authentication → Trusted proxies**. See [Security model](security-model.md#client-addresses).
 
 ## Route HTTP-01 challenges
 A `http-01` rule with `via: server` is answered by CertForge at `GET /.well-known/acme-challenge/{token}` on the HTTP listener. The CA connects to each certificate name on port 80, so route that path to CertForge from whatever answers port 80 for those names. With nginx:
@@ -144,7 +144,7 @@ These protect public routes (`/auth/login`, `/setup/complete`) and agents from r
 | Server timeouts | Header read 10 s, request read 30 s, idle 120 s. |
 | Login, OIDC and setup | Per client address, set in **Settings → Authentication**. |
 | Agent enrolment (`hello` and `enroll`) | Per client address, same defaults as login. |
-| Agent sessions, polls and sockets | 600 per minute per client address, burst 120. |
+| Agent sessions, polls and sockets | 600 per minute per client address, burst 120. Signed agent REST requests: the same, per agent. |
 | Agent message size | 8 MiB per WebSocket message. |
 
 Agents must keep their clock within 60 s of the server's. See [Troubleshooting](troubleshooting.md#agents).
