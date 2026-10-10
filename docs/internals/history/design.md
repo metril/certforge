@@ -1,3 +1,5 @@
+> Historical document, kept as written. It is not maintained and may not match the current product. See [the docs index](../../README.md).
+
 # CertForge design specification
 
 Status: approved 2026-09-24. This is the source of truth for scope, architecture, UI, and process. Phase plans live in `docs/superpowers/plans/` (local, not tracked), progress in `docs/PROGRESS.md`.

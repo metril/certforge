@@ -1,3 +1,5 @@
+> Historical document, kept as written. It is not maintained and may not match the current product. See [the docs index](../../README.md).
+
 # CertForge progress
 
 Single status file. Updated in every commit that completes a task.
