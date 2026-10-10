@@ -44,7 +44,7 @@ UPDATE clients SET status = 'revoked' WHERE id = $1 RETURNING *;
 DELETE FROM clients WHERE id = $1 AND org_id = $2 AND status IN ('pending', 'revoked');
 
 -- name: InsertEnrollmentToken :exec
-INSERT INTO enrollment_tokens (client_id, token_hash, expires_at, created_by) VALUES ($1, $2, $3, $4);
+INSERT INTO enrollment_tokens (client_id, token_hash, lookup_id, expires_at, created_by) VALUES ($1, $2, $3, $4, $5);
 
 -- name: DeleteUnusedEnrollmentTokens :exec
 DELETE FROM enrollment_tokens WHERE client_id = $1 AND used_at IS NULL;
@@ -52,11 +52,6 @@ DELETE FROM enrollment_tokens WHERE client_id = $1 AND used_at IS NULL;
 -- name: PendingTokens :many
 SELECT client_id, expires_at FROM enrollment_tokens
 WHERE client_id = ANY(sqlc.arg(ids)::uuid[]) AND used_at IS NULL AND expires_at > now();
-
--- name: ConsumeEnrollmentToken :one
-UPDATE enrollment_tokens SET used_at = now()
-WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
-RETURNING client_id;
 
 -- name: ActivateClient :one
 UPDATE clients SET status = 'active', agent_cert_serial = sqlc.arg(agent_cert_serial),

@@ -48,7 +48,7 @@ func EnsureEnrolled(ctx context.Context, cfg Config, log *slog.Logger) (*Identit
 			return nil, err
 		case tok != "":
 			log.Info("enrolling", "data", cfg.DataDir)
-			return Enroll(ctx, cfg.DataDir, tok, Facts(cfg.Version))
+			return EnrollWith(ctx, EnrollOptions{Log: log}, cfg.DataDir, tok, Facts(cfg.Version))
 		}
 		if cfg.TokenFile == "" {
 			return nil, errors.New("not enrolled: set CF_AGENT_TOKEN or CF_AGENT_TOKEN_FILE, or run certforge-agent enroll --token <token>")

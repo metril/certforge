@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
@@ -28,6 +27,7 @@ type agentAPI struct {
 	nonces   NonceStore
 	sessions agentSessions
 	sessLim  *authn.Limiter
+	hellos   enrollHellos
 	now      func() time.Time // nil: time.Now
 }
 
@@ -60,7 +60,7 @@ func NewAgentRouter(d Deps) http.Handler {
 	return r
 }
 
-// routes registers the agent protocol. /enroll is still the token exchange and
+// routes registers the agent protocol. /enroll* is the token-proof exchange and
 // /ws still authenticates by client certificate only; every other route needs
 // a signed request inside a session.
 func (a *agentAPI) routes(v1 chi.Router) {
@@ -69,8 +69,9 @@ func (a *agentAPI) routes(v1 chi.Router) {
 	v1.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		Write(w, http.StatusMethodNotAllowed, "Method not allowed", "")
 	})
-	// Reports can carry up to agentproto.MaxMessage, not the 1 MiB public cap.
-	v1.With(a.limitEnroll, func(next http.Handler) http.Handler { return requireJSONLimit(next, agentproto.MaxMessage) }).Post("/enroll", a.enroll)
+	v1.With(a.limitEnroll).Get("/enroll/hello", a.enrollHello)
+	v1.With(a.limitEnroll).Post("/enroll", a.enroll)
+	v1.With(a.limitSession).Post("/enroll/{id}", a.enrollPoll)
 	v1.With(a.limitSession).Post("/session", a.session)
 	v1.With(a.requireAgent).Get("/ws", a.ws)
 	v1.Group(func(g chi.Router) {

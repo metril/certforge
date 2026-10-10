@@ -88,6 +88,7 @@ which kind fired and which resource it is about:
 | `deploy.drift` | warning | grant |
 | `client.offline` | warning | client |
 | `agent.cert_expiring` | warning | client |
+| `client.pending_approval` | warning | client |
 | `monitor.mismatch` | critical | monitor |
 | `monitor.unreachable` | warning | monitor |
 | `monitor.expiring` | warning | monitor |
@@ -167,6 +168,12 @@ bounded to 1000 candidates per kind per run:
   an active client's own agent certificate expires within 14 days (fixed,
   not operator-configurable — an agent renews its own certificate
   automatically; this only fires when that has stopped working).
+- **`client.pending_approval`** fires once per enrolment request, when an
+  agent redeems its token and waits for an administrator
+  (Settings → Agents → `requireApproval`). Details carry the verification
+  code, the reported hostname and the deadline; open Clients → Pending
+  approval, compare the code with the one the agent logged, then approve or
+  reject.
 
 `monitor.*` (external monitors) and `backup.*` are their own sources
 (`internal/monitor`, `internal/backup`), landing in later Phase 6A tasks.
@@ -190,6 +197,7 @@ occurrence of it always can:
 | `deploy.drift` | `deploy.drift:<grantId>:<versionId>` |
 | `client.offline` | `client.offline:<clientId>:<last_seen unix>` |
 | `agent.cert_expiring` | `agent.cert_expiring:<clientId>:<agent_cert_serial>` |
+| `client.pending_approval` | `client.pending_approval:<requestId>` |
 | `monitor.<state>` | `monitor.<state>:<monitorId>:<fp>:<state_changed_at unix>` |
 | `backup.completed` | `backup.completed:<file>` |
 | `backup.failed` | `backup.failed:<UTC hour>` |

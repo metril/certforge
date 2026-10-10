@@ -33,6 +33,9 @@ type fakeProtocol struct {
 	// handshakes counts accepted handshakes; dropSessions forgets every
 	// session once (the server restarted).
 	handshakes int
+
+	// enrol serves every /agent/v1/enroll* request (nil: 404).
+	enrol http.HandlerFunc
 }
 
 type fakeSession struct {
@@ -136,7 +139,9 @@ func (p *fakeProtocol) handler(mux http.Handler) http.Handler {
 		switch {
 		case r.URL.Path == agentproto.PathSession:
 			p.handshake(w, r)
-		case strings.HasSuffix(r.URL.Path, "/enroll"), strings.HasSuffix(r.URL.Path, "/ws"):
+		case strings.HasPrefix(r.URL.Path, agentproto.PathEnroll):
+			p.enrol(w, r)
+		case strings.HasSuffix(r.URL.Path, "/ws"):
 			mux.ServeHTTP(w, r)
 		default:
 			secured.ServeHTTP(w, r)

@@ -59,7 +59,7 @@ func (s *Service) issueToken(ctx context.Context, q *sqlcgen.Queries, clientID u
 		return "", time.Time{}, err
 	}
 	if err := q.InsertEnrollmentToken(ctx, sqlcgen.InsertEnrollmentTokenParams{
-		ClientID: clientID, TokenHash: agentproto.TokenHash(tok), ExpiresAt: exp, CreatedBy: actor}); err != nil {
+		ClientID: clientID, TokenHash: agentproto.TokenHash(tok), LookupID: agentproto.LookupIDBytes(agentproto.TokenHash(tok)), ExpiresAt: exp, CreatedBy: actor}); err != nil {
 		return "", time.Time{}, err
 	}
 	return tok, exp, nil
@@ -150,6 +150,9 @@ func (s *Service) ReenrollClient(ctx context.Context, orgID, id uuid.UUID) (Enro
 	if err != nil {
 		return Enrolment{}, err
 	}
+	if err := q.DeleteEnrollmentRequestsForClient(ctx, id); err != nil {
+		return Enrolment{}, err
+	}
 	tok, exp, err := s.issueToken(ctx, q, id, st, ca)
 	if err != nil {
 		return Enrolment{}, err
@@ -183,6 +186,9 @@ func (s *Service) RevokeClient(ctx context.Context, orgID, id uuid.UUID) (sqlcge
 		return c, err
 	}
 	if err := q.DeleteUnusedEnrollmentTokens(ctx, id); err != nil {
+		return c, err
+	}
+	if err := q.DeleteEnrollmentRequestsForClient(ctx, id); err != nil {
 		return c, err
 	}
 	// A revoked client's agent can never come back to confirm a removal,

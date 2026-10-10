@@ -182,12 +182,17 @@ func (a *agentAPI) responder() *respSigner {
 	if !ok {
 		return nil
 	}
-	return &respSigner{key: s.Key, leaf: base64.StdEncoding.EncodeToString(s.Chain[0].Raw)}
+	rs := &respSigner{key: s.Key, leaf: base64.StdEncoding.EncodeToString(s.Chain[0].Raw)}
+	for _, c := range s.Chain[1:] {
+		rs.chain = append(rs.chain, base64.StdEncoding.EncodeToString(c.Raw))
+	}
+	return rs
 }
 
 type respSigner struct {
-	key  *ecdsa.PrivateKey
-	leaf string
+	key   *ecdsa.PrivateKey
+	leaf  string
+	chain []string // base64 DER of the certificates above the leaf
 }
 
 // signResponse signs h for a response of status over body (the bytes on the

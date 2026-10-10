@@ -1234,6 +1234,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/enrollment-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List enrolment requests waiting for approval across orgs
+         * @description Like listEnrollmentRequests, over every org where the caller has clients:read. 403 when there is none. Items carry orgId.
+         */
+        get: operations["listAllEnrollmentRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/enrollment-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List enrolment requests waiting for approval
+         * @description Needs clients:read. An agent that presents a valid one-time token waits here (Settings → Agents → requireApproval) until an administrator compares its verification code with the one the agent logged and approves or rejects it. Expired requests are not listed. Not paginated; at most 50 wait per org.
+         */
+        get: operations["listEnrollmentRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/enrollment-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an enrolment request
+         * @description Needs clients:write. The waiting agent receives its certificate at its next poll and the client becomes active. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_approved.
+         */
+        post: operations["approveEnrollmentRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/enrollment-requests/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject an enrolment request
+         * @description Needs clients:write. The agent is told its request was rejected and stops. The token stays used; re-enrol the client for a new one. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_rejected.
+         */
+        post: operations["rejectEnrollmentRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/clients": {
         parameters: {
             query?: never;
@@ -3860,6 +3953,60 @@ export interface components {
             /** @description Cursor for the next page; null on the last page. */
             nextCursor?: string | null;
         };
+        /** @description An agent that redeemed a client's one-time token and waits for an administrator to approve it. */
+        EnrollmentRequest: {
+            /**
+             * Format: uuid
+             * @description Request id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /**
+             * Format: uuid
+             * @description The pending client the token belongs to; it becomes active on approval.
+             */
+            clientId: string;
+            /** @description Name of that client. */
+            clientName: string;
+            /**
+             * Format: uuid
+             * @description Site of that client.
+             */
+            siteId: string | null;
+            /** @description Eight characters, base32 of sha256(agent public key || CA fingerprint), for example ABCDEFGH. The agent logs it as ABCD-EFGH; approve only when both match. A different code means the agent saw a different CA or key than this server holds. */
+            verifyCode: string;
+            /** @description Lowercase hex SHA-256 of the agent's public key (SPKI DER). */
+            keyFingerprint: string;
+            /** @description Hostname the agent reported; self-reported */
+            hostname: string;
+            /** @description Operating system the agent reported. */
+            os: string;
+            /** @description CPU architecture the agent reported. */
+            arch: string;
+            /** @description certforge-agent version. */
+            agentVersion: string;
+            /** @description Address the request came from */
+            sourceIp: string;
+            /**
+             * Format: date-time
+             * @description When the token was redeemed.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Deadline for a decision (Settings → Agents → pendingTtlHours after creation); after it the request is no longer listed and the agent is told it expired.
+             */
+            expiresAt: string;
+        };
+        /** @description Enrolment requests waiting for approval. */
+        EnrollmentRequestList: {
+            /** @description Requests */
+            items: components["schemas"]["EnrollmentRequest"][];
+        };
         /**
          * @description active signs new agent certificates; retiring is still trusted; retired is not.
          * @enum {string}
@@ -4572,7 +4719,7 @@ export interface components {
          * @description What happened. Severity and resource type follow deterministically from kind (docs/notifications.md#events).
          * @enum {string}
          */
-        EventKind: "cert.issued" | "cert.renewal_failed" | "cert.expiring" | "cert.expired" | "deploy.failed" | "deploy.drift" | "client.offline" | "agent.cert_expiring" | "monitor.mismatch" | "monitor.unreachable" | "monitor.expiring" | "monitor.recovered" | "backup.completed" | "backup.failed" | "test";
+        EventKind: "cert.issued" | "cert.renewal_failed" | "cert.expiring" | "cert.expired" | "deploy.failed" | "deploy.drift" | "client.offline" | "agent.cert_expiring" | "client.pending_approval" | "monitor.mismatch" | "monitor.unreachable" | "monitor.expiring" | "monitor.recovered" | "backup.completed" | "backup.failed" | "test";
         /**
          * @description How serious an event is.
          * @enum {string}
@@ -7077,6 +7224,112 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAllEnrollmentRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The waiting requests, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentRequestList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listEnrollmentRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The waiting requests, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentRequestList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    approveEnrollmentRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    rejectEnrollmentRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };

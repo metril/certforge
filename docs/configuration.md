@@ -139,6 +139,8 @@ Global settings for certforge-agent (Settings → Agents).
 | Agent URL (`agentUrl`) | `https://<CF_BASE_URL host>:8443` | Where agents connect. It is written into every enrolment token, and its host is always on the listener certificate. Must be `https://host[:port]`. |
 | Listener names (`listenerNames`) | CF_BASE_URL host, `localhost` | Extra DNS names or IPs on the agent listener's certificate. Saving this section re-issues the listener certificate at once. |
 | Enrolment token lifetime (`tokenTtlHours`) | 24 | Hours a new client's one-time token stays usable. |
+| Require approval (`requireApproval`) | on | An agent that proves it holds a valid token waits as a pending request until an administrator approves it (Clients, Pending approval) after comparing the verification code the agent logs. Off means a valid token alone is enough; the certificate is then issued at the agent's first poll. |
+| Approval window (`pendingTtlHours`) | 24 | Hours a pending request waits for a decision, and then how long an approved agent has to collect its certificate. At most 50 requests wait per org. |
 | Agent certificate lifetime (`agentCertDays`) | 90 | Days an agent's client certificate is valid; the agent renews at two thirds. |
 | Heartbeat interval (`heartbeatSeconds`) | 60 (min 15) | How often agents report installed files for drift detection. |
 | Offline after (`offlineAfterSeconds`) | 180 | A client not seen for this long shows as offline; must exceed the heartbeat. |

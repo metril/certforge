@@ -17,21 +17,6 @@ type Facts struct {
 	AgentVersion string `json:"agentVersion"`
 }
 
-// EnrollRequest is POST /agent/v1/enroll.
-type EnrollRequest struct {
-	Token string `json:"token"`
-	CSR   string `json:"csr"` // PEM CERTIFICATE REQUEST
-	Facts Facts  `json:"facts"`
-}
-
-// EnrollResponse carries the agent certificate and the trust bundle.
-type EnrollResponse struct {
-	Certificate string    `json:"certificate"` // PEM
-	TrustBundle string    `json:"trustBundle"` // PEM, every trusted agent CA
-	AgentURL    string    `json:"agentUrl"`
-	ClientID    uuid.UUID `json:"clientId"`
-}
-
 // RenewRequest is POST /agent/v1/renew.
 type RenewRequest struct {
 	CSR string `json:"csr"`

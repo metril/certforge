@@ -59,7 +59,7 @@ func TestOnVersionDoesNotNeedSecondConnection(t *testing.T) {
 	}
 }
 
-func TestEnrollDoesNotNeedSecondConnection(t *testing.T) {
+func TestEnrollmentDoesNotNeedSecondConnection(t *testing.T) {
 	f := newSyncFixture(t)
 	ctx := context.Background()
 	f.svc.Settings = StaticSettings(Settings{}, "https://cf.example.test")
@@ -70,7 +70,18 @@ func TestEnrollDoesNotNeedSecondConnection(t *testing.T) {
 	svc := onePool(t, f)
 	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if _, err := svc.Enroll(tctx, agentproto.EnrollRequest{Token: e.Token, CSR: enrollCSR(t)}); err != nil {
-		t.Fatalf("Enroll on a one-connection pool: %v", err)
+	csr, _ := enrollCSR(t)
+	acc, err := svc.SubmitEnrollment(tctx, f.tokenFor(t, e), csr, agentproto.Facts{}, "")
+	if err != nil {
+		t.Fatalf("Submit on a one-connection pool: %v", err)
+	}
+	if err := svc.ApproveEnrollment(tctx, f.org, acc.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PollEnrollment(tctx, acc.ID, acc.PollSecret); err != nil {
+		t.Fatalf("Poll on a one-connection pool: %v", err)
+	}
+	if res, err := svc.PollEnrollment(tctx, acc.ID, acc.PollSecret); err != nil || res.Certificate == "" {
+		t.Fatalf("repeat poll on a one-connection pool: %v", err)
 	}
 }

@@ -139,7 +139,9 @@ func seedAllTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) { //no
 
 	agentCA := scanID(`INSERT INTO agent_cas (cert_der, key, not_before, not_after) VALUES (E'\\x00', E'\\x00', now(), now() + interval '1 year') RETURNING id`)
 	client := scanID(`INSERT INTO clients (org_id, name, agent_ca_id) VALUES ($1, 'client1', $2) RETURNING id`, org, agentCA)
-	exec(`INSERT INTO enrollment_tokens (client_id, token_hash, expires_at) VALUES ($1, E'\\x00', now() + interval '1 hour')`, client)
+	exec(`INSERT INTO enrollment_tokens (client_id, token_hash, lookup_id, expires_at) VALUES ($1, E'\\x00', E'\\x01', now() + interval '1 hour')`, client)
+	exec(`INSERT INTO enrollment_requests (org_id, client_id, token_id, poll_secret_hash, csr, pubkey_fp, verify_code, status, expires_at)
+		SELECT $1, $2, id, E'\\x00', 'csr', 'fp', 'ABCDEFGH', 'pending', now() + interval '1 hour' FROM enrollment_tokens WHERE client_id = $2`, org, client)
 	outputSpec := scanID(`INSERT INTO output_specs (org_id, name) VALUES ($1, 'output1') RETURNING id`, org)
 	target := scanID(`INSERT INTO deploy_targets (org_id, name, type, runs_on) VALUES ($1, 'target1', 'traefik', 'agent') RETURNING id`, org)
 	exec(`INSERT INTO hooks (org_id, name, phase, argv) VALUES ($1, 'hook1', 'pre_deploy', '{/bin/true}')`, org)

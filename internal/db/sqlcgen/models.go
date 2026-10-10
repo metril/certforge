@@ -207,6 +207,25 @@ type DnsProviderCredential struct {
 	StoredSecretKeys []string  `json:"stored_secret_keys"`
 }
 
+type EnrollmentRequest struct {
+	ID             uuid.UUID  `json:"id"`
+	OrgID          uuid.UUID  `json:"org_id"`
+	ClientID       uuid.UUID  `json:"client_id"`
+	TokenID        uuid.UUID  `json:"token_id"`
+	PollSecretHash []byte     `json:"poll_secret_hash"`
+	Csr            string     `json:"csr"`
+	PubkeyFp       string     `json:"pubkey_fp"`
+	VerifyCode     string     `json:"verify_code"`
+	Facts          []byte     `json:"facts"`
+	SourceIp       string     `json:"source_ip"`
+	Status         string     `json:"status"`
+	CertificatePem *string    `json:"certificate_pem"`
+	DecidedBy      string     `json:"decided_by"`
+	DecidedAt      *time.Time `json:"decided_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	ExpiresAt      time.Time  `json:"expires_at"`
+}
+
 type EnrollmentToken struct {
 	ID        uuid.UUID  `json:"id"`
 	ClientID  uuid.UUID  `json:"client_id"`
@@ -215,6 +234,7 @@ type EnrollmentToken struct {
 	UsedAt    *time.Time `json:"used_at"`
 	CreatedBy string     `json:"created_by"`
 	CreatedAt time.Time  `json:"created_at"`
+	LookupID  []byte     `json:"lookup_id"`
 }
 
 type ExternalMonitor struct {
