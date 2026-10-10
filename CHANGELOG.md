@@ -2,6 +2,40 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.9.0](https://github.com/metril/certforge/compare/v0.8.0...v0.9.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **agent:** carry the WebSocket in a signed upgrade and a sealed channel
+* **agent:** enrol with a token proof and administrator approval
+* **api:** require signed, sealed requests on every agent route
+
+### Features
+
+* **agentca:** issue a 24h responder signing certificate renewed by Reload ([3ec83d6](https://github.com/metril/certforge/commit/3ec83d692e34fe36c0a422eb092a63ba4c89c48c))
+* **agent:** carry the WebSocket in a signed upgrade and a sealed channel ([83fd4bc](https://github.com/metril/certforge/commit/83fd4bcc87192dc3ceb9168dd4ec82dd7eecf093))
+* **agent:** choose the TLS roots by transport mode and drop client-certificate TLS ([5b6a02c](https://github.com/metril/certforge/commit/5b6a02ccd9306d837077a92992fb81d021826896))
+* **agent:** enrol with a token proof and administrator approval ([5186fa7](https://github.com/metril/certforge/commit/5186fa79e64abf02814d95b8cea98dfc450d35d9))
+* **agentproto:** add HPKE, session AEAD and HTTP message signature primitives ([5cc08a7](https://github.com/metril/certforge/commit/5cc08a727daee8e0bd06239eb6a9f2c33839bdb3))
+* **agents:** authenticate by client id and serial, verify agent certificates ([603fe98](https://github.com/metril/certforge/commit/603fe98ddd0e604b2f785b8c943dac5c5401df66))
+* **agent:** sign and seal REST over an ephemeral-key session ([f579faf](https://github.com/metril/certforge/commit/f579fafac9dc4d8ea760e56cd83807d26d22d32c))
+* **api:** require signed, sealed requests on every agent route ([6ac6c5e](https://github.com/metril/certforge/commit/6ac6c5e6dc70521305d8428ad5a7ce2c6c76aac1))
+* **web:** approve or reject agent enrolments ([b880e0e](https://github.com/metril/certforge/commit/b880e0e54db8978e41c2fc9daf01025bfed09663))
+
+
+### Bug Fixes
+
+* **agentproto:** session-owned seq with replay protection, raw r||s signatures, responder EKU ([60c927a](https://github.com/metril/certforge/commit/60c927adacee81b8647c853b52ffcc2cee56f165))
+* **agentproto:** sign refusals only after verification and cover Cf-Error ([78e2079](https://github.com/metril/certforge/commit/78e20793f4a23a005bc9d7c616a0ead605975f1f))
+* **agent:** rate limit signed REST per client instead of per address; retry 429/503 with backoff ([bbe3ef7](https://github.com/metril/certforge/commit/bbe3ef750b82709d49c61f70dbe4cc6376dca0b7))
+* **agent:** retry a busy handshake and a failed reconcile with backoff ([61b774d](https://github.com/metril/certforge/commit/61b774d02aa1306a2c837113f351ce9567cd285c))
+* **api:** rate limit and session-check secure agent routes, share one nonce cache, cap it, accept listener-name authorities ([fbbc684](https://github.com/metril/certforge/commit/fbbc68405728e8d8c7b2383d2b086414291449f8))
+* **db:** derive enrollment_tokens.lookup_id on insert so pre-upgrade backups restore ([d87c8f7](https://github.com/metril/certforge/commit/d87c8f7e777a0619b1899dc04ba28e7b126845c6))
+* keep the approval dialog open across refetches, poll past token expiry, lock the pending cap, scope request lookup by org ([721a8c3](https://github.com/metril/certforge/commit/721a8c3665ab80db09d0ca5d77063b7e91bc0524))
+* **web:** name the Clients nav link via aria-label so the badge adds no stray space ([b5704d0](https://github.com/metril/certforge/commit/b5704d0cecb673e43ab8f306d5e125059a101a7b))
+* **web:** reword retire CA consequence; reject {#id} anchors in help test ([0e40cf7](https://github.com/metril/certforge/commit/0e40cf77a1a526140d17694b1fc98129c9c61dc6))
+
 ## [0.8.0](https://github.com/metril/certforge/compare/v0.7.3...v0.8.0) (2026-10-10)
 
 
