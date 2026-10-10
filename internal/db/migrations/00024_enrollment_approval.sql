@@ -7,6 +7,22 @@ UPDATE enrollment_tokens SET lookup_id = sha256(convert_to('cf-enrol-id', 'UTF8'
 ALTER TABLE enrollment_tokens ALTER COLUMN lookup_id SET NOT NULL;
 CREATE UNIQUE INDEX enrollment_tokens_lookup ON enrollment_tokens (lookup_id);
 
+-- A backup written before this migration has no lookup_id in its
+-- enrollment_tokens rows; restore loads at version 24, so derive the value
+-- (same formula as agentproto.LookupIDBytes) when an insert omits it.
+-- +goose StatementBegin
+CREATE FUNCTION enrollment_tokens_lookup_default() RETURNS trigger AS $$
+BEGIN
+    IF NEW.lookup_id IS NULL THEN
+        NEW.lookup_id := sha256(convert_to('cf-enrol-id', 'UTF8') || NEW.token_hash);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+-- +goose StatementEnd
+CREATE TRIGGER enrollment_tokens_lookup_default BEFORE INSERT ON enrollment_tokens
+    FOR EACH ROW EXECUTE FUNCTION enrollment_tokens_lookup_default();
+
 -- One row per redeemed token: the CSR waits here for an admin (status
 -- pending) until approved, then the agent collects its certificate by polling
 -- (issued). expires_at is the approval deadline while pending and the
@@ -51,5 +67,7 @@ ALTER TABLE notification_events ADD CONSTRAINT notification_events_kind_check CH
     'backup.completed', 'backup.failed', 'test'
 ));
 DROP TABLE enrollment_requests;
+DROP TRIGGER enrollment_tokens_lookup_default ON enrollment_tokens;
+DROP FUNCTION enrollment_tokens_lookup_default();
 DROP INDEX enrollment_tokens_lookup;
 ALTER TABLE enrollment_tokens DROP COLUMN lookup_id;
