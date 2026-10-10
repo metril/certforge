@@ -86,7 +86,7 @@ type helloHandler struct{ got chan agentproto.Message }
 func (h helloHandler) OnMessage(_ context.Context, _ uuid.UUID, m agentproto.Message) ([]agentproto.Message, error) {
 	h.got <- m
 	if _, ok := m.(agentproto.Hello); ok {
-		return []agentproto.Message{agentproto.HelloAck{HeartbeatSeconds: 60, Revision: 3}}, nil
+		return []agentproto.Message{agentproto.Welcome{HeartbeatSeconds: 60, Revision: 3}}, nil
 	}
 	return nil, nil
 }
@@ -116,7 +116,7 @@ func TestServeRepliesToHello(t *testing.T) {
 	h, id, s := New(nil), uuid.New(), newFakeSession()
 	serve(t, h, id, s)
 	s.send(t, agentproto.Hello{AgentVersion: "1"})
-	if m := s.recv(t); m != agentproto.Message(agentproto.HelloAck{HeartbeatSeconds: 60, Revision: 3}) {
+	if m := s.recv(t); m != agentproto.Message(agentproto.Welcome{HeartbeatSeconds: 60, Revision: 3}) {
 		t.Fatalf("reply %#v", m)
 	}
 }

@@ -125,7 +125,11 @@ func (e *agentEnv) identity(t *testing.T, cert tls.Certificate) *agent.Identity 
 		t.Fatal(err)
 	}
 	pool := x509CertPool(trusted)
-	return &agent.Identity{Key: cert.PrivateKey.(*ecdsa.PrivateKey), Cert: cert.Leaf, CAs: pool}
+	leaf := cert.Leaf
+	if leaf == nil {
+		leaf, _ = x509.ParseCertificate(cert.Certificate[0])
+	}
+	return &agent.Identity{Key: cert.PrivateKey.(*ecdsa.PrivateKey), Cert: leaf, CAs: pool}
 }
 
 func secureClient(id *agent.Identity, base http.RoundTripper) *http.Client {

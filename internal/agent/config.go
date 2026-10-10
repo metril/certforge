@@ -24,7 +24,30 @@ type Config struct {
 	PullInterval  time.Duration // CF_AGENT_PULL_INTERVAL, 0 = socket only
 	HTTP01Listen  string        // CF_AGENT_HTTP01_LISTEN, host:port; empty disables serving http-01
 	TLSALPNListen string        // CF_AGENT_TLSALPN_LISTEN, host:port; empty disables serving tls-alpn-01
+	Transport     string        // CF_AGENT_TRANSPORT: auto (default), mtls or proxy; only chooses which TLS roots are trusted
 	Version       string
+}
+
+// Transport modes. Whatever the mode, the application layer signs and seals
+// everything and checks the server's responder certificate against the agent
+// CA bundle, so the choice never decides security, only which TLS server
+// certificate is acceptable.
+const (
+	TransportAuto  = "auto"  // the agent-CA pin when the server presents an agent-CA chain, else the system roots
+	TransportMTLS  = "mtls"  // the agent-CA pin only (the dedicated agent port)
+	TransportProxy = "proxy" // the system roots only (a public, TLS-terminating proxy)
+)
+
+// ParseTransport validates a CF_AGENT_TRANSPORT value; "" is auto.
+func ParseTransport(s string) (string, error) {
+	switch v := strings.ToLower(strings.TrimSpace(s)); v {
+	case "", TransportAuto:
+		return TransportAuto, nil
+	case TransportMTLS, TransportProxy:
+		return v, nil
+	default:
+		return "", fmt.Errorf("CF_AGENT_TRANSPORT: %q must be auto, mtls or proxy", s)
+	}
 }
 
 // parseColonPaths splits s on ':', trims blanks, drops empty entries and
@@ -64,7 +87,7 @@ func validateListen(name, addr string) (string, error) {
 
 // LoadConfig reads the environment through getenv.
 func LoadConfig(getenv func(string) string, version string) (Config, error) {
-	c := Config{DataDir: "/data", Version: version}
+	c := Config{DataDir: "/data", Transport: TransportAuto, Version: version}
 	if v := strings.TrimSpace(getenv("CF_AGENT_DATA")); v != "" {
 		c.DataDir = v
 	}
@@ -102,6 +125,9 @@ func LoadConfig(getenv func(string) string, version string) (Config, error) {
 		return c, err
 	}
 	c.TLSALPNListen = tlsAlpn
+	if c.Transport, err = ParseTransport(getenv("CF_AGENT_TRANSPORT")); err != nil {
+		return c, err
+	}
 	return c, nil
 }
 

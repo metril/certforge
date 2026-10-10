@@ -52,11 +52,12 @@ type fakeServer struct {
 	reports    []agentproto.Report
 	heartbeats int
 	wsConns    int
-	wsStatus   int                                          // non-zero: refuse the upgrade with this status
-	onWS       func(ctx context.Context, c *websocket.Conn) // runs after the agent's hello
-	assignGate chan struct{}                                // non-nil: GET assignments blocks until it is closed
-	assignHits int                                          // GET assignments requests served or blocked
-	deny       bool                                         // GET assignments answers 401 "no client certificate"
+	wsUnsigned bool                                 // wsStatus 401 is answered without a signature
+	wsStatus   int                                  // non-zero: refuse the upgrade with this status
+	onWS       func(ctx context.Context, c *fakeWS) // runs after the agent's hello
+	assignGate chan struct{}                        // non-nil: GET assignments blocks until it is closed
+	assignHits int                                  // GET assignments requests served or blocked
+	deny       bool                                 // GET assignments answers 401 "no client certificate"
 
 	tokens      map[string][]byte // lookup id -> token hash, for tokens f.token issued
 	hellos      map[string]*ecdh.PrivateKey
@@ -84,8 +85,8 @@ func (f *fakeServer) with(fn func()) {
 // sendAndWait writes m and keeps the socket open until the agent closes it.
 //
 //nolint:unused // used by a later task's WebSocket tests in this package
-func sendAndWait(m agentproto.Message) func(context.Context, *websocket.Conn) {
-	return func(ctx context.Context, c *websocket.Conn) {
+func sendAndWait(m agentproto.Message) func(context.Context, *fakeWS) {
+	return func(ctx context.Context, c *fakeWS) {
 		b, _ := agentproto.Marshal(m)
 		_ = c.Write(ctx, websocket.MessageText, b)
 		for {
@@ -119,10 +120,6 @@ func newFakeServer(t *testing.T) *fakeServer {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /agent/v1/renew", func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
 		var req agentproto.RenewRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		if cert := sign(w, req.CSR); cert != nil {
@@ -143,14 +140,19 @@ func newFakeServer(t *testing.T) *fakeServer {
 	})
 	mux.HandleFunc("GET /agent/v1/ws", func(w http.ResponseWriter, r *http.Request) {
 		var status int
-		var onWS func(context.Context, *websocket.Conn)
-		f.with(func() { f.wsConns++; status, onWS = f.wsStatus, f.onWS })
+		var onWS func(context.Context, *fakeWS)
+		var unsigned bool
+		f.with(func() { f.wsConns++; status, onWS, unsigned = f.wsStatus, f.onWS, f.wsUnsigned })
+		if status == http.StatusUnauthorized && !unsigned { // a signed refusal: revoked
+			f.proto.wsRefuse(w, r, status)
+			return
+		}
 		if status != 0 {
 			w.WriteHeader(status)
 			return
 		}
-		c, err := websocket.Accept(w, r, nil)
-		if err != nil {
+		c := f.proto.wsUpgrade(w, r)
+		if c == nil {
 			return
 		}
 		defer c.CloseNow()                                //nolint:errcheck // best-effort test cleanup

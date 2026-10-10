@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,7 +22,10 @@ import (
 // ErrRevoked stops the agent: the server refused this client.
 var ErrRevoked = errors.New("agent: the server refused this agent (revoked or re-enrolled); enrol it again with a new token")
 
-var errReconnect = errors.New("agent: reconnecting")
+var (
+	errReconnect = errors.New("agent: reconnecting")
+	errRekey     = errors.New("agent: the socket's session is nearly out of messages; reconnecting for fresh keys")
+)
 
 // Facts describe this host.
 func Facts(version string) agentproto.Facts {
@@ -84,6 +89,14 @@ type Agent struct {
 	Deployer  *Deployer
 	Challenge *ChallengeServer
 	Now       func() time.Time
+	// Roots replaces the operating system's roots for TLS to a proxy (nil:
+	// the OS roots); for embedding and tests.
+	Roots *x509.CertPool
+}
+
+// client builds a Client for the configured transport mode.
+func (a *Agent) client() *Client {
+	return NewClientWith(a.ID, ClientOptions{Mode: a.Cfg.Transport, Roots: a.Roots})
 }
 
 // NewTargetsRegistry builds the agent's deploy target registry: every
@@ -143,7 +156,7 @@ func (a *Agent) renewIfDue(ctx context.Context) error {
 
 // renew replaces the agent certificate and ca.pem now.
 func (a *Agent) renew(ctx context.Context) error {
-	if err := NewClient(a.ID).Renew(ctx); err != nil {
+	if err := a.client().Renew(ctx); err != nil {
 		if IsUnauthorized(err) {
 			return ErrRevoked
 		}
@@ -164,7 +177,7 @@ func (a *Agent) pullOnce(ctx context.Context) error {
 	if err := a.renewIfDue(ctx); err != nil {
 		return err
 	}
-	cl := NewClient(a.ID)
+	cl := a.client()
 	rep, err := a.reconcile(ctx, cl)
 	if err == nil {
 		err = cl.Report(ctx, rep)
@@ -195,7 +208,12 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		}
 		return err
 	}
-	a := NewAgent(cfg, log, id)
+	return NewAgent(cfg, log, id).Run(ctx)
+}
+
+// Run is the package-level Run for an agent that is already enrolled.
+func (a *Agent) Run(ctx context.Context) error {
+	cfg, log := a.Cfg, a.Log
 	if err := a.Challenge.Start(ctx); err != nil {
 		return err
 	}
@@ -248,16 +266,24 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 	if err := a.renewIfDue(ctx); err != nil {
 		return err
 	}
-	cl := NewClient(a.ID)
-	conn, err := cl.Dial(ctx)
+	cl := a.client()
+	// A signed refusal on the upgrade means revoked, like on REST; an
+	// unsigned failure is the network or a proxy and is retried.
+	ws, err := cl.Dial(ctx)
 	if err != nil {
 		if IsUnauthorized(err) {
 			return ErrRevoked
 		}
 		return err
 	}
-	defer conn.CloseNow() //nolint:errcheck // best-effort cleanup; the session's own error is what matters
-	ws := agentproto.WS{C: conn}
+	defer ws.CloseNow() //nolint:errcheck // best-effort cleanup; the session's own error is what matters
+	rekey := make(chan struct{}, 1)
+	ws.SetOnNearCap(func() {
+		select {
+		case rekey <- struct{}{}:
+		default:
+		}
+	})
 	// parent outlives the session: the reconcile worker runs on it, so a
 	// dropped socket never cancels a deploy partway (hooks killed, state.json
 	// unsaved); only agent shutdown does.
@@ -343,17 +369,23 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-rekey:
+			// The session is nearly out of messages: dial again for fresh keys.
+			return errRekey
 		case err := <-readErr:
+			// Close codes are not authenticated (a proxy can send any), so
+			// they only explain a reconnect; revocation is the sealed
+			// "revoked" message or a signed refusal of the next upgrade.
 			switch websocket.CloseStatus(err) {
-			case agentproto.CloseRevoked:
-				return ErrRevoked
 			case agentproto.CloseReplaced:
 				return fmt.Errorf("another connection for this client took over: %w", err)
+			case agentproto.CloseRekey:
+				return errRekey
 			}
 			return err
 		case m := <-msgs:
 			switch v := m.(type) {
-			case agentproto.HelloAck:
+			case agentproto.Welcome:
 				if v.HeartbeatSeconds > 0 {
 					heartbeat.Reset(time.Duration(v.HeartbeatSeconds) * time.Second)
 				}
@@ -361,13 +393,11 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 			case agentproto.Sync:
 				reconcileAndReport()
 			case agentproto.TrustBundleUpdate:
-				if err := a.ID.SaveBundle([]byte(v.Bundle)); err != nil {
-					a.Log.Error("trust bundle not saved", "err", err)
-					continue
-				}
+				a.applyTrustUpdate(v.Bundle)
 				// A CA rotation: move to a certificate from the new CA now, so
 				// the old CA can be retired without waiting for this one to
-				// come due.
+				// come due. The renewal also fetches, over signed REST, any CA
+				// the message could not vouch for.
 				if err := a.renew(ctx); errors.Is(err, ErrRevoked) {
 					return err
 				} else if err != nil {
@@ -394,6 +424,52 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 		case <-pull:
 			reconcileAndReport()
 		}
+	}
+}
+
+// applyTrustUpdate applies a trust_bundle_update received inside the sealed
+// channel. A CA may be added only if it chains to the current bundle (issued or
+// cross-signed by a CA already trusted); an independent new root is ignored
+// (with the rest of that message) and arrives through the signed REST renewal that follows. CAs are only
+// ever dropped to a subset of what is trusted now. The bundle is kept when
+// nothing in it can be vouched for.
+func (a *Agent) applyTrustUpdate(bundle string) {
+	_, pool := a.ID.current()
+	now := a.Now()
+	var keep []*x509.Certificate
+	rest, rejected := []byte(bundle), 0
+	for {
+		var blk *pem.Block
+		blk, rest = pem.Decode(rest)
+		if blk == nil {
+			break
+		}
+		c, err := x509.ParseCertificate(blk.Bytes)
+		if err != nil {
+			rejected++
+			continue
+		}
+		if _, err := c.Verify(x509.VerifyOptions{Roots: pool, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
+			rejected++
+			continue
+		}
+		keep = append(keep, c)
+	}
+	if rejected > 0 {
+		// Nothing from a partly unverifiable message is applied; the signed
+		// renewal that follows returns the real bundle.
+		a.Log.Warn("trust bundle update names CAs that do not chain to the current bundle; fetching the bundle over a signed request", "rejected", rejected)
+		return
+	}
+	if len(keep) == 0 {
+		return
+	}
+	var out []byte
+	for _, c := range keep {
+		out = append(out, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Raw})...)
+	}
+	if err := a.ID.SaveBundle(out); err != nil {
+		a.Log.Error("trust bundle not saved", "err", err)
 	}
 }
 

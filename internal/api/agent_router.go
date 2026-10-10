@@ -8,11 +8,11 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -28,7 +28,9 @@ type agentAPI struct {
 	sessions agentSessions
 	sessLim  *authn.Limiter
 	hellos   enrollHellos
-	now      func() time.Time // nil: time.Now
+	// refreshing is set while a late responder renewal runs.
+	refreshing atomic.Bool
+	now        func() time.Time // nil: time.Now
 }
 
 func newAgentAPI(d Deps, httpPort bool) *agentAPI {
@@ -60,9 +62,9 @@ func NewAgentRouter(d Deps) http.Handler {
 	return r
 }
 
-// routes registers the agent protocol. /enroll* is the token-proof exchange and
-// /ws still authenticates by client certificate only; every other route needs
-// a signed request inside a session.
+// routes registers the agent protocol. /enroll* is the token-proof exchange,
+// /session and /ws are signed handshakes, and every other route needs a signed
+// request inside a session. A client certificate never authenticates anything.
 func (a *agentAPI) routes(v1 chi.Router) {
 	v1.Use(withClientIP(a.d.AuthSettings))
 	v1.NotFound(func(w http.ResponseWriter, _ *http.Request) { Write(w, http.StatusNotFound, "Not found", "") })
@@ -73,7 +75,7 @@ func (a *agentAPI) routes(v1 chi.Router) {
 	v1.With(a.limitEnroll).Post("/enroll", a.enroll)
 	v1.With(a.limitSession).Post("/enroll/{id}", a.enrollPoll)
 	v1.With(a.limitSession).Post("/session", a.session)
-	v1.With(a.requireAgent).Get("/ws", a.ws)
+	v1.With(a.limitSession).Get("/ws", a.ws)
 	v1.Group(func(g chi.Router) {
 		g.Use(a.secure)
 		g.Post("/renew", a.renew)
@@ -86,7 +88,7 @@ func (a *agentAPI) routes(v1 chi.Router) {
 
 type agentClientKey struct{}
 
-// agentClient is the client authenticated by requireAgent.
+// agentClient is the client authenticated by the secure middleware.
 func agentClient(ctx context.Context) sqlcgen.Client {
 	c, _ := ctx.Value(agentClientKey{}).(sqlcgen.Client)
 	return c
@@ -114,26 +116,6 @@ func (a *agentAPI) limitSession(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
-	})
-}
-
-// requireAgent admits only a verified agent certificate whose client is
-// active and whose serial is the newest issued to it. Only the WebSocket
-// still uses it, until it moves to the session protocol.
-func (a *agentAPI) requireAgent(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
-			Write(w, http.StatusUnauthorized, "Unauthorized", "A client certificate from the agent CA is required.")
-			return
-		}
-		c, err := a.d.Agents.Authenticate(r.Context(), r.TLS.PeerCertificates[0])
-		if err != nil {
-			writeAgentErr(w, a.d.Log, err)
-			return
-		}
-		ctx := authn.WithPrincipal(r.Context(), agents.AgentPrincipal(c))
-		ctx = context.WithValue(ctx, agentClientKey{}, c)
-		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

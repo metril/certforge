@@ -96,7 +96,7 @@ func TestAgentCARotateRetire(t *testing.T) {
 	if info, _ := e.listener.Info(); info.CAID != next.Id {
 		t.Fatal("listener not re-issued by the new CA after retire")
 	}
-	// The retired CA is gone from ClientCAs: its certificate fails the handshake.
+	// The retired CA is no longer trusted: its certificate fails the signed handshake.
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, e.ts.URL+"/agent/v1/renew", nil)
 	if resp, err := e.httpClient(t, &cert).Do(req); err == nil {
 		resp.Body.Close()
@@ -197,7 +197,7 @@ func TestAgentCARotateRetireWithLiveAgent(t *testing.T) {
 	// normally against the now-switched listener chain.
 	ws2 := dialWS(ctx, t, e, renewedCert)
 	sendWS(ctx, t, ws2, agentproto.Hello{AgentVersion: "1.0", Hostname: "h", OS: "linux", Arch: "amd64"})
-	if m := recvWS(ctx, t, ws2); m != agentproto.Message(agentproto.HelloAck{HeartbeatSeconds: 60, Revision: 0}) {
+	if m := recvWS(ctx, t, ws2); m != agentproto.Message(agentproto.Welcome{HeartbeatSeconds: 60, Revision: 0}) {
 		t.Fatalf("live agent could not reconnect after the chain switch: %#v", m)
 	}
 }

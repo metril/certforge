@@ -109,6 +109,11 @@ func (h *Hub) Serve(ctx context.Context, clientID uuid.UUID, s Session, handler 
 	ctx, cancel := context.WithCancel(ctx)
 	var last atomic.Int64
 	last.Store(time.Now().UnixNano())
+	// A sealed socket asks to be recycled before its session runs out of
+	// messages; the agent reconnects with fresh keys.
+	if n, ok := s.(interface{ SetOnNearCap(func()) }); ok {
+		n.SetOnNearCap(func() { c.close(agentproto.CloseRekey, "session message limit reached; reconnect") })
+	}
 	go func() {
 		defer close(c.writerDone)
 		h.writer(ctx, c)

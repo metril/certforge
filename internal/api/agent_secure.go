@@ -6,6 +6,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/agentca"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/authn"
@@ -182,11 +184,29 @@ func (a *agentAPI) responder() *respSigner {
 	if !ok {
 		return nil
 	}
+	a.refreshResponder(s.Chain[0])
 	rs := &respSigner{key: s.Key, leaf: base64.StdEncoding.EncodeToString(s.Chain[0].Raw)}
 	for _, c := range s.Chain[1:] {
 		rs.chain = append(rs.chain, base64.StdEncoding.EncodeToString(c.Raw))
 	}
 	return rs
+}
+
+// refreshResponder renews the responder certificate in the background once it
+// is due, in case the hourly renewal job is late: agents refuse an expired
+// responder, so it must never be served past its 24 h lifetime.
+func (a *agentAPI) refreshResponder(leaf *x509.Certificate) {
+	if !agentproto.RenewDue(leaf.NotBefore, leaf.NotAfter, a.clock()) || !a.refreshing.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer a.refreshing.Store(false)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := a.d.AgentListener.Reload(ctx); err != nil && !errors.Is(err, agentca.ErrNoNames) {
+			a.d.Log.Error("agent responder certificate not renewed", "err", err)
+		}
+	}()
 }
 
 type respSigner struct {
@@ -371,8 +391,7 @@ func (s *sealWriter) Write(b []byte) (int, error) {
 
 // secure admits only a request signed by an agent's key inside a live session
 // (whatever the transport or client certificate), opens its body, and seals and
-// signs whatever the handler answers, errors included. It replaces requireAgent
-// for every route but the WebSocket.
+// signs whatever the handler answers, errors included.
 func (a *agentAPI) secure(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		now := a.clock()
