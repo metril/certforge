@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -18,40 +19,68 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
-// agentAPI serves /agent/v1/* on the agent listener. Handlers are plain
-// net/http: the surface is small and not part of the public OpenAPI spec.
-type agentAPI struct{ d Deps }
+// agentAPI serves /agent/v1/* on the agent listener and, behind any
+// TLS-terminating proxy, on the HTTP listener. Handlers are plain net/http:
+// the surface is small and not part of the public OpenAPI spec.
+type agentAPI struct {
+	d        Deps
+	httpPort bool // mounted on the HTTP router: the base URL host is also a valid @authority
+	nonces   NonceStore
+	sessions agentSessions
+	sessLim  *authn.Limiter
+	now      func() time.Time // nil: time.Now
+}
 
-// NewAgentRouter builds the handler for the agent listener (CF_LISTEN_AGENT):
-// mutual TLS, /agent/v1/* only, no browser content, so no CSP or HSTS.
-func NewAgentRouter(d Deps) http.Handler {
+func newAgentAPI(d Deps, httpPort bool) *agentAPI {
 	if d.Log == nil {
 		d.Log = slog.Default()
 	}
 	if d.EnrollLimiter == nil {
 		d.EnrollLimiter = authn.NewLimiter(authn.DefaultLoginPerMinute, authn.DefaultLoginBurst)
 	}
-	a := &agentAPI{d: d}
+	a := &agentAPI{d: d, httpPort: httpPort, nonces: d.AgentNonces, sessLim: authn.NewLimiter(600, 120)}
+	if a.nonces == nil {
+		a.nonces = newMemNonces()
+	}
+	return a
+}
+
+// NewAgentRouter builds the handler for the agent listener (CF_LISTEN_AGENT):
+// /agent/v1/* only, no browser content, so no CSP or HSTS. It speaks the same
+// application-layer protocol as the routes NewRouter mounts on the HTTP port.
+func NewAgentRouter(d Deps) http.Handler {
+	a := newAgentAPI(d, false)
 	r := chi.NewRouter()
-	// Reports can carry up to agentproto.MaxMessage, not the 1 MiB public cap.
-	r.Use(recoverer(d.Log), func(next http.Handler) http.Handler { return requireJSONLimit(next, agentproto.MaxMessage) })
+	r.Use(recoverer(a.d.Log))
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) { Write(w, http.StatusNotFound, "Not found", "") })
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		Write(w, http.StatusMethodNotAllowed, "Method not allowed", "")
 	})
-	r.Route("/agent/v1", func(v1 chi.Router) {
-		v1.With(a.limitEnroll).Post("/enroll", a.enroll)
-		v1.Group(func(g chi.Router) {
-			g.Use(a.requireAgent)
-			g.Post("/renew", a.renew)
-			g.Get("/assignments", a.assignments)
-			g.Get("/grants/{id}/bundle", a.bundle)
-			g.Post("/report", a.report)
-			g.Post("/heartbeat", a.heartbeat)
-			g.Get("/ws", a.ws)
-		})
-	})
+	r.Route("/agent/v1", a.routes)
 	return r
+}
+
+// routes registers the agent protocol. /enroll is still the token exchange and
+// /ws still authenticates by client certificate only; every other route needs
+// a signed request inside a session.
+func (a *agentAPI) routes(v1 chi.Router) {
+	v1.Use(withClientIP(a.d.AuthSettings))
+	v1.NotFound(func(w http.ResponseWriter, _ *http.Request) { Write(w, http.StatusNotFound, "Not found", "") })
+	v1.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
+		Write(w, http.StatusMethodNotAllowed, "Method not allowed", "")
+	})
+	// Reports can carry up to agentproto.MaxMessage, not the 1 MiB public cap.
+	v1.With(a.limitEnroll, func(next http.Handler) http.Handler { return requireJSONLimit(next, agentproto.MaxMessage) }).Post("/enroll", a.enroll)
+	v1.With(a.limitSession).Post("/session", a.session)
+	v1.With(a.requireAgent).Get("/ws", a.ws)
+	v1.Group(func(g chi.Router) {
+		g.Use(a.secure)
+		g.Post("/renew", a.renew)
+		g.Get("/assignments", a.assignments)
+		g.Get("/grants/{id}/bundle", a.bundle)
+		g.Post("/report", a.report)
+		g.Post("/heartbeat", a.heartbeat)
+	})
 }
 
 type agentClientKey struct{}
@@ -64,18 +93,32 @@ func agentClient(ctx context.Context) sqlcgen.Client {
 
 func (a *agentAPI) limitEnroll(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := authn.RemoteIP(r)
+		ip := audit.IPFrom(r.Context())
 		if ok, wait := a.d.EnrollLimiter.Allow(authn.LimitKey(ip)); !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 			Write(w, http.StatusTooManyRequests, "Too many enrolment attempts", "Wait before trying again.")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(audit.WithIP(r.Context(), ip)))
+		next.ServeHTTP(w, r)
+	})
+}
+
+// limitSession rate-limits handshakes per client address (the real one, via
+// the trusted proxies setting), before any signature work.
+func (a *agentAPI) limitSession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ok, wait := a.sessLim.Allow(authn.LimitKey(audit.IPFrom(r.Context()))); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+			Write(w, http.StatusTooManyRequests, "Too many requests", "Wait before opening another session.")
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
 // requireAgent admits only a verified agent certificate whose client is
-// active and whose serial is the newest issued to it.
+// active and whose serial is the newest issued to it. Only the WebSocket
+// still uses it, until it moves to the session protocol.
 func (a *agentAPI) requireAgent(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
@@ -88,7 +131,6 @@ func (a *agentAPI) requireAgent(next http.Handler) http.Handler {
 			return
 		}
 		ctx := authn.WithPrincipal(r.Context(), agents.AgentPrincipal(c))
-		ctx = audit.WithIP(ctx, authn.RemoteIP(r))
 		ctx = context.WithValue(ctx, agentClientKey{}, c)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

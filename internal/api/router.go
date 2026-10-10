@@ -83,6 +83,12 @@ func NewRouter(d Deps) http.Handler {
 		}
 		d.Metrics.ServeHTTP(w, r)
 	})
+	// The agent protocol on the HTTP port, for agents behind a TLS-terminating
+	// proxy: signed and sealed at the application layer, so the proxy is not
+	// trusted. nil only in narrow unit-test fixtures.
+	if d.Agents != nil {
+		r.Route("/agent/v1", newAgentAPI(d, true).routes)
+	}
 	r.Route("/api/v1", func(v1 chi.Router) {
 		v1.Use(withClientIP(d.AuthSettings), s.limitLogins(d.LoginLimiter, loginLimiterSettings, d.Auditor, d.Log), requireJSON, authn.Middleware(authn.MiddlewareOptions{
 			Sessions: d.Sessions, Queries: d.Queries, Public: isPublic, Fail: Write, Log: d.Log,

@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/metril/certforge/internal/agent"
 	"github.com/metril/certforge/internal/agentca"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/authn"
@@ -57,14 +58,19 @@ func newAgentEnv(t *testing.T, opts ...func(*Deps)) *agentEnv {
 	for _, o := range opts {
 		o(&d)
 	}
-	srv := httptest.NewUnstartedServer(NewAgentRouter(d))
+	srv := httptest.NewUnstartedServer(nil)
+	d.AgentAuthorities = []string{srv.Listener.Addr().String()}
+	srv.Config.Handler = NewAgentRouter(d)
 	srv.TLS = l.TLSConfig()
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 	return &agentEnv{agentFixture: f, ts: srv, listener: l}
 }
 
-// httpClient trusts the current agent CA bundle and presents cert if set.
+// httpClient trusts the current agent CA bundle. With cert it speaks the
+// signed, sealed session protocol as that agent (the certificate also goes
+// out as the TLS client certificate, which the server must not rely on);
+// without, it is a bare TLS client (enrolment, unauthenticated probes).
 func (e *agentEnv) httpClient(t *testing.T, cert *tls.Certificate) *http.Client {
 	t.Helper()
 	trusted, err := e.ca.Trusted(context.Background())
@@ -79,7 +85,23 @@ func (e *agentEnv) httpClient(t *testing.T, cert *tls.Certificate) *http.Client 
 	if cert != nil {
 		cfg.Certificates = []tls.Certificate{*cert}
 	}
-	return &http.Client{Transport: &http.Transport{TLSClientConfig: cfg}, Timeout: 10 * time.Second}
+	var rt http.RoundTripper = &http.Transport{TLSClientConfig: cfg}
+	if cert != nil {
+		leaf := cert.Leaf
+		if leaf == nil {
+			leaf, _ = x509.ParseCertificate(cert.Certificate[0])
+		}
+		rt = agent.NewSecureTransport(&agent.Identity{Key: cert.PrivateKey.(*ecdsa.PrivateKey), Cert: leaf, CAs: pool}, rt)
+	}
+	return &http.Client{Transport: rt, Timeout: 10 * time.Second}
+}
+
+// plainClient is httpClient's bare TLS client presenting cert, never signing.
+func (e *agentEnv) plainClient(t *testing.T, cert *tls.Certificate) *http.Client {
+	t.Helper()
+	hc := e.httpClient(t, nil)
+	hc.Transport.(*http.Transport).TLSClientConfig.Certificates = []tls.Certificate{*cert}
+	return hc
 }
 
 func doAgent(hc *http.Client, method, url string, body, out any) (int, error) {
@@ -291,7 +313,7 @@ func TestAgentAuthRejectsStaleSerial(t *testing.T) {
 }
 
 // A certificate from a trusted agent CA that carries no client URI SAN
-// passes the handshake but is refused by requireAgent.
+// passes the TLS handshake but is refused by the session handshake.
 func TestAgentAuthRejectsCertWithoutClientURI(t *testing.T) {
 	e := newAgentEnv(t)
 	ca, err := e.ca.Active(context.Background())
@@ -307,8 +329,10 @@ func TestAgentAuthRejectsCertWithoutClientURI(t *testing.T) {
 		t.Fatal(err)
 	}
 	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
-	if code := e.post(t, e.httpClient(t, &cert), "/agent/v1/renew", agentproto.RenewRequest{CSR: csrPEM(t, key)}, nil); code != http.StatusUnauthorized {
-		t.Fatalf("certificate without a client URI: %d", code)
+	resp := e.rawHandshake(t, cert, e.ts.Listener.Addr().String(), e.ts.URL, time.Now(), "")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("certificate without a client URI: %d", resp.StatusCode)
 	}
 }
 

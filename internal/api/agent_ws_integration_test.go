@@ -109,7 +109,7 @@ func TestWebSocketRejectsStaleCertificateAfterRenew(t *testing.T) {
 func dialWS(ctx context.Context, t *testing.T, e *agentEnv, cert tls.Certificate) agentproto.WS {
 	t.Helper()
 	c, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(e.ts.URL, "https")+"/agent/v1/ws", //nolint:bodyclose // coder/websocket owns resp.Body
-		&websocket.DialOptions{HTTPClient: e.httpClient(t, &cert)})
+		&websocket.DialOptions{HTTPClient: e.plainClient(t, &cert)})
 	if err != nil {
 		t.Fatal(err)
 	}
