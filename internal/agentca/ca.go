@@ -198,12 +198,8 @@ func SignServer(ca *CA, pub crypto.PublicKey, names []string, now time.Time) (*x
 	return x509.ParseCertificate(der)
 }
 
-// ResponderMarker is the OU of a responder certificate (an RFC 4122 UUID
-// arc OID). Go's x509 cannot parse a certificate carrying an OID arc this
-// large, so it cannot be the EKU itself. The EKU is OCSPSigning, which no TLS
-// stack accepts for serverAuth or clientAuth; the marker tells responder
-// certificates apart from other OCSPSigning ones.
-const ResponderMarker = "2.25.284011506363329835389774668932300182646"
+// ResponderMarker is the OU of a responder certificate; see agentproto.ResponderMarker.
+const ResponderMarker = agentproto.ResponderMarker
 
 // SignResponder issues the certificate whose key signs the server's agent
 // protocol responses. It is a signing key only: message encryption uses
@@ -231,18 +227,7 @@ func SignResponder(ca *CA, pub crypto.PublicKey, now time.Time) (*x509.Certifica
 // VerifyResponder checks that leaf chains to roots and carries the responder EKU and
 // marker only; it returns the leaf's ECDSA public key.
 func VerifyResponder(leaf *x509.Certificate, roots *x509.CertPool, now time.Time) (*ecdsa.PublicKey, error) {
-	if len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != x509.ExtKeyUsageOCSPSigning || len(leaf.UnknownExtKeyUsage) != 0 ||
-		len(leaf.Subject.OrganizationalUnit) != 1 || leaf.Subject.OrganizationalUnit[0] != ResponderMarker {
-		return nil, errors.New("agentca: not a responder certificate")
-	}
-	if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
-		return nil, err
-	}
-	pub, ok := leaf.PublicKey.(*ecdsa.PublicKey)
-	if !ok || pub.Curve != elliptic.P256() {
-		return nil, errors.New("agentca: responder key must be ECDSA P-256")
-	}
-	return pub, nil
+	return agentproto.VerifyResponder(leaf, roots, now)
 }
 
 // CertPEM encodes one DER certificate.

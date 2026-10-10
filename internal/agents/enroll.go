@@ -2,6 +2,8 @@ package agents
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/x509"
 	"errors"
 	"strings"
@@ -146,6 +148,13 @@ func (s *Service) Authenticate(ctx context.Context, leaf *x509.Certificate) (sql
 	if err != nil {
 		return sqlcgen.Client{}, unauthorized("This is not a CertForge agent certificate.")
 	}
+	return s.AuthenticateKey(ctx, id, agentca.SerialHex(leaf))
+}
+
+// AuthenticateKey is Authenticate for a client identified by its id and the
+// serial of the certificate it signs with (the signed keyid of the agent
+// protocol): the client must exist, be active and hold serial as its newest.
+func (s *Service) AuthenticateKey(ctx context.Context, id uuid.UUID, serial string) (sqlcgen.Client, error) {
 	c, err := s.Q.GetClientByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, unauthorized("This client no longer exists.")
@@ -156,10 +165,38 @@ func (s *Service) Authenticate(ctx context.Context, leaf *x509.Certificate) (sql
 	if c.Status != "active" {
 		return c, unauthorized("This client is %s; enrol the agent again with a new token.", c.Status)
 	}
-	if c.AgentCertSerial != agentca.SerialHex(leaf) {
+	if c.AgentCertSerial != serial {
 		return c, unauthorized("This agent certificate was replaced; use the newest certificate or enrol again.")
 	}
 	return c, nil
+}
+
+// VerifyAgentCert checks that der is an agent client certificate issued by a
+// trusted agent CA and unexpired, and returns the client id, certificate
+// serial and signing key it proves. It does not check the client's state:
+// follow with AuthenticateKey.
+func (s *Service) VerifyAgentCert(ctx context.Context, der []byte) (uuid.UUID, string, *ecdsa.PublicKey, error) {
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		return uuid.Nil, "", nil, unauthorized("This is not a CertForge agent certificate.")
+	}
+	trusted, err := s.CA.Trusted(ctx)
+	if err != nil {
+		return uuid.Nil, "", nil, err
+	}
+	roots := x509.NewCertPool()
+	for _, c := range trusted {
+		roots.AddCert(c)
+	}
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: s.now(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+		return uuid.Nil, "", nil, unauthorized("This agent certificate is not trusted or has expired.")
+	}
+	id, err := agentca.ClientIDFromCert(leaf)
+	pub, ok := leaf.PublicKey.(*ecdsa.PublicKey)
+	if err != nil || !ok || pub.Curve != elliptic.P256() {
+		return uuid.Nil, "", nil, unauthorized("This is not a CertForge agent certificate.")
+	}
+	return id, agentca.SerialHex(leaf), pub, nil
 }
 
 // Renew signs a fresh certificate for an authenticated agent.
