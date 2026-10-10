@@ -130,7 +130,7 @@ func TestCheckTXTFailureRcodeIsError(t *testing.T) {
 }
 
 func TestDoHRefusesRedirects(t *testing.T) {
-	if err := dohClient.CheckRedirect(nil, nil); err != http.ErrUseLastResponse {
+	if err := dohClient.CheckRedirect(nil, nil); !errors.Is(err, http.ErrUseLastResponse) {
 		t.Fatalf("CheckRedirect = %v", err)
 	}
 }

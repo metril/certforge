@@ -544,7 +544,7 @@ func TestRouterHints(t *testing.T) {
 	// REFUSED from lego's default check is remembered.
 	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{rule(t, "example.com", &recProvider{})}, nil)
 	refused := func(string, string) (bool, error) {
-		return false, errors.New("authoritative nameservers: NS ns1:53 returned REFUSED for _acme-challenge.example.com.")
+		return false, errors.New("authoritative nameservers: NS ns1:53 returned REFUSED for _acme-challenge.example.com")
 	}
 	_, _ = r.PreCheck("example.com", "_acme-challenge.example.com.", "v", refused)
 	if h := r.Hint(errors.New("x")); !strings.Contains(h, "intercept DNS") || !strings.Contains(h, "cloudflare-dns.com/dns-query") {

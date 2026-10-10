@@ -58,7 +58,7 @@ export const help = {
   // CA detail sheet's own trust-bundle download, a different field.
   'ca.importTrustBundle': { text: 'PEM roots for a private ACME server, such as step-ca or Pebble.' },
   'ca.eab': { text: 'External account binding ties orders to your account at the CA. Some CAs require it.' },
-  'ca.resolvers': { text: 'DNS servers used to check propagation: host[:port], or a DNS-over-HTTPS URL such as https://cloudflare-dns.com/dns-query (works on networks that block or intercept port 53). Leave empty for the system resolvers.' },
+  'ca.resolvers': { text: 'Propagation-check DNS servers: host[:port] or a DoH URL (https://cloudflare-dns.com/dns-query) for networks that intercept port 53. Empty uses system resolvers.' },
   // Task 3: private CA detail sheet.
   'ca.expiry': { text: 'When the issuing certificate expires. Leaf certificates never outlive it.', learnMore: 'private-ca.md#model' },
   'ca.trustBundle': { text: 'Install on clients so they trust certificates from this CA.', learnMore: 'private-ca.md#trust' },
@@ -139,7 +139,7 @@ export const help = {
   'defaults.reuseKey': { text: 'Keep the same private key across renewals. Needed for key pinning.' },
   'defaults.mustStaple': { text: 'Ask the CA to set OCSP Must-Staple. Only use it if every server staples.' },
   'defaults.propagationSeconds': { text: 'How long to wait for TXT records to reach every nameserver.' },
-  'defaults.resolvers': { text: 'DNS servers used to check propagation: host[:port], or a DNS-over-HTTPS URL such as https://cloudflare-dns.com/dns-query (works on networks that block or intercept port 53). Empty means system resolvers.' },
+  'defaults.resolvers': { text: 'Propagation-check DNS servers: host[:port] or a DoH URL (https://cloudflare-dns.com/dns-query) for networks that intercept port 53. Empty uses system resolvers.' },
   'defaults.inherit': {
     text: 'Most specific wins: Certificate > Organization > Global. Changes apply at each certificate’s next renewal.',
     learnMore: 'configuration.md#issuance-defaults',
