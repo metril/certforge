@@ -314,7 +314,39 @@ func startDNS(t *testing.T, records map[string]string) string {
 	return pc.LocalAddr().String()
 }
 
+func setSettle(t *testing.T, d time.Duration) {
+	t.Helper()
+	old := SettleDelay
+	SettleDelay = d
+	t.Cleanup(func() { SettleDelay = old })
+}
+
+func TestRouterPreCheckSettleDelay(t *testing.T) {
+	setSettle(t, 20*time.Second)
+	addr := startDNS(t, map[string]string{"_acme-challenge.example.com.": "good"})
+	ru := rule(t, "example.com", &recProvider{})
+	ru.Resolvers = []string{addr}
+	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, nil)
+	clock := routerTestNow
+	r.now = func() time.Time { return clock }
+	legoCheck := func(string, string) (bool, error) { return false, errors.New("must not run") }
+
+	ok, err := r.PreCheck("example.com", "_acme-challenge.example.com.", "good", legoCheck)
+	if ok || err != nil {
+		t.Fatalf("inside settle delay: %v %v", ok, err)
+	}
+	clock = clock.Add(19 * time.Second)
+	if ok, _ := r.PreCheck("example.com", "_acme-challenge.example.com.", "good", legoCheck); ok {
+		t.Fatal("still inside settle delay")
+	}
+	clock = clock.Add(2 * time.Second)
+	if ok, err := r.PreCheck("example.com", "_acme-challenge.example.com.", "good", legoCheck); !ok || err != nil {
+		t.Fatalf("after settle delay: %v %v", ok, err)
+	}
+}
+
 func TestRouterPreCheckUsesRuleResolvers(t *testing.T) {
+	setSettle(t, 0)
 	addr := startDNS(t, map[string]string{"_acme-challenge.example.com.": "good"})
 	ru := rule(t, "example.com", &recProvider{})
 	ru.Resolvers = []string{addr}
@@ -504,5 +536,44 @@ func TestMarkFailedReportsOnceWithoutHoldingLock(t *testing.T) {
 	}
 	if got, _ := r.Timeout(); got != failFastTimeout {
 		t.Fatalf("Timeout = %v, want fail-fast", got)
+	}
+}
+
+func TestRouterHints(t *testing.T) {
+	setSettle(t, 0)
+	// REFUSED from lego's default check is remembered.
+	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{rule(t, "example.com", &recProvider{})}, nil)
+	refused := func(string, string) (bool, error) {
+		return false, errors.New("authoritative nameservers: NS ns1:53 returned REFUSED for _acme-challenge.example.com")
+	}
+	_, _ = r.PreCheck("example.com", "_acme-challenge.example.com.", "v", refused)
+	if h := r.Hint(errors.New("x")); !strings.Contains(h, "intercept DNS") || !strings.Contains(h, "cloudflare-dns.com/dns-query") {
+		t.Fatalf("hint = %q", h)
+	}
+	if h := r.Hint(errors.New("acme: time limit exceeded: last error: ... returned REFUSED")); !strings.Contains(h, "intercept DNS") {
+		t.Fatalf("hint from error text = %q", h)
+	}
+
+	// Timeout while using configured resolvers.
+	addr := startDNS(t, map[string]string{})
+	prov := &recProvider{timeout: 20 * time.Millisecond}
+	ru := rule(t, "example.com", prov)
+	ru.Resolvers = []string{addr}
+	sink := &sinkRec{}
+	r2 := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, sink)
+	clock := routerTestNow
+	r2.now = func() time.Time { return clock }
+	_, _ = r2.PreCheck("example.com", "_acme-challenge.example.com.", "v", nil)
+	clock = clock.Add(time.Second)
+	_, _ = r2.PreCheck("example.com", "_acme-challenge.example.com.", "v", nil)
+	last := sink.calls[len(sink.calls)-1]
+	if last.status != StepFailed || !strings.Contains(last.message, "negative answer") {
+		t.Fatalf("last step = %+v", last)
+	}
+	if h := r2.Hint(errors.New("acme: time limit exceeded")); !strings.Contains(h, "negative answer") {
+		t.Fatalf("hint = %q", h)
+	}
+	if h := NewRouter(context.Background(), nil, nil, nil).Hint(errors.New("boom")); h != "" {
+		t.Fatalf("unexpected hint %q", h)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	legochallenge "github.com/go-acme/lego/v4/challenge"
 
@@ -38,7 +39,10 @@ func (r *recDNS) CleanUp(d, _, _ string) error { r.cleaned = append(r.cleaned, d
 
 func newService(f *fixture) (*Service, *fakeInserter) {
 	ins := &fakeInserter{seen: map[string]bool{}}
-	return NewService(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}), ins), ins
+	svc := NewService(f.store, certstore.New(f.pool, cryptotest.PrefixBox{}), ins)
+	svc.TestSettle, svc.TestPoll, svc.TestWindow = time.Millisecond, time.Millisecond, 20*time.Millisecond
+	svc.TestVisible = func(context.Context, []string, string, string) (bool, error) { return true, nil }
+	return svc, ins
 }
 
 func TestRegisterAccountPassesEAB(t *testing.T) {
@@ -109,6 +113,25 @@ func TestTestDNSCredential(t *testing.T) {
 	}
 	if strings.Join(rec.presented, ",") != "_certforge-test.example.test" || len(rec.cleaned) != 1 {
 		t.Fatalf("present=%v cleanup=%v", rec.presented, rec.cleaned)
+	}
+}
+
+func TestTestDNSCredentialNotVisible(t *testing.T) {
+	f := newFixture(t)
+	svc, _ := newService(f)
+	rec := &recDNS{}
+	svc.BuildDNS = func(string, map[string]string) (legochallenge.Provider, error) { return rec, nil }
+	var calls int
+	svc.TestVisible = func(context.Context, []string, string, string) (bool, error) {
+		calls++
+		return false, errors.New("authoritative ns returned REFUSED")
+	}
+	_, err := svc.TestDNSCredential(context.Background(), f.org, f.credential(t, "cf"), "example.test")
+	if err == nil || !strings.Contains(err.Error(), "record created but not visible in DNS: authoritative ns returned REFUSED") {
+		t.Fatalf("err = %v", err)
+	}
+	if calls < 2 || len(rec.cleaned) != 1 {
+		t.Fatalf("calls=%d cleaned=%v", calls, rec.cleaned)
 	}
 }
 

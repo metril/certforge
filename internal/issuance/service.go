@@ -34,6 +34,13 @@ type Service struct {
 	NewRegistrar func(CA) Registrar
 	BuildDNS     func(code string, cfg map[string]string) (legochallenge.Provider, error)
 
+	// DNS-test visibility check (TestDNSCredential). Zero values use the
+	// defaults below; tests inject fast ones.
+	TestSettle  time.Duration // wait after Present before the first check
+	TestPoll    time.Duration // interval between checks
+	TestWindow  time.Duration // total time to keep polling
+	TestVisible func(ctx context.Context, resolvers []string, fqdn, value string) (bool, error)
+
 	// Auditor records certificate.create/certificate.update right after the
 	// write transaction commits and before EnqueueIssue runs, so the audit
 	// trail reflects a write that has already durably happened even when
@@ -289,12 +296,93 @@ func (s *Service) TestDNSCredential(ctx context.Context, orgID, id uuid.UUID, zo
 	keyAuth := "certforge-test-" + time.Now().UTC().Format("20060102T150405")
 	fqdn := dns01.UnFqdn(dns01.GetChallengeInfo(domain, keyAuth).EffectiveFQDN)
 	presentErr := challenge.Scrub(p.Present(domain, "certforge-test", keyAuth), cred.ProviderCode, cfg)
+	var visErr error
+	if presentErr == nil {
+		visErr = s.waitVisible(ctx, orgID, fqdn, dns01.GetChallengeInfo(domain, keyAuth).Value)
+	}
 	cleanErr := challenge.Scrub(p.CleanUp(domain, "certforge-test", keyAuth), cred.ProviderCode, cfg)
 	if presentErr != nil {
 		return fqdn, fmt.Errorf("present %s: %w", fqdn, presentErr)
+	}
+	if visErr != nil {
+		return fqdn, fmt.Errorf("record created but not visible in DNS: %w", visErr)
 	}
 	if cleanErr != nil {
 		return fqdn, fmt.Errorf("clean up %s: %w", fqdn, cleanErr)
 	}
 	return fqdn, nil
+}
+
+// testResolvers are the org's effective resolvers (defaults, else the
+// default CA's); empty means lego's authoritative check is used.
+func (s *Service) testResolvers(ctx context.Context, orgID uuid.UUID) []string {
+	eff, err := s.Store.EffectiveOrg(ctx, orgID)
+	if err != nil {
+		return nil
+	}
+	if len(eff.Resolvers.Value) > 0 {
+		return eff.Resolvers.Value
+	}
+	if eff.CAID.Value != nil {
+		if ca, err := s.Store.GetCA(ctx, orgID, *eff.CAID.Value); err == nil {
+			return ca.Resolvers
+		}
+	}
+	return nil
+}
+
+// waitVisible waits the settle delay, then polls until the TXT record is
+// visible or the window closes. The error carries the last check detail.
+func (s *Service) waitVisible(ctx context.Context, orgID uuid.UUID, fqdn, value string) error {
+	settle, poll, window := s.TestSettle, s.TestPoll, s.TestWindow
+	if settle <= 0 {
+		settle = challenge.SettleDelay
+	}
+	if poll <= 0 {
+		poll = 5 * time.Second
+	}
+	if window <= 0 {
+		window = 60 * time.Second
+	}
+	resolvers := s.testResolvers(ctx, orgID)
+	check := s.TestVisible
+	if check == nil {
+		check = func(ctx context.Context, rs []string, fqdn, value string) (bool, error) {
+			if len(rs) > 0 {
+				return challenge.CheckTXT(ctx, rs, fqdn, value)
+			}
+			return challenge.CheckTXTAuthoritative(ctx, fqdn, value)
+		}
+	}
+	if err := sleepCtx(ctx, settle); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(window)
+	detail := "TXT record not found"
+	for {
+		ok, err := check(ctx, resolvers, fqdn, value)
+		if ok {
+			return nil
+		}
+		if err != nil {
+			detail = err.Error()
+		}
+		if time.Now().Add(poll).After(deadline) {
+			return errors.New(detail)
+		}
+		if err := sleepCtx(ctx, poll); err != nil {
+			return err
+		}
+	}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }

@@ -184,6 +184,12 @@ func validateResolvers(field string, rs []string) error {
 		return &ValidationError{field, fmt.Sprintf("at most %d resolvers", MaxResolvers)}
 	}
 	for _, r := range rs {
+		if challenge.IsDoH(r) {
+			if !challenge.ValidDoHURL(r) {
+				return &ValidationError{field, "invalid DoH resolver " + r}
+			}
+			continue
+		}
 		host := r
 		if h, _, err := net.SplitHostPort(r); err == nil {
 			host = h

@@ -17,7 +17,7 @@ import (
 // defaultDNSTestTimeout bounds POST .../dns-credentials/{id}/test when
 // Deps.DNSTestTimeout is unset; see acquireDNSTestSlot for why the call
 // also runs in a goroutine instead of relying on context cancellation.
-const defaultDNSTestTimeout = 2 * time.Minute
+const defaultDNSTestTimeout = 3 * time.Minute
 
 // dnsTestSlots bounds how many DNS credential tests may run at once: each
 // one makes a live call to an external provider API that can hang for the
