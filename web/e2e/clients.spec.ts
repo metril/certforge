@@ -56,11 +56,12 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
   await connection.getByRole('button', { name: 'Review' }).click();
   const approve = page.getByRole('dialog', { name: /Approve agent/ });
   await expect(approve.getByTestId('verify-code')).toHaveText(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/);
-  // The code is also in the agent log (docker logs); compare when the CLI is reachable.
+  // The code is also in the agent log; the two must match.
   const code = ((await approve.getByTestId('verify-code').textContent()) ?? '').trim();
-  const logs = spawnSync('docker', ['compose', '-f', resolve(E2E.agentDir, '..', 'deploy', 'compose.test.yaml'), 'logs', 'agent'], { encoding: 'utf8' });
-  const logText = logs.stdout + logs.stderr;
-  if (logs.status === 0 && logText.includes('WAITING FOR APPROVAL')) expect(logText).toContain(code);
+  const compose = ['compose', '-p', 'certforge-e2e', '-f', resolve(E2E.agentDir, '..', 'deploy', 'compose.yaml'), '-f', resolve(E2E.agentDir, '..', 'deploy', 'compose.test.yaml')];
+  const logs = spawnSync('docker', [...compose, '--profile', 'e2e', 'logs', 'agent'], { encoding: 'utf8' });
+  expect(logs.status, logs.stderr).toBe(0);
+  expect(logs.stdout + logs.stderr).toContain(code);
   // Approve stays blocked until the code is confirmed.
   const approveBtn = approve.getByRole('button', { name: 'Approve' });
   await expect(approveBtn).toHaveAttribute('aria-disabled', 'true');

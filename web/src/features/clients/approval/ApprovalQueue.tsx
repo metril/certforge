@@ -32,7 +32,8 @@ export function useApprovalFlow(orgId: string) {
   const approve = useApproveEnrollment(orgId);
   const reject = useRejectEnrollment(orgId);
   const { data: sites = [] } = useQuery(sitesQuery(orgId));
-  const [reviewId, setReviewId] = useState<string | null>(null);
+  // A snapshot, not an id into the polled list: the dialog must outlive a refetch that drops the request.
+  const [reviewing, setReviewing] = useState<EnrollmentRequest | null>(null);
   const [rejecting, setRejecting] = useState<EnrollmentRequest | null>(null);
   const doReject = async (r: EnrollmentRequest) => {
     await reject.mutateAsync(r.id);
@@ -42,18 +43,17 @@ export function useApprovalFlow(orgId: string) {
     });
   };
   return {
-    review: setReviewId,
+    review: (r: EnrollmentRequest) => setReviewing(r),
     reject: setRejecting,
     /** Expired rows: nothing left to decide, so no confirmation. */
     dismiss: (r: EnrollmentRequest) => void doReject(r).catch(() => undefined),
-    dialogs: (requests: EnrollmentRequest[]) => {
-      const reviewing = requests.find((r) => r.id === reviewId) ?? null;
+    dialogs: () => {
       return (
         <>
           <ApproveDialog
             request={reviewing}
             siteName={sites.find((s) => s.id === reviewing?.siteId)?.name}
-            onOpenChange={(o) => !o && setReviewId(null)}
+            onOpenChange={(o) => !o && setReviewing(null)}
             onApprove={async (r) => {
               await approve.mutateAsync(r.id);
               // Gone from the queue at once, without waiting for the refetch.
@@ -61,7 +61,7 @@ export function useApprovalFlow(orgId: string) {
               toast.success(`Approved ${r.clientName}. It connects within a few seconds.`);
             }}
             onReject={(r) => {
-              setReviewId(null);
+              setReviewing(null);
               setRejecting(r);
             }}
             onHandled={() => void qc.invalidateQueries({ queryKey: pendingEnrollmentsKey(orgId) })}
@@ -86,7 +86,9 @@ export function ApprovalQueue() {
   const canWrite = can(me, 'clients:write', org.id);
   const requests = usePendingApprovals(org.id, canWrite);
   const flow = useApprovalFlow(org.id);
-  if (!canWrite || requests.length === 0) return null;
+  if (!canWrite) return null;
+  // Dialogs stay mounted when the last request leaves the list, so an open one survives the refetch.
+  if (requests.length === 0) return flow.dialogs();
   const waiting = live(requests).length;
   return (
     <Card id="approvals" role="region" aria-label="Awaiting approval" className="mb-4">
@@ -122,7 +124,7 @@ export function ApprovalQueue() {
                   </IconButton>
                 ) : (
                   <>
-                    <Button onClick={() => flow.review(r.id)}>Review</Button>
+                    <Button onClick={() => flow.review(r)}>Review</Button>
                     <IconButton label="Reject" tip="Refuses the agent and spends its token." variant="ghost" size="icon" onClick={() => flow.reject(r)}>
                       <X className="size-4" aria-hidden />
                     </IconButton>
@@ -133,7 +135,7 @@ export function ApprovalQueue() {
           );
         })}
       </ul>
-      {flow.dialogs(requests)}
+      {flow.dialogs()}
     </Card>
   );
 }

@@ -130,6 +130,10 @@ func (s *Service) SubmitEnrollment(ctx context.Context, tok EnrollToken, csrPEM 
 	status := "approved"
 	if st.ApprovalRequired() {
 		status = "pending"
+		// Serialise the cap check and insert per org so concurrent submits cannot overshoot.
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", "enroll-pending:"+cur.OrgID.String()); err != nil {
+			return agentproto.EnrollAccepted{}, err
+		}
 		n, err := q.CountPendingEnrollmentRequests(ctx, sqlcgen.CountPendingEnrollmentRequestsParams{OrgID: cur.OrgID, ExpiresAt: now})
 		if err != nil {
 			return agentproto.EnrollAccepted{}, err
@@ -347,7 +351,8 @@ func (s *Service) decide(ctx context.Context, orgID, id uuid.UUID, status, actio
 	req, err := s.Q.DecideEnrollmentRequest(ctx, sqlcgen.DecideEnrollmentRequestParams{ID: id, OrgID: orgID, Status: status,
 		DecidedBy: actor, Now: now, ExpiresAt: now.Add(s.CurrentSettings(ctx).PendingTTL())})
 	if errors.Is(err, pgx.ErrNoRows) {
-		if _, gerr := s.Q.GetEnrollmentRequest(ctx, id); gerr == nil {
+		var one int
+		if gerr := s.Pool.QueryRow(ctx, "SELECT 1 FROM enrollment_requests WHERE id = $1 AND org_id = $2", id, orgID).Scan(&one); gerr == nil {
 			return conflict("This enrolment request was already decided or has expired.")
 		}
 		return notFound("enrolment request %s", id)

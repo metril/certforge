@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -162,7 +163,7 @@ func TestEnrollmentReject(t *testing.T) {
 	e := newEnrolEnv(t, Settings{})
 	ctx := context.Background()
 	en, acc, _ := e.submit(t, "web-1")
-	if err := e.svc.RejectEnrollment(ctx, uuid.New(), acc.ID); kindOf(err) != KindConflict && kindOf(err) != KindNotFound {
+	if err := e.svc.RejectEnrollment(ctx, uuid.New(), acc.ID); kindOf(err) != KindNotFound {
 		t.Fatalf("other org: %v", err)
 	}
 	if err := e.svc.RejectEnrollment(ctx, e.org, acc.ID); err != nil {
@@ -322,5 +323,33 @@ func TestEnrollmentUnknownTokenAndRevokedClient(t *testing.T) {
 	}
 	if _, err := e.svc.SubmitEnrollment(ctx, tok, csr, agentproto.Facts{}, ""); kindOf(err) != KindUnauthorized {
 		t.Fatalf("expired token: %v", err)
+	}
+}
+
+// Concurrent submissions at the cap must not overshoot it.
+func TestEnrollmentPendingCapConcurrent(t *testing.T) {
+	e := newEnrolEnv(t, Settings{})
+	ctx := context.Background()
+	for i := range MaxPendingEnrollments - 2 {
+		e.submit(t, fmt.Sprintf("web-%d", i))
+	}
+	var wg sync.WaitGroup
+	for i := range 6 {
+		en, err := e.svc.CreateClient(ctx, e.org, fmt.Sprintf("racer-%d", i), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		csr, _ := enrollCSR(t)
+		tok := e.tokenFor(t, en)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = e.svc.SubmitEnrollment(ctx, tok, csr, agentproto.Facts{}, "")
+		}()
+	}
+	wg.Wait()
+	list, err := e.svc.ListPendingEnrollments(ctx, []uuid.UUID{e.org})
+	if err != nil || len(list) != MaxPendingEnrollments {
+		t.Fatalf("pending = %d, want exactly %d (%v)", len(list), MaxPendingEnrollments, err)
 	}
 }

@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { CircleX, Hourglass, LoaderCircle } from 'lucide-react';
@@ -26,13 +26,15 @@ function isExpired(c: Pick<Client, 'status' | 'online'> | undefined, expiresAt: 
 /** Live "waiting for agent": polls every 2 s until the client is active and
  * online (connected, or pulled recently), then offers the next step. */
 export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, onNewToken }: Props) {
+  // Set below each render; read by the poll interval so an approval made after the token's expiry still shows Online.
+  const hasRequest = useRef(false);
   const q = useQuery({
     ...clientQuery(orgId, clientId),
     refetchInterval: (query) => {
       const c = query.state.data;
       // Expiry is evaluated fresh (Date.now()) on every poll, so it stops
       // as soon as the token passes, without waiting on a separate ticker.
-      if (isExpired(c, expiresAt)) return false;
+      if (isExpired(c, expiresAt) && !hasRequest.current) return false;
       return livePoll(!(c?.status === 'active' && c.online));
     },
   });
@@ -46,6 +48,7 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
     refetchInterval: livePoll(true),
   });
   const request = approvals.data?.find((r) => r.clientId === clientId && !requestExpired(r));
+  if (request) hasRequest.current = true; // sticky: also covers the poll after an approval
   const flow = useApprovalFlow(orgId);
   // Nothing about the query changes at the exact moment the token expires,
   // so a single timeout forces one more render then, to flip the border
@@ -59,7 +62,7 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
   }, [expiresAt]);
   const c = q.data;
   const online = c?.status === 'active' && c.online;
-  const expired = isExpired(c, expiresAt);
+  const expired = isExpired(c, expiresAt) && !hasRequest.current;
 
   return (
     <section
@@ -72,7 +75,7 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
           <Hourglass className="size-4 text-pending" aria-hidden />
           <span className="text-sm">Agent enrolled. Awaiting approval.</span>
           <HelpTip id="enrol.awaiting" />
-          <Button onClick={() => flow.review(request.id)}>Review</Button>
+          <Button onClick={() => flow.review(request)}>Review</Button>
         </div>
       ) : online ? (
         <>
@@ -109,7 +112,7 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
           <HelpTip id="client.waiting" />
         </p>
       )}
-      {flow.dialogs(approvals.data ?? [])}
+      {flow.dialogs()}
       {q.isError && (
         <p role="alert" className="text-sm">
           {errorMessage(q.error)}

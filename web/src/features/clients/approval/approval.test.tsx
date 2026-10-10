@@ -142,3 +142,37 @@ it('Enrol page: an enrolled agent shows Awaiting approval with Review', async ()
   await user.click(within(panel).getByRole('button', { name: 'Review' }));
   expect(await screen.findByRole('dialog', { name: /Approve agent/ })).toBeInTheDocument();
 });
+
+it('keeps the dialog open and shows the handled message when a refetch drops the request', async () => {
+  server.use(http.post(url('/orgs/org-1/enrollment-requests/:id/approve'), () => problem(409, 'already decided')));
+  const { user } = renderRoute('/o/acme/clients');
+  await user.click(await screen.findByRole('button', { name: 'Review' }));
+  await screen.findByRole('dialog', { name: /Approve agent/ });
+  requests = [];
+  // Wait for a poll to drop it from the list; the dialog must stay.
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Awaiting approval' })).toBeNull(), { timeout: 3000 });
+  const open = await screen.findByRole('dialog', { name: /Approve agent/ });
+  await user.click(within(open).getByRole('switch', { name: /Code matches/ }));
+  await user.click(within(open).getByRole('button', { name: 'Approve' }));
+  expect(await within(open).findByRole('alert')).toHaveTextContent('Someone else already handled this request.');
+});
+
+it('Enrol page: keeps polling past the token expiry while approval is pending, then shows Online', async () => {
+  let active = false;
+  server.use(
+    http.post(url('/orgs/org-1/clients'), () =>
+      HttpResponse.json({ client: makeClient({ id: 'cl-9', name: 'edge-1', status: 'pending', online: false, connected: false }), token: 'cf1.x.y.z', expiresAt: new Date(Date.now() - 1000).toISOString(), agentUrl: 'https://cf.lan:8443' }, { status: 201 }),
+    ),
+    http.get(url('/orgs/org-1/clients/cl-9'), () =>
+      HttpResponse.json(active ? makeClient({ id: 'cl-9', name: 'edge-1' }) : makeClient({ id: 'cl-9', name: 'edge-1', status: 'pending', online: false, connected: false })),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/clients/new');
+  await user.type(await screen.findByLabelText('Name'), 'edge-1');
+  await user.click(screen.getByRole('button', { name: 'Create token' }));
+  const panel = await screen.findByRole('region', { name: 'Agent connection' });
+  expect(await within(panel).findByText('Agent enrolled. Awaiting approval.')).toBeInTheDocument();
+  requests = [];
+  active = true;
+  expect(await within(panel).findByText('Online', {}, { timeout: 6000 })).toBeInTheDocument();
+}, 10_000);
