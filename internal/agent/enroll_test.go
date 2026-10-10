@@ -56,6 +56,7 @@ type fakeServer struct {
 	wsStatus   int                                  // non-zero: refuse the upgrade with this status
 	onWS       func(ctx context.Context, c *fakeWS) // runs after the agent's hello
 	assignGate chan struct{}                        // non-nil: GET assignments blocks until it is closed
+	assignFail int                                  // the next GET assignments requests fail with 500
 	assignHits int                                  // GET assignments requests served or blocked
 	deny       bool                                 // GET assignments answers 401 "no client certificate"
 
@@ -173,7 +174,19 @@ func newFakeServer(t *testing.T) *fakeServer {
 			return
 		}
 		var gate chan struct{}
-		f.with(func() { f.assignHits++; gate = f.assignGate })
+		var fail bool
+		f.with(func() {
+			f.assignHits++
+			gate = f.assignGate
+			if f.assignFail > 0 {
+				f.assignFail--
+				fail = true
+			}
+		})
+		if fail {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
 		if gate != nil {
 			select {
 			case <-gate:

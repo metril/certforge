@@ -166,6 +166,9 @@ func (t *secureTransport) handshake(req *http.Request, au, keyID string) (*clien
 	if err != nil {
 		return nil, err
 	}
+	if isBusy(resp) {
+		return nil, errBusy
+	}
 	if err := t.verifyResponse(resp, raw, nonce); err != nil {
 		return nil, err // unsigned: a transport problem, whatever the status says
 	}
@@ -229,7 +232,7 @@ func (t *secureTransport) exchange(req *http.Request, body []byte, au string, cs
 	code := hr.Header.Get(agentproto.HeaderError)
 	// An unsigned 429 or 503 is the server shedding load. It says nothing about
 	// the client, so it is only a hint to retry later.
-	if (hr.StatusCode == http.StatusTooManyRequests || hr.StatusCode == http.StatusServiceUnavailable) && hr.Header.Get(agentproto.HeaderSignerCert) == "" {
+	if isBusy(hr) {
 		return nil, false, errBusy
 	}
 	if err := t.verifyResponse(hr, raw, nonce); err != nil {
@@ -270,6 +273,11 @@ func readResponse(resp *http.Response) ([]byte, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+// isBusy reports an unsigned 429 or 503.
+func isBusy(r *http.Response) bool {
+	return (r.StatusCode == http.StatusTooManyRequests || r.StatusCode == http.StatusServiceUnavailable) && r.Header.Get(agentproto.HeaderSignerCert) == ""
 }
 
 // errBusy is an unsigned 429 or 503: retry after a pause.

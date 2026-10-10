@@ -167,6 +167,10 @@ func (a *Agent) renew(ctx context.Context) error {
 	return nil
 }
 
+// reconcileRetry is the first pause before a failed reconcile is retried; it
+// doubles up to five minutes. A var so tests can shorten it.
+var reconcileRetry = 5 * time.Second
+
 func (a *Agent) reconcile(ctx context.Context, api API) (agentproto.Report, error) {
 	return (&Reconciler{API: api, Deployer: a.Deployer, ID: a.ID, Log: a.Log}).Reconcile(ctx)
 }
@@ -349,17 +353,25 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 	workers.Add(1)
 	go func() {
 		defer workers.Done()
+		var retry <-chan time.Time // set after a failure: try again, backing off
+		delay := reconcileRetry
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-wake:
+				delay = reconcileRetry // a fresh request starts over
+			case <-retry:
 			}
+			retry = nil
 			rep, err := a.reconcile(parent, cl)
 			if err != nil {
-				a.Log.Warn("reconcile failed", "err", err)
+				a.Log.Warn("reconcile failed; retrying", "err", err, "in", delay)
+				retry = time.After(delay)
+				delay = min(delay*2, 5*time.Minute)
 				continue
 			}
+			delay = reconcileRetry
 			if err := send(agentproto.DeployResult{Report: rep}); err != nil {
 				a.Log.Warn("deploy result not sent", "err", err)
 			}

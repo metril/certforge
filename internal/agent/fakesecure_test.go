@@ -36,6 +36,8 @@ type fakeProtocol struct {
 	// handshakes counts accepted handshakes; dropSessions forgets every
 	// session once (the server restarted).
 	handshakes int
+	// busyHandshakes answers that many handshakes with an unsigned 429.
+	busyHandshakes int
 
 	// enrol serves every /agent/v1/enroll* request (nil: 404).
 	enrol http.HandlerFunc
@@ -57,6 +59,16 @@ func (p *fakeProtocol) sign(w http.ResponseWriter, r *http.Request, status int, 
 }
 
 func (p *fakeProtocol) handshake(w http.ResponseWriter, r *http.Request) {
+	p.mu.Lock()
+	busy := p.busyHandshakes > 0
+	if busy {
+		p.busyHandshakes--
+	}
+	p.mu.Unlock()
+	if busy {
+		http.Error(w, "slow down", http.StatusTooManyRequests)
+		return
+	}
 	body, _ := io.ReadAll(r.Body)
 	der, _ := base64.StdEncoding.DecodeString(r.Header.Get(agentproto.HeaderAgentCert))
 	leaf, err := x509.ParseCertificate(der)
