@@ -333,6 +333,9 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 				err = errors.Join(mErr, err)
 			}
 		}
+		if h := router.Hint(err); h != "" {
+			err = fmt.Errorf("%w (hint: %s)", err, h)
+		}
 		return nil, eff, err
 	}
 	if iss == nil {

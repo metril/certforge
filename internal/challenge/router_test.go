@@ -538,3 +538,42 @@ func TestMarkFailedReportsOnceWithoutHoldingLock(t *testing.T) {
 		t.Fatalf("Timeout = %v, want fail-fast", got)
 	}
 }
+
+func TestRouterHints(t *testing.T) {
+	setSettle(t, 0)
+	// REFUSED from lego's default check is remembered.
+	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{rule(t, "example.com", &recProvider{})}, nil)
+	refused := func(string, string) (bool, error) {
+		return false, errors.New("authoritative nameservers: NS ns1:53 returned REFUSED for _acme-challenge.example.com.")
+	}
+	_, _ = r.PreCheck("example.com", "_acme-challenge.example.com.", "v", refused)
+	if h := r.Hint(errors.New("x")); !strings.Contains(h, "intercept DNS") || !strings.Contains(h, "cloudflare-dns.com/dns-query") {
+		t.Fatalf("hint = %q", h)
+	}
+	if h := r.Hint(errors.New("acme: time limit exceeded: last error: ... returned REFUSED")); !strings.Contains(h, "intercept DNS") {
+		t.Fatalf("hint from error text = %q", h)
+	}
+
+	// Timeout while using configured resolvers.
+	addr := startDNS(t, map[string]string{})
+	prov := &recProvider{timeout: 20 * time.Millisecond}
+	ru := rule(t, "example.com", prov)
+	ru.Resolvers = []string{addr}
+	sink := &sinkRec{}
+	r2 := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, sink)
+	clock := routerTestNow
+	r2.now = func() time.Time { return clock }
+	_, _ = r2.PreCheck("example.com", "_acme-challenge.example.com.", "v", nil)
+	clock = clock.Add(time.Second)
+	_, _ = r2.PreCheck("example.com", "_acme-challenge.example.com.", "v", nil)
+	last := sink.calls[len(sink.calls)-1]
+	if last.status != StepFailed || !strings.Contains(last.message, "negative answer") {
+		t.Fatalf("last step = %+v", last)
+	}
+	if h := r2.Hint(errors.New("acme: time limit exceeded")); !strings.Contains(h, "negative answer") {
+		t.Fatalf("hint = %q", h)
+	}
+	if h := NewRouter(context.Background(), nil, nil, nil).Hint(errors.New("boom")); h != "" {
+		t.Fatalf("unexpected hint %q", h)
+	}
+}

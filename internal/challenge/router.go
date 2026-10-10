@@ -53,6 +53,41 @@ type Router struct {
 	failedStep  map[string]bool      // "challenge "+name already reported StepFailed
 	anyFailed   bool                 // at least one PreCheck has failed fast
 	budgetStart map[string]time.Time // name -> when its per-name propagation budget started
+	refused     bool                 // a propagation check reported "returned REFUSED"
+	usedResolv  bool                 // CheckTXT ran against configured resolvers
+}
+
+const (
+	hintRefused  = "network appears to intercept DNS; set Settings → Issuance → Resolvers (e.g. https://cloudflare-dns.com/dns-query)"
+	hintNegCache = "resolver may be caching a negative answer; use DoH resolvers or raise Propagation wait"
+)
+
+// Hint returns advice for a failed issuance whose error is err, based on
+// what the propagation checks saw, or "" when there is none.
+func (r *Router) Hint(err error) string {
+	r.mu.Lock()
+	refused, used := r.refused, r.usedResolv
+	r.mu.Unlock()
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	}
+	switch {
+	case refused || strings.Contains(msg, "returned REFUSED"):
+		return hintRefused
+	case used && (strings.Contains(msg, "time limit exceeded") || errors.Is(err, ErrPropagationTimeout)):
+		return hintNegCache
+	}
+	return ""
+}
+
+// noteCheckErr remembers a REFUSED answer from a propagation check.
+func (r *Router) noteCheckErr(err error) {
+	if err != nil && strings.Contains(err.Error(), "returned REFUSED") {
+		r.mu.Lock()
+		r.refused = true
+		r.mu.Unlock()
+	}
 }
 
 // NewRouter binds rules to the certificate names of one issuance. ctx is used
@@ -489,7 +524,14 @@ func (r *Router) preCheck(name string, rule *Rule, fqdn, value string, check fun
 		return true, nil
 	}
 	if r.budgetExceeded(name, rule) {
-		r.markFailed(name, fmt.Errorf("%w: %s elapsed", ErrPropagationTimeout, ruleTimeout(rule)))
+		cause := fmt.Errorf("%w: %s elapsed", ErrPropagationTimeout, ruleTimeout(rule))
+		r.mu.Lock()
+		used := r.usedResolv
+		r.mu.Unlock()
+		if h := r.Hint(cause); h != "" && (used || r.refusedSeen()) {
+			cause = fmt.Errorf("%w; %s", cause, h)
+		}
+		r.markFailed(name, cause)
 		return true, nil
 	}
 	if rule.AliasZone != "" {
@@ -506,9 +548,20 @@ func (r *Router) preCheck(name string, rule *Rule, fqdn, value string, check fun
 		if r.settling(name) {
 			return false, nil
 		}
+		r.mu.Lock()
+		r.usedResolv = true
+		r.mu.Unlock()
 		return CheckTXT(r.ctx, rule.Resolvers, fqdn, value)
 	}
-	return check(fqdn, value)
+	ok, err := check(fqdn, value)
+	r.noteCheckErr(err)
+	return ok, err
+}
+
+func (r *Router) refusedSeen() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.refused
 }
 
 // markFailed records StepFailed for name's step once; later calls for the
