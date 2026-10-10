@@ -314,7 +314,39 @@ func startDNS(t *testing.T, records map[string]string) string {
 	return pc.LocalAddr().String()
 }
 
+func setSettle(t *testing.T, d time.Duration) {
+	t.Helper()
+	old := SettleDelay
+	SettleDelay = d
+	t.Cleanup(func() { SettleDelay = old })
+}
+
+func TestRouterPreCheckSettleDelay(t *testing.T) {
+	setSettle(t, 20*time.Second)
+	addr := startDNS(t, map[string]string{"_acme-challenge.example.com.": "good"})
+	ru := rule(t, "example.com", &recProvider{})
+	ru.Resolvers = []string{addr}
+	r := NewRouter(context.Background(), []string{"example.com"}, []Rule{ru}, nil)
+	clock := routerTestNow
+	r.now = func() time.Time { return clock }
+	legoCheck := func(string, string) (bool, error) { return false, errors.New("must not run") }
+
+	ok, err := r.PreCheck("example.com", "_acme-challenge.example.com.", "good", legoCheck)
+	if ok || err != nil {
+		t.Fatalf("inside settle delay: %v %v", ok, err)
+	}
+	clock = clock.Add(19 * time.Second)
+	if ok, _ := r.PreCheck("example.com", "_acme-challenge.example.com.", "good", legoCheck); ok {
+		t.Fatal("still inside settle delay")
+	}
+	clock = clock.Add(2 * time.Second)
+	if ok, err := r.PreCheck("example.com", "_acme-challenge.example.com.", "good", legoCheck); !ok || err != nil {
+		t.Fatalf("after settle delay: %v %v", ok, err)
+	}
+}
+
 func TestRouterPreCheckUsesRuleResolvers(t *testing.T) {
+	setSettle(t, 0)
 	addr := startDNS(t, map[string]string{"_acme-challenge.example.com.": "good"})
 	ru := rule(t, "example.com", &recProvider{})
 	ru.Resolvers = []string{addr}

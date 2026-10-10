@@ -413,6 +413,19 @@ func (r *Router) startBudget(name string) {
 	}
 }
 
+// SettleDelay is how long a name using configured recursive resolvers waits,
+// after its propagation budget starts, before the first query. Variable so
+// tests can shorten it.
+var SettleDelay = 20 * time.Second
+
+// settling reports whether name is still inside its settle delay.
+func (r *Router) settling(name string) bool {
+	r.mu.Lock()
+	start, ok := r.budgetStart[name]
+	r.mu.Unlock()
+	return ok && r.now().Sub(start) < SettleDelay
+}
+
 // budgetExceeded reports whether name's per-name propagation budget (rule's
 // ruleTimeout) has elapsed since startBudget was called for it.
 func (r *Router) budgetExceeded(name string, rule *Rule) bool {
@@ -488,6 +501,11 @@ func (r *Router) preCheck(name string, rule *Rule, fqdn, value string, check fun
 		}
 	}
 	if len(rule.Resolvers) > 0 {
+		// Querying a recursive resolver before the provider has published the
+		// record can cache a negative answer for the zone's SOA minimum.
+		if r.settling(name) {
+			return false, nil
+		}
 		return CheckTXT(r.ctx, rule.Resolvers, fqdn, value)
 	}
 	return check(fqdn, value)
