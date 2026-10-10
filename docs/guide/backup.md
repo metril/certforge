@@ -82,7 +82,7 @@ Restore runs from the command line, with the server stopped. There is no restore
    docker compose run --rm -T certforge restore --in - --yes < manual.cfbak
    ```
 
-6. Start the server with `certforge serve`. It applies any newer migrations and carries on.
+6. Start the server with `certforge serve`. It applies any newer migrations and carries on. Restore loads every archive at database schema version 24 or later, even an older archive, and refuses a database that is already migrated past the archive's version.
 
 Restore loads every table in one transaction and checks each table's row count and hash against the archive. Before committing it checks that the restored root secret and the key canary match your configured key. If anything is wrong, the whole restore rolls back and no data is loaded. On success it adds `restore.completed` to the audit log.
 

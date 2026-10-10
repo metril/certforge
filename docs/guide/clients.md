@@ -115,7 +115,7 @@ Bounds and the remaining agent settings are in [Configuration](../reference/conf
 
 **The token is refused as invalid, used or expired.** Tokens work once and expire. Choose **Re-enrol** for a new one.
 
-**Nothing appears under Awaiting approval.** You need `clients:write` to see the card. The agent may also be unable to reach the server: read its log, and see [Agents: Troubleshooting](agents.md#troubleshooting).
+**Nothing appears under Awaiting approval.** You need `clients:write` to see the card. The agent may also be unable to reach the server: read its log, and see [Agents: Troubleshooting](agents.md#common-problems).
 
 **The agent says an administrator rejected it, or the request expired.** Issue a new token with **Re-enrol** or **New token**.
 

@@ -49,7 +49,7 @@ CertForge creates the TXT record through your DNS provider's API, waits for it t
 1. Open **Issuers → DNS credentials** and select **Add credential**.
 2. In **Choose DNS provider**, search by name, code or alias. The list has **Credentials in this org**, **Recently used**, **Common** and **All providers**. See the [provider catalogue](../reference/dns-providers.md).
 3. Enter a **Name** and the provider's fields. If the provider accepts several kinds of credential, choose one under **Authenticate with**. Rarely used fields sit under **Advanced**.
-4. Select **Save credential**.
+4. Select **Save credential**. A credential that relies on the server's own cloud identity (no fields, `AWS_ASSUME_ROLE_ARN`, `AWS_PROFILE` or an Azure method other than `env`) needs a global administrator; see [Security model](../operations/security-model.md#dns-ambient).
 
 You can also select **Add credential** inside a rule's credential picker without leaving the wizard.
 

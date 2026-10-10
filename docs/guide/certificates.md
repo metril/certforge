@@ -65,7 +65,7 @@ When the effective CA is a [Built-in CA or Vault PKI](issuers.md), a certificate
 
 **Certificates** lists the org's certificates. Each row shows the name (with a muted line: common name, CA, "N grants", other names), **Status**, **Validity** (a bar plus days left) and **Next renewal**. Below tablet width the rows become cards.
 
-- Filter with **Status** (**All**, **Active**, **Pending**, **Failed**, **Expired**, **Revoked**) and the **Search certificates** box, which matches the certificate name or any of its names. Both are kept in the URL.
+- Filter with **Status** (**All**, **Active**, **Pending**, **Failed**, **Expired**, **Revoked**) and the **Search certificates** box, which matches the certificate name or any of its names. Both are kept in the URL. CertForge does not give a certificate the **Revoked** status when you revoke a version, so that filter normally shows nothing; revoked versions are marked in **Versions**.
 - Sort by **Name**, **Validity** or **Next renewal** from the column headers.
 - **Save view** stores the current filters under a name; it appears as a button beside it, and `x` deletes it. Views live in your browser only.
 - **Load more** fetches the next page.
