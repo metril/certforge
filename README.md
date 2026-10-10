@@ -11,7 +11,7 @@ You need Docker with Compose. Run these from a checkout of this repository:
 ```bash
 mkdir -p deploy/secrets
 head -c 32 /dev/urandom | base64 > deploy/secrets/kek   # the encryption key: back it up, it decrypts every secret
-chown 65532 deploy/secrets/kek && chmod 0400 deploy/secrets/kek
+sudo chown 65532 deploy/secrets/kek && chmod 0400 deploy/secrets/kek
 docker compose -f deploy/compose.yaml up -d --build
 curl -s localhost:8080/readyz
 ```
@@ -23,7 +23,7 @@ New agents wait for an administrator to approve them (**Settings → Agents → 
 To run a published image instead of building, pin a version:
 
 ```bash
-CF_VERSION=0.8.0 docker compose -f deploy/compose.release.yaml up -d
+CF_VERSION=0.8.0 docker compose -f deploy/compose.release.yaml up -d  # x-release-please-version
 ```
 
 Images are `ghcr.io/metril/certforge` and `ghcr.io/metril/certforge-agent`. The [Releases page](https://github.com/metril/certforge/releases) has `certforge-agent` and `cfctl` binaries.

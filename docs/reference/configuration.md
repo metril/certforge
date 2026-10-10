@@ -33,7 +33,7 @@ head -c 32 /dev/urandom | base64
 
 Store a copy outside the server before you issue anything. Losing the key means losing every private key and secret in the database, and every backup. The server derives a key id from the key, stores it with every encrypted row, and checks a sealed root secret and a canary at startup. After the first boot a wrong key cannot decrypt the root secret and the server refuses to start. `/readyz` reports `kek: failed` in the narrower case where the root decrypts but the canary does not. Only a fresh database accepts whatever key it is first given. See [Security model](../operations/security-model.md) for how the key is used.
 
-In a container, a `CF_KEK_FILE` must be readable by uid 65532: `chown 65532 kek && chmod 0400 kek`. The contents of every `_FILE` variable are trimmed of surrounding whitespace.
+In a container, a `CF_KEK_FILE` must be readable by uid 65532: `sudo chown 65532 kek && chmod 0400 kek`. The contents of every `_FILE` variable are trimmed of surrounding whitespace.
 
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
@@ -70,22 +70,7 @@ During a key rotation, the old key stays configured so rows that re-encryption h
 
 ## Agent environment variables
 
-Read by `certforge-agent` on the client host. Meaning, defaults and the hook environment are explained in [agent.md](agent.md); this is the complete list.
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `CF_AGENT_DATA` | `/data` | Directory for the agent's identity and state. |
-| `CF_AGENT_TOKEN` | – | One-time enrolment token. |
-| `CF_AGENT_TOKEN_FILE` | – | Path to a file holding the token. The agent waits if the file does not exist yet. |
-| `CF_WRITE_ALLOW` | empty (no writes) | Colon-separated absolute directories the agent may write to. `/` is refused. |
-| `CF_HOOK_ALLOW` | empty (no hooks) | Colon-separated absolute paths of executables a hook may run. |
-| `CF_AGENT_PULL_INTERVAL` | `0` | Pull-mode period, a Go duration of at least `1m`, or `0` for socket only. |
-| `CF_AGENT_HTTP01_LISTEN` | off | `host:port` to serve http-01 challenges on. |
-| `CF_AGENT_TLSALPN_LISTEN` | off | `host:port` to serve tls-alpn-01 challenges on. |
-| `CF_AGENT_TRANSPORT` | `auto` | `auto`, `mtls` or `proxy`: which TLS roots the agent trusts for the server. |
-| `SSL_CERT_FILE` | system | Extra trust root, for example the CA of a private reverse proxy. |
-
-A hook also receives `CF_GRANT_ID`, `CF_CERTIFICATE_NAME`, `CF_VERSION_ID`, `CF_FINGERPRINT` and `CF_FILES` (colon-separated paths).
+The agent's variables, including `SSL_CERT_FILE`, are listed in [Agent reference](agent.md#environment).
 
 ## cfctl environment variables
 
@@ -184,7 +169,7 @@ The defaults match Let's Encrypt's published limits; a custom or staging CA may 
 
 | Field | Default | Bounds | Meaning |
 |---|---|---|---|
-| **Agent URL** (`agentUrl`) | `https://<CF_BASE_URL host>:8443` | `https://host[:port]`, no path | Where agents connect. Written into every enrolment token. When agents go through a proxy, enter the proxy's URL. Its host is always on the listener certificate. Only new enrolments pick up a change. |
+| **Agent URL** (`agentUrl`) | `https://<CF_BASE_URL host>:8443` | `https://host[:port]`, no path | Where agents connect. Written into every enrolment token. When agents go through a proxy, enter the proxy's URL. Its host is always on the listener certificate. Enrolled agents keep signing for the old host: add it to Listener names before changing the URL, or re-enrol them. |
 | **Listener names** (`listenerNames`) | the `CF_BASE_URL` host and `localhost` | up to 20 entries, 253 characters each, DNS names or IPs | Extra names on the agent listener's certificate. Saving this section re-issues the certificate at once. |
 | **Enrolment token lifetime (hours)** (`tokenTtlHours`) | 24 | 1–720 | How long a new client's one-time token stays usable. |
 | **Require approval** (`requireApproval`) | on | – | An agent that presents a valid token waits for an administrator to approve its verification code. Off means a valid token alone enrols the agent. See [Clients](../guide/clients.md#approval). |

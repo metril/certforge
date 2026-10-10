@@ -76,7 +76,7 @@ Use this when agents reach CertForge through a reverse proxy that terminates TLS
 
 1. **Choose the public name.** For example `certforge.example.com`. The proxy needs a TLS certificate for it. Agents must trust that certificate (step 5).
 2. **Point the proxy at the HTTP port.** Forward to the server's HTTP listener (`CF_LISTEN_HTTP`, default port 8080). That port serves `/agent/v1` as well as the UI. You do not need to publish the agent port (8443).
-3. **Set the Agent URL.** In **Settings → Agents**, set **Agent URL** (`agents.agentUrl`) to the proxy's address with no path, for example `https://certforge.example.com`. Every new token carries this address. Agents that are already enrolled keep the address they enrolled with: re-enrol them to move them ([Clients](clients.md#re-enrol-a-client)). The host of **Agent URL**, or of `CF_BASE_URL`, must match the name agents use.
+3. **Set the Agent URL.** In **Settings → Agents**, set **Agent URL** (`agents.agentUrl`) to the proxy's address with no path, for example `https://certforge.example.com`. Every new token carries this address. Enrolled agents keep signing for the address they enrolled with, and the server keeps accepting it only while its host is in **Listener names**. So before you change the Agent URL, add the old host to **Listener names**, or re-enrol the agents ([Clients](clients.md#re-enrol-a-client)). The host of **Agent URL**, or of `CF_BASE_URL`, must match the name agents use.
 4. **Configure the proxy.** It must forward the `Host` header unchanged, allow WebSocket upgrades, pass the request and response headers untouched (the agent adds `Signature`, `Signature-Input`, `Content-Digest` and `Cf-*` headers), and accept request bodies of up to 8 MiB.
 
    nginx:

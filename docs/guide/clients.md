@@ -107,7 +107,7 @@ Until the agent enrols again, its old certificate is refused and its connection 
 | **Enrolment token lifetime (hours)** (`agents.tokenTtlHours`) | How long a new token works. | 24 |
 | **Require approval** (`agents.requireApproval`) | Agents wait for an administrator. | on |
 | **Approval window (hours)** (`agents.pendingTtlHours`) | How long a request waits, and how long an approved agent has to collect. | 24 |
-| **Agent URL** (`agents.agentUrl`) | The address put into every new token. Only new tokens change; enrolled agents keep theirs. | `https://<host of CF_BASE_URL>:8443` |
+| **Agent URL** (`agents.agentUrl`) | The address put into every new token. Only new tokens change. Before changing it, add the old host to Listener names, or re-enrol the agents. | `https://<host of CF_BASE_URL>:8443` |
 
 Bounds and the remaining agent settings are in [Configuration](../reference/configuration.md#agents).
 

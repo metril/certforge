@@ -20,7 +20,7 @@ CertForge stores everything in Postgres and encrypts private keys and secrets wi
    ```bash
    mkdir -p deploy/secrets
    head -c 32 /dev/urandom | base64 > deploy/secrets/kek
-   chown 65532 deploy/secrets/kek && chmod 0400 deploy/secrets/kek
+   sudo chown 65532 deploy/secrets/kek && chmod 0400 deploy/secrets/kek
    ```
 
    Copy `deploy/secrets/kek` somewhere safe now. To keep the key in Vault instead of a file, see [Vault](vault.md#transit-kek).
@@ -34,7 +34,7 @@ CertForge stores everything in Postgres and encrypts private keys and secrets wi
    Or run a published image. Pin a version in production:
 
    ```bash
-   CF_VERSION=0.8.0 docker compose -f deploy/compose.release.yaml up -d
+   CF_VERSION=0.8.0 docker compose -f deploy/compose.release.yaml up -d  # x-release-please-version
    ```
 
 4. Check that the server is ready:
@@ -86,10 +86,11 @@ The certificate opens on its own page and turns **Active** when issuance finishe
 
 Install the agent on the host that needs the certificate, then grant the certificate to that client.
 
-1. Open **Clients** and select **Enrol client**. Enter a name, choose **Create token**, and copy the `docker run` line or Compose file.
-2. Run it on the host.
-3. The agent connects and the panel shows **Agent enrolled. Awaiting approval.** Approval is on by default: select **Review**, compare the verification code with the agent's log, and approve. See [Clients](clients.md#approval).
-4. On the client, select **Grant certificate** and pick the certificate and where its files go. See [Delivery](delivery.md).
+1. Make sure agents can reach the server by name: set `CF_BASE_URL`, or **Settings → Agents → Agent URL**, to an address reachable from the agent host. Every token carries it.
+2. Open **Clients** and select **Enrol client**. Enter a name, choose **Create token**, and copy the `docker run` line or Compose file.
+3. Run it on the host.
+4. The agent connects and the panel shows **Agent enrolled. Awaiting approval.** Approval is on by default: select **Review**, compare the verification code with the agent's log, and approve. See [Clients](clients.md#approval).
+5. On the client, select **Grant certificate** and pick the certificate and where its files go. See [Delivery](delivery.md).
 
 ## Common problems
 
