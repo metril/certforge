@@ -440,7 +440,7 @@ export const metaSigners: ProviderSchema[] = [
 // render against; it no longer mirrors the real hyperone.json (5a-facts.md:
 // hyperone is supported as of 5A Task 12, with an inline HYPERONE_PASSPORT
 // secret field, the same file-backed shape transip already has — see
-// `dns-providers.md#file-backed-credentials`).
+// `reference/dns-providers.md`).
 // Fix round 1 (preflight A12): every real provider config property is
 // `type: 'string'` (the API's DNSCredential.config is `{[key: string]: string}`);
 // an `integer` field here (the original `ttl` fixture) is a shape the API

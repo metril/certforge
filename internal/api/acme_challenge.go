@@ -22,7 +22,7 @@ var wellKnownToken = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 // (challenge.HTTPTokens, server-side http-01; see NewServerHTTP01).
 // Unauthenticated by design (RFC 8555 has no concept of a session here);
 // mounted on the main listener outside /api/v1 and not in the OpenAPI
-// document (documented in docs/api.md instead).
+// document (documented in docs/reference/api.md instead).
 func wellKnownACMEChallenge(tokens *challenge.HTTPTokens) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := chi.URLParam(r, "*")

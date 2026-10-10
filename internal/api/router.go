@@ -38,13 +38,13 @@ func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(recoverer(d.Log), metrics.Middleware, securityHeaders)
 	// Public, unauthenticated, outside /api/v1 and out of the OpenAPI
-	// document (docs/api.md instead); registered before the SPA fallback so
+	// document (docs/reference/api.md instead); registered before the SPA fallback so
 	// it never falls through to index.html. A wildcard, not {token}, so a
 	// token containing "/" (or any other extra path segment) reaches the
 	// handler to be rejected as 404 rather than being routed to the SPA.
 	r.Get("/.well-known/acme-challenge/*", wellKnownACMEChallenge(d.HTTPTokens))
 	// Public, unauthenticated CRL routes (Shared contract): outside
-	// /api/v1 and out of the OpenAPI document, documented in docs/api.md
+	// /api/v1 and out of the OpenAPI document, documented in docs/reference/api.md
 	// instead, same as the ACME challenge route above. d.Issuance is nil
 	// only in narrow unit-test fixtures that never hit these routes.
 	if d.Issuance != nil {
@@ -71,7 +71,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/healthz", s.healthz)
 	r.Get("/readyz", s.readyz)
 	// Public, unauthenticated Prometheus scrape target (Shared contract):
-	// not under /api/v1, outside the OpenAPI document (docs/api.md
+	// not under /api/v1, outside the OpenAPI document (docs/reference/api.md
 	// instead), same convention as the ACME challenge and CRL routes
 	// above. d.Metrics is nil only in narrow unit-test fixtures that never
 	// hit this route; the handler itself 404s while the "prometheus"

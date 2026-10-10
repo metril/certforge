@@ -1,8 +1,8 @@
 // Package backup implements CertForge's pure-Go encrypted backup archive
 // format: a REPEATABLE READ snapshot dump of every application table,
 // written as an AES-256-GCM encrypted, chunked stream (Write), and a
-// verified, transactional restore (Restore). See docs/adr/0018 for the
-// design and docs/operations.md#backup for the operator-facing format.
+// verified, transactional restore (Restore). See docs/internals/adr/0018 for the
+// design and docs/guide/backup.md#backup for the operator-facing format.
 package backup
 
 import (

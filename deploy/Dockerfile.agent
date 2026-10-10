@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags 
 
 # Runs as root on purpose: applying a layout's owner and group needs chown.
 # Run it with --user to drop that (owner/group are then ignored with one
-# warning). See docs/agent.md.
+# warning). See docs/reference/agent.md.
 FROM gcr.io/distroless/static-debian12
 COPY --from=build /out/certforge-agent /usr/local/bin/certforge-agent
 ENV CF_AGENT_DATA=/data

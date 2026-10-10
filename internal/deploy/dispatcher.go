@@ -164,7 +164,7 @@ func (d *Dispatcher) OnVersion(ctx context.Context, certID, versionID uuid.UUID)
 // in cmd/certforge/serve.go): final review finding 5, second half. A
 // rename does not create a new version, but a vault-kv target's default
 // path template embeds the certificate's own name ({name},
-// deploy.VaultKVConfig/docs/deploy-targets.md), so a live server grant of
+// deploy.VaultKVConfig/docs/guide/delivery.md), so a live server grant of
 // the renamed certificate must redeploy to write its material at the new
 // path. Nothing here needs q (tx-scoped, but this shape's rename commits
 // with no server-deploy-specific write of its own) — the returned nudge,

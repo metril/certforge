@@ -26,7 +26,7 @@ export function useCreateCertificate(orgId: string) {
   });
 }
 
-// Adaptation (controller ruling, docs/design.md "Certificate create
+// Adaptation (controller ruling, docs/internals/history/design.md "Certificate create
 // wizard"): PUT replaces a certificate's definition; the server queues a
 // new issuance only when names changed (internal/api/certificates.go
 // UpdateCertificate). Not in the Task 14 brief's code sample, which covers
@@ -276,7 +276,7 @@ export function useRevokeVersion(orgId: string, certId: string) {
   });
 }
 
-// Parts the server can render (docs/certificates.md "Downloads"): `combined`
+// Parts the server can render (docs/guide/certificates.md "Downloads"): `combined`
 // is fullchain + key in one file. `key` and `combined` both need
 // keys:export (DownloadSheet disables those chips without it).
 export type PemPart = 'cert' | 'chain' | 'fullchain' | 'key' | 'combined';

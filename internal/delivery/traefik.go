@@ -101,7 +101,7 @@ func SafeName(s string) string {
 // names, not (as an earlier version of this file did) every host on the
 // Traefik instance. It carries no entryPoints, so it listens on whichever
 // entrypoints Traefik's own static config defines rather than hard-coding
-// "web" — see docs/PROGRESS.md's Known gap for the one thing this does not
+// "web" — see docs/internals/history/PROGRESS.md's Known gap for the one thing this does not
 // pin down.
 func AcmeRouterFile(certName string, names []string, cfg TraefikConfig) *File {
 	if cfg.AcmeServiceURL == "" {

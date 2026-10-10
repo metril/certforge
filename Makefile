@@ -41,7 +41,7 @@ test-integration:
 lint:
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
 
-# Dev/test KEK. World-readable because the container runs as uid 65532; see docs/configuration.md for production.
+# Dev/test KEK. World-readable because the container runs as uid 65532; see docs/reference/configuration.md for production.
 deploy/secrets/kek:
 	mkdir -p deploy/secrets
 	head -c 32 /dev/urandom | base64 > $@

@@ -57,7 +57,7 @@ it('groups by registered domain in first-seen order, with IPs and invalid names 
   ]);
 });
 
-// Controller ruling (docs/design.md "Certificate create wizard"): grouping
+// Controller ruling (docs/internals/history/design.md "Certificate create wizard"): grouping
 // must cover a private zone (a `lab.local`-style TLD absent from the public
 // suffix list) grouping under itself, not just public-suffix zones.
 it('groups a private zone (lab.local) under itself, alongside a public one', () => {

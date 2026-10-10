@@ -232,7 +232,7 @@ func TestInfobloxCACertificateIsServerPath(t *testing.T) {
 }
 
 // TestGenerateDocsFileBackedCredentialsSection covers final-review finding
-// 6: docs/dns-providers.md must explain transip's and hyperone's
+// 6: docs/reference/dns-providers.md must explain transip's and hyperone's
 // file-backed credentials (internal/challenge.fileBacked) under a
 // "## File-backed credentials" heading, whose GitHub-slug anchor is
 // #file-backed-credentials.

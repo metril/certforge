@@ -119,7 +119,7 @@ func TestAgentCARotateRetire(t *testing.T) {
 // coverage above with an agent that holds an open WebSocket over a real
 // agenthub.Hub (TestAgentCARotateRetire uses a fake hub that only records
 // broadcasts), through the whole rotate → renew → retire chain: the live
-// socket receives the trust_bundle_update on rotate; docs/agent.md says a
+// socket receives the trust_bundle_update on rotate; docs/guide/agents.md says a
 // connected agent renews immediately on that message, which this test does
 // over REST with the old certificate (still trusted; only the listener's
 // own signing identity waits for retire) — after which the client's

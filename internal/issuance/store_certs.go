@@ -735,7 +735,7 @@ func lockRuleClientsInIDOrder(ctx context.Context, q *sqlcgen.Queries, orgID uui
 // capability r's method needs ("http-01" or "tls-alpn-01"), unless r is an
 // http-01 rule with its own webroot, which needs no agent listener
 // capability at all (the agent just writes the token under a path the
-// operator named; see docs/agent.md#challenge-serving).
+// operator named; see docs/guide/agents.md#challenge-serving).
 func checkRuleClientCapability(r challenge.RuleSpec, c sqlcgen.Client) error {
 	if r.Method == challenge.MethodHTTP01 && r.Webroot != "" {
 		return nil

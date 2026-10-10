@@ -1,5 +1,5 @@
 // Command certforge-agent installs CertForge certificates on a host; see
-// docs/agent.md.
+// docs/reference/agent.md.
 package main
 
 import (

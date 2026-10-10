@@ -1,6 +1,6 @@
 package challenge
 
-//go:generate go run ../../tools/gen-lego-schemas -out schemas -docs ../../docs/dns-providers.md
+//go:generate go run ../../tools/gen-lego-schemas -out schemas -docs ../../docs/reference/dns-providers.md
 
 import (
 	"embed"

@@ -12,9 +12,9 @@ it('falls back for unknown types and ignores empty input', () => {
 });
 
 it('links caa to its own docs anchor, not the general troubleshooting one', () => {
-  expect(explainAcmeError('urn:ietf:params:acme:error:caa')?.href).toBe('certificates.md#caa');
+  expect(explainAcmeError('urn:ietf:params:acme:error:caa')?.href).toBe('guide/certificates.md#caa');
 });
 
 it('links rateLimited to the rate-limits docs anchor', () => {
-  expect(explainAcmeError('urn:ietf:params:acme:error:rateLimited')?.href).toBe('certificates.md#rate-limits');
+  expect(explainAcmeError('urn:ietf:params:acme:error:rateLimited')?.href).toBe('guide/certificates.md#rate-limits');
 });

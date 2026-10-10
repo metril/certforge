@@ -100,7 +100,7 @@ func TestRenderTraefikACME(t *testing.T) {
 }
 
 // TestAcmeRouterFileHostRule (fix-wave re-review): Host() takes exactly one
-// argument on Traefik v3 (the version compose.test.yaml and docs/agent.md
+// argument on Traefik v3 (the version compose.test.yaml and docs/guide/delivery.md
 // use) — `Host(`a`,`b`)` is invalid and the whole router is rejected, not
 // just under-matched. A single name still renders a plain `Host(`a`) &&
 // PathPrefix(...)`; two or more render an OR chain of one-argument Host()

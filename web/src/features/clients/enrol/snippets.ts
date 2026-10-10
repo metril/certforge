@@ -2,10 +2,10 @@ export const AGENT_IMAGE = 'ghcr.io/metril/certforge-agent:latest';
 
 // Deviation from the task-2-brief.md literal sample (3a-facts.md wins):
 // the shipped 3A agent requires `CF_WRITE_ALLOW` — with it empty every
-// deploy fails at once (docs/agent.md "Write allowlist") — so both
+// deploy fails at once (docs/guide/agents.md "Write allowlist") — so both
 // snippets set it to a placeholder directory the operator edits to match
-// their layout or deploy target, mirroring agent.md's own examples
-// (`docs/agent.md#running-with-docker`). `CF_AGENT_TOKEN_FILE` is
+// their layout or deploy target, mirroring agents.md's own examples
+// (`docs/guide/agents.md#running-with-docker`). `CF_AGENT_TOKEN_FILE` is
 // supported too but optional; these snippets keep the simpler
 // `CF_AGENT_TOKEN` form the token panel already shows in full.
 const WRITE_DIR = '/etc/certforge/deploy';

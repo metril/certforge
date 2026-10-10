@@ -188,7 +188,7 @@ it('an apex http-01 rule with no other rule leaves the wildcard "wildcard-non-dn
 
 // Fix round 1 (review, Important): the router strips a wildcard name's
 // "*." before routing, so the apex's rule serves both names whenever the
-// apex is also on the certificate (docs/certificates.md "the rule matching
+// apex is also on the certificate (docs/guide/certificates.md "the rule matching
 // the apex serves both") — not whatever the wildcard's own direct match
 // happens to be.
 it('routes a wildcard through its apex rule when the apex is also on the certificate', () => {

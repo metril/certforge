@@ -75,7 +75,7 @@ services:
   # through the per-grant ACME router file the agent writes under
   # .e2e/traefik (deviation R4) once a grant with an acmeServiceUrl target
   # exists. TLS serving of an agent-deployed layout certificate
-  # (certforge-<name>.yml) is still not exercised; see docs/PROGRESS.md
+  # (certforge-<name>.yml) is still not exercised; see docs/internals/history/PROGRESS.md
   # Known gaps. Separately (Task 15, R11), the websecure entrypoint below
   # serves a certificate the e2e test itself writes directly (not through
   # an agent grant) so TestOpsAgainstCompose's external monitor has a real

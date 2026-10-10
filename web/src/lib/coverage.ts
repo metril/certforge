@@ -10,7 +10,7 @@ export type Coverage = {
   ruleIndex?: number;
   rule?: VerificationRule;
   source?: Source;
-  /** This name is a wildcard whose apex is also on the certificate, so the router's `*.` strip means the apex's rule actually serves it (docs/certificates.md "the rule matching the apex serves both"). */
+  /** This name is a wildcard whose apex is also on the certificate, so the router's `*.` strip means the apex's rule actually serves it (docs/guide/certificates.md "the rule matching the apex serves both"). */
   viaApex?: boolean;
 };
 
@@ -135,7 +135,7 @@ function resolveName(name: string, rules: VerificationRule[], inherited: Inherit
 
 export function coverage(names: string[], rules: VerificationRule[], inherited: Inherited, clients: Client[]): Coverage[] {
   // Fix round 1 (review, Important): the challenge router strips a
-  // wildcard name's "*." before routing (docs/certificates.md: "Apex and
+  // wildcard name's "*." before routing (docs/guide/certificates.md: "Apex and
   // wildcard ... share `_acme-challenge.example.com`; the rule matching
   // the apex serves both"), so whenever a wildcard's apex is also on the
   // certificate, the two names are proven by the SAME rule — the apex's —

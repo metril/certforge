@@ -2,7 +2,7 @@
 // over the generated api/client (Task 2) for scripting and ad hoc
 // operations against a running server (status, certificates, clients,
 // notification channels, external monitors, events, KEK status/rewrap,
-// on-demand backup, and the audit log). See docs/cfctl.md.
+// on-demand backup, and the audit log). See docs/reference/cfctl.md.
 package main
 
 import (
