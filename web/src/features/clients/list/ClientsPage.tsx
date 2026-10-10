@@ -24,6 +24,7 @@ import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useUrlText } from '@/lib/useUrlText';
+import { ApprovalQueue } from '../approval/ApprovalQueue';
 import { clientColumns, clientMeta } from './columns';
 import { CLIENT_STATUS_LABEL, clientListSearch, type ClientListSearch } from './search';
 
@@ -189,6 +190,7 @@ export function ClientsPage() {
           )
         }
       />
+      {!allOrgs && <ApprovalQueue />}
       {emptyUnfiltered ? (
         <EmptyState message="No clients yet.">{!allOrgs && enrol}</EmptyState>
       ) : (

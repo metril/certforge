@@ -1,8 +1,9 @@
+import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
-import { snap } from './screens';
+import { setTheme, snap } from './screens';
 
 const PEM = `${E2E.certName}-pw.pem`;
 
@@ -48,6 +49,33 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
   await expect(connection).toContainText('Waiting for agent');
   await snap(page, 'enrol-waiting');
   await writeFile(resolve(E2E.agentDir, 'agent-data', 'token'), token, { mode: 0o600 });
+  // The agent proves the token, then waits for an administrator.
+  await expect(connection.getByText('Agent enrolled. Awaiting approval.')).toBeVisible({ timeout: 90_000 });
+  await snap(page, 'enrol-awaiting');
+  await expect(page.getByRole('link', { name: /^Clients, 1 awaiting approval/ })).toBeVisible();
+  await connection.getByRole('button', { name: 'Review' }).click();
+  const approve = page.getByRole('dialog', { name: /Approve agent/ });
+  await expect(approve.getByTestId('verify-code')).toHaveText(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+  // The code is also in the agent log (docker logs); compare when the CLI is reachable.
+  const code = ((await approve.getByTestId('verify-code').textContent()) ?? '').trim();
+  const logs = spawnSync('docker', ['compose', '-f', resolve(E2E.agentDir, '..', 'deploy', 'compose.test.yaml'), 'logs', 'agent'], { encoding: 'utf8' });
+  const logText = logs.stdout + logs.stderr;
+  if (logs.status === 0 && logText.includes('WAITING FOR APPROVAL')) expect(logText).toContain(code);
+  // Approve stays blocked until the code is confirmed.
+  const approveBtn = approve.getByRole('button', { name: 'Approve' });
+  await expect(approveBtn).toHaveAttribute('aria-disabled', 'true');
+  await snap(page, 'approve-dialog');
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await setTheme(page, 'dark');
+  await snap(page, 'approve-dialog-dark-375');
+  await setTheme(page, 'light');
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await approve.getByRole('switch', { name: /Code matches/ }).click();
+  await expect(approveBtn).not.toHaveAttribute('aria-disabled', 'true');
+  await approveBtn.click();
+  await expect(approve).toBeHidden();
+  await expect(page.getByRole('link', { name: /awaiting approval/ })).toBeHidden();
   await expect(connection.getByText('Online')).toBeVisible({ timeout: 90_000 });
   await snap(page, 'enrol-online');
 

@@ -94,6 +94,20 @@ func enrolledAgent(ctx context.Context, t *testing.T, c *apiClient, orgID string
 	}
 	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + agentClientID.String()
 	waitFor(ctx, t, "client active and connected", func() (clientOut, bool) {
+		// The agent enrols, then waits for an administrator: approve its
+		// request as soon as it appears (requireApproval defaults to on).
+		var reqs struct {
+			Items []struct {
+				ID       string `json:"id"`
+				ClientID string `json:"clientId"`
+			} `json:"items"`
+		}
+		c.call(ctx, t, http.MethodGet, "/api/v1/orgs/"+orgID+"/enrollment-requests", nil, &reqs)
+		for _, r := range reqs.Items {
+			if r.ClientID == agentClientID.String() {
+				c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/enrollment-requests/"+r.ID+"/approve", nil, nil)
+			}
+		}
 		var cl clientOut
 		c.call(ctx, t, http.MethodGet, clientPath, nil, &cl)
 		return cl, cl.Status == "active" && cl.Connected

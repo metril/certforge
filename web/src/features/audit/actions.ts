@@ -13,7 +13,7 @@ export const AUDIT_ACTIONS = [
   'certificate.create', 'certificate.delete', 'certificate.import', 'certificate.key_exported',
   'certificate.manual_dns_confirmed', 'certificate.renew', 'certificate.revoked', 'certificate.update',
   'channel.create', 'channel.delete', 'channel.test', 'channel.update', 'client.cert_renewed',
-  'client.create', 'client.delete', 'client.enrolled', 'client.reenroll', 'client.revoke', 'client.update',
+  'client.create', 'client.delete', 'client.enrol_approved', 'client.enrol_rejected', 'client.enrol_requested', 'client.enrolled', 'client.reenroll', 'client.revoke', 'client.update',
   'deploy_target.create', 'deploy_target.delete', 'deploy_target.update', 'deployment.drift',
   'deployment.failed', 'deployment.ok', 'dns_credential.create', 'dns_credential.delete',
   'dns_credential.secret_revealed', 'dns_credential.test', 'dns_credential.update', 'grant.bundle_fetched',

@@ -66,6 +66,8 @@ export const server = setupServer(
   // fetch these on every render; tests that care override them.
   http.get(url('/orgs/:orgId/clients'), () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get(url('/clients'), () => HttpResponse.json({ items: [], nextCursor: null })),
+  // The Sidebar's Clients badge asks for the approval queue on every page.
+  http.get(url('/orgs/:orgId/enrollment-requests'), () => HttpResponse.json({ items: [] })),
   http.get(url('/orgs/:orgId/sites'), () => HttpResponse.json({ items: [] })),
   http.get(url('/orgs/:orgId/layouts'), () => HttpResponse.json({ items: [] })),
   http.get(url('/orgs/:orgId/deploy-targets'), () => HttpResponse.json({ items: [] })),

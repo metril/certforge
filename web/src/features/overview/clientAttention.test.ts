@@ -54,3 +54,18 @@ it('mismatch ranks after failed, unreachable after overdue', () => {
     'offline',
   ]);
 });
+
+it('raises awaiting-approval for a live request, ranked after expired and ahead of failures', () => {
+  const pending = [
+    { clientId: 'p', expiresAt: new Date(NOW + 3 * 3_600_000).toISOString() },
+    { clientId: 'q', expiresAt: new Date(NOW - 1000).toISOString() },
+  ] as Parameters<typeof clientAttentionItems>[2];
+  const items = clientAttentionItems(
+    [makeClient({ id: 'p', status: 'pending', online: false, connected: false, lastSeen: null }), makeClient({ id: 'q', status: 'pending', online: false, connected: false, lastSeen: null })],
+    NOW,
+    pending,
+  );
+  expect(items.map((i) => [i.client.id, i.kind, i.cause])).toEqual([['p', 'awaiting-approval', 'Enrolment awaiting approval · expires in 3 h']]);
+  const certItems = attentionItems([makeCert({ id: 'x', status: 'failed', failureCount: 1, lastError: 'boom' })].map(briefOf), NOW);
+  expect(attentionQueue(certItems, items).map((q) => q.item.kind)).toEqual(['awaiting-approval', 'failed']);
+});
