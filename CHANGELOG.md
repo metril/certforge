@@ -2,6 +2,23 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.8.0](https://github.com/metril/certforge/compare/v0.7.3...v0.8.0) (2026-10-10)
+
+
+### Features
+
+* **challenge:** support DNS-over-HTTPS resolvers for propagation checks ([8cf0d78](https://github.com/metril/certforge/commit/8cf0d781099434b913829cc6685de5684065d1bb))
+* **issuance:** DNS credential test verifies the TXT record is visible ([b577ab2](https://github.com/metril/certforge/commit/b577ab2cc8b83053793e23d59cf24b1f56a86363))
+* **issuance:** hint at DNS interception and negative caching on propagation failure ([c803a59](https://github.com/metril/certforge/commit/c803a594c1c86c0dbf49d849e2850527ed1b20f5))
+
+
+### Bug Fixes
+
+* **challenge:** refuse DoH redirects and treat failure rcodes as errors ([cc042b7](https://github.com/metril/certforge/commit/cc042b7d63277d837678269af9a43ddc8946291f))
+* **challenge:** wait 20s before querying configured resolvers ([c531af7](https://github.com/metril/certforge/commit/c531af7e32a7f386690917d124965d2258cbccf4))
+* DNS-01 propagation checks behind DNS-intercepting networks ([8b07451](https://github.com/metril/certforge/commit/8b07451831e08b79f46727ee0ee5c4da1571a932))
+* shorten resolver help copy and satisfy lint ([4b97209](https://github.com/metril/certforge/commit/4b9720971cfd5d1f6d3fb65202e6bbe9dbb7e645))
+
 ## [0.7.3](https://github.com/metril/certforge/compare/v0.7.2...v0.7.3) (2026-10-09)
 
 
