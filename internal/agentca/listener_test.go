@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"io"
 	"net"
 	"slices"
@@ -116,5 +117,47 @@ func TestTLSConfigVerifiesClientCerts(t *testing.T) {
 	foreignCert, foreignKey, _ := NewCA(time.Now())
 	if _, err := handshake([]tls.Certificate{clientCert(&CA{Cert: foreignCert, Key: foreignKey})}); err == nil {
 		t.Fatal("foreign client certificate accepted")
+	}
+}
+
+func TestReloadRenewsResponderWithoutNames(t *testing.T) {
+	ctx := context.Background()
+	ca := testCA(t)
+	src := &fakeSource{ca: ca, trusted: []*x509.Certificate{ca.Cert}}
+	var names []string
+	now := now0
+	l := &Listener{Source: src, Names: func(context.Context) ([]string, error) { return names, nil }, Now: func() time.Time { return now }}
+	if _, ok := l.Responder(); ok {
+		t.Fatal("responder before load")
+	}
+	if err := l.Reload(ctx); !errors.Is(err, ErrNoNames) {
+		t.Fatalf("err %v", err)
+	}
+	r1, ok := l.Responder()
+	if !ok || len(r1.Chain) != 2 || !bytes.Equal(r1.Chain[1].Raw, ca.Cert.Raw) || r1.CAID != ca.ID {
+		t.Fatalf("responder %+v", r1)
+	}
+	if !r1.Chain[0].PublicKey.(*ecdsa.PublicKey).Equal(&r1.Key.PublicKey) {
+		t.Fatal("key does not match certificate")
+	}
+	_ = l.Reload(ctx)
+	if r, _ := l.Responder(); r != r1 {
+		t.Fatal("re-issued without cause")
+	}
+	now = now0.Add(17 * time.Hour) // past two thirds of 24 h
+	_ = l.Reload(ctx)
+	r2, _ := l.Responder()
+	if r2 == r1 || !r2.Chain[0].NotAfter.After(r1.Chain[0].NotAfter) {
+		t.Fatal("not renewed")
+	}
+	next := testCA(t)
+	src.ca, src.trusted = next, []*x509.Certificate{next.Cert}
+	_ = l.Reload(ctx)
+	if r3, _ := l.Responder(); r3 == r2 || r3.CAID != next.ID {
+		t.Fatal("signing CA change not re-issued")
+	}
+	names = []string{"a.test"}
+	if err := l.Reload(ctx); err != nil {
+		t.Fatal(err)
 	}
 }

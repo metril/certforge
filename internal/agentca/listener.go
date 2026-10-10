@@ -35,9 +35,22 @@ type Listener struct {
 	Now    func() time.Time
 	Log    *slog.Logger
 
-	mu    sync.Mutex
-	state atomic.Pointer[listenerState]
+	mu        sync.Mutex
+	state     atomic.Pointer[listenerState]
+	responder atomic.Pointer[Signer]
 }
+
+// Signer is the responder identity: the key that signs agent protocol
+// responses and the certificate chain (leaf first) that vouches for it.
+type Signer struct {
+	Key   *ecdsa.PrivateKey
+	Chain []*x509.Certificate
+	CAID  uuid.UUID
+}
+
+// ErrNoNames means no listener names are configured, so the agent port has
+// no TLS certificate. The responder identity is still renewed.
+var ErrNoNames = errors.New("agentca: no listener names configured")
 
 type listenerState struct {
 	cert  tls.Certificate
@@ -68,16 +81,46 @@ func (l *Listener) log() *slog.Logger {
 	return slog.Default()
 }
 
+// Responder returns the current responder identity; false before the first
+// Reload.
+func (l *Listener) Responder() (*Signer, bool) {
+	s := l.responder.Load()
+	return s, s != nil
+}
+
+func (l *Listener) reloadResponder(ca *CA) error {
+	cur := l.responder.Load()
+	if cur != nil && cur.CAID == ca.ID && !agentproto.RenewDue(cur.Chain[0].NotBefore, cur.Chain[0].NotAfter, l.now()) {
+		return nil
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+	leaf, err := SignResponder(ca, &key.PublicKey, l.now())
+	if err != nil {
+		return err
+	}
+	l.responder.Store(&Signer{Key: key, Chain: []*x509.Certificate{leaf, ca.Cert}, CAID: ca.ID})
+	l.log().Info("agent responder certificate issued", "ca", ca.ID, "not_after", leaf.NotAfter)
+	return nil
+}
+
 // Reload rebuilds the trust pool and re-issues the server certificate when
 // there is none, the signing CA or the names changed, or two thirds of its
 // lifetime have passed. The oldest non-retired CA signs it: agents that have
 // not received a newer bundle still trust it, so a rotation switches the
-// listener only when the old CA is retired.
+// listener only when the old CA is retired. The responder certificate (24 h)
+// is renewed first and regardless of names, so it stays fresh while the
+// agent port is disabled; that case returns ErrNoNames.
 func (l *Listener) Reload(ctx context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	ca, err := l.Source.Oldest(ctx)
 	if err != nil {
+		return err
+	}
+	if err := l.reloadResponder(ca); err != nil {
 		return err
 	}
 	trusted, err := l.Source.Trusted(ctx)
@@ -89,7 +132,7 @@ func (l *Listener) Reload(ctx context.Context) error {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("agentca: no listener names configured")
+		return ErrNoNames
 	}
 	pool := x509.NewCertPool()
 	for _, c := range trusted {
@@ -157,7 +200,10 @@ type ListenerRenewWorker struct {
 
 // Work re-checks the listener certificate.
 func (w *ListenerRenewWorker) Work(ctx context.Context, _ *river.Job[ListenerRenewArgs]) error {
-	return w.L.Reload(ctx)
+	if err := w.L.Reload(ctx); err != nil && !errors.Is(err, ErrNoNames) {
+		return err
+	}
+	return nil
 }
 
 // RegisterRiver is an issuance.RiverExtra: the worker plus an hourly job.

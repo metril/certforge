@@ -14,6 +14,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -30,10 +31,11 @@ import (
 
 // Lifetimes.
 const (
-	CALifetime       = 10 * 365 * 24 * time.Hour
-	ListenerLifetime = 365 * 24 * time.Hour
-	clockSkew        = 5 * time.Minute
-	clientURIPrefix  = "urn:certforge:client:"
+	CALifetime        = 10 * 365 * 24 * time.Hour
+	ListenerLifetime  = 365 * 24 * time.Hour
+	ResponderLifetime = 24 * time.Hour
+	clockSkew         = 5 * time.Minute
+	clientURIPrefix   = "urn:certforge:client:"
 )
 
 // Errors.
@@ -195,6 +197,50 @@ func SignServer(ca *CA, pub crypto.PublicKey, names []string, now time.Time) (*x
 		return nil, err
 	}
 	return x509.ParseCertificate(der)
+}
+
+// ResponderEKU is the custom extended key usage of the responder
+// certificate. It carries no serverAuth or clientAuth, so a TLS certificate
+// from this CA cannot stand in for it, nor the reverse.
+var ResponderEKU = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 59000, 1, 1}
+
+// SignResponder issues the certificate whose key signs the server's agent
+// protocol responses. It is a signing key only: message encryption uses
+// per-session ephemeral keys.
+func SignResponder(ca *CA, pub crypto.PublicKey, now time.Time) (*x509.Certificate, error) {
+	serial, err := randomSerial()
+	if err != nil {
+		return nil, err
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:       serial,
+		Subject:            pkix.Name{CommonName: "CertForge agent responder", Organization: []string{"CertForge agent responder"}},
+		NotBefore:          now.Add(-clockSkew),
+		NotAfter:           capped(ca, now.Add(ResponderLifetime)),
+		KeyUsage:           x509.KeyUsageDigitalSignature,
+		UnknownExtKeyUsage: []asn1.ObjectIdentifier{ResponderEKU},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.Cert, pub, ca.Key)
+	if err != nil {
+		return nil, err
+	}
+	return x509.ParseCertificate(der)
+}
+
+// VerifyResponder checks that leaf chains to roots and carries ResponderEKU
+// only; it returns the leaf's ECDSA public key.
+func VerifyResponder(leaf *x509.Certificate, roots *x509.CertPool, now time.Time) (*ecdsa.PublicKey, error) {
+	if len(leaf.ExtKeyUsage) != 0 || len(leaf.UnknownExtKeyUsage) != 1 || !leaf.UnknownExtKeyUsage[0].Equal(ResponderEKU) {
+		return nil, errors.New("agentca: not a responder certificate")
+	}
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
+		return nil, err
+	}
+	pub, ok := leaf.PublicKey.(*ecdsa.PublicKey)
+	if !ok || pub.Curve != elliptic.P256() {
+		return nil, errors.New("agentca: responder key must be ECDSA P-256")
+	}
+	return pub, nil
 }
 
 // CertPEM encodes one DER certificate.
