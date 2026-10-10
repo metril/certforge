@@ -14,7 +14,6 @@ const (
 	HeaderAgentCert  = "Cf-Agent-Cert"  // handshake only: base64 DER of the agent certificate
 	HeaderSignerCert = "Cf-Signer-Cert" // base64 DER of the responder certificate
 	HeaderSeq        = "Cf-Seq"         // seq the body was sealed under
-	HeaderError      = "Cf-Error"       // machine-readable code on a signed, unsealed refusal
 
 	ErrCodeSession = "session" // unknown or expired session: handshake again
 	ErrCodeAuth    = "auth"

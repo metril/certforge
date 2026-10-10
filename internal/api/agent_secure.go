@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -131,8 +130,6 @@ func (s *agentSessions) get(id string, now time.Time) *agentSession {
 	return x
 }
 
-var nonceRe = regexp.MustCompile(`;nonce="([A-Za-z0-9_.:\-]{1,200})"`)
-
 func (a *agentAPI) clock() time.Time {
 	if a.now != nil {
 		return a.now()
@@ -207,34 +204,51 @@ func (a *agentAPI) signResponse(h http.Header, status int, body []byte, reqNonce
 	return true
 }
 
-// reject answers a request that did not authenticate: a signed, bodyless
-// refusal with a machine-readable code, so the agent can tell the real server
-// said so; unsigned when the request carries no usable nonce or there is no
-// responder. It never discloses anything but the status and code.
-func (a *agentAPI) reject(w http.ResponseWriter, r *http.Request, status int, code string) {
-	h := w.Header()
-	h.Set(agentproto.HeaderError, code)
-	if m := nonceRe.FindStringSubmatch(r.Header.Get(agentproto.HeaderSignatureInput)); m != nil {
-		a.signResponse(h, status, nil, m[1])
-	}
+// reject answers a request that has not been authenticated with an unsigned,
+// bodyless refusal and a machine-readable code. It is unsigned on purpose: a
+// responder signature on a refusal vouches that the agent's own signature
+// verified, which is only true after verification (see refuse). The agent
+// treats an unsigned refusal as a transport error, never as revocation.
+func (a *agentAPI) reject(w http.ResponseWriter, status int, code string) {
+	w.Header().Set(agentproto.HeaderError, code)
 	w.WriteHeader(status)
 }
 
-// rejectErr is reject for a service error.
-func (a *agentAPI) rejectErr(w http.ResponseWriter, r *http.Request, err error) {
-	var he *HTTPError
-	if errors.As(mapAgentErr(err), &he) {
-		a.reject(w, r, he.Status, agentproto.ErrCodeAuth)
+// refuse is reject for a request whose signature verified: the refusal is
+// signed by the responder, binds the code and the request nonce, and so
+// cannot be forged or replayed by a proxy.
+func (a *agentAPI) refuse(w http.ResponseWriter, status int, code, nonce string) {
+	h := w.Header()
+	sg := a.responder()
+	if sg == nil || agentproto.SignResponse(h, status, nil, sg.key, agentproto.RespParams{KeyID: responderKeyID, ReqNonce: nonce, Created: a.clock(), Error: code}) != nil {
+		a.reject(w, status, code)
 		return
 	}
-	a.d.Log.Error("agent request failed", "err", err)
-	a.reject(w, r, http.StatusInternalServerError, "internal")
+	h.Set(agentproto.HeaderSignerCert, sg.leaf)
+	w.WriteHeader(status)
+}
+
+// rejectErr refuses with the status of a service error: signed when nonce
+// names a verified request, unsigned (nonce "") otherwise.
+func (a *agentAPI) rejectErr(w http.ResponseWriter, err error, nonce string) {
+	status, code := http.StatusInternalServerError, "internal"
+	var he *HTTPError
+	if errors.As(mapAgentErr(err), &he) {
+		status, code = he.Status, agentproto.ErrCodeAuth
+	} else {
+		a.d.Log.Error("agent request failed", "err", err)
+	}
+	if nonce == "" {
+		a.reject(w, status, code)
+		return
+	}
+	a.refuse(w, status, code, nonce)
 }
 
 func (a *agentAPI) readBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, bool) {
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
-		a.reject(w, r, http.StatusRequestEntityTooLarge, "size")
+		a.reject(w, http.StatusRequestEntityTooLarge, "size")
 		return nil, false
 	}
 	return b, true
@@ -267,12 +281,12 @@ func (a *agentAPI) session(w http.ResponseWriter, r *http.Request) {
 	}
 	der, err := base64.StdEncoding.DecodeString(r.Header.Get(agentproto.HeaderAgentCert))
 	if err != nil || len(der) == 0 || len(der) > 8<<10 {
-		a.reject(w, r, http.StatusUnauthorized, agentproto.ErrCodeAuth)
+		a.reject(w, http.StatusUnauthorized, agentproto.ErrCodeAuth)
 		return
 	}
 	clientID, serial, pub, err := a.d.Agents.VerifyAgentCert(r.Context(), der)
 	if err != nil {
-		a.rejectErr(w, r, err)
+		a.rejectErr(w, err, "")
 		return
 	}
 	keyID := clientID.String() + ":" + serial
@@ -283,34 +297,34 @@ func (a *agentAPI) session(w http.ResponseWriter, r *http.Request) {
 		return pub, nil
 	})
 	if err != nil {
-		a.reject(w, r, http.StatusUnauthorized, errCode(err))
+		a.reject(w, http.StatusUnauthorized, errCode(err))
 		return
 	}
 	if code := a.checkFresh(p, now); code != "" {
-		a.reject(w, r, http.StatusUnauthorized, code)
+		a.refuse(w, http.StatusUnauthorized, code, p.Nonce)
 		return
 	}
 	c, err := a.d.Agents.AuthenticateKey(r.Context(), clientID, serial)
 	if err != nil {
-		a.rejectErr(w, r, err)
+		a.rejectErr(w, err, p.Nonce)
 		return
 	}
 	raw, err := base64.StdEncoding.DecodeString(p.Ephemeral)
 	peer, perr := ecdh.P256().NewPublicKey(raw)
 	if err != nil || perr != nil {
-		a.reject(w, r, http.StatusBadRequest, "ephemeral")
+		a.refuse(w, http.StatusBadRequest, "ephemeral", p.Nonce)
 		return
 	}
 	local, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
-		a.rejectErr(w, r, err)
+		a.rejectErr(w, err, p.Nonce)
 		return
 	}
 	idRaw := make([]byte, 16)
 	_, _ = rand.Read(idRaw)
 	sess, err := agentproto.NewSession(local, peer, idRaw, false)
 	if err != nil {
-		a.rejectErr(w, r, err)
+		a.rejectErr(w, err, p.Nonce)
 		return
 	}
 	id := base64.RawURLEncoding.EncodeToString(idRaw)
@@ -363,7 +377,7 @@ func (a *agentAPI) secure(next http.Handler) http.Handler {
 		}
 		sess := a.sessions.get(r.Header.Get(agentproto.HeaderEphemeral), now)
 		if sess == nil {
-			a.reject(w, r, http.StatusUnauthorized, agentproto.ErrCodeSession)
+			a.reject(w, http.StatusUnauthorized, agentproto.ErrCodeSession)
 			return
 		}
 		p, err := a.verify(r, body, now, func(id string) (*ecdsa.PublicKey, error) {
@@ -373,38 +387,38 @@ func (a *agentAPI) secure(next http.Handler) http.Handler {
 			return sess.pub, nil
 		})
 		if err != nil {
-			a.reject(w, r, http.StatusUnauthorized, errCode(err))
+			a.reject(w, http.StatusUnauthorized, errCode(err))
 			return
 		}
 		if code := a.checkFresh(p, now); code != "" {
-			a.reject(w, r, http.StatusUnauthorized, code)
+			a.refuse(w, http.StatusUnauthorized, code, p.Nonce)
 			return
 		}
 		sw := &sealWriter{h: http.Header{}}
 		c, err := a.d.Agents.AuthenticateKey(r.Context(), sess.clientID, sess.serial)
 		if err != nil {
-			writeAgentErr(sw, a.d.Log, err)
-		} else {
-			pt := body
-			if len(body) > 0 {
-				seq, perr := strconv.ParseUint(r.Header.Get(agentproto.HeaderSeq), 10, 64)
-				if perr == nil {
-					pt, perr = sess.sess.OpenWindow(seq, body, agentproto.ReqExtra(sess.id, p.Nonce, r.Method, r.URL.RequestURI()))
-				}
-				if perr != nil {
-					a.reject(w, r, http.StatusUnauthorized, agentproto.ErrCodeSession)
-					return
-				}
-			}
-			r.Body = io.NopCloser(bytes.NewReader(pt))
-			r.ContentLength = int64(len(pt))
-			if len(pt) > 0 {
-				r.Header.Set("Content-Type", "application/json")
-			}
-			ctx := authn.WithPrincipal(r.Context(), agents.AgentPrincipal(c))
-			ctx = context.WithValue(ctx, agentClientKey{}, c)
-			next.ServeHTTP(sw, r.WithContext(ctx))
+			a.rejectErr(w, err, p.Nonce)
+			return
 		}
+		pt := body
+		if len(body) > 0 {
+			seq, perr := strconv.ParseUint(r.Header.Get(agentproto.HeaderSeq), 10, 64)
+			if perr == nil {
+				pt, perr = sess.sess.OpenWindow(seq, body, agentproto.ReqExtra(sess.id, p.Nonce, r.Method, r.URL.RequestURI()))
+			}
+			if perr != nil {
+				a.refuse(w, http.StatusUnauthorized, agentproto.ErrCodeSession, p.Nonce)
+				return
+			}
+		}
+		r.Body = io.NopCloser(bytes.NewReader(pt))
+		r.ContentLength = int64(len(pt))
+		if len(pt) > 0 {
+			r.Header.Set("Content-Type", "application/json")
+		}
+		ctx := authn.WithPrincipal(r.Context(), agents.AgentPrincipal(c))
+		ctx = context.WithValue(ctx, agentClientKey{}, c)
+		next.ServeHTTP(sw, r.WithContext(ctx))
 		a.finish(w, r, sw, sess, p.Nonce)
 	})
 }
@@ -425,7 +439,7 @@ func (a *agentAPI) finish(w http.ResponseWriter, r *http.Request, sw *sealWriter
 	if len(out) > 0 {
 		seq, ct, err := sess.sess.Seal(out, agentproto.RespExtra(sess.id, nonce, status))
 		if err != nil {
-			a.reject(w, r, http.StatusUnauthorized, agentproto.ErrCodeSession)
+			a.refuse(w, http.StatusUnauthorized, agentproto.ErrCodeSession, nonce)
 			return
 		}
 		out = ct

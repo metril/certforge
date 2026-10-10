@@ -160,3 +160,32 @@ func TestResponseSignature(t *testing.T) {
 		}
 	}
 }
+
+func TestResponseCoversErrorCode(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	now := time.Now()
+	h := http.Header{}
+	if err := SignResponse(h, 401, nil, key, RespParams{KeyID: "responder", ReqNonce: "n1", Created: now, Error: "auth"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyResponse(h, 401, nil, "n1", now, &key.PublicKey); err != nil {
+		t.Fatal(err)
+	}
+	for name, mut := range map[string]func(http.Header){
+		"swapped":  func(h http.Header) { h.Set(HeaderError, "replay") },
+		"stripped": func(h http.Header) { h.Del(HeaderError) },
+	} {
+		c := h.Clone()
+		mut(c)
+		if _, err := VerifyResponse(c, 401, nil, "n1", now, &key.PublicKey); !errors.Is(err, ErrSig) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	// A response signed without a code cannot gain one.
+	plain := http.Header{}
+	_ = SignResponse(plain, 401, nil, key, RespParams{KeyID: "responder", ReqNonce: "n1", Created: now})
+	plain.Set(HeaderError, "auth")
+	if _, err := VerifyResponse(plain, 401, nil, "n1", now, &key.PublicKey); !errors.Is(err, ErrSig) {
+		t.Fatalf("added: %v", err)
+	}
+}

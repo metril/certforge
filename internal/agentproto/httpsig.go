@@ -27,6 +27,7 @@ const (
 	HeaderSignatureInput = "Signature-Input"
 	HeaderContentDigest  = "Content-Digest"
 	HeaderEphemeral      = "Cf-Ephemeral"
+	HeaderError          = "Cf-Error"
 )
 
 // MaxSkew is how far created may be from the verifier's clock.
@@ -41,8 +42,10 @@ var (
 const (
 	reqComponents  = `("@method" "@authority" "@request-target" "content-digest" "cf-ephemeral")`
 	respComponents = `("@status" "content-digest")`
-	sigLabel       = "sig"
-	sigAlg         = "ecdsa-p256-sha256"
+	// respComponentsErr also covers Cf-Error, so a refusal's code is signed.
+	respComponentsErr = `("@status" "content-digest" "cf-error")`
+	sigLabel          = "sig"
+	sigAlg            = "ecdsa-p256-sha256"
 )
 
 var tokenRe = regexp.MustCompile(`^[A-Za-z0-9_.:\-]{1,200}$`)
@@ -61,6 +64,7 @@ type RespParams struct {
 	KeyID    string
 	ReqNonce string // nonce of the request this answers
 	Created  time.Time
+	Error    string // refusal code, sent as Cf-Error and signed when not empty
 }
 
 // NewNonce returns 16 random bytes, base64url.
@@ -92,7 +96,11 @@ func reqSigParams(p ReqParams) string {
 }
 
 func respSigParams(p RespParams) string {
-	return sigParams(respComponents, ";created="+strconv.FormatInt(p.Created.Unix(), 10), `;req-nonce="`+p.ReqNonce+`"`, `;keyid="`+p.KeyID+`"`)
+	comps := respComponents
+	if p.Error != "" {
+		comps = respComponentsErr
+	}
+	return sigParams(comps, ";created="+strconv.FormatInt(p.Created.Unix(), 10), `;req-nonce="`+p.ReqNonce+`"`, `;keyid="`+p.KeyID+`"`)
 }
 
 func reqBase(r *http.Request, p ReqParams, digest string) []byte {
@@ -105,8 +113,12 @@ func reqBase(r *http.Request, p ReqParams, digest string) []byte {
 }
 
 func respBase(status int, p RespParams, digest string) []byte {
+	errLine := ""
+	if p.Error != "" {
+		errLine = `"cf-error": ` + p.Error + "\n"
+	}
 	return []byte(`"@status": ` + strconv.Itoa(status) + "\n" +
-		`"content-digest": ` + digest + "\n" +
+		`"content-digest": ` + digest + "\n" + errLine +
 		`"@signature-params": ` + respSigParams(p))
 }
 
@@ -202,13 +214,16 @@ func VerifyRequest(r *http.Request, body []byte, authority string, now time.Time
 // SignResponse sets Content-Digest (of body, the ciphertext), Signature-Input
 // and Signature on h for a response with the given status.
 func SignResponse(h http.Header, status int, body []byte, key *ecdsa.PrivateKey, p RespParams) error {
-	if !tokenRe.MatchString(p.ReqNonce) || !tokenRe.MatchString(p.KeyID) {
+	if !tokenRe.MatchString(p.ReqNonce) || !tokenRe.MatchString(p.KeyID) || p.Error != "" && !tokenRe.MatchString(p.Error) {
 		return fmt.Errorf("%w: bad parameters", ErrSig)
 	}
 	digest := ContentDigest(body)
 	sig, err := sign(key, respBase(status, p, digest))
 	if err != nil {
 		return err
+	}
+	if p.Error != "" {
+		h.Set(HeaderError, p.Error)
 	}
 	h.Set(HeaderContentDigest, digest)
 	h.Set(HeaderSignatureInput, sigLabel+"="+respSigParams(p))
@@ -226,8 +241,8 @@ func VerifyResponse(h http.Header, status int, body []byte, reqNonce string, now
 		return RespParams{}, fmt.Errorf("%w: malformed signature input", ErrSig)
 	}
 	sec, _ := strconv.ParseInt(m[1], 10, 64)
-	p := RespParams{KeyID: m[3], ReqNonce: m[2], Created: time.Unix(sec, 0)}
-	if !tokenRe.MatchString(p.KeyID) || !tokenRe.MatchString(p.ReqNonce) ||
+	p := RespParams{KeyID: m[3], ReqNonce: m[2], Created: time.Unix(sec, 0), Error: h.Get(HeaderError)}
+	if !tokenRe.MatchString(p.KeyID) || !tokenRe.MatchString(p.ReqNonce) || p.Error != "" && !tokenRe.MatchString(p.Error) ||
 		h.Get(HeaderSignatureInput) != sigLabel+"="+respSigParams(p) {
 		return RespParams{}, fmt.Errorf("%w: non-canonical signature input", ErrSig)
 	}

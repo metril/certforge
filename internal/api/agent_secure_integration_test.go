@@ -232,7 +232,7 @@ func TestAgentProtocolTampering(t *testing.T) {
 				r.Body = io.NopCloser(bytes.NewReader(b))
 			}
 		}}
-		if code, err := call(h, http.MethodPost, "/agent/v1/heartbeat", agentproto.Heartbeat{}); err != nil || code != http.StatusUnauthorized {
+		if code, err := call(h, http.MethodPost, "/agent/v1/heartbeat", agentproto.Heartbeat{}); !errors.Is(err, agent.ErrUnsigned) {
 			t.Fatalf("tampered body: %d %v", code, err)
 		}
 	})
@@ -243,7 +243,7 @@ func TestAgentProtocolTampering(t *testing.T) {
 				r.Method = http.MethodPost
 			}
 		}}
-		if code, err := call(h, http.MethodGet, "/agent/v1/assignments", nil); err != nil || code != http.StatusUnauthorized {
+		if code, err := call(h, http.MethodGet, "/agent/v1/assignments", nil); !errors.Is(err, agent.ErrUnsigned) {
 			t.Fatalf("tampered path: %d %v", code, err)
 		}
 	})
@@ -258,7 +258,7 @@ func TestAgentProtocolTampering(t *testing.T) {
 		p := httptest.NewTLSServer(httputil.NewSingleHostReverseProxy(bu))
 		defer p.Close()
 		code, err := doAgent(secureClient(id, p.Client().Transport), http.MethodGet, p.URL+"/agent/v1/assignments", nil, nil)
-		if err != nil || code != http.StatusUnauthorized {
+		if !errors.Is(err, agent.ErrUnsigned) {
 			t.Fatalf("request signed for another host: %d %v", code, err)
 		}
 	})
@@ -413,4 +413,47 @@ func x509CertPool(certs []*x509.Certificate) *x509.CertPool {
 
 func sqlcgenLayout(org uuid.UUID, name string, files []byte) sqlcgen.CreateLayoutParams {
 	return sqlcgen.CreateLayoutParams{OrgID: org, Name: name, Files: files, ExtraCertIds: []uuid.UUID{}}
+}
+
+// A refusal the proxy can forge must never read as revocation: a corrupted
+// signature gets an unsigned refusal, which the agent treats as a transport
+// error; a genuine revocation is a signed refusal whose Cf-Error is covered.
+func TestAgentRevocationNeedsSignedRefusal(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, c, _ := e.enrolledWithGrant(t, "revoke-1", false)
+	proxy, base := e.proxied(t)
+	id := e.identity(t, cert)
+	get := func(h *hostile) (int, error) {
+		return doAgent(secureClient(id, h), http.MethodGet, proxy.URL+"/agent/v1/assignments", nil, nil)
+	}
+	corrupt := &hostile{next: base, onReq: func(_ int, r *http.Request) {
+		if sig := r.Header.Get(agentproto.HeaderSignature); sig != "" {
+			r.Header.Set(agentproto.HeaderSignature, "sig=:"+strings.Repeat("A", 86)+"==:")
+		}
+	}}
+	code, err := get(corrupt)
+	if !errors.Is(err, agent.ErrUnsigned) || code == http.StatusUnauthorized {
+		t.Fatalf("corrupted signature: %d %v", code, err)
+	}
+	if _, err := e.svc.RevokeClient(e.as("operator"), e.org, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	h := &hostile{next: base}
+	if code, err := get(h); err != nil || code != http.StatusUnauthorized {
+		t.Fatalf("revoked client: %d %v", code, err)
+	}
+	last := h.exchanges()[0]
+	if last.respHdr.Get(agentproto.HeaderError) != agentproto.ErrCodeAuth || last.respHdr.Get(agentproto.HeaderSignature) == "" {
+		t.Fatalf("revocation not a signed auth refusal: %v", last.respHdr)
+	}
+	// A proxy swapping or stripping Cf-Error on that refusal breaks it.
+	for name, mut := range map[string]func(http.Header){
+		"swapped":  func(h http.Header) { h.Set(agentproto.HeaderError, agentproto.ErrCodeReplay) },
+		"stripped": func(h http.Header) { h.Del(agentproto.HeaderError) },
+	} {
+		hh := &hostile{next: base, onResp: func(_ int, r *http.Response) { mut(r.Header) }}
+		if code, err := get(hh); !errors.Is(err, agent.ErrUnsigned) {
+			t.Fatalf("%s Cf-Error accepted: %d %v", name, code, err)
+		}
+	}
 }

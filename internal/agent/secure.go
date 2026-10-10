@@ -171,7 +171,7 @@ func (t *secureTransport) handshake(req *http.Request, au, keyID string) (*clien
 		return nil, err
 	}
 	if err := t.verifyResponse(resp, raw, nonce); err != nil {
-		return nil, err
+		return nil, err // unsigned: a transport problem, whatever the status says
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, refusal(resp)
@@ -230,10 +230,16 @@ func (t *secureTransport) exchange(req *http.Request, body []byte, au string, cs
 	if err != nil {
 		return nil, false, err
 	}
+	code := hr.Header.Get(agentproto.HeaderError)
 	if err := t.verifyResponse(hr, raw, nonce); err != nil {
+		// An unverifiable "session" refusal (the server cannot sign for a
+		// session it does not know) only buys one fresh handshake; it never
+		// reaches the caller as a refusal.
+		if code == agentproto.ErrCodeSession && hr.StatusCode == http.StatusUnauthorized && len(raw) == 0 {
+			return nil, true, nil
+		}
 		return nil, false, err
 	}
-	code := hr.Header.Get(agentproto.HeaderError)
 	if code == agentproto.ErrCodeSession && hr.StatusCode == http.StatusUnauthorized {
 		return nil, true, nil
 	}
@@ -266,8 +272,9 @@ func readResponse(resp *http.Response) ([]byte, error) {
 }
 
 // refusal turns a verified, bodyless refusal into the error callers handle.
-// Only a verified response gets here, so a proxy cannot fake a 401 that makes
-// the agent believe it was revoked. Clock and replay refusals are not 401s to
+// Only a response whose signature covers Cf-Error and binds this request's
+// nonce gets here, so a proxy cannot fake or alter a refusal and make the
+// agent believe it was revoked. Clock and replay refusals are not 401s to
 // the caller: they say nothing about the client.
 func refusal(resp *http.Response) error {
 	switch code := resp.Header.Get(agentproto.HeaderError); code {
