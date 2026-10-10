@@ -152,6 +152,8 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	aud := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	svc := issuance.NewService(store, certs, &fakeJobs{queued: map[uuid.UUID]bool{}})
 	svc.NewRegistrar = func(issuance.CA) issuance.Registrar { return &fakeRegistrar{} }
+	svc.TestSettle, svc.TestPoll, svc.TestWindow = time.Millisecond, time.Millisecond, 20*time.Millisecond
+	svc.TestVisible = func(context.Context, []string, string, string) (bool, error) { return true, nil }
 	svc.Auditor = aud
 	svc.Log = slog.Default()
 	deployJobs := newFakeDeployJobs()
