@@ -37,6 +37,7 @@ type fakeServer struct {
 	srv      *httptest.Server
 	ca       *agentca.CA
 	clientID uuid.UUID
+	proto    *fakeProtocol
 
 	mu         sync.Mutex
 	bundle     string // trust bundle returned by enrol and renew
@@ -49,6 +50,7 @@ type fakeServer struct {
 	onWS       func(ctx context.Context, c *websocket.Conn) // runs after the agent's hello
 	assignGate chan struct{}                                // non-nil: GET assignments blocks until it is closed
 	assignHits int                                          // GET assignments requests served or blocked
+	deny       bool                                         // GET assignments answers 401 "no client certificate"
 }
 
 // with runs fn under the server's lock.
@@ -154,7 +156,9 @@ func newFakeServer(t *testing.T) *fakeServer {
 		}
 	})
 	mux.HandleFunc("GET /agent/v1/assignments", func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
+		var deny bool
+		f.with(func() { deny = f.deny })
+		if deny {
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"title":"Unauthorized","detail":"no client certificate"}`))
@@ -171,7 +175,10 @@ func newFakeServer(t *testing.T) *fakeServer {
 		}
 		_ = json.NewEncoder(w).Encode(agentproto.Assignments{Revision: 7})
 	})
-	f.srv = httptest.NewUnstartedServer(mux)
+	f.proto = &fakeProtocol{l: l, sessions: map[string]*fakeSession{}}
+	f.srv = httptest.NewUnstartedServer(nil)
+	f.proto.au = f.srv.Listener.Addr().String()
+	f.srv.Config.Handler = f.proto.handler(mux)
 	f.srv.TLS = l.TLSConfig()
 	f.srv.StartTLS()
 	t.Cleanup(f.srv.Close)
@@ -253,7 +260,7 @@ func TestUnauthorizedIsReported(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl := NewClient(id)
-	cl.tr.TLSClientConfig.GetClientCertificate = nil // present no certificate
+	f.with(func() { f.deny = true })
 	if _, err := cl.Assignments(context.Background()); !IsUnauthorized(err) || !strings.Contains(err.Error(), "no client certificate") {
 		t.Fatalf("err = %v", err)
 	}

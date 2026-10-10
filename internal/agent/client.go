@@ -48,11 +48,13 @@ func IsUnauthorized(err error) bool {
 	return errors.As(err, &pe) && pe.Status == http.StatusUnauthorized
 }
 
-// Client talks to /agent/v1/* with the agent's certificate.
+// Client talks to /agent/v1/*: REST through the signed and sealed session
+// protocol (secureTransport), the WebSocket with the agent's certificate.
 type Client struct {
 	id   *Identity
 	tr   *http.Transport
-	hc   *http.Client // REST, with a timeout
+	st   *secureTransport
+	hc   *http.Client // REST over the signed, sealed session protocol, with a timeout
 	ws   *http.Client // WebSocket dial: coder/websocket refuses a client Timeout
 	base string
 }
@@ -85,7 +87,8 @@ func NewClient(id *Identity) *Client {
 			return &c, nil
 		},
 	}, IdleConnTimeout: 90 * time.Second}
-	return &Client{id: id, tr: tr, hc: &http.Client{Transport: tr, Timeout: 60 * time.Second},
+	st := NewSecureTransport(id, tr).(*secureTransport)
+	return &Client{id: id, tr: tr, st: st, hc: &http.Client{Transport: st, Timeout: 60 * time.Second},
 		ws: &http.Client{Transport: tr}, base: strings.TrimRight(id.State.AgentURL, "/")}
 }
 
@@ -154,6 +157,7 @@ func (c *Client) Renew(ctx context.Context) error {
 	if err := c.id.saveCert([]byte(rr.Certificate), []byte(rr.TrustBundle)); err != nil {
 		return err
 	}
+	c.st.reset()                // sessions are bound to the old certificate's serial
 	c.tr.CloseIdleConnections() // kept-alive connections still carry the old certificate
 	return nil
 }
