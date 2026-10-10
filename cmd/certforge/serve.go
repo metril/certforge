@@ -350,7 +350,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		Agents: agentSvc, AgentSettings: agentSettings, Hub: hub, AgentListener: agentListener,
 		HTTPTokens: httpTokens, Keys: keysSvc, Vault: vaultProvider, Targets: targetsReg, Dispatcher: dispatcher,
 		KEKHealth: kekHealth, Version: version, Metrics: metrics.Handler(store, sections), Backup: backupSvc,
-		Notify: notifySvc, Monitors: monitorSvc,
+		Notify: notifySvc, Monitors: monitorSvc, AgentNonces: api.NewAgentNonces(),
 	}
 	handler := api.NewRouter(deps)
 	srv := &http.Server{

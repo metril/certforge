@@ -77,7 +77,7 @@ func (a *agentAPI) routes(v1 chi.Router) {
 	v1.With(a.limitSession).Post("/session", a.session)
 	v1.With(a.limitSession).Get("/ws", a.ws)
 	v1.Group(func(g chi.Router) {
-		g.Use(a.secure)
+		g.Use(a.limitSession, a.secure)
 		g.Post("/renew", a.renew)
 		g.Get("/assignments", a.assignments)
 		g.Get("/grants/{id}/bundle", a.bundle)

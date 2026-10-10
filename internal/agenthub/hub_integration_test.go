@@ -75,14 +75,14 @@ func TestServeVerifyClosesRevokedClient(t *testing.T) {
 		AgentCertNotAfter: &notAfter, AgentCaID: &ca.ID, Hostname: "host-1", Os: "linux", Arch: "amd64", AgentVersion: "test"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Authenticate(ctx, leaf); err != nil {
+	if _, err := svc.AuthenticateKey(ctx, en.Client.ID, agentca.SerialHex(leaf)); err != nil {
 		t.Fatalf("sanity: newly active client should authenticate: %v", err)
 	}
 	if _, err := svc.RevokeClient(ctx, org, en.Client.ID); err != nil {
 		t.Fatal(err)
 	}
 	verify := func(vctx context.Context) error {
-		_, err := svc.Authenticate(vctx, leaf)
+		_, err := svc.AuthenticateKey(vctx, en.Client.ID, agentca.SerialHex(leaf))
 		return err
 	}
 	h, s := New(nil), newFakeSession()

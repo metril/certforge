@@ -12,7 +12,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,35 +49,58 @@ const (
 // still cannot be answered to anyone but the agent, whose session keys the
 // proxy does not hold. Swap it for a shared store when running several servers.
 type NonceStore interface {
-	// Add records key at now and reports false when it was already recorded
-	// and has not expired (a replay).
-	Add(key string, now time.Time) bool
+	// Add records key at now. It reports false when the key was already
+	// recorded and has not expired (a replay), and errNonceFull when the store
+	// is at capacity and cannot record it.
+	Add(key string, now time.Time) (bool, error)
 }
 
+// maxNonces bounds the in-memory replay cache: about 120 s of requests at the
+// rate limits, with generous headroom.
+const maxNonces = 200000
+
+var errNonceFull = errors.New("agent nonce cache full")
+
 type memNonces struct {
+	max    int
 	mu     sync.Mutex
 	seen   map[string]time.Time // key -> expiry
 	pruned time.Time
 }
 
-func newMemNonces() *memNonces { return &memNonces{seen: map[string]time.Time{}} }
+// NewAgentNonces returns the in-memory replay cache. Both the HTTP router and
+// the agent listener's router must be given the same one (Deps.AgentNonces),
+// or a request captured on one port replays on the other.
+func NewAgentNonces() NonceStore { return newMemNonces() }
 
-func (m *memNonces) Add(key string, now time.Time) bool {
+func newMemNonces() *memNonces { return &memNonces{max: maxNonces, seen: map[string]time.Time{}} }
+
+func (m *memNonces) prune(now time.Time) {
+	for k, exp := range m.seen {
+		if !now.Before(exp) {
+			delete(m.seen, k)
+		}
+	}
+	m.pruned = now
+}
+
+func (m *memNonces) Add(key string, now time.Time) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if now.Sub(m.pruned) > nonceTTL/2 {
-		for k, exp := range m.seen {
-			if !now.Before(exp) {
-				delete(m.seen, k)
-			}
-		}
-		m.pruned = now
+		m.prune(now)
 	}
 	if exp, ok := m.seen[key]; ok && now.Before(exp) {
-		return false
+		return false, nil
+	}
+	if len(m.seen) >= m.max {
+		m.prune(now)
+		if len(m.seen) >= m.max {
+			return false, errNonceFull
+		}
 	}
 	m.seen[key] = now.Add(nonceTTL)
-	return true
+	return true, nil
 }
 
 // agentSession is one live handshake: the keys, and the client it belongs to.
@@ -151,11 +176,36 @@ func (a *agentAPI) authorities(ctx context.Context) []string {
 			if au := agentproto.Authority(st.AgentURL); au != "" {
 				out = append(out, au)
 			}
+			// Agents enrolled against an earlier Agent URL keep signing for
+			// its host; it stays valid while it is a listener name.
+			out = append(out, listenerAuthorities(st)...)
 		}
 	}
 	if a.httpPort {
 		if au := agentproto.Authority(a.d.Config.BaseURL); au != "" {
 			out = append(out, au)
+		}
+	}
+	return out
+}
+
+// listenerAuthorities are the authorities an agent reaching the server by one
+// of the listener names signs for: the bare name (default port) and the name
+// on the Agent URL's port.
+func listenerAuthorities(st agents.Settings) []string {
+	var port string
+	if u, err := url.Parse(st.AgentURL); err == nil {
+		port = u.Port()
+	}
+	var out []string
+	for _, n := range st.ListenerNames {
+		h := strings.ToLower(n)
+		if strings.Contains(h, ":") {
+			h = "[" + h + "]"
+		}
+		out = append(out, h)
+		if port != "" && port != "443" {
+			out = append(out, h+":"+port)
 		}
 	}
 	return out
@@ -279,15 +329,26 @@ func (a *agentAPI) readBody(w http.ResponseWriter, r *http.Request, limit int64)
 	return b, true
 }
 
-// checkFresh applies the nonce window and the replay cache to a verified request.
-func (a *agentAPI) checkFresh(p agentproto.ReqParams, now time.Time) (code string) {
+// checkFresh applies the nonce window and the replay cache to a verified
+// request and, when it fails, answers it (a signed refusal; an unsigned 503
+// when the cache is full) and reports false.
+func (a *agentAPI) checkFresh(w http.ResponseWriter, p agentproto.ReqParams, now time.Time) bool {
 	if d := now.Sub(p.Created); d > nonceSkew || d < -nonceSkew {
-		return agentproto.ErrCodeStale
+		a.refuse(w, http.StatusUnauthorized, agentproto.ErrCodeStale, p.Nonce)
+		return false
 	}
-	if !a.nonces.Add(p.KeyID+"|"+p.Nonce, now) {
-		return agentproto.ErrCodeReplay
+	fresh, err := a.nonces.Add(p.KeyID+"|"+p.Nonce, now)
+	if errors.Is(err, errNonceFull) {
+		a.d.Log.Error("agent replay cache full; refusing signed requests until entries expire")
+		w.Header().Set("Retry-After", "5")
+		a.reject(w, http.StatusServiceUnavailable, "busy")
+		return false
 	}
-	return ""
+	if err != nil || !fresh {
+		a.refuse(w, http.StatusUnauthorized, agentproto.ErrCodeReplay, p.Nonce)
+		return false
+	}
+	return true
 }
 
 // session is POST /agent/v1/session: the signed handshake. The agent sends
@@ -325,13 +386,12 @@ func (a *agentAPI) session(w http.ResponseWriter, r *http.Request) {
 		a.reject(w, http.StatusUnauthorized, errCode(err))
 		return
 	}
-	if code := a.checkFresh(p, now); code != "" {
-		a.refuse(w, http.StatusUnauthorized, code, p.Nonce)
-		return
-	}
 	c, err := a.d.Agents.AuthenticateKey(r.Context(), clientID, serial)
 	if err != nil {
 		a.rejectErr(w, err, p.Nonce)
+		return
+	}
+	if !a.checkFresh(w, p, now) {
 		return
 	}
 	raw, err := base64.StdEncoding.DecodeString(p.Ephemeral)
@@ -395,13 +455,13 @@ func (s *sealWriter) Write(b []byte) (int, error) {
 func (a *agentAPI) secure(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		now := a.clock()
-		body, ok := a.readBody(w, r, agentproto.MaxMessage+1024)
-		if !ok {
-			return
-		}
 		sess := a.sessions.get(r.Header.Get(agentproto.HeaderEphemeral), now)
 		if sess == nil {
 			a.reject(w, http.StatusUnauthorized, agentproto.ErrCodeSession)
+			return
+		}
+		body, ok := a.readBody(w, r, agentproto.MaxMessage+1024)
+		if !ok {
 			return
 		}
 		p, err := a.verify(r, body, now, func(id string) (*ecdsa.PublicKey, error) {
@@ -414,14 +474,13 @@ func (a *agentAPI) secure(next http.Handler) http.Handler {
 			a.reject(w, http.StatusUnauthorized, errCode(err))
 			return
 		}
-		if code := a.checkFresh(p, now); code != "" {
-			a.refuse(w, http.StatusUnauthorized, code, p.Nonce)
-			return
-		}
 		sw := &sealWriter{h: http.Header{}}
 		c, err := a.d.Agents.AuthenticateKey(r.Context(), sess.clientID, sess.serial)
 		if err != nil {
 			a.rejectErr(w, err, p.Nonce)
+			return
+		}
+		if !a.checkFresh(w, p, now) {
 			return
 		}
 		pt := body

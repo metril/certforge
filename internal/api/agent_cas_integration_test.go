@@ -282,3 +282,51 @@ func TestRotateCAReloadFailureStillBroadcasts(t *testing.T) {
 		t.Fatal("the rotate audit event should still be recorded")
 	}
 }
+
+// After rotate, renew and retire, an agent holding the updated bundle still
+// verifies the signed REST responses and the sealed hello_ack: the responder
+// identity now chains to the new CA only.
+func TestAgentCARotationKeepsSignedProtocolVerifying(t *testing.T) {
+	hub := agenthub.New(slog.Default())
+	t.Cleanup(hub.Shutdown)
+	e := newAgentEnv(t, func(d *Deps) { d.Hub = hub })
+	e.svc.Hub = hub
+	admin := e.as("admin")
+	cert, _, _ := e.enrolledWithGrant(t, "rot-1", false)
+
+	res, err := e.srv.ListAgentCAs(e.as("viewer"), gen.ListAgentCAsRequestObject{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldID := res.(gen.ListAgentCAs200JSONResponse).Items[0].Id
+	if _, err := e.srv.RotateAgentCA(admin, gen.RotateAgentCARequestObject{}); err != nil {
+		t.Fatal(err)
+	}
+	var rr agentproto.RenewResponse
+	if code := e.post(t, e.httpClient(t, &cert), "/agent/v1/renew",
+		agentproto.RenewRequest{CSR: csrPEM(t, cert.PrivateKey.(crypto.Signer))}, &rr); code != http.StatusOK {
+		t.Fatalf("renew %d", code)
+	}
+	blk, _ := pem.Decode([]byte(rr.Certificate))
+	renewed, _ := x509.ParseCertificate(blk.Bytes)
+	renewedCert := tls.Certificate{Certificate: [][]byte{renewed.Raw}, PrivateKey: cert.PrivateKey, Leaf: renewed}
+	if _, err := e.srv.RetireAgentCA(admin, gen.RetireAgentCARequestObject{Id: oldID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.listener.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// e.identity reads the CA bundle as it is now: the new CA alone.
+	hc := secureClient(e.identity(t, renewedCert), e.httpClient(t, nil).Transport)
+	if code, err := doAgent(hc, http.MethodGet, e.ts.URL+"/agent/v1/assignments", nil, &agentproto.Assignments{}); err != nil || code != http.StatusOK {
+		t.Fatalf("signed REST after rotation: %d %v", code, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ws := dialWS(ctx, t, e, renewedCert)
+	sendWS(ctx, t, ws, agentproto.Hello{AgentVersion: "1.0", Hostname: "h", OS: "linux", Arch: "amd64"})
+	if _, ok := recvWS(ctx, t, ws).(agentproto.Welcome); !ok {
+		t.Fatal("hello_ack did not verify after rotation")
+	}
+}

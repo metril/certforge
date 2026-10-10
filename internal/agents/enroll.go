@@ -64,19 +64,9 @@ func lockSigningCA(ctx context.Context, q *sqlcgen.Queries, id uuid.UUID) error 
 	return nil
 }
 
-// Authenticate maps a verified client certificate to its active client and
-// refuses any certificate but the newest one issued to it.
-func (s *Service) Authenticate(ctx context.Context, leaf *x509.Certificate) (sqlcgen.Client, error) {
-	id, err := agentca.ClientIDFromCert(leaf)
-	if err != nil {
-		return sqlcgen.Client{}, unauthorized("This is not a CertForge agent certificate.")
-	}
-	return s.AuthenticateKey(ctx, id, agentca.SerialHex(leaf))
-}
-
-// AuthenticateKey is Authenticate for a client identified by its id and the
-// serial of the certificate it signs with (the signed keyid of the agent
-// protocol): the client must exist, be active and hold serial as its newest.
+// AuthenticateKey maps a client id and the serial of the certificate it signs
+// with (the signed keyid of the agent protocol) to its active client: it must
+// exist, be active and hold serial as its newest.
 func (s *Service) AuthenticateKey(ctx context.Context, id uuid.UUID, serial string) (sqlcgen.Client, error) {
 	c, err := s.Q.GetClientByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {

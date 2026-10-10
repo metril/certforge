@@ -461,3 +461,85 @@ func TestAgentRevocationNeedsSignedRefusal(t *testing.T) {
 		}
 	}
 }
+
+// One replay cache serves both ports: a signed handshake captured on one
+// listener is refused when replayed on the other.
+func TestAgentReplayAcrossPorts(t *testing.T) {
+	nonces := NewAgentNonces()
+	e := newAgentEnv(t, func(d *Deps) { d.AgentNonces = nonces })
+	cert, _, _ := e.enrolledWithGrant(t, "xport-1", false)
+	d := e.srv.d
+	d.AgentNonces = nonces
+	d.AgentAuthorities = []string{e.ts.Listener.Addr().String()}
+	other := httptest.NewUnstartedServer(NewAgentRouter(d))
+	other.TLS = e.listener.TLSConfig()
+	other.StartTLS()
+	t.Cleanup(other.Close)
+
+	local, _ := ecdh.P256().GenerateKey(rand.Reader)
+	leaf, _ := x509.ParseCertificate(cert.Certificate[0])
+	cid, _ := agentca.ClientIDFromCert(leaf)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, e.ts.URL+agentproto.PathSession, nil)
+	req.Header.Set(agentproto.HeaderAgentCert, base64.StdEncoding.EncodeToString(cert.Certificate[0]))
+	if err := agentproto.SignRequest(req, nil, cert.PrivateKey.(*ecdsa.PrivateKey), agentproto.ReqParams{Authority: e.ts.Listener.Addr().String(),
+		KeyID: cid.String() + ":" + agentca.SerialHex(leaf), Nonce: agentproto.NewNonce(), Created: time.Now(),
+		Ephemeral: base64.StdEncoding.EncodeToString(local.PublicKey().Bytes())}); err != nil {
+		t.Fatal(err)
+	}
+	send := func(base string) (int, string) {
+		r := req.Clone(context.Background())
+		r.URL, _ = url.Parse(base + agentproto.PathSession)
+		r.RequestURI = ""
+		resp, err := e.httpClient(t, nil).Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode, resp.Header.Get(agentproto.HeaderError)
+	}
+	if code, _ := send(e.ts.URL); code != http.StatusOK {
+		t.Fatalf("first handshake %d", code)
+	}
+	if code, ec := send(other.URL); code != http.StatusUnauthorized || ec != agentproto.ErrCodeReplay {
+		t.Fatalf("cross-port replay answered %d %q", code, ec)
+	}
+}
+
+// A secure request naming no live session is refused before its body is read.
+func TestAgentSecureUnknownSessionBeforeBody(t *testing.T) {
+	e := newAgentEnv(t)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, e.ts.URL+"/agent/v1/heartbeat", io.LimitReader(zeros{}, 9<<20))
+	req.Header.Set(agentproto.HeaderEphemeral, "nope")
+	resp, err := e.httpClient(t, nil).Do(req)
+	if err == nil {
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized || resp.Header.Get(agentproto.HeaderError) != agentproto.ErrCodeSession {
+			t.Fatalf("unknown session answered %d %q (413 would mean the body was read first)", resp.StatusCode, resp.Header.Get(agentproto.HeaderError))
+		}
+	}
+}
+
+type zeros struct{}
+
+func (zeros) Read(p []byte) (int, error) { clear(p); return len(p), nil }
+
+// A full replay cache answers an unsigned 503 and recovers once entries expire.
+func TestAgentNonceCacheFull(t *testing.T) {
+	nonces := newMemNonces()
+	e := newAgentEnv(t, func(d *Deps) { d.AgentNonces = nonces })
+	cert, _, _ := e.enrolledWithGrant(t, "full-1", false)
+	nonces.mu.Lock()
+	nonces.max = len(nonces.seen) + 1 // room for exactly one more
+	nonces.mu.Unlock()
+	au := e.ts.Listener.Addr().String()
+	resp := e.rawHandshake(t, cert, au, e.ts.URL, time.Now(), "")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first handshake %d", resp.StatusCode)
+	}
+	resp = e.rawHandshake(t, cert, au, e.ts.URL, time.Now(), "")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get(agentproto.HeaderSignature) != "" {
+		t.Fatalf("full cache answered %d", resp.StatusCode)
+	}
+}

@@ -53,13 +53,12 @@ func (a *agentAPI) ws(w http.ResponseWriter, r *http.Request) {
 		a.reject(w, http.StatusUnauthorized, errCode(err))
 		return
 	}
-	if code := a.checkFresh(p, now); code != "" {
-		a.refuse(w, http.StatusUnauthorized, code, p.Nonce)
-		return
-	}
 	c, err := a.d.Agents.AuthenticateKey(r.Context(), clientID, serial)
 	if err != nil {
 		a.rejectErr(w, err, p.Nonce)
+		return
+	}
+	if !a.checkFresh(w, p, now) {
 		return
 	}
 	raw, err := base64.StdEncoding.DecodeString(p.Ephemeral)

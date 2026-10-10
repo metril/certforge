@@ -217,7 +217,12 @@ func (a *agentAPI) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The proof holds: from here the reply is sealed to the verified key and signed.
-	if !a.nonces.Add("enrol|"+sub.LookupID+"|"+sub.Nonce, now) {
+	if fresh, nerr := a.nonces.Add("enrol|"+sub.LookupID+"|"+sub.Nonce, now); errors.Is(nerr, errNonceFull) {
+		a.d.Log.Error("agent replay cache full; refusing signed requests until entries expire")
+		w.Header().Set("Retry-After", "5")
+		a.reject(w, http.StatusServiceUnavailable, "busy")
+		return
+	} else if nerr != nil || !fresh {
 		a.sealedReply(w, http.StatusUnauthorized, agentproto.PathEnroll, helloID, reply, map[string]any{"title": "Unauthorized", "status": http.StatusUnauthorized, "detail": "This enrolment request was already seen."})
 		return
 	}
@@ -258,8 +263,7 @@ func (a *agentAPI) enrollPoll(w http.ResponseWriter, r *http.Request) {
 		a.reject(w, http.StatusUnauthorized, errCode(err))
 		return
 	}
-	if code := a.checkFresh(p, now); code != "" {
-		a.refuse(w, http.StatusUnauthorized, code, p.Nonce)
+	if !a.checkFresh(w, p, now) {
 		return
 	}
 	reply, err := parseP256(p.Ephemeral)
