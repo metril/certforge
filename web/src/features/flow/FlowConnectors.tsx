@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Fragment, useCallback, useId, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { edgeRelation } from './flowLabels';
 import { FLOW_STATUS } from './FlowNode';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -14,7 +14,7 @@ const STROKE: Record<FlowStatus, string> = {
   idle: 'stroke-ink-muted',
 };
 
-const FILL: Record<FlowStatus | 'muted' | 'input', string> = {
+const FILL: Record<FlowStatus | 'muted' | 'border', string> = {
   valid: 'fill-valid',
   expiring: 'fill-expiring',
   expired: 'fill-expired',
@@ -23,10 +23,10 @@ const FILL: Record<FlowStatus | 'muted' | 'input', string> = {
   pending: 'fill-pending',
   idle: 'fill-ink-muted',
   muted: 'fill-ink-muted',
-  input: 'fill-input',
+  border: 'fill-border',
 };
 const MARKERS = Object.keys(FILL) as (keyof typeof FILL)[];
-const markerOf = (cls: string): keyof typeof FILL => (cls === 'stroke-input' ? 'input' : cls === 'stroke-ink-muted' ? 'muted' : (cls.slice('stroke-'.length) as FlowStatus));
+const markerOf = (cls: string): keyof typeof FILL => (cls === 'stroke-border' ? 'border' : cls === 'stroke-ink-muted' ? 'muted' : (cls.slice('stroke-'.length) as FlowStatus));
 
 type Line = {
   key: string;
@@ -35,6 +35,8 @@ type Line = {
   width: number;
   opacity: number;
   dashed: boolean;
+  /** The arrowhead sits at the line's start (the edge runs right to left). */
+  reversed: boolean;
   hover: boolean;
   /** Real node pair, left lane first; null for proxies and synthetic links, which are not interactive. */
   ends: { from: string; to: string } | null;
@@ -64,6 +66,8 @@ export function FlowConnectors({ containerRef, getEl, flow, path, hoverPath, sel
   const [lines, setLines] = useState<Line[]>([]);
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const raf = useRef(0);
+  const uid = useId().replace(/:/g, '');
+  const arrow = (m: keyof typeof FILL) => `${uid}-flow-arrow-${m}`;
 
   const kinds = useMemo(() => {
     const m = new Map<string, FlowNodeData['kind']>();
@@ -107,6 +111,7 @@ export function FlowConnectors({ containerRef, getEl, flow, path, hoverPath, sel
       const d = `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
       const on = m.synthetic || m.keys.some((k) => path.edges.has(k));
       const hov = !on && !!hoverPath && (m.synthetic ? m.keys.some((k) => hoverPath.synthetic.has(k)) : m.keys.some((k) => hoverPath.edges.has(k)));
+      const sel = !!selectedEdge && !m.synthetic && m.keys.includes(edgeKey(selectedEdge.from, selectedEdge.to));
       const interactive = !m.synthetic && !isProxyId(m.a) && !isProxyId(m.b);
       const st = m.edges.length > 0 ? pairStatus(m.edges, path.nodes) : 'idle';
       out.push({
@@ -118,23 +123,24 @@ export function FlowConnectors({ containerRef, getEl, flow, path, hoverPath, sel
         my: (y1 + y2) / 2,
         hover: hov,
         d,
-        // Nothing selected: one neutral control-border stroke. A selected path
-        // is thicker and status-coloured; every other line is dimmed.
-        cls: hov ? (m.synthetic ? 'stroke-ink-muted' : STROKE[pairStatus(m.edges, hoverPath.nodes)]) : !selected || !on ? 'stroke-input' : m.synthetic ? 'stroke-ink-muted' : STROKE[pairStatus(m.edges, path.nodes)],
-        width: hov ? 2 : !selected ? 1.5 : on ? 2.5 : 1,
-        opacity: hov ? 0.7 : !selected ? 1 : on ? 1 : 0.2,
+        // Idle lines are a thin neutral stroke. A selected path or connection is
+        // status-coloured and thicker; every other line fades back.
+        reversed: !m.synthetic && lid !== m.a,
+        cls: sel ? STROKE[st] : hov ? (m.synthetic ? 'stroke-ink-muted' : STROKE[pairStatus(m.edges, hoverPath.nodes)]) : m.synthetic && on ? 'stroke-ink-muted' : !on ? 'stroke-border' : STROKE[pairStatus(m.edges, path.nodes)],
+        width: sel ? 3 : hov ? 2 : m.synthetic && on ? 1.5 : !selected && !selectedEdge ? 1 : on ? 2 : 1,
+        opacity: sel ? 1 : hov ? 0.7 : !selected || on ? 1 : 0.2,
         dashed: m.synthetic,
       });
     }
     setLines((prev) =>
       prev.length === out.length && prev.every((l, i) => {
         const n = out[i];
-        return l.key === n.key && l.d === n.d && l.cls === n.cls && l.width === n.width && l.opacity === n.opacity && l.dashed === n.dashed && l.hover === n.hover && l.mx === n.mx && l.my === n.my && l.status === n.status && l.label === n.label && l.ends?.from === n.ends?.from && l.ends?.to === n.ends?.to;
+        return l.key === n.key && l.d === n.d && l.cls === n.cls && l.width === n.width && l.opacity === n.opacity && l.dashed === n.dashed && l.reversed === n.reversed && l.hover === n.hover && l.mx === n.mx && l.my === n.my && l.status === n.status && l.label === n.label && l.ends?.from === n.ends?.from && l.ends?.to === n.ends?.to;
       })
         ? prev
         : out,
     );
-  }, [containerRef, getEl, kinds, merged, path, hoverPath, selected]);
+  }, [containerRef, getEl, kinds, merged, path, hoverPath, selected, selectedEdge]);
 
   const schedule = useCallback(() => {
     cancelAnimationFrame(raf.current);
@@ -167,8 +173,8 @@ export function FlowConnectors({ containerRef, getEl, flow, path, hoverPath, sel
       <svg aria-hidden data-flow-connectors className="pointer-events-none absolute inset-0 z-0 size-full overflow-visible">
         <defs>
           {MARKERS.map((m) => (
-            <marker key={m} id={`flow-arrow-${m}`} viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
-              <path d="M0 0 L8 4 L0 8 z" className={FILL[m]} />
+            <marker key={m} id={arrow(m)} viewBox="0 0 6 6" refX="5" refY="3" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+              <path d="M0 0L6 3L0 6z" className={FILL[m]} />
             </marker>
           ))}
         </defs>
@@ -180,7 +186,7 @@ export function FlowConnectors({ containerRef, getEl, flow, path, hoverPath, sel
               className={l.cls}
               strokeWidth={l.width}
               strokeDasharray={l.dashed ? '4 4' : undefined}
-              markerEnd={`url(#flow-arrow-${markerOf(l.cls)})`}
+              {...{ [l.reversed ? 'markerStart' : 'markerEnd']: `url(#${arrow(markerOf(l.cls))})` }}
               data-edge={l.key}
               data-dashed={l.dashed || undefined}
               data-hover-path={l.hover || undefined}

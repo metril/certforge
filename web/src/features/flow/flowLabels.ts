@@ -1,3 +1,4 @@
+import { relDays, relTime } from '@/lib/time';
 import { laneOf, type FlowNodeData, type FlowStatus } from './flowGraph';
 
 const DEFAULT: Record<FlowStatus, string> = {
@@ -45,5 +46,28 @@ export function edgeRelation(a: FlowNodeData['kind'], b: FlowNodeData['kind']): 
       return 'alerts';
     default:
       return laneOf(a) === 'alerts' || laneOf(b) === 'alerts' ? 'alerts' : 'link';
+  }
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** One quiet line under a node's name; empty when there is nothing to add. */
+export function nodeMeta(node: FlowNodeData, links?: { up: number; down: number }, now = Date.now()): string {
+  const s = node.summary;
+  switch (node.kind) {
+    case 'certificate':
+      return s?.expiresAt ? relDays(s.expiresAt, now) : (s?.versionSerial ?? '');
+    case 'client':
+      return s?.lastDeployedAt ? `deployed ${relTime(s.lastDeployedAt, now)}` : '';
+    case 'target':
+    case 'layout':
+    case 'hook':
+      return s?.clientIds ? plural(s.clientIds.length, 'host', 'hosts') : '';
+    case 'ca':
+    case 'account':
+    case 'dnsCredential':
+      return links ? plural(links.down, 'certificate', 'certificates') : '';
+    case 'channel':
+      return node.coversCertificates ? 'Covers this org' : '';
   }
 }

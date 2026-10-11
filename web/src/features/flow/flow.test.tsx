@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
 import { authHandlers, makeGrant, meWith, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
@@ -223,9 +223,9 @@ it('collapsing a lane shows one proxy row with the count and keeps the connector
   const { user, router, container } = renderRoute('/o/acme/flow');
   await screen.findByRole('button', { name: /Certificate www/ });
   const certs = screen.getByRole('region', { name: 'Certificates' });
-  const head = within(certs).getByRole('button', { name: /Certificates/ });
+  const head = within(certs).getByRole('button', { name: /^Certificates/ });
   expect(head).toHaveAttribute('aria-expanded', 'true');
-  expect(head).toHaveTextContent('1 problem');
+  expect(certs.querySelector('h2')).toHaveTextContent('1 problem');
   await user.click(head);
   await waitFor(() => expect(router.state.location.search).toMatchObject({ collapsed: ['certificates'] }));
   expect(head).toHaveAttribute('aria-expanded', 'false');
@@ -282,7 +282,7 @@ it('does not count a pending channel as a problem', async () => {
   setWidth(true);
   useFlow(() => ({ ...base, lanes: { ...base.lanes, alerts: lane([node('channel', 'ops', { status: 'pending' })]) } }));
   renderRoute('/o/acme/flow');
-  const head = within(await screen.findByRole('region', { name: 'Alerts' })).getByRole('button', { name: /Alerts/ });
+  const head = within(await screen.findByRole('region', { name: 'Alerts' })).getByRole('button', { name: /^Alerts/ });
   expect(head).not.toHaveTextContent('problem');
 });
 
@@ -585,4 +585,51 @@ it('lane headers are sticky', async () => {
   renderRoute('/o/acme/flow');
   const h = (await screen.findByRole('region', { name: 'Certificates' })).querySelector('h2')!;
   expect(h).toHaveClass('sticky', 'top-0');
+});
+
+it('a healthy node shows no status chip but names its status; a failed node shows the chip and a failed rail', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...base, lanes: { ...base.lanes, certificates: lane([node('certificate', 'api'), node('certificate', 'bad', { status: 'failed' })]) } }));
+  renderRoute('/o/acme/flow');
+  const ok = await screen.findByRole('button', { name: 'Certificate api, Healthy' });
+  expect(within(ok).queryByText('Healthy')).toBeNull();
+  expect(ok.querySelector('.bg-valid')).not.toBeNull();
+  const bad = screen.getByRole('button', { name: /Certificate bad, Failed/ });
+  expect(within(bad).getByText('Failed')).toBeInTheDocument();
+  expect(bad.querySelector('.bg-failed')).not.toBeNull();
+});
+
+it('a certificate card reads its expiry in the meta line', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+  try {
+    setWidth(true);
+    useFlow(() => ({ ...base, lanes: { ...base.lanes, certificates: lane([node('certificate', 'api', { summary: { expiresAt: '2026-01-13T00:00:00Z' } })]) } }));
+    renderRoute('/o/acme/flow');
+    const api = await screen.findByRole('button', { name: /Certificate api/ });
+    expect(within(api).getByText('in 12 d')).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('the selected node is filled, and a lane header shows its count pill and problems in red', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  renderRoute('/o/acme/flow?focus=certificate:www');
+  expect(await screen.findByRole('button', { name: /Certificate www/ })).toHaveClass('bg-selected', 'shadow-ctl');
+  const certs = screen.getByRole('region', { name: 'Certificates' });
+  expect(within(certs).getByText('2')).toHaveClass('bg-subtle');
+  expect(within(certs).getByText('1 problem')).toHaveClass('text-failed');
+});
+
+it('a selected connection is drawn thick with an arrowhead', async () => {
+  setWidth(true);
+  useFlow(() => detailed);
+  const { container } = renderRoute('/o/acme/flow?edge=layout:nginx>client:web-1');
+  await screen.findByRole('complementary', { name: 'Details' });
+  await waitFor(() => expect(container.querySelector('path[data-selected]')).not.toBeNull());
+  const p = container.querySelector('path[data-selected]')!;
+  expect(p).toHaveAttribute('stroke-width', '3');
+  expect(p.getAttribute('marker-end')).toMatch(/^url\(#.*flow-arrow-/);
 });
