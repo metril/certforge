@@ -18,6 +18,9 @@ linters:
     - staticcheck
     - unused
   settings:
+    misspell:
+      ignore-rules:
+        - routeros
     errcheck:
       exclude-functions:
         - fmt.Fprintf
