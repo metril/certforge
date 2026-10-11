@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { fieldOfTitle } from '@/api/errors';
 import { accountsQuery } from '@/api/queries/accounts';
 import { casQuery } from '@/api/queries/cas';
 import { allClientsQuery } from '@/api/queries/clients';
@@ -387,7 +388,7 @@ export function fullPayload(value: IssuanceDefaults): IssuanceDefaults {
 // unprocessable in internal/api), so this is an exact lookup against the
 // field keys this form actually renders — no prose keyword-matching needed.
 export function fieldFromTitle(title: string): FieldKey | null {
-  const name = title.replace(/^Invalid\s+/, '').split('.')[0];
+  const name = fieldOfTitle(title);
   return ISSUANCE_FIELDS.some((f) => f.key === name) ? (name as FieldKey) : null;
 }
 

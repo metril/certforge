@@ -47,20 +47,34 @@ A Traefik target writes certificates where Traefik's [file provider](https://doc
 |---|---|---|
 | **Directory on the agent** (`dir`) | Traefik's file-provider directory as the agent sees it. Must be an absolute path. | Required |
 | **Directory as Traefik sees it** (`pathPrefix`) | The same directory as Traefik sees it, when the two containers mount it at different paths. Used for `certFile` and `keyFile` in the YAML. | Same as the directory |
-| **Default certificate** (`defaultCert`) | Also serve this certificate when no SNI matches. | Off |
 | **TLS stores** (`stores`) | Traefik TLS stores the certificate joins. Each is 1 to 64 letters, digits, `-` or `_`. | `default` |
 | **ACME service URL** (`acmeServiceUrl`) | An absolute `http://` or `https://` URL of the agent's http-01 listener. Also routes ACME challenges through Traefik. See [Agents](agents.md#challenge-serving). | Empty |
 
 For each grant the agent writes these files, each atomically:
 
-1. `certs/<name>/fullchain.pem` (mode 0644)
-2. `certs/<name>/privkey.pem` (mode 0600)
+1. `<certsDir>/fullchain.pem` (mode 0644)
+2. `<certsDir>/privkey.pem` (mode 0600)
 3. `certforge-<name>.yml` (mode 0644)
 4. `certforge-acme-<name>.yml` (mode 0644), only when **ACME service URL** is set
 
-`<name>` is the certificate name in lower case, with every run of other characters turned into `-`. On renewal the same paths are overwritten, and rewriting the YAML makes Traefik reload. Removing the grant deletes the files in reverse order, so Traefik never points at a missing file.
+`<certsDir>` is the grant's **Certificate directory on the agent**, `<dir>/certs/<name>` by default. `<name>` is the certificate name in lower case, with every run of other characters turned into `-`. On renewal the same paths are overwritten, and rewriting the YAML makes Traefik reload. Removing the grant deletes the files in reverse order, so Traefik never points at a missing file.
 
-Example YAML for `dir: /data/traefik`, `pathPrefix: /etc/traefik/dynamic` and **Default certificate** on:
+### Per-grant options
+
+Each grant on a Traefik target has its own **Target options**, shown under the target picker in the grant sheet. The server validates them against the target type's grant schema (`grantSchema` in `GET /meta/schemas`).
+
+| Field | What it does | Default |
+|---|---|---|
+| **Default certificate** (`defaultCert`) | Also serve this certificate when no SNI matches. Only one grant per client, directory and store may set it, otherwise the save fails with 409. | Off |
+| **Certificate directory on the agent** (`certsDir`) | Absolute directory for `fullchain.pem` and `privkey.pem`. Setting it needs the `delivery:write` permission. Must not equal the target's **Directory on the agent**. | `<dir>/certs/<name>` |
+| **Certificate directory as Traefik sees it** (`certsDirTraefik`) | The same directory as Traefik sees it. | Derived from `dir` and `pathPrefix` when `certsDir` is under `dir`, else the same as `certsDir` |
+| **TLS stores** (`stores`) | Overrides the target's stores for this certificate. | The target's |
+
+On upgrade, a target's Default certificate moves to one grant per client: the certificate whose name sorts first, which is what Traefik was serving. Change it in the grant if another certificate should be the default.
+
+The target no longer has a `defaultCert` field. Migration 00026 moved it onto the grants of each target that had it on. An agent older than this change ignores the options: on the default grant's next deploy it writes the YAML without `defaultCertificate`, and Traefik stops serving the default certificate. Upgrade agents right after the server. A new agent fails to parse a stale target-level `defaultCert` from an old server, so upgrade the server first.
+
+Example YAML for `dir: /data/traefik`, `pathPrefix: /etc/traefik/dynamic` and **Default certificate** on for the grant:
 
 ```yaml
 tls:
@@ -128,6 +142,34 @@ secrets:
 ```
 
 Set **Directory on the agent** to `/etc/traefik/dynamic`. No Docker socket and no reload command are needed. Pin the agent image to a release version so an agent upgrade is a choice. The agent also needs a token and a server URL. See [Agents](agents.md#running-with-docker) and [the agent reference](../reference/agent.md).
+
+### Replacing traefik-cert-watcher
+
+Move to CertForge without serving a gap. Mount one directory in both containers, for example `/opt/docker/certs:/certs`:
+
+```yaml
+services:
+  traefik:
+    command:
+      - --providers.file.directory=/certs
+      - --providers.file.watch=true
+    volumes:
+      - /opt/docker/certs:/certs:ro
+  certforge-agent:
+    environment:
+      CF_WRITE_ALLOW: /certs
+    volumes:
+      - /opt/docker/certs:/certs
+```
+
+1. Enrol the agent. See [Clients](clients.md).
+2. Create a Traefik target with `dir: /certs` and an empty `pathPrefix`.
+3. Grant each certificate to the target. Turn **Default certificate** on for exactly one. Set **Certificate directory on the agent** only when a certificate must keep a legacy location.
+4. Confirm `certforge-*.yml` files appear in `/certs` and Traefik serves the certificates.
+5. Stop traefik-cert-watcher.
+6. Delete its `tls.yaml` and the legacy `<name>.crt` and `<name>.key` files.
+
+While both run, `certforge-*.yml` sorts before `tls.yaml`, so CertForge's default certificate wins. Duplicate certificate entries only log warnings in Traefik.
 
 ## Vault KV
 

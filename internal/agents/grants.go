@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,9 @@ type GrantInput struct {
 	TargetID      *uuid.UUID
 	HookIDs       []uuid.UUID
 	AutoRemediate bool
+	// TargetOptions is the grant's per-type target options (targetOptions);
+	// empty or null means none and is stored as {}.
+	TargetOptions json.RawMessage
 	// RequireKey, when set, is called once the grant is known to hand a
 	// private key to the agent (a key-bearing layout or any agent target);
 	// its error refuses the write. The API layer wires keys:export here.
@@ -57,6 +61,20 @@ func (in GrantInput) validate() error {
 		return invalid("hookIds", "each hook may appear once")
 	}
 	return nil
+}
+
+// targetOptions is TargetOptions as stored: {} when empty or null.
+func (in GrantInput) targetOptions() []byte {
+	if emptyOptions(in.TargetOptions) {
+		return []byte("{}")
+	}
+	return in.TargetOptions
+}
+
+// emptyOptions reports whether raw carries no options: empty, null or {}.
+func emptyOptions(raw []byte) bool {
+	var m map[string]json.RawMessage
+	return json.Unmarshal(raw, &m) != nil || len(m) == 0
 }
 
 func (in GrantInput) hooks() []uuid.UUID {
@@ -308,7 +326,7 @@ func (s *Service) memoSecretOpener() func(ctx context.Context, sealed []byte) (m
 // server-side Request.Config carries (Dispatcher.Deploy) — never just the
 // public fields, even though neither shipped type (traefik, vault-kv) has
 // a secret field today.
-func targetOf(typ *string, cfg []byte, secrets map[string]string) (*agentproto.Target, error) {
+func targetOf(typ *string, cfg []byte, secrets map[string]string, grantOpts []byte) (*agentproto.Target, error) {
 	if typ == nil {
 		return nil, nil
 	}
@@ -316,7 +334,11 @@ func targetOf(typ *string, cfg []byte, secrets map[string]string) (*agentproto.T
 	if err != nil {
 		return nil, err
 	}
-	return &agentproto.Target{Type: *typ, Config: merged}, nil
+	t := &agentproto.Target{Type: *typ, Config: merged}
+	if !emptyOptions(grantOpts) {
+		t.GrantOptions = json.RawMessage(grantOpts)
+	}
+	return t, nil
 }
 
 // grantPaths lists the paths a live grant writes (layout files, then its
@@ -324,7 +346,7 @@ func targetOf(typ *string, cfg []byte, secrets map[string]string) (*agentproto.T
 // material. typ naming a server-run type (no FileTarget) is a data
 // integrity bug — a client grant can never have one — so that is an error,
 // not a silent zero paths.
-func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg []byte, certName string) ([]string, error) {
+func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg, grantOpts []byte, certName string) ([]string, error) {
 	var out []string
 	if len(layoutFiles) > 0 {
 		var layout []delivery.OutputFile
@@ -344,7 +366,7 @@ func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg []by
 		if !ok {
 			return nil, fmt.Errorf("agents: target type %q writes no agent files (a server-run target reached a client-only path)", *typ)
 		}
-		paths, err := ft.Paths(cfg, certName)
+		paths, err := ft.Paths(cfg, grantOpts, certName)
 		if err != nil {
 			return nil, err
 		}
@@ -353,10 +375,80 @@ func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg []by
 	return out, nil
 }
 
+// checkGrantOptions validates a live grant's targetOptions against its
+// target's type: any key needs a target type implementing
+// targets.GrantOptions; the type parses the rest, and a Traefik certsDir
+// may not be the target's own directory (removing the grant would delete the
+// watched directory).
+func (s *Service) checkGrantOptions(typ *string, cfg, raw []byte) error {
+	if emptyOptions(raw) {
+		return nil
+	}
+	const unsupported = "not supported by this target type"
+	if typ == nil {
+		return invalid("targetOptions", unsupported)
+	}
+	t, ok := s.Reg.Get(*typ)
+	if !ok {
+		return fmt.Errorf("agents: unknown target type %q", *typ)
+	}
+	g, ok := t.(targets.GrantOptions)
+	if !ok {
+		return invalid("targetOptions", unsupported)
+	}
+	v, err := g.ParseGrantOptions(raw)
+	if err != nil {
+		var fe *delivery.FieldError
+		if errors.As(err, &fe) {
+			return invalid(fe.Field, "%s", fe.Msg)
+		}
+		return invalid("targetOptions", "%s", err.Error())
+	}
+	if o, ok := v.(delivery.TraefikGrantOptions); ok && o.CertsDir != "" {
+		var c delivery.TraefikConfig
+		if err := json.Unmarshal(cfg, &c); err != nil {
+			return err
+		}
+		if path.Clean(o.CertsDir) == path.Clean(c.Dir) {
+			return invalid("targetOptions.certsDir", "must not be the Traefik directory itself")
+		}
+	}
+	return nil
+}
+
+// defaultCertStores returns the TLS stores r's grant claims as the Traefik
+// default certificate, and the cleaned directory they are claimed in; nil
+// when r is not a traefik grant with defaultCert set. Options that fail to
+// parse claim nothing (checkGrantOptions refuses them on a live grant).
+func defaultCertStores(typ *string, cfg, raw []byte) (dir string, stores []string) {
+	if typ == nil || *typ != delivery.TargetTraefik {
+		return "", nil
+	}
+	o, err := delivery.ParseTraefikGrantOptions(raw)
+	if err != nil || !o.DefaultCert {
+		return "", nil
+	}
+	var c delivery.TraefikConfig
+	if json.Unmarshal(cfg, &c) != nil {
+		return "", nil
+	}
+	stores = o.Stores
+	if len(stores) == 0 {
+		stores = c.Stores
+	}
+	if len(stores) == 0 {
+		stores = []string{"default"}
+	}
+	return path.Clean(c.Dir), stores
+}
+
 // checkPaths refuses a change that makes two grants of one client write the
 // same path: the agent would delete one grant's files while removing the
 // other's. Grants awaiting removal count with the paths they last rendered;
-// certificate names that share a SafeName collide on Traefik paths.
+// certificate names that share a SafeName collide on Traefik paths. It also
+// validates each live grant's targetOptions and refuses two of a client's
+// grants (removal-pending ones included, with their current options) that
+// both set Traefik's default certificate for one directory and store.
 func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs []uuid.UUID) error {
 	if len(clientIDs) == 0 {
 		return nil
@@ -366,10 +458,24 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 		return err
 	}
 	owner := map[string]string{}
+	defaults := map[string]string{} // client|dir|store -> certificate name
 	for _, r := range rows {
 		cid, err := clientOf(r.ClientID)
 		if err != nil {
 			return err
+		}
+		if r.RemovedAt == nil {
+			if err := s.checkGrantOptions(r.TargetType, r.TargetConfig, r.TargetOptions); err != nil {
+				return err
+			}
+		}
+		dir, stores := defaultCertStores(r.TargetType, r.TargetConfig, r.TargetOptions)
+		for _, st := range stores {
+			k := cid.String() + "\x00" + dir + "\x00" + st
+			if other, ok := defaults[k]; ok {
+				return conflict("Grants %q and %q on this client both set Traefik's default certificate for store %q in %s. Only one grant may.", other, r.CertificateName, st, dir)
+			}
+			defaults[k] = r.CertificateName
 		}
 		var paths []string
 		if r.RemovedAt != nil {
@@ -392,11 +498,11 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 			// removal-pending one) still references them, so this is
 			// always available.
 			if len(specs) == 0 {
-				if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
+				if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.TargetOptions, r.CertificateName); err != nil {
 					return err
 				}
 			}
-		} else if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
+		} else if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.TargetOptions, r.CertificateName); err != nil {
 			return err
 		}
 		for _, p := range paths {
@@ -510,7 +616,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 			if err != nil {
 				return nil, nil, err
 			}
-			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets); err != nil {
+			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets, r.TargetOptions); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -631,7 +737,7 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
 	}
 	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: &clientID, CertID: in.CertID, Delivery: in.Delivery,
-		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate})
+		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions()})
 	if pgCode(err) == pgUniqueViolation {
 		return uuid.Nil, conflict("This client already has a grant for that certificate.")
 	}
@@ -689,7 +795,7 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 		return err
 	}
 	g, err := q.UpdateGrant(ctx, sqlcgen.UpdateGrantParams{Delivery: in.Delivery, OutputSpecID: in.LayoutID,
-		DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, ID: grantID})
+		DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions(), ID: grantID})
 	if err != nil {
 		return err
 	}

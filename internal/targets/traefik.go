@@ -61,6 +61,10 @@ func (Traefik) Files(req Request) ([]delivery.File, error) {
 	if err := json.Unmarshal(req.Config, &cfg); err != nil {
 		return nil, err
 	}
+	opts, err := delivery.ParseTraefikGrantOptions(req.GrantOptions)
+	if err != nil {
+		return nil, err
+	}
 	if req.Material == nil {
 		if f := delivery.AcmeRouterFile(req.CertName, req.Names, cfg); f != nil {
 			return []delivery.File{*f}, nil
@@ -71,17 +75,30 @@ func (Traefik) Files(req Request) ([]delivery.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return delivery.RenderTraefik(req.CertName, req.Names, cfg, mat.Fullchain, mat.Key), nil
+	return delivery.RenderTraefik(req.CertName, req.Names, cfg, opts, mat.Fullchain, mat.Key), nil
 }
 
-// Paths implements FileTarget: the paths RenderTraefik would write for cfg
-// and certName, with no material and no names needed (only .Path is read).
-func (Traefik) Paths(cfg json.RawMessage, certName string) ([]string, error) {
+// GrantSchema implements GrantOptions: delivery.TraefikGrantSchema.
+func (Traefik) GrantSchema() json.RawMessage { return json.RawMessage(delivery.TraefikGrantSchema) }
+
+// ParseGrantOptions implements GrantOptions: a delivery.TraefikGrantOptions.
+func (Traefik) ParseGrantOptions(raw json.RawMessage) (any, error) {
+	return delivery.ParseTraefikGrantOptions(raw)
+}
+
+// Paths implements FileTarget: the paths RenderTraefik would write for cfg,
+// the grant's options and certName, with no material and no names needed
+// (only .Path is read).
+func (Traefik) Paths(cfg, grantOpts json.RawMessage, certName string) ([]string, error) {
 	var c delivery.TraefikConfig
 	if err := json.Unmarshal(cfg, &c); err != nil {
 		return nil, err
 	}
-	files := delivery.RenderTraefik(certName, nil, c, nil, nil)
+	opts, err := delivery.ParseTraefikGrantOptions(grantOpts)
+	if err != nil {
+		return nil, err
+	}
+	files := delivery.RenderTraefik(certName, nil, c, opts, nil, nil)
 	out := make([]string, len(files))
 	for i, f := range files {
 		out[i] = f.Path

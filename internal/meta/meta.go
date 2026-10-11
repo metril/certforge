@@ -25,6 +25,9 @@ type Entry struct {
 	Name    string          `json:"name"`
 	Schema  json.RawMessage `json:"schema"`
 	Aliases []string        `json:"aliases,omitempty"` // other codes that select this type
+	// GrantSchema is the JSON Schema of a grant's targetOptions, for a
+	// deploy target type that has per-grant options; empty otherwise.
+	GrantSchema json.RawMessage `json:"grantSchema,omitempty"`
 
 	// Attrs holds kind-specific attributes not shared by every Entry — for
 	// KindDeployTarget, "runsOn" and "keyPolicy" (internal/targets.AddToMeta).

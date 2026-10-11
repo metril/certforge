@@ -48,7 +48,7 @@ func TestFileFilesWritesSafeNamedPEM(t *testing.T) {
 		t.Errorf("Data does not contain a PEM certificate block: %s", files[0].Data)
 	}
 
-	paths, err := f.Paths(req.Config, req.CertName)
+	paths, err := f.Paths(req.Config, nil, req.CertName)
 	if err != nil {
 		t.Fatalf("Paths: %v", err)
 	}

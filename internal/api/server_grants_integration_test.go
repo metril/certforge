@@ -970,3 +970,26 @@ func TestServerGrantLayoutKeyCollision422(t *testing.T) {
 		Body: &gen.GrantUpdate{LayoutId: &l.ID}})
 	wantStatus(t, err, 422)
 }
+
+// TestServerGrantRejectsTargetOptions: a server grant's target (vault-kv)
+// has no grant options, so PATCH with targetOptions is a 422, not a
+// silent drop. (ServerGrantInput has no targetOptions field to reject.)
+func TestServerGrantRejectsTargetOptions(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateServerGrant201JSONResponse)
+	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
+		Delivery: push(), HookIds: []uuid.UUID{}, TargetOptions: map[string]interface{}{"defaultCert": true}}})
+	wantStatus(t, err, 422)
+	if _, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
+		Delivery: push(), HookIds: []uuid.UUID{}, TargetOptions: map[string]interface{}{}}}); err != nil {
+		t.Fatal(err)
+	}
+}

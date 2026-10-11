@@ -47,6 +47,20 @@ func (r *Registry) Get(typ string) (Target, bool) {
 	return t, ok
 }
 
+// GrantSchema returns the JSON Schema of typ's per-grant options, and false
+// when typ is unknown or has none.
+func (r *Registry) GrantSchema(typ string) (json.RawMessage, bool) {
+	t, ok := r.Get(typ)
+	if !ok {
+		return nil, false
+	}
+	g, ok := t.(GrantOptions)
+	if !ok {
+		return nil, false
+	}
+	return g.GrantSchema(), true
+}
+
 // Each calls fn for every registered type, sorted by Type().
 func (r *Registry) Each(fn func(Target)) {
 	r.mu.RLock()

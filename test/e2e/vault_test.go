@@ -464,6 +464,12 @@ func TestVaultAgainstCompose(t *testing.T) {
 	var grant grantOut
 	c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/deploy-targets/"+target.ID+"/grants",
 		map[string]any{"certificateId": localCert.ID}, &grant)
+	// A server target has no per-grant options: targetOptions is a 422.
+	if code, body := c.callStatus(ctx, t, http.MethodPatch, "/api/v1/orgs/"+orgID+"/grants/"+grant.ID, map[string]any{
+		"delivery": "push", "autoRemediate": false, "hookIds": []string{}, "targetOptions": map[string]any{"defaultCert": true},
+	}); code != http.StatusUnprocessableEntity || !strings.Contains(string(body), "not supported by this target type") {
+		t.Fatalf("server grant with targetOptions: %d %s, want 422", code, body)
+	}
 	grant = waitFor60(ctx, t, "server grant deployed", func() (grantOut, bool) {
 		var items []grantOut
 		c.call(ctx, t, http.MethodGet, "/api/v1/orgs/"+orgID+"/deploy-targets/"+target.ID+"/grants", nil, &items)

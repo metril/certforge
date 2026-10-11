@@ -9,7 +9,7 @@
 SELECT g.id, g.cert_id, ce.name AS certificate_name, ce.common_name AS certificate_common_name,
        ce.sans AS certificate_sans, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
        d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config,
-       t.secret_cfg AS target_secret_cfg
+       t.secret_cfg AS target_secret_cfg, g.target_options
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id

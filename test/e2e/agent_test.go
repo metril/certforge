@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -159,6 +160,46 @@ func issueForAgent(ctx context.Context, t *testing.T, c *apiClient, orgID, name 
 	return cert
 }
 
+// traefikCatchAllRouter is the dynamic file both the agent and ops e2e tests
+// write into the shared Traefik directory: a catch-all router on the e2e-only
+// websecure entrypoint, so a TLS handshake there completes and the monitor
+// sees whichever certificate Traefik selects. Identical content in both
+// tests, so the file is idempotent.
+const traefikCatchAllRouter = `# Managed by the e2e tests. Do not edit; changes are overwritten.
+http:
+  routers:
+    e2e-catchall:
+      rule: "PathPrefix(` + "`" + `/` + "`" + `)"
+      entryPoints:
+        - websecure
+      service: noop@internal
+`
+
+func writeTraefikCatchAllRouter(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "traefik"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "traefik", "certforge-e2e-router.yml"), []byte(traefikCatchAllRouter), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// waitGrantDeployed waits for one named grant's deployment to report ok.
+func waitGrantDeployed(ctx context.Context, t *testing.T, c *apiClient, clientPath, grantID string) {
+	t.Helper()
+	waitFor(ctx, t, "grant "+grantID+" deployed", func() (string, bool) {
+		var gl grantListOut
+		c.call(ctx, t, http.MethodGet, clientPath+"/grants", nil, &gl)
+		for _, g := range gl.Items {
+			if g.ID == grantID {
+				return g.Deployment.State, g.Deployment.State == "ok"
+			}
+		}
+		return "no grant", false
+	})
+}
+
 func readOrEmpty(p string) []byte {
 	b, _ := os.ReadFile(p)
 	return b
@@ -230,6 +271,74 @@ func TestAgentAgainstCompose(t *testing.T) {
 	}
 
 	assertAgentViaCaddy(t, dir)
+
+	// 2b. Traefik serves the agent-deployed certificate: a monitor dialing
+	// Traefik's TLS entrypoint with the certificate's SAN as SNI sees the
+	// issued version's fingerprint.
+	writeTraefikCatchAllRouter(t, dir)
+	var served opsMonitorOut
+	c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/monitors", map[string]any{
+		"name": "agent-e2e-traefik", "host": "traefik", "port": 8443, "sni": "agent-e2e.example.test",
+		"expectedCertificateId": cert.ID,
+	}, &served)
+	served = waitFor60(ctx, t, "traefik serves the agent-deployed certificate", func() (opsMonitorOut, bool) {
+		var m opsMonitorOut
+		c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/monitors/"+served.ID+"/check", nil, &m)
+		return m, m.State == "ok" && m.LastFingerprint != nil && *m.LastFingerprint == cert.CurrentVersion.Sha256Fingerprint
+	})
+	c.call(ctx, t, http.MethodDelete, "/api/v1/orgs/"+orgID+"/monitors/"+served.ID, nil, nil)
+
+	// 2c. Per-grant options: certsDir moves the PEM files (inside the
+	// agent's CF_WRITE_ALLOW) and the YAML references that path.
+	cert2 := issueForAgent(ctx, t, c, orgID, "agent-e2e-opts")
+	customDir := "/etc/traefik/dynamic/custom/agent-e2e-opts"
+	var grant2 struct {
+		ID string `json:"id"`
+	}
+	c.call(ctx, t, http.MethodPost, clientPath+"/grants", map[string]any{"certificateId": cert2.ID, "delivery": "push",
+		"deployTargetId": target.ID, "targetOptions": map[string]any{"certsDir": customDir, "defaultCert": true}}, &grant2)
+	waitGrantDeployed(ctx, t, c, clientPath, grant2.ID)
+	customHost := filepath.Join(dir, "traefik", "custom", "agent-e2e-opts")
+	leaf2 := parsePEMCerts(t, readOrEmpty(filepath.Join(customHost, "fullchain.pem")))
+	if len(leaf2) == 0 {
+		t.Fatal("no fullchain.pem in the custom certsDir")
+	}
+	if sum := sha256.Sum256(leaf2[0].Raw); hex.EncodeToString(sum[:]) != cert2.CurrentVersion.Sha256Fingerprint {
+		t.Fatal("custom certsDir holds a different certificate than the issued version")
+	}
+	if len(readOrEmpty(filepath.Join(customHost, "privkey.pem"))) == 0 {
+		t.Fatal("no privkey.pem in the custom certsDir")
+	}
+	yml2 := filepath.Join(dir, "traefik", "certforge-agent-e2e-opts.yml")
+	got2 := string(readOrEmpty(yml2))
+	for _, want := range []string{`certFile: "` + customDir + `/fullchain.pem"`, `keyFile: "` + customDir + `/privkey.pem"`, "defaultCertificate:"} {
+		if !strings.Contains(got2, want) {
+			t.Fatalf("custom-dir traefik yml lacks %q:\n%s", want, got2)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "traefik", "certs", "agent-e2e-opts")); err == nil {
+		t.Fatal("default certs/agent-e2e-opts directory was written despite certsDir")
+	}
+
+	// A second default-certificate grant on the same client, directory and
+	// store is refused.
+	code, body := c.callStatus(ctx, t, http.MethodPatch, "/api/v1/orgs/"+orgID+"/grants/"+grant.ID, map[string]any{
+		"delivery": "push", "autoRemediate": true, "layoutId": layout.ID, "deployTargetId": target.ID,
+		"hookIds": []string{}, "targetOptions": map[string]any{"defaultCert": true}})
+	if code != http.StatusConflict || !strings.Contains(string(body), "both set Traefik's default certificate") {
+		t.Fatalf("second default-cert grant: %d %s, want 409", code, body)
+	}
+
+	// Removing the grant removes the custom files.
+	c.call(ctx, t, http.MethodDelete, "/api/v1/orgs/"+orgID+"/grants/"+grant2.ID, nil, nil)
+	waitFor(ctx, t, "custom-dir files removed", func() (string, bool) {
+		for _, p := range []string{yml2, filepath.Join(customHost, "fullchain.pem"), filepath.Join(customHost, "privkey.pem"), customHost} {
+			if _, err := os.Stat(p); err == nil {
+				return p, false
+			}
+		}
+		return "", true
+	})
 
 	// 3. Tamper → drift → auto-remediation restores the file.
 	if err := os.WriteFile(pemPath, []byte("tampered\n"), 0o644); err != nil {
