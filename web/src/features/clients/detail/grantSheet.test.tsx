@@ -84,8 +84,8 @@ it('grants several certificates with one layout and closes', async () => {
   await user.click(within(sheet).getByRole('button', { name: 'Grant' }));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Grant certificate' })).not.toBeInTheDocument());
   expect(posted).toEqual([
-    { certificateId: 'c-2', delivery: 'push', layoutId: 'l-1', deployTargetId: null, hookIds: ['h-1'], autoRemediate: true },
-    { certificateId: 'c-3', delivery: 'push', layoutId: 'l-1', deployTargetId: null, hookIds: ['h-1'], autoRemediate: true },
+    { certificateId: 'c-2', delivery: 'push', layoutId: 'l-1', deployTargetId: null, hookIds: ['h-1'], autoRemediate: true, targetOptions: {} },
+    { certificateId: 'c-3', delivery: 'push', layoutId: 'l-1', deployTargetId: null, hookIds: ['h-1'], autoRemediate: true, targetOptions: {} },
   ]);
   expect(router.state.location.search).not.toHaveProperty('grant');
 });
@@ -152,7 +152,7 @@ it('edits a grant with every field sent', async () => {
   await user.click(within(sheet).getByRole('radio', { name: 'Pull' }));
   await pick(user, 'Deploy target', /^edge traefik/);
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(patched).toEqual({ delivery: 'pull', layoutId: 'l-1', deployTargetId: 't-1', hookIds: [], autoRemediate: false }));
+  await waitFor(() => expect(patched).toEqual({ delivery: 'pull', layoutId: 'l-1', deployTargetId: 't-1', hookIds: [], autoRemediate: false, targetOptions: { defaultCert: false } }));
 });
 
 it('shows hooks in run order and saves the reordered list', async () => {
@@ -222,4 +222,130 @@ it('keeps the sheet open with a removed notice when the grant disappears', async
   expect(await screen.findByRole('tooltip')).toHaveTextContent('This grant was removed');
   await user.click(within(sheet).getByRole('button', { name: 'Cancel' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
+
+// Per-grant target options (traefik grantSchema from /meta/schemas).
+const plainSchema = { code: 'script', name: 'Script', aliases: [], runsOn: 'agent', keyPolicy: 'always', schema: { type: 'object', properties: {} } };
+const plainTarget = () => makeTarget({ id: 't-2', name: 'plain script', type: 'script' as never });
+
+function withTargets(...extra: ReturnType<typeof makeTarget>[]) {
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), ...extra] })),
+    http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, plainSchema], notifiers: [], signers: [] })),
+  );
+}
+
+it('shows target options only once a target with a grant schema is picked', async () => {
+  withTargets(plainTarget());
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  expect(within(sheet).queryByText('Target options')).not.toBeInTheDocument();
+  await pick(user, 'Deploy target', /^plain script/);
+  expect(within(sheet).queryByText('Target options')).not.toBeInTheDocument();
+  await pick(user, 'Deploy target', /^edge traefik/);
+  expect(await within(sheet).findByText('Target options')).toBeInTheDocument();
+  expect(within(sheet).getByRole('switch', { name: 'Default certificate' })).toBeInTheDocument();
+  expect(within(sheet).queryByRole('checkbox')).not.toBeInTheDocument();
+});
+
+it('creates with targetOptions, and {} for a target without options', async () => {
+  withTargets(plainTarget());
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  await pickMany(user, [/^api/]);
+  await pick(user, 'Deploy target', /^edge traefik/);
+  await user.click(await within(sheet).findByRole('switch', { name: 'Default certificate' }));
+  await user.type(within(sheet).getByLabelText('Certificate directory on the agent'), '/srv/c');
+  await user.click(within(sheet).getByRole('button', { name: 'Grant' }));
+  await waitFor(() => expect(posted).toHaveLength(1));
+  expect(posted[0]).toMatchObject({ targetOptions: { defaultCert: true, certsDir: '/srv/c' } });
+});
+
+it('posts {} options for a target without a grant schema', async () => {
+  withTargets(plainTarget());
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Grant certificate' });
+  await pickMany(user, [/^api/]);
+  await pick(user, 'Deploy target', /^plain script/);
+  await user.click(within(sheet).getByRole('button', { name: 'Grant' }));
+  await waitFor(() => expect(posted).toHaveLength(1));
+  expect(posted[0]).toMatchObject({ targetOptions: {} });
+});
+
+it('edit prefills options, PATCHes changes, and resets them on a type switch', async () => {
+  withTargets(plainTarget());
+  server.use(
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () =>
+      HttpResponse.json({ items: [makeGrant({ id: 'g-1', certificateName: 'www', deployTargetId: 't-1', targetOptions: { defaultCert: true, certsDir: '/srv/c' } })] }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  const dir = await within(sheet).findByLabelText('Certificate directory on the agent');
+  expect(dir).toHaveValue('/srv/c');
+  expect(within(sheet).getByRole('switch', { name: 'Default certificate' })).toBeChecked();
+  await user.type(dir, '2');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ targetOptions: { defaultCert: true, certsDir: '/srv/c2' } }));
+});
+
+it('resets options when the target type changes, and sends {}', async () => {
+  withTargets(plainTarget());
+  server.use(
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () =>
+      HttpResponse.json({ items: [makeGrant({ id: 'g-1', certificateName: 'www', deployTargetId: 't-1', targetOptions: { certsDir: '/srv/c' } })] }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  await within(sheet).findByLabelText('Certificate directory on the agent');
+  await pick(user, 'Deploy target', /^plain script/);
+  expect(within(sheet).queryByText('Target options')).not.toBeInTheDocument();
+  await pick(user, 'Deploy target', /^edge traefik/);
+  expect(await within(sheet).findByLabelText('Certificate directory on the agent')).toHaveValue('');
+  await pick(user, 'Deploy target', /^plain script/);
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ deployTargetId: 't-2', targetOptions: {} }));
+});
+
+async function openTraefikEdit() {
+  withTargets();
+  server.use(
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () => HttpResponse.json({ items: [makeGrant({ id: 'g-1', certificateName: 'www', deployTargetId: 't-1' })] })),
+  );
+  const r = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  await within(sheet).findByLabelText('Certificate directory on the agent');
+  return { ...r, sheet };
+}
+
+it('maps a 422 on targetOptions.certsDir inline, cleared by typing', async () => {
+  server.use(http.patch(url('/orgs/org-1/grants/g-1'), () => problem(422, 'must not be inside the directory', {}, 'Invalid targetOptions.certsDir')));
+  const { user, sheet } = await openTraefikEdit();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  const msg = await within(sheet).findByText(/must not be inside/);
+  expect(msg.closest('[role="alert"]')).not.toHaveClass('text-failed');
+  expect(within(sheet).getByLabelText('Certificate directory on the agent').closest('div')).toContainElement(msg);
+  await user.type(within(sheet).getByLabelText('Certificate directory on the agent'), '/x');
+  await waitFor(() => expect(within(sheet).queryByText(/must not be inside/)).not.toBeInTheDocument());
+});
+
+it('puts a default-cert 409 under the switch; other 409s in the form alert', async () => {
+  server.use(http.patch(url('/orgs/org-1/grants/g-1'), () => problem(409, 'Another grant is already the default certificate for this store.')));
+  const { user, sheet } = await openTraefikEdit();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  const msg = await within(sheet).findByText(/already the default certificate/);
+  expect(msg.closest('[role="alert"]')).not.toHaveClass('text-failed');
+  expect(within(sheet).queryByText('Target options')).toBeInTheDocument();
+  server.use(http.patch(url('/orgs/org-1/grants/g-1'), () => problem(409, 'The path collides with another grant.')));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  const other = await within(sheet).findByText('The path collides with another grant.');
+  expect(other.closest('[role="alert"]')).toHaveClass('text-failed');
+});
+
+it('blocks submit client-side on an invalid certsDir', async () => {
+  const { user, sheet } = await openTraefikEdit();
+  await user.type(within(sheet).getByLabelText('Certificate directory on the agent'), 'rel');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(patched).toBeUndefined();
 });

@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { livePoll } from '@/lib/polling';
 import { api, call } from '../client';
-import { errorMessage } from '../errors';
+import { ApiError, errorMessage } from '../errors';
 import type { Grant, GrantInput, GrantUpdate, ServerGrantInput } from '../types';
 
 export const grantsQuery = (orgId: string, clientId: string) =>
@@ -51,7 +51,7 @@ export async function invalidateGrants(qc: QueryClient, orgId: string): Promise<
   );
 }
 
-export type GrantBatchResult = { created: Grant[]; failed: { certificateId: string; message: string }[] };
+export type GrantBatchResult = { created: Grant[]; failed: { certificateId: string; message: string; status?: number; title?: string }[] };
 
 /** One POST per certificate, in order; a failure never stops the rest. */
 export async function createGrants(
@@ -67,7 +67,7 @@ export async function createGrants(
         await call(api.POST('/orgs/{orgId}/clients/{id}/grants', { params: { path: { orgId, id: clientId } }, body: { ...rest, certificateId } })),
       );
     } catch (e) {
-      out.failed.push({ certificateId, message: errorMessage(e) });
+      out.failed.push({ certificateId, message: errorMessage(e), status: e instanceof ApiError ? e.status : undefined, title: e instanceof ApiError ? e.problem.title : undefined });
     }
   }
   return out;

@@ -67,9 +67,10 @@ it('adds a Traefik target from its schema form', async () => {
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
   await user.type(within(sheet).getByLabelText('Name'), 'edge-2');
   await user.type(within(sheet).getByLabelText('Directory on the agent'), '/etc/traefik/dynamic');
-  await user.click(within(sheet).getByRole('switch', { name: 'Default certificate' }));
+  expect(within(sheet).queryByRole('switch', { name: 'Default certificate' })).not.toBeInTheDocument();
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(posted).toMatchObject({ name: 'edge-2', type: 'traefik', config: { dir: '/etc/traefik/dynamic', defaultCert: true } }));
+  await waitFor(() => expect(posted).toMatchObject({ name: 'edge-2', type: 'traefik', config: { dir: '/etc/traefik/dynamic' } }));
+  expect((posted as { config: object }).config).not.toHaveProperty('defaultCert');
   await waitFor(() => expect(router.state.location.search).not.toHaveProperty('edit'));
 });
 

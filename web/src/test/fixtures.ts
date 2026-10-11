@@ -339,6 +339,7 @@ export const grantServer: Grant = {
   clientName: null,
   certificateId: 'c-1',
   certificateName: 'www',
+  targetOptions: {},
   delivery: 'push',
   layoutId: 'l-1',
   deployTargetId: targetVaultKv.id,
@@ -533,7 +534,7 @@ export function makeGrant(p: Partial<Grant> = {}): Grant {
   return {
     id: 'g-1', clientId: 'cl-1', clientName: 'web-1', certificateId: 'c-1', certificateName: 'www', delivery: 'push',
     layoutId: 'l-1', deployTargetId: null, hookIds: [], autoRemediate: false, deployment: makeDeployment(),
-    runsOn: 'agent', serverDeployment: null, createdAt: iso(-2), updatedAt: iso(-1), ...p,
+    runsOn: 'agent', serverDeployment: null, targetOptions: {}, createdAt: iso(-2), updatedAt: iso(-1), ...p,
   };
 }
 
@@ -608,7 +609,6 @@ export const traefikSchema = {
     properties: {
       dir: { type: 'string', title: 'Directory on the agent', description: "Traefik's file-provider directory as the agent sees it.", pattern: '^/', examples: ['/etc/traefik/dynamic'] },
       pathPrefix: { type: 'string', title: 'Directory as Traefik sees it', description: 'Prefix for certFile and keyFile when Traefik mounts the directory elsewhere.', pattern: '^(/.*)?$' },
-      defaultCert: { type: 'boolean', title: 'Default certificate', description: 'Also serve this certificate when no SNI matches.', default: false },
       stores: { type: 'array', title: 'TLS stores', description: 'Traefik TLS stores for the certificate. Empty means default.', items: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' }, default: ['default'] },
       // Mirrors internal/delivery/traefik.go's TraefikSchema (4A Task 8: the
       // agent's http-01/tls-alpn-01 listener, routed to by a per-grant ACME
@@ -620,6 +620,16 @@ export const traefikSchema = {
         description:
           "Absolute http or https URL of the agent's http-01/tls-alpn-01 listener. When set, the agent also writes a per-grant certforge-acme-<name>.yml routing /.well-known/acme-challenge/ requests here.",
       },
+    },
+  },
+  grantSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      defaultCert: { type: 'boolean', title: 'Default certificate', description: 'Serve this certificate when no SNI matches (tls.stores.<store>.defaultCertificate). One grant per client, directory and store.', default: false },
+      certsDir: { type: 'string', title: 'Certificate directory on the agent', description: 'Absolute directory where fullchain.pem and privkey.pem go. Empty means <dir>/certs/<name>.', pattern: '^(/.*)?$' },
+      certsDirTraefik: { type: 'string', title: 'Certificate directory as Traefik sees it', description: 'The same directory as Traefik sees it. Empty means derived from the target directory and pathPrefix.', pattern: '^(/.*)?$' },
+      stores: { type: 'array', title: 'TLS stores', description: "Overrides the target's stores for this certificate. Empty means the target's.", items: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' } },
     },
   },
 } as ProviderSchema;
