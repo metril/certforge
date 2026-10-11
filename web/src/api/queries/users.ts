@@ -22,3 +22,18 @@ export function useUpdateUser() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 }
+
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(api.DELETE('/users/{id}', { params: { path: { id } } })),
+    // ConfirmDestructive shows the 409 (self, local admin, last admin) inline.
+    meta: { silent: true, success: 'User deleted' },
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ['users'] }),
+        qc.invalidateQueries({ queryKey: ['api-keys'] }),
+        qc.invalidateQueries({ queryKey: ['bindings'] }),
+      ]),
+  });
+}

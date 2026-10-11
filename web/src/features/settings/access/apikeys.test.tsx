@@ -323,3 +323,10 @@ it('blocks a route change while the new key is unacknowledged', async () => {
   void router.navigate({ to: '/o/$org/audit', params: { org: 'acme' } });
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/audit'));
 });
+
+it('renders a key whose creator was deleted', async () => {
+  server.use(http.get(url('/api-keys'), () => HttpResponse.json({ items: [makeApiKey({ createdBy: null, createdByName: '(deleted user)' })] })));
+  server.use(...authHandlers({ authed: true }));
+  renderRoute('/settings/access?tab=keys');
+  expect(await screen.findByText('(deleted user)')).toBeInTheDocument();
+});
