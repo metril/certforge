@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Link2, Search, TriangleAlert } from 'lucide-react';
+import { Link2, Search } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { flowQuery } from '@/api/queries/flow';
 import { EmptyState } from '@/components/EmptyState';
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { LANE_KEYS, PROBLEM_STATUSES, expandFor, filterFlow, highlightSet, parseEdgeKey, visibleNodeIds, type Flow, type FlowNodeData, type FlowStatus } from './flowGraph';
+import { LANE_KEYS, PROBLEM_STATUSES, expandFor, filterFlow, highlightSet, linkCounts, parseEdgeKey, visibleNodeIds, type Flow, type FlowNodeData, type FlowStatus } from './flowGraph';
 import { FLOW_STATUS, KIND_META } from './FlowNode';
 import { FLOW_STATUSES, type FlowSearch } from './search';
 import { FlowConnectors } from './FlowConnectors';
@@ -131,6 +131,16 @@ export function FlowPage() {
     (id: string) => setCollapsed(collapsed.has(id) ? [...collapsed].filter((g) => g !== id) : [...collapsed, id]),
     [collapsed, setCollapsed],
   );
+  const more = useMemo(() => new Set(search.more ?? []), [search.more]);
+  const toggleMore = useCallback(
+    (id: string) => {
+      const cur = search.more ?? [];
+      const next = cur.includes(id) ? cur.filter((g) => g !== id) : [...cur, id];
+      void navigate({ search: (s) => ({ ...s, more: next.length > 0 ? next : undefined }), replace: true });
+    },
+    [navigate, search.more],
+  );
+  const links = useMemo(() => (flow ? linkCounts(flow) : new Map<string, { up: number; down: number }>()), [flow]);
   const allCollapsed = LANE_KEYS.every((k) => collapsed.has(k));
   const clearFilters = useCallback(() => void navigate({ search: (s) => ({ ...s, q: undefined, status: undefined, kind: undefined, issuer: undefined, client: undefined }), replace: true }), [navigate]);
   // A node and a connection are never selected together.
@@ -167,6 +177,7 @@ export function FlowPage() {
   useEffect(() => {
     if (focusHidden && visible) setFocus(undefined);
   }, [focusHidden, visible, setFocus]);
+  const keep = useMemo(() => new Set([focus, edge?.from, edge?.to].filter((x): x is string => !!x)), [focus, edge]);
   const detailing = !!selected || !!edge;
   const clearDetail = useCallback(() => (selected ? setFocus(undefined) : setEdge(undefined)), [selected, setFocus, setEdge]);
   const select = useCallback((id: string) => setFocus(id === focus ? undefined : id), [focus, setFocus]);
@@ -287,14 +298,6 @@ export function FlowPage() {
               <TooltipContent>Channels match events by type and severity, not by certificate. Dashed links show which channels would hear about the selected certificates.</TooltipContent>
             </Tooltip>
           )}
-          {flow?.truncated && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToneChip tone="expiring" icon={TriangleAlert} label="Truncated" tabIndex={0} />
-              </TooltipTrigger>
-              <TooltipContent>The map hit its size limit, so some items are not shown.</TooltipContent>
-            </Tooltip>
-          )}
         </>
       }
     />
@@ -357,6 +360,12 @@ export function FlowPage() {
               register={register}
               collapsed={collapsed}
               onToggle={toggleGroup}
+              more={more}
+              onMore={toggleMore}
+              keep={keep}
+              omitted={lane.omitted}
+              compact={!wide}
+              links={links}
             />
           );
         })}

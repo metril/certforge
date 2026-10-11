@@ -123,3 +123,18 @@ test('flow: an edge in the URL shows the Link panel', async ({ page }) => {
   await expect(panel.getByText('Link', { exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Clear' })).toBeVisible();
 });
+
+test('flow: lane headers are sticky and stay visible after scrolling', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+  await page.goto(`/o/${E2E.orgSlug}/flow`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Flow' })).toBeVisible();
+  const header = page.getByRole('region', { name: 'Certificates' }).locator('h2');
+  await expect(header).toHaveCSS('position', 'sticky');
+  await page.evaluate(() => window.scrollTo(0, 2000));
+  // A short seeded map cannot scroll; the header then sits where it was laid out.
+  const scrolled = await page.evaluate(() => window.scrollY > 0);
+  await expect(header).toBeInViewport();
+  if (scrolled) expect((await header.boundingBox())!.y).toBeLessThanOrEqual(8);
+});

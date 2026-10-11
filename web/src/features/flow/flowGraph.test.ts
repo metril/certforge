@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collapseEdges, parseEdgeKey, edgeKey, expandFor, filterFlow, PROBLEM_STATUSES, highlightSet, isProblem, pairStatus, pathUnion, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { CAP, collapseEdges, linkCounts, sortForLane, parseEdgeKey, edgeKey, expandFor, filterFlow, PROBLEM_STATUSES, highlightSet, isProblem, pairStatus, pathUnion, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 
 const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
   id: `${kind}:${id}`,
@@ -298,5 +298,32 @@ describe('parseEdgeKey', () => {
   it('rejects ids the flow does not hold when a flow is given', () => {
     expect(parseEdgeKey('certificate:A>layout:L1', flow)).not.toBeNull();
     expect(parseEdgeKey('certificate:A>layout:nope', flow)).toBeNull();
+  });
+});
+
+describe('sortForLane and linkCounts', () => {
+  it('puts failed before expired, drift, expiring, then the rest in server order', () => {
+    const ns = [node('certificate', 'a'), node('certificate', 'b', { status: 'expiring' }), node('certificate', 'c', { status: 'failed' }), node('certificate', 'd', { status: 'pending' }), node('certificate', 'e', { status: 'expired' }), node('certificate', 'f')];
+    expect(sortForLane(ns).map((n) => n.name)).toEqual(['c', 'e', 'b', 'a', 'd', 'f']);
+    expect(ns[0]!.name).toBe('a');
+    expect(CAP).toBe(12);
+  });
+  it('counts distinct neighbours in lower and higher lanes', () => {
+    const f: Flow = {
+      truncated: false,
+      generatedAt: '2026-01-01T00:00:00Z',
+      lanes: {
+        issuers: lane([node('ca', 'c1')]),
+        certificates: lane([node('certificate', 'w')]),
+        delivery: lane([node('layout', 'l1'), node('layout', 'l2')]),
+        clients: lane([]),
+        alerts: lane([]),
+      },
+      edges: [e('certificate:w', 'ca:c1'), e('certificate:w', 'layout:l1'), e('certificate:w', 'layout:l2'), e('certificate:w', 'layout:l2')],
+    };
+    const c = linkCounts(f);
+    expect(c.get('certificate:w')).toEqual({ up: 1, down: 2 });
+    expect(c.get('ca:c1')).toEqual({ up: 0, down: 1 });
+    expect(c.get('layout:l2')).toEqual({ up: 1, down: 0 });
   });
 });

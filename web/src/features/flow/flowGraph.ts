@@ -377,3 +377,46 @@ export function collapseEdges(flow: Flow, collapsed: Set<string>, synthetic: Ite
   }
   return [...out.values()];
 }
+
+/** Most nodes a lane or sub-group draws before "Show N more". */
+export const CAP = 12;
+
+const PROBLEM_RANK: Partial<Record<FlowStatus, number>> = { failed: 0, expired: 1, drift: 2, expiring: 3 };
+
+/** Problems first (failed, expired, drift, expiring), then the rest in server order; stable, input untouched. */
+export function sortForLane(nodes: FlowNodeData[]): FlowNodeData[] {
+  const rank = (n: FlowNodeData) => PROBLEM_RANK[n.status] ?? 4;
+  return nodes
+    .map((n, i) => ({ n, i }))
+    .sort((a, b) => rank(a.n) - rank(b.n) || a.i - b.i)
+    .map((x) => x.n);
+}
+
+/** Distinct neighbours of each node in a lower lane (up) and a higher lane (down). */
+export function linkCounts(flow: Flow): Map<string, { up: number; down: number }> {
+  const { nodes } = indexOf(flow);
+  const seen = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => {
+    let s = seen.get(a);
+    if (!s) seen.set(a, (s = new Set()));
+    s.add(b);
+  };
+  for (const e of flow.edges) {
+    if (!nodes.has(e.from) || !nodes.has(e.to)) continue;
+    link(e.from, e.to);
+    link(e.to, e.from);
+  }
+  const out = new Map<string, { up: number; down: number }>();
+  for (const [id, n] of nodes) {
+    const mine = laneIndex(n.kind);
+    let up = 0;
+    let down = 0;
+    for (const o of seen.get(id) ?? []) {
+      const l = laneIndex(nodes.get(o)!.kind);
+      if (l < mine) up++;
+      else if (l > mine) down++;
+    }
+    out.set(id, { up, down });
+  }
+  return out;
+}

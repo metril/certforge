@@ -153,7 +153,7 @@ it('shows empty, hidden and truncated states', async () => {
   const issuers = await screen.findByRole('region', { name: 'Issuers' });
   expect(within(issuers).getByRole('link', { name: 'Add an issuer' })).toHaveAttribute('href', '/o/acme/issuers');
   expect(within(screen.getByRole('region', { name: 'Alerts' })).getByText('No access')).toBeInTheDocument();
-  expect(screen.getByText('Truncated')).toBeInTheDocument();
+  expect(screen.queryByText('Truncated')).toBeNull();
 });
 
 it('shows Retry when the flow fetch fails', async () => {
@@ -515,4 +515,74 @@ it('clicking an edge hit path selects the edge and hovering shows the labelled c
   expect(await screen.findByText(/^grant · /)).toBeInTheDocument();
   fireEvent.click(hit);
   await waitFor(() => expect(router.state.location.search).toMatchObject({ edge: 'layout:nginx>client:web-1' }));
+});
+
+const many = (n: number, extra: (i: number) => Partial<FlowNodeData> = () => ({})): Flow => ({
+  ...base,
+  lanes: { ...base.lanes, certificates: lane(Array.from({ length: n }, (_, i) => node('certificate', `c${i + 1}`, extra(i + 1)))) },
+  edges: [],
+});
+const certNodes = () => within(screen.getByRole('region', { name: 'Certificates' })).getAllByRole('button', { name: /^Certificate / });
+
+it('caps a lane at 12 with problems first, Show more reveals the rest and writes ?more', async () => {
+  setWidth(true);
+  useFlow(() => many(15, (i) => (i === 14 ? { status: 'failed' } : {})));
+  const { user, router } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate c1,/ });
+  expect(certNodes()).toHaveLength(12);
+  expect(screen.getByRole('button', { name: /Certificate c14,/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Certificate c13,/ })).toBeNull();
+  const more = screen.getByRole('button', { name: 'Show 3 more' });
+  expect(more).toHaveAttribute('aria-expanded', 'false');
+  await user.click(more);
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ more: ['certificates'] }));
+  expect(certNodes()).toHaveLength(15);
+  await user.click(screen.getByRole('button', { name: 'Show fewer' }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('more'));
+  expect(certNodes()).toHaveLength(12);
+});
+
+it('?more loads expanded, and a focused node past the cap is drawn without expanding', async () => {
+  setWidth(true);
+  useFlow(() => many(15));
+  renderRoute('/o/acme/flow?more=%5B%22certificates%22%5D');
+  await screen.findByRole('button', { name: /Certificate c15,/ });
+  expect(certNodes()).toHaveLength(15);
+});
+
+it('draws a focused 14th node without expanding the lane', async () => {
+  setWidth(true);
+  useFlow(() => many(15));
+  renderRoute('/o/acme/flow?focus=certificate:c14');
+  await screen.findByRole('button', { name: /Certificate c14,/ });
+  expect(certNodes()).toHaveLength(13);
+  expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeInTheDocument();
+});
+
+it('a lane with omitted nodes shows a per-lane notice linking to the list', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...base, truncated: true, lanes: { ...base.lanes, issuers: { ...base.lanes.issuers, omitted: 5 } } }));
+  renderRoute('/o/acme/flow');
+  const issuers = await screen.findByRole('region', { name: 'Issuers' });
+  expect(within(issuers).getByText(/\+5 not shown/)).toBeInTheDocument();
+  expect(within(issuers).getByRole('link', { name: 'Open Issuers' })).toHaveAttribute('href', '/o/acme/issuers');
+  expect(within(screen.getByRole('region', { name: 'Clients' })).queryByText(/not shown/)).toBeNull();
+  expect(screen.queryByText('Truncated')).toBeNull();
+});
+
+it('narrow nodes show upstream and downstream link counts and no connectors', async () => {
+  setWidth(false);
+  useFlow(() => ({ ...base, lanes: { ...base.lanes, delivery: lane([node('layout', 'nginx'), node('layout', 'apache')]) }, edges: [...base.edges, e('certificate:www', 'layout:apache')] }));
+  const { container } = renderRoute('/o/acme/flow');
+  const www = await screen.findByRole('button', { name: /Certificate www/ });
+  expect(within(www).getByLabelText('1 upstream, 2 downstream')).toHaveTextContent('↑1 ↓2');
+  expect(container.querySelector('[data-flow-connectors]')).toBeNull();
+});
+
+it('lane headers are sticky', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  renderRoute('/o/acme/flow');
+  const h = (await screen.findByRole('region', { name: 'Certificates' })).querySelector('h2')!;
+  expect(h).toHaveClass('sticky', 'top-0');
 });

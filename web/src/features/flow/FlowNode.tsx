@@ -57,7 +57,7 @@ export function laneArrowKeys(e: KeyboardEvent<HTMLButtonElement>) {
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   const lane = e.currentTarget.closest('[data-flow-lane]');
   if (!lane) return;
-  const all = [...lane.querySelectorAll<HTMLButtonElement>('button[data-flow-node],button[data-flow-proxy]')];
+  const all = [...lane.querySelectorAll<HTMLButtonElement>('button[data-flow-node],button[data-flow-proxy],button[data-flow-more]')];
   const next = all[all.indexOf(e.currentTarget) + (e.key === 'ArrowDown' ? 1 : -1)];
   if (next) {
     e.preventDefault();
@@ -74,9 +74,11 @@ type Props = {
   onHover?: (id: string | null) => void;
   onSelect: (id: string) => void;
   register: (id: string, el: HTMLElement | null) => void;
+  /** Link counts shown on the narrow layout, where no connectors are drawn. */
+  links?: { up: number; down: number };
 };
 
-export function FlowNode({ node, selected, dimmed, hovered, onHover, onSelect, register }: Props) {
+export function FlowNode({ node, selected, dimmed, hovered, onHover, onSelect, register, links }: Props) {
   const Icon = KIND_META[node.kind].icon;
   return (
     <Tooltip>
@@ -106,6 +108,11 @@ export function FlowNode({ node, selected, dimmed, hovered, onHover, onSelect, r
             <Icon className="size-4 shrink-0 text-ink-muted" aria-hidden />
             <span className="truncate font-semibold">{node.name}</span>
           </span>
+          {links && (
+            <span className="pl-6 text-xs text-ink-muted tabular-nums" aria-label={`${links.up} upstream, ${links.down} downstream`}>
+              ↑{links.up} ↓{links.down}
+            </span>
+          )}
           <FlowChip node={node} className="w-fit max-w-full" />
         </button>
       </TooltipTrigger>
