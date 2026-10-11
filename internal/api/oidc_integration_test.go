@@ -92,6 +92,28 @@ func TestOIDCLogin(t *testing.T) {
 	}
 }
 
+// An Authentik-style provider leaves profile, email and groups out of the ID
+// token; they must still reach the display name and the group role binding.
+func TestOIDCLoginClaimsFromUserinfo(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	fake := oidctest.New(t)
+	fake.SetClaimsInIDToken(false)
+	fake.SetUser(oidctest.User{Subject: "long-opaque-sub", Email: "ann@example.test", Name: "Ann", Groups: []string{"ops"}})
+	enableOIDC(t, e, csrf, fake)
+	if err := e.deps.Queries.CreateRoleBinding(context.Background(), sqlcgen.CreateRoleBindingParams{
+		SubjectType: "oidc_group", Subject: "ops", Role: "viewer", OrgID: &org}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := oidcLogin(t, e, "/")
+	resp, body := e.doClient(b, http.MethodGet, "/api/v1/auth/me", nil, nil) //nolint:bodyclose // doClient closes the body
+	var me meBody
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &me) != nil || me.User.DisplayName != "Ann" ||
+		len(me.Roles) != 1 || me.Roles[0] != "viewer" {
+		t.Fatalf("me %d %s", resp.StatusCode, body)
+	}
+}
+
 func TestOIDCNextIsSanitized(t *testing.T) {
 	e := newTestEnv(t)
 	csrf, _ := e.seedAdminSession()

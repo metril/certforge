@@ -65,6 +65,49 @@ func TestOIDCFlow(t *testing.T) {
 	}
 }
 
+func TestOIDCUserinfoClaims(t *testing.T) {
+	ctx := context.Background()
+	ann := oidctest.User{Subject: "abc", Email: "ann@example.test", Name: "Ann", Groups: []string{"ops", "dev"}}
+	t.Run("userinfo only", func(t *testing.T) {
+		o, p, cfg := oidcSetup(t)
+		p.SetClaimsInIDToken(false)
+		p.SetUser(ann)
+		id, _, err := o.Finish(ctx, cfg, testRedirect, runFlow(t, o, cfg, "/"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id.Name != "Ann" || id.Email != "ann@example.test" || strings.Join(id.Groups, ",") != "ops,dev" {
+			t.Fatalf("identity %+v", id)
+		}
+	})
+	t.Run("userinfo error keeps id token claims", func(t *testing.T) {
+		o, p, cfg := oidcSetup(t)
+		p.SetUser(ann)
+		p.SetUserinfoStatus(http.StatusInternalServerError)
+		id, _, err := o.Finish(ctx, cfg, testRedirect, runFlow(t, o, cfg, "/"))
+		if err != nil || id.Name != "Ann" || len(id.Groups) != 2 {
+			t.Fatalf("id %+v err %v", id, err)
+		}
+	})
+	t.Run("id token wins conflicts", func(t *testing.T) {
+		o, p, cfg := oidcSetup(t)
+		p.SetUser(ann)
+		p.SetUserinfoUser(&oidctest.User{Subject: "abc", Email: "other@example.test", Name: "Other", Groups: []string{"evil"}})
+		id, _, err := o.Finish(ctx, cfg, testRedirect, runFlow(t, o, cfg, "/"))
+		if err != nil || id.Name != "Ann" || id.Email != "ann@example.test" || strings.Join(id.Groups, ",") != "ops,dev" {
+			t.Fatalf("id %+v err %v", id, err)
+		}
+	})
+	t.Run("subject mismatch rejected", func(t *testing.T) {
+		o, p, cfg := oidcSetup(t)
+		p.SetUser(ann)
+		p.SetUserinfoUser(&oidctest.User{Subject: "someone-else", Name: "Mallory"})
+		if _, _, err := o.Finish(ctx, cfg, testRedirect, runFlow(t, o, cfg, "/")); err == nil {
+			t.Fatal("userinfo for a different subject was accepted")
+		}
+	})
+}
+
 func TestOIDCRefusals(t *testing.T) {
 	ctx := context.Background()
 	t.Run("tampered cookie", func(t *testing.T) {
