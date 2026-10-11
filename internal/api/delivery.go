@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -814,7 +815,15 @@ func (s *Server) validTarget(ctx context.Context, orgID uuid.UUID, in *gen.Deplo
 		// it may carry userinfo or a query-string token a target's schema
 		// does not mark "secret" at all (a plain "url" property), so the
 		// problem body names the field, never the value.
-		if err := httpx.CheckURL(u, allowLoopback); err != nil {
+		// An ssh:// URL (the ssh target) is not an http(s) URL: apply the
+		// same host policy to its host only.
+		var err error
+		if pu, perr := url.Parse(u); perr == nil && pu.Scheme == "ssh" {
+			err = httpx.CheckHost(pu.Hostname(), allowLoopback)
+		} else {
+			err = httpx.CheckURL(u, allowLoopback)
+		}
+		if err != nil {
 			return validatedTarget{}, unprocessable("config", "config: address not allowed")
 		}
 	}

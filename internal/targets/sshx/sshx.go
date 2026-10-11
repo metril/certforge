@@ -44,8 +44,8 @@ type Client struct {
 	c *ssh.Client
 }
 
-// parseHostKey accepts a known_hosts line or a bare "<type> <base64>" key.
-func parseHostKey(s string) (ssh.PublicKey, error) {
+// ParseHostKey accepts a known_hosts line or a bare "<type> <base64>" key.
+func ParseHostKey(s string) (ssh.PublicKey, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, errors.New("sshx: host key is required")
@@ -73,7 +73,7 @@ func hostKeyAlgorithms(k ssh.PublicKey) []string {
 
 // Dial connects to o.Host, verifying the server against o.HostKey.
 func Dial(ctx context.Context, o Opts) (*Client, error) {
-	hk, err := parseHostKey(o.HostKey)
+	hk, err := ParseHostKey(o.HostKey)
 	if err != nil {
 		return nil, err
 	}

@@ -23,7 +23,7 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
-import { RUNS_ON_META, defaultRunsOn, forcedRunsOn, keyGateBlocks, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
+import { RUNS_ON_META, SSH_PRESETS, defaultRunsOn, forcedRunsOn, keyGateBlocks, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 type Props = { orgId: string; target?: DeployTarget; types: ProviderSchema[]; readOnly: boolean; onOpenChange: (open: boolean) => void };
@@ -39,6 +39,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const initialMeta = typeMeta(types, target?.type ?? types[0]!.code) ?? types[0]!;
   const [runsOn, setRunsOn] = useState<'server' | 'agent'>(target?.runsOn ?? defaultRunsOn(initialMeta));
   const [config, setConfig] = useState<Record<string, unknown>>((target?.config as Record<string, unknown> | undefined) ?? {});
+  const [preset, setPreset] = useState('custom');
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
@@ -70,6 +71,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     const newMeta = typeMeta(types, v) ?? types[0]!;
     setType(v);
     setConfig({});
+    setPreset('custom');
     setRunsOn(defaultRunsOn(newMeta));
     setExtra(null);
     setFormError(null);
@@ -176,6 +178,23 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               ]}
             />
           </Field>
+          {type === 'ssh' && !locked && (
+            <Field id="target-preset" label="Preset">
+              <SegmentedControl<string>
+                id="target-preset"
+                aria-label="Preset"
+                value={preset}
+                onChange={(v) => {
+                  setPreset(v);
+                  // Keep what is already typed (host, credentials); a preset only sets files and commands.
+                  const p = SSH_PRESETS.find((x) => x.id === v);
+                  if (p) setConfig((c) => ({ ...c, files: undefined, preCommand: undefined, postCommand: undefined, ...p.config }));
+                  setExtra(null);
+                }}
+                options={SSH_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+              />
+            </Field>
+          )}
           <div className="grid gap-1.5">
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
               Settings

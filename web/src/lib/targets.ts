@@ -93,3 +93,17 @@ export function toTargetInput(d: TargetDraft, schema: RJSFSchema, storedSecrets:
   if (create) input.runsOn = d.runsOn;
   return input;
 }
+
+export type SshPreset = { id: string; label: string; config: Record<string, unknown> };
+
+const kvmFiles = (dir: string) => [
+  { path: `${dir}/server.crt`, content: 'fullchain', mode: '0644' },
+  { path: `${dir}/server.key`, content: 'key', mode: '0600' },
+];
+
+/** Starting configs for the ssh target type (PiKVM and GL.iNet Comet keep a read-only root filesystem). */
+export const SSH_PRESETS: SshPreset[] = [
+  { id: 'kvm', label: 'PiKVM / GL.iNet Comet', config: { files: kvmFiles('/etc/kvmd/user/ssl'), preCommand: 'rw', postCommand: 'ro; systemctl restart kvmd-nginx' } },
+  { id: 'kvm-legacy', label: 'PiKVM (legacy paths)', config: { files: kvmFiles('/etc/kvmd/nginx/ssl'), preCommand: 'rw', postCommand: 'ro; systemctl restart kvmd-nginx' } },
+  { id: 'custom', label: 'Custom', config: {} },
+];
