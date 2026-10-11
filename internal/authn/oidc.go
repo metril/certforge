@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -79,6 +80,8 @@ type OIDC struct {
 	failures  map[string]cachedFailure
 	gen       int // bumped by Forget so an in-flight discovery cannot repopulate the cache
 	flight    singleflight.Group
+	// Log receives userinfo and display-name warnings; nil means slog.Default().
+	Log *slog.Logger
 }
 
 type cachedFailure struct {
@@ -250,6 +253,22 @@ func (o *OIDC) Finish(ctx context.Context, cfg AuthSettings, redirectURL string,
 	if err := idt.Claims(&claims); err != nil {
 		return Identity{}, st.Next, fmt.Errorf("oidc claims: %w", err)
 	}
+	if p.UserInfoEndpoint() != "" {
+		ui, err := p.UserInfo(oidc.ClientContext(ctx, o.hc), oauth2.StaticTokenSource(tok))
+		switch {
+		case err != nil:
+			o.log().Warn("oidc: userinfo request failed; using ID token claims only", "err", err)
+		case ui.Subject != idt.Subject:
+			return Identity{}, st.Next, errors.New("oidc: userinfo subject does not match the ID token")
+		default:
+			var uic map[string]any
+			if err := ui.Claims(&uic); err != nil {
+				o.log().Warn("oidc: userinfo claims unreadable; using ID token claims only", "err", err)
+			} else {
+				mergeMissing(claims, uic, "email", "name", "preferred_username", cfg.GroupsClaim)
+			}
+		}
+	}
 	id := Identity{Issuer: idt.Issuer, Subject: idt.Subject, Email: claimString(claims, "email"),
 		Name: claimString(claims, "name"), Groups: claimGroups(claimAt(claims, cfg.GroupsClaim))}
 	for _, alt := range []string{claimString(claims, "preferred_username"), id.Email, id.Subject} {
@@ -257,7 +276,34 @@ func (o *OIDC) Finish(ctx context.Context, cfg AuthSettings, redirectURL string,
 			id.Name = alt
 		}
 	}
+	if id.Name == id.Subject {
+		o.log().Warn("oidc: display name falls back to subject; the provider sent no name, preferred_username or email", "sub", id.Subject)
+	}
 	return id, st.Next, nil
+}
+
+func (o *OIDC) log() *slog.Logger {
+	if o.Log != nil {
+		return o.Log
+	}
+	return slog.Default()
+}
+
+// mergeMissing copies the named claims from src into dst where dst has no
+// value, so the ID token wins any conflict. A dotted name that is not a
+// top-level key in src is read as a nested path and stored under the name.
+func mergeMissing(dst, src map[string]any, names ...string) {
+	for _, n := range names {
+		if n == "" {
+			continue
+		}
+		if v := claimAt(dst, n); v != nil {
+			continue
+		}
+		if v := claimAt(src, n); v != nil {
+			dst[n] = v
+		}
+	}
 }
 
 func claimString(c map[string]any, k string) string {
