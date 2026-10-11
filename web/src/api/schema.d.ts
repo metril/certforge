@@ -4594,11 +4594,47 @@ export interface components {
             href: string;
             /** @description Channel nodes only: true when the channel is enabled and its event kinds and minimum severity would deliver this org's certificate events. */
             coversCertificates?: boolean;
+            summary?: components["schemas"]["FlowNodeSummary"];
+        };
+        /** @description Per-node facts for the detail view; every field is present only when it applies. */
+        FlowNodeSummary: {
+            /**
+             * Format: date-time
+             * @description Certificate notAfter, or a private CA's own certificate expiry.
+             */
+            expiresAt?: string;
+            /** @description Serial of the certificate's current version. */
+            versionSerial?: string;
+            /**
+             * Format: date-time
+             * @description Latest successful deployment among the node's grants.
+             */
+            lastDeployedAt?: string;
+            /** @description Most recent failure reason when the node is failed or drifted. */
+            lastError?: string;
+            /** @description Certificate nodes only: node id (ca:uuid or account:uuid) of the issuer. */
+            issuerId?: string;
+            /** @description Certificate nodes only: node ids of the clients the certificate reaches. */
+            clientIds?: string[];
+            /** @description Totals over the node's grants and edges. */
+            counts?: {
+                /** @description Grants that involve this node. */
+                grants: number;
+                /** @description Grants whose deployment is done. */
+                deployments: number;
+                /** @description Failed, drifted, expired or expiring edges at this node. */
+                problems: number;
+            };
         };
         /** @description One column of the map. */
         FlowLane: {
             /** @description True when the caller lacks read permission for this lane; nodes is then empty. */
             hidden: boolean;
+            /**
+             * @description Nodes the size cap dropped from this lane.
+             * @default 0
+             */
+            omitted: number;
             /** @description Nodes in the lane. */
             nodes: components["schemas"]["FlowNode"][];
         };

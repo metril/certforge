@@ -4706,12 +4706,35 @@ components:
         statusDetail: {type: string, description: Short reason for the status; absent when there is nothing to add.}
         href: {type: string, description: Web UI path to the resource.}
         coversCertificates: {type: boolean, description: "Channel nodes only: true when the channel is enabled and its event kinds and minimum severity would deliver this org's certificate events."}
+        summary: {$ref: "#/components/schemas/FlowNodeSummary"}
+    FlowNodeSummary:
+      type: object
+      description: Per-node facts for the detail view; every field is present only when it applies.
+      properties:
+        expiresAt: {type: string, format: date-time, description: "Certificate notAfter, or a private CA's own certificate expiry."}
+        versionSerial: {type: string, description: Serial of the certificate's current version.}
+        lastDeployedAt: {type: string, format: date-time, description: "Latest successful deployment among the node's grants."}
+        lastError: {type: string, maxLength: 500, description: "Most recent failure reason when the node is failed or drifted."}
+        issuerId: {type: string, description: "Certificate nodes only: node id (ca:uuid or account:uuid) of the issuer."}
+        clientIds:
+          type: array
+          description: "Certificate nodes only: node ids of the clients the certificate reaches."
+          items: {type: string}
+        counts:
+          type: object
+          description: Totals over the node's grants and edges.
+          required: [grants, deployments, problems]
+          properties:
+            grants: {type: integer, description: Grants that involve this node.}
+            deployments: {type: integer, description: Grants whose deployment is done.}
+            problems: {type: integer, description: "Failed, drifted, expired or expiring edges at this node."}
     FlowLane:
       type: object
       description: One column of the map.
-      required: [hidden, nodes]
+      required: [hidden, nodes, omitted]
       properties:
         hidden: {type: boolean, description: True when the caller lacks read permission for this lane; nodes is then empty.}
+        omitted: {type: integer, default: 0, description: Nodes the size cap dropped from this lane.}
         nodes:
           type: array
           description: Nodes in the lane.

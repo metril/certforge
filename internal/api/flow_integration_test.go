@@ -54,6 +54,18 @@ func TestGetFlow(t *testing.T) {
 	if _, ok := flowLaneIDs(fl.Lanes.Clients)["client:"+c.ID.String()]; !ok {
 		t.Fatal("client node missing")
 	}
+	cs := flowLaneIDs(fl.Lanes.Certificates)[certNode].Summary
+	if cs == nil || cs.VersionSerial == nil || *cs.VersionSerial == "" || cs.ExpiresAt == nil ||
+		cs.ClientIds == nil || len(*cs.ClientIds) != 1 || (*cs.ClientIds)[0] != "client:"+c.ID.String() ||
+		cs.Counts == nil || cs.Counts.Grants != 1 {
+		t.Fatalf("certificate summary = %+v", cs)
+	}
+	if ls := flowLaneIDs(fl.Lanes.Delivery)["layout:"+layout.String()].Summary; ls == nil || ls.Counts == nil || ls.Counts.Grants != 1 {
+		t.Fatalf("layout summary = %+v", ls)
+	}
+	if fl.Lanes.Certificates.Omitted != 0 {
+		t.Fatalf("omitted = %d", fl.Lanes.Certificates.Omitted)
+	}
 	var toLayout, toClient bool
 	for _, e := range fl.Edges {
 		switch {
