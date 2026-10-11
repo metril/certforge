@@ -329,7 +329,7 @@ export const help = {
   'target.vaultKv': { text: 'CertForge writes the files to Vault KV itself. No client is involved.', learnMore: 'guide/delivery.md#vault-kv' },
   'target.authentik': { text: 'CertForge pushes the certificate and key into Authentik’s keypair store itself. No client is involved.', learnMore: 'guide/delivery.md#authentik' },
   'target.ssh': { text: 'CertForge connects over SSH, writes the files and runs your commands itself. The host key is pinned; get it with ssh-keyscan.', learnMore: 'guide/delivery.md#ssh' },
-  'target.pfsense': { text: 'CertForge logs in to the pfSense Plus REST API (25.03+) and updates the named certificate in place, so WebGUI, OpenVPN and HAProxy references keep working. The URL must include the API prefix, such as /api/v2.', learnMore: 'guide/delivery.md#pfsense-plus' },
+  'target.pfsense': { text: 'CertForge logs in to the pfSense Plus REST API and updates the named certificate in place, so WebGUI and VPN references keep working.', learnMore: 'guide/delivery.md#pfsense-plus' },
   'target.includeKey': { text: 'Also send the private key. On the server this needs the keys:export permission.', learnMore: 'guide/delivery.md#vault-kv' },
   'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
   // Task 9: the deploy-target detail sheet's own Grants section and its
