@@ -631,7 +631,7 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
 	}
 	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: &clientID, CertID: in.CertID, Delivery: in.Delivery,
-		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate})
+		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, TargetOptions: []byte("{}")})
 	if pgCode(err) == pgUniqueViolation {
 		return uuid.Nil, conflict("This client already has a grant for that certificate.")
 	}

@@ -1,6 +1,6 @@
 -- name: CreateGrant :one
-INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate)
-VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *;
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, target_options)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *;
 
 -- name: LockGrant :one
 SELECT client_cert_grants.* FROM client_cert_grants
@@ -18,7 +18,7 @@ FOR UPDATE;
 -- name: UpdateGrant :one
 UPDATE client_cert_grants SET delivery = sqlc.arg(delivery), output_spec_id = sqlc.narg(output_spec_id),
        deploy_target_id = sqlc.narg(deploy_target_id), hook_ids = sqlc.arg(hook_ids),
-       auto_remediate = sqlc.arg(auto_remediate), updated_at = now()
+       auto_remediate = sqlc.arg(auto_remediate), target_options = COALESCE(sqlc.narg(target_options), target_options), updated_at = now()
 WHERE id = sqlc.arg(id) RETURNING *;
 
 -- name: MarkGrantRemoved :exec
@@ -39,7 +39,7 @@ SELECT * FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL
 
 -- name: GrantViews :many
 SELECT g.id, g.client_id, c.name AS client_name, g.cert_id, ce.name AS certificate_name, g.delivery,
-       g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.created_at, g.updated_at,
+       g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
        d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN clients c ON c.id = g.client_id
@@ -83,7 +83,7 @@ ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, state = '
 SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name,
        ce.common_name AS certificate_common_name, ce.sans AS certificate_sans, ce.current_version_id,
        o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
-       t.type AS target_type, t.config AS target_config, t.secret_cfg AS target_secret_cfg
+       t.type AS target_type, t.config AS target_config, t.secret_cfg AS target_secret_cfg, g.target_options
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id
