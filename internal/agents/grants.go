@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"time"
 
 	"github.com/google/uuid"
@@ -374,10 +375,80 @@ func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg, gra
 	return out, nil
 }
 
+// checkGrantOptions validates a live grant's targetOptions against its
+// target's type: any key needs a target type implementing
+// targets.GrantOptions; the type parses the rest, and a Traefik certsDir
+// may not be the target's own directory (removing the grant would delete the
+// watched directory).
+func (s *Service) checkGrantOptions(typ *string, cfg, raw []byte) error {
+	if emptyOptions(raw) {
+		return nil
+	}
+	const unsupported = "not supported by this target type"
+	if typ == nil {
+		return invalid("targetOptions", unsupported)
+	}
+	t, ok := s.Reg.Get(*typ)
+	if !ok {
+		return fmt.Errorf("agents: unknown target type %q", *typ)
+	}
+	g, ok := t.(targets.GrantOptions)
+	if !ok {
+		return invalid("targetOptions", unsupported)
+	}
+	v, err := g.ParseGrantOptions(raw)
+	if err != nil {
+		var fe *delivery.FieldError
+		if errors.As(err, &fe) {
+			return invalid(fe.Field, "%s", fe.Msg)
+		}
+		return invalid("targetOptions", "%s", err.Error())
+	}
+	if o, ok := v.(delivery.TraefikGrantOptions); ok && o.CertsDir != "" {
+		var c delivery.TraefikConfig
+		if err := json.Unmarshal(cfg, &c); err != nil {
+			return err
+		}
+		if path.Clean(o.CertsDir) == path.Clean(c.Dir) {
+			return invalid("targetOptions.certsDir", "must not be the Traefik directory itself")
+		}
+	}
+	return nil
+}
+
+// defaultCertStores returns the TLS stores r's grant claims as the Traefik
+// default certificate, and the cleaned directory they are claimed in; nil
+// when r is not a traefik grant with defaultCert set. Options that fail to
+// parse claim nothing (checkGrantOptions refuses them on a live grant).
+func defaultCertStores(typ *string, cfg, raw []byte) (dir string, stores []string) {
+	if typ == nil || *typ != delivery.TargetTraefik {
+		return "", nil
+	}
+	o, err := delivery.ParseTraefikGrantOptions(raw)
+	if err != nil || !o.DefaultCert {
+		return "", nil
+	}
+	var c delivery.TraefikConfig
+	if json.Unmarshal(cfg, &c) != nil {
+		return "", nil
+	}
+	stores = o.Stores
+	if len(stores) == 0 {
+		stores = c.Stores
+	}
+	if len(stores) == 0 {
+		stores = []string{"default"}
+	}
+	return path.Clean(c.Dir), stores
+}
+
 // checkPaths refuses a change that makes two grants of one client write the
 // same path: the agent would delete one grant's files while removing the
 // other's. Grants awaiting removal count with the paths they last rendered;
-// certificate names that share a SafeName collide on Traefik paths.
+// certificate names that share a SafeName collide on Traefik paths. It also
+// validates each live grant's targetOptions and refuses two of a client's
+// grants (removal-pending ones included, with their current options) that
+// both set Traefik's default certificate for one directory and store.
 func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs []uuid.UUID) error {
 	if len(clientIDs) == 0 {
 		return nil
@@ -387,10 +458,24 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 		return err
 	}
 	owner := map[string]string{}
+	defaults := map[string]string{} // client|dir|store -> certificate name
 	for _, r := range rows {
 		cid, err := clientOf(r.ClientID)
 		if err != nil {
 			return err
+		}
+		if r.RemovedAt == nil {
+			if err := s.checkGrantOptions(r.TargetType, r.TargetConfig, r.TargetOptions); err != nil {
+				return err
+			}
+		}
+		dir, stores := defaultCertStores(r.TargetType, r.TargetConfig, r.TargetOptions)
+		for _, st := range stores {
+			k := cid.String() + "\x00" + dir + "\x00" + st
+			if other, ok := defaults[k]; ok {
+				return conflict("Grants %q and %q on this client both set Traefik's default certificate for store %q in %s. Only one grant may.", other, r.CertificateName, st, dir)
+			}
+			defaults[k] = r.CertificateName
 		}
 		var paths []string
 		if r.RemovedAt != nil {

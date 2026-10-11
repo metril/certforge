@@ -1260,6 +1260,10 @@ func TestGrantTargetOptionsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	tid := res.(gen.CreateDeployTarget201JSONResponse).Id
+	bad := map[string]interface{}{"bogus": true}
+	_, err = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{
+		CertificateId: certID, Delivery: push(), DeployTargetId: &tid, TargetOptions: &bad}})
+	wantStatus(t, err, 422)
 	opts := map[string]interface{}{"defaultCert": true}
 	cr, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{
 		CertificateId: certID, Delivery: push(), DeployTargetId: &tid, TargetOptions: &opts}})
