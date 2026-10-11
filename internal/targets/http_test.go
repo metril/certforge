@@ -4,7 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/coder/websocket"
 
 	"github.com/metril/certforge/internal/notify/httpx"
 	"github.com/metril/certforge/internal/targets"
@@ -40,5 +43,52 @@ func TestFactoryForcesLoopbackFlag(t *testing.T) {
 		if !allow && doErr == nil {
 			t.Fatal("allow=false: Do reached a loopback server, want it blocked")
 		}
+	}
+}
+
+func TestFactoryWebSocket(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.CloseNow() }()
+		typ, b, err := c.Read(r.Context())
+		if err != nil {
+			return
+		}
+		_ = c.Write(r.Context(), typ, b)
+	}))
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+
+	if o, err := (targets.HTTPFactory{}).WebSocket(httpx.Options{}); err != nil {
+		t.Fatal(err)
+	} else if c, resp, err := websocket.Dial(context.Background(), url, o); err == nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		_ = c.CloseNow()
+		t.Fatal("loopback dial should be refused")
+	}
+
+	o, err := (targets.HTTPFactory{AllowLoopback: true}).WebSocket(httpx.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, resp, err := websocket.Dial(context.Background(), url, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	defer func() { _ = c.CloseNow() }()
+	if err := c.Write(context.Background(), websocket.MessageText, []byte("hi")); err != nil {
+		t.Fatal(err)
+	}
+	_, b, err := c.Read(context.Background())
+	if err != nil || string(b) != "hi" {
+		t.Fatalf("got %q %v", b, err)
 	}
 }
