@@ -86,7 +86,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 			return agentproto.Assignments{}, err
 		}
 		for _, h := range hs {
-			hooks[h.ID] = agentproto.HookSpec{ID: h.ID, Phase: h.Phase, Argv: h.Argv, TimeoutSeconds: int(h.TimeoutSeconds)}
+			hooks[h.ID] = agentproto.HookSpec{ID: h.ID, Phase: h.Phase, Argv: h.Argv, Kind: h.Kind, Target: h.Target, TimeoutSeconds: int(h.TimeoutSeconds)}
 		}
 	}
 	openSecrets := s.memoSecretOpener()

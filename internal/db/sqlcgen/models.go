@@ -270,6 +270,8 @@ type Hook struct {
 	TimeoutSeconds int32     `json:"timeout_seconds"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	Kind           string    `json:"kind"`
+	Target         string    `json:"target"`
 }
 
 type HookRun struct {

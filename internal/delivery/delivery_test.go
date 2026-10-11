@@ -321,7 +321,7 @@ func TestCompare(t *testing.T) {
 }
 
 func TestValidateHook(t *testing.T) {
-	if err := ValidateHook("post_deploy", []string{"/usr/local/bin/reload-nginx", "--quiet"}, 60); err != nil {
+	if err := ValidateHook("exec", "post_deploy", "", []string{"/usr/local/bin/reload-nginx", "--quiet"}, 60); err != nil {
 		t.Fatal(err)
 	}
 	for name, tc := range map[string]struct {
@@ -337,8 +337,39 @@ func TestValidateHook(t *testing.T) {
 		"long":     {"post_deploy", []string{"/bin/true"}, 3601},
 	} {
 		var fe *FieldError
-		if err := ValidateHook(tc.phase, tc.argv, tc.timeout); !errors.As(err, &fe) {
+		if err := ValidateHook("exec", tc.phase, "", tc.argv, tc.timeout); !errors.As(err, &fe) {
 			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+}
+
+func TestValidateHookRestart(t *testing.T) {
+	cases := []struct {
+		name, kind, target string
+		argv               []string
+		ok                 bool
+	}{
+		{"docker", "restart", "docker:nginx", nil, true},
+		{"systemd", "restart", "systemd:nginx.service", nil, true},
+		{"empty kind is exec", "", "", []string{"/bin/true"}, true},
+		{"bad kind", "reboot", "", nil, false},
+		{"no prefix", "restart", "nginx", nil, false},
+		{"bad prefix", "restart", "podman:nginx", nil, false},
+		{"empty name", "restart", "docker:", nil, false},
+		{"leading dash", "restart", "docker:-x", nil, false},
+		{"slash", "restart", "docker:a/b", nil, false},
+		{"too long", "restart", "docker:a" + strings.Repeat("b", 128), nil, false},
+		{"restart with argv", "restart", "docker:nginx", []string{"/bin/true"}, false},
+		{"exec with target", "exec", "docker:nginx", []string{"/bin/true"}, false},
+		{"exec no argv", "exec", "", nil, false},
+	}
+	for _, tc := range cases {
+		err := ValidateHook(tc.kind, "post_deploy", tc.target, tc.argv, 60)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: err %v, want ok=%v", tc.name, err, tc.ok)
+		}
+	}
+	if err := ValidateHook("restart", "post_deploy", "docker:x", nil, 0); err == nil {
+		t.Error("zero timeout accepted")
 	}
 }

@@ -4513,6 +4513,10 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/DeployTarget"}, description: Targets sorted by name.}
+    HookKind:
+      type: string
+      enum: [exec, restart]
+      description: exec runs an allowlisted command; restart restarts a Docker container or systemd unit listed in the agent's CF_RESTART_ALLOW.
     HookPhase:
       type: string
       enum: [pre_deploy, post_deploy]
@@ -4520,9 +4524,11 @@ components:
     Hook:
       type: object
       description: A command an agent runs around a deploy, only if its argv[0] is in the agent's CF_HOOK_ALLOW.
-      required: [id, orgId, name, phase, argv, timeoutSeconds, grantCount, createdAt, updatedAt]
+      required: [id, orgId, name, phase, kind, target, argv, timeoutSeconds, grantCount, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: Hook id.}
+        kind: {$ref: "#/components/schemas/HookKind"}
+        target: {type: string, description: "For a restart hook, docker:<container> or systemd:<unit>; empty for exec."}
         orgId: {type: string, format: uuid, description: Owning org.}
         name: {type: string, description: Name, unique in the org.}
         phase: {$ref: "#/components/schemas/HookPhase"}
@@ -4537,8 +4543,10 @@ components:
       required: [name, phase, argv]
       properties:
         name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
+        kind: {allOf: [{$ref: "#/components/schemas/HookKind"}], default: exec}
+        target: {type: string, maxLength: 140, description: "Required for restart: docker:<container> or systemd:<unit>."}
         phase: {$ref: "#/components/schemas/HookPhase"}
-        argv: {type: array, minItems: 1, maxItems: 64, items: {type: string}, description: Absolute executable path, then arguments.}
+        argv: {type: array, maxItems: 64, items: {type: string}, description: Exec only. Absolute executable path, then arguments; empty for restart.}
         timeoutSeconds: {type: integer, minimum: 1, maximum: 3600, default: 60, description: Seconds before the hook is killed.}
     HookList:
       type: object

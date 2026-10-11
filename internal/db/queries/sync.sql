@@ -19,7 +19,7 @@ WHERE g.client_id = $1
 ORDER BY g.created_at, g.id;
 
 -- name: HooksByIDs :many
-SELECT id, phase, argv, timeout_seconds FROM hooks WHERE id = ANY(sqlc.arg(ids)::uuid[]);
+SELECT id, phase, kind, target, argv, timeout_seconds FROM hooks WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: GrantForBundle :one
 -- extra_version_ids (from the deployment, the last render) pairs with
