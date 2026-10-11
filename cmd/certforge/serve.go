@@ -478,6 +478,7 @@ func newTargetsRegistry(vaultProvider *vault.Provider) *targets.Registry {
 	reg.Register(deploy.SSH{})
 	reg.Register(deploy.PfSense{})
 	reg.Register(deploy.TrueNAS{})
+	reg.Register(deploy.RouterOS{})
 	return reg
 }
 
