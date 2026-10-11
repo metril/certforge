@@ -81,7 +81,7 @@ On a client's page the header says **Connected** for a live connection, **Online
 
 Open a client to see its tabs: **Certificates** (grants and their deployment state), **Hooks** (hook run history), **Activity** (audit events that mention the client) and **Settings**. The header shows hostname, **Site**, **Agent** version and platform, **Agent certificate** expiry (highlighted within 14 days) and the capabilities the agent reported.
 
-Grant certificates from the **Certificates** tab with **Grant certificate**. Grants, layouts, deploy targets and redeploys are explained in [Delivery](delivery.md). Hooks are in [Agents](agents.md#hooks-and-the-allowlist).
+Grant certificates from the **Certificates** tab with **Grant certificate**. When the target type has per-grant options, the sheet shows them as **Target options** under the target picker; for Traefik they are listed under [Per-grant options](delivery.md#per-grant-options). Grants, layouts, deploy targets and redeploys are explained in [Delivery](delivery.md). Hooks are in [Agents](agents.md#hooks-and-the-allowlist).
 
 ## Re-enrol a client
 
