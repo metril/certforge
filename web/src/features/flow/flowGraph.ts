@@ -192,27 +192,62 @@ export function pairStatus(edges: FlowEdgeData[], pathNodes?: Set<string> | null
 /** Needs attention: pending is transitional and healthy/idle are fine. */
 export const isProblem = (s: FlowStatus): boolean => s === 'failed' || s === 'expired' || s === 'drift' || s === 'expiring';
 
-/** Ids of the nodes to draw under the `q` / `problems` filters, or null when
- * no filter is active. A node is kept when it matches or lies on the path of
- * a matching node, so every surviving flow stays whole end to end. */
-export function visibleNodeIds(flow: Flow, q: string | undefined, status: 'problems' | undefined): Set<string> | null {
-  const needle = (q ?? '').trim().toLowerCase();
-  if (!needle && !status) return null;
+/** The four statuses that need attention (`status=problems`). */
+export const PROBLEM_STATUSES: FlowStatus[] = ['failed', 'expired', 'drift', 'expiring'];
+
+/** Union of the paths through several nodes. */
+export function pathUnion(flow: Flow, ids: string[]): FlowPath {
+  const out: FlowPath = { nodes: new Set(), edges: new Set(), synthetic: new Set() };
+  for (const id of ids) {
+    const p = tracePath(flow, id);
+    for (const n of p.nodes) out.nodes.add(n);
+    for (const k of p.edges) out.edges.add(k);
+    for (const k of p.synthetic) out.synthetic.add(k);
+  }
+  return out;
+}
+
+/** Paths lit for the selected node and, lighter, for the hovered one. */
+export function highlightSet(flow: Flow, focusId: string | null | undefined, hoverId: string | null | undefined): { focus: FlowPath; hover: FlowPath } {
+  return { focus: tracePath(flow, focusId), hover: hoverId && hoverId !== focusId ? tracePath(flow, hoverId) : tracePath(flow, null) };
+}
+
+export type FlowFilters = {
+  q?: string;
+  kinds?: FlowNodeData['kind'][];
+  statuses?: FlowStatus[];
+  issuers?: string[];
+  clients?: string[];
+};
+
+/** Ids of the nodes to draw under the filters, or null when none is active. A
+ * node is kept when it matches the text, kind and status filters, and (with an
+ * issuer or client filter) lies on a path through one of the chosen nodes. A
+ * matching node keeps its whole path, so every surviving flow stays whole. */
+export function visibleNodeIds(flow: Flow, f: FlowFilters): Set<string> | null {
+  const needle = (f.q ?? '').trim().toLowerCase();
+  const kinds = f.kinds && f.kinds.length > 0 ? new Set(f.kinds) : null;
+  const statuses = f.statuses && f.statuses.length > 0 ? new Set(f.statuses) : null;
+  const anchors = [...(f.issuers ?? []), ...(f.clients ?? [])];
+  if (!needle && !kinds && !statuses && anchors.length === 0) return null;
   const touched = new Set<string>();
-  if (status) {
+  if (statuses) {
     for (const e of flow.edges) {
-      if (!isProblem(e.status)) continue;
+      if (!statuses.has(e.status)) continue;
       touched.add(e.from);
       touched.add(e.to);
     }
   }
+  const scope = anchors.length > 0 ? pathUnion(flow, anchors).nodes : null;
   const keep = new Set<string>();
   for (const k of LANE_KEYS) {
     for (const n of flow.lanes[k].nodes) {
       if (needle && !n.name.toLowerCase().includes(needle)) continue;
-      if (status && !isProblem(n.status) && !touched.has(n.id)) continue;
+      if (kinds && !kinds.has(n.kind)) continue;
+      if (statuses && !statuses.has(n.status) && !touched.has(n.id)) continue;
+      if (scope && !scope.has(n.id)) continue;
       keep.add(n.id);
-      for (const id of tracePath(flow, n.id).nodes) keep.add(id);
+      for (const id of tracePath(flow, n.id).nodes) if (!scope || scope.has(id)) keep.add(id);
     }
   }
   return keep;

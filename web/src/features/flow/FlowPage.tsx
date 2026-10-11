@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { LANE_KEYS, expandFor, filterFlow, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { LANE_KEYS, PROBLEM_STATUSES, expandFor, filterFlow, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 import { FlowConnectors } from './FlowConnectors';
 import { FlowLane } from './FlowLane';
 import { FlowPathPanel } from './FlowPathPanel';
@@ -44,8 +44,12 @@ export function FlowPage() {
   const full: Flow | undefined = q.data;
   const text = search.q ?? '';
   const status = search.status;
+  const statuses = useMemo(() => (status === 'problems' ? PROBLEM_STATUSES : status), [status]);
   const deferredText = useDeferredValue(text);
-  const visible = useMemo(() => (full ? visibleNodeIds(full, deferredText, status) : null), [full, deferredText, status]);
+  const visible = useMemo(
+    () => (full ? visibleNodeIds(full, { q: deferredText, kinds: search.kind, statuses, issuers: search.issuer, clients: search.client }) : null),
+    [full, deferredText, search.kind, statuses, search.issuer, search.client],
+  );
   const flow = useMemo(() => (full ? filterFlow(full, visible) : undefined), [full, visible]);
   const activeFilters = (text.trim() ? 1 : 0) + (status ? 1 : 0);
 
