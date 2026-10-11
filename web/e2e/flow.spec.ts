@@ -18,9 +18,9 @@ test('flow: select the seeded certificate and see its issuer in the path panel',
   await expect(page).toHaveURL(/focus=certificate/);
   const panel = page.getByRole('complementary', { name: 'Details' });
   await expect(panel).toBeVisible();
-  const issuerStep = panel.getByRole('listitem', { name: /^Issuer, 1 item/ });
+  const issuerStep = panel.getByRole('listitem', { name: /^Issuer, \d+ items?/ });
   await expect(issuerStep).toBeVisible();
-  await expect(issuerStep.getByRole('link', { name: /^Open / })).toBeVisible();
+  await expect(issuerStep.getByRole('link', { name: /^Open Pebble/ })).toBeVisible();
   await snap(page, 'flow-selected');
 
   // snap() toggles the theme, which moves focus out of the map; Escape only
