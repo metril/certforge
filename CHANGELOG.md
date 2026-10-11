@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.17.0](https://github.com/metril/certforge/compare/v0.16.0...v0.17.0) (2026-10-11)
+
+
+### Features
+
+* **api:** adcs CA type, AdcsConfig schema and password handling ([82b38e0](https://github.com/metril/certforge/commit/82b38e0c4f1eb0a31eede0d7720d1dacd5b6e6f3))
+* **issuance:** adcs CA kind with sealed password, policy-resolved create, non-retryable pending/denied ([7bd849c](https://github.com/metril/certforge/commit/7bd849c08561987890840cf0e5eb59c58621e88f))
+* **signer:** CSR extensions and adcs signer (XCEP/WSTEP) ([349ad80](https://github.com/metril/certforge/commit/349ad8049ef7c40bbb6b99c829d6a1381b48a827))
+* **web:** AD CS CA kind picker, form, detail and tests ([6a4b91a](https://github.com/metril/certforge/commit/6a4b91a42b53c80bc092d1300fc3c6e139db31e4))
+
+
+### Bug Fixes
+
+* **issuance:** adcs rejects approval-required templates; drop non-retryable path ([1134a84](https://github.com/metril/certforge/commit/1134a84696695b272e8d3623a234c1d8c75e0919))
+* **issuance:** adcs update reads secret_cfg under the row lock ([d52a291](https://github.com/metril/certforge/commit/d52a291bfa7b961c7b69ea78cf021fcae91a852a))
+
 ## [0.16.0](https://github.com/metril/certforge/compare/v0.15.0...v0.16.0) (2026-10-11)
 
 
