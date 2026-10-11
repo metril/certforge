@@ -36,3 +36,6 @@ VALUES (sqlc.arg(issuer)::text, sqlc.arg(subject)::text, sqlc.narg(email), sqlc.
 ON CONFLICT (oidc_issuer, oidc_sub) DO UPDATE
 SET email = EXCLUDED.email, display_name = EXCLUDED.display_name, oidc_groups = EXCLUDED.oidc_groups
 RETURNING *;
+
+-- name: DeleteUser :execrows
+DELETE FROM users WHERE id = $1;

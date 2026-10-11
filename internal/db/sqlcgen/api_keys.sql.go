@@ -17,7 +17,7 @@ SELECT count(*) FROM api_keys
 WHERE created_by = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
 `
 
-func (q *Queries) CountActiveAPIKeysByCreator(ctx context.Context, createdBy uuid.UUID) (int64, error) {
+func (q *Queries) CountActiveAPIKeysByCreator(ctx context.Context, createdBy *uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveAPIKeysByCreator, createdBy)
 	var count int64
 	err := row.Scan(&count)
@@ -35,7 +35,7 @@ type CreateAPIKeyParams struct {
 	SecretHash []byte     `json:"secret_hash"`
 	Scopes     []string   `json:"scopes"`
 	OrgID      *uuid.UUID `json:"org_id"`
-	CreatedBy  uuid.UUID  `json:"created_by"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
 	ExpiresAt  *time.Time `json:"expires_at"`
 }
 
@@ -113,8 +113,8 @@ func (q *Queries) GetAPIKeyByPrefix(ctx context.Context, prefix string) (ApiKey,
 }
 
 const listAPIKeys = `-- name: ListAPIKeys :many
-SELECT k.id, k.name, k.prefix, k.secret_hash, k.scopes, k.org_id, k.created_by, k.expires_at, k.last_used_at, k.revoked_at, k.created_at, u.display_name AS created_by_name
-FROM api_keys k JOIN users u ON u.id = k.created_by
+SELECT k.id, k.name, k.prefix, k.secret_hash, k.scopes, k.org_id, k.created_by, k.expires_at, k.last_used_at, k.revoked_at, k.created_at, COALESCE(u.display_name, '(deleted user)')::text AS created_by_name
+FROM api_keys k LEFT JOIN users u ON u.id = k.created_by
 WHERE $1::uuid IS NULL OR k.org_id = $1
 ORDER BY k.created_at DESC, k.id
 `
@@ -126,7 +126,7 @@ type ListAPIKeysRow struct {
 	SecretHash    []byte     `json:"secret_hash"`
 	Scopes        []string   `json:"scopes"`
 	OrgID         *uuid.UUID `json:"org_id"`
-	CreatedBy     uuid.UUID  `json:"created_by"`
+	CreatedBy     *uuid.UUID `json:"created_by"`
 	ExpiresAt     *time.Time `json:"expires_at"`
 	LastUsedAt    *time.Time `json:"last_used_at"`
 	RevokedAt     *time.Time `json:"revoked_at"`
@@ -205,6 +205,18 @@ UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL
 
 func (q *Queries) RevokeAPIKey(ctx context.Context, id uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeAPIKey, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeAPIKeysByCreator = `-- name: RevokeAPIKeysByCreator :execrows
+UPDATE api_keys SET revoked_at = now() WHERE created_by = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeAPIKeysByCreator(ctx context.Context, createdBy *uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeAPIKeysByCreator, createdBy)
 	if err != nil {
 		return 0, err
 	}

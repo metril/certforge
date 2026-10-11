@@ -46,6 +46,18 @@ func (q *Queries) DeleteRoleBinding(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteRoleBindingsForUser = `-- name: DeleteRoleBindingsForUser :execrows
+DELETE FROM role_bindings WHERE subject_type = 'user' AND subject = $1::text
+`
+
+func (q *Queries) DeleteRoleBindingsForUser(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRoleBindingsForUser, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getRoleBinding = `-- name: GetRoleBinding :one
 SELECT id, subject_type, subject, role, org_id, site_id, created_at FROM role_bindings WHERE id = $1
 `

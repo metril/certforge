@@ -9,8 +9,8 @@ SELECT * FROM api_keys WHERE id = $1;
 SELECT * FROM api_keys WHERE prefix = $1;
 
 -- name: ListAPIKeys :many
-SELECT k.*, u.display_name AS created_by_name
-FROM api_keys k JOIN users u ON u.id = k.created_by
+SELECT k.*, COALESCE(u.display_name, '(deleted user)')::text AS created_by_name
+FROM api_keys k LEFT JOIN users u ON u.id = k.created_by
 WHERE sqlc.narg(org_id)::uuid IS NULL OR k.org_id = sqlc.narg(org_id)
 ORDER BY k.created_at DESC, k.id;
 
@@ -27,3 +27,6 @@ SELECT * FROM role_bindings WHERE subject_type = 'apikey' AND subject = $1 ORDER
 -- name: CountActiveAPIKeysByCreator :one
 SELECT count(*) FROM api_keys
 WHERE created_by = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now());
+
+-- name: RevokeAPIKeysByCreator :execrows
+UPDATE api_keys SET revoked_at = now() WHERE created_by = $1 AND revoked_at IS NULL;

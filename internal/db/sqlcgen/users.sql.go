@@ -35,6 +35,18 @@ func (q *Queries) CreateLocalAdmin(ctx context.Context, hash string) (User, erro
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :execrows
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getLocalAdmin = `-- name: GetLocalAdmin :one
 SELECT id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups FROM users WHERE local_password_hash IS NOT NULL LIMIT 1
 `

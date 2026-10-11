@@ -12,6 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const countSessionsForUser = `-- name: CountSessionsForUser :one
+SELECT count(*) FROM sessions WHERE user_id = $1
+`
+
+func (q *Queries) CountSessionsForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countSessionsForUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, user_id, csrf, expires_at) VALUES ($1, $2, $3, $4) RETURNING id, user_id, csrf, expires_at, created_at
 `

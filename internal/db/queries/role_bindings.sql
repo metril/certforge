@@ -50,3 +50,6 @@ SELECT * FROM role_bindings WHERE id = $1;
 
 -- name: DeleteRoleBinding :exec
 DELETE FROM role_bindings WHERE id = $1;
+
+-- name: DeleteRoleBindingsForUser :execrows
+DELETE FROM role_bindings WHERE subject_type = 'user' AND subject = sqlc.arg(user_id)::text;

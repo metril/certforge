@@ -12,3 +12,6 @@ DELETE FROM sessions WHERE expires_at <= sqlc.arg(now)::timestamptz;
 
 -- name: DeleteUserSessions :execrows
 DELETE FROM sessions WHERE user_id = $1;
+
+-- name: CountSessionsForUser :one
+SELECT count(*) FROM sessions WHERE user_id = $1;
