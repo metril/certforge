@@ -106,7 +106,7 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
     const shown = expanded ? sorted : sorted.filter((n, i) => i < CAP || keep.has(n.id));
     const rest = sorted.length - shown.length;
     return (
-      <ul className="grid gap-2">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
         {shown.map(item)}
         {(rest > 0 || (expanded && sorted.length > CAP)) && (
           <li className="min-w-0">
@@ -132,7 +132,7 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
   };
   const groups = SUBGROUPS[laneKey];
   const proxy = (gid: string, title: string, ns: FlowNodeData[]) => (
-    <ul className="grid gap-2">
+    <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
       <li className="min-w-0">
         <FlowGroupProxy
           id={proxyId(gid)}
@@ -153,7 +153,7 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
   const countText = nodes.length === total ? String(total) : `${nodes.length}/${total}`;
   const interactive = !hidden && total > 0;
   return (
-    <section ref={section} aria-label={meta.title} data-flow-lane={laneKey} className="relative z-10 grid min-w-0 content-start gap-2">
+    <section ref={section} aria-label={meta.title} data-flow-lane={laneKey} className="relative z-10 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2">
       <h2 className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-surface pb-1 pt-2">
         {interactive ? (
           <GroupHead id={laneKey} title={meta.title} count={countText} total={total} problems={nodes.filter((n) => isProblem(n.status)).length} open={laneOpen} onToggle={() => onToggle(laneKey)} help={`flow.lane.${laneKey}`} />
@@ -180,13 +180,13 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
       ) : !laneOpen ? (
         nodes.length > 0 && proxy(laneKey, meta.title, nodes)
       ) : groups ? (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
           {groups.map((g) => {
             const ns = nodes.filter((n) => g.kinds.includes(n.kind));
             if (ns.length === 0) return null;
             const open = !collapsed.has(g.id);
             return (
-              <div key={g.id} className="grid gap-1.5">
+              <div key={g.id} className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
                 <h3 className="flex items-center gap-2">
                   <GroupHead sub id={g.id} title={g.title} count={String(ns.length)} total={ns.length} problems={ns.filter((n) => isProblem(n.status)).length} open={open} onToggle={() => onToggle(g.id)} />
                 </h3>

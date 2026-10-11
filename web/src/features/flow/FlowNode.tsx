@@ -48,7 +48,7 @@ export const RAIL: Record<FlowStatus, string> = {
 
 /** Shared card shell; the proxy row mirrors it. */
 export const CARD =
-  'relative z-10 grid w-full min-w-0 gap-0.5 overflow-hidden rounded-md border border-border bg-panel py-2 pl-3.5 pr-2.5 text-left text-sm transition-opacity hover:border-ink-muted focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none';
+  'relative z-10 grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5 overflow-hidden rounded-md border border-border bg-panel py-2 pl-3.5 pr-2.5 text-left text-sm transition-opacity hover:border-ink-muted focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none';
 
 export const KIND_META: Record<FlowNodeData['kind'], { icon: LucideIcon; label: string }> = {
   ca: { icon: Landmark, label: 'CA' },
@@ -64,7 +64,7 @@ export const KIND_META: Record<FlowNodeData['kind'], { icon: LucideIcon; label: 
 
 export function FlowChip({ node, className }: { node: Pick<FlowNodeData, 'kind' | 'status' | 'statusDetail'>; className?: string }) {
   const m = FLOW_STATUS[node.status];
-  return <ToneChip tone={m.tone} icon={m.icon} label={flowStatusLabel(node.kind, node.status, node.statusDetail)} className={className} />;
+  return <ToneChip tone={m.tone} icon={m.icon} label={flowStatusLabel(node.kind, node.status, node.statusDetail)} className={className} truncate />;
 }
 
 /** Arrow Up/Down moves focus between the nodes and group proxies of one lane. */
@@ -143,7 +143,7 @@ export function FlowNode({ node, selected, dimmed, hovered, onHover, onSelect, r
               )}
             </span>
           )}
-          {node.status !== 'valid' && <FlowChip node={node} className="w-fit max-w-full" />}
+          {node.status !== 'valid' && <FlowChip node={node} className="w-fit max-w-full min-w-0" />}
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">
