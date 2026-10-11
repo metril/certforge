@@ -37,10 +37,20 @@ function endpointOf(c: CA): string {
     const cfg = c.config as { mount?: string; role?: string } | undefined;
     return [cfg?.mount, cfg?.role].filter(Boolean).join('/');
   }
+  if (c.type === 'adcs') {
+    const cfg = c.config as { template?: string; cepUrl?: string } | undefined;
+    let host = '';
+    try {
+      host = cfg?.cepUrl ? new URL(cfg.cepUrl).host : '';
+    } catch {
+      /* a malformed stored URL just shows no host */
+    }
+    return [cfg?.template, host].filter(Boolean).join(' @ ');
+  }
   return c.directoryUrl;
 }
 
-const FILTERS: (CaType | 'all')[] = ['all', 'acme', 'localca', 'vaultpki'];
+const FILTERS: (CaType | 'all')[] = ['all', 'acme', 'localca', 'vaultpki', 'adcs'];
 
 export function CasPage() {
   const org = useOrg();

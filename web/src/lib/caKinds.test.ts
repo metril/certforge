@@ -1,9 +1,10 @@
 import { expect, it } from 'vitest';
 import { ca as caAcme, caLocal, caVaultPki, iso, NOW } from '@/test/fixtures';
-import { caTone, crlUrlFor, isPrivate, KIND_LABEL, kindOf } from './caKinds';
+import { caTone, crlUrlFor, isPrivate, KIND_FULL_LABEL, KIND_LABEL, kindOf } from './caKinds';
 
 it('labels', () => {
-  expect(KIND_LABEL).toEqual({ acme: 'ACME', localca: 'Built-in CA', vaultpki: 'Vault PKI' });
+  expect(KIND_LABEL).toEqual({ acme: 'ACME', localca: 'Built-in CA', vaultpki: 'Vault PKI', adcs: 'AD CS' });
+  expect(KIND_FULL_LABEL.adcs).toBe('Active Directory (AD CS)');
 });
 
 it('isPrivate', () => {

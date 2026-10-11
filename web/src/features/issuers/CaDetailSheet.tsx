@@ -36,6 +36,7 @@ type LocalConfig = {
   revokedCount: number;
 };
 type VaultConfig = { mount: string; role: string; ttl?: string };
+type AdcsConfig = { template: string; cesUrl?: string; cepUrl: string; templateOid?: string };
 
 /** A small label/value row for the fact panels below, the same shape as
  * ClientHeader.tsx's own local `Fact` (no shared export exists to reuse). */
@@ -120,6 +121,7 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
 
   const local = kind === 'localca' ? (ca.config as unknown as LocalConfig) : null;
   const vault = kind === 'vaultpki' ? (ca.config as unknown as VaultConfig) : null;
+  const adcsCfg = kind === 'adcs' ? (ca.config as unknown as AdcsConfig) : null;
 
   async function copyRetiredCrl(url: string) {
     try {
@@ -200,6 +202,17 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
                 <Fact label="TTL">
                   <span className="font-mono text-xs">{vault.ttl ?? '–'}</span>
                 </Fact>
+              </dl>
+            )}
+            {adcsCfg && (
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                <Fact label="Template">
+                  <span className="font-mono text-xs">{adcsCfg.template}</span>
+                </Fact>
+                <Fact label="CES URL">
+                  <span className="break-all font-mono text-xs">{adcsCfg.cesUrl ?? '–'}</span>
+                </Fact>
+                <Fact label="Revocation">Manual in AD CS</Fact>
               </dl>
             )}
           </section>

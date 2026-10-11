@@ -57,6 +57,10 @@ export const help = {
     text: 'Vault signs with this mount and role. The connection is set in Settings → Integrations.',
     learnMore: 'guide/vault.md#pki',
   },
+  'ca.adcs': {
+    text: 'Enrols leaves from Microsoft AD CS through the Certificate Enrollment Policy and Enrollment web services with a service account. Revocation is manual in AD CS.',
+    learnMore: 'guide/issuers.md#active-directory-certificate-services',
+  },
   'ca.preset': { text: 'Presets fill in the directory URL. Custom takes any ACME server.' },
   'ca.directoryUrl': { text: 'The ACME directory endpoint of the CA.' },
   // Renamed from 'ca.trustBundle' (task 3): that key now names the private

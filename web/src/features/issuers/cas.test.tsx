@@ -4,7 +4,7 @@ import { beforeEach, expect, it } from 'vitest';
 import type { CA, CAInput } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, caLocal, caVaultPki, meWith, metaSigners, presets, problem, url } from '@/test/fixtures';
+import { authHandlers, ca, caAdcs, caLocal, caVaultPki, meWith, metaSigners, presets, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let cas: CA[];
@@ -231,6 +231,45 @@ it('type chip and endpoint per kind', async () => {
   expect(within(rows[1]!).getByText(/^Built-in CA · Internal CA/)).toBeInTheDocument();
   expect(within(rows[1]!).getByText('Internal CA')).toBeInTheDocument();
   expect(within(rows[2]!).getByText(/^Vault PKI · pki\/certforge/)).toBeInTheDocument();
+});
+
+it('adcs row shows template and host', async () => {
+  cas = [caAdcs];
+  renderRoute('/o/acme/issuers/cas');
+  const row = (await screen.findAllByRole('row'))[1]!;
+  expect(within(row).getByText(/^AD CS · CertForgeWeb @ ca\.corp\.test/)).toBeInTheDocument();
+});
+
+it('adcs create posts type, config and password', async () => {
+  withSigners();
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await user.click(within(sheet).getByRole('radio', { name: 'Active Directory (AD CS)' }));
+  await user.type(within(sheet).getByLabelText('Name'), 'Corp AD CS');
+  await user.type(await within(sheet).findByLabelText('Policy (CEP) URL'), 'https://ca.corp.test/cep');
+  await user.type(within(sheet).getByLabelText('Template'), 'CertForgeWeb');
+  await user.type(within(sheet).getByLabelText('Username'), 'svc');
+  await user.type(within(sheet).getByLabelText('Password'), 'hunter2');
+  await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
+  await waitFor(() => expect(posted).toBeDefined());
+  expect(posted).toMatchObject({
+    name: 'Corp AD CS',
+    type: 'adcs',
+    config: { cepUrl: 'https://ca.corp.test/cep', template: 'CertForgeWeb', username: 'svc', password: 'hunter2' },
+  });
+});
+
+it('adcs edit keeps the stored password with the sentinel', async () => {
+  cas = [caAdcs];
+  withSigners();
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=ca-adcs-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Corp AD CS' });
+  await user.clear(await within(sheet).findByLabelText('Template'));
+  await user.type(within(sheet).getByLabelText('Template'), 'Other');
+  await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
+  await waitFor(() => expect(put).toBeDefined());
+  expect(put).toMatchObject({ type: 'adcs', config: { template: 'Other', password: UNCHANGED } });
+  expect(put!.config).not.toHaveProperty('templateOid');
 });
 
 it('filter by type', async () => {
