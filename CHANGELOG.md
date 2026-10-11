@@ -2,6 +2,13 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.12.0](https://github.com/metril/certforge/compare/v0.11.0...v0.12.0) (2026-10-11)
+
+
+### Features
+
+* **flow:** filters, detail panel, clickable edges and a visual refresh ([3f872a8](https://github.com/metril/certforge/commit/3f872a805f52e228ba05ba7bd892d23cdf184531))
+
 ## [0.11.0](https://github.com/metril/certforge/compare/v0.10.0...v0.11.0) (2026-10-11)
 
 
