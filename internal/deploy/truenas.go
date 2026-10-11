@@ -198,6 +198,14 @@ func (TrueNAS) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 	if err := json.Unmarshal(raw, &existing); err != nil {
 		return fail(fmt.Errorf("decoding certificate list: %w", err))
 	}
+	ours := regexp.MustCompile("^" + regexp.QuoteMeta(prefix) + "-[0-9a-f]{8}$")
+	kept := existing[:0]
+	for _, e := range existing {
+		if ours.MatchString(e.Name) {
+			kept = append(kept, e)
+		}
+	}
+	existing = kept
 	id, imported := 0, false
 	for _, e := range existing {
 		if e.Name == name || leafMatches(e.Certificate, req.Material.LeafDER) {
@@ -269,7 +277,7 @@ func (TrueNAS) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 
 	removed, warns := 0, []string{}
 	for _, e := range existing {
-		if e.ID == id || !strings.HasPrefix(e.Name, prefix+"-") {
+		if e.ID == id {
 			continue
 		}
 		if _, err := tnJob(ctx, rc, "certificate.delete", []any{e.ID, false}); err != nil {

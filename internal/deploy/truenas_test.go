@@ -292,3 +292,20 @@ func leafFP8(req targets.Request) string {
 	sum := sha256.Sum256(req.Material.LeafDER)
 	return hex.EncodeToString(sum[:])[:8]
 }
+
+func TestTrueNASOnlyManagesOwnNames(t *testing.T) {
+	f := &fakeTrueNAS{}
+	f.handle = baseHandle(map[string]func([]json.RawMessage) (string, string, bool){
+		"certificate.query": func([]json.RawMessage) (string, string, bool) {
+			return `[{"id":5,"name":"certforge-nas2-deadbeef"},{"id":6,"name":"certforgeX-deadbeef"},{"id":8,"name":"certforge-mycert"}]`, "", false
+		},
+		"certificate.delete": func([]json.RawMessage) (string, string, bool) { return `12`, "", false },
+	})
+	srv := httptest.NewTLSServer(f)
+	defer srv.Close()
+	req, _ := tnRequest(t, srv, map[string]any{"setUiCert": false})
+	res, err := TrueNAS{}.Deploy(context.Background(), req)
+	if err != nil || res.Detail != "certificate 42 imported" || f.called("certificate.delete") {
+		t.Fatalf("res=%+v err=%v calls=%v", res, err, f.calls)
+	}
+}
