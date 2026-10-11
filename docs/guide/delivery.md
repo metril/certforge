@@ -66,13 +66,13 @@ Each grant on a Traefik target has its own **Target options**, shown under the t
 | Field | What it does | Default |
 |---|---|---|
 | **Default certificate** (`defaultCert`) | Also serve this certificate when no SNI matches. Only one grant per client, directory and store may set it, otherwise the save fails with 409. | Off |
-| **Certificate directory on the agent** (`certsDir`) | Absolute directory for `fullchain.pem` and `privkey.pem`. Must not equal the target's **Directory on the agent**. | `<dir>/certs/<name>` |
+| **Certificate directory on the agent** (`certsDir`) | Absolute directory for `fullchain.pem` and `privkey.pem`. Setting it needs the `delivery:write` permission. Must not equal the target's **Directory on the agent**. | `<dir>/certs/<name>` |
 | **Certificate directory as Traefik sees it** (`certsDirTraefik`) | The same directory as Traefik sees it. | Derived from `dir` and `pathPrefix` when `certsDir` is under `dir`, else the same as `certsDir` |
 | **TLS stores** (`stores`) | Overrides the target's stores for this certificate. | The target's |
 
 On upgrade, a target's Default certificate moves to one grant per client: the certificate whose name sorts first, which is what Traefik was serving. Change it in the grant if another certificate should be the default.
 
-The target no longer has a `defaultCert` field. Migration 00026 moved it onto the grants of each target that had it on. Agents older than this change ignore the options and report drift until you upgrade them. Upgrade the server first: a new agent fails to parse a stale target-level `defaultCert` from an old server.
+The target no longer has a `defaultCert` field. Migration 00026 moved it onto the grants of each target that had it on. An agent older than this change ignores the options: on the default grant's next deploy it writes the YAML without `defaultCertificate`, and Traefik stops serving the default certificate. Upgrade agents right after the server. A new agent fails to parse a stale target-level `defaultCert` from an old server, so upgrade the server first.
 
 Example YAML for `dir: /data/traefik`, `pathPrefix: /etc/traefik/dynamic` and **Default certificate** on for the grant:
 

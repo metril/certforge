@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -131,6 +132,18 @@ func requireKeysExport(orgID uuid.UUID) func(context.Context) error {
 	}
 }
 
+// requireCertsDirPerm: a non-empty targetOptions.certsDir picks where the
+// agent writes files, so it needs delivery:write on top of clients:write.
+func requireCertsDirPerm(ctx context.Context, orgID uuid.UUID, opts map[string]interface{}) error {
+	if v, _ := opts["certsDir"].(string); v == "" {
+		return nil
+	}
+	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &orgID); err != nil {
+		return &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: "setting certsDir needs delivery:write"}
+	}
+	return nil
+}
+
 // CreateGrant grants a certificate to a client.
 func (s *Server) CreateGrant(ctx context.Context, r gen.CreateGrantRequestObject) (gen.CreateGrantResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionClientsWrite, &r.OrgId); err != nil {
@@ -148,6 +161,9 @@ func (s *Server) CreateGrant(ctx context.Context, r gen.CreateGrantRequestObject
 		in.AutoRemediate = *r.Body.AutoRemediate
 	}
 	if r.Body.TargetOptions != nil {
+		if err := requireCertsDirPerm(ctx, r.OrgId, *r.Body.TargetOptions); err != nil {
+			return nil, err
+		}
 		var err error
 		if in.TargetOptions, err = targetOptionsIn(*r.Body.TargetOptions); err != nil {
 			return nil, err
@@ -183,6 +199,9 @@ func (s *Server) UpdateGrant(ctx context.Context, r gen.UpdateGrantRequestObject
 	}
 	in := agents.GrantInput{Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
 		HookIDs: r.Body.HookIds, AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
+	if err := requireCertsDirPerm(ctx, r.OrgId, r.Body.TargetOptions); err != nil {
+		return nil, err
+	}
 	if in.TargetOptions, err = targetOptionsIn(r.Body.TargetOptions); err != nil {
 		return nil, err
 	}

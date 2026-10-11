@@ -17,6 +17,8 @@ import (
 
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -1281,5 +1283,41 @@ func TestGrantTargetOptionsRoundTrip(t *testing.T) {
 	}
 	if got := up.(gen.UpdateGrant200JSONResponse).TargetOptions; got == nil || len(got) != 0 {
 		t.Fatalf("after update targetOptions = %#v, want {}", got)
+	}
+}
+
+// TestGrantCertsDirNeedsDeliveryWrite: setting targetOptions.certsDir needs
+// delivery:write on top of clients:write + keys:export.
+func TestGrantCertsDirNeedsDeliveryWrite(t *testing.T) {
+	f := newAgentFixture(t)
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	res, err := f.srv.CreateDeployTarget(f.as("admin"), gen.CreateDeployTargetRequestObject{OrgId: f.org, Body: &gen.DeployTargetInput{
+		Name: "traefik", Type: gen.DeployTargetType("traefik"), Config: map[string]interface{}{"dir": "/etc/traefik/dynamic"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tid := res.(gen.CreateDeployTarget201JSONResponse).Id
+	key := func(scopes ...string) context.Context {
+		return authn.WithPrincipal(context.Background(), authn.Principal{
+			Kind: authn.KindAPIKey, UserID: uuid.New(), OrgIDs: []uuid.UUID{f.org},
+			Bindings: []authn.Binding{{Role: authz.RoleAdmin}},
+			APIKey:   &authn.APIKeyInfo{ID: uuid.New(), Scopes: scopes, OrgID: &f.org},
+		})
+	}
+	noDelivery := key("clients:write", "keys:export")
+	withDelivery := key("clients:write", "keys:export", "delivery:write")
+	create := func(ctx context.Context, cid uuid.UUID, opts map[string]interface{}) error {
+		_, err := f.srv.CreateGrant(ctx, gen.CreateGrantRequestObject{OrgId: f.org, Id: cid, Body: &gen.GrantInput{
+			CertificateId: certID, Delivery: push(), DeployTargetId: &tid, TargetOptions: &opts}})
+		return err
+	}
+	dir := map[string]interface{}{"certsDir": "/srv/certs"}
+	wantStatus(t, create(noDelivery, c.ID, dir), 403)
+	if err := create(noDelivery, c.ID, map[string]interface{}{"defaultCert": true}); err != nil {
+		t.Fatalf("without certsDir: %v", err)
+	}
+	if err := create(withDelivery, f.activeClient(t, "web-2").ID, dir); err != nil {
+		t.Fatalf("with delivery:write: %v", err)
 	}
 }

@@ -14,6 +14,6 @@ The target's `defaultCert` is removed. Migration 00026 adds `grants.target_optio
 
 ## Consequences
 - Breaking: the Traefik target no longer accepts `defaultCert`. A new agent cannot parse a stale target-level `defaultCert`, so upgrade the server before the agents.
-- Agents that predate this change ignore `GrantOptions` and report drift on grants that use the options, until upgraded.
+- Agents that predate this change ignore `GrantOptions`: on the default grant's next deploy they write YAML without `defaultCertificate` and Traefik stops serving the default. Upgrade agents right after the server.
 - Other target types can add their own grant schema without protocol changes.
 - Operators can adopt CertForge beside traefik-cert-watcher and keep legacy paths with `certsDir`. See [Delivery](../../guide/delivery.md#replacing-traefik-cert-watcher).
