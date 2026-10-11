@@ -21,10 +21,10 @@ func registryCodes(reg *targets.Registry) []string {
 
 // TestProductRegistriesHaveNoTestTypes guards the server and agent
 // registries against ever holding a targetstest type: exactly {authentik,
-// pfsense, ssh, traefik, vault-kv} and {traefik}, respectively.
+// pfsense, ssh, traefik, truenas, vault-kv} and {traefik}, respectively.
 func TestProductRegistriesHaveNoTestTypes(t *testing.T) {
-	if got := registryCodes(newTargetsRegistry(nil)); len(got) != 5 || got[0] != "authentik" || got[1] != "pfsense" || got[2] != "ssh" || got[3] != "traefik" || got[4] != "vault-kv" {
-		t.Fatalf("server registry codes = %v, want [authentik pfsense ssh traefik vault-kv]", got)
+	if got := registryCodes(newTargetsRegistry(nil)); len(got) != 6 || got[0] != "authentik" || got[1] != "pfsense" || got[2] != "ssh" || got[3] != "traefik" || got[4] != "truenas" || got[5] != "vault-kv" {
+		t.Fatalf("server registry codes = %v, want [authentik pfsense ssh traefik truenas vault-kv]", got)
 	}
 	if got := registryCodes(agent.NewTargetsRegistry()); len(got) != 1 || got[0] != "traefik" {
 		t.Fatalf("agent registry codes = %v, want [traefik]", got)
@@ -57,6 +57,7 @@ func TestRegistryModesMatrix(t *testing.T) {
 		{"ssh", targets.Server, targets.Optional},
 		{"pfsense", targets.Server, targets.Always},
 		{"traefik", targets.Agent, targets.Always},
+		{"truenas", targets.Server, targets.Always},
 		{"vault-kv", targets.Server, targets.Optional},
 	}
 	for _, c := range cases {
@@ -82,7 +83,7 @@ func TestMetaDeployTargetAttrs(t *testing.T) {
 	targets.AddToMeta(reg, metaReg)
 
 	entries := metaReg.List(meta.KindDeployTarget)
-	if len(entries) != 5 {
+	if len(entries) != 6 {
 		t.Fatalf("entries = %+v", entries)
 	}
 	byCode := map[string]meta.Entry{}
@@ -100,6 +101,9 @@ func TestMetaDeployTargetAttrs(t *testing.T) {
 	}
 	if a := byCode["pfsense"].Attrs; a["runsOn"] != "server" || a["keyPolicy"] != "always" {
 		t.Fatalf("pfsense attrs = %+v", a)
+	}
+	if a := byCode["truenas"].Attrs; a["runsOn"] != "server" || a["keyPolicy"] != "always" {
+		t.Fatalf("truenas attrs = %+v", a)
 	}
 	if a := byCode["vault-kv"].Attrs; a["runsOn"] != "server" || a["keyPolicy"] != "optional" {
 		t.Fatalf("vault-kv attrs = %+v", a)

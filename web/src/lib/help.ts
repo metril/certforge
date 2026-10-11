@@ -334,6 +334,7 @@ export const help = {
   'target.authentik': { text: 'CertForge pushes the certificate and key into Authentik’s keypair store itself. No client is involved.', learnMore: 'guide/delivery.md#authentik' },
   'target.ssh': { text: 'CertForge connects over SSH, writes the files and runs your commands itself. The host key is pinned; get it with ssh-keyscan.', learnMore: 'guide/delivery.md#ssh' },
   'target.pfsense': { text: 'CertForge logs in to the pfSense Plus REST API and updates the named certificate in place, so WebGUI and VPN references keep working.', learnMore: 'guide/delivery.md#pfsense-plus' },
+  'target.truenas': { text: 'CertForge imports the certificate into TrueNAS SCALE 25.10+ over its API and can make it the web UI certificate. Use an API key; older CertForge certificates are removed.', learnMore: 'guide/delivery.md#truenas-scale' },
   'target.includeKey': { text: 'Also send the private key. On the server this needs the keys:export permission.', learnMore: 'guide/delivery.md#vault-kv' },
   'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
   // Task 9: the deploy-target detail sheet's own Grants section and its

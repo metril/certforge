@@ -11,6 +11,7 @@ Three target types ship with CertForge:
 | Authentik (`authentik`) | The server | Always sent |
 | SSH (`ssh`) | The server | Only when a file uses `key` or `bundle` |
 | pfSense Plus (`pfsense`) | The server | Always sent |
+| TrueNAS SCALE (`truenas`) | The server | Always sent |
 
 ## Before you start
 
@@ -245,6 +246,21 @@ A pfSense Plus target pushes a certificate into pfSense through Netgate's built-
 | **Timeout** (`timeoutSeconds`) | Seconds per request, 5 to 120. | 30 |
 
 Each deploy logs in, then looks the certificate up by its description. If it exists it is updated in place, so WebGUI, OpenVPN and HAProxy references keep pointing at it. Otherwise it is created. If two certificates share the name the deploy fails. When pfSense already holds the same certificate, nothing is written.
+## TrueNAS SCALE
+
+A TrueNAS target imports the certificate into TrueNAS SCALE 25.10 or later over its WebSocket API and can make it the web UI certificate. It runs on the server.
+
+| Field | What it does | Default |
+|---|---|---|
+| **URL** (`url`) | https URL of the TrueNAS web UI. | None |
+| **Username** (`username`) | The user the API key belongs to. | `root` |
+| **API key** (`apiKey`) | A TrueNAS API key (Credentials, Local Users). Stored encrypted. | None |
+| **Certificate name prefix** (`certPrefix`) | Imports are named `<prefix>-<8 hex of the fingerprint>`. | `certforge` |
+| **Use as web UI certificate** (`setUiCert`) | Set the UI certificate and restart the UI. | On |
+| **CA certificate** (`caPem`) | PEM to trust for TrueNAS's TLS certificate. | None |
+| **Timeout** (`timeoutSeconds`) | Seconds for the whole deploy, 10 to 300. | 120 |
+
+A certificate already on the box with the same fingerprint is reused, not imported again. Older certificates with the prefix are deleted after the switch; one still in use is left alone, and any other failure shows as a warning in the result.
 
 ## Grant a certificate to a server target
 
